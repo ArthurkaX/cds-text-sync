@@ -20,17 +20,21 @@ def main():
         export_xml = get_project_prop("cds-sync-export-xml", False)
         backup_binary = get_project_prop("cds-sync-backup-binary", False)
         save_after_import = get_project_prop("cds-sync-save-after-import", True)
+        backup_name = get_project_prop("cds-sync-backup-name", "")
 
         # Build menu options
-        xml_opt = "[x] Export Native XML (Visu/Alarms)" if export_xml else "[ ] Export Native XML (Visu/Alarms)"
-        backup_opt = "[x] Backup .project binary (Git LFS)" if backup_binary else "[ ] Backup .project binary (Git LFS)"
-        save_opt = "[x] Save Project after Import" if save_after_import else "[ ] Save Project after Import"
+        xml_opt = "[*] Export Native XML (Visu/Alarms)" if export_xml else "[ ] Export Native XML (Visu/Alarms)"
+        backup_opt = "[*] Backup .project binary" if backup_binary else "[ ] Backup .project binary"
+        name_val = backup_name if backup_name else "(original name)"
+        name_opt = "    > Set Backup Name: " + name_val
+        save_opt = "[*] Save Project after Import" if save_after_import else "[ ] Save Project after Import"
         
         message = "Configure Project Sync Parameters:\n(Settings are saved in Project Information)"
         
         options = (
             xml_opt,
             backup_opt,
+            name_opt,
             save_opt,
             "Exit"
         )
@@ -53,7 +57,22 @@ def main():
             set_project_prop("cds-sync-backup-binary", not backup_binary)
             print("Updated Binary Backup -> " + str(not backup_binary))
             
-        elif choice == 2: # Toggle Save
+        elif choice == 2: # Set Backup Name
+            current = backup_name if backup_name else ""
+            try:
+                # Prompt for new name
+                new_name = system.ui.query_string("Enter fixed filename for backup (e.g. 'Project'):", current)
+                if new_name is not None:
+                    # Clean the name if it has .project extension
+                    if new_name.lower().endswith(".project"):
+                        new_name = new_name[:-8]
+                    
+                    set_project_prop("cds-sync-backup-name", new_name.strip())
+                    print("Updated Backup Name -> " + (new_name.strip() if new_name.strip() else "original"))
+            except Exception as e:
+                print("Error setting backup name: " + str(e))
+
+        elif choice == 3: # Toggle Save
             set_project_prop("cds-sync-save-after-import", not save_after_import)
             print("Updated Save After Import -> " + str(not save_after_import))
             

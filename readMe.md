@@ -58,6 +58,9 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 - **[ ] Backup .project binary**:
   - If ENABLED: the script creates a copy of your `.project` file in the `/project` folder.
   - Essential for **Git LFS** workflows. Ensures your binary state matches your code state.
+- **Set Backup Name**:
+  - Allows you to specify a **fixed filename** for the binary backup (e.g., `Project`).
+  - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `/project` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
 - **[ ] Save Project after Import**:
   - If ENABLED: automatically saves the project after a successful import.
 
@@ -111,6 +114,14 @@ The tool organizes your repository into a clean structure:
 4.  **Edit**: make changes in VS Code or CODESYS.
 5.  **Sync**: Run `Project_import.py` or `Project_export.py` depending on where you edited.
     - The binary backup is automatically updated on every sync.
+
+### ❓ Why Git LFS for `.project`?
+
+Since `.project` is a **binary file**, standard Git is not efficient at tracking its changes.
+
+- **Prevents Bloat**: Normal Git stores the _entire file_ for every commit. If your project is 10MB, 100 commits would make your repo 1GB. LFS prevents this.
+- **Performance**: You only download the binary version you are currently working on, keeping `git clone` and `git fetch` fast.
+- **Code-Binary Sync**: It allows you to keep the "full state" of the project (Visualizations, HW config) exactly matched with the "logic state" in `src/`.
 
 ---
 

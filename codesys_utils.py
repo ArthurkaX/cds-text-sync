@@ -895,8 +895,21 @@ def backup_project_binary(export_dir, projects_obj=None):
         if not os.path.exists(project_folder):
             os.makedirs(project_folder)
             
-        file_name = os.path.basename(project_path)
+        # Determine target filename
+        custom_name = get_project_prop("cds-sync-backup-name", "")
+        if custom_name:
+            # Ensure it ends with .project
+            if not custom_name.lower().endswith(".project"):
+                file_name = custom_name + ".project"
+            else:
+                file_name = custom_name
+        else:
+            file_name = os.path.basename(project_path)
+            
         target_path = os.path.join(project_folder, file_name)
+        
+        # Check if we should delete old backups if using a fixed name? 
+        # Actually user said "always save to one file", so overwriting is fine.
         
         shutil.copy2(project_path, target_path)
         log_info("Binary backup updated: project/" + file_name)

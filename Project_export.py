@@ -239,6 +239,18 @@ def ensure_git_configs(export_dir):
             "_metadata.csv",
             "sync_debug.log",
             "*.tmp",
+            "*.bak",
+            "",
+            "# CODESYS temporary and build files",
+            "*.~u",
+            "*.precompilecache",
+            "*.opt",
+            "*.bootinfo",
+            "*.bootinfo_guids",
+            "*.compileinfo",
+            "*.simulation.bootinfo",
+            "*.simulation.bootinfo_guids",
+            "*.simulation.compileinfo",
             ""
         ]
         try:
