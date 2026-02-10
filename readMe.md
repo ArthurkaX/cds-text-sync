@@ -45,6 +45,8 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 **Run this first.** It links your current CODESYS project to a specific folder on your disk.
 
+![Setup Project Directory](img/create_work_directory.gif)
+
 - Saves the path (`cds-sync-folder`) and current machine name (`cds-sync-pc`) to **Project Information > Properties**.
 - This binding ensures you don't accidentally sync to the wrong folder.
 
