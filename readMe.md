@@ -37,6 +37,8 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
    - Go to **Tools > Customize > Toolbars**.
    - Add commands from **ScriptEngine Commands > P**.
 
+   ![Add Button to Menu](img/add_button.gif)
+
 ---
 
 ## 📖 Script Overview
