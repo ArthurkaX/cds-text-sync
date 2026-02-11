@@ -188,6 +188,104 @@ def set_project_prop(key, value):
     except:
         return False
 
+def get_boolean_prop(key, default=False):
+    """Safely get a boolean project property."""
+    val = get_project_prop(key, default)
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() == "true"
+    return bool(val)
+
+def is_headless():
+    """Check if we are running in headless mode (no UI)."""
+    # Check environment variable
+    if os.environ.get("CDS_HEADLESS") == "1":
+        return True
+
+    # Check project property
+    if get_boolean_prop("cds-sync-headless", False):
+        return True
+
+    return False
+
+def confirm_action(message, options, default_index=None):
+    """
+    Wrap system.ui.choose to support headless execution.
+
+    Args:
+        message (str): The question to ask.
+        options (tuple): List of options (e.g. ("Yes", "No")).
+        default_index (int): Index of the option to choose in headless mode.
+                             If None, returns None in headless mode.
+
+    Returns:
+        tuple: (index,) or None (if cancelled/closed)
+    """
+    if is_headless():
+        log_info("HEADLESS MODE: " + message.replace("\n", " "))
+        if default_index is not None and default_index < len(options):
+            choice = options[default_index]
+            log_info("HEADLESS ACTION: Auto-selected option '%s'" % choice)
+            return (default_index,)
+        else:
+            log_warning("HEADLESS ACTION: No default action specified, returning None.")
+            return None
+
+    # Interactive mode
+    try:
+        # Try to find 'system' object for UI
+        sys_ui = None
+        if "system" in globals(): sys_ui = globals()["system"].ui
+        else:
+            import __main__
+            if hasattr(__main__, "system"): sys_ui = __main__.system.ui
+
+        if sys_ui:
+            return sys_ui.choose(message, options)
+        else:
+            print("Warning: system.ui not available for interactive prompt.")
+            return None
+    except Exception as e:
+        log_error("Error showing UI dialog: " + safe_str(e))
+        return None
+
+def show_message(message, level="info"):
+    """
+    Wrap system.ui.info/warning/error to support headless execution.
+    """
+    log_msg = "[%s] %s" % (level.upper(), message.replace("\n", " "))
+
+    if is_headless():
+        if level == "error":
+            log_error(message)
+        elif level == "warning":
+            log_warning(message)
+        else:
+            log_info(message)
+        print(log_msg)
+        return
+
+    # Interactive mode
+    try:
+        sys_ui = None
+        if "system" in globals(): sys_ui = globals()["system"].ui
+        else:
+            import __main__
+            if hasattr(__main__, "system"): sys_ui = __main__.system.ui
+
+        if sys_ui:
+            if level == "error":
+                sys_ui.error(message)
+            elif level == "warning":
+                sys_ui.warning(message)
+            else:
+                sys_ui.info(message)
+        else:
+            print(log_msg)
+    except:
+        print(log_msg)
+
 def load_base_dir():
     """Load base directory strictly from the project property 'cds-sync-folder'."""
     base_dir = get_project_prop("cds-sync-folder")
@@ -209,29 +307,20 @@ def load_base_dir():
             message += safe_str(base_dir) + "\n\n"
             message += "Would you like to re-configure the sync folder for this PC?"
             
-            # Try to find 'system' object for UI
-            sys_ui = None
-            try:
-                if "system" in globals(): sys_ui = globals()["system"].ui
-                else: 
-                    import __main__
-                    if hasattr(__main__, "system"): sys_ui = __main__.system.ui
-            except: pass
+            # Use confirm_action which handles headless mode and UI fallback
+            # Default to "No, Keep Current" (index 1) in headless mode
+            res = confirm_action(message, ("Yes, Re-configure", "No, Keep Current", "Cancel Operation"), default_index=1)
             
-            if sys_ui:
-                res = sys_ui.choose(message, ("Yes, Re-configure", "No, Keep Current", "Cancel Operation"))
-                if res and res[0] == 0:
-                    try:
-                        import Project_directory
-                        Project_directory.set_base_directory()
-                        base_dir = get_project_prop("cds-sync-folder")
-                    except Exception as e:
-                        log_warning("Could not launch Project_directory: " + safe_str(e))
-                        return None, "Please run 'Project_directory.py' manually to re-configure sync."
-                elif res and res[0] == 2:
-                    return None, "Operation cancelled by user."
-            else:
-                log_warning("Computer mismatch detected ('%s' vs '%s') but UI (system.ui) is not available." % (safe_str(sync_pc), safe_str(current_pc)))
+            if res and res[0] == 0:
+                try:
+                    import Project_directory
+                    Project_directory.set_base_directory()
+                    base_dir = get_project_prop("cds-sync-folder")
+                except Exception as e:
+                    log_warning("Could not launch Project_directory: " + safe_str(e))
+                    return None, "Please run 'Project_directory.py' manually to re-configure sync."
+            elif res and res[0] == 2:
+                return None, "Operation cancelled by user."
     except Exception as e:
         log_warning("Error during PC mismatch check: " + safe_str(e))
 

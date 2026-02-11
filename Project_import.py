@@ -20,7 +20,8 @@ from codesys_utils import (
     calculate_hash, save_metadata, load_metadata,
     format_st_content, log_info, log_warning, log_error, MetadataLock,
     load_libraries, extract_libraries_from_project,
-    init_logging, get_project_prop, backup_project_binary
+    init_logging, get_project_prop, backup_project_binary,
+    confirm_action, show_message, get_boolean_prop
 )
 
 # Shared constants and utilities imported from modules
@@ -303,9 +304,13 @@ def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map):
     
     message += "\nWould you like to delete these objects from the CODESYS project?"
     
-    try:
-        result = system.ui.choose(message, ("Delete from IDE", "Ignore", "Cancel Import"))
-    except:
+    # Determine default for headless mode: Default is Ignore (1), unless property set to True
+    clean_orphans = get_boolean_prop("cds-sync-clean-orphans", False)
+    default_idx = 0 if clean_orphans else 1
+
+    result = confirm_action(message, ("Delete from IDE", "Ignore", "Cancel Import"), default_index=default_idx)
+
+    if result is None:
         return []
     
     if result[0] == 0:
@@ -390,9 +395,13 @@ def sync_libraries(import_dir):
     message += "\nPlease update libraries manually via Library Manager.\n"
     message += "Would you like to continue with import?"
     
-    try:
-        result = system.ui.choose(message, ("Continue Import", "Cancel Import"))
-    except:
+    # Determine default for headless mode: Default is Cancel (1), unless property set to True
+    force_libs = get_boolean_prop("cds-sync-force-libs", False)
+    default_idx = 0 if force_libs else 1
+
+    result = confirm_action(message, ("Continue Import", "Cancel Import"), default_index=default_idx)
+
+    if result is None:
         return
         
     if result[0] == 1: # Cancel
@@ -403,7 +412,7 @@ def import_project(import_dir):
     """Import ST files from folder structure back into CODESYS project"""
     
     if not projects.primary:
-        system.ui.error("No project open!")
+        show_message("No project open!", "error")
         return
     
     # Check save setting
@@ -446,7 +455,7 @@ def import_project(import_dir):
         # Load metadata
         metadata = load_metadata(import_dir)
         if not metadata:
-            system.ui.error("Metadata not found!\n\nPlease run Project_export.py first.")
+            show_message("Metadata not found!\n\nPlease run Project_export.py first.", "error")
             return
         
         objects_meta = metadata.get("objects", {})
@@ -814,31 +823,25 @@ def import_project(import_dir):
     print("  Time:    {:.2f}s".format(elapsed_time))
     
     log_info("Import complete! Updated: " + str(updated_count) + ", Created: " + str(created_count) + ", Deleted: " + str(deleted_count))
-    system.ui.info("Import complete!\n\nUpdated: " + str(updated_count) + "\nCreated: " + str(created_count) + "\nDeleted: " + str(deleted_count) + "\nFailed: " + str(failed_count) + "\nSkipped: " + str(skipped_count) + "\nTime: {:.2f}s".format(elapsed_time))
+    show_message("Import complete!\n\nUpdated: " + str(updated_count) + "\nCreated: " + str(created_count) + "\nDeleted: " + str(deleted_count) + "\nFailed: " + str(failed_count) + "\nSkipped: " + str(skipped_count) + "\nTime: {:.2f}s".format(elapsed_time))
 
 
 def main():
     base_dir, error = load_base_dir()
     if error:
-        system.ui.warning(error)
+        show_message(error, "warning")
         return
     
     message = "WARNING: This operation will overwrite CODESYS objects with data from the export directory.\n\nAre you sure you want to proceed?"
     
-    try:
-        result = system.ui.choose(message, ("Yes, Overwrite Data", "No, Cancel"))
-    except:
-        # Fallback for UI-less execution
-        init_logging(base_dir)
-        import_project(base_dir)
-        return
+    # Default to Yes (0) in headless mode
+    result = confirm_action(message, ("Yes, Overwrite Data", "No, Cancel"), default_index=0)
 
-    if result is None: # Dialog closed
+    if result is None or result[0] != 0:
         return
         
-    if result[0] == 0: # Yes
-        init_logging(base_dir)
-        import_project(base_dir)
+    init_logging(base_dir)
+    import_project(base_dir)
 
 
 if __name__ == "__main__":

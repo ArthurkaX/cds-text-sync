@@ -24,7 +24,8 @@ from codesys_utils import (
     save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
     save_libraries, extract_libraries_from_project,
-    init_logging, backup_project_binary
+    init_logging, backup_project_binary,
+    confirm_action, show_message, get_boolean_prop
 )
 
 # Shared constants and utilities imported from modules
@@ -175,9 +176,13 @@ def cleanup_orphaned_files(export_dir, current_objects):
     message += "\nWould you like to delete these orphaned files?"
     
     # buttons: Delete, Ignore, Cancel
-    try:
-        result = system.ui.choose(message, ("Delete Orphans", "Ignore", "Cancel Export"))
-    except:
+    # Determine default for headless mode: Default is Ignore (1), unless property set to True
+    clean_orphans = get_boolean_prop("cds-sync-clean-orphans", False)
+    default_idx = 0 if clean_orphans else 1
+
+    result = confirm_action(message, ("Delete Orphans", "Ignore", "Cancel Export"), default_index=default_idx)
+
+    if result is None:
         # Fallback for environments where choose is not available or fails
         print("UI Choose not available, skipping cleanup.")
         return True
@@ -289,7 +294,7 @@ def export_project(export_dir):
     """Export all project objects to folder structure with metadata"""
     
     if not projects.primary:
-        system.ui.error("No project open!")
+        show_message("No project open!", "error")
         return
     
     # Create export directory
@@ -353,9 +358,9 @@ def export_project(export_dir):
                 message += "Exporting will OVERWRITE the existing files.\n\n"
                 message += "Are you sure you want to proceed?"
                 
-                result = system.ui.choose(message, ("Yes, Overwrite", "No, Cancel"))
+                result = confirm_action(message, ("Yes, Overwrite", "No, Cancel"), default_index=1)
                 
-                if result[0] != 0:
+                if result is None or result[0] != 0:
                     print("Export cancelled by user - project mismatch")
                     return
         except:
@@ -581,13 +586,13 @@ def export_project(export_dir):
     print("Completed at: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     
     log_info("Export complete! Exported: " + str(exported_count) + " files.")
-    system.ui.info("Export complete!\n\nExported: " + str(exported_count) + " files\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+    show_message("Export complete!\n\nExported: " + str(exported_count) + " files\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
 
 def main():
     base_dir, error = load_base_dir()
     if error:
-        system.ui.warning(error)
+        show_message(error, "warning")
         return
         
     init_logging(base_dir)
