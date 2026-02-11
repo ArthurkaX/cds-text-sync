@@ -274,6 +274,7 @@ def ensure_git_configs(export_dir):
         content = [
             "# Git LFS configuration for CODESYS project binary",
             "*.project filter=lfs diff=lfs merge=lfs -text",
+            "*.st linguist-language=Pascal",
             ""
         ]
         try:
