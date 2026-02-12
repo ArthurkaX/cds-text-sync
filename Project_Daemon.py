@@ -383,6 +383,9 @@ def create_hotkey_listener():
 
             [DllImport("user32.dll")]
             public static extern bool BringWindowToTop(IntPtr hWnd);
+
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
         }
         """
         import clr
@@ -439,6 +442,14 @@ def on_tick(sender, args):
             timer.Stop()
             
             try:
+                # Capture previous window to restore focus later
+                prev_hwnd = None
+                try:
+                    win32_helper = sys._codesys_daemon.get("win32_helper")
+                    if win32_helper:
+                        prev_hwnd = win32_helper.GetMethod("GetForegroundWindow").Invoke(None, None)
+                except: pass
+
                 # Show Dashboard
                 form = QuickActionForm()
                 
@@ -459,6 +470,15 @@ def on_tick(sender, args):
                 
                 # ShowDialog blocks until closed
                 form.ShowDialog()
+                
+                # Restore focus to previous window
+                if prev_hwnd and win32_helper:
+                    try:
+                        # Small delay to let Windows process the closing animation?
+                        # time.sleep(0.1) 
+                        win32_helper.GetMethod("SetForegroundWindow").Invoke(None, [prev_hwnd])
+                    except: pass
+                    
             except Exception as e:
                 print("Dashboard Error: " + str(e))
             
