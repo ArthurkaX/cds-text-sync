@@ -380,6 +380,9 @@ def create_hotkey_listener():
             
             [DllImport("user32.dll")]
             public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+            [DllImport("user32.dll")]
+            public static extern bool BringWindowToTop(IntPtr hWnd);
         }
         """
         import clr
@@ -406,6 +409,7 @@ def create_hotkey_listener():
             
             def check_hotkey():
                 # VK_MENU=0x12, Q=0x51
+                # Use reflection to call static methods
                 state_alt = win32_type.GetMethod("GetAsyncKeyState").Invoke(None, [0x12])
                 state_q = win32_type.GetMethod("GetAsyncKeyState").Invoke(None, [0x51])
                 
@@ -438,15 +442,20 @@ def on_tick(sender, args):
                 # Show Dashboard
                 form = QuickActionForm()
                 
-                # Setup focus trick on Load
-                def on_form_load(s, e):
+                # Setup focus trick on SHOWN (Load is too early)
+                def on_form_shown(s, e):
                     try:
+                        form.Activate()
                         win32_helper = sys._codesys_daemon.get("win32_helper")
                         if win32_helper:
-                            win32_helper.GetMethod("SetForegroundWindow").Invoke(None, [form.Handle])
-                    except: pass
+                            hwnd = form.Handle
+                            # Call Win32 APIs for aggressive focus
+                            win32_helper.GetMethod("BringWindowToTop").Invoke(None, [hwnd])
+                            win32_helper.GetMethod("SetForegroundWindow").Invoke(None, [hwnd])
+                    except Exception as ex:
+                        print("Focus error: " + str(ex))
                 
-                form.Load += on_form_load
+                form.Shown += on_form_shown
                 
                 # ShowDialog blocks until closed
                 form.ShowDialog()
