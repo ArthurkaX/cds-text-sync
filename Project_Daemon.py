@@ -88,6 +88,7 @@ class QuickActionForm(Form):
                     "  [E]  Export Source (Silent)\n" \
                     "  [I]  Import Source (Silent)\n" \
                     "  [X]  Export All (with XML)\n" \
+                    "  [B]  Build Project (Compile)\n" \
                     "  [P]  Backup Project (.project)\n" \
                     "\n" \
                     "  [D]  Deactivate Daemon\n" \
@@ -138,6 +139,8 @@ class QuickActionForm(Form):
             action = "EXPORT_ALL"
         elif key == Keys.P:
             action = "BACKUP_PROJ"
+        elif key == Keys.B:
+            action = "BUILD_PROJ"
 
         if action:
             self.Hide() # Hide immediately to show we are working
@@ -292,6 +295,33 @@ class QuickActionForm(Form):
                  from codesys_ui import show_toast
                  show_toast("Backup Complete", "Project binary saved to /project folder")
              except: pass
+
+        elif action == "BUILD_PROJ":
+            # Execute Project_Build.py in current namespace
+            build_script = os.path.join(script_dir, "Project_Build.py")
+            try:
+                with open(build_script, "r") as f:
+                    script_code = f.read()
+                
+                script_globals = globals().copy()
+                script_globals["__name__"] = "__main__"
+                script_globals["__file__"] = build_script
+                script_globals["SILENT"] = True
+                
+                if projects_obj:
+                    script_globals["projects"] = projects_obj
+                if system_obj:
+                    script_globals["system"] = system_obj
+                
+                exec(script_code, script_globals)
+                
+            except Exception as e:
+                print("Build error: " + str(e))
+                try:
+                    from codesys_ui import show_toast
+                    show_toast("Build Failed", str(e))
+                except:
+                    pass
 
 
 # --- Hotkey Polling Logic ---
