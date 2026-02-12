@@ -12,6 +12,15 @@ import os
 import codecs
 import json
 import time
+
+# Ensure global objects are available if imported
+try:
+    _ = projects.primary
+except NameError:
+    # If this script is imported by another script (Daemon), global variables like 'projects'
+    # might not be directly available in this scope unless injected.
+    # However, usually they are injected into the top-level script execution context.
+    pass
 import re
 from codesys_constants import IMPL_MARKER, TYPE_GUIDS
 from codesys_utils import (
@@ -264,7 +273,7 @@ def ensure_folder_path(path_str):
     return current_obj
 
 
-def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map):
+def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map, silent=False):
     """
     Find objects in IDE that have no corresponding file on disk and ask to delete them.
     Returns list of rel_paths that were deleted.
@@ -297,16 +306,29 @@ def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map):
     if not orphans:
         return []
 
-    message = "The following objects were removed from the disk but still exist in CODESYS:\n\n"
-    for rel_path, _ in orphans[:15]:
-        message += "- " + rel_path + "\n"
-    
-    message += "\nWould you like to delete these objects from the CODESYS project?"
-    
+    # Check for auto-delete property
     try:
-        result = system.ui.choose(message, ("Delete from IDE", "Ignore", "Cancel Import"))
+        auto_delete = get_project_prop("cds-sync-auto-delete-orphans", False)
     except:
-        return []
+        auto_delete = False
+
+    if silent:
+        if auto_delete:
+             result = (0,) # Simulate Delete
+        else:
+             print("Silent import: " + str(len(orphans)) + " objects need deletion but auto-delete is OFF.")
+             return [] # Ignore
+    else:
+        message = "The following objects were removed from the disk but still exist in CODESYS:\n\n"
+        for rel_path, _ in orphans[:15]:
+            message += "- " + rel_path + "\n"
+        
+        message += "\nWould you like to delete these objects from the CODESYS project?"
+        
+        try:
+            result = system.ui.choose(message, ("Delete from IDE", "Ignore", "Cancel Import"))
+        except:
+            return []
     
     if result[0] == 0:
         deleted_paths = []
@@ -336,7 +358,7 @@ def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map):
         return None 
 
 
-def sync_libraries(import_dir):
+def sync_libraries(import_dir, silent=False):
     """
     Check libraries in project against _libraries.csv and warn about differences.
     Note: Automatic library updates are not reliable across all CODESYS versions.
@@ -375,6 +397,14 @@ def sync_libraries(import_dir):
         return
         
     # Show status
+    if silent:
+         print("Silent Mode: Library version differences detected (see log). Ignoring.")
+         # Log details
+         if missing_libs:
+            for lib in missing_libs:
+                print("MISSING LIB: " + safe_str(lib.get("name")))
+         return
+
     message = "Library differences detected (Version Control):\n\n"
     if missing_libs:
         message += "Missing in CODESYS project:\n"
@@ -399,11 +429,45 @@ def sync_libraries(import_dir):
         return "CANCEL"
 
 
-def import_project(import_dir):
+def import_project(import_dir, projects_obj=None, silent=False):
     """Import ST files from folder structure back into CODESYS project"""
     
-    if not projects.primary:
-        system.ui.error("No project open!")
+    # Resolving projects object
+    if projects_obj is None:
+        # Check globals first (explicitly)
+        projects_obj = globals().get("projects")
+        
+        # Fallback to sys.modules or __main__
+        if projects_obj is None:
+             try:
+                 import __main__
+                 projects_obj = getattr(__main__, "projects", None)
+             except:
+                 pass
+        
+        if projects_obj is None:
+             try:
+                 import sys
+                 for module in sys.modules.values():
+                     if hasattr(module, "projects") and hasattr(getattr(module, "projects"), "primary"):
+                         projects_obj = module.projects
+                         break
+             except:
+                 pass
+
+        if projects_obj is None:
+             error_msg = "Script Error: 'projects' object not found."
+             if not silent:
+                 system.ui.error(error_msg)
+             else:
+                 print(error_msg)
+             return
+
+    if not projects_obj.primary:
+        if not silent:
+            system.ui.error("No project open!")
+        else:
+            print("Error: No project open")
         return
     
     # Check save setting
@@ -438,7 +502,7 @@ def import_project(import_dir):
         return None
     
     try:
-        app_container = find_application_recursive(projects.primary, 0)
+        app_container = find_application_recursive(projects_obj.primary, 0)
     except:
         pass
     
@@ -446,7 +510,10 @@ def import_project(import_dir):
         # Load metadata
         metadata = load_metadata(import_dir)
         if not metadata:
-            system.ui.error("Metadata not found!\n\nPlease run Project_export.py first.")
+            if not silent:
+                system.ui.error("Metadata not found!\n\nPlease run Project_export.py first.")
+            else:
+                print("Error: Metadata not found")
             return
         
         objects_meta = metadata.get("objects", {})
@@ -458,7 +525,7 @@ def import_project(import_dir):
         print("  Cache built: " + str(len(guid_map)) + " objects by GUID")
         
         # Cleanup IDE orphans
-        deleted_from_ide = cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map)
+        deleted_from_ide = cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map, silent=silent)
         if deleted_from_ide is None:
             return 
         
@@ -467,7 +534,7 @@ def import_project(import_dir):
                 del objects_meta[path]
         
         # Sync libraries first
-        if sync_libraries(import_dir) == "CANCEL":
+        if sync_libraries(import_dir, silent=silent) == "CANCEL":
             print("Import cancelled during library sync.")
             return
                 
@@ -790,13 +857,13 @@ def import_project(import_dir):
             if must_save:
                 try:
                     print("  Saving project...")
-                    projects.primary.save()
+                    projects_obj.primary.save()
                     
                     # After successful save, check if we need to update backup
                     if backup_binary:
                         print("  Updating binary backup...")
                         # Pass projects Explicitly
-                        backup_project_binary(import_dir, projects)
+                        backup_project_binary(import_dir, projects_obj)
                         
                 except Exception as e:
                     print("  Warning: Could not save project: " + safe_str(e))
@@ -837,6 +904,15 @@ def main():
         system.ui.warning(error)
         return
     
+    # Check if we are being run in silent mode (e.g. from Daemon)
+    is_silent = globals().get("SILENT", False)
+    
+    if is_silent:
+        print("Importing in silent mode (via Daemon)...")
+        init_logging(base_dir)
+        import_project(base_dir, silent=True)
+        return
+
     message = "WARNING: This operation will overwrite CODESYS objects with data from the export directory.\n\nAre you sure you want to proceed?"
     
     try:

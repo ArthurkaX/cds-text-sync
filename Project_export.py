@@ -27,6 +27,16 @@ from codesys_utils import (
     init_logging, backup_project_binary
 )
 
+# Ensure global objects are available if imported
+try:
+    _ = projects.primary
+except NameError:
+    # If imported, projects might not be in local scope but available in sys.modules['__main__']?
+    # Or we can import them from script engine?
+    # Actually, in CODESYS, 'projects' is a global variable.
+    # To be safe during import:
+    pass
+
 # Shared constants and utilities imported from modules
 
 
@@ -130,7 +140,7 @@ def export_native_xml(obj, file_path):
         return False
 
 
-def cleanup_orphaned_files(export_dir, current_objects):
+def cleanup_orphaned_files(export_dir, current_objects, silent=False):
     """
     Find and optionally delete files in export_dir that are not in current_objects.
     """
@@ -164,23 +174,36 @@ def cleanup_orphaned_files(export_dir, current_objects):
     if not orphaned_items:
         return True
 
-    # Prompt user
-    message = "The following files exist in the export directory but are NOT in the CODESYS project (orphans):\n\n"
-    # Show first 15 files as preview
-    for item in orphaned_items[:15]:
-        message += "- " + item + "\n"
-    if len(orphaned_items) > 15:
-        message += "... and " + str(len(orphaned_items) - 15) + " more.\n"
-    
-    message += "\nWould you like to delete these orphaned files?"
-    
-    # buttons: Delete, Ignore, Cancel
+    # Check for auto-delete property
     try:
-        result = system.ui.choose(message, ("Delete Orphans", "Ignore", "Cancel Export"))
+        auto_delete = get_project_prop("cds-sync-auto-delete-orphans", False)
     except:
-        # Fallback for environments where choose is not available or fails
-        print("UI Choose not available, skipping cleanup.")
-        return True
+        auto_delete = False
+
+    if silent:
+        if auto_delete:
+            result = (0,) # Simulate Delete
+        else:
+             print("Silent Mode: " + str(len(orphaned_items)) + " orphans ignored (set cds-sync-auto-delete-orphans=True to delete).")
+             return True # Ignore
+    else:
+        # Prompt user
+        message = "The following files exist in the export directory but are NOT in the CODESYS project (orphans):\n\n"
+        # Show first 15 files as preview
+        for item in orphaned_items[:15]:
+            message += "- " + item + "\n"
+        if len(orphaned_items) > 15:
+            message += "... and " + str(len(orphaned_items) - 15) + " more.\n"
+        
+        message += "\nWould you like to delete these orphaned files?"
+        
+        # buttons: Delete, Ignore, Cancel
+        try:
+            result = system.ui.choose(message, ("Delete Orphans", "Ignore", "Cancel Export"))
+        except:
+            # Fallback for environments where choose is not available or fails
+            print("UI Choose not available, skipping cleanup.")
+            return True
     
     if result[0] == 0: # Delete
         print("Cleaning up orphaned files...")
@@ -285,11 +308,27 @@ def ensure_git_configs(export_dir):
 
 
 
-def export_project(export_dir):
+def export_project(export_dir, projects_obj=None, silent=False):
     """Export all project objects to folder structure with metadata"""
     
-    if not projects.primary:
-        system.ui.error("No project open!")
+    # Resolving projects object (dependency injection or global fallback)
+    if projects_obj is None:
+        # Explicitly check globals to avoid UnboundLocalError
+        if "projects" in globals():
+            projects_obj = globals()["projects"]
+        
+        if projects_obj is None:
+             if not silent:
+                 system.ui.error("Script Error: 'projects' object not found. Please pass it explicitly.")
+             else:
+                 print("Error: 'projects' object not found")
+             return
+
+    if not projects_obj.primary:
+        if not silent:
+            system.ui.error("No project open!")
+        else:
+            print("Error: No project open")
         return
     
     # Create export directory
@@ -347,17 +386,20 @@ def export_project(export_dir):
 
             existing_project = existing_metadata.get("project_name", "")
             if existing_project and existing_project != current_project_name:
-                message = "WARNING: This directory contains exports from a different project!\n\n"
-                message += "Current project: " + current_project_name + "\n"
-                message += "Existing exports: " + existing_project + "\n\n"
-                message += "Exporting will OVERWRITE the existing files.\n\n"
-                message += "Are you sure you want to proceed?"
-                
-                result = system.ui.choose(message, ("Yes, Overwrite", "No, Cancel"))
-                
-                if result[0] != 0:
-                    print("Export cancelled by user - project mismatch")
-                    return
+                if silent:
+                     print("Warning: Exporting to folder owned by different project: " + existing_project)
+                else:
+                    message = "WARNING: This directory contains exports from a different project!\n\n"
+                    message += "Current project: " + current_project_name + "\n"
+                    message += "Existing exports: " + existing_project + "\n\n"
+                    message += "Exporting will OVERWRITE the existing files.\n\n"
+                    message += "Are you sure you want to proceed?"
+                    
+                    result = system.ui.choose(message, ("Yes, Overwrite", "No, Cancel"))
+                    
+                    if result[0] != 0:
+                        print("Export cancelled by user - project mismatch")
+                        return
         except:
             # If we can't read existing metadata, continue with export
             pass
@@ -365,12 +407,12 @@ def export_project(export_dir):
     # Execute binary backup if enabled
     if backup_binary:
         print("Binary backup enabled.")
-        backup_project_binary(export_dir, projects)
+        backup_project_binary(export_dir, projects_obj)
     else:
         print("Binary backup disabled (skipping .project copy).")
 
     # Get all objects recursively
-    all_objects = projects.primary.get_children(recursive=True)
+    all_objects = projects_obj.primary.get_children(recursive=True)
     print("Found " + str(len(all_objects)) + " total objects")
     
     exported_count = 0
@@ -551,7 +593,7 @@ def export_project(export_dir):
             log_error("Error exporting " + safe_str(obj) + ": " + safe_str(e))
     
     # Cleanup orphaned files (files on disk not in current export)
-    if not cleanup_orphaned_files(export_dir, metadata["objects"]):
+    if not cleanup_orphaned_files(export_dir, metadata["objects"], silent=silent):
         return
     
     # Debug: Count methods in metadata before saving
@@ -602,8 +644,11 @@ def main():
         system.ui.warning(error)
         return
         
+    # Check if we are being run in silent mode (e.g. from Daemon)
+    is_silent = globals().get("SILENT", False)
+    
     init_logging(base_dir)
-    export_project(base_dir)
+    export_project(base_dir, silent=is_silent)
 
 
 if __name__ == "__main__":
