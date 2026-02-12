@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.4.0`
+**Version**: `1.5.0`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -22,6 +22,7 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 - **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
+- **Background Service**: A daemon that provides global hotkeys (`Alt+Q`) for quick actions without switching windows.
 
 ---
 
@@ -67,6 +68,9 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
   - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `/project` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
 - **[ ] Save Project after Import**:
   - If ENABLED: automatically saves the project after a successful import.
+- **[ ] Silent Mode**:
+  - If ENABLED: suppresses blocking popup messages and uses non-blocking system tray notifications (toasts).
+  - Recommended for "Developer Workflow" to stay in flow.
 
 ### 3. `Project_export.py` (CODESYS -> Disk)
 
@@ -85,6 +89,32 @@ Updates the CODESYS project from the files on disk.
 - **Deletions**: If a file was deleted from disk, offers to delete the object from CODESYS.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
+### 5. `Project_Daemon.py` (Background Service)
+
+**The ultimate productivity booster.** This script runs in the background and empowers you to control CODESYS from anywhere.
+
+![Daemon Dashboard](img/Daemon.png)
+
+- **Global Hotkey (Alt + Q)**: Open the Quick Action Dashboard from any application or virtual desktop.
+- **Silent Operations**: Perform Exports, Imports, and Builds without interrupting your flow with popup dialogs.
+- **Smart Focus**: The dashboard intelligently steals focus when activated and restores it to your previous window (e.g., VS Code) when done.
+- **Build & Log**: Trigger a project build and get a clean, table-formatted `build.log` directly in your project folder.
+
+**Usage**:
+
+1. Run `Project_Daemon.py` once inside CODESYS to start it.
+2. Press `Alt + Q` to toggle the menu.
+3. Press `D` in the menu or run the script again to stop it.
+
+### 6. `Project_Build.py` (Compile & Log)
+
+Triggers a full project build (Compile) and generates a detailed log file in your project folder.
+
+- **Output**: Writes `build.log` to the sync folder.
+- **Format**: The log uses a clean, fixed-width table format that is easy to read.
+- **Accuracy**: Uses advanced heuristics to calculate accurate Line/Column numbers for errors, even when CODESYS reports incorrect positions (e.g., for `VAR` declarations).
+- **Integration**: The specific error format allows external editors (like VS Code tasks) to parse the log and highlight errors in your original source files.
+
 ---
 
 ## 🏗️ Project Structure
@@ -98,8 +128,10 @@ The tool organizes your repository into a clean structure:
 ├── xml/                  # (Optional) Native XML exports of Visualizations/Alarms.
 ├── config/               # Environment config (Libraries, TaskConfig).
 ├── sync_debug.log        # Diagnostic log for the last sync operation.
+├── build.log             # Build output log.
 ├── _metadata.json        # Internal sync metadata (Do not delete!)
 └── _libraries.csv        # Library version tracking.
+
 ```
 
 ---
@@ -130,6 +162,23 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.0 (2026-02-13)
+
+**The "Power User" Update:**
+
+- **Project_Daemon.py**: New background service with Global Hotkey (`Alt + Q`).
+- **Quick Action Dashboard**: Instant access to Export, Import, Build, and Backup commands.
+- **Enhanced Build Log**: `Project_Build.py` now generates a clean, readable table format in `build.log` with accurate line numbers for external editors.
+- **Focus Management**: Daemon correctly handles focus switching between Virtual Desktops and restores context after execution.
+
+### Version 1.4.0 (2026-02-12)
+
+**UI & Experience Overhaul:**
+
+- **Configuration Dialog**: Replaced the text-based menu with a modern Windows Forms dialog for easier configuration.
+- **Silent Mode**: Added a "Silent Mode" option that uses non-blocking system tray notifications (toasts) instead of blocking popups.
+- **Safety**: Added checks to prevent sync on wrong machine (PC Name check).
 
 ### Version 1.3.0 (2026-02-09)
 
