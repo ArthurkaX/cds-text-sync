@@ -814,7 +814,21 @@ def import_project(import_dir):
     print("  Time:    {:.2f}s".format(elapsed_time))
     
     log_info("Import complete! Updated: " + str(updated_count) + ", Created: " + str(created_count) + ", Deleted: " + str(deleted_count))
-    system.ui.info("Import complete!\n\nUpdated: " + str(updated_count) + "\nCreated: " + str(created_count) + "\nDeleted: " + str(deleted_count) + "\nFailed: " + str(failed_count) + "\nSkipped: " + str(skipped_count) + "\nTime: {:.2f}s".format(elapsed_time))
+    
+    # Check for silent mode (Non-Blocking UI)
+    silent_mode = get_project_prop("cds-sync-silent-mode", False)
+    
+    if silent_mode:
+        try:
+            from codesys_ui import show_toast
+            message = "Import Complete\nUpd: {}\nNew: {}\nDel: {}\nFail: {}\nTime: {:.2f}s".format(
+                updated_count, created_count, deleted_count, failed_count, elapsed_time
+            )
+            show_toast("Import Complete", message)
+        except:
+            print("Import complete (Silent mode active, but UI module failed)")
+    else:
+        system.ui.info("Import complete!\n\nUpdated: " + str(updated_count) + "\nCreated: " + str(created_count) + "\nDeleted: " + str(deleted_count) + "\nFailed: " + str(failed_count) + "\nSkipped: " + str(skipped_count) + "\nTime: {:.2f}s".format(elapsed_time))
 
 
 def main():

@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.3.0`
+**Version**: `1.4.0`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -139,6 +139,14 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 - **Binary Backup**: Added optional `.project` file backup loop. The binary is now updated on both Export and Import events.
 - **Logging**: Moved `sync_debug.log` to the project sync folder (or Temp) to keep `ScriptDir` clean.
 - **Import Logic**: Removed interactive menu from Import script; now uses project settings.
+
+### Version 1.4.0 (2026-02-12)
+
+**UI & Experience Overhaul:**
+
+- **Configuration Dialog**: Replaced the text-based menu with a modern Windows Forms dialog for easier configuration.
+- **Silent Mode**: Added a "Silent Mode" option that uses non-blocking system tray notifications (toasts) instead of blocking popups.
+- **Safety**: Added checks to prevent sync on wrong machine (PC Name check).
 
 ### Version 1.2.0 (2026-02-09)
 

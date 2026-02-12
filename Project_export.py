@@ -581,7 +581,19 @@ def export_project(export_dir):
     print("Completed at: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     
     log_info("Export complete! Exported: " + str(exported_count) + " files.")
-    system.ui.info("Export complete!\n\nExported: " + str(exported_count) + " files\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+    
+    # Check for silent mode (Non-Blocking UI)
+    silent_mode = get_project_prop("cds-sync-silent-mode", False)
+    
+    if silent_mode:
+        try:
+            from codesys_ui import show_toast
+            show_toast("Export Complete", "Exported: " + str(exported_count) + " files\nTime: {:.2f}s".format(elapsed_time))
+        except:
+            # Fallback if UI module missing
+            print("Export complete (Silent mode active, but UI module failed)")
+    else:
+        system.ui.info("Export complete!\n\nExported: " + str(exported_count) + " files\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
 
 def main():
