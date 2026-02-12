@@ -90,7 +90,8 @@ class QuickActionForm(Form):
                     "  [X]  Export All (with XML)\n" \
                     "  [P]  Backup Project (.project)\n" \
                     "\n" \
-                    "  [Q]  Cancel / Quit"
+                    "  [D]  Deactivate Daemon\n" \
+                    "  [Esc] Cancel"
         
         lbl_help = Label()
         lbl_help.Text = help_text
@@ -122,10 +123,9 @@ class QuickActionForm(Form):
             self.Close()
             return
             
-        # Q -> Stop Daemon entirely (Quit App)
-        if key == Keys.Q:
+        # D -> Deactivate Daemon (Stop Script)
+        if key == Keys.D:
             self.Close()
-            # Stop the daemon properly
             stop_daemon()
             return
         
