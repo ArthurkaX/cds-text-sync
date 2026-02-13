@@ -117,6 +117,14 @@ Triggers a full project build (Compile) and generates a detailed log file in you
 
 ---
 
+## 🤝 Team Collaboration
+
+For projects involving multiple engineers, we recommend a structured Git-based workflow.
+
+- **[Detailed Team Workflow Guide](WORKFLOW.md)**: Learn how HMI/Hardware engineers and software developers can collaborate effectively using branches and Pull Requests.
+
+---
+
 ## 🏗️ Project Structure
 
 The tool organizes your repository into a clean structure:

@@ -1,0 +1,71 @@
+flowchart TD
+    %% Project Initialization
+    Start((Start)) -->|1. Export project| Export[Project_export.py]
+    Export -->|Generate .st files| SourceFiles[Source Code Files<br/>POUs, GVLs, DUTs]
+    SourceFiles -->|2. Initialize repository| RemoteRepo[("Remote Git Repository")]
+
+    %% Roles and Responsibilities
+    subgraph Roles ["👥 Team Roles"]
+        direction LR
+        MainOwner["🔧 HMI/Hardware Engineer<br/><b>Main Branch Owner</b>"]
+        MainResp["Responsibilities:<br/>• Maintains HMI integrity<br/>• Manages hardware config<br/>• Reviews & merges PRs"]
+        MainOwner -.-> MainResp
+    end
+
+    subgraph DevTeam ["👨‍💻 Development Team"]
+        direction TB
+        DevStart[Receive Task<br/>Feature or Bug Fix]
+    end
+
+    %% Main branch ownership
+    RemoteRepo -.->|Maintains main branch| MainOwner
+
+    %% Development Workflow
+    RemoteRepo -->|3. Clone repository| Clone[git clone]
+    DevStart --> Clone
+    
+    subgraph DevCycle ["🔄 Development Cycle"]
+        direction TB
+        LocalRepo[Local Repository]
+        EditCode[Edit Code in CODESYS]
+        ExportChanges[Project_export.py]
+        UpdatedFiles[Updated .st Files]
+        Commit[git add & commit]
+        Push[git push]
+        
+        LocalRepo -->|4. Make changes| EditCode
+        EditCode -->|5. Export to text| ExportChanges
+        ExportChanges -->|Generate| UpdatedFiles
+        UpdatedFiles -->|6. Stage changes| Commit
+        Commit -->|7. Push to feature branch| Push
+    end
+
+    Clone --> LocalRepo
+
+    %% Code Review Process
+    subgraph Review ["📋 Code Review"]
+        direction TB
+        PR[Pull Request]
+        CodeReview[Code Review<br/>by Main Owner]
+        Merge{Approved?}
+        
+        PR --> CodeReview
+        CodeReview --> Merge
+    end
+
+    Push -->|8. Create PR| PR
+    Merge -->|Yes| RemoteRepo
+    Merge -.->|Request changes| EditCode
+
+    %% Continuous Integration
+    RemoteRepo -->|Team members sync| Clone
+    
+    %% Styling
+    style Start fill:#4caf50,stroke:#2e7d32,color:#fff
+    style RemoteRepo fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
+    style Roles fill:#fff3e0,stroke:#e65100
+    style DevTeam fill:#e3f2fd,stroke:#1565c0
+    style DevCycle fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    style Review fill:#fce4ec,stroke:#c2185b
+    style MainOwner fill:#ffecb3,stroke:#f57c00,stroke-width:2px
+    style Merge fill:#fff9c4,stroke:#f57f17
