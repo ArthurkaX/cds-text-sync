@@ -30,6 +30,7 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 1. **Copy Files**: Copy all `.py` files to the CODESYS scripts directory:
    `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
+   _(Note: You may need to create the `ScriptDir` folder manually if it doesn't exist)_.
 
 2. **Access in CODESYS**:
    - The scripts will be available in **Tools > Scripting > Scripts > P**.
