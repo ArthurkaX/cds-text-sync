@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.0`
+**Version**: `1.5.1`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -171,6 +171,12 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.1 (2026-02-15)
+
+**Performance & Optimization Update:**
+
+- **CRC32 Hashing**: Switched from SHA256 to CRC32 for file tracking, achieving **10-20x faster** hashing performance and significantly reducing metadata size.
 
 ### Version 1.5.0 (2026-02-13)
 

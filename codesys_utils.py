@@ -7,7 +7,7 @@ Contains common utility functions used across export, import, and sync scripts.
 import os
 import codecs
 import json
-import hashlib
+import zlib
 import csv
 import sys
 import traceback
@@ -107,12 +107,14 @@ def log_error(message, critical=False):
 
 
 def calculate_hash(content):
-    """Calculate SHA256 hash of string content"""
+    """Calculate CRC32 checksum of string content (faster than SHA256)"""
     if content is None:
         return ""
     if isinstance(content, str):
         content = content.encode('utf-8')
-    return hashlib.sha256(content).hexdigest()
+    # CRC32 returns signed int, convert to unsigned and format as hex
+    crc = zlib.crc32(content) & 0xFFFFFFFF
+    return "%08X" % crc
 
 
 def safe_str(value):
