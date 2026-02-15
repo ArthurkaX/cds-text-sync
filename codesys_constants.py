@@ -109,6 +109,10 @@ XML_TYPES = [
 # Implementation section marker used in ST files
 IMPL_MARKER = "// === IMPLEMENTATION ==="
 
+# Property accessor markers for combined property files
+PROPERTY_GET_MARKER = "// === GET ==="
+PROPERTY_SET_MARKER = "// === SET ==="
+
 # Default sync timeout in milliseconds
 DEFAULT_TIMEOUT_MS = 10000
 

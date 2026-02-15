@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.1`
+**Version**: `1.5.2`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -171,6 +171,15 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.2 (2026-02-15)
+
+**Improved Property Sync & Bug Fixes:**
+
+- **Enhanced Property Support**: Properties with combined GET/SET accessors are now correctly handled. The export script now accurately combines both the `VAR` declaration and implementation code for each accessor into a single `.st` file.
+- **Bi-directional Accessor Sync**: The import script now correctly parses combined accessor content and updates both the declaration and implementation in CODESYS.
+- **Object Restoration**: Fixed an issue where objects deleted from CODESYS but remaining on disk would not be recreated. They are now automatically detected and restored during import.
+- **Bug Fix (#4)**: Resolved an issue where properties created manually in external editors (or by AI) were incorrectly identified or failed to import.
 
 ### Version 1.5.1 (2026-02-15)
 

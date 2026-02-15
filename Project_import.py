@@ -22,14 +22,15 @@ except NameError:
     # However, usually they are injected into the top-level script execution context.
     pass
 import re
-from codesys_constants import IMPL_MARKER, TYPE_GUIDS
+from codesys_constants import IMPL_MARKER, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
 from codesys_utils import (
     safe_str, parse_st_file, build_object_cache, 
     find_object_by_guid, find_object_by_name, load_base_dir,
     calculate_hash, save_metadata, load_metadata,
     format_st_content, log_info, log_warning, log_error, MetadataLock,
     load_libraries, extract_libraries_from_project,
-    init_logging, get_project_prop, backup_project_binary
+    init_logging, get_project_prop, backup_project_binary,
+    parse_property_content, format_property_content
 )
 
 # Shared constants and utilities imported from modules
@@ -607,10 +608,18 @@ def import_project(import_dir, projects_obj=None, silent=False):
                         print("DEBUG: Method NOT found by name either: " + rel_path)
             
             if obj is None:
-                # Debug: Log failed method lookups
-                if obj_info.get("type") == TYPE_GUIDS["method"]:
-                    print("DEBUG: Method lookup failed completely: " + rel_path)
-                failed_count += 1
+                # Object not found - it was deleted from CODESYS but file still exists
+                # Treat this as a new file that needs to be created
+                print("  Object not found (deleted?), will recreate: " + rel_path)
+                
+                # Add to new_files list for creation
+                if rel_path not in [nf[0] for nf in new_files]:
+                    new_files.append((rel_path, file_path))
+                
+                # Remove from metadata so it gets recreated
+                if rel_path in objects_meta:
+                    del objects_meta[rel_path]
+                
                 continue
             
             # Optimization: Check timestamp first
@@ -621,6 +630,77 @@ def import_project(import_dir, projects_obj=None, silent=False):
             if current_mtime == stored_mtime and stored_hash:
                 print("  Skipped: " + rel_path + " (Timestamp match)")
                 skipped_count += 1
+                continue
+            
+            # Special handling for properties with combined GET/SET accessors
+            if obj_info.get("type") == TYPE_GUIDS["property"]:
+                # Read file content
+                try:
+                    with codecs.open(file_path, "r", "utf-8") as f:
+                        content = f.read()
+                except Exception as e:
+                    print("  Error reading property file " + rel_path + ": " + safe_str(e))
+                    failed_count += 1
+                    continue
+                
+                # Parse property content
+                declaration, get_impl, set_impl = parse_property_content(content)
+                
+                # Update property declaration
+                if declaration and update_object_code(obj, declaration, None):
+                    print("  Updated property declaration: " + rel_path)
+                
+                # Find and update GET accessor
+                if get_impl:
+                    try:
+                        children = obj.get_children()
+                        for child in children:
+                            if child.get_name().lower() == "get":
+                                # Parse the combined GET content back into declaration and implementation
+                                get_decl = None
+                                get_code = None
+                                if IMPL_MARKER in get_impl:
+                                    parts = get_impl.split(IMPL_MARKER, 1)
+                                    get_decl = parts[0].strip() if parts[0] else None
+                                    get_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
+                                else:
+                                    # No implementation, only declaration (VAR section)
+                                    get_decl = get_impl.strip() if get_impl else None
+                                
+                                if update_object_code(child, get_decl, get_code):
+                                    print("  Updated GET accessor: " + rel_path)
+                                break
+                    except Exception as e:
+                        print("  Error updating GET accessor: " + safe_str(e))
+                
+                # Find and update SET accessor
+                if set_impl:
+                    try:
+                        children = obj.get_children()
+                        for child in children:
+                            if child.get_name().lower() == "set":
+                                # Parse the combined SET content back into declaration and implementation
+                                set_decl = None
+                                set_code = None
+                                if IMPL_MARKER in set_impl:
+                                    parts = set_impl.split(IMPL_MARKER, 1)
+                                    set_decl = parts[0].strip() if parts[0] else None
+                                    set_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
+                                else:
+                                    # No implementation, only declaration (VAR section)
+                                    set_decl = set_impl.strip() if set_impl else None
+                                
+                                if update_object_code(child, set_decl, set_code):
+                                    print("  Updated SET accessor: " + rel_path)
+                                break
+                    except Exception as e:
+                        print("  Error updating SET accessor: " + safe_str(e))
+                
+                # Update metadata
+                current_hash = calculate_hash(content)
+                obj_info["content_hash"] = current_hash
+                obj_info["last_modified"] = current_mtime
+                updated_count += 1
                 continue
                 
             declaration, implementation = parse_st_file(file_path)
@@ -816,20 +896,116 @@ def import_project(import_dir, projects_obj=None, silent=False):
                              obj = create_container.create_child(obj_name, op["type_guid"])
                     
                     if obj:
-                        if update_object_code(obj, op["declaration"], op["implementation"]):
-                             new_stats["updated"] += 1
-                             new_stats["created"] += 1
-                             
-                             full_content = format_st_content(op["declaration"], op["implementation"])
-                             objects_meta[op["rel_path"]] = {
-                                "guid": safe_str(obj.guid), 
-                                "type": op["type_guid"],  # FIX: Use op["type_guid"] instead of type_guid
-                                "name": obj_name,
-                                "parent": safe_str(obj.parent.get_name()) if obj.parent else "N/A",
-                                "content_hash": calculate_hash(full_content)
-                             }
-                             if obj_name not in name_map: name_map[obj_name] = []
-                             name_map[obj_name].append(obj)
+                        # Special handling for properties with combined GET/SET
+                        if op["type_guid"] == TYPE_GUIDS["property"]:
+                            # Read and parse property file
+                            try:
+                                with codecs.open(op["file_path"], "r", "utf-8") as f:
+                                    content = f.read()
+                                
+                                declaration, get_impl, set_impl = parse_property_content(content)
+                                
+                                # Update property declaration
+                                if declaration:
+                                    update_object_code(obj, declaration, None)
+                                
+                                # Create/update GET accessor
+                                if get_impl:
+                                    get_obj = None
+                                    try:
+                                        prop_children = obj.get_children()
+                                        for child in prop_children:
+                                            if child.get_name().lower() == "get":
+                                                get_obj = child
+                                                break
+                                    except:
+                                        pass
+                                    
+                                    if not get_obj and hasattr(obj, "create_get_accessor"):
+                                        try:
+                                            get_obj = obj.create_get_accessor()
+                                        except:
+                                            pass
+                                    
+                                    if get_obj:
+                                        # Parse the combined GET content back into declaration and implementation
+                                        # get_impl is a string with format: "VAR\n...\nEND_VAR\n\n// === IMPLEMENTATION ===\n<code>"
+                                        get_decl = None
+                                        get_code = None
+                                        if IMPL_MARKER in get_impl:
+                                            parts = get_impl.split(IMPL_MARKER, 1)
+                                            get_decl = parts[0].strip() if parts[0] else None
+                                            get_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
+                                        else:
+                                            # No implementation, only declaration (VAR section)
+                                            get_decl = get_impl.strip() if get_impl else None
+                                        
+                                        update_object_code(get_obj, get_decl, get_code)
+                                
+                                # Create/update SET accessor
+                                if set_impl:
+                                    set_obj = None
+                                    try:
+                                        prop_children = obj.get_children()
+                                        for child in prop_children:
+                                            if child.get_name().lower() == "set":
+                                                set_obj = child
+                                                break
+                                    except:
+                                        pass
+                                    
+                                    if not set_obj and hasattr(obj, "create_set_accessor"):
+                                        try:
+                                            set_obj = obj.create_set_accessor()
+                                        except:
+                                            pass
+                                    
+                                    if set_obj:
+                                        # Parse the combined SET content back into declaration and implementation
+                                        # set_impl is a string with format: "VAR\n...\nEND_VAR\n\n// === IMPLEMENTATION ===\n<code>"
+                                        set_decl = None
+                                        set_code = None
+                                        if IMPL_MARKER in set_impl:
+                                            parts = set_impl.split(IMPL_MARKER, 1)
+                                            set_decl = parts[0].strip() if parts[0] else None
+                                            set_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
+                                        else:
+                                            # No implementation, only declaration (VAR section)
+                                            set_decl = set_impl.strip() if set_impl else None
+                                        
+                                        update_object_code(set_obj, set_decl, set_code)
+                                
+                                new_stats["updated"] += 1
+                                new_stats["created"] += 1
+                                
+                                objects_meta[op["rel_path"]] = {
+                                   "guid": safe_str(obj.guid), 
+                                   "type": op["type_guid"],
+                                   "name": obj_name,
+                                   "parent": safe_str(obj.parent.get_name()) if obj.parent else "N/A",
+                                   "content_hash": calculate_hash(content)
+                                }
+                                if obj_name not in name_map: name_map[obj_name] = []
+                                name_map[obj_name].append(obj)
+                            except Exception as e:
+                                print("  Error processing property file: " + safe_str(e))
+                                new_stats["failed"] += 1
+                        else:
+                            # Normal object (not property)
+                            if update_object_code(obj, op["declaration"], op["implementation"]):
+                                 new_stats["updated"] += 1
+                                 new_stats["created"] += 1
+                                 
+                                 full_content = format_st_content(op["declaration"], op["implementation"])
+                                 objects_meta[op["rel_path"]] = {
+                                    "guid": safe_str(obj.guid), 
+                                    "type": op["type_guid"],  # FIX: Use op["type_guid"] instead of type_guid
+                                    "name": obj_name,
+                                    "parent": safe_str(obj.parent.get_name()) if obj.parent else "N/A",
+                                    "content_hash": calculate_hash(full_content)
+                                 }
+                                 if obj_name not in name_map: name_map[obj_name] = []
+                                 name_map[obj_name].append(obj)
                     else:
                         new_stats["failed"] += 1
                 except:

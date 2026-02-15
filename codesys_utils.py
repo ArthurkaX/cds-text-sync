@@ -18,7 +18,7 @@ import shutil
 
 # --- Global Thread Lock ---
 _metadata_thread_lock = threading.Lock()
-from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS
+from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
 
 
 # --- Logging System ---
@@ -424,6 +424,98 @@ def format_st_content(declaration, implementation):
         content.append(impl)
     
     return "\n".join(content)
+
+
+def format_property_content(declaration, get_impl, set_impl):
+    """
+    Format property file content with GET and SET accessors combined.
+    
+    Args:
+        declaration: Property declaration (e.g., "PROPERTY PUBLIC Test_prop : BOOL")
+        get_impl: GET accessor implementation
+        set_impl: SET accessor implementation
+    
+    Returns:
+        Formatted content string with markers separating sections
+    """
+    content = []
+    
+    decl = (declaration or "").strip()
+    if decl:
+        content.append(decl)
+    
+    # Add GET section if present
+    get = (get_impl or "").strip()
+    if get:
+        if content:
+            content.append("")  # Empty line separator
+        content.append(IMPL_MARKER)
+        content.append(PROPERTY_GET_MARKER)
+        content.append(get)
+    
+    # Add SET section if present
+    set_content = (set_impl or "").strip()
+    if set_content:
+        if not get:
+            # If no GET but we have SET, still need IMPL_MARKER
+            if content:
+                content.append("")
+            content.append(IMPL_MARKER)
+        content.append("")  # Empty line before SET
+        content.append(PROPERTY_SET_MARKER)
+        content.append(set_content)
+    
+    return "\n".join(content)
+
+
+def parse_property_content(content):
+    """
+    Parse property file content to extract declaration, GET, and SET sections.
+    
+    Args:
+        content: Full property file content string
+    
+    Returns:
+        Tuple (declaration, get_impl, set_impl)
+    """
+    declaration = None
+    get_impl = None
+    set_impl = None
+    
+    if not content:
+        return declaration, get_impl, set_impl
+    
+    # Split by IMPL_MARKER first
+    if IMPL_MARKER in content:
+        parts = content.split(IMPL_MARKER, 1)
+        declaration = parts[0].strip()
+        impl_section = parts[1].strip() if len(parts) > 1 else ""
+        
+        # Now split implementation by GET and SET markers
+        if PROPERTY_GET_MARKER in impl_section:
+            # Has GET section
+            get_parts = impl_section.split(PROPERTY_GET_MARKER, 1)
+            get_content = get_parts[1] if len(get_parts) > 1 else ""
+            
+            # Check if SET follows GET
+            if PROPERTY_SET_MARKER in get_content:
+                set_parts = get_content.split(PROPERTY_SET_MARKER, 1)
+                get_impl = set_parts[0].strip()
+                set_impl = set_parts[1].strip() if len(set_parts) > 1 else None
+            else:
+                get_impl = get_content.strip()
+        elif PROPERTY_SET_MARKER in impl_section:
+            # Has only SET section (no GET)
+            set_parts = impl_section.split(PROPERTY_SET_MARKER, 1)
+            set_impl = set_parts[1].strip() if len(set_parts) > 1 else None
+        else:
+            # No property markers, treat entire impl as GET (backward compatibility)
+            get_impl = impl_section
+    else:
+        # No implementation marker - entire content is declaration
+        declaration = content.strip()
+    
+    return declaration, get_impl, set_impl
 
 
 def save_metadata(base_dir, metadata):

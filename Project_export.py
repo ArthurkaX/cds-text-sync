@@ -24,7 +24,7 @@ from codesys_utils import (
     save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
     save_libraries, extract_libraries_from_project,
-    init_logging, backup_project_binary
+    init_logging, backup_project_binary, format_property_content
 )
 
 # Ensure global objects are available if imported
@@ -427,6 +427,98 @@ def export_project(export_dir, projects_obj=None, silent=False):
         if not os.path.exists(d):
             os.makedirs(d)
 
+    # First pass: collect all property accessors by their parent property
+    property_accessors = {}  # property_guid -> {'get': obj, 'set': obj}
+    
+    for obj in all_objects:
+        try:
+            if not hasattr(obj, 'type') or not hasattr(obj, 'get_name'):
+                continue
+            
+            obj_type = safe_str(obj.type)
+            
+            # Collect property accessors (Get/Set)
+            if obj_type == TYPE_GUIDS["property_accessor"]:
+                obj_name = obj.get_name()
+                print("  DEBUG: Found property accessor: " + obj_name)
+                
+                # Get parent property
+                if hasattr(obj, "parent") and obj.parent:
+                    parent_guid = safe_str(obj.parent.guid)
+                    parent_type = safe_str(obj.parent.type)
+                    parent_name = safe_str(obj.parent.get_name()) if hasattr(obj.parent, 'get_name') else "Unknown"
+                    
+                    print("    Parent: " + parent_name + " (type: " + parent_type + ")")
+                    
+                    # Only process if parent is a property
+                    if parent_type == TYPE_GUIDS["property"]:
+                        if parent_guid not in property_accessors:
+                            property_accessors[parent_guid] = {'get': None, 'set': None, 'parent_obj': obj.parent}
+                        
+                        # Determine if this is Get or Set based on name
+                        if obj_name.lower() == "get":
+                            property_accessors[parent_guid]['get'] = obj
+                            print("    -> Registered as GET for property " + parent_name)
+                        elif obj_name.lower() == "set":
+                            property_accessors[parent_guid]['set'] = obj
+                            print("    -> Registered as SET for property " + parent_name)
+                    else:
+                        print("    WARNING: Parent is not a property! Type: " + parent_type)
+        except Exception as e:
+            print("  ERROR in first pass: " + safe_str(e))
+            continue
+    
+    print("Found " + str(len(property_accessors)) + " properties with accessors (first pass)")
+    
+    # Alternative collection: Check each property's children directly
+    # This is needed because get_children(recursive=True) might not include property accessors
+    for obj in all_objects:
+        try:
+            if not hasattr(obj, 'type') or not hasattr(obj, 'get_name'):
+                continue
+            
+            obj_type = safe_str(obj.type)
+            
+            # If this is a property, check its children for accessors
+            if obj_type == TYPE_GUIDS["property"]:
+                obj_guid = safe_str(obj.guid)
+                obj_name = safe_str(obj.get_name())
+                
+                # Get property's children
+                try:
+                    prop_children = obj.get_children()
+                    if prop_children:
+                        print("  DEBUG: Property " + obj_name + " has " + str(len(prop_children)) + " children")
+                        
+                        for child in prop_children:
+                            try:
+                                child_type = safe_str(child.type)
+                                child_name = safe_str(child.get_name())
+                                
+                                if child_type == TYPE_GUIDS["property_accessor"]:
+                                    print("    Found accessor: " + child_name)
+                                    
+                                    # Initialize if needed
+                                    if obj_guid not in property_accessors:
+                                        property_accessors[obj_guid] = {'get': None, 'set': None, 'parent_obj': obj}
+                                    
+                                    # Register accessor
+                                    if child_name.lower() == "get":
+                                        property_accessors[obj_guid]['get'] = child
+                                        print("      -> Registered as GET")
+                                    elif child_name.lower() == "set":
+                                        property_accessors[obj_guid]['set'] = child
+                                        print("      -> Registered as SET")
+                            except:
+                                pass
+                except:
+                    pass
+        except:
+            continue
+    
+    print("Found " + str(len(property_accessors)) + " properties with accessors (after direct check)")
+    
+    # Second pass: export all objects
     for obj in all_objects:
         try:
             # Validate that object has required methods
@@ -436,6 +528,10 @@ def export_project(export_dir, projects_obj=None, silent=False):
             obj_type = safe_str(obj.type)
             obj_name = obj.get_name()
             obj_guid = safe_str(obj.guid)
+            
+            # Skip property accessors - they will be handled with their parent property
+            if obj_type == TYPE_GUIDS["property_accessor"]:
+                continue
             
             # Special handling for folders - create directory and convert
             if obj_type == TYPE_GUIDS["folder"]:
@@ -492,6 +588,11 @@ def export_project(export_dir, projects_obj=None, silent=False):
             except:
                 pass
             
+            # Special handling for properties - they might not have content but have accessors
+            is_property = obj_type == TYPE_GUIDS["property"]
+            if is_property and obj_guid in property_accessors:
+                has_content = True  # Force export if it has accessors
+            
             # Allow export if it has content OR is an XML type
             if not has_content and not is_xml:
                 skipped_count += 1
@@ -503,9 +604,8 @@ def export_project(export_dir, projects_obj=None, silent=False):
             
             # Handle nested objects (actions, methods, properties)
             parent_pou = get_parent_pou_name(obj)
-            if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], 
-                                           TYPE_GUIDS["property"], TYPE_GUIDS["property_accessor"]]:
-                # Nested objects: ParentPOU.MethodName.st
+            if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
+                # Nested objects: ParentPOU.MethodName.st or ParentPOU.PropertyName.st
                 file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
                 
                 # Remove parent POU from path since it's in filename
@@ -521,9 +621,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
             if is_config:
                 base_dir_obj = config_dir
                 prefix = "config"
-                # Config files usually go to root of config dir, ignoring project structure to keep it simple?
-                # The user wants "dumps". Let's keep structure if possible, or flat?
-                # Let's keep structure to avoid collisions.
             elif is_xml:
                 base_dir_obj = xml_dir
                 prefix = "xml"
@@ -553,8 +650,41 @@ def export_project(export_dir, projects_obj=None, silent=False):
                     print("Warning: XML export claimed success but file not found: " + file_name)
                     skipped_count += 1
                     continue
+            elif is_property and obj_guid in property_accessors:
+                # Export property with combined GET/SET accessors
+                prop_data = property_accessors[obj_guid]
+                
+                # Get property declaration
+                declaration, _ = export_object_content(obj)
+                
+                # Get GET accessor content (combine declaration and implementation)
+                get_impl = None
+                if prop_data['get']:
+                    get_decl, get_impl_raw = export_object_content(prop_data['get'])
+                    # Combine declaration (VAR section) and implementation (code) like methods/actions
+                    get_impl = format_st_content(get_decl, get_impl_raw)
+                
+                # Get SET accessor content (combine declaration and implementation)
+                set_impl = None
+                if prop_data['set']:
+                    set_decl, set_impl_raw = export_object_content(prop_data['set'])
+                    # Combine declaration (VAR section) and implementation (code) like methods/actions
+                    set_impl = format_st_content(set_decl, set_impl_raw)
+                
+                # Format combined content
+                content = format_property_content(declaration, get_impl, set_impl)
+                
+                if not content.strip():
+                    skipped_count += 1
+                    continue
+                    
+                with codecs.open(file_path, "w", "utf-8") as f:
+                    f.write(content)
+                
+                # Calculate hash for metadata
+                content_hash = calculate_hash(content)
             else:
-                # Textual export
+                # Textual export (normal POUs, methods, actions, etc.)
                 declaration, implementation = export_object_content(obj)
                 content = format_st_content(declaration, implementation)
                 
