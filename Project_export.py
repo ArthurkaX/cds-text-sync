@@ -260,7 +260,7 @@ def ensure_git_configs(export_dir):
             "# CODESYS Sync local files",
             "_config.json",
             "_metadata.csv",
-            "sync_debug.log",
+            "*.log",
             "*.tmp",
             "*.bak",
             "",
@@ -287,10 +287,10 @@ def ensure_git_configs(export_dir):
             with codecs.open(gitignore_path, "r", "utf-8") as f:
                 lines = f.readlines()
             
-            if not any("sync_debug.log" in line for line in lines):
+            if not any("*.log" in line for line in lines):
                 with codecs.open(gitignore_path, "a", "utf-8") as f:
-                    f.write("\nsync_debug.log\n")
-                print("Updated .gitignore with sync_debug.log")
+                    f.write("\n*.log\n")
+                print("Updated .gitignore with *.log")
         except: pass
 
     if not os.path.exists(gitattributes_path):

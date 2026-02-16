@@ -67,7 +67,7 @@ class QuickActionForm(Form):
         self.Text = "CODESYS Quick Actions"
         self.FormBorderStyle = FormBorderStyle.None
         self.StartPosition = FormStartPosition.CenterScreen
-        self.Size = Size(350, 220)
+        self.Size = Size(350, 280)
         self.BackColor = Color.FromArgb(30, 30, 30) # Dark Theme
         self.ForeColor = Color.White
         self.TopMost = True
@@ -89,6 +89,7 @@ class QuickActionForm(Form):
                     "  [I]  Import Source (Silent)\n" \
                     "  [X]  Export All (with XML)\n" \
                     "  [B]  Build Project (Compile)\n" \
+                    "  [C]  Compare IDE vs Disk\n" \
                     "  [P]  Backup Project (.project)\n" \
                     "\n" \
                     "  [D]  Deactivate Daemon\n" \
@@ -104,7 +105,7 @@ class QuickActionForm(Form):
         # Footnote
         lbl_foot = Label()
         lbl_foot.Text = "Waiting for input..."
-        lbl_foot.Location = Point(20, 190)
+        lbl_foot.Location = Point(20, 250)
         lbl_foot.AutoSize = True
         lbl_foot.ForeColor = Color.Gray
         self.Controls.Add(lbl_foot)
@@ -141,6 +142,8 @@ class QuickActionForm(Form):
             action = "BACKUP_PROJ"
         elif key == Keys.B:
             action = "BUILD_PROJ"
+        elif key == Keys.C:
+            action = "COMPARE_PROJ"
 
         if action:
             self.Hide() # Hide immediately to show we are working
@@ -320,6 +323,33 @@ class QuickActionForm(Form):
                 try:
                     from codesys_ui import show_toast
                     show_toast("Build Failed", str(e))
+                except:
+                    pass
+
+        elif action == "COMPARE_PROJ":
+            # Execute Project_compare.py in current namespace
+            compare_script = os.path.join(script_dir, "Project_compare.py")
+            try:
+                with open(compare_script, "r") as f:
+                    script_code = f.read()
+                
+                script_globals = globals().copy()
+                script_globals["__name__"] = "__main__"
+                script_globals["__file__"] = compare_script
+                script_globals["SILENT"] = True
+                
+                if projects_obj:
+                    script_globals["projects"] = projects_obj
+                if system_obj:
+                    script_globals["system"] = system_obj
+                
+                exec(script_code, script_globals)
+                
+            except Exception as e:
+                print("Compare error: " + str(e))
+                try:
+                    from codesys_ui import show_toast
+                    show_toast("Compare Failed", str(e))
                 except:
                     pass
 

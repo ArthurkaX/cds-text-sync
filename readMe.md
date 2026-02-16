@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.3`
+**Version**: `1.5.4`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -119,14 +119,16 @@ Updates the CODESYS project from the files on disk.
 2. Press `Alt + Q` to toggle the menu.
 3. Press `D` in the menu or run the script again to stop it.
 
-### 6. `Project_Build.py` (Compile & Log)
-
-Triggers a full project build (Compile) and generates a detailed log file in your project folder.
-
-- **Output**: Writes `build.log` to the sync folder.
-- **Format**: The log uses a clean, fixed-width table format that is easy to read.
-- **Accuracy**: Uses advanced heuristics to calculate accurate Line/Column numbers for errors, even when CODESYS reports incorrect positions (e.g., for `VAR` declarations).
 - **Integration**: The specific error format allows external editors (like VS Code tasks) to parse the log and highlight errors in your original source files.
+
+### 7. `Project_compare.py` (Object Comparison)
+
+**Identify differences between IDE and Disk.** Compares the objects in your CODESYS project with the exported files on disk.
+
+- **Detection**: Finds modified objects, new objects in IDE, and objects deleted from IDE.
+- **Output**: Generates a detailed report in the Script Output window and saves it to `compare.log`.
+- **Clean Run**: The `compare.log` file is recreated every time you run the script, ensuring you only see the latest results.
+- **Daemon Integration**: Can be triggered directly from the Quick Action Dashboard ('C' key).
 
 ---
 
@@ -150,7 +152,9 @@ The tool organizes your repository into a clean structure:
 ├── config/               # Environment config (Libraries, TaskConfig).
 ├── sync_debug.log        # Diagnostic log for the last sync operation.
 ├── build.log             # Build output log.
-├── _metadata.json        # Internal sync metadata (Do not delete!)
+├── compare.log           # Comparison results log.
+├── _metadata.csv         # Split object metadata (Do not delete!)
+├── _config.json          # Project configuration mirror.
 └── _libraries.csv        # Library version tracking.
 
 ```
@@ -183,6 +187,14 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.4 (2026-02-16)
+
+**Comparison Logging & Rerouting:**
+
+- **Dedicated Comparison Log**: `Project_compare.py` now reroutes its output to `compare.log` in the sync directory.
+- **Recreative Logging**: The log file is truncated and recreated on every run, providing a fresh report for each comparison.
+- **Tee Output**: Comparison results are still mirrored to the CODESYS Script Output window for immediate feedback.
 
 ### Version 1.5.3 (2026-02-16)
 
@@ -232,14 +244,6 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 - **Binary Backup**: Added optional `.project` file backup loop. The binary is now updated on both Export and Import events.
 - **Logging**: Moved `sync_debug.log` to the project sync folder (or Temp) to keep `ScriptDir` clean.
 - **Import Logic**: Removed interactive menu from Import script; now uses project settings.
-
-### Version 1.4.0 (2026-02-12)
-
-**UI & Experience Overhaul:**
-
-- **Configuration Dialog**: Replaced the text-based menu with a modern Windows Forms dialog for easier configuration.
-- **Silent Mode**: Added a "Silent Mode" option that uses non-blocking system tray notifications (toasts) instead of blocking popups.
-- **Safety**: Added checks to prevent sync on wrong machine (PC Name check).
 
 ### Version 1.2.0 (2026-02-09)
 
