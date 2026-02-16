@@ -297,6 +297,11 @@ def ensure_git_configs(export_dir):
         content = [
             "# Git LFS configuration for CODESYS project binary",
             "*.project filter=lfs diff=lfs merge=lfs -text",
+            "",
+            "# Prevent line ending conversion for CODESYS Structured Text files",
+            "*.st -text",
+            "",
+            "# GitHub linguist language detection",
             "*.st linguist-language=Pascal",
             ""
         ]
@@ -678,8 +683,10 @@ def export_project(export_dir, projects_obj=None, silent=False):
                     skipped_count += 1
                     continue
                     
-                with codecs.open(file_path, "w", "utf-8") as f:
-                    f.write(content)
+                # Normalize line endings to LF for cross-platform consistency
+                content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
+                with open(file_path, "wb") as f:
+                    f.write(content_normalized.encode('utf-8'))
                 
                 # Calculate hash for metadata
                 content_hash = calculate_hash(content)
@@ -692,8 +699,10 @@ def export_project(export_dir, projects_obj=None, silent=False):
                     skipped_count += 1
                     continue
                     
-                with codecs.open(file_path, "w", "utf-8") as f:
-                    f.write(content)
+                # Normalize line endings to LF for cross-platform consistency
+                content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
+                with open(file_path, "wb") as f:
+                    f.write(content_normalized.encode('utf-8'))
                 
                 # Calculate hash for metadata
                 content_hash = calculate_hash(content)

@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.2`
+**Version**: `1.5.3`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -43,7 +43,19 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ---
 
-## 📖 Script Overview
+## � Upgrading from Previous Versions
+
+When upgrading to a new version of `cds-text-sync`:
+
+1. **Replace Script Files**: Copy the new `.py` files to your CODESYS scripts directory, overwriting the old versions.
+2. **Clean Export**: Run `Project_export.py` to re-export all files with the updated format.
+3. **Commit Changes**: Review and commit the changes in Git.
+
+> **Tip**: A clean export after upgrading ensures all files use the latest export format and prevents inconsistencies.
+
+---
+
+## �📖 Script Overview
 
 ### 1. `Project_directory.py` (Setup)
 
@@ -171,6 +183,14 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.3 (2026-02-16)
+
+**Line Ending & Git Consistency Fix:**
+
+- **Cross-Platform Consistency**: Fixed an issue where different line endings (CRLF vs LF) on different machines caused Git to show identical files as modified.
+- **Deterministic Export**: The export script now explicitly uses LF (`\n`) for all `.st` files regardless of the host OS by using `newline=''` in file operations.
+- **Automated Git Configuration**: Updated the `.gitattributes` template to automatically disable text conversion for `.st` files (`*.st -text`), ensuring they remain as LF in the repository and are treated consistently by Git on all platforms.
 
 ### Version 1.5.2 (2026-02-15)
 
