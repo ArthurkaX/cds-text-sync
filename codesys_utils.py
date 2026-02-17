@@ -244,63 +244,65 @@ def load_base_dir():
             log_error("Error resolving relative path: " + safe_str(e))
             return None, "Failed to resolve relative path: " + base_dir + "\n\nError: " + safe_str(e)
     
-    # Check for PC mismatch to handle projects shared between colleagues
-    sync_pc = get_project_prop("cds-sync-pc")
-    try:
-        import socket
-        current_pc = socket.gethostname()
-        log_info("PC Check: Current PC='%s', Sync PC='%s'" % (safe_str(current_pc), safe_str(sync_pc)))
-        
-        if sync_pc and current_pc and safe_str(sync_pc) != safe_str(current_pc):
-            message = "Computer Mismatch Detected!\n\n"
-            message += "This project was last synced on: " + safe_str(sync_pc) + "\n"
-            message += "Current computer: " + safe_str(current_pc) + "\n\n"
-            message += "The saved sync path may be invalid for this machine:\n"
-            message += safe_str(base_dir) + "\n\n"
-            message += "Would you like to re-configure the sync folder for this PC?"
+    # Check for PC mismatch only for ABSOLUTE paths
+    # For relative paths, we skip this check to facilitate teamwork and portability
+    if not is_relative:
+        sync_pc = get_project_prop("cds-sync-pc")
+        try:
+            import socket
+            current_pc = socket.gethostname()
+            log_info("PC Check: Current PC='%s', Sync PC='%s'" % (safe_str(current_pc), safe_str(sync_pc)))
             
-            # Try to find 'system' object for UI
-            sys_ui = None
-            try:
-                if "system" in globals(): sys_ui = globals()["system"].ui
-                else: 
-                    import __main__
-                    if hasattr(__main__, "system"): sys_ui = __main__.system.ui
-            except: pass
-            
-            if sys_ui:
-                res = sys_ui.choose(message, ("Yes, Re-configure", "No, Keep Current", "Cancel Operation"))
-                if res and res[0] == 0:
-                    try:
-                        import Project_directory
-                        Project_directory.set_base_directory()
-                        base_dir = get_project_prop("cds-sync-folder")
-                        # Re-resolve if it's still relative after reconfiguration
-                        if base_dir and (base_dir.startswith('.' + os.sep) or base_dir.startswith('./') or base_dir.startswith('.\\') or base_dir == '.'):
-                            try:
-                                proj = None
+            if sync_pc and current_pc and safe_str(sync_pc) != safe_str(current_pc):
+                message = "Computer Mismatch Detected!\n\n"
+                message += "This project was last synced on: " + safe_str(sync_pc) + "\n"
+                message += "Current computer: " + safe_str(current_pc) + "\n\n"
+                message += "The saved sync path may be invalid for this machine:\n"
+                message += safe_str(base_dir) + "\n\n"
+                message += "Would you like to re-configure the sync folder for this PC?"
+                
+                # Try to find 'system' object for UI
+                sys_ui = None
+                try:
+                    if "system" in globals(): sys_ui = globals()["system"].ui
+                    else: 
+                        import __main__
+                        if hasattr(__main__, "system"): sys_ui = __main__.system.ui
+                except: pass
+                
+                if sys_ui:
+                    res = sys_ui.choose(message, ("Yes, Re-configure", "No, Keep Current", "Cancel Operation"))
+                    if res and res[0] == 0:
+                        try:
+                            import Project_directory
+                            Project_directory.set_base_directory()
+                            base_dir = get_project_prop("cds-sync-folder")
+                            # Re-resolve if it's still relative after reconfiguration
+                            if base_dir and (base_dir.startswith('.' + os.sep) or base_dir.startswith('./') or base_dir.startswith('.\\') or base_dir == '.'):
                                 try:
-                                    import __main__
-                                    if hasattr(__main__, 'projects'): proj = __main__.projects.primary
-                                except: pass
-                                if not proj:
-                                    try: proj = projects.primary
+                                    proj = None
+                                    try:
+                                        import __main__
+                                        if hasattr(__main__, 'projects'): proj = __main__.projects.primary
                                     except: pass
-                                if proj and hasattr(proj, 'path'):
-                                    project_dir = os.path.dirname(safe_str(proj.path))
-                                    normalized_base = base_dir.replace('/', os.sep).replace('\\', os.sep)
-                                    base_dir = os.path.normpath(os.path.join(project_dir, normalized_base))
-                            except:
-                                pass
-                    except Exception as e:
-                        log_warning("Could not launch Project_directory: " + safe_str(e))
-                        return None, "Please run 'Project_directory.py' manually to re-configure sync."
-                elif res and res[0] == 2:
-                    return None, "Operation cancelled by user."
-            else:
-                log_warning("Computer mismatch detected ('%s' vs '%s') but UI (system.ui) is not available." % (safe_str(sync_pc), safe_str(current_pc)))
-    except Exception as e:
-        log_warning("Error during PC mismatch check: " + safe_str(e))
+                                    if not proj:
+                                        try: proj = projects.primary
+                                        except: pass
+                                    if proj and hasattr(proj, 'path'):
+                                        project_dir = os.path.dirname(safe_str(proj.path))
+                                        normalized_base = base_dir.replace('/', os.sep).replace('\\', os.sep)
+                                        base_dir = os.path.normpath(os.path.join(project_dir, normalized_base))
+                                except:
+                                    pass
+                        except Exception as e:
+                            log_warning("Could not launch Project_directory: " + safe_str(e))
+                            return None, "Please run 'Project_directory.py' manually to re-configure sync."
+                    elif res and res[0] == 2:
+                        return None, "Operation cancelled by user."
+                else:
+                    log_warning("Computer mismatch detected ('%s' vs '%s') but UI (system.ui) is not available." % (safe_str(sync_pc), safe_str(current_pc)))
+        except Exception as e:
+            log_warning("Error during PC mismatch check: " + safe_str(e))
 
     # Create directory if it doesn't exist
     if base_dir:
