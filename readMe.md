@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.4`
+**Version**: `1.5.5`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -63,8 +63,22 @@ When upgrading to a new version of `cds-text-sync`:
 
 ![Setup Project Directory](img/create_work_directory.gif)
 
+- Offers two options:
+  - **Browse**: Select a folder using the file browser (traditional method).
+  - **Manual Input**: Enter a path manually, supporting both absolute and relative paths.
+- **Relative Path Support**:
+  - Use `./` to sync to the same directory as your project file.
+  - Use `./src/` or `./foldername/` to sync to a subfolder relative to your project.
+  - **Perfect for team collaboration**: Relative paths work on any machine without reconfiguration, as they're resolved relative to the project file location.
+  - The folder will be created automatically if it doesn't exist.
 - Saves the path (`cds-sync-folder`) and current machine name (`cds-sync-pc`) to **Project Information > Properties**.
 - This binding ensures you don't accidentally sync to the wrong folder.
+
+**Examples**:
+
+- Absolute path: `C:\MyProjects\MyPLC\sync\`
+- Relative path (project directory): `./`
+- Relative path (subfolder): `./sync/` or `./git-repo/src/`
 
 ### 2. `Project_parameters.py` (Configuration)
 
@@ -187,6 +201,19 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.5 (2026-02-18)
+
+**Relative Path Support for Team Collaboration:**
+
+- **Portable Project Configuration**: `Project_directory.py` now supports relative paths (e.g., `./`, `./src/`) in addition to absolute paths.
+- **Manual Path Input**: Added a new "Manual Input" option in the directory setup dialog, allowing users to type paths directly.
+- **Automatic Directory Creation**: If a specified directory doesn't exist, it will be created automatically.
+- **Team-Friendly**: Relative paths are resolved relative to the project file location, making projects portable across different machines and users without reconfiguration.
+- **Examples**:
+  - `./` - Sync to project directory
+  - `./sync/` - Sync to a subfolder
+  - `C:\MySync\` - Traditional absolute path still supported
 
 ### Version 1.5.4 (2026-02-16)
 

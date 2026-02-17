@@ -191,10 +191,58 @@ def set_project_prop(key, value):
         return False
 
 def load_base_dir():
-    """Load base directory strictly from the project property 'cds-sync-folder'."""
+    """Load base directory from the project property 'cds-sync-folder'.
+    
+    Supports both absolute and relative paths:
+    - Absolute paths: Used as-is (e.g., C:\\MySync\\)
+    - Relative paths: Resolved relative to project file location (e.g., ./ or ./src/)
+    
+    If the directory doesn't exist, it will be created automatically.
+    """
     base_dir = get_project_prop("cds-sync-folder")
     if not base_dir:
         return None, "Project sync directory not set!\nPlease run 'Project_directory.py' or add 'cds-sync-folder' property in Project Information > Properties."
+    
+    # Check if path is relative
+    is_relative = base_dir.startswith('.' + os.sep) or base_dir.startswith('./') or base_dir.startswith('.\\') or base_dir == '.'
+    
+    # Resolve relative paths against project file location
+    if is_relative:
+        try:
+            # Get project file path
+            proj = None
+            try:
+                import __main__
+                if hasattr(__main__, 'projects'):
+                    proj = __main__.projects.primary
+            except:
+                pass
+            
+            if not proj:
+                try:
+                    proj = projects.primary
+                except:
+                    pass
+            
+            if not proj or not hasattr(proj, 'path'):
+                return None, "Cannot resolve relative path: project path not available.\n\nRelative path: " + base_dir
+            
+            # Get directory containing the project file
+            project_file_path = safe_str(proj.path)
+            project_dir = os.path.dirname(project_file_path)
+            
+            # Resolve relative path
+            # Normalize the base_dir first (convert / to os.sep)
+            normalized_base = base_dir.replace('/', os.sep).replace('\\', os.sep)
+            
+            # Join and normalize
+            base_dir = os.path.normpath(os.path.join(project_dir, normalized_base))
+            
+            log_info("Resolved relative path '%s' to '%s' (project dir: '%s')" % (normalized_base, base_dir, project_dir))
+            
+        except Exception as e:
+            log_error("Error resolving relative path: " + safe_str(e))
+            return None, "Failed to resolve relative path: " + base_dir + "\n\nError: " + safe_str(e)
     
     # Check for PC mismatch to handle projects shared between colleagues
     sync_pc = get_project_prop("cds-sync-pc")
@@ -227,6 +275,23 @@ def load_base_dir():
                         import Project_directory
                         Project_directory.set_base_directory()
                         base_dir = get_project_prop("cds-sync-folder")
+                        # Re-resolve if it's still relative after reconfiguration
+                        if base_dir and (base_dir.startswith('.' + os.sep) or base_dir.startswith('./') or base_dir.startswith('.\\') or base_dir == '.'):
+                            try:
+                                proj = None
+                                try:
+                                    import __main__
+                                    if hasattr(__main__, 'projects'): proj = __main__.projects.primary
+                                except: pass
+                                if not proj:
+                                    try: proj = projects.primary
+                                    except: pass
+                                if proj and hasattr(proj, 'path'):
+                                    project_dir = os.path.dirname(safe_str(proj.path))
+                                    normalized_base = base_dir.replace('/', os.sep).replace('\\', os.sep)
+                                    base_dir = os.path.normpath(os.path.join(project_dir, normalized_base))
+                            except:
+                                pass
                     except Exception as e:
                         log_warning("Could not launch Project_directory: " + safe_str(e))
                         return None, "Please run 'Project_directory.py' manually to re-configure sync."
@@ -237,7 +302,17 @@ def load_base_dir():
     except Exception as e:
         log_warning("Error during PC mismatch check: " + safe_str(e))
 
-    if base_dir and os.path.exists(base_dir):
+    # Create directory if it doesn't exist
+    if base_dir:
+        if not os.path.exists(base_dir):
+            try:
+                os.makedirs(base_dir)
+                log_info("Created sync directory: " + base_dir)
+                print("Created sync directory: " + base_dir)
+            except Exception as e:
+                log_error("Failed to create sync directory: " + safe_str(e))
+                return None, "Could not create sync directory: " + base_dir + "\n\nError: " + safe_str(e)
+        
         return base_dir, None
     
     return None, "Project sync directory not found: " + str(base_dir) + "\nPlease run 'Project_directory.py' to update it."
