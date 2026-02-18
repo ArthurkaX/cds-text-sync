@@ -226,7 +226,7 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 
 **Relative Path Support for Team Collaboration:**
 
-- **Portable Project Configuration**: `Project_directory.py` now supports relative paths (e.g., `./`, `./src/`) in addition to absolute paths.
+- **Portable Project Configuration**: `Project_directory.py` now supports relative paths (e.g., `./`, `./folderName/`) in addition to absolute paths.
 - **Manual Path Input**: Added a new "Manual Input" option in the directory setup dialog, allowing users to type paths directly.
 - **Automatic Directory Creation**: If a specified directory doesn't exist, it will be created automatically.
 - **Team-Friendly**: Relative paths are resolved relative to the project file location, making projects portable across different machines and users without reconfiguration.

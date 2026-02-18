@@ -66,9 +66,9 @@ def set_base_directory():
             # Instructions label
             lbl_instructions = Label()
             lbl_instructions.Text = "Examples:\n" + \
-                                   "  ./              - Project directory\n" + \
-                                   "  ./src/          - 'src' folder in project directory\n" + \
-                                   "  C:\\MySync\\      - Absolute path\n\n" + \
+                                   "  ./                          - Project directory\n" + \
+                                   "  ./folderName/      - 'folderName' folder in project directory\n" + \
+                                   "  C:\\MySync\\         - Absolute path\n\n" + \
                                    "Relative paths (starting with ./) are resolved relative to the project file location."
             lbl_instructions.Location = Point(20, 15)
             lbl_instructions.Size = Size(460, 100)

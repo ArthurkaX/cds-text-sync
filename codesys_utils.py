@@ -195,7 +195,7 @@ def load_base_dir():
     
     Supports both absolute and relative paths:
     - Absolute paths: Used as-is (e.g., C:\\MySync\\)
-    - Relative paths: Resolved relative to project file location (e.g., ./ or ./src/)
+    - Relative paths: Resolved relative to project file location (e.g., ./ or ./folderName/)
     
     If the directory doesn't exist, it will be created automatically.
     """
