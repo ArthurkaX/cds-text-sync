@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.5`
+**Version**: `1.5.6`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -19,6 +19,7 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 - **Reversible Sync**: Round-trip editing for Structured Text files.
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
+- **Timestamped Backups**: Automatically creates safety backups before imports to prevent data loss.
 - **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
@@ -115,6 +116,8 @@ When upgrading to a new version of `cds-text-sync`:
   - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `/project` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
 - **[ ] Save Project after Import**:
   - If ENABLED: automatically saves the project after a successful import.
+- **[ ] Timestamped Backup before Import**:
+  - If ENABLED: creates a unique, timestamped `.bak` file in the `/project` folder _before_ starting the import process.
 - **[ ] Silent Mode**:
   - If ENABLED: suppresses blocking popup messages and uses non-blocking system tray notifications (toasts).
   - Recommended for "Developer Workflow" to stay in flow.
@@ -134,6 +137,7 @@ Updates the CODESYS project from the files on disk.
 
 - **Smart Update**: Updates existing objects, creates new ones, and builds folder hierarchies.
 - **Deletions**: If a file was deleted from disk, offers to delete the object from CODESYS.
+- **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
 ### 5. `Project_Daemon.py` (Background Service)
@@ -221,6 +225,14 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 ---
 
 ## 📝 Changelog
+
+### Version 1.5.6 (2026-02-18)
+
+**Safety Net: Timestamped Import Backups:**
+
+- **Automatic Rollback Point**: `Project_import.py` now creates a timestamped backup (e.g., `20260218_220000_MyProject.project.bak`) at the very beginning of the import process.
+- **Configurable Safety**: Added "Timestamped Backup before Import" toggle in `Project_parameters.py` (enabled by default).
+- **Non-destructive**: These backups are placed in the `/project` folder and use a `.bak` extension to avoid conflict with your primary Git LFS tracking.
 
 ### Version 1.5.5 (2026-02-18)
 

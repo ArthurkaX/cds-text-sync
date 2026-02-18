@@ -478,6 +478,16 @@ def import_project(import_dir, projects_obj=None, silent=False):
     print("Import directory: " + import_dir)
     print("Auto-save enabled: " + str(should_save))
     start_time = time.time()
+
+    # Timestamped Backup BEFORE import (New feature)
+    # This creates a timestamped .bak file in the /project folder
+    try:
+        safety_backup = get_project_prop("cds-sync-safety-backup", True)
+        if safety_backup:
+            print("  Creating preliminary timestamped backup...")
+            backup_project_binary(import_dir, projects_obj, timestamped=True)
+    except Exception as e:
+        print("  Warning: Could not create timestamped backup: " + safe_str(e))
     
     # Find Application container early
     app_container = None

@@ -1028,10 +1028,11 @@ def find_object_by_name(name, name_map, parent_name=None):
     return found[0]
 
 
-def backup_project_binary(export_dir, projects_obj=None):
+def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
     """
     Copy the current project binary to the /project folder.
     Forces a project save before copying to ensure the backup is current.
+    If timestamped=True, creates a backup with date and time.
     """
     try:
         if not projects_obj:
@@ -1067,24 +1068,28 @@ def backup_project_binary(export_dir, projects_obj=None):
             os.makedirs(project_folder)
             
         # Determine target filename
-        custom_name = get_project_prop("cds-sync-backup-name", "")
-        if custom_name:
-            # Ensure it ends with .project
-            if not custom_name.lower().endswith(".project"):
-                file_name = custom_name + ".project"
-            else:
-                file_name = custom_name
+        if timestamped:
+            import time
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            base_name = os.path.basename(project_path)
+            # Format: YYYYMMDD_HHMMSS_ProjectName.project.bak
+            file_name = "{}_{}.bak".format(timestamp, base_name)
         else:
-            file_name = os.path.basename(project_path)
+            custom_name = get_project_prop("cds-sync-backup-name", "")
+            if custom_name:
+                # Ensure it ends with .project
+                if not custom_name.lower().endswith(".project"):
+                    file_name = custom_name + ".project"
+                else:
+                    file_name = custom_name
+            else:
+                file_name = os.path.basename(project_path)
             
         target_path = os.path.join(project_folder, file_name)
         
-        # Check if we should delete old backups if using a fixed name? 
-        # Actually user said "always save to one file", so overwriting is fine.
-        
         shutil.copy2(project_path, target_path)
-        log_info("Binary backup updated: project/" + file_name)
-        print("Binary backup updated.")
+        log_info("Binary backup created: project/" + file_name)
+        print("Binary backup created: project/" + file_name)
         
     except Exception as e:
         log_error("Warning: Could not create binary backup: " + str(e))

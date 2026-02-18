@@ -99,6 +99,14 @@ class SettingsForm(Form):
         self.chk_save.Checked = current_settings.get("save_after_import", True)
         self.Controls.Add(self.chk_save)
 
+        y += 30
+        self.chk_safety = CheckBox()
+        self.chk_safety.Text = "Timestamped Backup before Import"
+        self.chk_safety.Location = Point(30, y)
+        self.chk_safety.Size = Size(350, 24)
+        self.chk_safety.Checked = current_settings.get("safety_backup", True)
+        self.Controls.Add(self.chk_safety)
+
         # Group 3: UX Settings
         y += 40
         self.chk_silent = CheckBox()
@@ -130,6 +138,7 @@ class SettingsForm(Form):
             "backup_binary": self.chk_bin.Checked,
             "backup_name": self.txt_backup_name.Text.strip(),
             "save_after_import": self.chk_save.Checked,
+            "safety_backup": self.chk_safety.Checked,
             "silent_mode": self.chk_silent.Checked
         }
 
