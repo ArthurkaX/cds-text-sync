@@ -38,13 +38,16 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ### Method 1: Manual Copy
 
-1. **Copy Files**: Copy all `.py` files to the CODESYS scripts directory:
-   `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
-   _(Note: You may need to create the `ScriptDir` folder manually if it doesn't exist)_.
+1. **Copy Files**: Copy all `.py` files to the CODESYS scripts directory. Depending on your software and setup preference, use one of the following paths:
+   - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
+   - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
+   - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
+
+   _(Note: You may need to create the `CODESYS`, `ScriptDir` folder manually if it doesn't exist)_.
 
 ### Method 2: Quick PowerShell Setup (Recommended)
 
-Automate the installation, folder creation, and Git configuration with one command:
+Automate the installation, folder creation for Standard (User Profile), and Git configuration with one command:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
