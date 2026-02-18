@@ -26,7 +26,14 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ---
 
-## 🛠️ Installation
+## � Requirements
+
+- **Minimum Version**: CODESYS V3.5 SP10+ (earlier versions might support scripting but lack essential API features for reliable text syncing).
+- **Recommended Version**: CODESYS V3.5 SP13 and newer.
+
+---
+
+## �🛠️ Installation
 
 ### Method 1: Manual Copy
 
