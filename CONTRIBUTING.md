@@ -26,7 +26,13 @@ I am always looking for ways to improve the workflow. If you have an idea:
 - Explain the use case and why it would be beneficial for your workflow.
 - I will review these suggestions and prioritize them for future updates.
 
-### 3. Forking
+### 3. Submitting Compatibility Examples
+
+To keep this repository lightweight and minimalist, all test cases, problematic objects, and compatibility examples are hosted in a separate **[Reference Project](https://github.com/ArthurkaX/cds-text-sync-reference-project)**.
+
+If you encounter an object that cannot be exported or imported correctly, please refer to that repository's README for detailed contribution guidelines and verification procedures.
+
+## 🍴 Forking
 
 If you need a specific feature immediately or want to experiment with the code, feel free to **Fork** the repository! That is the beauty of the MIT License. You are welcome to maintain your own version for your specific needs.
 
