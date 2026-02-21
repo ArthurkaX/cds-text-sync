@@ -48,6 +48,8 @@ TYPE_GUIDS = {
     "unit_conversion": "3662d04a-384c-4734-9189-9e8756910793", # Unit Conversion
     "softmotion_pool": "e9159722-55bc-49e5-8034-fbd278ef718f", # SoftMotion Axis Pool
     "visu_style": "8e687a04-7ca7-42d3-be06-fcbda676c5ef",    # Visualization Style
+    "task_local_gvl": "c2cda7a9-0ba4-4146-b563-22a42fa0eb72", # Task Local GVL (GVL attached to task)
+    "project_settings": "8753fe6f-4a22-4320-8103-e553c4fc8e04", # Project Settings
 }
 
 # Types that contain exportable ST code
@@ -82,6 +84,7 @@ EXPORTABLE_TYPES = [
     TYPE_GUIDS["method"],
     TYPE_GUIDS["property"],
     TYPE_GUIDS["property_accessor"],
+    TYPE_GUIDS["task_local_gvl"],  # Task Local GVL - same structure as regular GVL
 ]
 
 # Types that should be exported as native XML

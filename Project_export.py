@@ -97,6 +97,53 @@ def get_parent_pou_name(obj):
     return None
 
 
+def get_task_for_write(obj, project):
+    """
+    Extract the 'TaskForWrite' (assigned task) GUID from a Task Local GVL
+    by exporting it to native XML and parsing the TaskForWrite field.
+    Returns (task_guid, task_name) or (None, None) if not found.
+    """
+    import tempfile, re
+    try:
+        tmp_path = os.path.join(tempfile.gettempdir(), "tlgvl_%s.xml" % safe_str(obj.guid)[:8])
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        project.export_native([obj], tmp_path, recursive=False)
+
+        if not os.path.exists(tmp_path):
+            return None, None
+
+        import codecs as _codecs
+        with _codecs.open(tmp_path, "r", "utf-8") as xf:
+            xml_content = xf.read()
+        os.remove(tmp_path)
+
+        # Parse <Single Name="TaskForWrite" Type="System.Guid">GUID</Single>
+        match = re.search(r'<Single Name="TaskForWrite" Type="System\.Guid">([^<]+)</Single>', xml_content)
+        if not match:
+            return None, None
+
+        task_guid = match.group(1).strip()
+
+        # Look up the task name by GUID in the project
+        task_name = task_guid  # fallback to GUID if name not found
+        try:
+            all_objs = project.get_children(recursive=True)
+            for candidate in all_objs:
+                if safe_str(candidate.guid) == task_guid:
+                    task_name = safe_str(candidate.get_name())
+                    break
+        except:
+            pass
+
+        return task_guid, task_name
+
+    except Exception as e:
+        log_warning("Could not extract TaskForWrite for " + safe_str(obj.get_name()) + ": " + safe_str(e))
+        return None, None
+
+
 def export_object_content(obj):
     """
     Extract declaration and implementation text from object.
@@ -118,8 +165,6 @@ def export_object_content(obj):
         print("Warning: Could not read implementation for " + safe_str(obj.get_name()) + ": " + safe_str(e))
     
     return declaration, implementation
-
-
 
 
 def export_native_xml(obj, file_path):
@@ -698,6 +743,14 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 if not content.strip():
                     skipped_count += 1
                     continue
+                
+                # For Task Local GVL: inject the assigned task as a header comment (info only, not imported)
+                if obj_type == TYPE_GUIDS.get("task_local_gvl"):
+                    task_guid, task_name = get_task_for_write(obj, projects_obj.primary)
+                    if task_name:
+                        task_header = "// [INFO] Task with write access: %s (set manually in CODESYS, not restored by import)\n" % task_name
+                        content = task_header + content
+                        log_info("TaskLocalGVL '%s' -> TaskForWrite: %s" % (obj_name, task_name))
                     
                 # Normalize line endings to LF for cross-platform consistency
                 content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
@@ -706,6 +759,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 
                 # Calculate hash for metadata
                 content_hash = calculate_hash(content)
+
             
             # Build relative path for metadata
             if path_parts:
