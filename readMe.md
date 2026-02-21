@@ -227,6 +227,14 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 
 ---
 
+## 🧪 Reference Project & Examples
+
+To keep this repository lightweight and minimalist for users who `git clone` the scripts, all test cases, problematic objects, and compatibility examples are hosted in a separate **[Reference Project](https://github.com/ArthurkaX/cds-text-sync-reference-project)**.
+
+Refer to that repository's README for detailed verification procedures and contribution guidelines.
+
+---
+
 ## 📝 Changelog
 
 See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions.
