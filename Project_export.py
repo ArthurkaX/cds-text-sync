@@ -1,5 +1,11 @@
 import os
+import sys
 import time
+
+# Force reload of shared modules to pick up latest changes
+for _mod_name in list(sys.modules.keys()):
+    if _mod_name.startswith('codesys_'):
+        del sys.modules[_mod_name]
 from codesys_constants import (
     IMPL_MARKER, TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, FORBIDDEN_CHARS
 )
