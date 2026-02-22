@@ -7,25 +7,17 @@ Compiles the active application and reports errors/warnings.
 import os
 import time
 import sys
-from codesys_utils import safe_str, init_logging, load_base_dir
+from codesys_utils import safe_str, init_logging, load_base_dir, resolve_projects
 
 def build_project(projects_obj=None, silent=False):
     """Build the active application in CODESYS and generate build.log"""
     from System import Guid
 
     # Resolve projects object
-    if projects_obj is None:
-        projects_obj = globals().get("projects")
-        
-    if projects_obj is None:
-        try:
-            import __main__
-            projects_obj = getattr(__main__, "projects", None)
-        except:
-            pass
-            
-    if projects_obj is None:
-        msg = "Error: 'projects' object not found."
+    projects_obj = resolve_projects(projects_obj, globals())
+    
+    if projects_obj is None or not projects_obj.primary:
+        msg = "Error: 'projects' object not found or no project open."
         if not silent:
             system.ui.error(msg)
         else:

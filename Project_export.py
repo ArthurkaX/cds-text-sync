@@ -1,188 +1,22 @@
-# -*- coding: utf-8 -*-
-"""
-Project_export.py - Export CODESYS project to git-friendly folder structure
-
-Exports all textual objects (POUs, GVLs, DUTs) to .st files organized in
-folders matching the CODESYS project hierarchy. Creates a single _metadata.json
-file containing GUID mappings, sync settings, and project info for reliable import.
-
-Features:
-- Project identity check: Warns if exporting to a directory with different project
-- Initializes autosync and sync_timeout fields for Project_AutoSync.py
-- Preserves consistent field order in metadata JSON
-
-Usage: Run from CODESYS IDE after setting sync directory with Project_directory.py
-"""
 import os
-import codecs
-import json
 import time
-import shutil
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, IMPL_MARKER, XML_TYPES
+from codesys_constants import (
+    IMPL_MARKER, TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, FORBIDDEN_CHARS
+)
 from codesys_utils import (
     safe_str, clean_filename, load_base_dir,
     save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
     save_libraries, extract_libraries_from_project,
-    init_logging, backup_project_binary, format_property_content
+    init_logging, backup_project_binary, format_property_content,
+    resolve_projects
+)
+from codesys_managers import (
+    FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
+    get_object_path, collect_property_accessors
 )
 
-# Ensure global objects are available if imported
-try:
-    _ = projects.primary
-except NameError:
-    # If imported, projects might not be in local scope but available in sys.modules['__main__']?
-    # Or we can import them from script engine?
-    # Actually, in CODESYS, 'projects' is a global variable.
-    # To be safe during import:
-    pass
-
 # Shared constants and utilities imported from modules
-
-
-def get_object_path(obj, stop_at_application=True):
-    """
-    Build the path from object to Application root.
-    Returns list of folder names from Application (exclusive) to object (exclusive).
-    """
-    path_parts = []
-    current = obj
-    
-    while current is not None:
-        try:
-            if not hasattr(current, "parent") or current.parent is None:
-                break
-            
-            parent = current.parent
-            
-            # Validate parent has required attributes
-            if not hasattr(parent, "type") or not hasattr(parent, "get_name"):
-                break
-            
-            parent_type = safe_str(parent.type)
-            
-            # Stop at Application level
-            if stop_at_application and parent_type == TYPE_GUIDS["application"]:
-                break
-            
-            # Stop at Plc Logic or Device level
-            if parent_type in [TYPE_GUIDS["plc_logic"], TYPE_GUIDS["device"]]:
-                break
-            
-            # Add parent name to path if it's a folder or other container
-            parent_name = clean_filename(parent.get_name())
-            path_parts.insert(0, parent_name)
-            current = parent
-            
-        except Exception as e:
-            log_error("Error building path: " + safe_str(e))
-            break
-    
-    return path_parts
-
-
-def get_parent_pou_name(obj):
-    """Get parent POU/Interface name for nested objects (actions, methods, properties)"""
-    try:
-        if hasattr(obj, "parent") and obj.parent:
-            # Validate parent has required attributes
-            if not hasattr(obj.parent, "type") or not hasattr(obj.parent, "get_name"):
-                return None
-            
-            parent_type = safe_str(obj.parent.type)
-            if parent_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["itf"]]:
-                return obj.parent.get_name()
-    except:
-        pass
-    return None
-
-
-def get_task_for_write(obj, project):
-    """
-    Extract the 'TaskForWrite' (assigned task) GUID from a Task Local GVL
-    by exporting it to native XML and parsing the TaskForWrite field.
-    Returns (task_guid, task_name) or (None, None) if not found.
-    """
-    import tempfile, re
-    try:
-        tmp_path = os.path.join(tempfile.gettempdir(), "tlgvl_%s.xml" % safe_str(obj.guid)[:8])
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-        project.export_native([obj], tmp_path, recursive=False)
-
-        if not os.path.exists(tmp_path):
-            return None, None
-
-        import codecs as _codecs
-        with _codecs.open(tmp_path, "r", "utf-8") as xf:
-            xml_content = xf.read()
-        os.remove(tmp_path)
-
-        # Parse <Single Name="TaskForWrite" Type="System.Guid">GUID</Single>
-        match = re.search(r'<Single Name="TaskForWrite" Type="System\.Guid">([^<]+)</Single>', xml_content)
-        if not match:
-            return None, None
-
-        task_guid = match.group(1).strip()
-
-        # Look up the task name by GUID in the project
-        task_name = task_guid  # fallback to GUID if name not found
-        try:
-            all_objs = project.get_children(recursive=True)
-            for candidate in all_objs:
-                if safe_str(candidate.guid) == task_guid:
-                    task_name = safe_str(candidate.get_name())
-                    break
-        except:
-            pass
-
-        return task_guid, task_name
-
-    except Exception as e:
-        log_warning("Could not extract TaskForWrite for " + safe_str(obj.get_name()) + ": " + safe_str(e))
-        return None, None
-
-
-def export_object_content(obj):
-    """
-    Extract declaration and implementation text from object.
-    Returns tuple (declaration, implementation) or (None, None) if no content.
-    """
-    declaration = None
-    implementation = None
-    
-    try:
-        if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
-            declaration = obj.textual_declaration.text
-    except Exception as e:
-        print("Warning: Could not read declaration for " + safe_str(obj.get_name()) + ": " + safe_str(e))
-    
-    try:
-        if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
-            implementation = obj.textual_implementation.text
-    except Exception as e:
-        print("Warning: Could not read implementation for " + safe_str(obj.get_name()) + ": " + safe_str(e))
-    
-    return declaration, implementation
-
-
-def export_native_xml(obj, file_path):
-    """Export object in native CODESYS format (XML)"""
-    # Delete existing file to avoid CODESYS overwrite prompts
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            print("Warning: Could not delete existing XML " + file_path)
-            
-    try:
-        # Visualizations and other non-IEC objects must be exported using native format
-        projects.primary.export_native([obj], file_path, recursive=True)
-        return True
-    except Exception as e:
-        print("Error exporting Native XML for " + safe_str(obj.get_name()) + ": " + safe_str(e))
-        return False
 
 
 def cleanup_orphaned_files(export_dir, current_objects, silent=False):
@@ -361,24 +195,15 @@ def ensure_git_configs(export_dir):
 def export_project(export_dir, projects_obj=None, silent=False):
     """Export all project objects to folder structure with metadata"""
     
-    # Resolving projects object (dependency injection or global fallback)
-    if projects_obj is None:
-        # Explicitly check globals to avoid UnboundLocalError
-        if "projects" in globals():
-            projects_obj = globals()["projects"]
-        
-        if projects_obj is None:
-             if not silent:
-                 system.ui.error("Script Error: 'projects' object not found. Please pass it explicitly.")
-             else:
-                 print("Error: 'projects' object not found")
-             return
-
-    if not projects_obj.primary:
+    # Resolving projects object
+    projects_obj = resolve_projects(projects_obj, globals())
+    
+    if projects_obj is None or not projects_obj.primary:
+        msg = "Error: 'projects' object not found or no project open."
         if not silent:
-            system.ui.error("No project open!")
+            system.ui.error(msg)
         else:
-            print("Error: No project open")
+            print(msg)
         return
     
     # Create export directory
@@ -477,97 +302,29 @@ def export_project(export_dir, projects_obj=None, silent=False):
         if not os.path.exists(d):
             os.makedirs(d)
 
-    # First pass: collect all property accessors by their parent property
-    property_accessors = {}  # property_guid -> {'get': obj, 'set': obj}
+    # Collect all property accessors
+    property_accessors = collect_property_accessors(all_objects)
+    print("Found " + str(len(property_accessors)) + " properties with accessors")
     
-    for obj in all_objects:
-        try:
-            if not hasattr(obj, 'type') or not hasattr(obj, 'get_name'):
-                continue
-            
-            obj_type = safe_str(obj.type)
-            
-            # Collect property accessors (Get/Set)
-            if obj_type == TYPE_GUIDS["property_accessor"]:
-                obj_name = obj.get_name()
-                print("  DEBUG: Found property accessor: " + obj_name)
-                
-                # Get parent property
-                if hasattr(obj, "parent") and obj.parent:
-                    parent_guid = safe_str(obj.parent.guid)
-                    parent_type = safe_str(obj.parent.type)
-                    parent_name = safe_str(obj.parent.get_name()) if hasattr(obj.parent, 'get_name') else "Unknown"
-                    
-                    print("    Parent: " + parent_name + " (type: " + parent_type + ")")
-                    
-                    # Only process if parent is a property
-                    if parent_type == TYPE_GUIDS["property"]:
-                        if parent_guid not in property_accessors:
-                            property_accessors[parent_guid] = {'get': None, 'set': None, 'parent_obj': obj.parent}
-                        
-                        # Determine if this is Get or Set based on name
-                        if obj_name.lower() == "get":
-                            property_accessors[parent_guid]['get'] = obj
-                            print("    -> Registered as GET for property " + parent_name)
-                        elif obj_name.lower() == "set":
-                            property_accessors[parent_guid]['set'] = obj
-                            print("    -> Registered as SET for property " + parent_name)
-                    else:
-                        print("    WARNING: Parent is not a property! Type: " + parent_type)
-        except Exception as e:
-            print("  ERROR in first pass: " + safe_str(e))
-            continue
+    # Initialize managers
+    managers = {
+        TYPE_GUIDS["folder"]: FolderManager(),
+        TYPE_GUIDS["property"]: PropertyManager(),
+        TYPE_GUIDS["task_config"]: ConfigManager(),
+        # Default for textual objects
+        "default": POUManager(),
+        "native": NativeManager()
+    }
     
-    print("Found " + str(len(property_accessors)) + " properties with accessors (first pass)")
-    
-    # Alternative collection: Check each property's children directly
-    # This is needed because get_children(recursive=True) might not include property accessors
-    for obj in all_objects:
-        try:
-            if not hasattr(obj, 'type') or not hasattr(obj, 'get_name'):
-                continue
-            
-            obj_type = safe_str(obj.type)
-            
-            # If this is a property, check its children for accessors
-            if obj_type == TYPE_GUIDS["property"]:
-                obj_guid = safe_str(obj.guid)
-                obj_name = safe_str(obj.get_name())
-                
-                # Get property's children
-                try:
-                    prop_children = obj.get_children()
-                    if prop_children:
-                        print("  DEBUG: Property " + obj_name + " has " + str(len(prop_children)) + " children")
-                        
-                        for child in prop_children:
-                            try:
-                                child_type = safe_str(child.type)
-                                child_name = safe_str(child.get_name())
-                                
-                                if child_type == TYPE_GUIDS["property_accessor"]:
-                                    print("    Found accessor: " + child_name)
-                                    
-                                    # Initialize if needed
-                                    if obj_guid not in property_accessors:
-                                        property_accessors[obj_guid] = {'get': None, 'set': None, 'parent_obj': obj}
-                                    
-                                    # Register accessor
-                                    if child_name.lower() == "get":
-                                        property_accessors[obj_guid]['get'] = child
-                                        print("      -> Registered as GET")
-                                    elif child_name.lower() == "set":
-                                        property_accessors[obj_guid]['set'] = child
-                                        print("      -> Registered as SET")
-                            except:
-                                pass
-                except:
-                    pass
-        except:
-            continue
-    
-    print("Found " + str(len(property_accessors)) + " properties with accessors (after direct check)")
-    
+    context = {
+        'export_dir': export_dir,
+        'src_dir': src_dir,
+        'xml_dir': xml_dir,
+        'config_dir': config_dir,
+        'metadata': metadata,
+        'property_accessors': property_accessors
+    }
+
     # Second pass: export all objects
     for obj in all_objects:
         try:
@@ -576,211 +333,28 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 continue
                 
             obj_type = safe_str(obj.type)
-            obj_name = obj.get_name()
-            obj_guid = safe_str(obj.guid)
             
             # Skip property accessors - they will be handled with their parent property
             if obj_type == TYPE_GUIDS["property_accessor"]:
                 continue
             
-            # Special handling for folders - create directory and convert
-            if obj_type == TYPE_GUIDS["folder"]:
-                path_parts = get_object_path(obj)
-                clean_name = clean_filename(obj_name)
+            # Select manager
+            if obj_type in managers:
+                manager = managers[obj_type]
+            elif obj_type in XML_TYPES:
+                if not metadata.get("export_xml", False) and obj_type != TYPE_GUIDS["task_config"]:
+                    continue
+                manager = managers["native"]
+            elif obj_type in EXPORTABLE_TYPES:
+                manager = managers["default"]
+            else:
+                continue
                 
-                # Add folder itself to path
-                path_parts.append(clean_name)
-                
-                # Create folder in src directory
-                target_dir = os.path.join(src_dir, *path_parts) if path_parts else src_dir
-                
-                if not os.path.exists(target_dir):
-                    os.makedirs(target_dir)
-                    print("Created folder: src/" + "/".join(path_parts))
-                
-                # Add to metadata (with src/ prefix)
-                rel_path = "src/" + "/".join(path_parts)
-                metadata["objects"][rel_path] = {
-                    "guid": obj_guid,
-                    "type": obj_type,
-                    "name": obj_name,
-                    "parent": safe_str(obj.parent.get_name()) if hasattr(obj, "parent") and obj.parent and hasattr(obj.parent, "get_name") else None,
-                    "content_hash": ""
-                }
+            if manager.export(obj, context):
                 exported_count += 1
-                
-                continue
-
-            # Skip non-exportable types
-            if obj_type not in EXPORTABLE_TYPES:
-                continue
-            
-            # Check if object is XML type
-            is_xml = obj_type in XML_TYPES
-            
-            # Mandatory Configuration Exports
-            is_config = False
-            if obj_type == TYPE_GUIDS["task_config"]:
-                is_config = True
-                is_xml = True # Force XML for config
-
-            # Skip XML objects if disabled in metadata (unless it's mandatory config)
-            if is_xml and not metadata.get("export_xml", False) and not is_config:
-                continue
-
-            # Check if object has any textual content
-            has_content = False
-            try:
-                if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
-                    has_content = True
-                if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
-                    has_content = True
-            except:
+            else:
+                # Some objects might be skipped intentionally (e.g. no content)
                 pass
-            
-            # Special handling for properties - they might not have content but have accessors
-            is_property = obj_type == TYPE_GUIDS["property"]
-            if is_property and obj_guid in property_accessors:
-                has_content = True  # Force export if it has accessors
-            
-            # Allow export if it has content OR is an XML type
-            if not has_content and not is_xml:
-                skipped_count += 1
-                continue
-            
-            # Build file path
-            path_parts = get_object_path(obj)
-            clean_name = clean_filename(obj_name)
-            
-            # Handle nested objects (actions, methods, properties)
-            parent_pou = get_parent_pou_name(obj)
-            if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
-                # Nested objects: ParentPOU.MethodName.st or ParentPOU.PropertyName.st
-                file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-                
-                # Remove parent POU from path since it's in filename
-                clean_parent_pou = clean_filename(parent_pou)
-                if path_parts and path_parts[-1] == clean_parent_pou:
-                    path_parts = path_parts[:-1]
-            elif is_xml:
-                file_name = clean_name + ".xml"
-            else:
-                file_name = clean_name + ".st"
-            
-            # Determine Target Directory and Prefix
-            if is_config:
-                base_dir_obj = config_dir
-                prefix = "config"
-            elif is_xml:
-                base_dir_obj = xml_dir
-                prefix = "xml"
-            else:
-                base_dir_obj = src_dir
-                prefix = "src"
-
-            # Create target directory
-            target_dir = os.path.join(base_dir_obj, *path_parts) if path_parts else base_dir_obj
-            if not os.path.exists(target_dir):
-                os.makedirs(target_dir)
-            
-            
-            # Build full file path
-            file_path = os.path.join(target_dir, file_name)
-            
-            # Initialize content_hash
-            content_hash = ""
-            
-            if is_xml:
-                if not export_native_xml(obj, file_path):
-                    skipped_count += 1
-                    continue
-                
-                # Verify that file was actually created
-                if not os.path.exists(file_path):
-                    print("Warning: XML export claimed success but file not found: " + file_name)
-                    skipped_count += 1
-                    continue
-            elif is_property and obj_guid in property_accessors:
-                # Export property with combined GET/SET accessors
-                prop_data = property_accessors[obj_guid]
-                
-                # Get property declaration
-                declaration, _ = export_object_content(obj)
-                
-                # Get GET accessor content (combine declaration and implementation)
-                get_impl = None
-                if prop_data['get']:
-                    get_decl, get_impl_raw = export_object_content(prop_data['get'])
-                    # Combine declaration (VAR section) and implementation (code) like methods/actions
-                    get_impl = format_st_content(get_decl, get_impl_raw)
-                
-                # Get SET accessor content (combine declaration and implementation)
-                set_impl = None
-                if prop_data['set']:
-                    set_decl, set_impl_raw = export_object_content(prop_data['set'])
-                    # Combine declaration (VAR section) and implementation (code) like methods/actions
-                    set_impl = format_st_content(set_decl, set_impl_raw)
-                
-                # Format combined content
-                content = format_property_content(declaration, get_impl, set_impl)
-                
-                if not content.strip():
-                    skipped_count += 1
-                    continue
-                    
-                # Normalize line endings to LF for cross-platform consistency
-                content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
-                with open(file_path, "wb") as f:
-                    f.write(content_normalized.encode('utf-8'))
-                
-                # Calculate hash for metadata
-                content_hash = calculate_hash(content)
-            else:
-                # Textual export (normal POUs, methods, actions, etc.)
-                declaration, implementation = export_object_content(obj)
-                content = format_st_content(declaration, implementation)
-                
-                if not content.strip():
-                    skipped_count += 1
-                    continue
-                
-                # For Task Local GVL: inject the assigned task as a header comment (info only, not imported)
-                if obj_type == TYPE_GUIDS.get("task_local_gvl"):
-                    task_guid, task_name = get_task_for_write(obj, projects_obj.primary)
-                    if task_name:
-                        task_header = "// [INFO] Task with write access: %s (set manually in CODESYS, not restored by import)\n" % task_name
-                        content = task_header + content
-                        log_info("TaskLocalGVL '%s' -> TaskForWrite: %s" % (obj_name, task_name))
-                    
-                # Normalize line endings to LF for cross-platform consistency
-                content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
-                with open(file_path, "wb") as f:
-                    f.write(content_normalized.encode('utf-8'))
-                
-                # Calculate hash for metadata
-                content_hash = calculate_hash(content)
-
-            
-            # Build relative path for metadata
-            if path_parts:
-                parts_for_join = [prefix] + path_parts + [file_name]
-                rel_path = "/".join(parts_for_join)
-            else:
-                rel_path = prefix + "/" + file_name
-            # rel_path is already forward slashes
-            
-            # Store metadata
-            metadata["objects"][rel_path] = {
-                "guid": obj_guid,
-                "type": obj_type,
-                "name": obj_name,
-                "parent": safe_str(obj.parent.get_name()) if hasattr(obj, "parent") and obj.parent and hasattr(obj.parent, "get_name") else None,
-                "content_hash": content_hash,
-                "last_modified": safe_str(os.path.getmtime(file_path))
-            }
-            
-            print("Exported: " + rel_path)
-            exported_count += 1
             
         except Exception as e:
             log_error("Error exporting " + safe_str(obj) + ": " + safe_str(e))

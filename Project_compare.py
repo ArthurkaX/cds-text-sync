@@ -17,105 +17,21 @@ from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES
 from codesys_utils import (
     safe_str, load_base_dir, load_metadata, build_object_cache,
     calculate_hash, format_st_content, init_logging, log_info,
-    get_project_prop, format_property_content
+    get_project_prop, format_property_content, resolve_projects
 )
-
-def export_object_content(obj):
-    """
-    Extract declaration and implementation text from object.
-    Returns tuple (declaration, implementation) or (None, None) if no content.
-    """
-    declaration = None
-    implementation = None
-    
-    try:
-        if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
-            declaration = obj.textual_declaration.text
-    except Exception as e:
-        pass
-    
-    try:
-        if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
-            implementation = obj.textual_implementation.text
-    except Exception as e:
-        pass
-    
-    return declaration, implementation
-
-
-def get_object_path(obj, stop_at_application=True):
-    """
-    Build the path from object to Application root.
-    Returns list of folder names from Application (exclusive) to object (exclusive).
-    """
-    from codesys_utils import clean_filename
-    
-    path_parts = []
-    current = obj
-    
-    while current is not None:
-        try:
-            if not hasattr(current, "parent") or current.parent is None:
-                break
-            
-            parent = current.parent
-            
-            if not hasattr(parent, "type") or not hasattr(parent, "get_name"):
-                break
-            
-            parent_type = safe_str(parent.type)
-            
-            # Stop at Application level
-            if stop_at_application and parent_type == TYPE_GUIDS["application"]:
-                break
-            
-            # Stop at Plc Logic or Device level
-            if parent_type in [TYPE_GUIDS["plc_logic"], TYPE_GUIDS["device"]]:
-                break
-            
-            # Add parent name to path if it's a folder or other container
-            parent_name = clean_filename(parent.get_name())
-            path_parts.insert(0, parent_name)
-            current = parent
-            
-        except Exception as e:
-            break
-    
-    return path_parts
-
-
-def get_parent_pou_name(obj):
-    """Get parent POU/Interface name for nested objects (actions, methods, properties)"""
-    try:
-        if hasattr(obj, "parent") and obj.parent:
-            if not hasattr(obj.parent, "type") or not hasattr(obj.parent, "get_name"):
-                return None
-            
-            parent_type = safe_str(obj.parent.type)
-            if parent_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["itf"]]:
-                return obj.parent.get_name()
-    except:
-        pass
-    return None
-
+from codesys_managers import (
+    get_object_path, get_parent_pou_name, export_object_content,
+    collect_property_accessors
+)
 
 def compare_project(projects_obj=None, silent=False):
     """Compare CODESYS project objects with disk files"""
     
     # Resolve projects object
-    if projects_obj is None:
-        if "projects" in globals():
-            projects_obj = globals()["projects"]
-        
-        if projects_obj is None:
-            try:
-                import __main__
-                projects_obj = getattr(__main__, "projects", None)
-            except:
-                pass
+    projects_obj = resolve_projects(projects_obj, globals())
     
     if projects_obj is None or not projects_obj.primary:
-        msg = "Error: No project open!"
+        msg = "Error: 'projects' object not found or no project open."
         if not silent:
             system.ui.error(msg)
         else:
@@ -161,59 +77,8 @@ def compare_project(projects_obj=None, silent=False):
     deleted_from_ide = []
     unchanged = []
     
-    # First pass: collect property accessors by parent property
-    property_accessors = {}  # property_guid -> {'get': obj, 'set': obj}
-    
-    for obj in all_ide_objects:
-        try:
-            if not hasattr(obj, 'type') or not hasattr(obj, 'get_name'):
-                continue
-            
-            obj_type = safe_str(obj.type)
-            
-            if obj_type == TYPE_GUIDS["property_accessor"]:
-                if hasattr(obj, "parent") and obj.parent:
-                    parent_type = safe_str(obj.parent.type)
-                    if parent_type == TYPE_GUIDS["property"]:
-                        parent_guid = safe_str(obj.parent.guid)
-                        if parent_guid not in property_accessors:
-                            property_accessors[parent_guid] = {'get': None, 'set': None}
-                        
-                        obj_name = obj.get_name()
-                        if obj_name.lower() == "get":
-                            property_accessors[parent_guid]['get'] = obj
-                        elif obj_name.lower() == "set":
-                            property_accessors[parent_guid]['set'] = obj
-        except:
-            continue
-    
-    # Alternative: check property children directly
-    for obj in all_ide_objects:
-        try:
-            if not hasattr(obj, 'type'):
-                continue
-            
-            obj_type = safe_str(obj.type)
-            if obj_type == TYPE_GUIDS["property"]:
-                obj_guid = safe_str(obj.guid)
-                try:
-                    children = obj.get_children()
-                    for child in children:
-                        child_type = safe_str(child.type)
-                        child_name = safe_str(child.get_name())
-                        
-                        if child_type == TYPE_GUIDS["property_accessor"]:
-                            if obj_guid not in property_accessors:
-                                property_accessors[obj_guid] = {'get': None, 'set': None}
-                            
-                            if child_name.lower() == "get":
-                                property_accessors[obj_guid]['get'] = child
-                            elif child_name.lower() == "set":
-                                property_accessors[obj_guid]['set'] = child
-                except:
-                    pass
-        except:
-            continue
+    # First pass: collect property accessors
+    property_accessors = collect_property_accessors(all_ide_objects)
     
     # Second pass: Compare IDE objects with disk
     for obj in all_ide_objects:

@@ -1,28 +1,10 @@
-# -*- coding: utf-8 -*-
-"""
-Project_import.py - Import edited ST files back into CODESYS project
-
-Reads _metadata.json to match files to CODESYS objects by GUID, then updates
-the textual declaration and implementation from the ST files.
-
-Usage: Run from CODESYS IDE after setting sync directory with Project_directory.py
- and editing files
-"""
 import os
-import codecs
-import json
 import time
-
-# Ensure global objects are available if imported
-try:
-    _ = projects.primary
-except NameError:
-    # If this script is imported by another script (Daemon), global variables like 'projects'
-    # might not be directly available in this scope unless injected.
-    # However, usually they are injected into the top-level script execution context.
-    pass
-import re
-from codesys_constants import IMPL_MARKER, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
+import codecs
+import sys
+from codesys_constants import (
+    IMPL_MARKER, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER, XML_TYPES
+)
 from codesys_utils import (
     safe_str, parse_st_file, build_object_cache, 
     find_object_by_guid, find_object_by_name, load_base_dir,
@@ -30,248 +12,26 @@ from codesys_utils import (
     format_st_content, log_info, log_warning, log_error, MetadataLock,
     load_libraries, extract_libraries_from_project,
     init_logging, get_project_prop, backup_project_binary,
-    parse_property_content, format_property_content
+    parse_property_content, format_property_content,
+    ensure_folder_path, determine_object_type, resolve_projects
+)
+from codesys_managers import (
+    FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
+    update_object_code
 )
 
-# Shared constants and utilities imported from modules
-
-
-
-
-
-def update_object_code(obj, declaration, implementation):
-    """
-    Update object's textual declaration and/or implementation.
-    Returns True if any update was made.
-    """
-    updated = False
-    obj_name = safe_str(obj.get_name())
-    
-    # Update declaration
-    if declaration:
-        try:
-            if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
-                obj.textual_declaration.replace(declaration)
-                updated = True
-            else:
-                log_warning(obj_name + " has no textual declaration property")
-        except Exception as e:
-            log_error("Error updating declaration for " + obj_name + ": " + safe_str(e))
-    
-    # Update implementation
-    if implementation:
-        try:
-            if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
-                obj.textual_implementation.replace(implementation)
-                updated = True
-            else:
-                # This is normal for GVLs and DUTs - they only have declaration
-                pass
-        except Exception as e:
-            log_error("Error updating implementation for " + obj_name + ": " + safe_str(e))
-    
-    return updated
-
-
-
-
-
-def determine_object_type(content):
-    """Determine CODESYS object type from ST content"""
-    # Remove comments and pragmas to avoid false matches
-    
-    # 1. Remove (* ... *) multiline comments
-    content = re.sub(r"\(\*[\s\S]*?\*\)", "", content)
-    
-    # 2. Remove { ... } pragmas/attributes
-    content = re.sub(r"\{[\s\S]*?\}", "", content)
-    
-    # 3. Remove // ... single line comments
-    content = re.sub(r"//.*", "", content)
-    
-    content = content.strip()
-    lines = content.splitlines()
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Check keywords
-        parts = line.split()
-        if not parts:
-            continue
-        word = parts[0].upper()
-        
-        if word == "PROGRAM":
-            return TYPE_GUIDS["pou"]
-        if word == "FUNCTION_BLOCK":
-            return TYPE_GUIDS["pou"]
-        if word == "FUNCTION":
-            return TYPE_GUIDS["pou"]
-        if word == "VAR_GLOBAL":
-            return TYPE_GUIDS["gvl"]
-        if word == "TYPE":
-            return TYPE_GUIDS["dut"]
-        if word == "INTERFACE":
-            return TYPE_GUIDS["itf"]
-        if word == "METHOD":
-            return TYPE_GUIDS["method"]
-        if word == "PROPERTY":
-            return TYPE_GUIDS["property"]
-        if word == "ACTION":
-            return TYPE_GUIDS["action"]
-        
-    return None
-
-
-# Global cache for start_obj to avoid repetitive searches and logging
+# Global cache for start_obj (legacy for internal use if needed)
 _ensure_folder_start_obj = None
 
+# Legacy support
+def find_application_recursive(obj, depth=0):
+    from codesys_utils import find_application_recursive as find_app
+    return find_app(obj, depth)
+
 def ensure_folder_path(path_str):
-    """
-    Ensure folder structure exists in CODESYS project.
-    path_str: relative path string e.g. "Folder/SubFolder"
-    Returns the parent object (folder) or None if failed.
-    """
-    global _ensure_folder_start_obj
-    
-    if _ensure_folder_start_obj is None:
-        def find_application_recursive(obj, depth=0):
-            """Recursively search for Application or PLC Logic container"""
-            if depth > 3:  # Limit recursion depth
-                return None
-                
-            try:
-                children = obj.get_children()
-                for child in children:
-                    try:
-                        child_type = safe_str(child.type)
-                        if child_type == TYPE_GUIDS["application"]:
-                            return child
-                        if child_type == TYPE_GUIDS["device"] or child_type == TYPE_GUIDS["plc_logic"]:
-                            result = find_application_recursive(child, depth + 1)
-                            if result:
-                                return result
-                    except:
-                        continue
-            except:
-                pass
-            return None
-
-        try:
-            start_obj = find_application_recursive(projects.primary, 0)
-            if start_obj:
-                _ensure_folder_start_obj = start_obj
-                try:
-                    container_name = safe_str(start_obj.get_name())
-                    container_type = safe_str(start_obj.type)
-                    print("  >>> Using container: " + container_name + " (type: " + container_type + ")")
-                except:
-                    print("  >>> Found container")
-        except Exception as e:
-            print("  Error getting project children: " + safe_str(e))
-
-    start_obj = _ensure_folder_start_obj
-    
-    # Fallback to primary project if we can't find Application
-    if start_obj is None:
-        if _ensure_folder_start_obj is None: # Only warn once
-            print("  Warning: Could not find Application/PLC Logic container, using project root")
-            _ensure_folder_start_obj = projects.primary
-        start_obj = _ensure_folder_start_obj
-    
-    if not path_str or path_str == ".":
-        return start_obj
-        
-    parts = path_str.replace("\\", "/").split("/")
-    current_obj = start_obj
-    
-    for part in parts:
-        if not part: continue
-        
-        matches = []
-        try:
-            children = current_obj.get_children()
-        except:
-            children = []
-            
-        for child in children:
-            if child.get_name().lower() == part.lower():
-                try:
-                    child_type = safe_str(child.type)
-                    if child_type == TYPE_GUIDS["device"]:
-                        continue 
-                except:
-                    pass
-                matches.append(child)
-        
-        found = None
-        
-        if len(matches) > 1:
-            print("  Found " + str(len(matches)) + " match(es) for '" + part + "' (Ambiguity):")
-            for m in matches:
-                try:
-                    m_type = safe_str(m.type)
-                    m_name = safe_str(m.get_name())
-                    print("    - " + m_name + " (type: " + m_type + ")")
-                except:
-                    pass
-        
-        for m in matches:
-            try:
-                obj_type = safe_str(m.type)
-                if obj_type == TYPE_GUIDS["folder"]:
-                    found = m
-                    break
-            except:
-                pass
-                
-        if not found:
-            for m in matches:
-                if hasattr(m, "create_child"):
-                    found = m
-                    break
-                    
-        if not found and matches:
-             found = matches[0]
-
-        if found:
-            current_obj = found
-        else:
-            try:
-                parent_obj = current_obj
-                current_obj = None
-                
-                if hasattr(parent_obj, "create_folder"):
-                    try:
-                        current_obj = parent_obj.create_folder(part)
-                    except Exception as e:
-                        pass
-                        
-                if not current_obj and hasattr(parent_obj, "create_child"):
-                    try:
-                        current_obj = parent_obj.create_child(part, "738bea1e-99bb-4f04-90bb-a7a567e74e3a") 
-                    except Exception as e:
-                         pass
-                         
-                if not current_obj:
-                    try:
-                        children = parent_obj.get_children()
-                        for child in children:
-                            if child.get_name().lower() == part.lower():
-                                current_obj = child
-                                break
-                    except:
-                        pass
-
-                if not current_obj:
-                    return None
-            except Exception as e:
-                print("  Error creating folder " + part + ": " + safe_str(e))
-                return None
-                
-    return current_obj
+    from codesys_utils import ensure_folder_path as ensure_path
+    # In CODESYS, 'projects' is a global object, no need to import it
+    return ensure_path(path_str, projects.primary)
 
 
 def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map, silent=False):
@@ -434,35 +194,15 @@ def import_project(import_dir, projects_obj=None, silent=False):
     """Import ST files from folder structure back into CODESYS project"""
     
     # Resolving projects object
-    if projects_obj is None:
-        # Check globals first (explicitly)
-        projects_obj = globals().get("projects")
-        
-        # Fallback to sys.modules or __main__
-        if projects_obj is None:
-             try:
-                 import __main__
-                 projects_obj = getattr(__main__, "projects", None)
-             except:
-                 pass
-        
-        if projects_obj is None:
-             try:
-                 import sys
-                 for module in sys.modules.values():
-                     if hasattr(module, "projects") and hasattr(getattr(module, "projects"), "primary"):
-                         projects_obj = module.projects
-                         break
-             except:
-                 pass
-
-        if projects_obj is None:
-             error_msg = "Script Error: 'projects' object not found."
-             if not silent:
-                 system.ui.error(error_msg)
-             else:
-                 print(error_msg)
-             return
+    projects_obj = resolve_projects(projects_obj, globals())
+    
+    if projects_obj is None or not projects_obj.primary:
+        error_msg = "Script Error: 'projects' object not found or no project open."
+        if not silent:
+            system.ui.error(error_msg)
+        else:
+            print(error_msg)
+        return
 
     if not projects_obj.primary:
         if not silent:
@@ -490,32 +230,16 @@ def import_project(import_dir, projects_obj=None, silent=False):
         print("  Warning: Could not create timestamped backup: " + safe_str(e))
     
     # Find Application container early
-    app_container = None
+    app_container = find_application_recursive(projects_obj.primary, 0)
     
-    def find_application_recursive(obj, depth=0):
-        if depth > 3:
-            return None
-        try:
-            children = obj.get_children()
-            for child in children:
-                try:
-                    child_type = safe_str(child.type)
-                    if child_type == TYPE_GUIDS["application"]:
-                        return child
-                    if child_type == TYPE_GUIDS["device"] or child_type == TYPE_GUIDS["plc_logic"]:
-                        result = find_application_recursive(child, depth + 1)
-                        if result:
-                            return result
-                except:
-                    continue
-        except:
-            pass
-        return None
-    
-    try:
-        app_container = find_application_recursive(projects_obj.primary, 0)
-    except:
-        pass
+    # Initialize managers
+    import_managers = {
+        TYPE_GUIDS["folder"]: FolderManager(),
+        TYPE_GUIDS["property"]: PropertyManager(),
+        TYPE_GUIDS["task_config"]: ConfigManager(),
+        "default": POUManager(),
+        "native": NativeManager()
+    }
     
     with MetadataLock(import_dir, timeout=60):
         # Load metadata
@@ -571,7 +295,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
             for name in files:
                 if name in ["_metadata.json", "_config.json", "_metadata.csv", "BASE_DIR", "sync_debug.log"] or name.startswith('.'):
                     continue
-                if not name.endswith(".st"):
+                if not name.endswith(".st") and not name.endswith(".xml"):
                     continue
                 
                 rel_path = os.path.relpath(os.path.join(root, name), import_dir).replace(os.sep, "/")
@@ -592,442 +316,154 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 skipped_count += 1
                 continue
 
-            if obj_info.get("type") == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
+            obj_type = obj_info.get("type")
+            if obj_type == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
                 continue
             
+            # Skip property accessors - they are handled by PropertyManager
+            if obj_type == TYPE_GUIDS.get("property_accessor"):
+                continue
+
             obj = None
             if obj_info.get("guid") and obj_info.get("guid") != "N/A":
                 obj = find_object_by_guid(obj_info["guid"], guid_map)
-                
-                # Debug: Log method lookups
-                if obj_info.get("type") == TYPE_GUIDS["method"]:
-                    if obj:
-                        print("DEBUG: Found method by GUID: " + rel_path)
-                    else:
-                        print("DEBUG: Method NOT found by GUID: " + rel_path + " (GUID: " + obj_info["guid"] + ")")
-                        print("DEBUG: guid_map has " + str(len(guid_map)) + " entries")
             
             if obj is None and obj_info.get("name"):
                 obj = find_object_by_name(obj_info["name"], name_map, obj_info.get("parent"))
-                
-                # Debug: Log method name lookups
-                if obj_info.get("type") == TYPE_GUIDS["method"]:
-                    if obj:
-                        print("DEBUG: Found method by name: " + rel_path)
-                    else:
-                        print("DEBUG: Method NOT found by name either: " + rel_path)
             
             if obj is None:
-                # Object not found - it was deleted from CODESYS but file still exists
-                # Treat this as a new file that needs to be created
-                print("  Object not found (deleted?), will recreate: " + rel_path)
-                
-                # Add to new_files list for creation
+                # Object not found - will recreate
                 if rel_path not in [nf[0] for nf in new_files]:
                     new_files.append((rel_path, file_path))
-                
-                # Remove from metadata so it gets recreated
-                if rel_path in objects_meta:
-                    del objects_meta[rel_path]
-                
                 continue
             
-            # Optimization: Check timestamp first
-            current_mtime = safe_str(os.path.getmtime(file_path))
-            stored_mtime = obj_info.get("last_modified", "")
-            stored_hash = obj_info.get("content_hash", "")
+            # Select manager
+            manager = import_managers.get(obj_type)
+            if not manager:
+                if any(obj_type == guid for guid in XML_TYPES):
+                    manager = import_managers["native"]
+                else:
+                    manager = import_managers["default"]
             
-            if current_mtime == stored_mtime and stored_hash:
-                print("  Skipped: " + rel_path + " (Timestamp match)")
-                skipped_count += 1
-                continue
-            
-            # Special handling for properties with combined GET/SET accessors
-            if obj_info.get("type") == TYPE_GUIDS["property"]:
-                # Read file content
-                try:
-                    with codecs.open(file_path, "r", "utf-8") as f:
-                        content = f.read()
-                except Exception as e:
-                    print("  Error reading property file " + rel_path + ": " + safe_str(e))
-                    failed_count += 1
-                    continue
-                
-                # Parse property content
-                declaration, get_impl, set_impl = parse_property_content(content)
-                
-                # Update property declaration
-                if declaration and update_object_code(obj, declaration, None):
-                    print("  Updated property declaration: " + rel_path)
-                
-                # Find and update GET accessor
-                if get_impl:
-                    try:
-                        children = obj.get_children()
-                        for child in children:
-                            if child.get_name().lower() == "get":
-                                # Parse the combined GET content back into declaration and implementation
-                                get_decl = None
-                                get_code = None
-                                if IMPL_MARKER in get_impl:
-                                    parts = get_impl.split(IMPL_MARKER, 1)
-                                    get_decl = parts[0].strip() if parts[0] else None
-                                    get_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
-                                else:
-                                    # No implementation, only declaration (VAR section)
-                                    get_decl = get_impl.strip() if get_impl else None
-                                
-                                if update_object_code(child, get_decl, get_code):
-                                    print("  Updated GET accessor: " + rel_path)
-                                break
-                    except Exception as e:
-                        print("  Error updating GET accessor: " + safe_str(e))
-                
-                # Find and update SET accessor
-                if set_impl:
-                    try:
-                        children = obj.get_children()
-                        for child in children:
-                            if child.get_name().lower() == "set":
-                                # Parse the combined SET content back into declaration and implementation
-                                set_decl = None
-                                set_code = None
-                                if IMPL_MARKER in set_impl:
-                                    parts = set_impl.split(IMPL_MARKER, 1)
-                                    set_decl = parts[0].strip() if parts[0] else None
-                                    set_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
-                                else:
-                                    # No implementation, only declaration (VAR section)
-                                    set_decl = set_impl.strip() if set_impl else None
-                                
-                                if update_object_code(child, set_decl, set_code):
-                                    print("  Updated SET accessor: " + rel_path)
-                                break
-                    except Exception as e:
-                        print("  Error updating SET accessor: " + safe_str(e))
-                
-                # Update metadata
-                current_hash = calculate_hash(content)
-                obj_info["content_hash"] = current_hash
-                obj_info["last_modified"] = current_mtime
-                updated_count += 1
-                continue
-                
-            declaration, implementation = parse_st_file(file_path)
-            if declaration is None and implementation is None:
-                skipped_count += 1
-                continue
-                
-            full_content = format_st_content(declaration, implementation)
-            current_hash = calculate_hash(full_content)
-            
-            if current_hash == stored_hash:
-                print("  Skipped: " + rel_path + " (Hash match, updating timestamp)")
-                obj_info["last_modified"] = current_mtime
-                skipped_count += 1
-                continue
-            
-            print("  Updating: " + rel_path + " (Change detected)")
-            if update_object_code(obj, declaration, implementation):
-                updated_count += 1
-                obj_info["content_hash"] = current_hash
-                obj_info["last_modified"] = current_mtime
-            else:
-                print("  Warning: No changes applied to " + rel_path)
-                skipped_count += 1
+            try:
+                if manager.update(obj, file_path, obj_info):
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+            except Exception as e:
+                log_error("Failed to update " + rel_path + ": " + safe_str(e))
+                failed_count += 1
                 
         # Process new folders
         if new_folders:
             new_folders.sort(key=len)
+            folder_manager = import_managers[TYPE_GUIDS["folder"]]
             for folder_path in new_folders:
-                # Only process folders in src directory
                 if not folder_path.startswith("src"):
                     continue
-                if folder_path == "src":
-                    continue
-                    
-                # Calculate CODESYS path (remove src prefix)
-                codesys_path = folder_path[4:] if folder_path.startswith("src/") else ""
                 
-                if folder_path in folder_cache:
-                    created_folder = folder_cache[folder_path]
-                else:
-                    created_folder = ensure_folder_path(codesys_path)
-                    folder_cache[folder_path] = created_folder
-                    
-                if created_folder:
+                res = folder_manager.create(None, None, folder_path, None)
+                if res:
                     created_count += 1
                     objects_meta[folder_path] = {
-                        "guid": safe_str(created_folder.guid),
+                        "guid": safe_str(res.guid),
                         "type": TYPE_GUIDS["folder"],
-                        "name": safe_str(created_folder.get_name()),
-                        "parent": safe_str(created_folder.parent.get_name()) if created_folder.parent else "N/A",
+                        "name": safe_str(res.get_name()),
+                        "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
                         "content_hash": ""
                     }
 
         # Process new files
         if new_files:
-            parent_ops = []
-            child_ops = []
+            # We need to process parents before children (e.g. POUs before Methods)
+            # A simple heuristic: process by depth, but children often have '.' in filename
+            new_files.sort(key=lambda x: (x[0].count('/'), x[0].count('.')))
             
             for rel_path, file_path in new_files:
-                 # Only process files in src directory
-                 if not rel_path.startswith("src/"):
-                     continue
-                 
-                 declaration, implementation = parse_st_file(file_path)
-                 content_check = declaration if declaration else implementation
-                 if not content_check:
-                    skipped_count += 1
+                if not rel_path.startswith("src"):
                     continue
-                    
-                 type_guid = determine_object_type(content_check)
-                 # Strip src/ prefix for path parsing
-                 filesys_path_parts = rel_path.split("/")
-                 if filesys_path_parts[0] == "src":
-                     path_parts = filesys_path_parts[1:]
-                 else:
-                     path_parts = filesys_path_parts
-                     
-                 base_name = os.path.splitext(path_parts[-1])[0]
-                 
-                 is_child = False
-                 child_info = None
-
-                 if not is_child:
-                     upper_name = base_name.upper()
-                     if upper_name.endswith(".GET"):
-                         type_guid = TYPE_GUIDS["property_accessor"]
-                         child_info = (base_name[:-4], "Get")
-                         is_child = True
-                     elif upper_name.endswith(".SET"):
-                         type_guid = TYPE_GUIDS["property_accessor"]
-                         child_info = (base_name[:-4], "Set")
-                         is_child = True
-                     elif base_name in ["Get", "Set"] and len(path_parts) > 1:
-                         type_guid = TYPE_GUIDS["property_accessor"]
-                         p_name = path_parts[-2]
-                         child_info = (p_name, base_name)
-                         is_child = True
-                 
-                 if not is_child and (not type_guid or type_guid in [TYPE_GUIDS["method"], TYPE_GUIDS["property"], TYPE_GUIDS["action"]]):
-                     if "." in base_name:
-                         parts = base_name.rsplit(".", 1)
-                         child_info = (parts[0], parts[1])
-                         is_child = True
-
-                 op_data = {
-                     "rel_path": rel_path, "file_path": file_path, "base_name": base_name,
-                     "type_guid": type_guid, "declaration": declaration, "implementation": implementation,
-                     "is_child": is_child, "child_info": child_info, "content_check": content_check
-                 }
-                 if is_child: 
-                     child_ops.append(op_data)
-                 else: 
-                     parent_ops.append(op_data)
-            
-            print("  Found " + str(len(parent_ops)) + " new parent objects and " + str(len(child_ops)) + " new children")
-
-            new_stats = {"updated": 0, "created": 0, "failed": 0, "skipped": 0}
-
-            def process_op(op):
-                type_guid = op["type_guid"]
-                if not type_guid:
-                    new_stats["skipped"] += 1
-                    return
-
-                create_container = None
-                obj_name = op["base_name"]
                 
-                if op["is_child"] and op["child_info"]:
-                    p_name, c_name = op["child_info"]
-                    parent_obj = find_object_by_name(p_name, name_map)
-                    if parent_obj: 
-                        obj_name = c_name
-                        create_container = parent_obj
-                        print("  Identified parent " + p_name + " for new object " + c_name)
-                    else:
-                        print("  Error: Could not find parent " + p_name + " for new object " + c_name)
+                # Determine name and type
+                filesys_path_parts = rel_path.split("/")
+                if filesys_path_parts[0] == "src":
+                    path_parts = filesys_path_parts[1:]
                 else:
-                    # New parent object - resolve folder path
-                    rel_path = op["rel_path"] # e.g. src/Folder/POU.st
+                    path_parts = filesys_path_parts
+                
+                base_name = os.path.splitext(path_parts[-1])[0]
+                
+                # Resolve type
+                type_guid = None
+                if rel_path.endswith(".xml"):
+                    # Use NativeManager logic for XML
+                    manager = import_managers["native"]
+                    # If it's in config/ instead of xml/ it might be ConfigManager
+                    if rel_path.startswith("config/"):
+                        manager = import_managers[TYPE_GUIDS["task_config"]]
+                else:
+                    # Textual object
+                    from codesys_utils import parse_st_file
+                    decl, impl = parse_st_file(file_path)
+                    content_check = decl if decl else impl
+                    if not content_check:
+                        skipped_count += 1
+                        continue
                     
-                    if "/" in rel_path:
-                        # logical_folder_path: src/Folder
-                        logical_folder_path = "/".join(rel_path.split("/")[:-1])
-                        
-                        if logical_folder_path == "src":
-                             create_container = app_container
-                        elif logical_folder_path in folder_cache:
-                            create_container = folder_cache[logical_folder_path]
-                        else:
-                            # Parse CODESYS path
-                            codesys_path = logical_folder_path[4:] if logical_folder_path.startswith("src/") else logical_folder_path
-                            create_container = ensure_folder_path(codesys_path)
-                            folder_cache[logical_folder_path] = create_container
-                    else:
-                        create_container = app_container
+                    type_guid = determine_object_type(content_check)
+                    manager = import_managers.get(type_guid, import_managers["default"])
+
+                # Resolve container
+                parent_name = None
+                if "." in base_name and type_guid in [TYPE_GUIDS.get("method"), TYPE_GUIDS.get("property"), TYPE_GUIDS.get("action"), TYPE_GUIDS.get("property_accessor")]:
+                    parts = base_name.rsplit(".", 1)
+                    parent_name = parts[0]
+                    name = parts[1]
+                else:
+                    name = base_name
+                
+                create_container = None
+                if parent_name:
+                    # Find parent in cache or by name
+                    create_container = find_object_by_name(parent_name, name_map)
+                
+                if not create_container:
+                     # Use folder path
+                     if len(path_parts) > 1:
+                         logical_folder_path = "src/" + "/".join(path_parts[:-1])
+                         if logical_folder_path in folder_cache:
+                             create_container = folder_cache[logical_folder_path]
+                         else:
+                             codesys_path = "/".join(path_parts[:-1])
+                             create_container = ensure_folder_path(codesys_path)
+                             folder_cache[logical_folder_path] = create_container
+                     else:
+                         create_container = app_container
 
                 if not create_container:
-                    print("  Error: Could not determine container for " + op["rel_path"])
-                    new_stats["failed"] += 1
-                    return
-
-                obj = None
+                    log_error("Could not find container for " + rel_path)
+                    failed_count += 1
+                    continue
+                
                 try:
-                    # Check existing
-                    children = create_container.get_children()
-                    for child in children:
-                        if child.get_name().lower() == obj_name.lower():
-                            obj = child
-                            break
-                    
-                    if not obj:
-                        if op["type_guid"] == TYPE_GUIDS["gvl"] and hasattr(create_container, "create_gvl"):
-                            obj = create_container.create_gvl(obj_name)
-                        elif op["type_guid"] == TYPE_GUIDS["dut"] and hasattr(create_container, "create_dut"):
-                            obj = create_container.create_dut(obj_name)
-                        elif op["type_guid"] == TYPE_GUIDS["method"] and hasattr(create_container, "create_method"):
-                            obj = create_container.create_method(obj_name)
-                        elif op["type_guid"] == TYPE_GUIDS["property"] and hasattr(create_container, "create_property"):
-                            obj = create_container.create_property(obj_name)
-                        elif op["type_guid"] == TYPE_GUIDS["action"] and hasattr(create_container, "create_action"):
-                            obj = create_container.create_action(obj_name)
-                        elif op["type_guid"] == TYPE_GUIDS["property_accessor"]:
-                            if obj_name.lower() == "get" and hasattr(create_container, "create_get_accessor"):
-                                obj = create_container.create_get_accessor()
-                            elif obj_name.lower() == "set" and hasattr(create_container, "create_set_accessor"):
-                                obj = create_container.create_set_accessor()
-                        elif hasattr(create_container, "create_pou"):
-                             # Default to Program for general POU creation if type is unknown or pou
-                             p_type = PouType.Program
-                             obj = create_container.create_pou(obj_name, p_type)
-                        elif hasattr(create_container, "create_child"):
-                             obj = create_container.create_child(obj_name, op["type_guid"])
-                    
-                    if obj:
-                        # Special handling for properties with combined GET/SET
-                        if op["type_guid"] == TYPE_GUIDS["property"]:
-                            # Read and parse property file
-                            try:
-                                with codecs.open(op["file_path"], "r", "utf-8") as f:
-                                    content = f.read()
-                                
-                                declaration, get_impl, set_impl = parse_property_content(content)
-                                
-                                # Update property declaration
-                                if declaration:
-                                    update_object_code(obj, declaration, None)
-                                
-                                # Create/update GET accessor
-                                if get_impl:
-                                    get_obj = None
-                                    try:
-                                        prop_children = obj.get_children()
-                                        for child in prop_children:
-                                            if child.get_name().lower() == "get":
-                                                get_obj = child
-                                                break
-                                    except:
-                                        pass
-                                    
-                                    if not get_obj and hasattr(obj, "create_get_accessor"):
-                                        try:
-                                            get_obj = obj.create_get_accessor()
-                                        except:
-                                            pass
-                                    
-                                    if get_obj:
-                                        # Parse the combined GET content back into declaration and implementation
-                                        # get_impl is a string with format: "VAR\n...\nEND_VAR\n\n// === IMPLEMENTATION ===\n<code>"
-                                        get_decl = None
-                                        get_code = None
-                                        if IMPL_MARKER in get_impl:
-                                            parts = get_impl.split(IMPL_MARKER, 1)
-                                            get_decl = parts[0].strip() if parts[0] else None
-                                            get_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
-                                        else:
-                                            # No implementation, only declaration (VAR section)
-                                            get_decl = get_impl.strip() if get_impl else None
-                                        
-                                        update_object_code(get_obj, get_decl, get_code)
-                                
-                                # Create/update SET accessor
-                                if set_impl:
-                                    set_obj = None
-                                    try:
-                                        prop_children = obj.get_children()
-                                        for child in prop_children:
-                                            if child.get_name().lower() == "set":
-                                                set_obj = child
-                                                break
-                                    except:
-                                        pass
-                                    
-                                    if not set_obj and hasattr(obj, "create_set_accessor"):
-                                        try:
-                                            set_obj = obj.create_set_accessor()
-                                        except:
-                                            pass
-                                    
-                                    if set_obj:
-                                        # Parse the combined SET content back into declaration and implementation
-                                        # set_impl is a string with format: "VAR\n...\nEND_VAR\n\n// === IMPLEMENTATION ===\n<code>"
-                                        set_decl = None
-                                        set_code = None
-                                        if IMPL_MARKER in set_impl:
-                                            parts = set_impl.split(IMPL_MARKER, 1)
-                                            set_decl = parts[0].strip() if parts[0] else None
-                                            set_code = parts[1].strip() if len(parts) > 1 and parts[1] else None
-                                        else:
-                                            # No implementation, only declaration (VAR section)
-                                            set_decl = set_impl.strip() if set_impl else None
-                                        
-                                        update_object_code(set_obj, set_decl, set_code)
-                                
-                                new_stats["updated"] += 1
-                                new_stats["created"] += 1
-                                
-                                objects_meta[op["rel_path"]] = {
-                                   "guid": safe_str(obj.guid), 
-                                   "type": op["type_guid"],
-                                   "name": obj_name,
-                                   "parent": safe_str(obj.parent.get_name()) if obj.parent else "N/A",
-                                   "content_hash": calculate_hash(content)
-                                }
-                                if obj_name not in name_map: name_map[obj_name] = []
-                                name_map[obj_name].append(obj)
-                            except Exception as e:
-                                print("  Error processing property file: " + safe_str(e))
-                                new_stats["failed"] += 1
-                        else:
-                            # Normal object (not property)
-                            if update_object_code(obj, op["declaration"], op["implementation"]):
-                                 new_stats["updated"] += 1
-                                 new_stats["created"] += 1
-                                 
-                                 full_content = format_st_content(op["declaration"], op["implementation"])
-                                 objects_meta[op["rel_path"]] = {
-                                    "guid": safe_str(obj.guid), 
-                                    "type": op["type_guid"],  # FIX: Use op["type_guid"] instead of type_guid
-                                    "name": obj_name,
-                                    "parent": safe_str(obj.parent.get_name()) if obj.parent else "N/A",
-                                    "content_hash": calculate_hash(full_content)
-                                 }
-                                 if obj_name not in name_map: name_map[obj_name] = []
-                                 name_map[obj_name].append(obj)
+                    res = manager.create(create_container, name, file_path, type_guid)
+                    if res:
+                        created_count += 1
+                        # Update metadata and cache
+                        objects_meta[rel_path] = {
+                            "guid": safe_str(res.guid),
+                            "type": safe_str(res.type),
+                            "name": res.get_name(),
+                            "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
+                            "content_hash": calculate_hash(open(file_path, "rb").read().decode('utf-8')) if not rel_path.endswith(".xml") else "",
+                            "last_modified": safe_str(os.path.getmtime(file_path))
+                        }
+                        if res.get_name() not in name_map: name_map[res.get_name()] = []
+                        name_map[res.get_name()].append(res)
                     else:
-                        new_stats["failed"] += 1
-                except:
-                    new_stats["failed"] += 1
-
-            for op in parent_ops: process_op(op)
-            for op in child_ops: process_op(op)
-            
-            updated_count += new_stats["updated"]
-            created_count += new_stats["created"]
-            failed_count += new_stats["failed"]
-            skipped_count += new_stats["skipped"]
+                        failed_count += 1
+                except Exception as e:
+                    log_error("Failed to create " + rel_path + ": " + safe_str(e))
+                    failed_count += 1
         
         if updated_count > 0 or created_count > 0 or (deleted_from_ide and len(deleted_from_ide) > 0):
             save_metadata(import_dir, metadata)

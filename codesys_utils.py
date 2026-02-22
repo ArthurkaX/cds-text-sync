@@ -42,7 +42,7 @@ class Logger:
         # Try to find current project base_dir from properties
         # This can "upgrade" a non-final path to a final one
         try:
-            import projects
+            # In CODESYS, 'projects' is a global object provided by the environment
             if projects.primary:
                 info = projects.primary.get_project_info()
                 props = info.values if hasattr(info, "values") else info
@@ -105,6 +105,46 @@ def log_error(message, critical=False):
 
 # --- Utility Functions ---
 
+def resolve_projects(projects_obj=None, caller_globals=None):
+    """Resolve the CODESYS 'projects' global object.
+    
+    Tries multiple strategies:
+    1. Use the explicitly passed object
+    2. Check caller's globals
+    3. Check __main__ module
+    4. Search sys.modules for an object with .primary attribute
+    
+    Returns the projects object or None.
+    """
+    if projects_obj is not None:
+        return projects_obj
+    
+    # Strategy 1: caller globals
+    if caller_globals and "projects" in caller_globals:
+        return caller_globals["projects"]
+    
+    # Strategy 2: __main__
+    try:
+        import __main__
+        obj = getattr(__main__, "projects", None)
+        if obj is not None:
+            return obj
+    except:
+        pass
+    
+    # Strategy 3: sys.modules scan
+    try:
+        # sys is already imported at top level
+        for module in sys.modules.values():
+            if hasattr(module, "projects"):
+                candidate = getattr(module, "projects")
+                if hasattr(candidate, "primary"):
+                    return candidate
+    except:
+        pass
+    
+    return None
+
 
 def calculate_hash(content):
     """Calculate CRC32 checksum of string content (faster than SHA256)"""
@@ -129,6 +169,56 @@ def safe_str(value):
         return str(value)
     except:
         return "N/A"
+
+
+def determine_object_type(content):
+    """Determine CODESYS object type from ST content"""
+    import re
+    # Remove comments and pragmas to avoid false matches
+    
+    # 1. Remove (* ... *) multiline comments
+    content = re.sub(r"\(\*[\s\S]*?\*\)", "", content)
+    
+    # 2. Remove { ... } pragmas/attributes
+    content = re.sub(r"\{[\s\S]*?\}", "", content)
+    
+    # 3. Remove // ... single line comments
+    content = re.sub(r"//.*", "", content)
+    
+    content = content.strip()
+    lines = content.splitlines()
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check keywords
+        parts = line.split()
+        if not parts:
+            continue
+        word = parts[0].upper()
+        
+        if word == "PROGRAM":
+            return TYPE_GUIDS["pou"]
+        if word == "FUNCTION_BLOCK":
+            return TYPE_GUIDS["pou"]
+        if word == "FUNCTION":
+            return TYPE_GUIDS["pou"]
+        if word == "VAR_GLOBAL":
+            return TYPE_GUIDS["gvl"]
+        if word == "TYPE":
+            return TYPE_GUIDS["dut"]
+        if word == "INTERFACE":
+            return TYPE_GUIDS["itf"]
+        if word == "METHOD":
+            return TYPE_GUIDS["method"]
+        if word == "PROPERTY":
+            return TYPE_GUIDS["property"]
+        if word == "ACTION":
+            return TYPE_GUIDS["action"]
+        
+    return None
 
 
 def clean_filename(name):
@@ -995,6 +1085,83 @@ def build_object_cache(project=None):
             continue
     
     return guid_map, name_map
+
+
+def find_application_recursive(obj, depth=0):
+    """Recursively search for Application or PLC Logic container"""
+    if depth > 5:  # Limit recursion depth
+        return None
+        
+    try:
+        children = obj.get_children()
+        for child in children:
+            try:
+                child_type = safe_str(child.type)
+                if child_type == TYPE_GUIDS.get("application"):
+                    return child
+                if child_type == TYPE_GUIDS.get("device") or child_type == TYPE_GUIDS.get("plc_logic"):
+                    result = find_application_recursive(child, depth + 1)
+                    if result:
+                        return result
+            except:
+                continue
+    except:
+        pass
+    return None
+
+def ensure_folder_path(path_str, project):
+    """
+    Ensure folder structure exists in CODESYS project.
+    path_str: relative path string e.g. "Folder/SubFolder"
+    Returns the parent object (folder) or None if failed.
+    """
+    if not path_str or path_str == "." or path_str == "src":
+        return find_application_recursive(project)
+        
+    # Remove 'src/' prefix if present
+    if path_str.startswith("src/"):
+        path_str = path_str[4:]
+    elif path_str.startswith("src\\"):
+        path_str = path_str[4:]
+        
+    parts = path_str.replace("\\", "/").split("/")
+    current_obj = find_application_recursive(project)
+    if not current_obj:
+        current_obj = project
+    
+    for part in parts:
+        if not part: continue
+        
+        found = None
+        try:
+            children = current_obj.get_children()
+            for child in children:
+                if child.get_name().lower() == part.lower():
+                    # Check if it's a folder or device
+                    c_type = safe_str(child.type)
+                    if c_type == TYPE_GUIDS.get("folder") or c_type == TYPE_GUIDS.get("device"):
+                        found = child
+                        break
+        except:
+            pass
+            
+        if not found:
+            try:
+                if hasattr(current_obj, "create_folder"):
+                    found = current_obj.create_folder(part)
+                elif hasattr(current_obj, "create_child"):
+                    # Use folder GUID from constants
+                    found = current_obj.create_child(part, TYPE_GUIDS.get("folder", "738bea1e-99bb-4f04-90bb-a7a567e74e3a"))
+            except Exception as e:
+                log_error("Failed to create folder '" + part + "': " + safe_str(e))
+                return None
+        
+        if found:
+            current_obj = found
+        else:
+            return None
+            
+    return current_obj
 
 
 def find_object_by_guid(guid, guid_map):

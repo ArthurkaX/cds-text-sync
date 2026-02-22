@@ -31,41 +31,53 @@ if not hasattr(sys, "_codesys_daemon"):
         "projects": None  # Will be set by Start_Daemon.py wrapper
     }
 
-# Try to capture CODESYS global objects at runtime
-# This function is called lazily when actions are executed
-def try_capture_projects():
-    """Attempt to capture the projects object using multiple strategies"""
+def _get_captured_projects():
+    """Resolve projects object using shared logic."""
+    from codesys_utils import resolve_projects
+    proj = resolve_projects(sys._codesys_daemon.get("projects"), globals())
+    if proj:
+        sys._codesys_daemon["projects"] = proj
+    return proj
+
+def _run_script_in_namespace(script_name, silent=True):
+    """Refactored helper to execute scripts in a clean namespace with CODESYS globals."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_path = os.path.join(script_dir, script_name)
     
-    # Strategy 1: Check if already captured by wrapper
-    if sys._codesys_daemon.get("projects"):
-        return sys._codesys_daemon["projects"]
-    
-    # Strategy 2: Check __main__ module's globals
+    if not os.path.exists(script_path):
+        print("Error: Script not found: " + script_path)
+        return
+        
     try:
-        import __main__
-        if hasattr(__main__, 'projects'):
-            return __main__.projects
-    except:
-        pass
-    
-    # Strategy 3: Search sys.modules for a module with 'projects'
-    try:
-        for module_name, module in sys.modules.items():
-            if hasattr(module, 'projects'):
-                proj = getattr(module, 'projects')
-                # Verify it's the right type (has .primary attribute)
-                if hasattr(proj, 'primary'):
-                    return proj
-    except:
-        pass
-    
-    return None
+        # Resolve projects/system objects
+        projects_obj = _get_captured_projects()
+        system_obj = globals().get("system")
+        
+        # Read and execute
+        with open(script_path, "r") as f:
+            script_code = f.read()
+            
+        script_globals = globals().copy()
+        script_globals["__name__"] = "__main__"
+        script_globals["__file__"] = script_path
+        script_globals["SILENT"] = silent
+        
+        if projects_obj: script_globals["projects"] = projects_obj
+        if system_obj: script_globals["system"] = system_obj
+            
+        exec(script_code, script_globals)
+    except Exception as e:
+        print("Execution error in " + script_name + ": " + str(e))
+        try:
+            from codesys_ui import show_toast
+            show_toast(script_name + " Failed", str(e))
+        except: pass
 
 # --- Quick Action Dashboard Form ---
 class QuickActionForm(Form):
     def __init__(self):
         self.Text = "CODESYS Quick Actions"
-        self.FormBorderStyle = FormBorderStyle.None
+        self.FormBorderStyle = getattr(FormBorderStyle, "None")
         self.StartPosition = FormStartPosition.CenterScreen
         self.Size = Size(350, 280)
         self.BackColor = Color.FromArgb(30, 30, 30) # Dark Theme
@@ -177,12 +189,7 @@ class QuickActionForm(Form):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         
         # Try to resolve projects/system objects for the script namespace
-        projects_obj = sys._codesys_daemon.get("projects")
-        if not projects_obj:
-            projects_obj = try_capture_projects()
-            if projects_obj:
-                sys._codesys_daemon["projects"] = projects_obj
-        
+        projects_obj = _get_captured_projects()
         system_obj = globals().get("system")
         
         if action == "EXPORT_SRC":
@@ -194,92 +201,23 @@ class QuickActionForm(Form):
             set_project_prop("cds-sync-export-xml", False)
             set_project_prop("cds-sync-backup-binary", False)
             
-            # Execute Project_export.py in current namespace to preserve CODESYS globals
-            export_script = os.path.join(script_dir, "Project_export.py")
             try:
-                # Read the script
-                with open(export_script, "r") as f:
-                    script_code = f.read()
-                
-                # Create a namespace with the necessary globals
-                script_globals = globals().copy()
-                script_globals["__name__"] = "__main__"
-                script_globals["__file__"] = export_script
-                script_globals["SILENT"] = True # Force silent mode
-                
-                # Explicitly inject CODESYS objects if we found them
-                if projects_obj:
-                    script_globals["projects"] = projects_obj
-                if system_obj:
-                    script_globals["system"] = system_obj
-                
-                # Execute in that namespace
-                exec(script_code, script_globals)
-                
-            except Exception as e:
-                print("Export error: " + str(e))
-                try:
-                    from codesys_ui import show_toast
-                    show_toast("Export Failed", str(e))
-                except:
-                    pass
+                _run_script_in_namespace("Project_export.py", silent=True)
             finally:
                 # Restore original settings
                 set_project_prop("cds-sync-export-xml", old_xml)
                 set_project_prop("cds-sync-backup-binary", old_backup)
             
         elif action == "IMPORT_SRC":
-            # Execute Project_import.py in current namespace
-            import_script = os.path.join(script_dir, "Project_import.py")
-            try:
-                with open(import_script, "r") as f:
-                    script_code = f.read()
-                
-                script_globals = globals().copy()
-                script_globals["__name__"] = "__main__"
-                script_globals["__file__"] = import_script
-                script_globals["SILENT"] = True # Force silent mode
-                
-                # Explicitly inject CODESYS objects if we found them
-                if projects_obj:
-                    script_globals["projects"] = projects_obj
-                if system_obj:
-                    script_globals["system"] = system_obj
-                
-                exec(script_code, script_globals)
-                
-            except Exception as e:
-                print("Import error: " + str(e))
-                try:
-                    from codesys_ui import show_toast
-                    show_toast("Import Failed", str(e))
-                except:
-                    pass
+            _run_script_in_namespace("Project_import.py", silent=True)
             
         elif action == "EXPORT_ALL":
             # Force XML ON for this run
             from codesys_utils import set_project_prop, get_project_prop
-            
             old_xml = get_project_prop("cds-sync-export-xml", False)
             set_project_prop("cds-sync-export-xml", True)
-            
             try:
-                export_script = os.path.join(script_dir, "Project_export.py")
-                with open(export_script, "r") as f:
-                    script_code = f.read()
-                
-                script_globals = globals().copy()
-                script_globals["__name__"] = "__main__"
-                script_globals["__file__"] = export_script
-                script_globals["SILENT"] = True # Force silent mode
-                
-                # Explicitly inject CODESYS objects if we found them
-                if projects_obj:
-                    script_globals["projects"] = projects_obj
-                if system_obj:
-                    script_globals["system"] = system_obj
-                
-                exec(script_code, script_globals)
+                _run_script_in_namespace("Project_export.py", silent=True)
             finally:
                 set_project_prop("cds-sync-export-xml", old_xml)
 
@@ -287,8 +225,7 @@ class QuickActionForm(Form):
              from codesys_utils import backup_project_binary
              print("Backing up .project file...")
              
-             # Get projects from globals (should be available in Daemon's namespace)
-             projects_obj = globals().get("projects")
+             projects_obj = _get_captured_projects()
              if not projects_obj:
                  print("Error: 'projects' not available")
                  return
@@ -300,58 +237,10 @@ class QuickActionForm(Form):
              except: pass
 
         elif action == "BUILD_PROJ":
-            # Execute Project_Build.py in current namespace
-            build_script = os.path.join(script_dir, "Project_Build.py")
-            try:
-                with open(build_script, "r") as f:
-                    script_code = f.read()
-                
-                script_globals = globals().copy()
-                script_globals["__name__"] = "__main__"
-                script_globals["__file__"] = build_script
-                script_globals["SILENT"] = True
-                
-                if projects_obj:
-                    script_globals["projects"] = projects_obj
-                if system_obj:
-                    script_globals["system"] = system_obj
-                
-                exec(script_code, script_globals)
-                
-            except Exception as e:
-                print("Build error: " + str(e))
-                try:
-                    from codesys_ui import show_toast
-                    show_toast("Build Failed", str(e))
-                except:
-                    pass
+            _run_script_in_namespace("Project_Build.py", silent=True)
 
         elif action == "COMPARE_PROJ":
-            # Execute Project_compare.py in current namespace
-            compare_script = os.path.join(script_dir, "Project_compare.py")
-            try:
-                with open(compare_script, "r") as f:
-                    script_code = f.read()
-                
-                script_globals = globals().copy()
-                script_globals["__name__"] = "__main__"
-                script_globals["__file__"] = compare_script
-                script_globals["SILENT"] = True
-                
-                if projects_obj:
-                    script_globals["projects"] = projects_obj
-                if system_obj:
-                    script_globals["system"] = system_obj
-                
-                exec(script_code, script_globals)
-                
-            except Exception as e:
-                print("Compare error: " + str(e))
-                try:
-                    from codesys_ui import show_toast
-                    show_toast("Compare Failed", str(e))
-                except:
-                    pass
+            _run_script_in_namespace("Project_compare.py", silent=True)
 
 
 # --- Hotkey Polling Logic ---
