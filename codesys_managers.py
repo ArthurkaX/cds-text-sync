@@ -64,6 +64,46 @@ def get_task_for_write(obj, project):
         log_warning("Could not extract TaskForWrite for " + safe_str(obj.get_name()) + ": " + safe_str(e))
         return None, None
 
+def is_nvl(obj):
+    """
+    Detect if a GVL object is actually a Network Variable List (NVL).
+    
+    CODESYS reports NVLs with the same type GUID as standard GVLs.
+    The only way to distinguish them is by exporting to native XML 
+    and checking for NVL-specific elements like ListIdentifier or NetworkType.
+    
+    Returns True if the object is an NVL, False otherwise.
+    """
+    import tempfile, re
+    try:
+        projects_obj = resolve_projects()
+        if not projects_obj or not projects_obj.primary:
+            return False
+            
+        tmp_path = os.path.join(tempfile.gettempdir(), "nvl_check_%s.xml" % safe_str(obj.guid)[:8])
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        projects_obj.primary.export_native([obj], tmp_path, recursive=False)
+
+        if not os.path.exists(tmp_path):
+            return False
+
+        import codecs as _codecs
+        with _codecs.open(tmp_path, "r", "utf-8") as xf:
+            xml_content = xf.read()
+        os.remove(tmp_path)
+
+        # NVL XML contains ListIdentifier and/or NetworkType elements
+        if 'ListIdentifier' in xml_content or 'NetworkType' in xml_content:
+            return True
+        
+        return False
+
+    except Exception as e:
+        log_warning("Could not check NVL status for " + safe_str(obj.get_name()) + ": " + safe_str(e))
+        return False
+
 def get_object_path(obj, stop_at_application=True):
     """
     Build the path from object to Application root.

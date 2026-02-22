@@ -18,7 +18,7 @@ from codesys_utils import (
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
-    get_object_path, collect_property_accessors
+    get_object_path, collect_property_accessors, is_nvl
 )
 
 # Shared constants and utilities imported from modules
@@ -344,13 +344,24 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 continue
             
             # Select manager
-            if obj_type in managers:
-                manager = managers[obj_type]
-            elif obj_type in XML_TYPES:
-                if not metadata.get("export_xml", False) and obj_type != TYPE_GUIDS["task_config"]:
+            effective_type = obj_type
+            
+            # Special case: GVLs that are actually NVLs should be treated as native XML
+            if obj_type == TYPE_GUIDS["gvl"]:
+                try:
+                    if is_nvl(obj):
+                        effective_type = TYPE_GUIDS["nvl_sender"]
+                        log_info("Detected NVL: " + safe_str(obj.get_name()) + " -> switching to XML export")
+                except:
+                    pass
+
+            if effective_type in managers:
+                manager = managers[effective_type]
+            elif effective_type in XML_TYPES:
+                if not metadata.get("export_xml", False) and effective_type not in [TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]]:
                     continue
                 manager = managers["native"]
-            elif obj_type in EXPORTABLE_TYPES:
+            elif effective_type in EXPORTABLE_TYPES:
                 manager = managers["default"]
             else:
                 continue

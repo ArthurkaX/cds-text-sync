@@ -109,6 +109,8 @@ XML_TYPES = [
     TYPE_GUIDS["visu_style"],
     TYPE_GUIDS["type_21f"],
     TYPE_GUIDS["task_local_gvl"],
+    TYPE_GUIDS["nvl_sender"],
+    TYPE_GUIDS["nvl_receiver"],
 ]
 
 # Implementation section marker used in ST files
