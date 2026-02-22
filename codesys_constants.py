@@ -39,6 +39,7 @@ TYPE_GUIDS = {
     "alarm_group": "413e2a7d-adb1-4d2c-be29-6ae6e4fab820",   # Alarm Group/Object
     "task_call": "6f9da924-d2e2-4467-9c9e-5e26bc1c1111",     # Task Call
     "symbol_config": "21d4fe94-4123-4e23-9091-ead220afbd1f", # Symbol Configuration
+    "target_visu": "bc63f5fa-d286-4786-994e-7b27e4f97bd5",   # Target Visualization
     "image": "9001d745-b9c5-4d77-90b7-b29c3f77a23b",         # Image entry in ImagePool
     "alarm_storage": "5bd56248-46fc-4108-be33-ed01ad87d070", # Alarm Storage
     "trace": "f7aa3620-8073-4c91-b6ec-86ed9eb60303",         # Trace
@@ -73,6 +74,7 @@ EXPORTABLE_TYPES = [
     TYPE_GUIDS["visu"],            # Authorization for Visualization export
     TYPE_GUIDS["visu_manager"],
     TYPE_GUIDS["web_visu"],
+    TYPE_GUIDS["target_visu"],
     TYPE_GUIDS["alarm_config"],
     TYPE_GUIDS["alarm_group"],
     TYPE_GUIDS["alarm_storage"],
@@ -107,6 +109,7 @@ XML_TYPES = [
     TYPE_GUIDS["alarm_group"],
     TYPE_GUIDS["alarm_storage"],
     TYPE_GUIDS["web_visu"],
+    TYPE_GUIDS["target_visu"],
     TYPE_GUIDS["visu_manager"],
     TYPE_GUIDS["task_config"],
     TYPE_GUIDS["task"],
