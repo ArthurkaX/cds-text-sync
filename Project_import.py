@@ -299,12 +299,15 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 continue
             
             # Select manager
-            manager = import_managers.get(obj_type)
-            if not manager:
-                if any(obj_type == guid for guid in XML_TYPES):
-                    manager = import_managers["native"]
-                else:
-                    manager = import_managers["default"]
+            if rel_path.endswith(".xml"):
+                manager = import_managers["native"]
+            else:
+                manager = import_managers.get(obj_type)
+                if not manager:
+                    if any(obj_type == guid for guid in XML_TYPES):
+                        manager = import_managers["native"]
+                    else:
+                        manager = import_managers["default"]
             
             if isinstance(manager, (NativeManager, ConfigManager)):
                 try:

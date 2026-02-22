@@ -341,7 +341,7 @@ class FolderManager(ObjectManager):
         
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
-            "type": safe_str(obj.type),
+            "type": context.get('effective_type', safe_str(obj.type)),
             "name": obj.get_name(),
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
             "content_hash": ""
@@ -431,7 +431,7 @@ class POUManager(ObjectManager):
         rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
-            "type": obj_type,
+            "type": context.get('effective_type', obj_type),
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
             "content_hash": content_hash,
@@ -563,7 +563,7 @@ class PropertyManager(POUManager):
                     rel_path = "/".join(full_path_parts + [file_name])
                     context['metadata']['objects'][rel_path] = {
                         "guid": obj_guid,
-                        "type": safe_str(obj.type),
+                        "type": context.get('effective_type', safe_str(obj.type)),
                         "name": obj_name,
                         "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
                         "content_hash": content_hash,
@@ -584,7 +584,7 @@ class PropertyManager(POUManager):
         rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": obj_guid,
-            "type": safe_str(obj.type),
+            "type": context.get('effective_type', safe_str(obj.type)),
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
             "content_hash": content_hash,
@@ -752,7 +752,7 @@ class NativeManager(ObjectManager):
             rel_path = "/".join(full_path_parts + [file_name])
             context['metadata']['objects'][rel_path] = {
                 "guid": safe_str(obj.guid),
-                "type": safe_str(obj.type),
+                "type": context.get('effective_type', safe_str(obj.type)),
                 "name": obj_name,
                 "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
                 "content_hash": new_hash,
@@ -772,7 +772,7 @@ class NativeManager(ObjectManager):
         rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
-            "type": safe_str(obj.type),
+            "type": context.get('effective_type', safe_str(obj.type)),
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
             "content_hash": new_hash,
@@ -888,7 +888,7 @@ class ConfigManager(NativeManager):
         rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
-            "type": safe_str(obj.type),
+            "type": context.get('effective_type', safe_str(obj.type)),
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
             "content_hash": new_hash,

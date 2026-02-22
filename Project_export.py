@@ -307,6 +307,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
             else:
                 continue
                 
+            context['effective_type'] = effective_type
             result = manager.export(obj, context)
             if result == "new":
                 exported_new += 1
