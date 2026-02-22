@@ -245,8 +245,6 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 continue
 
             obj_type = obj_info.get("type")
-            if obj_type == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
-                continue
             
             # Skip property accessors - they are handled by PropertyManager
             if obj_type == TYPE_GUIDS.get("property_accessor"):
@@ -265,8 +263,16 @@ def import_project(import_dir, projects_obj=None, silent=False):
             
             if obj is None:
                 # Object not found - will recreate
-                if rel_path not in [nf[0] for nf in new_files]:
-                    new_files.append((rel_path, file_path))
+                if obj_type == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
+                    if rel_path not in new_folders:
+                        new_folders.append(rel_path)
+                else:
+                    if rel_path not in [nf[0] for nf in new_files]:
+                        new_files.append((rel_path, file_path))
+                continue
+
+            # If object exists and is a folder, nothing left to do
+            if obj_type == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
                 continue
             
             # Select manager

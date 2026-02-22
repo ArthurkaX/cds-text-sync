@@ -37,6 +37,7 @@ TYPE_GUIDS = {
     "web_visu": "0fdbf158-1ae0-47d9-9269-cd84be308e9d",      # WebVisu
     "alarm_config": "c0a56ce5-14a3-4757-ac56-3eab44c974b3",  # Alarm Configuration
     "alarm_group": "413e2a7d-adb1-4d2c-be29-6ae6e4fab820",   # Alarm Group/Object
+    "task_call": "6f9da924-d2e2-4467-9c9e-5e26bc1c1111",     # Task Call
     "symbol_config": "21d4fe94-4123-4e23-9091-ead220afbd1f", # Symbol Configuration
     "image": "9001d745-b9c5-4d77-90b7-b29c3f77a23b",         # Image entry in ImagePool
     "alarm_storage": "5bd56248-46fc-4108-be33-ed01ad87d070", # Alarm Storage
