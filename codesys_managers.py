@@ -615,11 +615,40 @@ class NativeManager(ObjectManager):
         }
         return True
 
+    def update(self, obj, file_path, obj_info):
+        obj_name = obj_info.get("name", "Unknown") if obj_info else "Unknown"
+        try:
+            # Try parent-level import first (more precise)
+            try:
+                parent = obj.parent
+            except:
+                parent = None
+            
+            if parent and hasattr(parent, "import_native"):
+                log_info("Updating native object " + obj_name + " via parent import.")
+                parent.import_native(file_path)
+                return True
+            else:
+                # Fallback to project-level import (object ref may be stale)
+                log_info("Updating native object " + obj_name + " via project import.")
+                projects_obj = resolve_projects()
+                if projects_obj and projects_obj.primary:
+                    projects_obj.primary.import_native(file_path)
+                    return True
+                return False
+        except Exception as e:
+            log_error("Native update failed for " + obj_name + ": " + safe_str(e))
+            return False
+
     def create(self, container, name, file_path, type_guid):
         try:
             # CODESYS import_native imports into the project/container
-            # 'projects' is a global object
-            projects.primary.import_native(file_path, filter=None)
+            # If container is provided, use its import_native method
+            if container and hasattr(container, "import_native"):
+                container.import_native(file_path)
+            else:
+                # Fallback to project-level import
+                projects.primary.import_native(file_path)
             
             # Find newly created object
             if container:
@@ -665,3 +694,6 @@ class ConfigManager(NativeManager):
     
     def create(self, container, name, file_path, type_guid):
         return super(ConfigManager, self).create(container, name, file_path, type_guid)
+
+    def update(self, obj, file_path, obj_info):
+        return super(ConfigManager, self).update(obj, file_path, obj_info)

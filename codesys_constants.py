@@ -107,6 +107,7 @@ XML_TYPES = [
     TYPE_GUIDS["softmotion_pool"],
     TYPE_GUIDS["visu_style"],
     TYPE_GUIDS["type_21f"],
+    TYPE_GUIDS["task_local_gvl"],
 ]
 
 # Implementation section marker used in ST files

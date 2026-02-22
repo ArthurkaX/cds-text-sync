@@ -596,14 +596,6 @@ def format_st_content(declaration, implementation):
 def format_property_content(declaration, get_impl, set_impl):
     """
     Format property file content with GET and SET accessors combined.
-    
-    Args:
-        declaration: Property declaration (e.g., "PROPERTY PUBLIC Test_prop : BOOL")
-        get_impl: GET accessor implementation
-        set_impl: SET accessor implementation
-    
-    Returns:
-        Formatted content string with markers separating sections
     """
     content = []
     
@@ -633,6 +625,58 @@ def format_property_content(declaration, get_impl, set_impl):
         content.append(set_content)
     
     return "\n".join(content)
+
+
+def merge_native_xmls(file_paths, output_path):
+    """
+    Merge multiple CODESYS .xml (Native Export) files into one.
+    This allows importing them in a single batch, showing only one dialog.
+    """
+    if not file_paths: return False
+    
+    header = None
+    footer = None
+    payloads = []
+    
+    for path in file_paths:
+        try:
+            if not os.path.exists(path): continue
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Find the EntryList container
+            start_marker = '<List2 Name="EntryList">'
+            end_marker = '</List2>'
+            
+            s_idx = content.find(start_marker)
+            e_idx = content.rfind(end_marker)
+            
+            if s_idx == -1 or e_idx == -1:
+                log_warning("Could not find EntryList in " + path + ". Skipping merge.")
+                continue
+                
+            if header is None:
+                # Take the file structure from the first file
+                header = content[:s_idx + len(start_marker)]
+                footer = content[e_idx:]
+            
+            # Extract the actual object(s) inside the EntryList
+            payload = content[s_idx + len(start_marker) : e_idx]
+            payloads.append(payload)
+        except Exception as e:
+            log_error("Failed to read XML for merge: " + str(e))
+            
+    if not payloads: return False
+    
+    # Reassemble: Header + all payloads + Footer
+    merged = header + "\n".join(payloads) + footer
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(merged)
+        return True
+    except Exception as e:
+        log_error("Failed to write merged XML: " + str(e))
+        return False
 
 
 def parse_property_content(content):
@@ -969,9 +1013,45 @@ def find_object_by_name(name, name_map, parent_name=None):
                         return obj
             except:
                 continue
+        # Strict matching: if parent_name was provided but not found, return None
+        return None
     
-    # Return first match if no parent filter or no parent match
+    # Return first match ONLY if no parent filter was requested
     return found[0]
+
+
+def find_object_by_path(rel_path, project):
+    """
+    Find a CODESYS object using its hierarchical path.
+    Example rel_path: "PLC/Plc Logic/ST_Application/02_Object_GVL/_02_TaskLocalGVL.xml"
+    """
+    if not rel_path: return None
+    
+    # Clean up path
+    path_str = rel_path.replace("\\", "/")
+    if path_str.startswith("src/"): path_str = path_str[4:]
+    
+    # Strip extension for lookup
+    root, ext = os.path.splitext(path_str)
+    parts = root.split("/")
+    
+    current_obj = project
+    for part in parts:
+        if not part: continue
+        found = None
+        try:
+            for child in current_obj.get_children():
+                if child.get_name().lower() == part.lower():
+                    found = child
+                    break
+        except: break
+        
+        if found:
+            current_obj = found
+        else:
+            return None
+            
+    return current_obj
 
 
 def backup_project_binary(export_dir, projects_obj=None, timestamped=False):

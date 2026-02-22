@@ -7,8 +7,8 @@ from codesys_constants import (
 )
 from codesys_utils import (
     safe_str, parse_st_file, build_object_cache, 
-    find_object_by_guid, find_object_by_name, load_base_dir,
-    load_metadata,
+    find_object_by_guid, find_object_by_name, find_object_by_path, load_base_dir,
+    load_metadata, save_metadata, merge_native_xmls,
     format_st_content, log_info, log_warning, log_error, MetadataLock,
     init_logging, get_project_prop, backup_project_binary,
     parse_property_content, format_property_content,
@@ -232,6 +232,10 @@ def import_project(import_dir, projects_obj=None, silent=False):
         deleted_count = len(deleted_from_ide) if deleted_from_ide else 0
         folder_cache = {} # Shared cache for folder resolution during this import
         
+        # Update/Create batches for Native imports to reduce dialogs
+        # Format: { container_obj: [(rel_path, file_path, name, type_guid, is_new)] }
+        native_batches = {}
+        
         # Update existing objects
         for rel_path, obj_info in objects_meta.items():
             file_path = os.path.join(import_dir, rel_path.replace("/", os.sep))
@@ -255,6 +259,10 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 obj = find_object_by_name(obj_info["name"], name_map, obj_info.get("parent"))
             
             if obj is None:
+                # Final fallback: try to find by hierarchical path
+                obj = find_object_by_path(rel_path, projects.primary)
+            
+            if obj is None:
                 # Object not found - will recreate
                 if rel_path not in [nf[0] for nf in new_files]:
                     new_files.append((rel_path, file_path))
@@ -268,6 +276,22 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 else:
                     manager = import_managers["default"]
             
+            if isinstance(manager, (NativeManager, ConfigManager)):
+                try:
+                    # Collect for batch processing
+                    try:
+                        container = obj.parent
+                    except:
+                        container = projects.primary
+                        
+                    if container not in native_batches: native_batches[container] = []
+                    native_batches[container].append((rel_path, file_path, obj_info.get("name", "Unknown"), obj_type, False))
+                    continue
+                except Exception as e:
+                    log_error("Failed to batch " + rel_path + ": " + safe_str(e))
+                    skipped_count += 1
+                    continue
+
             try:
                 if manager.update(obj, file_path, obj_info):
                     updated_count += 1
@@ -350,6 +374,11 @@ def import_project(import_dir, projects_obj=None, silent=False):
                     failed_count += 1
                     continue
                 
+                if isinstance(manager, (NativeManager, ConfigManager)):
+                    if create_container not in native_batches: native_batches[create_container] = []
+                    native_batches[create_container].append((rel_path, file_path, name, type_guid, True))
+                    continue
+
                 try:
                     res = manager.create(create_container, name, file_path, type_guid)
                     if res:
@@ -370,6 +399,54 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 except Exception as e:
                     log_error("Failed to create " + rel_path + ": " + safe_str(e))
                     failed_count += 1
+        
+        # Process Native Batches (reduces dialogs from 15 to 1-2)
+        if native_batches:
+            for container, items in native_batches.items():
+                print("  Batch importing " + str(len(items)) + " native objects into " + safe_str(container))
+                temp_xml = os.path.join(import_dir, "batch_import_temp.xml")
+                file_paths = [item[1] for item in items]
+                
+                if merge_native_xmls(file_paths, temp_xml):
+                    try:
+                        if hasattr(container, "import_native"):
+                            container.import_native(temp_xml)
+                        else:
+                            projects.primary.import_native(temp_xml)
+                        
+                        # Cleanup
+                        if os.path.exists(temp_xml): os.remove(temp_xml)
+                        
+                        # Resolve and metadata update
+                        for rel_path, file_path, name, type_guid, is_new in items:
+                            res = None
+                            for child in container.get_children():
+                                if child.get_name().lower() == name.lower():
+                                    res = child
+                                    break
+                            
+                            if res:
+                                if is_new: created_count += 1
+                                else: updated_count += 1
+                                
+                                objects_meta[rel_path] = {
+                                    "guid": safe_str(res.guid),
+                                    "type": safe_str(res.type),
+                                    "name": res.get_name(),
+                                    "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
+                                    "content_hash": "",
+                                    "last_modified": safe_str(os.path.getmtime(file_path))
+                                }
+                            else:
+                                log_error("Batch import could not find " + name + " after import.")
+                                failed_count += 1
+                                
+                    except Exception as e:
+                        log_error("Batch import failed for " + safe_str(container) + ": " + safe_str(e))
+                        failed_count += len(items)
+                else:
+                    log_error("Failed to merge XML for " + safe_str(container))
+                    failed_count += len(items)
         
         if updated_count > 0 or created_count > 0 or (deleted_from_ide and len(deleted_from_ide) > 0):
             save_metadata(import_dir, metadata)
@@ -408,7 +485,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
     elapsed_time = time.time() - start_time
     print("  Time:    {:.2f}s".format(elapsed_time))
     
-    log_info("Import complete! Updated: " + str(updated_count) + ", Created: " + str(created_count) + ", Deleted: " + str(deleted_count))
+    log_info("Import complete! Updated: " + str(updated_count) + ", Created: " + str(created_count) + ", Deleted: " + str(deleted_count) + ", Failed: " + str(failed_count) + ", Skipped: " + str(skipped_count))
     
     # Check for silent mode (Non-Blocking UI)
     silent_mode = get_project_prop("cds-sync-silent-mode", False)
