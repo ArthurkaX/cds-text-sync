@@ -12,7 +12,8 @@ from codesys_utils import (
     format_st_content, log_info, log_warning, log_error, MetadataLock,
     init_logging, get_project_prop, backup_project_binary,
     parse_property_content, format_property_content,
-    ensure_folder_path, determine_object_type, resolve_projects
+    ensure_folder_path, determine_object_type, resolve_projects,
+    calculate_hash
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
@@ -278,6 +279,14 @@ def import_project(import_dir, projects_obj=None, silent=False):
             
             if isinstance(manager, (NativeManager, ConfigManager)):
                 try:
+                    # Check if XML file has changed by comparing hash
+                    stored_hash = obj_info.get("content_hash", "")
+                    if stored_hash:
+                        current_hash = import_managers["native"]._hash_file(file_path) if hasattr(import_managers["native"], '_hash_file') else ""
+                        if current_hash and current_hash == stored_hash:
+                            skipped_count += 1
+                            continue
+                    
                     # Collect for batch processing
                     try:
                         container = obj.parent

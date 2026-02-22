@@ -555,6 +555,12 @@ class PropertyManager(POUManager):
                 content = f.read()
         except: return False
         
+        # Hash check - skip if content hasn't changed
+        current_hash = calculate_hash(content)
+        if current_hash == obj_info.get("content_hash"):
+            obj_info["last_modified"] = safe_str(os.path.getmtime(file_path))
+            return False
+        
         declaration, get_impl_combined, set_impl_combined = parse_property_content(content)
         updated = False
         
