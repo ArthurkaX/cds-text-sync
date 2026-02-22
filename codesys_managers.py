@@ -329,13 +329,16 @@ class FolderManager(ObjectManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts)
-        is_new = not os.path.exists(target_dir)
         
-        if is_new:
+        if not os.path.exists(target_dir):
             os.makedirs(target_dir)
-            print("Created folder: " + "/".join(full_path_parts))
             
         rel_path = "/".join(full_path_parts)
+        
+        # Check metadata (not filesystem) to determine if folder is truly new
+        # Child objects may create parent directories before the folder object is processed
+        is_new = rel_path not in context['metadata']['objects']
+        
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
             "type": safe_str(obj.type),

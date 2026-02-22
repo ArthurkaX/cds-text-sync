@@ -315,6 +315,10 @@ def import_project(import_dir, projects_obj=None, silent=False):
                         if current_hash and current_hash == stored_hash:
                             skipped_count += 1
                             continue
+                        else:
+                            print("  Hash mismatch for " + rel_path + ": stored=" + str(stored_hash) + " current=" + str(current_hash))
+                    else:
+                        print("  No stored hash for " + rel_path + " - will re-import")
                     
                     # Collect for batch processing
                     try:
@@ -333,6 +337,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
             try:
                 if manager.update(obj, file_path, obj_info):
                     updated_count += 1
+                    print("  Updated (textual): " + rel_path)
                 else:
                     skipped_count += 1
             except Exception as e:
@@ -465,7 +470,9 @@ def import_project(import_dir, projects_obj=None, silent=False):
                             
                             if res:
                                 if is_new: created_count += 1
-                                else: updated_count += 1
+                                else:
+                                    updated_count += 1
+                                    print("  Updated (native batch): " + rel_path)
                                 
                                 objects_meta[rel_path] = {
                                     "guid": safe_str(res.guid),
