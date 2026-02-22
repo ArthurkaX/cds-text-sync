@@ -520,7 +520,6 @@ def load_metadata(base_dir):
     metadata["project_name"] = safe_str(projects.primary) if "projects" in globals() and projects.primary else "N/A"
     metadata["sync_timeout"] = get_project_prop("cds-sync-timeout", 10000)
     metadata["export_xml"] = get_project_prop("cds-sync-export-xml", False)
-    metadata["autosync"] = get_project_prop("cds-sync-autosync", "STOPPED")
     metadata["export_timestamp"] = get_project_prop("cds-sync-timestamp", "N/A")
     
     # 2. Check if we have object metadata at all
@@ -641,7 +640,7 @@ def merge_native_xmls(file_paths, output_path):
     for path in file_paths:
         try:
             if not os.path.exists(path): continue
-            with open(path, 'r', encoding='utf-8') as f:
+            with codecs.open(path, 'r', 'utf-8') as f:
                 content = f.read()
             
             # Find the EntryList container
@@ -671,7 +670,7 @@ def merge_native_xmls(file_paths, output_path):
     # Reassemble: Header + all payloads + Footer
     merged = header + "\n".join(payloads) + footer
     try:
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with codecs.open(output_path, 'w', 'utf-8') as f:
             f.write(merged)
         return True
     except Exception as e:
@@ -758,12 +757,11 @@ def save_metadata(base_dir, metadata):
         set_project_prop("cds-sync-timestamp", current_time)
         set_project_prop("cds-sync-timeout", metadata.get("sync_timeout", 10000))
         set_project_prop("cds-sync-export-xml", metadata.get("export_xml", False))
-        set_project_prop("cds-sync-autosync", metadata.get("autosync", "STOPPED"))
         
         # 2. Save configuration snapshot to _config.json (Mirror)
         config_fields = [
             "project_name", "project_path", "export_timestamp", 
-            "autosync", "export_xml"
+            "export_xml"
         ]
         config_data = {}
         for field in config_fields:

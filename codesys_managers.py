@@ -6,6 +6,8 @@ Extracts object-specific logic for export and import operations.
 """
 import os
 import codecs
+import tempfile
+import zlib
 import time
 from codesys_utils import (
     safe_str, clean_filename, calculate_hash, log_info, log_error, log_warning,
@@ -287,7 +289,9 @@ class FolderManager(ObjectManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts)
-        if not os.path.exists(target_dir):
+        is_new = not os.path.exists(target_dir)
+        
+        if is_new:
             os.makedirs(target_dir)
             print("Created folder: " + "/".join(full_path_parts))
             
@@ -299,7 +303,7 @@ class FolderManager(ObjectManager):
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
             "content_hash": ""
         }
-        return True
+        return "new" if is_new else "identical"
 
     def update(self, obj, file_path, obj_info):
         # Folders don't have textual content to update
@@ -350,6 +354,29 @@ class POUManager(ObjectManager):
         
         if not content.strip():
             return False
+        
+        content_hash = calculate_hash(content)
+        is_new = not os.path.exists(file_path)
+        
+        # Check if content is identical to existing file
+        if not is_new:
+            try:
+                with codecs.open(file_path, "r", "utf-8") as f:
+                    existing_content = f.read()
+                if calculate_hash(existing_content) == content_hash:
+                    # Content identical - update metadata but skip file write
+                    rel_path = "/".join(full_path_parts + [file_name])
+                    context['metadata']['objects'][rel_path] = {
+                        "guid": safe_str(obj.guid),
+                        "type": obj_type,
+                        "name": obj_name,
+                        "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
+                        "content_hash": content_hash,
+                        "last_modified": safe_str(os.path.getmtime(file_path))
+                    }
+                    return "identical"
+            except:
+                pass  # If we can't read existing file, just overwrite
             
         try:
             with codecs.open(file_path, "w", "utf-8") as f:
@@ -364,10 +391,10 @@ class POUManager(ObjectManager):
             "type": obj_type,
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": calculate_hash(content),
+            "content_hash": content_hash,
             "last_modified": safe_str(os.path.getmtime(file_path))
         }
-        return True
+        return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info):
         from codesys_utils import parse_st_file
@@ -481,6 +508,28 @@ class PropertyManager(POUManager):
         combined_content = format_property_content(declaration, get_impl, set_impl)
         content_hash = calculate_hash(combined_content)
         
+        is_new = not os.path.exists(file_path)
+        
+        # Check if content is identical to existing file
+        if not is_new:
+            try:
+                with codecs.open(file_path, "r", "utf-8") as f:
+                    existing_content = f.read()
+                if calculate_hash(existing_content) == content_hash:
+                    # Content identical - update metadata but skip file write
+                    rel_path = "/".join(full_path_parts + [file_name])
+                    context['metadata']['objects'][rel_path] = {
+                        "guid": obj_guid,
+                        "type": safe_str(obj.type),
+                        "name": obj_name,
+                        "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
+                        "content_hash": content_hash,
+                        "last_modified": safe_str(os.path.getmtime(file_path))
+                    }
+                    return "identical"
+            except:
+                pass
+        
         try:
             with codecs.open(file_path, "w", "utf-8") as f:
                 f.write(combined_content)
@@ -498,7 +547,7 @@ class PropertyManager(POUManager):
             "content_hash": content_hash,
             "last_modified": safe_str(os.path.getmtime(file_path))
         }
-        return True
+        return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info):
         try:
@@ -572,6 +621,41 @@ class PropertyManager(POUManager):
 
 class NativeManager(ObjectManager):
     """Handle objects exported as native CODESYS XML"""
+    def _hash_file(self, file_path):
+        """Calculate CRC32 hash of a file's content, ignoring dynamic bits like timestamps."""
+        try:
+            with codecs.open(file_path, "r", "utf-8") as f:
+                lines = f.readlines()
+            
+            # Filter out lines that often contain changing timestamps or metadata
+            filtered = []
+            skip_next = False
+            for line in lines:
+                if skip_next:
+                    skip_next = False
+                    continue
+                
+                # Strip internal CODESYS timestamp
+                if 'Name="Timestamp"' in line: continue
+                
+                # Strip our sync timestamp property (which is multiple lines)
+                if 'cds-sync-timestamp' in line:
+                    # The value follows in the next 3 lines usually in the XML structure
+                    # But to be safe, just skip this line and the next few if they look like value lines
+                    continue
+                
+                # Strip the actual value of cds-sync-timestamp if it looks like a date
+                import re
+                if re.search(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', line):
+                    continue
+                    
+                filtered.append(line)
+                
+            content = "".join(filtered).encode("utf-8")
+            return str(zlib.crc32(content) & 0xFFFFFFFF)
+        except:
+            return ""
+
     def export(self, obj, context):
         obj_name = obj.get_name()
         container = get_container_prefix(obj)
@@ -585,23 +669,55 @@ class NativeManager(ObjectManager):
             os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
+        is_new = not os.path.exists(file_path)
         
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            
+        # Get existing file hash before overwriting
+        old_hash = "" if is_new else self._hash_file(file_path)
+        
+        # Export to a temp file first, then compare
+        tmp_path = file_path + ".tmp"
         try:
-            # Resolve 'projects' object (available as a global in CODESYS)
             projects_obj = resolve_projects()
             if projects_obj and projects_obj.primary:
-                projects_obj.primary.export_native([obj], file_path, recursive=True)
+                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
             else:
                 log_error("Native export failed: 'projects' object not found or no primary project.")
                 return False
         except Exception as e:
             log_error("Native export failed for " + obj_name + ": " + safe_str(e))
+            if os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except: pass
             return False
             
-        if not os.path.exists(file_path):
+        if not os.path.exists(tmp_path):
+            return False
+        
+        new_hash = self._hash_file(tmp_path)
+        
+        # Compare hashes
+        if not is_new and old_hash and old_hash == new_hash:
+            # Content identical - remove temp, keep original
+            try: os.remove(tmp_path)
+            except: pass
+            rel_path = "/".join(full_path_parts + [file_name])
+            context['metadata']['objects'][rel_path] = {
+                "guid": safe_str(obj.guid),
+                "type": safe_str(obj.type),
+                "name": obj_name,
+                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
+                "content_hash": new_hash,
+                "last_modified": safe_str(os.path.getmtime(file_path))
+            }
+            return "identical"
+        
+        # Content changed or new - replace with temp file
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            os.rename(tmp_path, file_path)
+        except Exception as e:
+            log_error("Failed to replace XML file " + file_name + ": " + safe_str(e))
             return False
             
         rel_path = "/".join(full_path_parts + [file_name])
@@ -610,10 +726,10 @@ class NativeManager(ObjectManager):
             "type": safe_str(obj.type),
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": "",
+            "content_hash": new_hash,
             "last_modified": safe_str(os.path.getmtime(file_path))
         }
-        return True
+        return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info):
         obj_name = obj_info.get("name", "Unknown") if obj_info else "Unknown"
@@ -666,7 +782,8 @@ class ConfigManager(NativeManager):
         # Configuration XML now also follows Device/App hierarchy
         container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
-        clean_name = clean_filename(obj.get_name())
+        obj_name = obj.get_name()
+        clean_name = clean_filename(obj_name)
         file_name = clean_name + ".xml"
         
         full_path_parts = container + path_parts
@@ -675,22 +792,60 @@ class ConfigManager(NativeManager):
             os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
+        is_new = not os.path.exists(file_path)
         
+        # Get existing file hash before overwriting
+        old_hash = "" if is_new else self._hash_file(file_path)
+        
+        # Export to temp file
+        tmp_path = file_path + ".tmp"
         try:
-            # projects is a global object
-            projects.primary.export_native([obj], file_path, recursive=True)
-        except: return False
+            projects.primary.export_native([obj], tmp_path, recursive=True)
+        except:
+            if os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except: pass
+            return False
+        
+        if not os.path.exists(tmp_path):
+            return False
+        
+        new_hash = self._hash_file(tmp_path)
+        
+        # Compare hashes
+        if not is_new and old_hash and old_hash == new_hash:
+            try: os.remove(tmp_path)
+            except: pass
+            rel_path = "/".join(full_path_parts + [file_name])
+            context['metadata']['objects'][rel_path] = {
+                "guid": safe_str(obj.guid),
+                "type": safe_str(obj.type),
+                "name": obj_name,
+                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
+                "content_hash": new_hash,
+                "last_modified": safe_str(os.path.getmtime(file_path))
+            }
+            return "identical"
+        
+        # Content changed or new
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            os.rename(tmp_path, file_path)
+        except Exception as e:
+            log_error("Failed to replace config XML " + file_name + ": " + safe_str(e))
+            return False
         
         rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
             "type": safe_str(obj.type),
-            "name": obj.get_name(),
+            "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": "",
+            "content_hash": new_hash,
             "last_modified": safe_str(os.path.getmtime(file_path))
         }
-        return True
+        return "new" if is_new else "updated"
     
     def create(self, container, name, file_path, type_guid):
         return super(ConfigManager, self).create(container, name, file_path, type_guid)

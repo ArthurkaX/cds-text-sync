@@ -6,7 +6,6 @@ from codesys_constants import (
 from codesys_utils import (
     safe_str, clean_filename, load_base_dir,
     save_metadata, calculate_hash, format_st_content,
-    save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
     init_logging, backup_project_binary, format_property_content,
     resolve_projects
@@ -224,7 +223,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
     metadata = {
         "project_name": current_project_name,
         "export_timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        "autosync": "STOPPED",
         "sync_timeout": 10000,
         "export_xml": False,
         "objects": {}
@@ -240,7 +238,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
     from codesys_utils import get_project_prop
     metadata["export_xml"] = get_project_prop("cds-sync-export-xml", False)
     metadata["sync_timeout"] = get_project_prop("cds-sync-timeout", 10000)
-    metadata["autosync"] = get_project_prop("cds-sync-autosync", "STOPPED")
     backup_binary = get_project_prop("cds-sync-backup-binary", False)
     
     # Store settings in metadata for reference
@@ -290,7 +287,9 @@ def export_project(export_dir, projects_obj=None, silent=False):
     all_objects = projects_obj.primary.get_children(recursive=True)
     print("Found " + str(len(all_objects)) + " total objects")
     
-    exported_count = 0
+    exported_new = 0
+    exported_updated = 0
+    exported_identical = 0
     skipped_count = 0
     
     # Phase 6: Metadata migration / detection
@@ -349,10 +348,15 @@ def export_project(export_dir, projects_obj=None, silent=False):
             else:
                 continue
                 
-            if manager.export(obj, context):
-                exported_count += 1
+            result = manager.export(obj, context)
+            if result == "new":
+                exported_new += 1
+            elif result == "updated":
+                exported_updated += 1
+            elif result == "identical":
+                exported_identical += 1
             else:
-                # Some objects might be skipped intentionally (e.g. no content)
+                # False/None = skipped (no content, error, etc.)
                 pass
             
         except Exception as e:
@@ -364,6 +368,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
     
     # Debug: Count methods in metadata before saving
     method_count = sum(1 for obj in metadata["objects"].values() if obj.get("type") == TYPE_GUIDS["method"])
+    exported_total = exported_new + exported_updated + exported_identical
     print("DEBUG: Before saving - Total objects: " + str(len(metadata["objects"])) + ", Methods: " + str(method_count))
     
     # Write metadata file with consistent field order (60s timeout for large projects)
@@ -376,12 +381,13 @@ def export_project(export_dir, projects_obj=None, silent=False):
     
     print("=== Export Complete ===")
     elapsed_time = time.time() - start_time
-    print("Exported: " + str(exported_count) + " files")
+    print("New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical))
     print("Skipped: " + str(skipped_count) + " objects (no textual content)")
     print("Time elapsed: {:.2f} seconds".format(elapsed_time))
     print("Completed at: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     
-    log_info("Export complete! Exported: " + str(exported_count) + " files.")
+    summary = "Exported: " + str(exported_total) + " (New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ")"
+    log_info("Export complete! " + summary)
     
     # Check for silent mode (Non-Blocking UI)
     silent_mode = get_project_prop("cds-sync-silent-mode", False)
@@ -389,12 +395,12 @@ def export_project(export_dir, projects_obj=None, silent=False):
     if silent_mode:
         try:
             from codesys_ui import show_toast
-            show_toast("Export Complete", "Exported: " + str(exported_count) + " files\nTime: {:.2f}s".format(elapsed_time))
+            show_toast("Export Complete", summary + "\nTime: {:.2f}s".format(elapsed_time))
         except:
             # Fallback if UI module missing
             print("Export complete (Silent mode active, but UI module failed)")
     else:
-        system.ui.info("Export complete!\n\nExported: " + str(exported_count) + " files\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+        system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
 
 def main():
