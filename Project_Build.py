@@ -7,7 +7,7 @@ Compiles the active application and reports errors/warnings.
 import os
 import time
 import sys
-from codesys_utils import safe_str, init_logging, load_base_dir, resolve_projects
+from codesys_utils import safe_str, init_logging, load_base_dir, resolve_projects, update_application_count_flag
 
 def build_project(projects_obj=None, silent=False):
     """Build the active application in CODESYS and generate build.log"""
@@ -32,8 +32,36 @@ def build_project(projects_obj=None, silent=False):
             print(msg)
         return
 
-    # Find active application
-    app = projects_obj.primary.active_application
+    # Find application to build
+    from codesys_utils import get_project_prop
+    has_multiple_apps = get_project_prop("cds-text-sync-multipleApps", False)
+    
+    app = None
+    if has_multiple_apps and not silent:
+        # Check if we should prompt for application
+        try:
+            APP_GUID = "639b491f-5557-464c-af91-1471bac9f549"
+            apps = []
+            for obj in projects_obj.primary.get_children(recursive=True):
+                if hasattr(obj, 'type') and str(obj.type).lower() == APP_GUID:
+                    apps.append(obj)
+            
+            if len(apps) > 1:
+                options = [safe_str(a.get_name()) for a in apps]
+                # Add "Active Application" as first option? No, better just list them.
+                res = system.ui.choose("Multiple applications detected. Select application to build:", options)
+                if res and res[0] >= 0:
+                    app = apps[res[0]]
+                else:
+                    print("Build cancelled by user.")
+                    return
+        except Exception as e:
+            print("Selection error: " + safe_str(e))
+            
+    if not app:
+        # Fallback to active application
+        app = projects_obj.primary.active_application
+        
     if not app:
         # Fallback: find first application in project
         def find_app(obj):
@@ -58,6 +86,7 @@ def build_project(projects_obj=None, silent=False):
     BUILD_CATEGORY = Guid("97F48D64-A2A3-4856-B640-75C046E37EA9")
     
     print("=== Starting Project Build ===")
+    update_application_count_flag()
     print("Application: " + safe_str(app.get_name()))
     
     # Clear previous build messages
@@ -322,17 +351,20 @@ def build_project(projects_obj=None, silent=False):
         log_lines.append(separator)
         log_lines.append(footer)
         
-        # Write to build.log in base directory
+        # Write to build_[AppName].log in base directory
         base_dir, _ = load_base_dir()
         if base_dir and os.path.exists(base_dir):
-            log_path = os.path.join(base_dir, "build.log")
+            # Sanitize app name for filename
+            clean_app_name = "".join([c if c.isalnum() or c in ("-", "_") else "_" for c in app_name])
+            log_filename = "build_{}.log".format(clean_app_name)
+            log_path = os.path.join(base_dir, log_filename)
             try:
                 import codecs
                 with codecs.open(log_path, "w", "utf-8") as f:
                     f.write("\n".join(log_lines))
                 print("Build log saved to: " + log_path)
             except Exception as e:
-                print("Error saving build.log: " + str(e))
+                print("Error saving build log: " + str(e))
 
         status = "Success" if error_count == 0 else "Failed"
         msg_title = "Build " + status

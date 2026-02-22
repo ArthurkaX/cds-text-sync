@@ -280,6 +280,47 @@ def set_project_prop(key, value):
     except:
         return False
 
+def update_application_count_flag():
+    """Count internal 'Application' objects and set 'boolean' property to True if > 1."""
+    try:
+        proj = None
+        try:
+            import __main__
+            if hasattr(__main__, 'projects'): proj = __main__.projects.primary
+        except: pass
+        if not proj:
+            try: proj = projects.primary
+            except: pass
+        
+        if not proj: return False
+        
+        # Count all application objects
+        # We use the GUID from codesys_constants.py: 639b491f-5557-464c-af91-1471bac9f549
+        all_objs = proj.get_children(recursive=True)
+        app_count = 0
+        APP_GUID = "639b491f-5557-464c-af91-1471bac9f549"
+        
+        for obj in all_objs:
+            if hasattr(obj, 'type') and str(obj.type).lower() == APP_GUID:
+                app_count += 1
+        
+        has_multiple_apps = (app_count > 1)
+        log_info("Application count summary: Found %d applications. Setting 'cds-text-sync-multipleApps' flag to %s" % (app_count, str(has_multiple_apps)))
+        
+        # Cleanup old 'boolean' flag if it exists (prevents clutter)
+        try:
+            info = proj.get_project_info() if hasattr(proj, "get_project_info") else getattr(proj, "project_info", None)
+            props = info.values if hasattr(info, "values") else info
+            if "boolean" in props:
+                del props["boolean"]
+        except:
+            pass
+            
+        return set_project_prop("cds-text-sync-multipleApps", has_multiple_apps)
+    except Exception as e:
+        log_error("Failed to update application count flag: " + safe_str(e))
+        return False
+
 def load_base_dir():
     """Load base directory from the project property 'cds-sync-folder'.
     

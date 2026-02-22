@@ -146,6 +146,13 @@ def set_base_directory():
             system.ui.error("Could not save to project properties: " + str(e))
             return
         
+        # Update application count flag
+        try:
+            from codesys_utils import update_application_count_flag
+            update_application_count_flag()
+        except:
+            pass
+        
         # Check _metadata.json for project path mismatch (only for absolute paths)
         if not is_relative:
             try:

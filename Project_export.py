@@ -14,7 +14,7 @@ from codesys_utils import (
     save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
     init_logging, backup_project_binary, format_property_content,
-    resolve_projects
+    resolve_projects, update_application_count_flag
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
@@ -221,6 +221,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
     # Create project binary backup (moved down)
     
     print("=== Starting Project Export ===")
+    update_application_count_flag()
     start_time = time.time()
     print("Export directory: " + export_dir)
     

@@ -19,7 +19,7 @@ from codesys_utils import (
     init_logging, get_project_prop, backup_project_binary,
     parse_property_content, format_property_content,
     ensure_folder_path, determine_object_type, resolve_projects,
-    calculate_hash
+    calculate_hash, update_application_count_flag
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
@@ -150,6 +150,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
     should_save = get_project_prop("cds-sync-save-after-import", True)
     
     print("=== Starting Project Import ===")
+    update_application_count_flag()
     print("Import directory: " + import_dir)
     print("Auto-save enabled: " + str(should_save))
     start_time = time.time()
