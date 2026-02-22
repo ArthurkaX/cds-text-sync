@@ -93,6 +93,31 @@ def get_object_path(obj, stop_at_application=True):
             break
     return path_parts
 
+def get_container_prefix(obj):
+    """Walk up from obj to find its Device and Application names.
+    Returns list like ['PLC', 'ST_Application'] or [] for global objects."""
+    parts = []
+    current = obj
+    app_name = None
+    device_name = None
+    
+    # We walk up to the root to find the containing app and device
+    while current is not None:
+        try:
+            curr_type = safe_str(current.type)
+            if curr_type == TYPE_GUIDS.get("application"):
+                app_name = clean_filename(current.get_name())
+            elif curr_type == TYPE_GUIDS.get("device"):
+                device_name = clean_filename(current.get_name())
+            
+            if not hasattr(current, "parent"): break
+            current = current.parent
+        except: break
+        
+    if device_name: parts.append(device_name)
+    if app_name: parts.append(app_name)
+    return parts
+
 def get_parent_pou_name(obj):
     """Get parent POU/Interface name for nested objects (actions, methods, properties)"""
     try:
@@ -255,16 +280,18 @@ class ObjectManager(object):
 class FolderManager(ObjectManager):
     """Handle folder creation and management"""
     def export(self, obj, context):
+        container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
         clean_name = clean_filename(obj.get_name())
         path_parts.append(clean_name)
         
-        target_dir = os.path.join(context['src_dir'], *path_parts)
+        full_path_parts = container + path_parts
+        target_dir = os.path.join(context['export_dir'], *full_path_parts)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
-            print("Created folder: src/" + "/".join(path_parts))
+            print("Created folder: " + "/".join(full_path_parts))
             
-        rel_path = "src/" + "/".join(path_parts)
+        rel_path = "/".join(full_path_parts)
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
             "type": safe_str(obj.type),
@@ -297,6 +324,7 @@ class POUManager(ObjectManager):
         obj_name = obj.get_name()
         
         # Build path and filename
+        container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
         clean_name = clean_filename(obj_name)
         
@@ -308,7 +336,10 @@ class POUManager(ObjectManager):
         else:
             file_name = clean_name + ".st"
             
-        target_dir = os.path.join(context['src_dir'], *path_parts) if path_parts else context['src_dir']
+        # Determine target directory
+        full_path_parts = container + path_parts
+        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
+        
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
             
@@ -320,11 +351,14 @@ class POUManager(ObjectManager):
         if not content.strip():
             return False
             
-        content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
-        with open(file_path, "wb") as f:
-            f.write(content_normalized.encode('utf-8'))
+        try:
+            with codecs.open(file_path, "w", "utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            log_error("Failed to write ST file " + file_name + ": " + safe_str(e))
+            return False
             
-        rel_path = "/".join(["src"] + path_parts + [file_name])
+        rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
             "type": obj_type,
@@ -389,60 +423,79 @@ class POUManager(ObjectManager):
             log_error("Failed to create " + name + ": " + safe_str(e))
         return None
 
-class PropertyManager(ObjectManager):
-    """Handle properties with GET/SET accessors"""
+class PropertyManager(POUManager):
+    """Handle properties specifically (combining declaration, Get, and Set)"""
     def export(self, obj, context):
         obj_guid = safe_str(obj.guid)
         obj_name = obj.get_name()
         
-        # Get accessors from property_accessors map (passed in context)
-        prop_data = context.get('property_accessors', {}).get(obj_guid)
-        if not prop_data:
+        if obj_guid not in context['property_accessors']:
+            log_warning("Property " + obj_name + " has no textual accessors, skipping ST export.")
             return False
             
+        prop_data = context['property_accessors'][obj_guid]
+        
+        # Build path
+        container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
         clean_name = clean_filename(obj_name)
+        file_name = clean_name + ".st"
         
+        # Handle nested objects (already in path_parts if Folder used, but usually not for POUs)
+        # If property is directly under a POU, we want POU.Property.st
         parent_pou = get_parent_pou_name(obj)
         if parent_pou:
             file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-            if path_parts and path_parts[-1] == clean_filename(parent_pou):
+            # If the parent POU is actually in the path_parts, remove it to avoid duplications in directory
+            clean_parent_pou = clean_filename(parent_pou)
+            if path_parts and path_parts[-1] == clean_parent_pou:
                 path_parts = path_parts[:-1]
-        else:
-            file_name = clean_name + ".st"
-            
-        target_dir = os.path.join(context['src_dir'], *path_parts) if path_parts else context['src_dir']
+        
+        full_path_parts = container + path_parts
+        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
+        
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
         
+        # Export Declaration
         declaration, _ = export_object_content(obj)
+        
+        # Get GET accessor
         get_impl = None
         if prop_data['get']:
-            g_decl, g_impl = export_object_content(prop_data['get'])
-            get_impl = format_st_content(g_decl, g_impl)
+            get_decl, get_impl_raw = export_object_content(prop_data['get'])
+            get_impl = format_st_content(get_decl, get_impl_raw)
             
+        # Get SET accessor
         set_impl = None
         if prop_data['set']:
-            s_decl, s_impl = export_object_content(prop_data['set'])
-            set_impl = format_st_content(s_decl, s_impl)
+            set_decl, set_impl_raw = export_object_content(prop_data['set'])
+            set_impl = format_st_content(set_decl, set_impl_raw)
             
-        content = format_property_content(declaration, get_impl, set_impl)
-        if not content.strip():
+        if not get_impl and not set_impl:
             return False
             
-        content_normalized = content.replace('\r\n', '\n').replace('\r', '\n')
-        with open(file_path, "wb") as f:
-            f.write(content_normalized.encode('utf-8'))
+        # Combine into Property Format
+        combined_content = format_property_content(declaration, get_impl, set_impl)
+        content_hash = calculate_hash(combined_content)
+        
+        try:
+            with codecs.open(file_path, "w", "utf-8") as f:
+                f.write(combined_content)
+        except Exception as e:
+            log_error("Failed to write Property file " + file_name + ": " + safe_str(e))
+            return False
             
-        rel_path = "/".join(["src"] + path_parts + [file_name])
+        # Update Metadata
+        rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": obj_guid,
             "type": safe_str(obj.type),
             "name": obj_name,
             "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": calculate_hash(content),
+            "content_hash": content_hash,
             "last_modified": safe_str(os.path.getmtime(file_path))
         }
         return True
@@ -521,11 +574,13 @@ class NativeManager(ObjectManager):
     """Handle objects exported as native CODESYS XML"""
     def export(self, obj, context):
         obj_name = obj.get_name()
+        container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
         clean_name = clean_filename(obj_name)
         file_name = clean_name + ".xml"
         
-        target_dir = os.path.join(context['xml_dir'], *path_parts) if path_parts else context['xml_dir']
+        full_path_parts = container + path_parts
+        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
             
@@ -549,7 +604,7 @@ class NativeManager(ObjectManager):
         if not os.path.exists(file_path):
             return False
             
-        rel_path = "/".join(["xml"] + path_parts + [file_name])
+        rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
             "type": safe_str(obj.type),
@@ -579,12 +634,14 @@ class NativeManager(ObjectManager):
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
     def export(self, obj, context):
-        # Override target dir to config_dir
+        # Configuration XML now also follows Device/App hierarchy
+        container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
         clean_name = clean_filename(obj.get_name())
         file_name = clean_name + ".xml"
         
-        target_dir = os.path.join(context['config_dir'], *path_parts) if path_parts else context['config_dir']
+        full_path_parts = container + path_parts
+        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
             
@@ -595,7 +652,7 @@ class ConfigManager(NativeManager):
             projects.primary.export_native([obj], file_path, recursive=True)
         except: return False
         
-        rel_path = "/".join(["config"] + path_parts + [file_name])
+        rel_path = "/".join(full_path_parts + [file_name])
         context['metadata']['objects'][rel_path] = {
             "guid": safe_str(obj.guid),
             "type": safe_str(obj.type),

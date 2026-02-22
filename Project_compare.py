@@ -122,6 +122,7 @@ def compare_project(projects_obj=None, silent=False):
             
             # Build expected file path
             from codesys_utils import clean_filename
+            container = get_container_prefix(obj)
             path_parts = get_object_path(obj)
             clean_name = clean_filename(obj_name)
             
@@ -135,11 +136,12 @@ def compare_project(projects_obj=None, silent=False):
             else:
                 file_name = clean_name + ".st"
             
-            # Build relative path (always in src/)
-            if path_parts:
-                rel_path = "src/" + "/".join(path_parts) + "/" + file_name
+            # Build relative path (Hierarchical)
+            full_path_parts = container + path_parts
+            if full_path_parts:
+                rel_path = "/".join(full_path_parts) + "/" + file_name
             else:
-                rel_path = "src/" + file_name
+                rel_path = file_name
             
             # Get IDE content
             ide_content = None

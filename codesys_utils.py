@@ -719,7 +719,7 @@ def save_metadata(base_dir, metadata):
         # 2. Save configuration snapshot to _config.json (Mirror)
         config_fields = [
             "project_name", "project_path", "export_timestamp", 
-            "autosync", "sync_timeout", "export_xml"
+            "autosync", "export_xml"
         ]
         config_data = {}
         for field in config_fields:
@@ -791,228 +791,6 @@ def save_metadata(base_dir, metadata):
             if os.path.exists(tmp_file):
                 try: os.remove(tmp_file)
                 except: pass
-        return False
-
-
-def extract_libraries_from_project(project):
-    """
-    Extract library info from all library managers in project.
-    Uses XML export to reliably get library details (name, version, company).
-    """
-    libraries = []
-    import tempfile
-    import re
-    
-    try:
-        # Find all library manager objects
-        all_objs = project.get_children(recursive=True)
-        lib_manager_type = TYPE_GUIDS.get("library_manager", "adb5cb65-8e1d-4a00-b70a-375ea27582f3")
-        managers = [obj for obj in all_objs if safe_str(obj.type) == lib_manager_type]
-        
-        for manager in managers:
-            try:
-                # Export Library Manager to XML to extract library information
-                temp_dir = tempfile.gettempdir()
-                xml_path = os.path.join(temp_dir, "libman_export_{0}.xml".format(safe_str(manager.guid)[:8]))
-                
-                if os.path.exists(xml_path):
-                    os.remove(xml_path)
-                
-                # Export to XML
-                project.export_native([manager], xml_path, recursive=True)
-                
-                if os.path.exists(xml_path):
-                    with codecs.open(xml_path, 'r', 'utf-8') as f:
-                        content = f.read()
-                    
-                    # Store raw matches to process after
-                    raw_libraries = []
-
-                    # Pattern 1: Placeholder Resolution (Key/Value)
-                    p1 = r'<Key>\s*<Single Type="string">([^<]+)</Single>\s*</Key>\s*<Value>\s*<Single Type="string">([^<]+)</Single>'
-                    matches1 = re.findall(p1, content, re.DOTALL)
-                    for lib_name, lib_info in matches1:
-                        raw_libraries.append((lib_name.strip(), lib_info.strip()))
-
-                    # Pattern 2: DefaultResolution or Name tags with full info string
-                    # Filter: ensure no '<' in properties to avoid XML junk
-                    p2 = r'<Single Name="(?:DefaultResolution|Name)" Type="string">([^<,]+,\s*[^<,\(]+\s*\([^<,\)]+\))</Single>'
-                    matches2 = re.findall(p2, content)
-                    for lib_info in matches2:
-                        name = lib_info.split(',')[0].strip()
-                        raw_libraries.append((name, lib_info.strip()))
-
-                    # Pattern 3: Any other text blocks following the library info format
-                    p3 = r'>([^<,]+,\s*[^<,\(]+\s*\([^<,\)]+\))<'
-                    matches3 = re.findall(p3, content)
-                    for lib_info in matches3:
-                        name = lib_info.split(',')[0].strip()
-                        raw_libraries.append((name, lib_info.strip()))
-                    
-                    for lib_name, lib_info in raw_libraries:
-                        # Skip if it looks like XML junk (contains brackets or too long)
-                        if '<' in lib_name or '>' in lib_name or len(lib_name) > 100:
-                            continue
-
-                        version = "Unknown"
-                        company = "Unknown"
-                        namespace = lib_name
-                        
-                        # Parse "LibName, Version (Company)" format
-                        info_match = re.search(r'([^,]+),\s*([^\(]+)\s*\(([^\)]+)\)', lib_info)
-                        if info_match:
-                            version = info_match.group(2).strip()
-                            company = info_match.group(3).strip()
-                        else:
-                            # Try simpler format: "LibName, Version"
-                            info_match = re.search(r'([^,]+),\s*([^<]+)', lib_info)
-                            if info_match:
-                                version = info_match.group(2).strip()
-                        
-                        libraries.append({
-                            "name": lib_name,
-                            "version": version,
-                            "company": company,
-                            "namespace": namespace,
-                            "is_placeholder": True
-                        })
-                    
-                    # Cleanup
-                    os.remove(xml_path)
-            except Exception as e:
-                log_warning("Could not extract libraries from manager: " + safe_str(e))
-                continue
-                
-    except Exception as e:
-        log_error("Error extracting libraries: " + safe_str(e))
-    
-    # Deduplicate libraries by name
-    # If multiple versions exist, prefer a specific version over '*'
-    unique_libs_dict = {}
-    for lib in libraries:
-        name = lib["name"]
-        version = lib["version"]
-        
-        if name not in unique_libs_dict:
-            unique_libs_dict[name] = lib
-        else:
-            # If existing is '*' and new is specific, replace it
-            current_version = unique_libs_dict[name]["version"]
-            if current_version == "*" and version != "*":
-                unique_libs_dict[name] = lib
-            # Also prefer longer version strings if both are specific
-            elif version != "*" and current_version != "*" and len(version) > len(current_version):
-                unique_libs_dict[name] = lib
-    
-    unique_libs = sorted(unique_libs_dict.values(), key=lambda x: x["name"])
-    return unique_libs
-
-
-def load_libraries(base_dir):
-    """
-    Load library list from _libraries.csv.
-    """
-    libraries = []
-    csv_path = os.path.join(base_dir, "config", "_libraries.csv")
-    
-    if not os.path.exists(csv_path):
-        # Fallback to root for backward compatibility
-        root_csv = os.path.join(base_dir, "_libraries.csv")
-        if os.path.exists(root_csv):
-            csv_path = root_csv
-        else:
-            return libraries
-
-    try:
-        if sys.version_info[0] < 3:
-            f = open(csv_path, 'rb')
-        else:
-            f = open(csv_path, 'r', encoding='utf-8', newline='')
-        
-        try:
-            reader = csv.reader(f, delimiter=';')
-            header = next(reader, None) # Skip header
-            
-            if header:
-                for row in reader:
-                    if not row or len(row) < 5: continue
-                    
-                    if sys.version_info[0] < 3:
-                        row = [cell.decode('utf-8') for cell in row]
-                    
-                    name, version, company, namespace, is_placeholder = row[:5]
-                    libraries.append({
-                        "name": name,
-                        "version": version,
-                        "company": company,
-                        "namespace": namespace,
-                        "is_placeholder": is_placeholder.lower() == "true"
-                    })
-        finally:
-            f.close()
-    except Exception as e:
-        log_error("Error reading _libraries.csv: " + safe_str(e))
-        
-    return libraries
-
-
-def save_libraries(base_dir, libraries):
-    """
-    Save library list to _libraries.csv.
-    """
-    config_dir = os.path.join(base_dir, "config")
-    if not os.path.exists(config_dir):
-        try:
-            os.makedirs(config_dir)
-        except:
-            pass
-            
-    csv_path = os.path.join(config_dir, "_libraries.csv")
-    csv_tmp = csv_path + ".tmp"
-    
-    def _atomic_replace(src, dst):
-        if hasattr(os, 'replace'):
-            os.replace(src, dst)
-        else:
-            if os.path.exists(dst):
-                os.remove(dst)
-            os.rename(src, dst)
-
-    try:
-        if sys.version_info[0] < 3:
-            f = open(csv_tmp, 'wb')
-        else:
-            f = open(csv_tmp, 'w', encoding='utf-8', newline='')
-        
-        try:
-            writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
-            # Header
-            writer.writerow(["Name", "Version", "Company", "Namespace", "IsPlaceholder"])
-            
-            for lib in libraries:
-                row = [
-                    safe_str(lib.get("name", "")),
-                    safe_str(lib.get("version", "")),
-                    safe_str(lib.get("company", "")),
-                    safe_str(lib.get("namespace", "")),
-                    safe_str(lib.get("is_placeholder", "False"))
-                ]
-                
-                if sys.version_info[0] < 3:
-                    unicode_type = unicode if sys.version_info[0] < 3 else str
-                    row = [cell.encode('utf-8') if isinstance(cell, unicode_type) else str(cell) for cell in row]
-                
-                writer.writerow(row)
-        finally:
-            f.close()
-        
-        _atomic_replace(csv_tmp, csv_path)
-        return True
-    except Exception as e:
-        log_error("Error saving _libraries.csv: " + safe_str(e))
-        if os.path.exists(csv_tmp):
-            try: os.remove(csv_tmp)
-            except: pass
         return False
 
 
@@ -1112,22 +890,18 @@ def find_application_recursive(obj, depth=0):
 def ensure_folder_path(path_str, project):
     """
     Ensure folder structure exists in CODESYS project.
-    path_str: relative path string e.g. "Folder/SubFolder"
-    Returns the parent object (folder) or None if failed.
+    path_str: relative path string e.g. "PLC/Application/MainFolder"
+    Returns the parent object (folder/application/device) or None if failed.
     """
     if not path_str or path_str == "." or path_str == "src":
-        return find_application_recursive(project)
+        return project
         
-    # Remove 'src/' prefix if present
-    if path_str.startswith("src/"):
-        path_str = path_str[4:]
-    elif path_str.startswith("src\\"):
-        path_str = path_str[4:]
-        
+    # Legacy 'src/' prefix check (handled by Project_export migration now, but for robustness)
+    if path_str.startswith("src/"): path_str = path_str[4:]
+    elif path_str.startswith("src\\"): path_str = path_str[4:]
+    
     parts = path_str.replace("\\", "/").split("/")
-    current_obj = find_application_recursive(project)
-    if not current_obj:
-        current_obj = project
+    current_obj = project # Start at project root
     
     for part in parts:
         if not part: continue
@@ -1137,21 +911,26 @@ def ensure_folder_path(path_str, project):
             children = current_obj.get_children()
             for child in children:
                 if child.get_name().lower() == part.lower():
-                    # Check if it's a folder or device
+                    # Check if it's a folder, device, application or plc_logic
                     c_type = safe_str(child.type)
-                    if c_type == TYPE_GUIDS.get("folder") or c_type == TYPE_GUIDS.get("device"):
+                    if c_type in [TYPE_GUIDS.get("folder"), TYPE_GUIDS.get("device"), 
+                                  TYPE_GUIDS.get("application"), TYPE_GUIDS.get("plc_logic")]:
                         found = child
                         break
-        except:
-            pass
+        except: pass
             
         if not found:
+            # We can only create folders, not Devices/Applications
             try:
                 if hasattr(current_obj, "create_folder"):
                     found = current_obj.create_folder(part)
                 elif hasattr(current_obj, "create_child"):
                     # Use folder GUID from constants
                     found = current_obj.create_child(part, TYPE_GUIDS.get("folder", "738bea1e-99bb-4f04-90bb-a7a567e74e3a"))
+                else:
+                    # If we reached a level where we can't create (e.g. Device level), log it
+                    log_error("Cannot create component '" + part + "' at " + safe_str(current_obj))
+                    return None
             except Exception as e:
                 log_error("Failed to create folder '" + part + "': " + safe_str(e))
                 return None

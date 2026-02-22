@@ -6,8 +6,8 @@ from codesys_constants import (
 from codesys_utils import (
     safe_str, clean_filename, load_base_dir,
     save_metadata, calculate_hash, format_st_content,
+    save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
-    save_libraries, extract_libraries_from_project,
     init_logging, backup_project_binary, format_property_content,
     resolve_projects
 )
@@ -293,15 +293,17 @@ def export_project(export_dir, projects_obj=None, silent=False):
     exported_count = 0
     skipped_count = 0
     
-    # Create subdirectories
-    src_dir = os.path.join(export_dir, "src")
-    xml_dir = os.path.join(export_dir, "xml")
-    config_dir = os.path.join(export_dir, "config")
+    # Phase 6: Metadata migration / detection
+    existing_objects = metadata.get("objects", {})
+    has_old_format = any(k.startswith(("src/", "xml/", "config/")) for k in existing_objects)
     
-    for d in [src_dir, xml_dir, config_dir]:
-        if not os.path.exists(d):
-            os.makedirs(d)
-
+    if has_old_format:
+        print("Legacy directory structure (src/xml/config) detected.")
+        print("Migrating to hierarchical Device/Application folders...")
+        log_warning("Legacy project structure detected. Metadata will be reset for re-export.")
+        # Clear objects map to ensure clean metadata and trigger orphan cleanup for old dirs
+        metadata["objects"] = {}
+    
     # Collect all property accessors
     property_accessors = collect_property_accessors(all_objects)
     print("Found " + str(len(property_accessors)) + " properties with accessors")
@@ -318,9 +320,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
     
     context = {
         'export_dir': export_dir,
-        'src_dir': src_dir,
-        'xml_dir': xml_dir,
-        'config_dir': config_dir,
         'metadata': metadata,
         'property_accessors': property_accessors
     }
@@ -374,13 +373,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
         else:
             print("Error writing metadata")
             
-        # Add library export
-        libraries = extract_libraries_from_project(projects.primary)
-        if libraries:
-            if save_libraries(export_dir, libraries):
-                print("Created: _libraries.csv (" + str(len(libraries)) + " libraries)")
-            else:
-                print("Error writing _libraries.csv")
     
     print("=== Export Complete ===")
     elapsed_time = time.time() - start_time

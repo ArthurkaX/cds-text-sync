@@ -8,9 +8,8 @@ from codesys_constants import (
 from codesys_utils import (
     safe_str, parse_st_file, build_object_cache, 
     find_object_by_guid, find_object_by_name, load_base_dir,
-    calculate_hash, save_metadata, load_metadata,
+    load_metadata,
     format_st_content, log_info, log_warning, log_error, MetadataLock,
-    load_libraries, extract_libraries_from_project,
     init_logging, get_project_prop, backup_project_binary,
     parse_property_content, format_property_content,
     ensure_folder_path, determine_object_type, resolve_projects
@@ -119,77 +118,6 @@ def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map, silent=Fal
         return None 
 
 
-def sync_libraries(import_dir, silent=False):
-    """
-    Check libraries in project against _libraries.csv and warn about differences.
-    Note: Automatic library updates are not reliable across all CODESYS versions.
-    """
-    libraries_file = load_libraries(import_dir)
-    if not libraries_file:
-        return
-        
-    print("  Checking project libraries...")
-    
-    # Get current project libraries
-    current_libs = extract_libraries_from_project(projects.primary)
-    
-    if not current_libs:
-        print("  Warning: Could not extract current library information")
-        return
-    
-    # Compare
-    missing_libs = []
-    mismatch_libs = []
-    
-    for lib_file in libraries_file:
-        found = False
-        for lib_proj in current_libs:
-            # Match by name or namespace to be robust
-            if lib_file["name"] == lib_proj["name"] or (lib_file["namespace"] != "N/A" and lib_file["namespace"] == lib_proj["namespace"]):
-                found = True
-                if lib_file["version"] != lib_proj["version"]:
-                    mismatch_libs.append((lib_file, lib_proj))
-                break
-        if not found:
-            missing_libs.append(lib_file)
-            
-    if not missing_libs and not mismatch_libs:
-        print("  All libraries match.")
-        return
-        
-    # Show status
-    if silent:
-         print("Silent Mode: Library version differences detected (see log). Ignoring.")
-         # Log details
-         if missing_libs:
-            for lib in missing_libs:
-                print("MISSING LIB: " + safe_str(lib.get("name")))
-         return
-
-    message = "Library differences detected (Version Control):\n\n"
-    if missing_libs:
-        message += "Missing in CODESYS project:\n"
-        for lib in missing_libs:
-            message += "- " + lib["name"] + " (" + lib["version"] + ")\n"
-        message += "\n"
-        
-    if mismatch_libs:
-        message += "Version differences:\n"
-        for lib_file, lib_proj in mismatch_libs:
-            message += "- " + lib_file["name"] + ":\n    On disk: " + lib_file["version"] + "\n    In IDE:   " + lib_proj["version"] + "\n"
-            
-    message += "\nPlease update libraries manually via Library Manager.\n"
-    message += "Would you like to continue with import?"
-    
-    try:
-        result = system.ui.choose(message, ("Continue Import", "Cancel Import"))
-    except:
-        return
-        
-    if result[0] == 1: # Cancel
-        return "CANCEL"
-
-
 def import_project(import_dir, projects_obj=None, silent=False):
     """Import ST files from folder structure back into CODESYS project"""
     
@@ -229,8 +157,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
     except Exception as e:
         print("  Warning: Could not create timestamped backup: " + safe_str(e))
     
-    # Find Application container early
-    app_container = find_application_recursive(projects_obj.primary, 0)
+    # Binary Backup handles safety
     
     # Initialize managers
     import_managers = {
@@ -268,10 +195,6 @@ def import_project(import_dir, projects_obj=None, silent=False):
             if path in objects_meta:
                 del objects_meta[path]
         
-        # Sync libraries first
-        if sync_libraries(import_dir, silent=silent) == "CANCEL":
-            print("Import cancelled during library sync.")
-            return
                 
         # Track existing folders
         tracked_folders = set()
@@ -359,9 +282,8 @@ def import_project(import_dir, projects_obj=None, silent=False):
             new_folders.sort(key=len)
             folder_manager = import_managers[TYPE_GUIDS["folder"]]
             for folder_path in new_folders:
-                if not folder_path.startswith("src"):
-                    continue
-                
+                # folders now have hierarchical paths, no 'src/' prefix check strictly needed
+                # except to skip things like '.git' or 'project/' which are already filtered in os.walk
                 res = folder_manager.create(None, None, folder_path, None)
                 if res:
                     created_count += 1
@@ -375,33 +297,18 @@ def import_project(import_dir, projects_obj=None, silent=False):
 
         # Process new files
         if new_files:
-            # We need to process parents before children (e.g. POUs before Methods)
-            # A simple heuristic: process by depth, but children often have '.' in filename
             new_files.sort(key=lambda x: (x[0].count('/'), x[0].count('.')))
             
             for rel_path, file_path in new_files:
-                if not rel_path.startswith("src"):
-                    continue
-                
                 # Determine name and type
-                filesys_path_parts = rel_path.split("/")
-                if filesys_path_parts[0] == "src":
-                    path_parts = filesys_path_parts[1:]
-                else:
-                    path_parts = filesys_path_parts
-                
+                path_parts = rel_path.split("/")
                 base_name = os.path.splitext(path_parts[-1])[0]
                 
                 # Resolve type
                 type_guid = None
                 if rel_path.endswith(".xml"):
-                    # Use NativeManager logic for XML
                     manager = import_managers["native"]
-                    # If it's in config/ instead of xml/ it might be ConfigManager
-                    if rel_path.startswith("config/"):
-                        manager = import_managers[TYPE_GUIDS["task_config"]]
                 else:
-                    # Textual object
                     from codesys_utils import parse_st_file
                     decl, impl = parse_st_file(file_path)
                     content_check = decl if decl else impl
@@ -423,24 +330,23 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 
                 create_container = None
                 if parent_name:
-                    # Find parent in cache or by name
                     create_container = find_object_by_name(parent_name, name_map)
                 
                 if not create_container:
-                     # Use folder path
+                     # Use hierarchical path to resolve container
                      if len(path_parts) > 1:
-                         logical_folder_path = "src/" + "/".join(path_parts[:-1])
-                         if logical_folder_path in folder_cache:
-                             create_container = folder_cache[logical_folder_path]
+                         folder_path = "/".join(path_parts[:-1])
+                         if folder_path in folder_cache:
+                             create_container = folder_cache[folder_path]
                          else:
-                             codesys_path = "/".join(path_parts[:-1])
-                             create_container = ensure_folder_path(codesys_path)
-                             folder_cache[logical_folder_path] = create_container
+                             create_container = ensure_folder_path(folder_path, projects.primary)
+                             folder_cache[folder_path] = create_container
                      else:
-                         create_container = app_container
+                         # Landing in project root (e.g. Project Settings)
+                         create_container = projects.primary
 
                 if not create_container:
-                    log_error("Could not find container for " + rel_path)
+                    log_error("Could not find or create container for " + rel_path)
                     failed_count += 1
                     continue
                 
