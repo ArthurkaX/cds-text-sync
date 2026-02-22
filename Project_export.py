@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+import codecs
+import json
 
 # Force reload of shared modules to pick up latest changes
 for _mod_name in list(sys.modules.keys()):
@@ -14,7 +16,7 @@ from codesys_utils import (
     save_metadata, calculate_hash, format_st_content,
     log_info, log_warning, log_error, MetadataLock,
     init_logging, backup_project_binary, format_property_content,
-    resolve_projects, update_application_count_flag
+    resolve_projects, update_application_count_flag, ensure_git_configs
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
@@ -133,67 +135,6 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
         return False
 
 
-def ensure_git_configs(export_dir):
-    """Create .gitignore and .gitattributes if they don't exist."""
-    gitignore_path = os.path.join(export_dir, ".gitignore")
-    gitattributes_path = os.path.join(export_dir, ".gitattributes")
-    
-    # Gitignore handling
-    if not os.path.exists(gitignore_path):
-        content = [
-            "# CODESYS Sync local files",
-            "_config.json",
-            "_metadata.csv",
-            "*.log",
-            "*.tmp",
-            "*.bak",
-            "",
-            "# CODESYS temporary and build files",
-            "*.~u",
-            "*.precompilecache",
-            "*.opt",
-            "*.bootinfo",
-            "*.bootinfo_guids",
-            "*.compileinfo",
-            "*.simulation.bootinfo",
-            "*.simulation.bootinfo_guids",
-            "*.simulation.compileinfo",
-            ""
-        ]
-        try:
-            with codecs.open(gitignore_path, "w", "utf-8") as f:
-                f.write("\n".join(content))
-            print("Created: .gitignore")
-        except: pass
-    else:
-        # File exists, check if sync_debug.log is ignored
-        try:
-            with codecs.open(gitignore_path, "r", "utf-8") as f:
-                lines = f.readlines()
-            
-            if not any("*.log" in line for line in lines):
-                with codecs.open(gitignore_path, "a", "utf-8") as f:
-                    f.write("\n*.log\n")
-                print("Updated .gitignore with *.log")
-        except: pass
-
-    if not os.path.exists(gitattributes_path):
-        content = [
-            "# Git LFS configuration for CODESYS project binary",
-            "*.project filter=lfs diff=lfs merge=lfs -text",
-            "",
-            "# Prevent line ending conversion for CODESYS Structured Text files",
-            "*.st -text",
-            "",
-            "# GitHub linguist language detection",
-            "*.st linguist-language=Pascal",
-            ""
-        ]
-        try:
-            with codecs.open(gitattributes_path, "w", "utf-8") as f:
-                f.write("\n".join(content))
-            print("Created: .gitattributes")
-        except: pass
 
 
 
