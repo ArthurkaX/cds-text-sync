@@ -929,11 +929,62 @@ def find_application_recursive(obj, depth=0):
         pass
     return None
 
+
+def _find_child_transparent(parent_obj, name):
+    """
+    Find a child object by name, transparently looking through 'Plc Logic' nodes.
+    
+    The export skips 'Plc Logic' in paths (e.g. PLC/ST_Application instead of
+    PLC/Plc Logic/ST_Application). This helper first checks direct children, then
+    looks through any plc_logic children for the target name.
+    
+    Returns the found object or None.
+    """
+    if not parent_obj or not name:
+        return None
+    
+    name_lower = name.lower()
+    
+    try:
+        children = parent_obj.get_children()
+    except:
+        return None
+    
+    # First pass: direct child match
+    for child in children:
+        try:
+            if child.get_name().lower() == name_lower:
+                return child
+        except:
+            continue
+    
+    # Second pass: look through 'plc_logic' children transparently
+    # (the export skips this level in the path)
+    for child in children:
+        try:
+            c_type = safe_str(child.type)
+            if c_type == TYPE_GUIDS.get("plc_logic"):
+                for grandchild in child.get_children():
+                    try:
+                        if grandchild.get_name().lower() == name_lower:
+                            return grandchild
+                    except:
+                        continue
+        except:
+            continue
+    
+    return None
+
+
 def ensure_folder_path(path_str, project):
     """
     Ensure folder structure exists in CODESYS project.
     path_str: relative path string e.g. "PLC/Application/MainFolder"
     Returns the parent object (folder/application/device) or None if failed.
+    
+    Note: The export skips 'Plc Logic' nodes in paths (e.g. PLC/ST_Application
+    instead of PLC/Plc Logic/ST_Application), so this function transparently
+    looks through plc_logic children when a direct match isn't found.
     """
     if not path_str or path_str == "." or path_str == "src":
         return project
@@ -948,18 +999,7 @@ def ensure_folder_path(path_str, project):
     for part in parts:
         if not part: continue
         
-        found = None
-        try:
-            children = current_obj.get_children()
-            for child in children:
-                if child.get_name().lower() == part.lower():
-                    # Check if it's a folder, device, application or plc_logic
-                    c_type = safe_str(child.type)
-                    if c_type in [TYPE_GUIDS.get("folder"), TYPE_GUIDS.get("device"), 
-                                  TYPE_GUIDS.get("application"), TYPE_GUIDS.get("plc_logic")]:
-                        found = child
-                        break
-        except: pass
+        found = _find_child_transparent(current_obj, part)
             
         if not found:
             # We can only create folders, not Devices/Applications
@@ -1021,7 +1061,11 @@ def find_object_by_name(name, name_map, parent_name=None):
 def find_object_by_path(rel_path, project):
     """
     Find a CODESYS object using its hierarchical path.
-    Example rel_path: "PLC/Plc Logic/ST_Application/02_Object_GVL/_02_TaskLocalGVL.xml"
+    Example rel_path: "PLC/ST_Application/02_Object_GVL/_02_TaskLocalGVL.xml"
+    
+    Note: The export skips 'Plc Logic' nodes in paths, so this function
+    transparently looks through plc_logic children when a direct match
+    isn't found.
     """
     if not rel_path: return None
     
@@ -1036,13 +1080,7 @@ def find_object_by_path(rel_path, project):
     current_obj = project
     for part in parts:
         if not part: continue
-        found = None
-        try:
-            for child in current_obj.get_children():
-                if child.get_name().lower() == part.lower():
-                    found = child
-                    break
-        except: break
+        found = _find_child_transparent(current_obj, part)
         
         if found:
             current_obj = found

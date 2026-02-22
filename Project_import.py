@@ -251,11 +251,27 @@ def import_project(import_dir, projects_obj=None, silent=False):
                 continue
 
             obj = None
+            guid_matched = False
             if obj_info.get("guid") and obj_info.get("guid") != "N/A":
                 obj = find_object_by_guid(obj_info["guid"], guid_map)
+                if obj:
+                    guid_matched = True
             
             if obj is None and obj_info.get("name"):
                 obj = find_object_by_name(obj_info["name"], name_map, obj_info.get("parent"))
+                
+                # Cross-validate: when GUID failed but name matched, verify using
+                # the full hierarchical path. This prevents false matches when
+                # identically-named objects exist under different applications
+                # (e.g. DUTs in both ST_Application and LAD_Application).
+                if obj and not guid_matched:
+                    path_obj = find_object_by_path(rel_path, projects.primary)
+                    if path_obj is None or (hasattr(path_obj, 'guid') and hasattr(obj, 'guid') 
+                                            and safe_str(path_obj.guid) != safe_str(obj.guid)):
+                        # Name matched a different object (from another Application)
+                        # This is NOT the correct object - mark as not found
+                        print("  Path validation: '" + rel_path + "' name-matched wrong object, will recreate")
+                        obj = None
             
             if obj is None:
                 # Final fallback: try to find by hierarchical path
@@ -378,7 +394,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
                          if folder_path in folder_cache:
                              create_container = folder_cache[folder_path]
                          else:
-                             create_container = ensure_folder_path(folder_path, projects.primary)
+                             create_container = ensure_folder_path(folder_path)
                              folder_cache[folder_path] = create_container
                      else:
                          # Landing in project root (e.g. Project Settings)
