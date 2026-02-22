@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Project_Daemon.py - Background Hotkey Listener & Quick Actions for CODESYS Sync
+Project_daemon.py - Background Hotkey Listener & Quick Actions for CODESYS Sync
 
 - Runs in background (via hidden form polling).
 - Listens for global ALT+Q keypress.
@@ -34,13 +34,25 @@ if not hasattr(sys, "_codesys_daemon"):
 def _get_captured_projects():
     """Resolve projects object using shared logic."""
     from codesys_utils import resolve_projects
-    proj = resolve_projects(sys._codesys_daemon.get("projects"), globals())
+    # Always try to find a fresh projects object from the environment first
+    proj = resolve_projects(None, globals())
+    if not proj:
+        # Fallback to previously captured object
+        proj = sys._codesys_daemon.get("projects")
+        
     if proj:
         sys._codesys_daemon["projects"] = proj
     return proj
 
 def _run_script_in_namespace(script_name, silent=True):
-    """Refactored helper to execute scripts in a clean namespace with CODESYS globals."""
+    """Execute scripts in current namespace to preserve CODESYS globals.
+    
+    IMPORTANT: We must use globals().copy() to inherit the full CODESYS IDE
+    namespace. Scripts and their imported modules (codesys_utils, etc.) rely
+    on implicit globals like 'projects', 'system', and internal engine
+    references that CODESYS injects into the scripting environment.
+    A clean/minimal namespace breaks these references.
+    """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     script_path = os.path.join(script_dir, script_name)
     
@@ -49,21 +61,25 @@ def _run_script_in_namespace(script_name, silent=True):
         return
         
     try:
-        # Resolve projects/system objects
+        # Resolve projects object (may have changed since daemon started)
         projects_obj = _get_captured_projects()
         system_obj = globals().get("system")
         
-        # Read and execute
+        # Read the script
         with open(script_path, "r") as f:
             script_code = f.read()
-            
+        
+        # Copy the full CODESYS namespace to preserve all implicit globals
         script_globals = globals().copy()
         script_globals["__name__"] = "__main__"
         script_globals["__file__"] = script_path
         script_globals["SILENT"] = silent
         
-        if projects_obj: script_globals["projects"] = projects_obj
-        if system_obj: script_globals["system"] = system_obj
+        # Explicitly inject resolved CODESYS objects
+        if projects_obj:
+            script_globals["projects"] = projects_obj
+        if system_obj:
+            script_globals["system"] = system_obj
             
         exec(script_code, script_globals)
     except Exception as e:
@@ -237,10 +253,10 @@ class QuickActionForm(Form):
              except: pass
 
         elif action == "BUILD_PROJ":
-            _run_script_in_namespace("Project_Build.py", silent=True)
+            _run_script_in_namespace("Project_build.py", silent=False)
 
         elif action == "COMPARE_PROJ":
-            _run_script_in_namespace("Project_compare.py", silent=True)
+            _run_script_in_namespace("Project_compare.py", silent=False)
 
 
 # --- Hotkey Polling Logic ---

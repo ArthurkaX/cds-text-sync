@@ -407,18 +407,26 @@ def export_project(export_dir, projects_obj=None, silent=False):
     summary = "Exported: " + str(exported_total) + " (New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ")"
     log_info("Export complete! " + summary)
     
-    # Check for silent mode (Non-Blocking UI)
-    silent_mode = get_project_prop("cds-sync-silent-mode", False)
-    
-    if silent_mode:
+    # Show completion notification
+    # If called with silent=True (e.g. from Daemon), always use toast (non-blocking)
+    # If called interactively (silent=False), check project property for preference
+    if silent:
         try:
             from codesys_ui import show_toast
             show_toast("Export Complete", summary + "\nTime: {:.2f}s".format(elapsed_time))
         except:
-            # Fallback if UI module missing
-            print("Export complete (Silent mode active, but UI module failed)")
+            print("Export complete (toast unavailable)")
     else:
-        system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+        # Interactive mode: check if user prefers toast over modal dialog
+        silent_mode = get_project_prop("cds-sync-silent-mode", False)
+        if silent_mode:
+            try:
+                from codesys_ui import show_toast
+                show_toast("Export Complete", summary + "\nTime: {:.2f}s".format(elapsed_time))
+            except:
+                print("Export complete (Silent mode active, but UI module failed)")
+        else:
+            system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
 
 def main():
