@@ -2,27 +2,34 @@
 """
 Project_compare.py - Compare CODESYS project with disk files
 
-Compares .st files between the CODESYS IDE and the sync folder to identify:
+Compares .st and .xml files between the CODESYS IDE and the sync folder to identify:
 - Modified objects (content hash mismatch)
 - New objects in IDE (not on disk)
 - Deleted objects (on disk but not in IDE)
 
-Provides feedback through CODESYS script messages.
+Outputs a concise git-style difference list and saves to compare.log.
 """
 import os
 import sys
 import codecs
 import time
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES
+import tempfile
+from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES
 from codesys_utils import (
     safe_str, load_base_dir, load_metadata, build_object_cache,
     calculate_hash, format_st_content, init_logging, log_info,
-    get_project_prop, format_property_content, resolve_projects
+    get_project_prop, format_property_content, resolve_projects,
+    clean_filename
 )
 from codesys_managers import (
-    get_object_path, get_parent_pou_name, export_object_content,
-    collect_property_accessors
+    get_object_path, get_container_prefix, get_parent_pou_name,
+    export_object_content, collect_property_accessors, is_nvl,
+    NativeManager
 )
+
+# Reverse mapping for friendly type names
+TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
+
 
 def compare_project(projects_obj=None, silent=False):
     """Compare CODESYS project objects with disk files"""
@@ -77,9 +84,14 @@ def compare_project(projects_obj=None, silent=False):
     deleted_from_ide = []
     unchanged = []
     
+    # Track which disk paths we've matched to IDE objects
+    matched_disk_paths = set()
+    
     # First pass: collect property accessors
     property_accessors = collect_property_accessors(all_ide_objects)
     
+    # NativeManager for consistent XML hash comparison
+    native_mgr = NativeManager()    
     # Second pass: Compare IDE objects with disk
     for obj in all_ide_objects:
         try:
@@ -98,100 +110,205 @@ def compare_project(projects_obj=None, silent=False):
             if obj_type == TYPE_GUIDS["folder"]:
                 continue
             
-            # Only process exportable types with ST content
-            if obj_type not in EXPORTABLE_TYPES:
-                continue
+            # Determine effective type (detect NVLs hiding as GVLs)
+            effective_type = obj_type
+            is_xml_object = False
             
-            # Check if object has textual content
-            has_content = False
-            try:
-                if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
-                    has_content = True
-                if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
-                    has_content = True
-            except:
-                pass
+            if obj_type == TYPE_GUIDS["gvl"]:
+                try:
+                    if is_nvl(obj):
+                        effective_type = TYPE_GUIDS["nvl_sender"]
+                        is_xml_object = True
+                except:
+                    pass
             
-            # Special handling for properties with accessors
-            is_property = obj_type == TYPE_GUIDS["property"]
-            if is_property and obj_guid in property_accessors:
-                has_content = True
-            
-            if not has_content:
+            # Check if this is an XML type
+            if effective_type in XML_TYPES:
+                is_xml_object = True
+                # Respect the same export_xml gate as Project_export.py
+                # Only task_config and NVL types are always exported
+                if not metadata.get("export_xml", False) and effective_type not in [TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]]:
+                    continue
+                
+            # Only process exportable types
+            if effective_type not in EXPORTABLE_TYPES and effective_type not in XML_TYPES:
                 continue
             
             # Build expected file path
-            from codesys_utils import clean_filename
             container = get_container_prefix(obj)
             path_parts = get_object_path(obj)
             clean_name = clean_filename(obj_name)
             
-            # Handle nested objects (actions, methods, properties)
-            parent_pou = get_parent_pou_name(obj)
-            if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
-                file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-                clean_parent_pou = clean_filename(parent_pou)
-                if path_parts and path_parts[-1] == clean_parent_pou:
-                    path_parts = path_parts[:-1]
+            if is_xml_object:
+                # XML objects
+                file_name = clean_name + ".xml"
             else:
-                file_name = clean_name + ".st"
+                # ST objects - handle nested objects (actions, methods, properties)
+                parent_pou = get_parent_pou_name(obj)
+                if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
+                    file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
+                    clean_parent_pou = clean_filename(parent_pou)
+                    if path_parts and path_parts[-1] == clean_parent_pou:
+                        path_parts = path_parts[:-1]
+                else:
+                    file_name = clean_name + ".st"
             
-            # Build relative path (Hierarchical)
+            # Build relative path
             full_path_parts = container + path_parts
             if full_path_parts:
                 rel_path = "/".join(full_path_parts) + "/" + file_name
             else:
                 rel_path = file_name
             
-            # Get IDE content
-            ide_content = None
-            if is_property and obj_guid in property_accessors:
-                # Property with accessors
-                prop_data = property_accessors[obj_guid]
-                declaration, _ = export_object_content(obj)
-                
-                # Get GET accessor
-                get_impl = None
-                if prop_data['get']:
-                    get_decl, get_impl_raw = export_object_content(prop_data['get'])
-                    get_impl = format_st_content(get_decl, get_impl_raw)
-                
-                # Get SET accessor
-                set_impl = None
-                if prop_data['set']:
-                    set_decl, set_impl_raw = export_object_content(prop_data['set'])
-                    set_impl = format_st_content(set_decl, set_impl_raw)
-                
-                ide_content = format_property_content(declaration, get_impl, set_impl)
-            else:
-                # Normal object
-                declaration, implementation = export_object_content(obj)
-                ide_content = format_st_content(declaration, implementation)
+            # Get type name for display
+            type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
             
-            if not ide_content or not ide_content.strip():
-                continue
-            
-            ide_hash = calculate_hash(ide_content)
-            
-            # Check if file exists on disk
+            # Compare content
             if rel_path in disk_objects:
+                matched_disk_paths.add(rel_path)
                 disk_info = disk_objects[rel_path]
-                disk_hash = disk_info.get("content_hash", "")
+                meta_hash = disk_info.get("content_hash", "")
                 
-                if ide_hash != disk_hash:
-                    modified.append({
-                        "name": obj_name,
-                        "path": rel_path,
-                        "type": obj_type
-                    })
+                if is_xml_object:
+                    # For XML objects, use NativeManager._hash_file for consistent hashing
+                    file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                    if os.path.exists(file_path):
+                        current_hash = native_mgr._hash_file(file_path)
+                        if current_hash and current_hash != meta_hash:
+                            modified.append({
+                                "name": obj_name,
+                                "path": rel_path,
+                                "type": type_name,
+                                "direction": "disk",
+                                "obj": obj
+                            })
+                        else:
+                            unchanged.append(rel_path)
+                    else:
+                        # File in metadata but missing from disk
+                        new_in_ide.append({
+                            "name": obj_name,
+                            "path": rel_path,
+                            "type": type_name,
+                            "obj": obj
+                        })
                 else:
-                    unchanged.append(rel_path)
+                    # ST content comparison (three-way: IDE vs metadata vs disk)
+                    ide_content = None
+                    is_property = obj_type == TYPE_GUIDS["property"]
+                    
+                    if is_property and obj_guid in property_accessors:
+                        prop_data = property_accessors[obj_guid]
+                        declaration, _ = export_object_content(obj)
+                        
+                        get_impl = None
+                        if prop_data['get']:
+                            get_decl, get_impl_raw = export_object_content(prop_data['get'])
+                            get_impl = format_st_content(get_decl, get_impl_raw)
+                        
+                        set_impl = None
+                        if prop_data['set']:
+                            set_decl, set_impl_raw = export_object_content(prop_data['set'])
+                            set_impl = format_st_content(set_decl, set_impl_raw)
+                        
+                        ide_content = format_property_content(declaration, get_impl, set_impl)
+                    else:
+                        # Check textual content exists
+                        has_content = False
+                        try:
+                            if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
+                                has_content = True
+                            if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
+                                has_content = True
+                        except:
+                            pass
+                        
+                        if is_property and obj_guid in property_accessors:
+                            has_content = True
+                        
+                        if not has_content:
+                            unchanged.append(rel_path)
+                            continue
+                        
+                        declaration, implementation = export_object_content(obj)
+                        ide_content = format_st_content(declaration, implementation)
+                    
+                    if not ide_content or not ide_content.strip():
+                        unchanged.append(rel_path)
+                        continue
+                    
+                    ide_hash = calculate_hash(ide_content)
+                    
+                    # Read the actual disk file hash
+                    disk_file_hash = ""
+                    file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                    if os.path.exists(file_path):
+                        try:
+                            with codecs.open(file_path, "r", "utf-8") as df:
+                                disk_content = df.read()
+                            disk_file_hash = calculate_hash(disk_content)
+                        except:
+                            pass
+                    
+                    # Three-way comparison
+                    ide_changed = (ide_hash != meta_hash)
+                    disk_changed = (disk_file_hash != "" and disk_file_hash != meta_hash)
+                    
+                    if ide_changed and disk_changed:
+                        modified.append({
+                            "name": obj_name,
+                            "path": rel_path,
+                            "type": type_name,
+                            "direction": "both",
+                            "obj": obj
+                        })
+                    elif ide_changed:
+                        modified.append({
+                            "name": obj_name,
+                            "path": rel_path,
+                            "type": type_name,
+                            "direction": "ide",
+                            "obj": obj
+                        })
+                    elif disk_changed:
+                        modified.append({
+                            "name": obj_name,
+                            "path": rel_path,
+                            "type": type_name,
+                            "direction": "disk",
+                            "obj": obj
+                        })
+                    else:
+                        unchanged.append(rel_path)
             else:
-                # Object exists in IDE but not on disk
+                # Object exists in IDE but not in metadata
+                if is_xml_object:
+                    # For XML objects, only report as new if the file actually exists on disk
+                    # (export may silently fail for some container types)
+                    file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                    if not os.path.exists(file_path):
+                        continue
+                else:
+                    # For ST objects, check has content
+                    has_content = False
+                    try:
+                        if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
+                            has_content = True
+                        if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
+                            has_content = True
+                    except:
+                        pass
+                    is_property = obj_type == TYPE_GUIDS["property"]
+                    if is_property and obj_guid in property_accessors:
+                        has_content = True
+                    if not has_content:
+                        continue
+                
                 new_in_ide.append({
                     "name": obj_name,
                     "path": rel_path,
-                    "type": obj_type
+                    "type": type_name,
+                    "obj": obj
                 })
         
         except Exception as e:
@@ -200,91 +317,232 @@ def compare_project(projects_obj=None, silent=False):
     
     # Third pass: Find objects on disk that don't exist in IDE
     for rel_path, disk_info in disk_objects.items():
-        # Skip folders and non-.st files
+        # Skip folders
         if disk_info.get("type") == TYPE_GUIDS["folder"]:
             continue
-        if not rel_path.endswith(".st"):
+        # Only consider .st and .xml files
+        if not rel_path.endswith(".st") and not rel_path.endswith(".xml"):
             continue
         
-        # Check if this object exists in IDE
-        obj_guid = disk_info.get("guid")
-        obj_name = disk_info.get("name")
+        # Skip already matched
+        if rel_path in matched_disk_paths:
+            continue
         
-        found = False
-        if obj_guid and obj_guid != "N/A":
-            if obj_guid in guid_map:
-                found = True
-        
-        if not found and obj_name:
-            if obj_name in name_map:
-                found = True
-        
-        if not found and rel_path not in unchanged:
-            # Check if we already counted it as modified or new
-            already_counted = False
-            for item in modified + new_in_ide:
-                if item["path"] == rel_path:
-                    already_counted = True
-                    break
+        # Skip unchanged (matched in pass 2)
+        if rel_path in unchanged:
+            continue
             
-            if not already_counted:
-                deleted_from_ide.append({
-                    "name": obj_name,
-                    "path": rel_path,
-                    "type": disk_info.get("type", "unknown")
-                })
+        # Check if already counted as modified or new
+        already_counted = False
+        for item in modified + new_in_ide:
+            if item["path"] == rel_path:
+                already_counted = True
+                break
+        
+        if already_counted:
+            continue
+        
+        obj_name = disk_info.get("name", os.path.basename(rel_path))
+        obj_type_guid = disk_info.get("type", "unknown")
+        type_name = TYPE_NAMES.get(obj_type_guid, obj_type_guid[:8] if len(obj_type_guid) > 8 else obj_type_guid)
+        
+        deleted_from_ide.append({
+            "name": obj_name,
+            "path": rel_path,
+            "type": type_name
+        })
     
-    # Generate report
+    # Generate report - git-style concise output
     elapsed = time.time() - start_time
     
-    print("\n" + "=" * 80)
-    print("COMPARISON RESULTS")
-    print("=" * 80)
+    diff_lines = []
     
     if modified:
-        print("\nMODIFIED (" + str(len(modified)) + " objects):")
-        print("-" * 80)
         for item in modified:
-            print("  " + item["name"] + " (" + item["path"] + ")")
+            direction = item.get("direction", "")
+            if direction == "ide":
+                tag = "M IDE> "
+            elif direction == "disk":
+                tag = "M DISK>"
+            elif direction == "both":
+                tag = "M BOTH>"
+            else:
+                tag = "M      "
+            line = "  " + tag + " " + item["path"] + "  (" + item["type"] + ")"
+            diff_lines.append(line)
     
     if new_in_ide:
-        print("\nNEW IN IDE (" + str(len(new_in_ide)) + " objects - not exported yet):")
-        print("-" * 80)
         for item in new_in_ide:
-            print("  " + item["name"] + " (" + item["path"] + ")")
+            line = "  +  " + item["path"] + "  (" + item["type"] + ")"
+            diff_lines.append(line)
     
     if deleted_from_ide:
-        print("\nDELETED FROM IDE (" + str(len(deleted_from_ide)) + " objects - still on disk):")
-        print("-" * 80)
         for item in deleted_from_ide:
-            print("  " + item["name"] + " (" + item["path"] + ")")
+            line = "  -  " + item["path"] + "  (" + item["type"] + ")"
+            diff_lines.append(line)
     
-    if not modified and not new_in_ide and not deleted_from_ide:
-        print("\nNo differences found - IDE and disk are in sync!")
+    print("")
+    if diff_lines:
+        print("CHANGES:")
+        for line in diff_lines:
+            print(line)
+    else:
+        print("No differences found - IDE and disk are in sync!")
     
-    print("\n" + "=" * 80)
-    print("SUMMARY:")
-    print("  Modified:        " + str(len(modified)))
-    print("  New in IDE:      " + str(len(new_in_ide)))
-    print("  Deleted from IDE: " + str(len(deleted_from_ide)))
-    print("  Unchanged:       " + str(len(unchanged)))
-    print("  Time elapsed:    {:.2f}s".format(elapsed))
-    print("=" * 80)
+    print("")
+    print("Summary: M:" + str(len(modified)) + " +:" + str(len(new_in_ide)) + " -:" + str(len(deleted_from_ide)) + " =:" + str(len(unchanged)) + " | {:.2f}s".format(elapsed))
+    
+    # Log to sync_debug.log
+    log_info("COMPARE: M:" + str(len(modified)) + " +:" + str(len(new_in_ide)) + " -:" + str(len(deleted_from_ide)) + " =:" + str(len(unchanged)))
+    if diff_lines:
+        log_info("DIFF:\n" + "\n".join(diff_lines))
     
     # Show summary dialog
     if not silent:
-        summary = "Comparison Complete!\n\n"
-        summary += "Modified:        " + str(len(modified)) + "\n"
-        summary += "New in IDE:      " + str(len(new_in_ide)) + "\n"
-        summary += "Deleted from IDE: " + str(len(deleted_from_ide)) + "\n"
-        summary += "Unchanged:       " + str(len(unchanged)) + "\n\n"
-        
-        if modified or new_in_ide or deleted_from_ide:
-            summary += "See Script Output window for details."
+        if not diff_lines:
+            system.ui.info("IDE and Disk are in sync!\n\nObjects checked: " + str(len(unchanged)))
         else:
-            summary += "IDE and disk are in sync!"
+            # Group modified by direction
+            ide_changes = [m for m in modified if m.get("direction") == "ide"]
+            disk_changes = [m for m in modified if m.get("direction") == "disk"]
+            both_changes = [m for m in modified if m.get("direction") == "both"]
+            other_changes = [m for m in modified if m.get("direction") not in ("ide", "disk", "both")]
+            # Merge other into disk
+            all_disk = disk_changes + other_changes
+            
+            # Show WinForms dialog with checkboxes
+            from codesys_ui import show_compare_dialog
+            action, selected = show_compare_dialog(
+                ide_changes, all_disk, both_changes,
+                new_in_ide, deleted_from_ide, len(unchanged)
+            )
+            
+            if action == "import":
+                perform_import(projects_obj.primary, base_dir, selected, deleted_from_ide)
+            elif action == "export":
+                perform_export(base_dir, selected, new_in_ide, metadata)
+
+
+def perform_import(primary_project, base_dir, modified, deleted_from_ide):
+    """Trigger native import for disk-side changes"""
+    xml_files = []
+    st_files = []
+    
+    # Collect files to import
+    to_sync = [m for m in modified if m.get("direction") in ("disk", "both")]
+    to_sync += deleted_from_ide
+    
+    for item in to_sync:
+        rel_path = item["path"]
+        abs_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+        if os.path.exists(abs_path):
+            if rel_path.endswith(".xml"):
+                xml_files.append(abs_path)
+            elif rel_path.endswith(".st"):
+                st_files.append((abs_path, item))
+    
+    if not xml_files and not st_files:
+        system.ui.info("No files selected for import.")
+        return
+
+    # 1. Handle XML files (merged import to get the native checkbox dialog)
+    if xml_files:
+        from codesys_utils import merge_native_xmls
+        tmp_xml = os.path.join(tempfile.gettempdir(), "cds_sync_merge.xml")
+        if merge_native_xmls(xml_files, tmp_xml):
+            try:
+                primary_project.import_native(tmp_xml)
+                log_info("Native XML import triggered for " + str(len(xml_files)) + " files.")
+            except Exception as e:
+                system.ui.error("Native import failed: " + safe_str(e))
+            finally:
+                if os.path.exists(tmp_xml):
+                    try: os.remove(tmp_xml)
+                    except: pass
+    
+    # 2. Handle ST files
+    if st_files:
+        from codesys_managers import POUManager, PropertyManager, update_object_code
+        from codesys_utils import parse_st_file, parse_property_content, find_object_by_path, build_object_cache
         
-        system.ui.info(summary)
+        pou_mgr = POUManager()
+        prop_mgr = PropertyManager()
+        
+        # Build cache once
+        guid_map, name_map = build_object_cache(primary_project)
+        
+        for st_path, item in st_files:
+            try:
+                obj = item.get("obj")
+                if not obj:
+                    obj = find_object_by_path(item["path"], primary_project)
+                
+                if not obj:
+                    log_warning("Could not find object in IDE for import: " + item["path"])
+                    continue
+                
+                with codecs.open(st_path, "r", "utf-8") as f:
+                    content = f.read()
+                
+                if item["type"] == "property":
+                    decl, g, s = parse_property_content(content)
+                    prop_mgr.update(obj, st_path, {"declaration": decl, "get": g, "set": s})
+                else:
+                    decl, impl = parse_st_file(content)
+                    update_object_code(obj, decl, impl)
+                
+                log_info("Imported " + item["name"])
+            except Exception as e:
+                log_error("Failed to import ST file " + st_path + ": " + safe_str(e))
+
+    system.ui.info("Import process complete.\nRun Compare again to verify.")
+
+
+def perform_export(base_dir, modified, new_in_ide, metadata):
+    """Trigger export for IDE-side changes"""
+    from codesys_managers import POUManager, NativeManager, ConfigManager, PropertyManager
+    
+    to_export = [m for m in modified if m.get("direction") in ("ide", "both")]
+    to_export += new_in_ide
+    
+    if not to_export:
+        system.ui.info("No objects selected for export.")
+        return
+        
+    context = {
+        'export_dir': base_dir,
+        'metadata': metadata
+    }
+    
+    managers = {
+        TYPE_GUIDS["pou"]: POUManager(),
+        TYPE_GUIDS["gvl"]: POUManager(),
+        TYPE_GUIDS["dut"]: POUManager(),
+        TYPE_GUIDS["itf"]: POUManager(),
+        TYPE_GUIDS["property"]: PropertyManager(),
+        TYPE_GUIDS["task_config"]: ConfigManager(),
+    }
+    native_mgr = NativeManager()
+    
+    count = 0
+    for item in to_export:
+        obj = item.get("obj")
+        if not obj: continue
+        
+        obj_type = safe_str(obj.type)
+        mgr = managers.get(obj_type, native_mgr)
+        
+        try:
+            res = mgr.export(obj, context)
+            if res: count += 1
+        except Exception as e:
+            log_error("Export failed for " + item["name"] + ": " + safe_str(e))
+            
+    # Save updated metadata
+    from codesys_utils import save_metadata
+    save_metadata(base_dir, metadata)
+    
+    system.ui.info("Exported " + str(count) + " objects.\nMetadata updated.")
 
 
 def main():

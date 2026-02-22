@@ -151,3 +151,173 @@ def show_settings_dialog(current_settings):
     except Exception as e:
         print("Error showing settings dialog: " + str(e))
     return None
+
+
+class CompareResultsForm(Form):
+    """WinForms dialog showing comparison results with checkboxes"""
+    
+    IMPORT = "import"
+    EXPORT = "export"
+    CLOSE = "close"
+    
+    def __init__(self, ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count):
+        self.Text = "cds-text-sync: Comparison Results"
+        self.Size = Size(500, 480)
+        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self.StartPosition = FormStartPosition.CenterScreen
+        self.MaximizeBox = False
+        self.MinimizeBox = False
+        self.result_action = self.CLOSE
+        self.checkboxes = []
+        
+        y = 15
+        
+        # Header
+        lbl = Label()
+        lbl.Text = "Differences found between IDE and Disk."
+        lbl.Location = Point(15, y)
+        lbl.AutoSize = True
+        lbl.Font = Font("Segoe UI", 10, FontStyle.Bold)
+        self.Controls.Add(lbl)
+        y += 30
+        
+        lbl2 = Label()
+        lbl2.Text = "Select the objects you want to synchronize:"
+        lbl2.Location = Point(15, y)
+        lbl2.AutoSize = True
+        self.Controls.Add(lbl2)
+        y += 28
+        
+        # Add sections
+        if both_changes:
+            y = self._add_section(y, "CONFLICT (changed in both IDE and Disk):", both_changes, "both")
+        if ide_changes:
+            y = self._add_section(y, "Modified in IDE (need Export):", ide_changes, "ide") 
+        if disk_changes:
+            y = self._add_section(y, "Modified on Disk (need Import):", disk_changes, "disk")
+        if new_in_ide:
+            y = self._add_section(y, "New in IDE (not yet exported):", new_in_ide, "new")
+        if deleted_from_ide:
+            y = self._add_section(y, "Deleted from IDE (still on Disk):", deleted_from_ide, "deleted")
+        
+        # Summary
+        y += 5
+        total_m = len(ide_changes) + len(disk_changes) + len(both_changes)
+        lbl_sum = Label()
+        lbl_sum.Text = "M:" + str(total_m) + "  +:" + str(len(new_in_ide)) + "  -:" + str(len(deleted_from_ide)) + "  =:" + str(unchanged_count)
+        lbl_sum.Location = Point(15, y)
+        lbl_sum.AutoSize = True
+        self.Controls.Add(lbl_sum)
+        y += 30
+        
+        # Select All / None
+        btn_all = Button()
+        btn_all.Text = "All"
+        btn_all.Location = Point(15, y)
+        btn_all.Size = Size(55, 25)
+        btn_all.Click += self._select_all
+        self.Controls.Add(btn_all)
+        
+        btn_none = Button()
+        btn_none.Text = "None"
+        btn_none.Location = Point(75, y)
+        btn_none.Size = Size(55, 25)
+        btn_none.Click += self._select_none
+        self.Controls.Add(btn_none)
+        
+        # Action buttons
+        btn_close = Button()
+        btn_close.Text = "Close"
+        btn_close.Location = Point(380, y)
+        btn_close.Size = Size(90, 28)
+        btn_close.DialogResult = DialogResult.Cancel
+        self.Controls.Add(btn_close)
+        self.CancelButton = btn_close
+        
+        btn_export = Button()
+        btn_export.Text = "Export to Disk"
+        btn_export.Location = Point(260, y)
+        btn_export.Size = Size(110, 28)
+        btn_export.Click += self._on_export
+        self.Controls.Add(btn_export)
+        
+        btn_import = Button()
+        btn_import.Text = "Import to IDE"
+        btn_import.Location = Point(140, y)
+        btn_import.Size = Size(110, 28)
+        btn_import.Click += self._on_import
+        self.Controls.Add(btn_import)
+        
+        # Resize form to fit content
+        self.Size = Size(500, y + 65)
+    
+    def _add_section(self, y, title, items, direction):
+        """Add a labeled section with checkboxes"""
+        lbl = Label()
+        lbl.Text = title
+        lbl.Location = Point(15, y)
+        lbl.AutoSize = True
+        lbl.Font = Font("Segoe UI", 9, FontStyle.Bold)
+        self.Controls.Add(lbl)
+        y += 22
+        
+        for item in items[:15]:
+            cb = CheckBox()
+            cb.Text = item["name"] + "  [" + item["type"] + "]"
+            cb.Location = Point(30, y)
+            cb.Size = Size(440, 20)
+            cb.Checked = True
+            cb.Tag = (item, direction)
+            self.Controls.Add(cb)
+            self.checkboxes.append(cb)
+            y += 22
+        
+        if len(items) > 15:
+            lbl_more = Label()
+            lbl_more.Text = "... and " + str(len(items) - 15) + " more"
+            lbl_more.Location = Point(45, y)
+            lbl_more.AutoSize = True
+            self.Controls.Add(lbl_more)
+            y += 20
+        
+        y += 8
+        return y
+    
+    def _select_all(self, sender, event):
+        for cb in self.checkboxes:
+            cb.Checked = True
+    
+    def _select_none(self, sender, event):
+        for cb in self.checkboxes:
+            cb.Checked = False
+    
+    def _on_import(self, sender, event):
+        self.result_action = self.IMPORT
+        self.DialogResult = DialogResult.OK
+        self.Close()
+    
+    def _on_export(self, sender, event):
+        self.result_action = self.EXPORT
+        self.DialogResult = DialogResult.OK
+        self.Close()
+    
+    def get_selected(self):
+        """Return list of selected items with their direction tags"""
+        selected = []
+        for cb in self.checkboxes:
+            if cb.Checked and cb.Tag:
+                item, direction = cb.Tag
+                selected.append(item)
+        return selected
+
+
+def show_compare_dialog(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count):
+    """Show the comparison results dialog. Returns (action, selected_items)"""
+    try:
+        form = CompareResultsForm(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count)
+        result = form.ShowDialog()
+        if result == DialogResult.OK:
+            return form.result_action, form.get_selected()
+    except Exception as e:
+        print("Error showing compare dialog: " + str(e))
+    return CompareResultsForm.CLOSE, []
