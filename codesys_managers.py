@@ -708,17 +708,6 @@ class NativeManager(ObjectManager):
                 
                 # Strip internal CODESYS timestamp
                 if 'Name="Timestamp"' in line: continue
-                
-                # Strip our sync timestamp property (which is multiple lines)
-                if 'cds-sync-timestamp' in line:
-                    # The value follows in the next 3 lines usually in the XML structure
-                    # But to be safe, just skip this line and the next few if they look like value lines
-                    continue
-                
-                # Strip the actual value of cds-sync-timestamp if it looks like a date
-                import re
-                if re.search(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', line):
-                    continue
                     
                 filtered.append(line)
                 

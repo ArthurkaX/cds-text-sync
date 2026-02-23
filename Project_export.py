@@ -171,7 +171,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
     metadata = {
         "project_name": current_project_name,
         "export_timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        "sync_timeout": 10000,
         "export_xml": False,
         "objects": {}
     }
@@ -185,7 +184,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
     # Read settings from project properties (Source of Truth)
     from codesys_utils import get_project_prop
     metadata["export_xml"] = get_project_prop("cds-sync-export-xml", False)
-    metadata["sync_timeout"] = get_project_prop("cds-sync-timeout", 10000)
     backup_binary = get_project_prop("cds-sync-backup-binary", False)
     
     # Store settings in metadata for reference

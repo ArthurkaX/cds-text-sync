@@ -662,9 +662,7 @@ def load_metadata(base_dir):
     # 1. Load configuration from Project Properties (Source of Truth)
     metadata["project_path"] = safe_str(projects.primary.path) if "projects" in globals() and projects.primary else "N/A"
     metadata["project_name"] = safe_str(projects.primary) if "projects" in globals() and projects.primary else "N/A"
-    metadata["sync_timeout"] = get_project_prop("cds-sync-timeout", 10000)
     metadata["export_xml"] = get_project_prop("cds-sync-export-xml", False)
-    metadata["export_timestamp"] = get_project_prop("cds-sync-timestamp", "N/A")
     
     # 2. Check if we have object metadata at all
     if not os.path.exists(os.path.join(base_dir, "_metadata.csv")):
@@ -895,11 +893,8 @@ def save_metadata(base_dir, metadata):
 
     try:
         # 1. Update Project Properties (Source of Truth)
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        metadata["export_timestamp"] = current_time
+        metadata["export_timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
         
-        set_project_prop("cds-sync-timestamp", current_time)
-        set_project_prop("cds-sync-timeout", metadata.get("sync_timeout", 10000))
         set_project_prop("cds-sync-export-xml", metadata.get("export_xml", False))
         
         # 2. Save configuration snapshot to _config.json (Mirror)
