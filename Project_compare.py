@@ -172,13 +172,6 @@ def compare_project(projects_obj=None, silent=False):
                 unchanged.append(rel_path)
                 continue
             
-            # Special handling for Task Configuration - skip as they're auto-managed
-            # Task configurations are automatically generated/maintained by CODESYS
-            if is_xml_object and obj_name == "Task Configuration":
-                # Mark as unchanged to avoid false positives
-                unchanged.append(rel_path)
-                continue
-            
             # Gate: for XML types that are not always-exported, only compare if the
             # file is already known in the metadata (i.e. was exported previously).
             if is_xml_object and effective_type in XML_TYPES:

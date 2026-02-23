@@ -306,6 +306,11 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 except:
                     pass
 
+            # Debug logging for task_config
+            if effective_type == TYPE_GUIDS["task_config"]:
+                print("DEBUG: Found Task Configuration object: " + safe_str(obj.get_name()) + " (GUID: " + safe_str(obj.guid) + ")")
+                print("DEBUG: managers contains task_config: " + str(effective_type in managers))
+                
             if use_native:
                 manager = managers["native"]
             elif effective_type in managers:

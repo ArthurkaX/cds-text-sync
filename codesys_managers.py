@@ -382,7 +382,10 @@ class FolderManager(ObjectManager):
         try:
             # In CODESYS, 'projects' is an environment global, no need to import it
             # file_path in this context is the rel_path from metadata e.g. "src/Folder/Sub"
-            return ensure_folder_path(file_path, projects.primary)
+            projects_obj = resolve_projects()
+            if projects_obj and projects_obj.primary:
+                return ensure_folder_path(file_path, projects_obj.primary)
+            return None
         except:
             return None
 
@@ -849,7 +852,9 @@ class NativeManager(ObjectManager):
                 container.import_native(file_path)
             else:
                 # Fallback to project-level import
-                projects.primary.import_native(file_path)
+                projects_obj = resolve_projects()
+                if projects_obj and projects_obj.primary:
+                    projects_obj.primary.import_native(file_path)
             
             # Find newly created object
             if container:
@@ -864,6 +869,9 @@ class NativeManager(ObjectManager):
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
     def export(self, obj, context):
+        # Debug logging
+        print("DEBUG: ConfigManager.export() called for: " + safe_str(obj.get_name()) + " (type: " + safe_str(obj.type) + ")")
+        
         # Configuration XML now also follows Device/App hierarchy
         container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
@@ -873,11 +881,15 @@ class ConfigManager(NativeManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
+        print("DEBUG: container=" + str(container) + " path_parts=" + str(path_parts) + " target_dir=" + target_dir)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
+            print("DEBUG: created directory: " + target_dir)
             
         file_path = os.path.join(target_dir, file_name)
+        print("DEBUG: target file path: " + file_path)
         is_new = not os.path.exists(file_path)
+        print("DEBUG: file is_new=" + str(is_new))
         
         # Get existing file hash before overwriting
         old_hash = "" if is_new else self._hash_file(file_path)
@@ -885,15 +897,21 @@ class ConfigManager(NativeManager):
         # Export to temp file
         tmp_path = file_path + ".tmp"
         try:
-            projects.primary.export_native([obj], tmp_path, recursive=True)
+            projects_obj = resolve_projects()
+            if projects_obj and projects_obj.primary:
+                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+            else:
+                return False
         except:
             if os.path.exists(tmp_path):
                 try: os.remove(tmp_path)
                 except: pass
             return False
-        
         if not os.path.exists(tmp_path):
+            print("DEBUG: temp file was not created: " + tmp_path)
             return False
+        else:
+            print("DEBUG: temp file created successfully: " + str(os.path.getsize(tmp_path)) + " bytes")
         
         new_hash = self._hash_file(tmp_path)
         
