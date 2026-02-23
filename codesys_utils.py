@@ -105,29 +105,45 @@ def log_error(message, critical=False):
 
 # --- Utility Functions ---
 
+def is_valid_projects(obj):
+    """Check if the projects object is valid and functional."""
+    if obj is None:
+        return False
+    try:
+        # Accessing .primary is the ultimate test. 
+        # If it's a stale/dead object from a previous run, this throws.
+        _ = obj.primary
+        return True
+    except:
+        return False
+
+
 def resolve_projects(projects_obj=None, caller_globals=None):
-    """Resolve the CODESYS 'projects' global object.
+    """
+    Ensure we have a reference to the CODESYS projects engine.
     
     Tries multiple strategies:
-    1. Use the explicitly passed object
+    1. Use the explicitly passed object (if valid)
     2. Check caller's globals
     3. Check __main__ module
     4. Search sys.modules for an object with .primary attribute
     
     Returns the projects object or None.
     """
-    if projects_obj is not None:
+    if is_valid_projects(projects_obj):
         return projects_obj
     
     # Strategy 1: caller globals
     if caller_globals and "projects" in caller_globals:
-        return caller_globals["projects"]
+        candidate = caller_globals["projects"]
+        if is_valid_projects(candidate):
+            return candidate
     
     # Strategy 2: __main__
     try:
         import __main__
         obj = getattr(__main__, "projects", None)
-        if obj is not None:
+        if is_valid_projects(obj):
             return obj
     except:
         pass
@@ -135,14 +151,59 @@ def resolve_projects(projects_obj=None, caller_globals=None):
     # Strategy 3: sys.modules scan
     try:
         # sys is already imported at top level
+        # Sort modules to prioritize those that might be "more" main
         for module in sys.modules.values():
             if hasattr(module, "projects"):
                 candidate = getattr(module, "projects")
-                if hasattr(candidate, "primary"):
+                if is_valid_projects(candidate):
                     return candidate
     except:
         pass
     
+    return None
+
+
+def is_valid_system(obj):
+    """Check if the system object is valid and functional."""
+    if obj is None:
+        return False
+    try:
+        # Accessing .ui is a good test for the CODESYS system object
+        _ = obj.ui
+        return True
+    except:
+        return False
+
+
+def resolve_system(caller_globals=None):
+    """Resolve the CODESYS 'system' global object."""
+    # Strategy 1: caller globals
+    if caller_globals and "system" in caller_globals:
+        candidate = caller_globals["system"]
+        if is_valid_system(candidate):
+            return candidate
+            
+    # Strategy 2: __main__
+    try:
+        import __main__
+        obj = getattr(__main__, "system", None)
+        if is_valid_system(obj):
+            return obj
+    except:
+        pass
+        
+    # Strategy 3: sys.modules scan
+    try:
+        if "system" in sys.modules:
+            return sys.modules["system"]
+        for module in sys.modules.values():
+            if hasattr(module, "system"):
+                candidate = getattr(module, "system")
+                if is_valid_system(candidate):
+                    return candidate
+    except:
+        pass
+        
     return None
 
 
@@ -232,14 +293,11 @@ def clean_filename(name):
 def get_project_prop(key, default=None):
     """Safely get a project property using the appropriate API for this CODESYS version."""
     try:
-        import __main__
-        proj = None
-        if hasattr(__main__, 'projects'): proj = __main__.projects.primary
-        else:
-            try: proj = projects.primary
-            except: pass
+        projects_obj = resolve_projects()
+        if not projects_obj or not projects_obj.primary:
+            return default
             
-        if not proj: return default
+        proj = projects_obj.primary
         
         info = proj.get_project_info() if hasattr(proj, "get_project_info") else getattr(proj, "project_info", None)
         if not info: return default
@@ -262,14 +320,11 @@ def get_project_prop(key, default=None):
 def set_project_prop(key, value):
     """Safely set a project property."""
     try:
-        import __main__
-        proj = None
-        if hasattr(__main__, 'projects'): proj = __main__.projects.primary
-        else:
-            try: proj = projects.primary
-            except: pass
+        projects_obj = resolve_projects()
+        if not projects_obj or not projects_obj.primary:
+            return False
             
-        if not proj: return False
+        proj = projects_obj.primary
         
         info = proj.get_project_info() if hasattr(proj, "get_project_info") else getattr(proj, "project_info", None)
         if not info: return False
@@ -340,20 +395,8 @@ def load_base_dir():
     # Resolve relative paths against project file location
     if is_relative:
         try:
-            # Get project file path
-            proj = None
-            try:
-                import __main__
-                if hasattr(__main__, 'projects'):
-                    proj = __main__.projects.primary
-            except:
-                pass
-            
-            if not proj:
-                try:
-                    proj = projects.primary
-                except:
-                    pass
+            projects_obj = resolve_projects()
+            proj = projects_obj.primary if projects_obj else None
             
             if not proj or not hasattr(proj, 'path'):
                 return None, "Cannot resolve relative path: project path not available.\n\nRelative path: " + base_dir
@@ -370,7 +413,6 @@ def load_base_dir():
             base_dir = os.path.normpath(os.path.join(project_dir, normalized_base))
             
             log_info("Resolved relative path '%s' to '%s' (project dir: '%s')" % (normalized_base, base_dir, project_dir))
-            
         except Exception as e:
             log_error("Error resolving relative path: " + safe_str(e))
             return None, "Failed to resolve relative path: " + base_dir + "\n\nError: " + safe_str(e)
@@ -411,14 +453,8 @@ def load_base_dir():
                             # Re-resolve if it's still relative after reconfiguration
                             if base_dir and (base_dir.startswith('.' + os.sep) or base_dir.startswith('./') or base_dir.startswith('.\\') or base_dir == '.'):
                                 try:
-                                    proj = None
-                                    try:
-                                        import __main__
-                                        if hasattr(__main__, 'projects'): proj = __main__.projects.primary
-                                    except: pass
-                                    if not proj:
-                                        try: proj = projects.primary
-                                        except: pass
+                                    projects_obj = resolve_projects()
+                                    proj = projects_obj.primary if projects_obj else None
                                     if proj and hasattr(proj, 'path'):
                                         project_dir = os.path.dirname(safe_str(proj.path))
                                         normalized_base = base_dir.replace('/', os.sep).replace('\\', os.sep)

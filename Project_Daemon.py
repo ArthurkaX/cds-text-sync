@@ -33,12 +33,16 @@ if not hasattr(sys, "_codesys_daemon"):
 
 def _get_captured_projects():
     """Resolve projects object using shared logic."""
-    from codesys_utils import resolve_projects
-    # Always try to find a fresh projects object from the environment first
-    proj = resolve_projects(None, globals())
+    from codesys_utils import resolve_projects, is_valid_projects
+    # Always try to find a fresh projects object from the environment first.
+    # We pass None as caller_globals to avoid picking up the daemon's own stale 'projects' global.
+    proj = resolve_projects(None, None)
+    
     if not proj:
-        # Fallback to previously captured object
+        # Fallback to previously captured object if it's still good
         proj = sys._codesys_daemon.get("projects")
+        if not is_valid_projects(proj):
+            proj = None
         
     if proj:
         sys._codesys_daemon["projects"] = proj
@@ -69,17 +73,27 @@ def _run_script_in_namespace(script_name, silent=True):
         with open(script_path, "r") as f:
             script_code = f.read()
         
-        # Copy the full CODESYS namespace to preserve all implicit globals
+        # Copy the full CODESYS namespace to preserve all implicit globals.
+        # However, we must ensure 'projects' and 'system' are updated to their current live versions.
         script_globals = globals().copy()
         script_globals["__name__"] = "__main__"
         script_globals["__file__"] = script_path
         script_globals["SILENT"] = silent
         
-        # Explicitly inject resolved CODESYS objects
-        if projects_obj:
-            script_globals["projects"] = projects_obj
-        if system_obj:
-            script_globals["system"] = system_obj
+        # Explicitly inject fresh/resolved CODESYS objects
+        from codesys_utils import resolve_system, is_valid_projects
+        
+        real_projects = _get_captured_projects()
+        real_system = resolve_system(globals())
+        
+        if is_valid_projects(real_projects):
+            script_globals["projects"] = real_projects
+        else:
+            # If no valid projects engine found, remove stale reference
+            script_globals.pop("projects", None)
+            
+        if real_system:
+            script_globals["system"] = real_system
             
         exec(script_code, script_globals)
     except Exception as e:
