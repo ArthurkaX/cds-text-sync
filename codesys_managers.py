@@ -150,8 +150,10 @@ def get_object_path(obj, stop_at_application=True):
             if parent_type in [TYPE_GUIDS["plc_logic"], TYPE_GUIDS["device"]]:
                 break
             
-            # Skip Task Configuration in path building - individual Tasks are handled by Task Configuration XML
-            if parent_type == TYPE_GUIDS["task_config"]:
+            # Skip Task Configuration and individual Tasks in path building
+            # Tasks are exported as monolithic Task Configuration XML,
+            # so their children should not create Task subfolders on disk
+            if parent_type in [TYPE_GUIDS["task_config"], TYPE_GUIDS["task"]]:
                 break
             
             parent_name = clean_filename(parent.get_name())
@@ -374,9 +376,6 @@ class FolderManager(ObjectManager):
         
 
         
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
-            
         rel_path = "/".join(full_path_parts)
         
         # Check metadata (not filesystem) to determine if folder is truly new
@@ -434,8 +433,6 @@ class POUManager(ObjectManager):
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
         
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
         
@@ -444,6 +441,9 @@ class POUManager(ObjectManager):
         
         if not content.strip():
             return False
+        
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
         
         content_hash = calculate_hash(content)
         is_new = not os.path.exists(file_path)
@@ -571,8 +571,6 @@ class PropertyManager(POUManager):
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
         
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
         
@@ -593,6 +591,9 @@ class PropertyManager(POUManager):
             
         if not get_impl and not set_impl:
             return False
+            
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
             
         # Combine into Property Format
         combined_content = format_property_content(declaration, get_impl, set_impl)
@@ -775,8 +776,6 @@ class NativeManager(ObjectManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
         is_new = not os.path.exists(file_path)
@@ -789,6 +788,8 @@ class NativeManager(ObjectManager):
         try:
             projects_obj = resolve_projects()
             if projects_obj and projects_obj.primary:
+                if not os.path.exists(target_dir):
+                    os.makedirs(target_dir)
                 projects_obj.primary.export_native([obj], tmp_path, recursive=True)
             else:
                 log_error("Native export failed: 'projects' object not found or no primary project.")
@@ -900,8 +901,6 @@ class ConfigManager(NativeManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
             
         file_path = os.path.join(target_dir, file_name)
         is_new = not os.path.exists(file_path)
@@ -914,6 +913,8 @@ class ConfigManager(NativeManager):
         try:
             projects_obj = resolve_projects()
             if projects_obj and projects_obj.primary:
+                if not os.path.exists(target_dir):
+                    os.makedirs(target_dir)
                 # For Task Configuration, export without recursive to avoid duplicate Task objects
                 is_task_config = safe_str(obj.type) == TYPE_GUIDS["task_config"]
                 projects_obj.primary.export_native([obj], tmp_path, recursive=not is_task_config)

@@ -62,6 +62,7 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
 
     # Check for auto-delete property
     try:
+        from codesys_utils import get_project_prop
         auto_delete = get_project_prop("cds-sync-auto-delete-orphans", False)
     except:
         auto_delete = False
@@ -167,7 +168,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
     print("Export directory: " + export_dir)
     
     # Metadata structure
-    current_project_name = safe_str(projects.primary)
+    current_project_name = safe_str(projects_obj.primary)
     metadata = {
         "project_name": current_project_name,
         "export_timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
@@ -176,8 +177,8 @@ def export_project(export_dir, projects_obj=None, silent=False):
     }
     
     try:
-        if hasattr(projects.primary, "path"):
-            metadata["project_path"] = safe_str(projects.primary.path)
+        if hasattr(projects_obj.primary, "path"):
+            metadata["project_path"] = safe_str(projects_obj.primary.path)
     except:
         pass
     
@@ -288,7 +289,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
             
             # Skip ALL individual Task objects - they are handled by Task Configuration XML
             if obj_type == TYPE_GUIDS["task"]:
-                print("DEBUG: Skipping Task " + safe_str(obj.get_name()) + " - handled by Task Configuration")
+                # Individual tasks don't need independent export
                 continue
             
             # Special case: GVLs that are actually NVLs should be treated as native XML
@@ -301,8 +302,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
                     pass
 
             # Special case: POUs/actions/methods with graphical implementation (LD, CFC, FBD)
-            # must be exported as native XML. They share the POU type GUID but have no textual
-            # implementation body - the graphical content only exists in the native XML format.
+            # must be exported as native XML.
             if effective_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
                 try:
                     if is_graphical_pou(obj):
@@ -310,8 +310,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
                         log_info("Detected graphical object: " + safe_str(obj.get_name()) + " -> switching to XML export")
                 except:
                     pass
-
-
                 
             if use_native:
                 manager = managers["native"]
@@ -341,12 +339,27 @@ def export_project(export_dir, projects_obj=None, silent=False):
         except Exception as e:
             log_error("Error exporting " + safe_str(obj) + ": " + safe_str(e))
     
+    # Phase 7: Cleanup empty folders from metadata
+    # (A folder is only kept if it contains at least one exportable file)
+    all_paths_list = list(metadata["objects"].keys())
+    needed_folders = set()
+    for p in all_paths_list:
+        if metadata["objects"][p].get("type") != TYPE_GUIDS["folder"]:
+            # This is a file, mark all its parent paths as needed
+            parts = p.split("/")
+            for i in range(1, len(parts)):
+                needed_folders.add("/".join(parts[:i]))
+    
+    # Filter metadata to only include files and needed folders
+    metadata["objects"] = {p: info for p, info in metadata["objects"].items() 
+                           if info.get("type") != TYPE_GUIDS["folder"] or p in needed_folders}
+
     # Cleanup orphaned files (files on disk not in current export)
     if not cleanup_orphaned_files(export_dir, metadata["objects"], silent=silent):
         return
     
     # Debug: Count methods in metadata before saving
-    method_count = sum(1 for obj in metadata["objects"].values() if obj.get("type") == TYPE_GUIDS["method"])
+    method_count = sum(1 for info in metadata["objects"].values() if info.get("type") == TYPE_GUIDS["method"])
     exported_total = exported_new + exported_updated + exported_identical
     print("DEBUG: Before saving - Total objects: " + str(len(metadata["objects"])) + ", Methods: " + str(method_count))
     
@@ -369,8 +382,6 @@ def export_project(export_dir, projects_obj=None, silent=False):
     log_info("Export complete! " + summary)
     
     # Show completion notification
-    # If called with silent=True (e.g. from Daemon), always use toast (non-blocking)
-    # If called interactively (silent=False), check project property for preference
     if silent:
         try:
             from codesys_ui import show_toast
