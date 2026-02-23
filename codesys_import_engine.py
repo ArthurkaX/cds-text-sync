@@ -56,8 +56,14 @@ def update_object_metadata(objects_meta, rel_path, obj, file_path, import_manage
             content_hash = import_managers["native"]._hash_file(file_path)
     else:
         try:
-            with codecs.open(file_path, "r", "utf-8") as f:
-                content_hash = calculate_hash(f.read())
+            from codesys_utils import parse_st_file, format_st_content
+            declaration, implementation = parse_st_file(file_path)
+            if declaration is not None or implementation is not None:
+                full_content = format_st_content(declaration, implementation)
+                content_hash = calculate_hash(full_content)
+            else:
+                with codecs.open(file_path, "r", "utf-8") as f:
+                    content_hash = calculate_hash(f.read())
         except:
             pass
 
