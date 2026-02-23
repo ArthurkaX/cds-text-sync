@@ -25,6 +25,10 @@ from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
     update_object_code
 )
+from codesys_import_engine import (
+    create_import_managers, update_object_metadata,
+    batch_import_native_xmls, finalize_import
+)
 
 # Global cache for start_obj (legacy for internal use if needed)
 _ensure_folder_start_obj = None
@@ -167,14 +171,8 @@ def import_project(import_dir, projects_obj=None, silent=False):
     
     # Binary Backup handles safety
     
-    # Initialize managers
-    import_managers = {
-        TYPE_GUIDS["folder"]: FolderManager(),
-        TYPE_GUIDS["property"]: PropertyManager(),
-        TYPE_GUIDS["task_config"]: ConfigManager(),
-        "default": POUManager(),
-        "native": NativeManager()
-    }
+    # Initialize managers (via shared engine)
+    import_managers = create_import_managers()
     
     with MetadataLock(import_dir, timeout=60):
         # Load metadata
@@ -362,7 +360,8 @@ def import_project(import_dir, projects_obj=None, silent=False):
                         "type": TYPE_GUIDS["folder"],
                         "name": safe_str(res.get_name()),
                         "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
-                        "content_hash": ""
+                        "content_hash": "",
+                        "last_modified": ""
                     }
 
         # Process new files
@@ -429,15 +428,7 @@ def import_project(import_dir, projects_obj=None, silent=False):
                     res = manager.create(create_container, name, file_path, type_guid)
                     if res:
                         created_count += 1
-                        # Update metadata and cache
-                        objects_meta[rel_path] = {
-                            "guid": safe_str(res.guid),
-                            "type": safe_str(res.type),
-                            "name": res.get_name(),
-                            "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
-                            "content_hash": calculate_hash(open(file_path, "rb").read().decode('utf-8')) if not rel_path.endswith(".xml") else "",
-                            "last_modified": safe_str(os.path.getmtime(file_path))
-                        }
+                        update_object_metadata(objects_meta, rel_path, res, file_path, import_managers)
                         if res.get_name() not in name_map: name_map[res.get_name()] = []
                         name_map[res.get_name()].append(res)
                     else:
@@ -448,80 +439,16 @@ def import_project(import_dir, projects_obj=None, silent=False):
         
         # Process Native Batches (reduces dialogs from 15 to 1-2)
         if native_batches:
-            for container, items in native_batches.items():
-                print("  Batch importing " + str(len(items)) + " native objects into " + safe_str(container))
-                temp_xml = os.path.join(import_dir, "batch_import_temp.xml")
-                file_paths = [item[1] for item in items]
-                
-                if merge_native_xmls(file_paths, temp_xml):
-                    try:
-                        if hasattr(container, "import_native"):
-                            container.import_native(temp_xml)
-                        else:
-                            projects.primary.import_native(temp_xml)
-                        
-                        # Cleanup
-                        if os.path.exists(temp_xml): os.remove(temp_xml)
-                        
-                        # Resolve and metadata update
-                        for rel_path, file_path, name, type_guid, is_new in items:
-                            res = None
-                            for child in container.get_children():
-                                if child.get_name().lower() == name.lower():
-                                    res = child
-                                    break
-                            
-                            if res:
-                                if is_new: created_count += 1
-                                else:
-                                    updated_count += 1
-                                    print("  Updated (native batch): " + rel_path)
-                                
-                                objects_meta[rel_path] = {
-                                    "guid": safe_str(res.guid),
-                                    "type": safe_str(res.type),
-                                    "name": res.get_name(),
-                                    "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
-                                    "content_hash": "",
-                                    "last_modified": safe_str(os.path.getmtime(file_path))
-                                }
-                            else:
-                                log_error("Batch import could not find " + name + " after import.")
-                                failed_count += 1
-                                
-                    except Exception as e:
-                        log_error("Batch import failed for " + safe_str(container) + ": " + safe_str(e))
-                        failed_count += len(items)
-                else:
-                    log_error("Failed to merge XML for " + safe_str(container))
-                    failed_count += len(items)
+            u, c, f = batch_import_native_xmls(
+                native_batches, import_managers, objects_meta, projects.primary
+            )
+            updated_count += u
+            created_count += c
+            failed_count += f
         
-        if updated_count > 0 or created_count > 0 or (deleted_from_ide and len(deleted_from_ide) > 0):
-            save_metadata(import_dir, metadata)
-            
-            # Check binary backup setting
-            backup_binary = get_project_prop("cds-sync-backup-binary", False)
-
-            # We must save if:
-            # 1. User wants save after import (should_save)
-            # 2. OR User wants binary backup (backup_binary) - because backup requires saved project
-            must_save = should_save or backup_binary
-            
-            if must_save:
-                try:
-                    print("  Saving project...")
-                    projects_obj.primary.save()
-                    
-                    # After successful save, check if we need to update backup
-                    if backup_binary:
-                        print("  Updating binary backup...")
-                        # Pass projects Explicitly
-                        backup_project_binary(import_dir, projects_obj)
-                        
-                except Exception as e:
-                    print("  Warning: Could not save project: " + safe_str(e))
-            else:
-                print("  Skipping project save (user option).")
+        deleted_count = len(deleted_from_ide) if deleted_from_ide else 0
+        finalize_import(import_dir, metadata, projects_obj.primary, projects_obj,
+                        updated_count, created_count, deleted_count)
     
     print("=== Import Complete ===")
     print("  Updated: " + str(updated_count))
