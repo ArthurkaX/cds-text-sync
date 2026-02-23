@@ -110,6 +110,10 @@ def compare_project(projects_obj=None, silent=False):
             if obj_type == TYPE_GUIDS["folder"]:
                 continue
             
+            # Skip individual Task objects - they are part of Task Configuration XML
+            if obj_type == TYPE_GUIDS["task"]:
+                continue
+            
             # Determine effective type (detect NVLs hiding as GVLs)
             effective_type = obj_type
             is_xml_object = False
