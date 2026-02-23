@@ -73,8 +73,8 @@ EXPORTABLE_TYPES = [
     TYPE_GUIDS["unit_conversion"],
     TYPE_GUIDS["visu"],            # Authorization for Visualization export
     TYPE_GUIDS["visu_manager"],
-    TYPE_GUIDS["web_visu"],
-    TYPE_GUIDS["target_visu"],
+    # web_visu and target_visu are NOT listed here — they are children of
+    # visu_manager and exported as part of its recursive XML export.
     TYPE_GUIDS["alarm_config"],
     TYPE_GUIDS["alarm_group"],
     TYPE_GUIDS["alarm_storage"],
@@ -107,9 +107,8 @@ XML_TYPES = [
     TYPE_GUIDS["alarm_config"],
     TYPE_GUIDS["alarm_group"],
     TYPE_GUIDS["alarm_storage"],
-    TYPE_GUIDS["web_visu"],
-    TYPE_GUIDS["target_visu"],
     TYPE_GUIDS["visu_manager"],
+    # web_visu and target_visu are part of visu_manager's recursive export
     TYPE_GUIDS["task_config"],
     TYPE_GUIDS["task"],
     TYPE_GUIDS["library_manager"],

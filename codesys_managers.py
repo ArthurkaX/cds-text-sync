@@ -351,11 +351,12 @@ def classify_object(obj):
     if obj_type == TYPE_GUIDS["task"]:
         return obj_type, False, True
 
-    # Skip all children of Alarm Configuration - it's exported as monolithic XML
-    # This prevents duplicate export/sync of individual alarm groups, classes, etc.
+    # Skip all children of monolithic containers - they are exported as
+    # recursive XML with their parent. Prevents duplicate export/sync.
+    # Applies to: Alarm Configuration, Visualization Manager
     try:
         parent_type = safe_str(obj.parent.type) if hasattr(obj, 'parent') and obj.parent else ""
-        if parent_type == TYPE_GUIDS["alarm_config"]:
+        if parent_type in [TYPE_GUIDS["alarm_config"], TYPE_GUIDS["visu_manager"]]:
             return obj_type, False, True
     except:
         pass

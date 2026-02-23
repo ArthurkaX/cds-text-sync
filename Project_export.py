@@ -210,6 +210,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
         TYPE_GUIDS["property"]: PropertyManager(),
         TYPE_GUIDS["task_config"]: ConfigManager(),
         TYPE_GUIDS["alarm_config"]: ConfigManager(),
+        TYPE_GUIDS["visu_manager"]: ConfigManager(),
         "default": POUManager(),
         "native": NativeManager()
     }

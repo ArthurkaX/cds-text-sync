@@ -74,8 +74,10 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj):
         clean_name = clean_filename(obj.get_name())
         tmp_path = os.path.join(tempfile.gettempdir(), "cds_comp_" + clean_name + ".xml")
         try:
-            # ConfigManager objects (Task Config, Alarm Config) require recursive=True
-            recursive = safe_str(obj.type) in [TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"]]
+            # ConfigManager objects (Task Config, Alarm Config, Visu Manager) require recursive=True
+            recursive = safe_str(obj.type) in [
+                TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"], TYPE_GUIDS["visu_manager"]
+            ]
             projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
             if os.path.exists(tmp_path):
                 content = read_file(tmp_path)
@@ -302,6 +304,7 @@ def create_import_managers():
         TYPE_GUIDS["property"]: PropertyManager(),
         TYPE_GUIDS["task_config"]: ConfigManager(),
         TYPE_GUIDS["alarm_config"]: ConfigManager(),
+        TYPE_GUIDS["visu_manager"]: ConfigManager(),
         "default": POUManager(),
         "native": NativeManager()
     }
