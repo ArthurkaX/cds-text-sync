@@ -158,12 +158,19 @@ def compare_project(projects_obj=None, silent=False):
                 else:
                     file_name = clean_name + ".st"
             
-            # Build relative path
+             # Build relative path
             full_path_parts = container + path_parts
             if full_path_parts:
                 rel_path = "/".join(full_path_parts) + "/" + file_name
             else:
                 rel_path = file_name
+            
+            # Special handling for AlarmGroup objects - skip comparison entirely
+            # These objects can auto-convert between different structures by CODESYS
+            if is_xml_object and (obj_name == "AlarmGroup" or "AlarmGroup" in rel_path):
+                # Mark as unchanged to avoid false positives
+                unchanged.append(rel_path)
+                continue
             
             # Gate: for XML types that are not always-exported, only compare if the
             # file is already known in the metadata (i.e. was exported previously).

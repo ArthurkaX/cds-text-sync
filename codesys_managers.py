@@ -696,7 +696,28 @@ class NativeManager(ObjectManager):
         """Calculate CRC32 hash of a file's content, ignoring dynamic bits like timestamps."""
         try:
             with codecs.open(file_path, "r", "utf-8") as f:
-                lines = f.readlines()
+                content_full = f.read()
+                lines = content_full.splitlines(True)  # Keep line endings
+            
+            # Detect if this is an AlarmGroup-related file that can have type conversions
+            is_alarm_group = any(keyword in content_full for keyword in ['AlarmGroup', 'TextList'])
+            is_alarm_config = 'Alarm Configuration' in content_full
+            
+            # Special handling for AlarmGroup: if it's an alarm configuration, hash only basic metadata
+            # because CODESYS can completely restructure these objects between exports
+            if is_alarm_group or is_alarm_config:
+                # Extract only stable metadata that shouldn't change
+                stable_content = []
+                for line in lines:
+                    # Keep only basic identifying information
+                    if '<Single Name="Name" Type="string">AlarmGroup</Single>' in line:
+                        stable_content.append(line)
+                    elif 'CODESYS_HMI' in line and 'HMI_Application' in line and 'Alarm Configuration' in line:
+                        stable_content.append(line)
+                
+                if stable_content:
+                    content = "".join(stable_content).encode("utf-8")
+                    return str(zlib.crc32(content) & 0xFFFFFFFF)
             
             # Filter out lines that often contain changing timestamps or metadata
             filtered = []
@@ -708,7 +729,11 @@ class NativeManager(ObjectManager):
                 
                 # Strip internal CODESYS timestamp
                 if 'Name="Timestamp"' in line: continue
-                    
+                
+                # Strip dynamic GUIDs that can change between exports
+                # These are internal CODESYS identifiers that don't affect functionality
+                if 'Name="Guid"' in line and 'Type="System.Guid"' in line: continue
+                
                 filtered.append(line)
                 
             content = "".join(filtered).encode("utf-8")
