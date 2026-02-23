@@ -351,6 +351,15 @@ def classify_object(obj):
     if obj_type == TYPE_GUIDS["task"]:
         return obj_type, False, True
 
+    # Skip all children of Alarm Configuration - it's exported as monolithic XML
+    # This prevents duplicate export/sync of individual alarm groups, classes, etc.
+    try:
+        parent_type = safe_str(obj.parent.type) if hasattr(obj, 'parent') and obj.parent else ""
+        if parent_type == TYPE_GUIDS["alarm_config"]:
+            return obj_type, False, True
+    except:
+        pass
+
     # Skip per-POU alarm groups/classes — these are auto-generated children of
     # POUs and can't be independently exported. Only alarm groups under the
     # Alarm Configuration tree are valid standalone exports.
@@ -429,8 +438,8 @@ class FolderManager(ObjectManager):
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
 
-        # Skip creating Task Configuration folders - they will be handled by ConfigManager as XML files
-        if safe_str(obj.type) == TYPE_GUIDS["task_config"]:
+        # Skip creating Task Configuration and Alarm Configuration folders - they will be handled by ConfigManager as XML files
+        if safe_str(obj.type) in [TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"]]:
             return "identical"
         
         target_dir = os.path.join(context['export_dir'], *full_path_parts)
@@ -720,24 +729,47 @@ class NativeManager(ObjectManager):
                 lines = content_full.splitlines(True)  # Keep line endings
             
             # Detect if this is an AlarmGroup-related file that can have type conversions
-            is_alarm_group = any(keyword in content_full for keyword in ['AlarmGroup', 'TextList'])
+            is_alarm_group = 'AlarmGroup' in content_full and 'GlobalTextList' not in content_full
+            is_textlist = '<Single Name="Name" Type="string">GlobalTextList' in content_full
             is_alarm_config = 'Alarm Configuration' in content_full
             
-            # Special handling for AlarmGroup: if it's an alarm configuration, hash only basic metadata
-            # because CODESYS can completely restructure these objects between exports
-            if is_alarm_group or is_alarm_config:
+            # Special handling for AlarmGroup and GlobalTextList: filter out dynamic content
+            if is_alarm_group or is_textlist or is_alarm_config:
                 # Extract only stable metadata that shouldn't change
                 stable_content = []
                 for line in lines:
-                    # Keep only basic identifying information
-                    if '<Single Name="Name" Type="string">AlarmGroup</Single>' in line:
+                    # Filter out timestamps and dynamic GUIDs for all these types
+                    if 'Name="Timestamp"' in line: continue
+                    if 'Name="Guid"' in line and 'Type="System.Guid"' in line: continue
+                    
+                    # For GlobalTextList, keep most content except dynamic parts
+                    if is_textlist:
                         stable_content.append(line)
-                    elif 'CODESYS_HMI' in line and 'HMI_Application' in line and 'Alarm Configuration' in line:
-                        stable_content.append(line)
+                    # For AlarmGroup, keep only basic identifying information  
+                    elif is_alarm_group:
+                        if '<Single Name="Name" Type="string">' in line and 'AlarmGroup' in line:
+                            stable_content.append(line)
+                        elif 'CODESYS_HMI' in line and 'HMI_Application' in line and 'Alarm Configuration' in line:
+                            stable_content.append(line)
+                        # Also keep the object type identifier for more precise comparison
+                        elif '<Object Guid="' in line and ('Type="type_21f"' in line or 'Type="textlist"' in line):
+                            stable_content.append(line)
+                    elif is_alarm_config:
+                        # For alarm config, keep identifying info
+                        if '<Single Name="Name" Type="string">' in line:
+                            stable_content.append(line)
+                        elif 'CODESYS_HMI' in line:
+                            stable_content.append(line)
                 
                 if stable_content:
                     content = "".join(stable_content).encode("utf-8")
+                    log_info("Special hash computed for %s using %d stable lines" % (is_textlist and "GlobalTextList" or "AlarmGroup", len(stable_content)))
                     return str(zlib.crc32(content) & 0xFFFFFFFF)
+                else:
+                    # Fallback: if no stable content found, use filename hash
+                    import os
+                    filename = os.path.basename(file_path)
+                    return str(zlib.crc32(filename.encode("utf-8")) & 0xFFFFFFFF)
             
             # Filter out lines that often contain changing timestamps or metadata
             filtered = []
@@ -754,6 +786,10 @@ class NativeManager(ObjectManager):
                 # These are internal CODESYS identifiers that don't affect functionality
                 if 'Name="Guid"' in line and 'Type="System.Guid"' in line: continue
                 
+                # For visualization files, also strip object GUIDs that can change
+                if line.strip().startswith('<Object Guid="') and ('visu' in line.lower() or 'frame' in line.lower()):
+                    continue
+                    
                 filtered.append(line)
                 
             content = "".join(filtered).encode("utf-8")

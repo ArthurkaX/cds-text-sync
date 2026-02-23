@@ -108,13 +108,22 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj):
     declaration, implementation = export_object_content(obj)
     return format_st_content(declaration, implementation)
 
-def contents_are_equal(ide_content, disk_content, is_xml):
+def contents_are_equal(ide_content, disk_content, is_xml, rel_path="unknown"):
     """Compare two content strings, with XML-specific filtering."""
+    log_info("=== Comparing %s ===" % rel_path)
+    log_info("IDE content length: %d, Disk content length: %d" % (len(ide_content), len(disk_content)))
+    
     if not ide_content or not disk_content:
-        return ide_content == disk_content
+        result = ide_content == disk_content
+        log_info("Empty content check: %s (IDE empty: %s, Disk empty: %s)" % (result, not ide_content, not disk_content))
+        return result
         
     if not is_xml:
-        return calculate_hash(ide_content) == calculate_hash(disk_content)
+        ide_hash = calculate_hash(ide_content)
+        disk_hash = calculate_hash(disk_content)
+        result = ide_hash == disk_hash
+        log_info("Non-XML comparison: IDE hash=%s, Disk hash=%s, Equal=%s" % (ide_hash, disk_hash, result))
+        return result
     
     # XML Comparison - use NativeManager's filtering logic
     native_mgr = NativeManager()
@@ -136,8 +145,28 @@ def contents_are_equal(ide_content, disk_content, is_xml):
         os.remove(tmp_path)
         os.remove(tmp_path_disk)
         
-        return ide_hash == disk_hash
-    except:
+        are_equal = ide_hash == disk_hash
+        if not are_equal:
+            log_info("Content mismatch: IDE hash=%s, Disk hash=%s" % (ide_hash, disk_hash))
+            
+            # Log first few lines of each content for debugging
+            ide_lines = ide_content.splitlines()[:5]
+            disk_lines = disk_content.splitlines()[:5]
+            
+            log_info("=== First 5 lines comparison ===")
+            for i, (ide_line, disk_line) in enumerate(zip(ide_lines, disk_lines), 1):
+                if ide_line != disk_line:
+                    log_info("Line %d DIFFERS:")
+                    log_info("  IDE: %s" % ide_line[:100])
+                    log_info("  Disk: %s" % disk_line[:100])
+                else:
+                    log_info("Line %d: %s" % (i, ide_line[:100]))
+        else:
+            log_info("Content match: IDE hash=%s, Disk hash=%s" % (ide_hash, disk_hash))
+            
+        return are_equal
+    except Exception as e:
+        log_info("Error during comparison: %s" % str(e))
         return False
 
 def read_file(file_path):
@@ -185,7 +214,24 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                 continue
 
         rel_path = build_expected_path(obj, effective_type, is_xml)
-        ide_paths[rel_path] = obj
+        
+        # Handle special case for VisualizationStyle objects to prevent duplicates
+        if effective_type == TYPE_GUIDS.get("visu_style"):
+            # For VisualizationStyle, prefer the shortest path (most global)
+            # to avoid duplicates when object exists both at root and in app
+            if rel_path in ide_paths:
+                existing_path = rel_path
+                # Keep the shorter path (more global)
+                if len(rel_path.split('/')) < len(existing_path.split('/')):
+                    ide_paths[rel_path] = obj
+                    log_info("VisualizationStyle: using shorter path %s instead of %s" % (rel_path, existing_path))
+                else:
+                    log_info("VisualizationStyle: skipping duplicate path %s" % rel_path)
+                    continue
+            else:
+                ide_paths[rel_path] = obj
+        else:
+            ide_paths[rel_path] = obj
 
         file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
         type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
@@ -195,7 +241,7 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
             ide_content = get_ide_content(obj, is_xml, property_accessors, projects_obj)
             disk_content = read_file(file_path)
 
-            if contents_are_equal(ide_content, disk_content, is_xml):
+            if contents_are_equal(ide_content, disk_content, is_xml, rel_path):
                 unchanged_count += 1
             else:
                 different.append({
@@ -272,6 +318,7 @@ def create_import_managers():
         TYPE_GUIDS["folder"]: FolderManager(),
         TYPE_GUIDS["property"]: PropertyManager(),
         TYPE_GUIDS["task_config"]: ConfigManager(),
+        TYPE_GUIDS["alarm_config"]: ConfigManager(),
         "default": POUManager(),
         "native": NativeManager()
     }

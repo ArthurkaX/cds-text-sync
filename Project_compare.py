@@ -26,7 +26,8 @@ from codesys_utils import (
     resolve_projects, clean_filename, get_project_prop
 )
 from codesys_managers import (
-    POUManager, NativeManager, ConfigManager, PropertyManager, is_graphical_pou
+    POUManager, NativeManager, ConfigManager, PropertyManager, is_graphical_pou,
+    collect_property_accessors, classify_object
 )
 from codesys_compare_engine import (
     find_all_changes, perform_import_items, TYPE_NAMES, build_expected_path
@@ -144,18 +145,27 @@ def perform_export(base_dir, selected):
         system.ui.info("No objects selected for export.")
         return
         
+    # Collect all property accessors from current project
+    projects_obj = resolve_projects(None, globals())
+    if projects_obj and projects_obj.primary:
+        all_objects = projects_obj.primary.get_children(recursive=True)
+        property_accessors = collect_property_accessors(all_objects)
+    else:
+        property_accessors = {}
+    
     context = {
         'export_dir': base_dir,
-        'exported_paths': set()
+        'exported_paths': set(),
+        'property_accessors': property_accessors
     }
     
     managers = {
-        TYPE_GUIDS["pou"]: POUManager(),
-        TYPE_GUIDS["gvl"]: POUManager(),
-        TYPE_GUIDS["dut"]: POUManager(),
-        TYPE_GUIDS["itf"]: POUManager(),
+        TYPE_GUIDS["folder"]: FolderManager(),
         TYPE_GUIDS["property"]: PropertyManager(),
         TYPE_GUIDS["task_config"]: ConfigManager(),
+        TYPE_GUIDS["alarm_config"]: ConfigManager(),
+        "default": POUManager(),
+        "native": NativeManager()
     }
     native_mgr = NativeManager()
     

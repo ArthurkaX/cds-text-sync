@@ -87,7 +87,11 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
         
         # buttons: Delete, Ignore, Cancel
         try:
-            result = system.ui.choose(message, ("Delete Orphans", "Ignore", "Cancel Export"))
+            try:
+                result = system.ui.choose(message, ("Delete Orphans", "Ignore", "Cancel Export"))
+            except NameError:
+                # Running outside CODESYS - default to "Ignore"
+                result = ("Ignore",)
         except:
             # Fallback for environments where choose is not available or fails
             print("UI Choose not available, skipping cleanup.")
@@ -149,7 +153,11 @@ def export_project(export_dir, projects_obj=None, silent=False):
     if projects_obj is None or not projects_obj.primary:
         msg = "Error: 'projects' object not found or no project open."
         if not silent:
-            system.ui.error(msg)
+            try:
+                system.ui.error(msg)
+            except NameError:
+                print("Error:", msg)
+                return
         else:
             print(msg)
         return
@@ -201,7 +209,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
         TYPE_GUIDS["folder"]: FolderManager(),
         TYPE_GUIDS["property"]: PropertyManager(),
         TYPE_GUIDS["task_config"]: ConfigManager(),
-        # Default for textual objects
+        TYPE_GUIDS["alarm_config"]: ConfigManager(),
         "default": POUManager(),
         "native": NativeManager()
     }
@@ -281,13 +289,19 @@ def export_project(export_dir, projects_obj=None, silent=False):
             except:
                 print("Export complete (Silent mode active, but UI module failed)")
         else:
-            system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+            try:
+                system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+            except NameError:
+                print("Export complete!\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
 
 def main():
     base_dir, error = load_base_dir()
     if error:
-        system.ui.warning(error)
+        try:
+            system.ui.warning(error)
+        except NameError:
+            print("Error:", error)
         return
         
     # Check if we are being run in silent mode (e.g. from Daemon)
