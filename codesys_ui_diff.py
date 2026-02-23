@@ -236,6 +236,9 @@ class DiffViewerForm(Form):
         content_panel.BackColor = CLR_BG_DARK
         content_panel.Padding = Padding(5, 5, 5, 5)
         self.Controls.Add(content_panel)
+        # Fix docking order: Fill must be docked LAST (lowest z-index)
+        # so it only takes the space remaining after Top/Bottom bars.
+        content_panel.BringToFront()
         
         # Separator
         separator = Panel()
@@ -404,11 +407,17 @@ class DiffViewerForm(Form):
         self._nav_label.Text = str(total) + " change" + ("s" if total != 1 else "")
         self._current_change = -1
         
-        # Reset scroll to top
-        self._rtb_left.Select(0, 0)
-        self._rtb_left.ScrollToCaret()
-        self._rtb_right.Select(0, 0)
-        self._rtb_right.ScrollToCaret()
+        # Reset scroll to top – Select(0,0) alone sometimes leaves the
+        # first few lines above the viewport.  Force position to line 0.
+        for rtb in (self._rtb_left, self._rtb_right):
+            rtb.SelectionStart = 0
+            rtb.SelectionLength = 0
+            rtb.ScrollToCaret()
+            # Double-ensure: jump to the first char of line 0
+            idx0 = rtb.GetFirstCharIndexFromLine(0)
+            if idx0 >= 0:
+                rtb.SelectionStart = idx0
+                rtb.ScrollToCaret()
     
     def _on_prev(self, sender, event):
         """Navigate to previous change."""
