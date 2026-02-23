@@ -876,26 +876,64 @@ def ensure_folder_path(path_str, project):
     parts = path_str.replace("\\", "/").split("/")
     current_obj = project # Start at project root
     
-    for part in parts:
+    log_info("ensure_folder_path: resolving '" + path_str + "' (" + str(len(parts)) + " parts)")
+    log_info("  Starting at: " + safe_str(current_obj) + " (type: " + safe_str(current_obj.type if hasattr(current_obj, 'type') else 'N/A') + ")")
+    
+    for i, part in enumerate(parts):
         if not part: continue
         
         found = _find_child_transparent(current_obj, part)
+        
+        if found:
+            log_info("  [" + str(i) + "] Found '" + part + "' -> " + safe_str(found) + " (type: " + safe_str(found.type if hasattr(found, 'type') else 'N/A') + ")")
+        else:
+            log_info("  [" + str(i) + "] NOT found '" + part + "' under " + safe_str(current_obj) + " — will try to create folder")
+            # List available children for debugging
+            try:
+                children = current_obj.get_children()
+                child_names = []
+                for c in children:
+                    try:
+                        child_names.append(safe_str(c.get_name()) + " (" + safe_str(c.type) + ")")
+                    except:
+                        child_names.append("???")
+                log_info("    Available children: " + str(child_names))
+            except Exception as e:
+                log_info("    Could not list children: " + safe_str(e))
             
         if not found:
             # We can only create folders, not Devices/Applications
             try:
                 if hasattr(current_obj, "create_folder"):
                     found = current_obj.create_folder(part)
+                    log_info("    create_folder('" + part + "') returned: " + safe_str(found))
                 elif hasattr(current_obj, "create_child"):
                     # Use folder GUID from constants
                     found = current_obj.create_child(part, TYPE_GUIDS.get("folder", "738bea1e-99bb-4f04-90bb-a7a567e74e3a"))
+                    log_info("    create_child('" + part + "') returned: " + safe_str(found))
                 else:
                     # If we reached a level where we can't create (e.g. Device level), log it
                     log_error("Cannot create component '" + part + "' at " + safe_str(current_obj))
                     return None
+                
+                # CODESYS quirk: create_folder/create_child may create the folder
+                # but return a falsy wrapper. Re-scan children to find it.
+                if not found:
+                    log_info("    Return value was falsy, re-scanning children...")
+                    found = _find_child_transparent(current_obj, part)
+                    if found:
+                        log_info("    Re-scan found: " + safe_str(found))
+                    else:
+                        log_error("    Re-scan also failed for '" + part + "'")
+                        
             except Exception as e:
                 log_error("Failed to create folder '" + part + "': " + safe_str(e))
-                return None
+                # Even if exception, the folder might have been created
+                found = _find_child_transparent(current_obj, part)
+                if found:
+                    log_info("    Despite exception, found folder '" + part + "' via re-scan")
+                else:
+                    return None
         
         if found:
             current_obj = found

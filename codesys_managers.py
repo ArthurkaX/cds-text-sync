@@ -543,6 +543,8 @@ class POUManager(ObjectManager):
                 obj = container.create_gvl(name)
             elif type_guid == TYPE_GUIDS["dut"] and hasattr(container, "create_dut"):
                 obj = container.create_dut(name)
+            elif type_guid == TYPE_GUIDS["itf"] and hasattr(container, "create_interface"):
+                obj = container.create_interface(name)
             elif type_guid == TYPE_GUIDS["method"] and hasattr(container, "create_method"):
                 obj = container.create_method(name)
             elif type_guid == TYPE_GUIDS["property"] and hasattr(container, "create_property"):
@@ -550,13 +552,44 @@ class POUManager(ObjectManager):
             elif type_guid == TYPE_GUIDS["action"] and hasattr(container, "create_action"):
                 obj = container.create_action(name)
             elif hasattr(container, "create_pou"):
-                # Default to Program for general POU creation
+                # Always create as Program first — update_object_code will replace
+                # the declaration with the correct FUNCTION / FUNCTION_BLOCK header.
+                # PouType is a CODESYS global (like 'projects', 'system'), NOT an import.
+                p_type = None
+                # Strategy 1: Direct global (how it works in CODESYS environment)
                 try:
-                    from ScriptEngine import PouType
                     p_type = PouType.Program
-                except:
-                    p_type = 0 # Fallback for some environments
-                obj = container.create_pou(name, p_type)
+                except NameError:
+                    pass
+                # Strategy 2: __main__ module
+                if p_type is None:
+                    try:
+                        import __main__
+                        p_type = __main__.PouType.Program
+                    except:
+                        pass
+                # Strategy 3: ScriptEngine import
+                if p_type is None:
+                    try:
+                        from ScriptEngine import PouType as _PT
+                        p_type = _PT.Program
+                    except:
+                        pass
+                # Strategy 4: sys.modules scan
+                if p_type is None:
+                    try:
+                        for mod in sys.modules.values():
+                            if hasattr(mod, "PouType"):
+                                p_type = mod.PouType.Program
+                                break
+                    except:
+                        pass
+
+                if p_type is not None:
+                    obj = container.create_pou(name, p_type)
+                else:
+                    log_error("Cannot resolve PouType enum. Falling back to create_child.")
+                    obj = container.create_child(name, type_guid) if hasattr(container, "create_child") else None
             elif hasattr(container, "create_child"):
                 obj = container.create_child(name, type_guid)
                 

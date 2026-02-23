@@ -364,16 +364,33 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
     type_guid = determine_object_type(content_check)
     
     # Handle nested objects (Action, Method, Property)
+    # A dotted base_name like "ST_PROGRAMM.ST_ACTION" means it's a child object.
+    # We check both: (a) when type_guid indicates a child type, and
+    #                 (b) when type_guid is None/unknown but filename has a dot.
     name = base_name
     nested_types = [TYPE_GUIDS.get("action"), TYPE_GUIDS.get("method"), 
                     TYPE_GUIDS.get("property"), TYPE_GUIDS.get("property_accessor")]
-    if "." in base_name and type_guid in nested_types:
+    is_nested = "." in base_name and (
+        type_guid in nested_types or       # Known child type (method, property, etc.)
+        not type_guid or                   # Unknown type (e.g. action with no keyword)
+        type_guid == TYPE_GUIDS.get("pou") # Misdetected as POU
+    )
+    if is_nested:
         parts = base_name.rsplit(".", 1)
         parent_name = parts[0]
-        name = parts[1]
+        child_name = parts[1]
         pou_parent = find_object_by_name(parent_name, name_map)
         if pou_parent:
+            name = child_name
             container = pou_parent
+            # If type_guid wasn't determined, infer from child name patterns
+            if not type_guid or type_guid == TYPE_GUIDS.get("pou"):
+                upper_child = child_name.upper()
+                if upper_child in ("GET", "SET"):
+                    type_guid = TYPE_GUIDS.get("property_accessor")
+                else:
+                    # Default to action for unknown nested children
+                    type_guid = TYPE_GUIDS.get("action")
     
     manager = resolve_manager(import_managers, type_guid, rel_path)
     res = manager.create(container, name, file_path, type_guid)
