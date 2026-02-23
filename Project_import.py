@@ -1,514 +1,482 @@
+# -*- coding: utf-8 -*-
+"""
+Project_import.py - Import disk changes into CODESYS IDE
+
+Uses the same comparison engine as Project_compare.py, then automatically
+applies all disk-side changes to IDE (equivalent to Compare -> Select All -> Import to IDE).
+"""
 import os
-import time
-import codecs
 import sys
+import codecs
+import time
+import tempfile
 
 # Force reload of shared modules to pick up latest changes
-# (CODESYS caches modules in sys.modules across script runs)
 for _mod_name in list(sys.modules.keys()):
     if _mod_name.startswith('codesys_'):
         del sys.modules[_mod_name]
-from codesys_constants import (
-    IMPL_MARKER, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER, XML_TYPES
-)
+
+from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES
 from codesys_utils import (
-    safe_str, parse_st_file, build_object_cache, 
-    find_object_by_guid, find_object_by_name, find_object_by_path, load_base_dir,
-    load_metadata, save_metadata, merge_native_xmls,
-    format_st_content, log_info, log_warning, log_error, MetadataLock,
-    init_logging, get_project_prop, backup_project_binary,
-    parse_property_content, format_property_content,
-    ensure_folder_path, determine_object_type, resolve_projects,
-    calculate_hash, update_application_count_flag
+    safe_str, load_base_dir, load_metadata, build_object_cache,
+    calculate_hash, format_st_content, init_logging, log_info, log_error,
+    get_project_prop, format_property_content, resolve_projects,
+    clean_filename, find_object_by_path, save_metadata, MetadataLock
 )
 from codesys_managers import (
-    FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
-    update_object_code
+    get_object_path, get_container_prefix, get_parent_pou_name,
+    export_object_content, collect_property_accessors, is_nvl, is_graphical_pou,
+    NativeManager
 )
 from codesys_import_engine import (
-    create_import_managers, update_object_metadata,
-    batch_import_native_xmls, finalize_import
+    create_import_managers, update_existing_object, create_new_object,
+    batch_import_native_xmls, update_object_metadata, finalize_import
 )
 
-# Global cache for start_obj (legacy for internal use if needed)
-_ensure_folder_start_obj = None
 
-# Legacy support
-def find_application_recursive(obj, depth=0):
-    from codesys_utils import find_application_recursive as find_app
-    return find_app(obj, depth)
-
-def ensure_folder_path(path_str):
-    from codesys_utils import ensure_folder_path as ensure_path
-    # In CODESYS, 'projects' is a global object, no need to import it
-    return ensure_path(path_str, projects.primary)
+# Reverse mapping for friendly type names
+TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
 
 
-def cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map, silent=False):
+def find_disk_changes(base_dir, projects_obj, metadata):
     """
-    Find objects in IDE that have no corresponding file on disk and ask to delete them.
-    Returns list of rel_paths that were deleted.
-    """
-    orphans = []
-    # Sort by depth (number of slashes) and then by length to ensure children 
-    # (longer names like Parent.Method) are processed before parents.
-    all_paths = sorted(objects_meta.keys(), key=lambda x: (x.count('/'), len(x)), reverse=True)
+    Compare IDE objects with disk files and return lists of changes.
+    This is the same logic as Project_compare.compare_project but returns
+    raw data instead of showing a UI.
     
-    for rel_path in all_paths:
-        file_path = os.path.join(import_dir, rel_path.replace("/", os.sep))
-        if not os.path.exists(file_path):
-            info = objects_meta[rel_path]
-            
-            # Debug: Log methods being considered for deletion
-            if info.get("type") == TYPE_GUIDS["method"]:
-                print("DEBUG: Method file not found, marking as orphan: " + rel_path)
-                print("DEBUG: Expected file path: " + file_path)
-            
-            obj = None
-            if info.get("guid") and info.get("guid") != "N/A":
-                obj = find_object_by_guid(info["guid"], guid_map)
-            
-            if not obj and info.get("name"):
-                obj = find_object_by_name(info["name"], name_map, info.get("parent"))
-                
-            if obj:
-                orphans.append((rel_path, obj))
-
-    if not orphans:
-        return []
-
-    # Check for auto-delete property
-    try:
-        auto_delete = get_project_prop("cds-sync-auto-delete-orphans", False)
-    except:
-        auto_delete = False
-
-    if silent:
-        if auto_delete:
-             result = (0,) # Simulate Delete
-        else:
-             print("Silent import: " + str(len(orphans)) + " objects need deletion but auto-delete is OFF.")
-             return [] # Ignore
-    else:
-        message = "The following objects were removed from the disk but still exist in CODESYS:\n\n"
-        for rel_path, _ in orphans[:15]:
-            message += "- " + rel_path + "\n"
+    Returns:
+        (disk_modified, deleted_from_ide, unchanged_count)
         
-        message += "\nWould you like to delete these objects from the CODESYS project?"
-        
+        disk_modified: list of dicts with keys: name, path, type, type_guid, direction, obj
+        deleted_from_ide: list of dicts with keys: name, path, type, type_guid
+    """
+    disk_objects = metadata.get("objects", {})
+    
+    # Build cache of IDE objects
+    guid_map, name_map = build_object_cache(projects_obj.primary)
+    all_ide_objects = projects_obj.primary.get_children(recursive=True)
+    
+    # Track comparison results
+    disk_modified = []    # Files changed on disk -> need import to IDE
+    deleted_from_ide = [] # On disk but not in IDE
+    unchanged_count = 0
+    matched_disk_paths = set()
+    
+    # Collect property accessors
+    property_accessors = collect_property_accessors(all_ide_objects)
+    native_mgr = NativeManager()
+    
+    # Pass 1: Compare IDE objects with disk
+    for obj in all_ide_objects:
         try:
-            result = system.ui.choose(message, ("Delete from IDE", "Ignore", "Cancel Import"))
-        except:
-            return []
-    
-    if result[0] == 0:
-        deleted_paths = []
-        for rel_path, obj in orphans:
-            try:
-                # Check if object still exists and has a parent (not already removed)
-                if obj and hasattr(obj, "get_name"):
-                    try:
-                        _ = obj.guid # Trigger access check
-                    except:
-                        # Object became invalid (probably parent was deleted)
-                        continue
-                        
-                    obj.remove()
-                    deleted_paths.append(rel_path)
-            except Exception as e:
-                # Ignore "Object reference not set" which often means already deleted
-                if "Object reference not set" not in safe_str(e):
-                    print("Error deleting " + rel_path + ": " + safe_str(e))
-                else:
-                    # Successfully "deleted" (effectively)
-                    deleted_paths.append(rel_path)
-        return deleted_paths
-    elif result[0] == 1:
-        return []
-    else:
-        return None 
-
-
-def import_project(import_dir, projects_obj=None, silent=False):
-    """Import ST files from folder structure back into CODESYS project"""
-    
-    # Resolving projects object
-    projects_obj = resolve_projects(projects_obj, globals())
-    
-    if projects_obj is None or not projects_obj.primary:
-        error_msg = "Script Error: 'projects' object not found or no project open."
-        if not silent:
-            system.ui.error(error_msg)
-        else:
-            print(error_msg)
-        return
-
-    if not projects_obj.primary:
-        if not silent:
-            system.ui.error("No project open!")
-        else:
-            print("Error: No project open")
-        return
-    
-    # Check save setting
-    should_save = get_project_prop("cds-sync-save-after-import", True)
-    
-    print("=== Starting Project Import ===")
-    update_application_count_flag()
-    print("Import directory: " + import_dir)
-    print("Auto-save enabled: " + str(should_save))
-    start_time = time.time()
-
-    # Timestamped Backup BEFORE import (New feature)
-    # This creates a timestamped .bak file in the /project folder
-    try:
-        safety_backup = get_project_prop("cds-sync-safety-backup", True)
-        if safety_backup:
-            print("  Creating preliminary timestamped backup...")
-            backup_project_binary(import_dir, projects_obj, timestamped=True)
-    except Exception as e:
-        print("  Warning: Could not create timestamped backup: " + safe_str(e))
-    
-    # Binary Backup handles safety
-    
-    # Initialize managers (via shared engine)
-    import_managers = create_import_managers()
-    
-    with MetadataLock(import_dir, timeout=60):
-        # Load metadata
-        metadata = load_metadata(import_dir)
-        if not metadata:
-            if not silent:
-                system.ui.error("Metadata not found!\n\nPlease run Project_export.py first.")
-            else:
-                print("Error: Metadata not found")
-            return
-        
-        objects_meta = metadata.get("objects", {})
-        print("  Loaded " + str(len(objects_meta)) + " objects from metadata")
-        
-        # Build cache
-        print("  Building object cache...")
-        guid_map, name_map = build_object_cache(projects.primary)
-        print("  Cache built: " + str(len(guid_map)) + " objects by GUID")
-        
-        # Cleanup IDE orphans
-        deleted_from_ide = cleanup_ide_orphans(import_dir, objects_meta, guid_map, name_map, silent=silent)
-        if deleted_from_ide is None:
-            return 
-        
-        for path in deleted_from_ide:
-            if path in objects_meta:
-                del objects_meta[path]
-        
-                
-        # Track existing folders
-        tracked_folders = set()
-        for rel_path in objects_meta.keys():
-            parts = rel_path.split("/")
-            for i in range(1, len(parts)):
-                tracked_folders.add("/".join(parts[:i]))
-        
-        # Identify new files and folders
-        new_files = []
-        new_folders = []
-        
-        for root, dirs, files in os.walk(import_dir):
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
-            
-            for d in dirs:
-                 rel_path = os.path.relpath(os.path.join(root, d), import_dir).replace(os.sep, "/")
-                 if rel_path not in objects_meta and rel_path not in tracked_folders:
-                     new_folders.append(rel_path)
-            
-            for name in files:
-                if name in ["_metadata.json", "_config.json", "_metadata.csv", "BASE_DIR", "sync_debug.log"] or name.startswith('.'):
-                    continue
-                if not name.endswith(".st") and not name.endswith(".xml"):
-                    continue
-                
-                rel_path = os.path.relpath(os.path.join(root, name), import_dir).replace(os.sep, "/")
-                if rel_path not in objects_meta:
-                    new_files.append((rel_path, os.path.join(root, name)))
-        
-        updated_count = 0
-        failed_count = 0
-        skipped_count = 0
-        created_count = 0
-        deleted_count = len(deleted_from_ide) if deleted_from_ide else 0
-        folder_cache = {} # Shared cache for folder resolution during this import
-        
-        # Update/Create batches for Native imports to reduce dialogs
-        # Format: { container_obj: [(rel_path, file_path, name, type_guid, is_new)] }
-        native_batches = {}
-        
-        # Update existing objects
-        for rel_path, obj_info in objects_meta.items():
-            file_path = os.path.join(import_dir, rel_path.replace("/", os.sep))
-            if not os.path.exists(file_path):
-                skipped_count += 1
-                continue
-
-            obj_type = obj_info.get("type")
-            
-            # Skip property accessors - they are handled by PropertyManager
-            if obj_type == TYPE_GUIDS.get("property_accessor"):
-                continue
-
-            obj = None
-            guid_matched = False
-            if obj_info.get("guid") and obj_info.get("guid") != "N/A":
-                obj = find_object_by_guid(obj_info["guid"], guid_map)
-                if obj:
-                    guid_matched = True
-            
-            if obj is None and obj_info.get("name"):
-                obj = find_object_by_name(obj_info["name"], name_map, obj_info.get("parent"))
-                
-                # Cross-validate: when GUID failed but name matched, verify using
-                # the full hierarchical path. This prevents false matches when
-                # identically-named objects exist under different applications
-                # (e.g. DUTs in both ST_Application and LAD_Application).
-                if obj and not guid_matched:
-                    path_obj = find_object_by_path(rel_path, projects.primary)
-                    if path_obj is None or (hasattr(path_obj, 'guid') and hasattr(obj, 'guid') 
-                                            and safe_str(path_obj.guid) != safe_str(obj.guid)):
-                        # Name matched a different object (from another Application)
-                        # This is NOT the correct object - mark as not found
-                        print("  Path validation: '" + rel_path + "' name-matched wrong object, will recreate")
-                        obj = None
-            
-            if obj is None:
-                # Final fallback: try to find by hierarchical path
-                obj = find_object_by_path(rel_path, projects.primary)
-            
-            if obj is None:
-                # Object not found - will recreate
-                if obj_type == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
-                    if rel_path not in new_folders:
-                        new_folders.append(rel_path)
-                else:
-                    if rel_path not in [nf[0] for nf in new_files]:
-                        new_files.append((rel_path, file_path))
-                continue
-
-            # If object exists and is a folder, nothing left to do
-            if obj_type == TYPE_GUIDS["folder"] or os.path.isdir(file_path):
+            if not hasattr(obj, 'type') or not hasattr(obj, 'get_name') or not hasattr(obj, 'guid'):
                 continue
             
-            # Select manager
-            if rel_path.endswith(".xml"):
-                manager = import_managers["native"]
-            else:
-                manager = import_managers.get(obj_type)
-                if not manager:
-                    if any(obj_type == guid for guid in XML_TYPES):
-                        manager = import_managers["native"]
-                    else:
-                        manager = import_managers["default"]
+            obj_type = safe_str(obj.type)
+            obj_name = obj.get_name()
+            obj_guid = safe_str(obj.guid)
             
-            if isinstance(manager, (NativeManager, ConfigManager)):
+            # Skip property accessors, folders, tasks
+            if obj_type == TYPE_GUIDS["property_accessor"]:
+                continue
+            if obj_type == TYPE_GUIDS["folder"]:
+                continue
+            if obj_type == TYPE_GUIDS["task"]:
+                continue
+            
+            # Determine effective type
+            effective_type = obj_type
+            is_xml_object = False
+            
+            if obj_type == TYPE_GUIDS["gvl"]:
                 try:
-                    # Check if XML file has changed by comparing hash
-                    stored_hash = obj_info.get("content_hash", "")
-                    if stored_hash:
-                        current_hash = import_managers["native"]._hash_file(file_path) if hasattr(import_managers["native"], '_hash_file') else ""
-                        if current_hash and current_hash == stored_hash:
-                            skipped_count += 1
+                    if is_nvl(obj):
+                        effective_type = TYPE_GUIDS["nvl_sender"]
+                        is_xml_object = True
+                except:
+                    pass
+
+            if not is_xml_object and effective_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
+                try:
+                    if is_graphical_pou(obj):
+                        is_xml_object = True
+                except:
+                    pass
+            
+            if effective_type in XML_TYPES:
+                is_xml_object = True
+            
+            if effective_type not in EXPORTABLE_TYPES and effective_type not in XML_TYPES:
+                continue
+            
+            # Build expected file path
+            container = get_container_prefix(obj)
+            path_parts = get_object_path(obj)
+            clean_name = clean_filename(obj_name)
+            
+            if is_xml_object:
+                file_name = clean_name + ".xml"
+            else:
+                parent_pou = get_parent_pou_name(obj)
+                if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
+                    file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
+                    clean_parent_pou = clean_filename(parent_pou)
+                    if path_parts and path_parts[-1] == clean_parent_pou:
+                        path_parts = path_parts[:-1]
+                else:
+                    file_name = clean_name + ".st"
+            
+            full_path_parts = container + path_parts
+            if full_path_parts:
+                rel_path = "/".join(full_path_parts) + "/" + file_name
+            else:
+                rel_path = file_name
+            
+            # Skip AlarmGroup objects
+            if is_xml_object and (obj_name == "AlarmGroup" or "AlarmGroup" in rel_path):
+                unchanged_count += 1
+                continue
+            
+            # Gate XML types
+            if is_xml_object and effective_type in XML_TYPES:
+                always_exported = effective_type in [
+                    TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]
+                ]
+                if not always_exported and not metadata.get("export_xml", False) \
+                   and rel_path not in disk_objects:
+                    continue
+            
+            type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+            
+            # Compare content
+            if rel_path in disk_objects:
+                matched_disk_paths.add(rel_path)
+                disk_info = disk_objects[rel_path]
+                meta_hash = disk_info.get("content_hash", "")
+                
+                if is_xml_object:
+                    file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                    
+                    # Get Disk Hash
+                    disk_file_hash = ""
+                    if os.path.exists(file_path):
+                        disk_file_hash = native_mgr._hash_file(file_path)
+                    
+                    # Get IDE Hash
+                    ide_hash = ""
+                    try:
+                        tmp_path = os.path.join(tempfile.gettempdir(), "cds_imp_" + clean_name + ".xml")
+                        projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+                        if os.path.exists(tmp_path):
+                            ide_hash = native_mgr._hash_file(tmp_path)
+                            os.remove(tmp_path)
+                    except:
+                        pass
+                    
+                    # Detect ANY difference between IDE and disk
+                    # This catches both disk-side and IDE-side changes
+                    has_diff = (ide_hash != "" and disk_file_hash != "" and ide_hash != disk_file_hash)
+                    
+                    if has_diff:
+                        disk_modified.append({
+                            "name": obj_name, "path": rel_path, "type": type_name,
+                            "type_guid": effective_type, "direction": "disk", "obj": obj
+                        })
+                    else:
+                        unchanged_count += 1
+                else:
+                    # ST content comparison
+                    ide_content = None
+                    is_property = obj_type == TYPE_GUIDS["property"]
+                    
+                    if is_property and obj_guid in property_accessors:
+                        prop_data = property_accessors[obj_guid]
+                        declaration, _ = export_object_content(obj)
+                        
+                        get_impl = None
+                        if prop_data['get']:
+                            get_decl, get_impl_raw = export_object_content(prop_data['get'])
+                            get_impl = format_st_content(get_decl, get_impl_raw)
+                        
+                        set_impl = None
+                        if prop_data['set']:
+                            set_decl, set_impl_raw = export_object_content(prop_data['set'])
+                            set_impl = format_st_content(set_decl, set_impl_raw)
+                        
+                        ide_content = format_property_content(declaration, get_impl, set_impl)
+                    else:
+                        has_content = False
+                        try:
+                            if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
+                                has_content = True
+                            if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
+                                has_content = True
+                        except:
+                            pass
+                        
+                        if is_property and obj_guid in property_accessors:
+                            has_content = True
+                        
+                        if not has_content:
+                            unchanged_count += 1
                             continue
-                        else:
-                            print("  Hash mismatch for " + rel_path + ": stored=" + str(stored_hash) + " current=" + str(current_hash))
-                    else:
-                        print("  No stored hash for " + rel_path + " - will re-import")
-                    
-                    # Collect for batch processing
-                    try:
-                        container = obj.parent
-                    except:
-                        container = projects.primary
                         
-                    if container not in native_batches: native_batches[container] = []
-                    native_batches[container].append((rel_path, file_path, obj_info.get("name", "Unknown"), obj_type, False))
-                    continue
-                except Exception as e:
-                    log_error("Failed to batch " + rel_path + ": " + safe_str(e))
-                    skipped_count += 1
-                    continue
-
-            try:
-                if manager.update(obj, file_path, obj_info):
-                    updated_count += 1
-                    print("  Updated (textual): " + rel_path)
-                else:
-                    skipped_count += 1
-            except Exception as e:
-                log_error("Failed to update " + rel_path + ": " + safe_str(e))
-                failed_count += 1
-                
-        # Process new folders
-        if new_folders:
-            new_folders.sort(key=len)
-            folder_manager = import_managers[TYPE_GUIDS["folder"]]
-            for folder_path in new_folders:
-                # folders now have hierarchical paths, no 'src/' prefix check strictly needed
-                # except to skip things like '.git' or 'project/' which are already filtered in os.walk
-                res = folder_manager.create(None, None, folder_path, None)
-                if res:
-                    created_count += 1
-                    objects_meta[folder_path] = {
-                        "guid": safe_str(res.guid),
-                        "type": TYPE_GUIDS["folder"],
-                        "name": safe_str(res.get_name()),
-                        "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
-                        "content_hash": "",
-                        "last_modified": ""
-                    }
-
-        # Process new files
-        if new_files:
-            new_files.sort(key=lambda x: (x[0].count('/'), x[0].count('.')))
-            
-            for rel_path, file_path in new_files:
-                # Determine name and type
-                path_parts = rel_path.split("/")
-                base_name = os.path.splitext(path_parts[-1])[0]
-                
-                # Resolve type
-                type_guid = None
-                if rel_path.endswith(".xml"):
-                    manager = import_managers["native"]
-                else:
-                    from codesys_utils import parse_st_file
-                    decl, impl = parse_st_file(file_path)
-                    content_check = decl if decl else impl
-                    if not content_check:
-                        skipped_count += 1
+                        declaration, implementation = export_object_content(obj)
+                        ide_content = format_st_content(declaration, implementation)
+                    
+                    if not ide_content or not ide_content.strip():
+                        unchanged_count += 1
                         continue
                     
-                    type_guid = determine_object_type(content_check)
-                    manager = import_managers.get(type_guid, import_managers["default"])
+                    ide_hash = calculate_hash(ide_content)
+                    
+                    # Read disk file content and hash
+                    disk_file_hash = ""
+                    file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                    if os.path.exists(file_path):
+                        try:
+                            with codecs.open(file_path, "r", "utf-8") as df:
+                                disk_content = df.read()
+                            disk_file_hash = calculate_hash(disk_content)
+                        except:
+                            pass
+                    
+                    # Detect ANY difference between IDE and disk
+                    has_diff = (ide_hash != disk_file_hash)
+                    
+                    if has_diff:
+                        disk_modified.append({
+                            "name": obj_name, "path": rel_path, "type": type_name,
+                            "type_guid": effective_type, "direction": "disk", "obj": obj
+                        })
+                    else:
+                        unchanged_count += 1
+            # else: object in IDE but not on disk — not relevant for import
+        
+        except Exception as e:
+            print("Error comparing object: " + safe_str(e))
+            continue
+    
+    # Pass 2: Find objects on disk but not in IDE (deleted from IDE)
+    for rel_path, disk_info in disk_objects.items():
+        if disk_info.get("type") == TYPE_GUIDS["folder"]:
+            continue
+        if not rel_path.endswith(".st") and not rel_path.endswith(".xml"):
+            continue
+        if rel_path in matched_disk_paths:
+            continue
+        
+        obj_name = disk_info.get("name", os.path.basename(rel_path))
+        obj_type_guid = disk_info.get("type", "unknown")
+        type_name = TYPE_NAMES.get(obj_type_guid, obj_type_guid[:8] if len(obj_type_guid) > 8 else obj_type_guid)
+        
+        deleted_from_ide.append({
+            "name": obj_name, "path": rel_path, "type": type_name,
+            "type_guid": obj_type_guid
+        })
+    
+    return disk_modified, deleted_from_ide, unchanged_count
 
-                # Resolve container
-                parent_name = None
-                if "." in base_name and type_guid in [TYPE_GUIDS.get("method"), TYPE_GUIDS.get("property"), TYPE_GUIDS.get("action"), TYPE_GUIDS.get("property_accessor")]:
-                    parts = base_name.rsplit(".", 1)
-                    parent_name = parts[0]
-                    name = parts[1]
+
+def perform_import(primary_project, base_dir, to_sync, metadata):
+    """
+    Import disk-modified items to IDE.
+    This is the same logic as Project_compare.perform_import.
+    """
+    if not to_sync:
+        print("No files to import.")
+        return 0, 0, 0
+    
+    import_managers = create_import_managers()
+    guid_map, name_map = build_object_cache(primary_project)
+    objects_meta = metadata.get("objects", {})
+    folder_cache = {}
+    
+    updated_count = 0
+    created_count = 0
+    failed_count = 0
+    native_batches = {}
+    
+    with MetadataLock(base_dir, timeout=60):
+        for item in to_sync:
+            try:
+                rel_path = item["path"]
+                abs_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                
+                if not os.path.exists(abs_path):
+                    continue
+                
+                # XML files are batched for import
+                if rel_path.endswith(".xml"):
+                    obj = item.get("obj")
+                    if not obj:
+                        obj = find_object_by_path(rel_path, primary_project)
+                    
+                    container = primary_project
+                    is_new = True
+                    if obj:
+                        try:
+                            container = obj.parent
+                            is_new = False
+                        except:
+                            pass
+                    
+                    if container not in native_batches:
+                        native_batches[container] = []
+                    native_batches[container].append((
+                        rel_path, abs_path, item.get("name", os.path.basename(rel_path)),
+                        item.get("type_guid"), is_new
+                    ))
+                    continue
+                
+                # ST files: find or create
+                obj = item.get("obj")
+                if not obj:
+                    obj = find_object_by_path(rel_path, primary_project)
+                
+                if obj:
+                    # UPDATE — force=True because we already confirmed disk is different
+                    obj_info = objects_meta.get(rel_path, {})
+                    if not obj_info.get("type"):
+                        obj_info["type"] = item.get("type_guid", "")
+                    
+                    if update_existing_object(obj, rel_path, abs_path, obj_info,
+                                              import_managers, force=True):
+                        update_object_metadata(objects_meta, rel_path, obj, abs_path, import_managers)
+                        updated_count += 1
+                        print("  Updated: " + rel_path)
+                        log_info("Updated " + item["name"])
                 else:
-                    name = base_name
-                
-                create_container = None
-                if parent_name:
-                    create_container = find_object_by_name(parent_name, name_map)
-                
-                if not create_container:
-                     # Use hierarchical path to resolve container
-                     if len(path_parts) > 1:
-                         folder_path = "/".join(path_parts[:-1])
-                         if folder_path in folder_cache:
-                             create_container = folder_cache[folder_path]
-                         else:
-                             create_container = ensure_folder_path(folder_path)
-                             folder_cache[folder_path] = create_container
-                     else:
-                         # Landing in project root (e.g. Project Settings)
-                         create_container = projects.primary
-
-                if not create_container:
-                    log_error("Could not find or create container for " + rel_path)
-                    failed_count += 1
-                    continue
-                
-                if isinstance(manager, (NativeManager, ConfigManager)):
-                    if create_container not in native_batches: native_batches[create_container] = []
-                    native_batches[create_container].append((rel_path, file_path, name, type_guid, True))
-                    continue
-
-                try:
-                    res = manager.create(create_container, name, file_path, type_guid)
+                    # CREATE
+                    res = create_new_object(
+                        rel_path, abs_path, import_managers, name_map,
+                        folder_cache, primary_project, objects_meta
+                    )
                     if res:
                         created_count += 1
-                        update_object_metadata(objects_meta, rel_path, res, file_path, import_managers)
-                        if res.get_name() not in name_map: name_map[res.get_name()] = []
-                        name_map[res.get_name()].append(res)
+                        print("  Created: " + rel_path)
                     else:
                         failed_count += 1
-                except Exception as e:
-                    log_error("Failed to create " + rel_path + ": " + safe_str(e))
-                    failed_count += 1
-        
-        # Process Native Batches (reduces dialogs from 15 to 1-2)
+                    
+            except Exception as e:
+                log_error("Failed to import " + item.get("path", "unknown") + ": " + safe_str(e))
+                failed_count += 1
+
+        # Process batched XML imports
         if native_batches:
             u, c, f = batch_import_native_xmls(
-                native_batches, import_managers, objects_meta, projects.primary
+                native_batches, import_managers, objects_meta, primary_project
             )
             updated_count += u
             created_count += c
             failed_count += f
-        
-        deleted_count = len(deleted_from_ide) if deleted_from_ide else 0
-        finalize_import(import_dir, metadata, projects_obj.primary, projects_obj,
-                        updated_count, created_count, deleted_count)
+
+        # Save metadata & project
+        projects_obj = resolve_projects(None, globals())
+        finalize_import(base_dir, metadata, primary_project, projects_obj,
+                        updated_count, created_count)
+
+    return updated_count, created_count, failed_count
+
+
+def import_project(projects_obj=None, silent=False):
+    """
+    Main import entry point.
+    Compares disk with IDE and imports all disk-side changes automatically.
+    """
+    projects_obj = resolve_projects(projects_obj, globals())
     
+    if projects_obj is None or not projects_obj.primary:
+        msg = "Error: 'projects' object not found or no project open."
+        if not silent:
+            system.ui.error(msg)
+        else:
+            print(msg)
+        return
+    
+    base_dir, error = load_base_dir()
+    if error:
+        if not silent:
+            system.ui.warning(error)
+        else:
+            print(error)
+        return
+    
+    print("=== Starting Project Import ===")
+    print("Importing from: " + base_dir)
+    start_time = time.time()
+    
+    # Load metadata from disk
+    metadata = load_metadata(base_dir)
+    if not metadata:
+        msg = "Metadata not found! Please run Project_export.py first."
+        if not silent:
+            system.ui.error(msg)
+        else:
+            print(msg)
+        return
+    
+    disk_objects = metadata.get("objects", {})
+    print("Loaded " + str(len(disk_objects)) + " objects from metadata")
+    
+    # Phase 1: Find all disk changes
+    print("Comparing IDE with disk...")
+    disk_modified, deleted_from_ide, unchanged_count = find_disk_changes(
+        base_dir, projects_obj, metadata
+    )
+    
+    print("")
+    print("Changes found:")
+    print("  Modified on disk: " + str(len(disk_modified)))
+    print("  Deleted from IDE: " + str(len(deleted_from_ide)))
+    print("  Unchanged: " + str(unchanged_count))
+    
+    if not disk_modified:
+        elapsed = time.time() - start_time
+        msg = "No disk changes to import.\nAll " + str(unchanged_count) + " objects are in sync."
+        print(msg)
+        if not silent:
+            system.ui.info(msg + "\nTime: {:.2f}s".format(elapsed))
+        return
+    
+    # Show what we're about to import
+    print("")
+    print("Importing " + str(len(disk_modified)) + " disk changes to IDE:")
+    for item in disk_modified:
+        print("  <- " + item["path"] + " (" + item["type"] + ")")
+    
+    # Phase 2: Import all disk changes
+    updated, created, failed = perform_import(
+        projects_obj.primary, base_dir, disk_modified, metadata
+    )
+    
+    elapsed = time.time() - start_time
+    
+    print("")
     print("=== Import Complete ===")
-    print("  Updated: " + str(updated_count))
-    print("  Created: " + str(created_count))
-    print("  Deleted: " + str(deleted_count))
-    print("  Failed:  " + str(failed_count))
-    print("  Skipped: " + str(skipped_count))
+    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Failed: " + str(failed)
+    print(summary)
+    print("Time elapsed: {:.2f} seconds".format(elapsed))
     
-    elapsed_time = time.time() - start_time
-    print("  Time:    {:.2f}s".format(elapsed_time))
+    log_info("Import complete! " + summary)
     
-    log_info("Import complete! Updated: " + str(updated_count) + ", Created: " + str(created_count) + ", Deleted: " + str(deleted_count) + ", Failed: " + str(failed_count) + ", Skipped: " + str(skipped_count))
-    
-    # Check for silent mode (Non-Blocking UI)
-    silent_mode = get_project_prop("cds-sync-silent-mode", False)
-    
-    if silent_mode:
+    if not silent:
         try:
             from codesys_ui import show_toast
-            message = "Import Complete\nUpd: {}\nNew: {}\nDel: {}\nFail: {}\nTime: {:.2f}s".format(
-                updated_count, created_count, deleted_count, failed_count, elapsed_time
-            )
-            show_toast("Import Complete", message)
+            show_toast("Import Complete", summary + "\nTime: {:.2f}s".format(elapsed))
         except:
-            print("Import complete (Silent mode active, but UI module failed)")
-    else:
-        system.ui.info("Import complete!\n\nUpdated: " + str(updated_count) + "\nCreated: " + str(created_count) + "\nDeleted: " + str(deleted_count) + "\nFailed: " + str(failed_count) + "\nSkipped: " + str(skipped_count) + "\nTime: {:.2f}s".format(elapsed_time))
+            system.ui.info("Import complete!\n\n" + summary)
 
 
 def main():
     base_dir, error = load_base_dir()
-    if error:
-        system.ui.warning(error)
-        return
     
-    # Check if we are being run in silent mode (e.g. from Daemon)
     is_silent = globals().get("SILENT", False)
     
-    if is_silent:
-        print("Importing in silent mode (via Daemon)...")
+    if base_dir:
         init_logging(base_dir)
-        import_project(base_dir, silent=True)
-        return
-
-    message = "WARNING: This operation will overwrite CODESYS objects with data from the export directory.\n\nAre you sure you want to proceed?"
     
-    try:
-        result = system.ui.choose(message, ("Yes, Overwrite Data", "No, Cancel"))
-    except:
-        # Fallback for UI-less execution
-        init_logging(base_dir)
-        import_project(base_dir)
-        return
-
-    if result is None: # Dialog closed
-        return
-        
-    if result[0] == 0: # Yes
-        init_logging(base_dir)
-        import_project(base_dir)
+    import_project(silent=is_silent)
 
 
 if __name__ == "__main__":
