@@ -244,7 +244,3 @@ See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions.
 ## 📜 License
 
 MIT License.
-
-```
-
-```
