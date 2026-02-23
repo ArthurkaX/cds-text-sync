@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.5.6.1`
+**Version**: `1.6`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -85,7 +85,7 @@ When upgrading to a new version of `cds-text-sync`:
 
 **Run this first.** It links your current CODESYS project to a specific folder on your disk.
 
-![Setup Project Directory](img/create_work_directory.gif)
+![Setup Project Directory](img/setFolder.gif)
 
 - Offers two options:
   - **Browse**: Select a folder using the file browser (traditional method).
@@ -129,6 +129,8 @@ When upgrading to a new version of `cds-text-sync`:
 
 Exports the current project state to the sync folder.
 
+![Export Changes](img/Export.gif)
+
 - **Source Code**: Exports all POUs, GVLs, DUTs to `/src` as `.st` files.
 - **Libraries**: Saves `_libraries.csv` for dependency tracking.
 - **Binary Backup**: If enabled, saves the project and copies it to `/project`.
@@ -145,31 +147,28 @@ Updates the CODESYS project from the files on disk.
 
 ### 5. `Project_Daemon.py` (Background Service)
 
-**The ultimate productivity booster.** This script runs in the background and empowers you to control CODESYS from anywhere.
+> [!NOTE]
+> **Temporarily Disabled**: This module is currently undergoing maintenance and is disabled in version 1.6.
 
-![Daemon Dashboard](img/Daemon.png)
+**The ultimate productivity booster.** This script is designed to run in the background and empower you to control CODESYS from anywhere.
 
-- **Global Hotkey (Alt + Q)**: Open the Quick Action Dashboard from any application or virtual desktop.
-- **Silent Operations**: Perform Exports, Imports, and Builds without interrupting your flow with popup dialogs.
-- **Smart Focus**: The dashboard intelligently steals focus when activated and restores it to your previous window (e.g., VS Code) when done.
-- **Build & Log**: Trigger a project build and get a clean, table-formatted `build.log` directly in your project folder.
+### 6. `Project_compare.py` (Object Comparison)
 
-**Usage**:
+**Identify differences between IDE and Disk.** Compares the objects in your CODESYS project with the exported files on disk using the new direct-comparison engine.
 
-1. Run `Project_Daemon.py` once inside CODESYS to start it.
-2. Press `Alt + Q` to toggle the menu.
-3. Press `D` in the menu or run the script again to stop it.
-
-- **Integration**: The specific error format allows external editors (like VS Code tasks) to parse the log and highlight errors in your original source files.
-
-### 7. `Project_compare.py` (Object Comparison)
-
-**Identify differences between IDE and Disk.** Compares the objects in your CODESYS project with the exported files on disk.
+![Compare and Interactive Sync](img/Compare-Import.gif)
 
 - **Detection**: Finds modified objects, new objects in IDE, and objects deleted from IDE.
+- **Interactive Update**: Launches a dialog where you can selectively **Import** disk changes into CODESYS or **Export** IDE changes to disk.
 - **Output**: Generates a detailed report in the Script Output window and saves it to `compare.log`.
 - **Clean Run**: The `compare.log` file is recreated every time you run the script, ensuring you only see the latest results.
-- **Daemon Integration**: Can be triggered directly from the Quick Action Dashboard ('C' key).
+
+### 7. `Project_discover.py` (Diagnostic Tool)
+
+**Diagnostic tool for project structure.** Maps your CODESYS project tree and helps identify objects that might not be fully supported by the sync engine yet.
+
+- **Validation**: If you run this on a project, check `sync_debug.log` to see a full tree of discovered objects and their types.
+- **Debugging**: Highlights "Unknown" types with their GUIDs, making it easy to report unsupported blocks.
 
 ---
 
@@ -187,16 +186,17 @@ The tool organizes your repository into a clean structure:
 
 ```
 /
-├── src/                  # The Logic Source. All .st files (POUs, GVLs, DUTs).
-├── project/              # (Optional) The State Backup. Copy of .project for Git LFS.
-├── xml/                  # (Optional) Native XML exports of Visualizations/Alarms.
-├── config/               # Environment config (Libraries, TaskConfig).
-├── sync_debug.log        # Diagnostic log for the last sync operation.
-├── build.log             # Build output log.
-├── compare.log           # Comparison results log.
-├── _metadata.csv         # Split object metadata (Do not delete!)
-├── _config.json          # Project configuration mirror.
-└── _libraries.csv        # Library version tracking.
+├── DeviceName/            # PLC Device Name (e.g., "PLC", "CODESYS_HMI")
+│   └── ApplicationName/   # Application Name (e.g., "ST_App", "HMI_App")
+│       ├── Folder/        # Project Folders (mirrors IDE tree)
+│       │   └── POU.st     # Logic Source code (.st files)
+│       ├── Task Config.xml# Native XML Configuration (Tasks)
+│       └── Library Mgr.xml# Native XML for Libraries
+├── GlobalTextList.xml     # Global objects (Project-level root)
+├── project/               # (Optional) Binary .project backup for Git LFS
+├── sync_debug.log         # Diagnostic log for sync/discovery
+├── build.log              # Build output log
+└── compare.log            # Comparison results log
 
 ```
 
@@ -244,3 +244,7 @@ See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions.
 ## 📜 License
 
 MIT License.
+
+```
+
+```

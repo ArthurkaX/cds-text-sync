@@ -4,13 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.6 (2026-02-24)
+
+**Core Engine Refactoring & Interactive Sync:**
+
+- **Multi-PLC & Multi-Application Support**: The engine now automatically handles complex project hierarchies, organizing exports into a clear `Device/Application/Folder` structure (essential for modern CODESYS projects).
+- **Metadata-Free Sync Engine**: Significant refactoring to transition from metadata files (`_metadata.csv`, `_config.json`) to a direct, hash-based two-way comparison between the CODESYS IDE and disk. This improves reliability when moving projects between machines or using Git.
+- **Interactive Comparison Dialog**: `Project_compare.py` now includes an interactive results window where you can selectively apply changes (Import or Export) directly from the diff list.
+- **Project Discovery Tool**: New `Project_discover.py` script for mapping the project tree structure and diagnosing supported block types (logs findings to `sync_debug.log`).
+- **Maintenance**: `Project_daemon.py` has been temporarily disabled.
+- **Improved Comparison Logic**: Better handling of graphical POUs and XML-based objects (Visualizations, Task Configurations) in the comparison engine.
+
 ### Version 1.5.6.1 (2026-02-21)
-
-**Enhanced Support for Task Local GVLs:**
-
-- **Task Local GVL Export**: Added support for identifying and exporting Task Local GVL objects as Structured Text (previously exported as XML or skipped).
-- **Task Reference Documentation**: Exports for Task Local GVL now include an informational header comment documenting the "Task with write access" setting for manual reference.
-- **Extended Constants**: Updated internal type mapping to correctly categorize Project Settings and Task Local GVL objects.
 
 ### Version 1.5.6 (2026-02-18)
 
