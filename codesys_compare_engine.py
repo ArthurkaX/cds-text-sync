@@ -528,6 +528,16 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                         is_new = False
                     except:
                         pass
+                else:
+                    # New XML file: resolve correct container from path
+                    # e.g. "CODESYS_HMI/HMI_Application/MFL_VISU/Screen2.xml"
+                    #   → container = MFL_VISU folder object
+                    path_parts = rel_path.replace("\\", "/").split("/")
+                    if len(path_parts) > 1:
+                        parent_path = "/".join(path_parts[:-1])
+                        resolved = ensure_folder_path(parent_path, primary_project)
+                        if resolved:
+                            container = resolved
 
                 if container not in native_batches:
                     native_batches[container] = []
