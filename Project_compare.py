@@ -23,7 +23,7 @@ from codesys_utils import (
 )
 from codesys_managers import (
     get_object_path, get_container_prefix, get_parent_pou_name,
-    export_object_content, collect_property_accessors, is_nvl,
+    export_object_content, collect_property_accessors, is_nvl, is_graphical_pou,
     NativeManager
 )
 
@@ -121,6 +121,15 @@ def compare_project(projects_obj=None, silent=False):
                         is_xml_object = True
                 except:
                     pass
+
+            # Detect graphical POUs (LD, CFC, FBD) - they have no textual implementation
+            # and must be compared as native XML objects, not ST text objects.
+            if not is_xml_object and effective_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
+                try:
+                    if is_graphical_pou(obj):
+                        is_xml_object = True
+                except:
+                    pass
             
             # Check if this is an XML type
             if effective_type in XML_TYPES:
@@ -175,13 +184,35 @@ def compare_project(projects_obj=None, silent=False):
                     if os.path.exists(file_path):
                         current_hash = native_mgr._hash_file(file_path)
                         if current_hash and current_hash != meta_hash:
+                            # Read disk XML content
+                            disk_content = ""
+                            try:
+                                with codecs.open(file_path, "r", "utf-8") as df:
+                                    disk_content = df.read()
+                            except:
+                                pass
+                            
+                            # Export IDE XML to temp file and read it
+                            ide_content = ""
+                            try:
+                                tmp_path = os.path.join(tempfile.gettempdir(), "cds_diff_" + clean_name + ".xml")
+                                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+                                if os.path.exists(tmp_path):
+                                    with codecs.open(tmp_path, "r", "utf-8") as tf:
+                                        ide_content = tf.read()
+                                    os.remove(tmp_path)
+                            except:
+                                pass
+                            
                             modified.append({
                                 "name": obj_name,
                                 "path": rel_path,
                                 "type": type_name,
                                 "type_guid": effective_type,
                                 "direction": "disk",
-                                "obj": obj
+                                "obj": obj,
+                                "ide_content": ide_content,
+                                "disk_content": disk_content
                             })
                         else:
                             unchanged.append(rel_path)
@@ -586,7 +617,18 @@ def perform_export(base_dir, modified, new_in_ide, metadata):
         if not obj: continue
         
         obj_type = safe_str(obj.type)
-        mgr = managers.get(obj_type, native_mgr)
+        
+        # Detect graphical POUs (LD/CFC/FBD) - route to native XML export
+        use_native = False
+        if obj_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
+            try:
+                from codesys_managers import is_graphical_pou
+                if is_graphical_pou(obj):
+                    use_native = True
+            except:
+                pass
+        
+        mgr = native_mgr if use_native else managers.get(obj_type, native_mgr)
         
         try:
             res = mgr.export(obj, context)

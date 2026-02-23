@@ -104,6 +104,28 @@ def is_nvl(obj):
         log_warning("Could not check NVL status for " + safe_str(obj.get_name()) + ": " + safe_str(e))
         return False
 
+def is_graphical_pou(obj):
+    """
+    Detect if a POU uses a graphical language (LD, CFC, FBD) instead of ST/IL.
+
+    CODESYS assigns the same type GUID to all POUs regardless of language.
+    The distinguishing factor is that graphical POUs do NOT have a textual
+    implementation body — the implementation exists only in the native XML
+    (graphical data). ST/IL POUs always have has_textual_implementation=True.
+
+    Returns True if the POU's implementation is graphical (needs XML export),
+    False if it is text-based (ST/IL, can be exported as .st).
+    """
+    try:
+        # If the object explicitly has a textual implementation, it is ST/IL
+        if hasattr(obj, 'has_textual_implementation'):
+            return not obj.has_textual_implementation
+        # If the attribute is missing we cannot determine — treat as textual (safe default)
+        return False
+    except Exception as e:
+        log_warning("Could not check graphical POU status for " + safe_str(obj.get_name()) + ": " + safe_str(e))
+        return False
+
 def get_object_path(obj, stop_at_application=True):
     """
     Build the path from object to Application root.

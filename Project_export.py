@@ -20,7 +20,7 @@ from codesys_utils import (
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
-    get_object_path, collect_property_accessors, is_nvl
+    get_object_path, collect_property_accessors, is_nvl, is_graphical_pou
 )
 
 # Shared constants and utilities imported from modules
@@ -286,6 +286,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
             
             # Select manager
             effective_type = obj_type
+            use_native = False
             
             # Special case: GVLs that are actually NVLs should be treated as native XML
             if obj_type == TYPE_GUIDS["gvl"]:
@@ -296,7 +297,20 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 except:
                     pass
 
-            if effective_type in managers:
+            # Special case: POUs/actions/methods with graphical implementation (LD, CFC, FBD)
+            # must be exported as native XML. They share the POU type GUID but have no textual
+            # implementation body - the graphical content only exists in the native XML format.
+            if effective_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
+                try:
+                    if is_graphical_pou(obj):
+                        use_native = True
+                        log_info("Detected graphical object: " + safe_str(obj.get_name()) + " -> switching to XML export")
+                except:
+                    pass
+
+            if use_native:
+                manager = managers["native"]
+            elif effective_type in managers:
                 manager = managers[effective_type]
             elif effective_type in XML_TYPES:
                 if not metadata.get("export_xml", False) and effective_type not in [TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]]:
