@@ -150,6 +150,10 @@ def get_object_path(obj, stop_at_application=True):
             if parent_type in [TYPE_GUIDS["plc_logic"], TYPE_GUIDS["device"]]:
                 break
             
+            # Skip Task Configuration in path building - individual Tasks are handled by Task Configuration XML
+            if parent_type == TYPE_GUIDS["task_config"]:
+                break
+            
             parent_name = clean_filename(parent.get_name())
             path_parts.insert(0, parent_name)
             current = parent
@@ -351,6 +355,24 @@ class FolderManager(ObjectManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts)
+        
+        # Skip creating Task Configuration folders - they will be handled by ConfigManager as XML files
+        if safe_str(obj.type) == TYPE_GUIDS["task_config"]:
+            print("DEBUG: Skipping Task Configuration folder creation - will be exported as XML")
+            # Add to metadata but don't create directory
+            rel_path = "/".join(full_path_parts)
+            is_new = rel_path not in context['metadata']['objects']
+            
+            context['metadata']['objects'][rel_path] = {
+                "guid": safe_str(obj.guid),
+                "type": context.get('effective_type', safe_str(obj.type)),
+                "name": obj.get_name(),
+                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
+                "content_hash": ""
+            }
+            return "new" if is_new else "identical"
+        
+
         
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
@@ -869,9 +891,6 @@ class NativeManager(ObjectManager):
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
     def export(self, obj, context):
-        # Debug logging
-        print("DEBUG: ConfigManager.export() called for: " + safe_str(obj.get_name()) + " (type: " + safe_str(obj.type) + ")")
-        
         # Configuration XML now also follows Device/App hierarchy
         container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
@@ -881,15 +900,11 @@ class ConfigManager(NativeManager):
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-        print("DEBUG: container=" + str(container) + " path_parts=" + str(path_parts) + " target_dir=" + target_dir)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
-            print("DEBUG: created directory: " + target_dir)
             
         file_path = os.path.join(target_dir, file_name)
-        print("DEBUG: target file path: " + file_path)
         is_new = not os.path.exists(file_path)
-        print("DEBUG: file is_new=" + str(is_new))
         
         # Get existing file hash before overwriting
         old_hash = "" if is_new else self._hash_file(file_path)
@@ -899,7 +914,9 @@ class ConfigManager(NativeManager):
         try:
             projects_obj = resolve_projects()
             if projects_obj and projects_obj.primary:
-                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+                # For Task Configuration, export without recursive to avoid duplicate Task objects
+                is_task_config = safe_str(obj.type) == TYPE_GUIDS["task_config"]
+                projects_obj.primary.export_native([obj], tmp_path, recursive=not is_task_config)
             else:
                 return False
         except:

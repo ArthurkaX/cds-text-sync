@@ -286,6 +286,11 @@ def export_project(export_dir, projects_obj=None, silent=False):
             effective_type = obj_type
             use_native = False
             
+            # Skip ALL individual Task objects - they are handled by Task Configuration XML
+            if obj_type == TYPE_GUIDS["task"]:
+                print("DEBUG: Skipping Task " + safe_str(obj.get_name()) + " - handled by Task Configuration")
+                continue
+            
             # Special case: GVLs that are actually NVLs should be treated as native XML
             if obj_type == TYPE_GUIDS["gvl"]:
                 try:
@@ -306,10 +311,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
                 except:
                     pass
 
-            # Debug logging for task_config
-            if effective_type == TYPE_GUIDS["task_config"]:
-                print("DEBUG: Found Task Configuration object: " + safe_str(obj.get_name()) + " (GUID: " + safe_str(obj.guid) + ")")
-                print("DEBUG: managers contains task_config: " + str(effective_type in managers))
+
                 
             if use_native:
                 manager = managers["native"]
