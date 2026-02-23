@@ -371,14 +371,11 @@ def classify_object(obj):
         except:
             pass
 
-    # Skip auto-generated VisualizationStyle objects (children of Visualization Manager)
+    # Skip auto-generated VisualizationStyle objects
+    # These are created by CODESYS at multiple locations (Visualization Manager,
+    # Application root, project root) and should never be exported/synced.
     if obj_type == TYPE_GUIDS["visu_style"]:
-        try:
-            parent_type = safe_str(obj.parent.type)
-            if parent_type == TYPE_GUIDS["visu_manager"]:
-                return obj_type, False, True
-        except:
-            pass
+        return obj_type, False, True
 
     # NVL detection: GVL that is actually a Network Variable List
     if obj_type == TYPE_GUIDS["gvl"]:

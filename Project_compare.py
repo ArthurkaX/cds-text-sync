@@ -26,8 +26,8 @@ from codesys_utils import (
     resolve_projects, clean_filename, get_project_prop
 )
 from codesys_managers import (
-    POUManager, NativeManager, ConfigManager, PropertyManager, is_graphical_pou,
-    collect_property_accessors, classify_object
+    FolderManager, POUManager, NativeManager, ConfigManager, PropertyManager,
+    is_graphical_pou, collect_property_accessors, classify_object
 )
 from codesys_compare_engine import (
     find_all_changes, perform_import_items, TYPE_NAMES, build_expected_path

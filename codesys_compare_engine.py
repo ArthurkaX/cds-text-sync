@@ -74,8 +74,8 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj):
         clean_name = clean_filename(obj.get_name())
         tmp_path = os.path.join(tempfile.gettempdir(), "cds_comp_" + clean_name + ".xml")
         try:
-            # ConfigManager objects like Task Configuration require recursive=True
-            recursive = safe_str(obj.type) == TYPE_GUIDS["task_config"]
+            # ConfigManager objects (Task Config, Alarm Config) require recursive=True
+            recursive = safe_str(obj.type) in [TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"]]
             projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
             if os.path.exists(tmp_path):
                 content = read_file(tmp_path)
@@ -214,24 +214,7 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                 continue
 
         rel_path = build_expected_path(obj, effective_type, is_xml)
-        
-        # Handle special case for VisualizationStyle objects to prevent duplicates
-        if effective_type == TYPE_GUIDS.get("visu_style"):
-            # For VisualizationStyle, prefer the shortest path (most global)
-            # to avoid duplicates when object exists both at root and in app
-            if rel_path in ide_paths:
-                existing_path = rel_path
-                # Keep the shorter path (more global)
-                if len(rel_path.split('/')) < len(existing_path.split('/')):
-                    ide_paths[rel_path] = obj
-                    log_info("VisualizationStyle: using shorter path %s instead of %s" % (rel_path, existing_path))
-                else:
-                    log_info("VisualizationStyle: skipping duplicate path %s" % rel_path)
-                    continue
-            else:
-                ide_paths[rel_path] = obj
-        else:
-            ide_paths[rel_path] = obj
+        ide_paths[rel_path] = obj
 
         file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
         type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
