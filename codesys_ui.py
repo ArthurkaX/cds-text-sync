@@ -252,7 +252,7 @@ class CompareResultsForm(Form):
         self.Size = Size(500, y + 65)
     
     def _add_section(self, y, title, items, direction):
-        """Add a labeled section with checkboxes"""
+        """Add a labeled section with checkboxes and optional diff buttons"""
         lbl = Label()
         lbl.Text = title
         lbl.Location = Point(15, y)
@@ -265,11 +265,25 @@ class CompareResultsForm(Form):
             cb = CheckBox()
             cb.Text = item["name"] + "  [" + item["type"] + "]"
             cb.Location = Point(30, y)
-            cb.Size = Size(440, 20)
+            cb.Size = Size(380, 20)
             cb.Checked = True
             cb.Tag = (item, direction)
             self.Controls.Add(cb)
             self.checkboxes.append(cb)
+            
+            # Add Diff button if both contents are available
+            has_ide = item.get("ide_content", "")
+            has_disk = item.get("disk_content", "")
+            if has_ide or has_disk:
+                btn_diff = Button()
+                btn_diff.Text = "Diff"
+                btn_diff.Location = Point(418, y - 1)
+                btn_diff.Size = Size(48, 21)
+                btn_diff.Tag = item
+                btn_diff.Click += self._on_diff_click
+                btn_diff.Font = Font("Segoe UI", 7)
+                self.Controls.Add(btn_diff)
+            
             y += 22
         
         if len(items) > 15:
@@ -290,6 +304,22 @@ class CompareResultsForm(Form):
     def _select_none(self, sender, event):
         for cb in self.checkboxes:
             cb.Checked = False
+    
+    def _on_diff_click(self, sender, event):
+        """Open side-by-side diff viewer for the clicked item."""
+        item = sender.Tag
+        if not item:
+            return
+        try:
+            from codesys_ui_diff import show_diff_dialog
+            ide_text = item.get("ide_content", "")
+            disk_text = item.get("disk_content", "")
+            obj_name = item.get("name", "Unknown")
+            show_diff_dialog(disk_text, ide_text, 
+                           "Disk (Folder)", "IDE (Project)", 
+                           obj_name)
+        except Exception as e:
+            print("Error opening diff: " + str(e))
     
     def _on_import(self, sender, event):
         self.result_action = self.IMPORT

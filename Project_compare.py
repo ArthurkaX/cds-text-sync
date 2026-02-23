@@ -243,6 +243,7 @@ def compare_project(projects_obj=None, silent=False):
                     
                     # Read the actual disk file hash
                     disk_file_hash = ""
+                    disk_content = ""
                     file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
                     if os.path.exists(file_path):
                         try:
@@ -263,7 +264,9 @@ def compare_project(projects_obj=None, silent=False):
                             "type": type_name,
                             "type_guid": effective_type,
                             "direction": "both",
-                            "obj": obj
+                            "obj": obj,
+                            "ide_content": ide_content,
+                            "disk_content": disk_content
                         })
                     elif ide_changed:
                         modified.append({
@@ -272,7 +275,9 @@ def compare_project(projects_obj=None, silent=False):
                             "type": type_name,
                             "type_guid": effective_type,
                             "direction": "ide",
-                            "obj": obj
+                            "obj": obj,
+                            "ide_content": ide_content,
+                            "disk_content": disk_content
                         })
                     elif disk_changed:
                         modified.append({
@@ -281,7 +286,9 @@ def compare_project(projects_obj=None, silent=False):
                             "type": type_name,
                             "type_guid": effective_type,
                             "direction": "disk",
-                            "obj": obj
+                            "obj": obj,
+                            "ide_content": ide_content,
+                            "disk_content": disk_content
                         })
                     else:
                         unchanged.append(rel_path)
