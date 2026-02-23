@@ -179,6 +179,7 @@ def compare_project(projects_obj=None, silent=False):
                                 "name": obj_name,
                                 "path": rel_path,
                                 "type": type_name,
+                                "type_guid": effective_type,
                                 "direction": "disk",
                                 "obj": obj
                             })
@@ -190,6 +191,7 @@ def compare_project(projects_obj=None, silent=False):
                             "name": obj_name,
                             "path": rel_path,
                             "type": type_name,
+                            "type_guid": effective_type,
                             "obj": obj
                         })
                 else:
@@ -259,6 +261,7 @@ def compare_project(projects_obj=None, silent=False):
                             "name": obj_name,
                             "path": rel_path,
                             "type": type_name,
+                            "type_guid": effective_type,
                             "direction": "both",
                             "obj": obj
                         })
@@ -267,6 +270,7 @@ def compare_project(projects_obj=None, silent=False):
                             "name": obj_name,
                             "path": rel_path,
                             "type": type_name,
+                            "type_guid": effective_type,
                             "direction": "ide",
                             "obj": obj
                         })
@@ -275,6 +279,7 @@ def compare_project(projects_obj=None, silent=False):
                             "name": obj_name,
                             "path": rel_path,
                             "type": type_name,
+                            "type_guid": effective_type,
                             "direction": "disk",
                             "obj": obj
                         })
@@ -308,6 +313,7 @@ def compare_project(projects_obj=None, silent=False):
                     "name": obj_name,
                     "path": rel_path,
                     "type": type_name,
+                    "type_guid": effective_type,
                     "obj": obj
                 })
         
@@ -349,7 +355,8 @@ def compare_project(projects_obj=None, silent=False):
         deleted_from_ide.append({
             "name": obj_name,
             "path": rel_path,
-            "type": type_name
+            "type": type_name,
+            "type_guid": obj_type_guid
         })
     
     # Generate report - git-style concise output
@@ -428,10 +435,8 @@ def perform_import(primary_project, base_dir, modified, deleted_from_ide, metada
     xml_files = []
     
     # Collect files to import
-    # 1. Modified items with direction 'disk' or 'both'
-    # 2. Items from deleted_from_ide that were selected
-    # (In the dialog, modified items and deleted items are merged into the final 'selected' list)
-    to_sync = [m for m in modified if m.get("direction", "disk") in ("disk", "both")]
+    # If the user clicked "Import", we process everything selected that exists on disk
+    to_sync = modified
     
     if not to_sync:
         system.ui.info("No files selected for import.")
@@ -487,10 +492,19 @@ def perform_import(primary_project, base_dir, modified, deleted_from_ide, metada
                 
                 if obj:
                     # UPDATE existing object
-                    manager = import_managers.get(item.get("type_guid"), import_managers["default"])
-                    if item["type"] == "property": manager = import_managers[TYPE_GUIDS["property"]]
+                    # Force update by ignoring disk-metadata check (IDE is different, so we want disk content)
+                    meta_item = objects_meta.get(rel_path, {})
+                    temp_info = meta_item.copy()
+                    temp_info["content_hash"] = "FORCE_SYNC" # Ensure hash mismatch to trigger update
                     
-                    if manager.update(obj, abs_path, objects_meta.get(rel_path, {})):
+                    # Resolve manager
+                    type_guid = item.get("type_guid")
+                    manager = import_managers.get(type_guid, import_managers["default"])
+                    if item.get("type") == "property": manager = import_managers[TYPE_GUIDS["property"]]
+                    
+                    if manager.update(obj, abs_path, temp_info):
+                        if rel_path in objects_meta:
+                            objects_meta[rel_path].update(temp_info)
                         updated_count += 1
                         log_info("Updated " + item["name"])
                 else:
