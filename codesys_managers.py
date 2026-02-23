@@ -915,9 +915,8 @@ class ConfigManager(NativeManager):
             if projects_obj and projects_obj.primary:
                 if not os.path.exists(target_dir):
                     os.makedirs(target_dir)
-                # For Task Configuration, export without recursive to avoid duplicate Task objects
-                is_task_config = safe_str(obj.type) == TYPE_GUIDS["task_config"]
-                projects_obj.primary.export_native([obj], tmp_path, recursive=not is_task_config)
+                # Export with recursive=True to include child objects (e.g. Tasks inside Task Configuration)
+                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
             else:
                 return False
         except:
