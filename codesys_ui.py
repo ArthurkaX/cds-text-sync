@@ -160,7 +160,7 @@ class CompareResultsForm(Form):
     EXPORT = "export"
     CLOSE = "close"
     
-    def __init__(self, ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count):
+    def __init__(self, ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count, new_on_disk=None):
         self.Text = "cds-text-sync: Comparison Results"
         self.Size = Size(500, 480)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
@@ -197,6 +197,15 @@ class CompareResultsForm(Form):
             y = self._add_section(y, "Modified on Disk (need Import):", disk_changes, "disk")
         if new_in_ide:
             y = self._add_section(y, "New in IDE (not yet exported):", new_in_ide, "new")
+        if new_on_disk:
+            # Map path/file_path to consistent structure for display
+            mapped_new = []
+            for item in new_on_disk:
+                mapped_new.append({
+                    "name": item["name"], "path": item["path"], "type": "new file",
+                    "file_path": item["file_path"]
+                })
+            y = self._add_section(y, "New on Disk (need Import):", mapped_new, "new_on_disk")
         if deleted_from_ide:
             y = self._add_section(y, "Deleted from IDE (still on Disk):", deleted_from_ide, "deleted")
         
@@ -204,7 +213,7 @@ class CompareResultsForm(Form):
         y += 5
         total_m = len(ide_changes) + len(disk_changes) + len(both_changes)
         lbl_sum = Label()
-        lbl_sum.Text = "M:" + str(total_m) + "  +:" + str(len(new_in_ide)) + "  -:" + str(len(deleted_from_ide)) + "  =:" + str(unchanged_count)
+        lbl_sum.Text = "M:" + str(total_m) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  -:" + str(len(deleted_from_ide)) + "  =:" + str(unchanged_count)
         lbl_sum.Location = Point(15, y)
         lbl_sum.AutoSize = True
         self.Controls.Add(lbl_sum)
@@ -341,10 +350,10 @@ class CompareResultsForm(Form):
         return selected
 
 
-def show_compare_dialog(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count):
+def show_compare_dialog(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count, new_on_disk=None):
     """Show the comparison results dialog. Returns (action, selected_items)"""
     try:
-        form = CompareResultsForm(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count)
+        form = CompareResultsForm(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count, new_on_disk)
         result = form.ShowDialog()
         if result == DialogResult.OK:
             return form.result_action, form.get_selected()
