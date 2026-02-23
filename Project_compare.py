@@ -165,9 +165,16 @@ def compare_project(projects_obj=None, silent=False):
             else:
                 rel_path = file_name
             
-            # Special handling for AlarmGroup objects - skip comparison entirely
+             # Special handling for AlarmGroup objects - skip comparison entirely
             # These objects can auto-convert between different structures by CODESYS
             if is_xml_object and (obj_name == "AlarmGroup" or "AlarmGroup" in rel_path):
+                # Mark as unchanged to avoid false positives
+                unchanged.append(rel_path)
+                continue
+            
+            # Special handling for Task Configuration - skip as they're auto-managed
+            # Task configurations are automatically generated/maintained by CODESYS
+            if is_xml_object and obj_name == "Task Configuration":
                 # Mark as unchanged to avoid false positives
                 unchanged.append(rel_path)
                 continue
