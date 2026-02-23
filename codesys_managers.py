@@ -331,6 +331,73 @@ def collect_property_accessors(all_objects):
     
     return property_accessors
 
+def classify_object(obj):
+    """
+    Determine the effective export type for a CODESYS object.
+
+    Returns:
+        (effective_type, is_xml, should_skip)
+        - effective_type: the resolved type GUID (e.g. NVL replaces GVL)
+        - is_xml: True if object should be exported/compared as native XML
+        - should_skip: True if object should be ignored (property_accessor, task, etc.)
+    """
+    obj_type = safe_str(obj.type)
+    effective_type = obj_type
+    is_xml = False
+
+    # Skip non-exportable
+    if obj_type == TYPE_GUIDS["property_accessor"]:
+        return obj_type, False, True
+    if obj_type == TYPE_GUIDS["task"]:
+        return obj_type, False, True
+
+    # Skip per-POU alarm groups/classes — these are auto-generated children of
+    # POUs and can't be independently exported. Only alarm groups under the
+    # Alarm Configuration tree are valid standalone exports.
+    if obj_type in [TYPE_GUIDS["alarm_group"], TYPE_GUIDS["alarm_class"]]:
+        try:
+            parent_type = safe_str(obj.parent.type)
+            if parent_type != TYPE_GUIDS["alarm_config"]:
+                return obj_type, False, True
+        except:
+            pass
+
+    # Skip auto-generated VisualizationStyle objects (children of Visualization Manager)
+    if obj_type == TYPE_GUIDS["visu_style"]:
+        try:
+            parent_type = safe_str(obj.parent.type)
+            if parent_type == TYPE_GUIDS["visu_manager"]:
+                return obj_type, False, True
+        except:
+            pass
+
+    # NVL detection: GVL that is actually a Network Variable List
+    if obj_type == TYPE_GUIDS["gvl"]:
+        try:
+            if is_nvl(obj):
+                effective_type = TYPE_GUIDS["nvl_sender"]
+                is_xml = True
+        except:
+            pass
+
+    # Graphical POU detection (LD, CFC, FBD → XML)
+    if not is_xml and effective_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
+        try:
+            if is_graphical_pou(obj):
+                is_xml = True
+        except:
+            pass
+
+    # XML_TYPES are always XML
+    if effective_type in XML_TYPES:
+        is_xml = True
+
+    # Check if type is exportable at all
+    if effective_type not in EXPORTABLE_TYPES and effective_type not in XML_TYPES:
+        return effective_type, is_xml, True
+
+    return effective_type, is_xml, False
+
 # --- Manager Classes ---
 
 class ObjectManager(object):
@@ -356,44 +423,22 @@ class FolderManager(ObjectManager):
         path_parts.append(clean_name)
         
         full_path_parts = container + path_parts
-        target_dir = os.path.join(context['export_dir'], *full_path_parts)
-        
+        rel_path = "/".join(full_path_parts)
+
+        # Track that we touched this path
+        if 'exported_paths' in context:
+            context['exported_paths'].add(rel_path)
+
         # Skip creating Task Configuration folders - they will be handled by ConfigManager as XML files
         if safe_str(obj.type) == TYPE_GUIDS["task_config"]:
-            print("DEBUG: Skipping Task Configuration folder creation - will be exported as XML")
-            # Add to metadata but don't create directory
-            rel_path = "/".join(full_path_parts)
-            is_new = rel_path not in context['metadata']['objects']
-            
-            context['metadata']['objects'][rel_path] = {
-                "guid": safe_str(obj.guid),
-                "type": context.get('effective_type', safe_str(obj.type)),
-                "name": obj.get_name(),
-                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-                "content_hash": ""
-            }
-            return "new" if is_new else "identical"
+            return "identical"
         
+        target_dir = os.path.join(context['export_dir'], *full_path_parts)
+        # Note: Directory creation is usually handled by child objects or os.makedirs
+        return "identical"
 
-        
-        rel_path = "/".join(full_path_parts)
-        
-        # Check metadata (not filesystem) to determine if folder is truly new
-        # Child objects may create parent directories before the folder object is processed
-        is_new = rel_path not in context['metadata']['objects']
-        
-        context['metadata']['objects'][rel_path] = {
-            "guid": safe_str(obj.guid),
-            "type": context.get('effective_type', safe_str(obj.type)),
-            "name": obj.get_name(),
-            "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": ""
-        }
-        return "new" if is_new else "identical"
-
-    def update(self, obj, file_path, obj_info):
+    def update(self, obj, file_path, obj_info=None):
         # Folders don't have textual content to update
-        obj_info["last_modified"] = safe_str(os.path.getmtime(file_path))
         return False
 
     def create(self, container, name, file_path, type_guid):
@@ -432,7 +477,6 @@ class POUManager(ObjectManager):
         # Determine target directory
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-        
             
         file_path = os.path.join(target_dir, file_name)
         
@@ -454,16 +498,10 @@ class POUManager(ObjectManager):
                 with codecs.open(file_path, "r", "utf-8") as f:
                     existing_content = f.read()
                 if calculate_hash(existing_content) == content_hash:
-                    # Content identical - update metadata but skip file write
+                    # Track path and return
                     rel_path = "/".join(full_path_parts + [file_name])
-                    context['metadata']['objects'][rel_path] = {
-                        "guid": safe_str(obj.guid),
-                        "type": obj_type,
-                        "name": obj_name,
-                        "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-                        "content_hash": content_hash,
-                        "last_modified": safe_str(os.path.getmtime(file_path))
-                    }
+                    if 'exported_paths' in context:
+                        context['exported_paths'].add(rel_path)
                     return "identical"
             except:
                 pass  # If we can't read existing file, just overwrite
@@ -476,35 +514,18 @@ class POUManager(ObjectManager):
             return False
             
         rel_path = "/".join(full_path_parts + [file_name])
-        context['metadata']['objects'][rel_path] = {
-            "guid": safe_str(obj.guid),
-            "type": context.get('effective_type', obj_type),
-            "name": obj_name,
-            "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": content_hash,
-            "last_modified": safe_str(os.path.getmtime(file_path))
-        }
+        if 'exported_paths' in context:
+            context['exported_paths'].add(rel_path)
         return "new" if is_new else "updated"
 
-    def update(self, obj, file_path, obj_info):
+    def update(self, obj, file_path, obj_info=None):
         from codesys_utils import parse_st_file
         declaration, implementation = parse_st_file(file_path)
         if declaration is None and implementation is None:
             return False
             
-        full_content = format_st_content(declaration, implementation)
-        current_hash = calculate_hash(full_content)
-        
-        if current_hash == obj_info.get("content_hash"):
-            # Update timestamp in metadata but no need to update object
-            obj_info["last_modified"] = safe_str(os.path.getmtime(file_path))
-            return False
-            
-        if update_object_code(obj, declaration, implementation):
-            obj_info["content_hash"] = current_hash
-            obj_info["last_modified"] = safe_str(os.path.getmtime(file_path))
-            return True
-        return False
+        # We assume the engine already decided we need to update based on content hash
+        return update_object_code(obj, declaration, implementation)
 
     def create(self, container, name, file_path, type_guid):
         from codesys_utils import parse_st_file
@@ -558,19 +579,16 @@ class PropertyManager(POUManager):
         clean_name = clean_filename(obj_name)
         file_name = clean_name + ".st"
         
-        # Handle nested objects (already in path_parts if Folder used, but usually not for POUs)
-        # If property is directly under a POU, we want POU.Property.st
+        # Handle nested objects
         parent_pou = get_parent_pou_name(obj)
         if parent_pou:
             file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-            # If the parent POU is actually in the path_parts, remove it to avoid duplications in directory
             clean_parent_pou = clean_filename(parent_pou)
             if path_parts and path_parts[-1] == clean_parent_pou:
                 path_parts = path_parts[:-1]
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-        
             
         file_path = os.path.join(target_dir, file_name)
         
@@ -607,16 +625,9 @@ class PropertyManager(POUManager):
                 with codecs.open(file_path, "r", "utf-8") as f:
                     existing_content = f.read()
                 if calculate_hash(existing_content) == content_hash:
-                    # Content identical - update metadata but skip file write
                     rel_path = "/".join(full_path_parts + [file_name])
-                    context['metadata']['objects'][rel_path] = {
-                        "guid": obj_guid,
-                        "type": context.get('effective_type', safe_str(obj.type)),
-                        "name": obj_name,
-                        "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-                        "content_hash": content_hash,
-                        "last_modified": safe_str(os.path.getmtime(file_path))
-                    }
+                    if 'exported_paths' in context:
+                        context['exported_paths'].add(rel_path)
                     return "identical"
             except:
                 pass
@@ -628,29 +639,16 @@ class PropertyManager(POUManager):
             log_error("Failed to write Property file " + file_name + ": " + safe_str(e))
             return False
             
-        # Update Metadata
         rel_path = "/".join(full_path_parts + [file_name])
-        context['metadata']['objects'][rel_path] = {
-            "guid": obj_guid,
-            "type": context.get('effective_type', safe_str(obj.type)),
-            "name": obj_name,
-            "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": content_hash,
-            "last_modified": safe_str(os.path.getmtime(file_path))
-        }
+        if 'exported_paths' in context:
+            context['exported_paths'].add(rel_path)
         return "new" if is_new else "updated"
 
-    def update(self, obj, file_path, obj_info):
+    def update(self, obj, file_path, obj_info=None):
         try:
             with codecs.open(file_path, "r", "utf-8") as f:
                 content = f.read()
         except: return False
-        
-        # Hash check - skip if content hasn't changed
-        current_hash = calculate_hash(content)
-        if current_hash == obj_info.get("content_hash"):
-            obj_info["last_modified"] = safe_str(os.path.getmtime(file_path))
-            return False
         
         declaration, get_impl_combined, set_impl_combined = parse_property_content(content)
         updated = False
@@ -676,10 +674,6 @@ class PropertyManager(POUManager):
                         updated = True
                     break
         
-        if updated:
-            obj_info["content_hash"] = calculate_hash(content)
-            obj_info["last_modified"] = safe_str(os.path.getmtime(file_path))
-            
         return updated
 
     def create(self, container, name, file_path, type_guid):
@@ -767,7 +761,7 @@ class NativeManager(ObjectManager):
         except:
             return ""
 
-    def export(self, obj, context):
+    def export(self, obj, context, recursive=False):
         obj_name = obj.get_name()
         container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
@@ -790,7 +784,7 @@ class NativeManager(ObjectManager):
             if projects_obj and projects_obj.primary:
                 if not os.path.exists(target_dir):
                     os.makedirs(target_dir)
-                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+                projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
             else:
                 log_error("Native export failed: 'projects' object not found or no primary project.")
                 return False
@@ -812,14 +806,8 @@ class NativeManager(ObjectManager):
             try: os.remove(tmp_path)
             except: pass
             rel_path = "/".join(full_path_parts + [file_name])
-            context['metadata']['objects'][rel_path] = {
-                "guid": safe_str(obj.guid),
-                "type": context.get('effective_type', safe_str(obj.type)),
-                "name": obj_name,
-                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-                "content_hash": new_hash,
-                "last_modified": safe_str(os.path.getmtime(file_path))
-            }
+            if 'exported_paths' in context:
+                context['exported_paths'].add(rel_path)
             return "identical"
         
         # Content changed or new - replace with temp file
@@ -832,18 +820,12 @@ class NativeManager(ObjectManager):
             return False
             
         rel_path = "/".join(full_path_parts + [file_name])
-        context['metadata']['objects'][rel_path] = {
-            "guid": safe_str(obj.guid),
-            "type": context.get('effective_type', safe_str(obj.type)),
-            "name": obj_name,
-            "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": new_hash,
-            "last_modified": safe_str(os.path.getmtime(file_path))
-        }
+        if 'exported_paths' in context:
+            context['exported_paths'].add(rel_path)
         return "new" if is_new else "updated"
 
-    def update(self, obj, file_path, obj_info):
-        obj_name = obj_info.get("name", "Unknown") if obj_info else "Unknown"
+    def update(self, obj, file_path, obj_info=None):
+        obj_name = obj.get_name() if obj else "Unknown"
         try:
             # Try parent-level import first (more precise)
             try:
@@ -892,80 +874,7 @@ class NativeManager(ObjectManager):
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
     def export(self, obj, context):
-        # Configuration XML now also follows Device/App hierarchy
-        container = get_container_prefix(obj)
-        path_parts = get_object_path(obj)
-        obj_name = obj.get_name()
-        clean_name = clean_filename(obj_name)
-        file_name = clean_name + ".xml"
-        
-        full_path_parts = container + path_parts
-        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-            
-        file_path = os.path.join(target_dir, file_name)
-        is_new = not os.path.exists(file_path)
-        
-        # Get existing file hash before overwriting
-        old_hash = "" if is_new else self._hash_file(file_path)
-        
-        # Export to temp file
-        tmp_path = file_path + ".tmp"
-        try:
-            projects_obj = resolve_projects()
-            if projects_obj and projects_obj.primary:
-                if not os.path.exists(target_dir):
-                    os.makedirs(target_dir)
-                # Export with recursive=True to include child objects (e.g. Tasks inside Task Configuration)
-                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
-            else:
-                return False
-        except:
-            if os.path.exists(tmp_path):
-                try: os.remove(tmp_path)
-                except: pass
-            return False
-        if not os.path.exists(tmp_path):
-            print("DEBUG: temp file was not created: " + tmp_path)
-            return False
-        else:
-            print("DEBUG: temp file created successfully: " + str(os.path.getsize(tmp_path)) + " bytes")
-        
-        new_hash = self._hash_file(tmp_path)
-        
-        # Compare hashes
-        if not is_new and old_hash and old_hash == new_hash:
-            try: os.remove(tmp_path)
-            except: pass
-            rel_path = "/".join(full_path_parts + [file_name])
-            context['metadata']['objects'][rel_path] = {
-                "guid": safe_str(obj.guid),
-                "type": safe_str(obj.type),
-                "name": obj_name,
-                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-                "content_hash": new_hash,
-                "last_modified": safe_str(os.path.getmtime(file_path))
-            }
-            return "identical"
-        
-        # Content changed or new
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            os.rename(tmp_path, file_path)
-        except Exception as e:
-            log_error("Failed to replace config XML " + file_name + ": " + safe_str(e))
-            return False
-        
-        rel_path = "/".join(full_path_parts + [file_name])
-        context['metadata']['objects'][rel_path] = {
-            "guid": safe_str(obj.guid),
-            "type": context.get('effective_type', safe_str(obj.type)),
-            "name": obj_name,
-            "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else None,
-            "content_hash": new_hash,
-            "last_modified": safe_str(os.path.getmtime(file_path))
-        }
-        return "new" if is_new else "updated"
+        return super(ConfigManager, self).export(obj, context, recursive=True)
     
     def create(self, container, name, file_path, type_guid):
         return super(ConfigManager, self).create(container, name, file_path, type_guid)

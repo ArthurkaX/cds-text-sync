@@ -17,8 +17,8 @@ for _mod_name in list(sys.modules.keys()):
         del sys.modules[_mod_name]
 
 from codesys_utils import (
-    safe_str, load_base_dir, load_metadata, init_logging, log_info,
-    resolve_projects
+    safe_str, load_base_dir, init_logging, log_info,
+    resolve_projects, get_project_prop
 )
 from codesys_compare_engine import find_all_changes, perform_import_items
 
@@ -51,24 +51,14 @@ def import_project(projects_obj=None, silent=False):
     print("Importing from: " + base_dir)
     start_time = time.time()
     
-    # Load metadata from disk
-    metadata = load_metadata(base_dir)
-    if not metadata:
-        msg = "Metadata not found! Please run Project_export.py first."
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
-        return
-    
-    disk_objects = metadata.get("objects", {})
-    print("Loaded " + str(len(disk_objects)) + " objects from metadata")
+    export_xml = get_project_prop("cds-sync-export-xml", False)
     
     # ── Phase 1: Find all changes ──
     print("Comparing IDE with disk...")
-    results = find_all_changes(base_dir, projects_obj, metadata)
+    results = find_all_changes(base_dir, projects_obj, export_xml=export_xml)
     
-    modified = results["modified"]
+    different = results["different"]
+    new_in_ide = results["new_in_ide"]
     new_on_disk = results["new_on_disk"]
     unchanged_count = results["unchanged_count"]
     
@@ -76,12 +66,9 @@ def import_project(projects_obj=None, silent=False):
     # Also include new files found on disk
     to_import = []
     
-    # Modified objects where disk differs from IDE
-    for item in modified:
-        direction = item.get("direction", "")
-        if direction in ("disk", "both", "ide"):
-            # All directions: disk is source of truth for import
-            to_import.append(item)
+    # Modified objects: disk wins
+    for item in different:
+        to_import.append(item)
     
     # New files on disk not yet in metadata
     for item in new_on_disk:
@@ -96,9 +83,8 @@ def import_project(projects_obj=None, silent=False):
     
     print("")
     print("Changes found:")
-    print("  Modified (IDE<>Disk): " + str(len([m for m in modified if m.get("direction") in ("disk", "both", "ide")])))
+    print("  Modified (IDE<>Disk): " + str(len(different)))
     print("  New on disk: " + str(len(new_on_disk)))
-    print("  Deleted from IDE: " + str(len(results["deleted_from_ide"])))
     print("  Unchanged: " + str(unchanged_count))
     
     if not to_import:
@@ -113,12 +99,11 @@ def import_project(projects_obj=None, silent=False):
     print("")
     print("Importing " + str(len(to_import)) + " items to IDE:")
     for item in to_import:
-        direction = item.get("direction", "new")
-        print("  <- " + item["path"] + " (" + item["type"] + ", " + direction + ")")
+        print("  <- " + item["path"] + " (" + item["type"] + ")")
     
     # ── Phase 2: Import all changes ──
     updated, created, failed = perform_import_items(
-        projects_obj.primary, base_dir, to_import, metadata, globals()
+        projects_obj.primary, base_dir, to_import, globals()
     )
     
     elapsed = time.time() - start_time

@@ -160,7 +160,7 @@ class CompareResultsForm(Form):
     EXPORT = "export"
     CLOSE = "close"
     
-    def __init__(self, ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count, new_on_disk=None):
+    def __init__(self, different, new_in_ide, new_on_disk, unchanged_count):
         self.Text = "cds-text-sync: Comparison Results"
         self.Size = Size(500, 480)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
@@ -189,12 +189,8 @@ class CompareResultsForm(Form):
         y += 28
         
         # Add sections
-        if both_changes:
-            y = self._add_section(y, "CONFLICT (changed in both IDE and Disk):", both_changes, "both")
-        if ide_changes:
-            y = self._add_section(y, "Modified in IDE (need Export):", ide_changes, "ide") 
-        if disk_changes:
-            y = self._add_section(y, "Modified on Disk (need Import):", disk_changes, "disk")
+        if different:
+            y = self._add_section(y, "Modified (IDE and Disk differ):", different, "different")
         if new_in_ide:
             y = self._add_section(y, "New in IDE (not yet exported):", new_in_ide, "new")
         if new_on_disk:
@@ -206,14 +202,11 @@ class CompareResultsForm(Form):
                     "file_path": item["file_path"]
                 })
             y = self._add_section(y, "New on Disk (need Import):", mapped_new, "new_on_disk")
-        if deleted_from_ide:
-            y = self._add_section(y, "Deleted from IDE (still on Disk):", deleted_from_ide, "deleted")
         
         # Summary
         y += 5
-        total_m = len(ide_changes) + len(disk_changes) + len(both_changes)
         lbl_sum = Label()
-        lbl_sum.Text = "M:" + str(total_m) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  -:" + str(len(deleted_from_ide)) + "  =:" + str(unchanged_count)
+        lbl_sum.Text = "M:" + str(len(different)) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  =:" + str(unchanged_count)
         lbl_sum.Location = Point(15, y)
         lbl_sum.AutoSize = True
         self.Controls.Add(lbl_sum)
@@ -350,10 +343,10 @@ class CompareResultsForm(Form):
         return selected
 
 
-def show_compare_dialog(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count, new_on_disk=None):
+def show_compare_dialog(different, new_in_ide, new_on_disk, unchanged_count):
     """Show the comparison results dialog. Returns (action, selected_items)"""
     try:
-        form = CompareResultsForm(ide_changes, disk_changes, both_changes, new_in_ide, deleted_from_ide, unchanged_count, new_on_disk)
+        form = CompareResultsForm(different, new_in_ide, new_on_disk, unchanged_count)
         result = form.ShowDialog()
         if result == DialogResult.OK:
             return form.result_action, form.get_selected()

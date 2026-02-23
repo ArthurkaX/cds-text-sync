@@ -138,3 +138,13 @@ DEFAULT_TIMEOUT_MS = 10000
 
 # Characters forbidden in filenames
 FORBIDDEN_CHARS = ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]
+
+# Files that should be ignored by the sync engine
+RESERVED_FILES = {
+    "_metadata.json", "_config.json", "_metadata.csv", "BASE_DIR",
+    "sync_debug.log", "compare.log", ".project", ".gitattributes",
+    ".gitignore"
+}
+
+# Reverse mapping for human-readable type names
+TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}

@@ -22,14 +22,14 @@ for _mod_name in list(sys.modules.keys()):
 
 from codesys_constants import TYPE_GUIDS
 from codesys_utils import (
-    safe_str, load_base_dir, load_metadata, init_logging, log_info, log_error,
-    resolve_projects, save_metadata, clean_filename
+    safe_str, load_base_dir, init_logging, log_info, log_error,
+    resolve_projects, clean_filename, get_project_prop
 )
 from codesys_managers import (
     POUManager, NativeManager, ConfigManager, PropertyManager, is_graphical_pou
 )
 from codesys_compare_engine import (
-    find_all_changes, perform_import_items, TYPE_NAMES
+    find_all_changes, perform_import_items, TYPE_NAMES, build_expected_path
 )
 
 
@@ -58,45 +58,23 @@ def compare_project(projects_obj=None, silent=False):
     print("Comparing: CODESYS IDE <-> " + base_dir)
     start_time = time.time()
     
-    # Load metadata from disk
-    metadata = load_metadata(base_dir)
-    if not metadata:
-        msg = "Metadata not found! Please run Project_export.py first."
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
-        return
-    
-    disk_objects = metadata.get("objects", {})
-    print("Loaded " + str(len(disk_objects)) + " objects from disk metadata")
+    export_xml = get_project_prop("cds-sync-export-xml", False)
     
     # ── Run comparison engine ──
-    print("Building IDE object cache...")
-    results = find_all_changes(base_dir, projects_obj, metadata)
+    print("Comparing IDE objects with disk...")
+    results = find_all_changes(base_dir, projects_obj, export_xml=export_xml)
     
-    modified = results["modified"]
+    different = results["different"]
     new_in_ide = results["new_in_ide"]
-    deleted_from_ide = results["deleted_from_ide"]
     new_on_disk = results["new_on_disk"]
     unchanged_count = results["unchanged_count"]
-    
     # ── Generate report ──
     elapsed = time.time() - start_time
     diff_lines = []
     
-    if modified:
-        for item in modified:
-            direction = item.get("direction", "")
-            if direction == "ide":
-                tag = "M IDE> "
-            elif direction == "disk":
-                tag = "M DISK>"
-            elif direction == "both":
-                tag = "M BOTH>"
-            else:
-                tag = "M      "
-            line = "  " + tag + " " + item["path"] + "  (" + item["type"] + ")"
+    if different:
+        for item in different:
+            line = "  M  " + item["path"] + "  (" + item["type"] + ")"
             diff_lines.append(line)
     
     if new_in_ide:
@@ -104,10 +82,7 @@ def compare_project(projects_obj=None, silent=False):
             line = "  +  " + item["path"] + "  (" + item["type"] + ")"
             diff_lines.append(line)
     
-    if deleted_from_ide:
-        for item in deleted_from_ide:
-            line = "  -  " + item["path"] + "  (" + item["type"] + ")"
-            diff_lines.append(line)
+    # deleted_from_ide is now merged into new_on_disk logic
     
     if new_on_disk:
         for item in new_on_disk:
@@ -123,12 +98,12 @@ def compare_project(projects_obj=None, silent=False):
         print("No differences found - IDE and disk are in sync!")
     
     print("")
-    print("Summary: M:" + str(len(modified)) + " +:" + str(len(new_in_ide)) 
-          + " -:" + str(len(deleted_from_ide)) + " *:" + str(len(new_on_disk))
+    print("Summary: M:" + str(len(different)) + " +:" + str(len(new_in_ide)) 
+          + " *:" + str(len(new_on_disk))
           + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
     
-    log_info("COMPARE: M:" + str(len(modified)) + " +:" + str(len(new_in_ide)) 
-             + " -:" + str(len(deleted_from_ide)) + " *:" + str(len(new_on_disk))
+    log_info("COMPARE: M:" + str(len(different)) + " +:" + str(len(new_in_ide)) 
+             + " *:" + str(len(new_on_disk))
              + " =:" + str(unchanged_count))
     if diff_lines:
         log_info("DIFF:\n" + "\n".join(diff_lines))
@@ -138,54 +113,40 @@ def compare_project(projects_obj=None, silent=False):
         if not diff_lines:
             system.ui.info("IDE and Disk are in sync!\n\nObjects checked: " + str(unchanged_count))
         else:
-            # Group modified by direction
-            ide_changes = [m for m in modified if m.get("direction") == "ide"]
-            disk_changes = [m for m in modified if m.get("direction") == "disk"]
-            both_changes = [m for m in modified if m.get("direction") == "both"]
-            other_changes = [m for m in modified if m.get("direction") not in ("ide", "disk", "both")]
-            all_disk = disk_changes + other_changes
-            
             from codesys_ui import show_compare_dialog
             action, selected = show_compare_dialog(
-                ide_changes, all_disk, both_changes,
-                new_in_ide, deleted_from_ide, unchanged_count,
-                new_on_disk
+                different, new_in_ide, new_on_disk, unchanged_count
             )
             
             if action == "import":
-                # Merge new_on_disk items into selected for import
-                perform_import(projects_obj.primary, base_dir, selected, deleted_from_ide, metadata)
+                perform_import(projects_obj.primary, base_dir, selected)
             elif action == "export":
-                perform_export(base_dir, selected, new_in_ide, metadata)
+                perform_export(base_dir, selected)
 
 
-def perform_import(primary_project, base_dir, selected, deleted_from_ide, metadata):
+def perform_import(primary_project, base_dir, selected):
     """Import selected items via the shared engine."""
     if not selected:
         system.ui.info("No files selected for import.")
         return
     
     updated, created, failed = perform_import_items(
-        primary_project, base_dir, selected, metadata, globals()
+        primary_project, base_dir, selected, globals()
     )
     
     system.ui.info("Import complete!\n\nUpdated: {}\nCreated: {}\nFailed: {}".format(
         updated, created, failed))
 
 
-def perform_export(base_dir, modified, new_in_ide, metadata):
+def perform_export(base_dir, selected):
     """Trigger export for IDE-side changes"""
-    
-    to_export = [m for m in modified if m.get("direction") in ("ide", "both")]
-    to_export += new_in_ide
-    
-    if not to_export:
+    if not selected:
         system.ui.info("No objects selected for export.")
         return
         
     context = {
         'export_dir': base_dir,
-        'metadata': metadata
+        'exported_paths': set()
     }
     
     managers = {
@@ -199,32 +160,30 @@ def perform_export(base_dir, modified, new_in_ide, metadata):
     native_mgr = NativeManager()
     
     count = 0
-    for item in to_export:
+    for item in selected:
         obj = item.get("obj")
         if not obj: continue
         
-        obj_type = safe_str(obj.type)
-        
-        # Detect graphical POUs (LD/CFC/FBD) - route to native XML export
-        use_native = False
-        if obj_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
-            try:
-                if is_graphical_pou(obj):
-                    use_native = True
-            except:
-                pass
-        
-        mgr = native_mgr if use_native else managers.get(obj_type, native_mgr)
-        
+        # Determine manager
+        from codesys_managers import classify_object
+        effective_type, is_xml, should_skip = classify_object(obj)
+        if should_skip: continue
+
+        if is_xml:
+            mgr = managers.get(effective_type, native_mgr)
+        elif effective_type in managers:
+            mgr = managers[effective_type]
+        else:
+            mgr = managers[TYPE_GUIDS["pou"]] # Default
+
+        context['effective_type'] = effective_type
         try:
             res = mgr.export(obj, context)
             if res: count += 1
         except Exception as e:
             log_error("Export failed for " + item["name"] + ": " + safe_str(e))
-            
-    save_metadata(base_dir, metadata)
     
-    system.ui.info("Exported " + str(count) + " objects.\nMetadata updated.")
+    system.ui.info("Exported " + str(count) + " objects.")
 
 
 def main():
