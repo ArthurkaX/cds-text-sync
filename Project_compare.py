@@ -418,84 +418,191 @@ def compare_project(projects_obj=None, silent=False):
             )
             
             if action == "import":
-                perform_import(projects_obj.primary, base_dir, selected, deleted_from_ide)
+                perform_import(projects_obj.primary, base_dir, selected, deleted_from_ide, metadata)
             elif action == "export":
                 perform_export(base_dir, selected, new_in_ide, metadata)
 
 
-def perform_import(primary_project, base_dir, modified, deleted_from_ide):
-    """Trigger native import for disk-side changes"""
+def perform_import(primary_project, base_dir, modified, deleted_from_ide, metadata):
+    """Trigger native import for disk-side changes, mirroring Project_import.py logic"""
     xml_files = []
-    st_files = []
     
     # Collect files to import
-    to_sync = [m for m in modified if m.get("direction") in ("disk", "both")]
-    to_sync += deleted_from_ide
+    # 1. Modified items with direction 'disk' or 'both'
+    # 2. Items from deleted_from_ide that were selected
+    # (In the dialog, modified items and deleted items are merged into the final 'selected' list)
+    to_sync = [m for m in modified if m.get("direction", "disk") in ("disk", "both")]
     
-    for item in to_sync:
-        rel_path = item["path"]
-        abs_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
-        if os.path.exists(abs_path):
-            if rel_path.endswith(".xml"):
-                xml_files.append(abs_path)
-            elif rel_path.endswith(".st"):
-                st_files.append((abs_path, item))
-    
-    if not xml_files and not st_files:
+    if not to_sync:
         system.ui.info("No files selected for import.")
         return
 
-    # 1. Handle XML files (merged import to get the native checkbox dialog)
-    if xml_files:
-        from codesys_utils import merge_native_xmls
-        tmp_xml = os.path.join(tempfile.gettempdir(), "cds_sync_merge.xml")
-        if merge_native_xmls(xml_files, tmp_xml):
-            try:
-                primary_project.import_native(tmp_xml)
-                log_info("Native XML import triggered for " + str(len(xml_files)) + " files.")
-            except Exception as e:
-                system.ui.error("Native import failed: " + safe_str(e))
-            finally:
-                if os.path.exists(tmp_xml):
-                    try: os.remove(tmp_xml)
-                    except: pass
+    from codesys_managers import FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager, update_object_code
+    from codesys_utils import (
+        parse_st_file, parse_property_content, find_object_by_path, 
+        build_object_cache, ensure_folder_path, determine_object_type,
+        find_object_by_name, save_metadata, MetadataLock, backup_project_binary
+    )
     
-    # 2. Handle ST files
-    if st_files:
-        from codesys_managers import POUManager, PropertyManager, update_object_code
-        from codesys_utils import parse_st_file, parse_property_content, find_object_by_path, build_object_cache
-        
-        pou_mgr = POUManager()
-        prop_mgr = PropertyManager()
-        
-        # Build cache once
-        guid_map, name_map = build_object_cache(primary_project)
-        
-        for st_path, item in st_files:
+    # Initialize managers (same as Project_import.py)
+    import_managers = {
+        TYPE_GUIDS["folder"]: FolderManager(),
+        TYPE_GUIDS["property"]: PropertyManager(),
+        TYPE_GUIDS["task_config"]: ConfigManager(),
+        "default": POUManager(),
+        "native": NativeManager()
+    }
+    
+    # Build cache once
+    guid_map, name_map = build_object_cache(primary_project)
+    objects_meta = metadata.get("objects", {})
+    folder_cache = {}
+    
+    updated_count = 0
+    created_count = 0
+    failed_count = 0
+    
+    with MetadataLock(base_dir, timeout=60):
+        for item in to_sync:
             try:
+                rel_path = item["path"]
+                abs_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                
+                if not os.path.exists(abs_path):
+                    continue
+                    
+                # Handle XML files (batch later)
+                if rel_path.endswith(".xml"):
+                    xml_files.append((rel_path, abs_path, item))
+                    continue
+                    
+                # Handle ST files
                 obj = item.get("obj")
                 if not obj:
-                    obj = find_object_by_path(item["path"], primary_project)
+                    obj = find_object_by_path(rel_path, primary_project)
                 
-                if not obj:
-                    log_warning("Could not find object in IDE for import: " + item["path"])
-                    continue
+                # Resolve manager
+                obj_type = item.get("type_guid") # We might need to handle names vs guids
+                # For safety, determine from content or use item['type'] name mapping
                 
-                with codecs.open(st_path, "r", "utf-8") as f:
-                    content = f.read()
-                
-                if item["type"] == "property":
-                    decl, g, s = parse_property_content(content)
-                    prop_mgr.update(obj, st_path, {"declaration": decl, "get": g, "set": s})
+                if obj:
+                    # UPDATE existing object
+                    manager = import_managers.get(item.get("type_guid"), import_managers["default"])
+                    if item["type"] == "property": manager = import_managers[TYPE_GUIDS["property"]]
+                    
+                    if manager.update(obj, abs_path, objects_meta.get(rel_path, {})):
+                        updated_count += 1
+                        log_info("Updated " + item["name"])
                 else:
-                    decl, impl = parse_st_file(content)
-                    update_object_code(obj, decl, impl)
-                
-                log_info("Imported " + item["name"])
+                    # CREATE new object
+                    path_parts = rel_path.split("/")
+                    
+                    # 1. Ensure parent folder structure exists
+                    if len(path_parts) > 1:
+                        folder_path = "/".join(path_parts[:-1])
+                        if folder_path in folder_cache:
+                            container = folder_cache[folder_path]
+                        else:
+                            container = ensure_folder_path(folder_path, primary_project)
+                            folder_cache[folder_path] = container
+                    else:
+                        container = primary_project
+                        
+                    if not container:
+                        log_error("Could not find or create container for " + rel_path)
+                        failed_count += 1
+                        continue
+                    
+                    # 2. Determine type and name
+                    base_name = os.path.splitext(path_parts[-1])[0]
+                    decl, impl = parse_st_file(abs_path)
+                    type_guid = determine_object_type(decl if decl else impl)
+                    
+                    # Handle nested objects (Action, Method, Property)
+                    name = base_name
+                    if "." in base_name and type_guid in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
+                        parts = base_name.rsplit(".", 1)
+                        parent_name = parts[0]
+                        name = parts[1]
+                        pou_parent = find_object_by_name(parent_name, name_map)
+                        if pou_parent:
+                            container = pou_parent
+                    
+                    # 3. Create via appropriate manager
+                    manager = import_managers.get(type_guid, import_managers["default"])
+                    res = manager.create(container, name, abs_path, type_guid)
+                    if res:
+                        created_count += 1
+                        log_info("Created " + rel_path)
+                        # Update metadata
+                        objects_meta[rel_path] = {
+                            "guid": safe_str(res.guid),
+                            "type": safe_str(res.type),
+                            "name": res.get_name(),
+                            "parent": safe_str(res.parent.get_name()) if res.parent and hasattr(res.parent, 'get_name') else "N/A",
+                            "content_hash": calculate_hash(codecs.open(abs_path, "r", "utf-8").read()) if not rel_path.endswith(".xml") else "",
+                            "last_modified": safe_str(os.path.getmtime(abs_path))
+                        }
+                    else:
+                        log_error("Failed to create " + rel_path)
+                        failed_count += 1
+                        
             except Exception as e:
-                log_error("Failed to import ST file " + st_path + ": " + safe_str(e))
+                log_error("Failed to import " + item.get("path", "unknown") + ": " + safe_str(e))
+                failed_count += 1
 
-    system.ui.info("Import process complete.\nRun Compare again to verify.")
+        # 1. Handle XML files (batch import)
+        if xml_files:
+            from codesys_utils import merge_native_xmls
+            # Group by container if possible, but for simplicity we'll do one batch at project root
+            # just like Project_import.py does for many cases
+            tmp_xml = os.path.join(tempfile.gettempdir(), "cds_sync_merge.xml")
+            abs_paths = [x[1] for x in xml_files]
+            if merge_native_xmls(abs_paths, tmp_xml):
+                try:
+                    primary_project.import_native(tmp_xml)
+                    log_info("Native XML import triggered for " + str(len(xml_files)) + " files.")
+                    
+                    # Post-import metadata update for XMLs
+                    for rel_path, abs_path, item in xml_files:
+                        obj = find_object_by_path(rel_path, primary_project)
+                        if obj:
+                            if rel_path not in objects_meta: created_count += 1
+                            else: updated_count += 1
+                            objects_meta[rel_path] = {
+                                "guid": safe_str(obj.guid),
+                                "type": safe_str(obj.type),
+                                "name": obj.get_name(),
+                                "parent": safe_str(obj.parent.get_name()) if obj.parent and hasattr(obj.parent, 'get_name') else "N/A",
+                                "content_hash": import_managers["native"]._hash_file(abs_path),
+                                "last_modified": safe_str(os.path.getmtime(abs_path))
+                            }
+                except Exception as e:
+                    system.ui.error("Native import failed: " + safe_str(e))
+                    failed_count += len(xml_files)
+                finally:
+                    if os.path.exists(tmp_xml):
+                        try: os.remove(tmp_xml)
+                        except: pass
+
+        if updated_count > 0 or created_count > 0:
+            save_metadata(base_dir, metadata)
+            
+            # Binary Backup handling (mirror Project_import.py)
+            should_save = get_project_prop("cds-sync-save-after-import", True)
+            backup_binary = get_project_prop("cds-sync-backup-binary", False)
+            if should_save or backup_binary:
+                try:
+                    primary_project.save()
+                    if backup_binary:
+                        # Resolve projects object for backup
+                        import sys
+                        proj_obj = sys.modules.get('__main__')
+                        backup_project_binary(base_dir, proj_obj)
+                except: pass
+
+    system.ui.info("Import complete!\n\nUpdated: {}\nCreated: {}\nFailed: {}".format(updated_count, created_count, failed_count))
+
 
 
 def perform_export(base_dir, modified, new_in_ide, metadata):
