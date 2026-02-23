@@ -134,16 +134,12 @@ def compare_project(projects_obj=None, silent=False):
             # Check if this is an XML type
             if effective_type in XML_TYPES:
                 is_xml_object = True
-                # Respect the same export_xml gate as Project_export.py
-                # Only task_config and NVL types are always exported
-                if not metadata.get("export_xml", False) and effective_type not in [TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]]:
-                    continue
-                
+            
             # Only process exportable types
             if effective_type not in EXPORTABLE_TYPES and effective_type not in XML_TYPES:
                 continue
             
-            # Build expected file path
+            # Build expected file path  (must happen before any gating on rel_path)
             container = get_container_prefix(obj)
             path_parts = get_object_path(obj)
             clean_name = clean_filename(obj_name)
@@ -169,6 +165,16 @@ def compare_project(projects_obj=None, silent=False):
             else:
                 rel_path = file_name
             
+            # Gate: for XML types that are not always-exported, only compare if the
+            # file is already known in the metadata (i.e. was exported previously).
+            if is_xml_object and effective_type in XML_TYPES:
+                always_exported = effective_type in [
+                    TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]
+                ]
+                if not always_exported and not metadata.get("export_xml", False) \
+                   and rel_path not in disk_objects:
+                    continue
+            
             # Get type name for display
             type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
             
@@ -179,53 +185,58 @@ def compare_project(projects_obj=None, silent=False):
                 meta_hash = disk_info.get("content_hash", "")
                 
                 if is_xml_object:
-                    # For XML objects, use NativeManager._hash_file for consistent hashing
                     file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+                    
+                    # 1. Get Disk Hash
+                    disk_file_hash = ""
+                    disk_content = ""
                     if os.path.exists(file_path):
-                        current_hash = native_mgr._hash_file(file_path)
-                        if current_hash and current_hash != meta_hash:
-                            # Read disk XML content
-                            disk_content = ""
-                            try:
-                                with codecs.open(file_path, "r", "utf-8") as df:
-                                    disk_content = df.read()
-                            except:
-                                pass
-                            
-                            # Export IDE XML to temp file and read it
-                            ide_content = ""
-                            try:
-                                tmp_path = os.path.join(tempfile.gettempdir(), "cds_diff_" + clean_name + ".xml")
-                                projects_obj.primary.export_native([obj], tmp_path, recursive=True)
-                                if os.path.exists(tmp_path):
-                                    with codecs.open(tmp_path, "r", "utf-8") as tf:
-                                        ide_content = tf.read()
-                                    os.remove(tmp_path)
-                            except:
-                                pass
-                            
-                            modified.append({
-                                "name": obj_name,
-                                "path": rel_path,
-                                "type": type_name,
-                                "type_guid": effective_type,
-                                "direction": "disk",
-                                "obj": obj,
-                                "ide_content": ide_content,
-                                "disk_content": disk_content
-                            })
-                        else:
-                            unchanged.append(rel_path)
-                    else:
-                        # File in metadata but missing from disk
-                        new_in_ide.append({
-                            "name": obj_name,
-                            "path": rel_path,
-                            "type": type_name,
-                            "type_guid": effective_type,
-                            "obj": obj
+                        disk_file_hash = native_mgr._hash_file(file_path)
+                        try:
+                            with codecs.open(file_path, "r", "utf-8") as df:
+                                disk_content = df.read()
+                        except: pass
+                    
+                    # 2. Get IDE Hash (we must export to know)
+                    ide_hash = ""
+                    ide_content = ""
+                    try:
+                        tmp_path = os.path.join(tempfile.gettempdir(), "cds_comp_" + clean_name + ".xml")
+                        projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+                        if os.path.exists(tmp_path):
+                            ide_hash = native_mgr._hash_file(tmp_path)
+                            with codecs.open(tmp_path, "r", "utf-8") as tf:
+                                ide_content = tf.read()
+                            os.remove(tmp_path)
+                    except:
+                        pass
+                    
+                    # 3. Three-way comparison
+                    ide_changed = (ide_hash != "" and ide_hash != meta_hash)
+                    disk_changed = (disk_file_hash != "" and disk_file_hash != meta_hash)
+                    
+                    if ide_changed and disk_changed:
+                        modified.append({
+                            "name": obj_name, "path": rel_path, "type": type_name,
+                            "type_guid": effective_type, "direction": "both",
+                            "obj": obj, "ide_content": ide_content, "disk_content": disk_content
                         })
+                    elif ide_changed:
+                        modified.append({
+                            "name": obj_name, "path": rel_path, "type": type_name,
+                            "type_guid": effective_type, "direction": "ide",
+                            "obj": obj, "ide_content": ide_content, "disk_content": disk_content
+                        })
+                    elif disk_changed:
+                        modified.append({
+                            "name": obj_name, "path": rel_path, "type": type_name,
+                            "type_guid": effective_type, "direction": "disk",
+                            "obj": obj, "ide_content": ide_content, "disk_content": disk_content
+                        })
+                    else:
+                        unchanged.append(rel_path)
                 else:
+
                     # ST content comparison (three-way: IDE vs metadata vs disk)
                     ide_content = None
                     is_property = obj_type == TYPE_GUIDS["property"]
@@ -326,10 +337,16 @@ def compare_project(projects_obj=None, silent=False):
             else:
                 # Object exists in IDE but not in metadata
                 if is_xml_object:
-                    # For XML objects, only report as new if the file actually exists on disk
-                    # (export may silently fail for some container types)
-                    file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
-                    if not os.path.exists(file_path):
+                    # For XML objects, verify the object is actually exportable
+                    # to avoid cluttering the list with internal system objects.
+                    try:
+                        tmp_path = os.path.join(tempfile.gettempdir(), "cds_new_check_" + clean_name + ".xml")
+                        projects_obj.primary.export_native([obj], tmp_path, recursive=True)
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                        else:
+                            continue
+                    except:
                         continue
                 else:
                     # For ST objects, check has content
