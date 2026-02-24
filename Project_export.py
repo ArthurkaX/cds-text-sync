@@ -35,6 +35,9 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
     
     # We'll collect everything first to show a preview
     for root, dirs, files in os.walk(export_dir):
+        # Skip hidden dirs (including .diff, .git, .project etc.)
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        
         # Calculate relative path from export_dir
         rel_root = os.path.relpath(root, export_dir)
         if rel_root == ".":
@@ -43,11 +46,8 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
         # Check files
         for f in files:
             # Skip reserved files and folders
-            if f in RESERVED_FILES or f.startswith("."):
-                continue
-            
-            # Skip project folder if it exists (for Git LFS)
-            if rel_root.startswith("project") or rel_root == "project":
+            # Skip files starting with dot
+            if f.startswith("."):
                 continue
 
             # Only consider our export types to be safe
@@ -111,6 +111,9 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
         # Now clean up empty directories
         # Use topdown=False to delete subdirectories before parents
         for root, dirs, files in os.walk(export_dir, topdown=False):
+            # Also skip hidden dirs here
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            
             rel_root = os.path.relpath(root, export_dir)
             if rel_root == "." or not rel_root:
                 continue

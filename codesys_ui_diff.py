@@ -234,7 +234,7 @@ class DiffViewerForm(Form):
         
         # Save button (for Ctrl+Diff functionality inside the viewer)
         btn_save = Button()
-        btn_save.Text = "Save to /diff/"
+        btn_save.Text = "Save to /.diff/"
         btn_save.Size = Size(100, 30)
         btn_save.Location = Point(self.Size.Width - 125, 8)
         btn_save.Anchor = getattr(AnchorStyles, "Top") | getattr(AnchorStyles, "Right")
@@ -477,14 +477,14 @@ class DiffViewerForm(Form):
         self._nav_label.Text = "Change {}/{}" .format(index + 1, total)
         
     def _on_save_button_click(self, sender, event):
-        """Save both versions displayed in the viewer to the /diff/ folder."""
+        """Save both versions displayed in the viewer to the /.diff/ folder."""
         from codesys_utils import load_base_dir, log_info
         
         base_dir, _ = load_base_dir()
         if not base_dir:
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
-        diff_dir = os.path.join(base_dir, "diff")
+        diff_dir = os.path.join(base_dir, ".diff")
         if not os.path.exists(diff_dir):
             try: os.makedirs(diff_dir)
             except: pass
@@ -504,7 +504,7 @@ class DiffViewerForm(Form):
                 f.write(self._right_text)
                 
             from codesys_ui import show_toast
-            show_toast("Saved to /diff/", "Files saved for '{}' at {}".format(safe_name, diff_dir))
+            show_toast("Saved to /.diff/", "Files saved for '{}' at {}".format(safe_name, diff_dir))
         except Exception as e:
             print("Failed to save from diff viewer: " + str(e))
     

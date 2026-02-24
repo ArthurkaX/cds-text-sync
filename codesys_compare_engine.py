@@ -250,7 +250,7 @@ def scan_new_disk_files(base_dir, ide_paths):
 
     for root, dirs, files in os.walk(base_dir):
         # Skip hidden dirs and special dirs
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__" and d != "project"]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
 
         rel_root = os.path.relpath(root, base_dir)
         if rel_root == ".":

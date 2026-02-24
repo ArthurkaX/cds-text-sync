@@ -348,7 +348,7 @@ class CompareResultsForm(Form):
         self.Close()
     
     def _save_diff_files(self, item):
-        """Save both IDE and disk file versions to /diff/ directory in project folder."""
+        """Save both IDE and disk file versions to /.diff/ directory in project folder."""
         # Get file contents and name
         ide_content = item.get("ide_content", "")
         disk_content = item.get("disk_content", "")
@@ -366,7 +366,7 @@ class CompareResultsForm(Form):
             # Fallback to current script directory if project not configured
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
-        diff_dir = os.path.join(base_dir, "diff")
+        diff_dir = os.path.join(base_dir, ".diff")
         if not os.path.exists(diff_dir):
             try:
                 os.makedirs(diff_dir)

@@ -112,15 +112,15 @@ When upgrading to a new version of `cds-text-sync`:
   - If ENABLED: visual objects (Visualizations, Alarms, ImagePools) are exported to `/xml` folder in PLCopenXML format.
   - Useful for tracking changes in non-textual objects.
 - **[ ] Backup .project binary**:
-  - If ENABLED: the script creates a copy of your `.project` file in the `/project` folder.
+  - If ENABLED: the script creates a copy of your `.project` file in the `.project/` folder.
   - Essential for **Git LFS** workflows. Ensures your binary state matches your code state.
 - **Set Backup Name**:
   - Allows you to specify a **fixed filename** for the binary backup (e.g., `Project`).
-  - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `/project` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
+  - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `.project/` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
 - **[ ] Save Project after Import**:
   - If ENABLED: automatically saves the project after a successful import.
 - **[ ] Timestamped Backup before Import**:
-  - If ENABLED: creates a unique, timestamped `.bak` file in the `/project` folder _before_ starting the import process.
+  - If ENABLED: creates a unique, timestamped `.bak` file in the `.project/` folder _before_ starting the import process.
 - **[ ] Silent Mode**:
   - If ENABLED: suppresses blocking popup messages and uses non-blocking system tray notifications (toasts).
   - Recommended for "Developer Workflow" to stay in flow.
@@ -133,7 +133,7 @@ Exports the current project state to the sync folder.
 
 - **Source Code**: Exports all POUs, GVLs, DUTs to `/src` as `.st` files.
 - **Libraries**: Saves `_libraries.csv` for dependency tracking.
-- **Binary Backup**: If enabled, saves the project and copies it to `/project`.
+- **Binary Backup**: If enabled, saves the project and copies it to `.project/`.
 - **Cleanup**: Detects files on disk that no longer exist in CODESYS and offers to delete them.
 
 ### 4. `Project_import.py` (Disk -> CODESYS)
@@ -142,7 +142,7 @@ Updates the CODESYS project from the files on disk.
 
 - **Smart Update**: Updates existing objects, creates new ones, and builds folder hierarchies.
 - **Deletions**: If a file was deleted from disk, offers to delete the object from CODESYS.
-- **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code.
+- **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code in the `.project/` folder.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
 ### 5. `Project_Daemon.py` (Background Service)
@@ -161,6 +161,10 @@ Updates the CODESYS project from the files on disk.
 - **Detection**: Finds modified objects, new objects in IDE, and objects deleted from IDE.
 - **Interactive Update**: Launches a dialog where you can selectively **Import** disk changes into CODESYS or **Export** IDE changes to disk.
 - **Output**: Generates a detailed report in the Script Output window and saves it to `compare.log`.
+- **External Diff**: If you need to compare large files (like XML) in an external editor (VS Code, WinMerge):
+  - **Press CTRL + Click "Diff"** in the comparison dialog.
+  - This saves both versions (IDE and Disk) to the **`.diff/`** folder in your project directory.
+  - You can then open these files in your favorite diff tool.
 - **Clean Run**: The `compare.log` file is recreated every time you run the script, ensuring you only see the latest results.
 
 ### 7. `Project_discover.py` (Diagnostic Tool)
@@ -193,10 +197,11 @@ The tool organizes your repository into a clean structure:
 │       ├── Task Config.xml# Native XML Configuration (Tasks)
 │       └── Library Mgr.xml# Native XML for Libraries
 ├── GlobalTextList.xml     # Global objects (Project-level root)
-├── project/               # (Optional) Binary .project backup for Git LFS
-├── sync_debug.log         # Diagnostic log for sync/discovery
-├── build.log              # Build output log
-└── compare.log            # Comparison results log
+├── .project/            # (Optional) Binary .project backup for Git LFS
+├── .diff/               # (Temporary) Files for external diff tool (CTRL + Diff)
+├── sync_debug.log       # Diagnostic log for sync/discovery
+├── build.log            # Build output log
+└── compare.log          # Comparison results log
 
 ```
 
@@ -207,12 +212,12 @@ The tool organizes your repository into a clean structure:
 1.  **Configure**: Run `Project_parameters.py` and enable **"Backup .project binary"**.
 2.  **Export**: Run `Project_export.py`.
     - Code goes to `/src`.
-    - Binary goes to `/project`.
+    - Binary goes to `.project/`.
 3.  **Commit**:
     - `git add .`
     - `git commit -m "Update logic"`
     - Git tracks the text in `src/`.
-    - **Git LFS** tracks the binary in `project/`.
+    - **Git LFS** tracks the binary in `.project/`.
 4.  **Edit**: make changes in VS Code or CODESYS.
 5.  **Sync**: Run `Project_import.py` or `Project_export.py` depending on where you edited.
     - The binary backup is automatically updated on every sync.

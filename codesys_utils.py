@@ -499,8 +499,8 @@ def ensure_git_configs(export_dir):
             "*.log",
             "*.tmp",
             "*.bak",
-            "/diff/",
-            "/diff/*",
+            "/.diff/",
+            "/.diff/*",
             "",
             "# CODESYS temporary and build files",
             "*.~u",
@@ -1077,7 +1077,7 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
             return
 
         project_path = projects_obj.primary.path
-        project_folder = os.path.join(export_dir, "project")
+        project_folder = os.path.join(export_dir, ".project")
         
         if not os.path.exists(project_folder):
             os.makedirs(project_folder)
@@ -1103,8 +1103,8 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         target_path = os.path.join(project_folder, file_name)
         
         shutil.copy2(project_path, target_path)
-        log_info("Binary backup created: project/" + file_name)
-        print("Binary backup created: project/" + file_name)
+        log_info("Binary backup created: .project/" + file_name)
+        print("Binary backup created: .project/" + file_name)
         
     except Exception as e:
         log_error("Warning: Could not create binary backup: " + str(e))
