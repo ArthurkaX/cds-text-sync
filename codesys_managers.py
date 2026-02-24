@@ -353,10 +353,16 @@ def classify_object(obj):
 
     # Skip all children of monolithic containers - they are exported as
     # recursive XML with their parent. Prevents duplicate export/sync.
-    # Applies to: Alarm Configuration, Visualization Manager
+    monolithic_types = [
+        TYPE_GUIDS["alarm_config"], 
+        TYPE_GUIDS["visu_manager"],
+        TYPE_GUIDS["device"],
+        TYPE_GUIDS["task_config"],
+        TYPE_GUIDS["softmotion_pool"]
+    ]
     try:
         parent_type = safe_str(obj.parent.type) if hasattr(obj, 'parent') and obj.parent else ""
-        if parent_type in [TYPE_GUIDS["alarm_config"], TYPE_GUIDS["visu_manager"]]:
+        if parent_type in monolithic_types:
             return obj_type, False, True
     except:
         pass
@@ -763,18 +769,25 @@ class NativeManager(ObjectManager):
             is_alarm_group = 'AlarmGroup' in content_full and 'GlobalTextList' not in content_full
             is_textlist = '<Single Name="Name" Type="string">GlobalTextList' in content_full
             is_alarm_config = 'Alarm Configuration' in content_full
+            is_device = '<TypeGuid>225bfe47-7336-4dbc-9419-4105a7c831fa</TypeGuid>' in content_full or '<Device' in content_full
             
             # Special handling for AlarmGroup and GlobalTextList: filter out dynamic content
-            if is_alarm_group or is_textlist or is_alarm_config:
+            if is_alarm_group or is_textlist or is_alarm_config or is_device:
                 # Extract only stable metadata that shouldn't change
                 stable_content = []
                 for line in lines:
                     # Filter out timestamps and dynamic GUIDs for all these types
                     if 'Name="Timestamp"' in line: continue
                     if 'Name="Guid"' in line and 'Type="System.Guid"' in line: continue
+                    if '<Timestamp>' in line: continue # Device specific timestamp
                     
                     # For GlobalTextList, keep most content except dynamic parts
                     if is_textlist:
+                        stable_content.append(line)
+                    # For devices, we want to keep most content but be wary of dynamic IDs
+                    elif is_device:
+                        # Skip lines that look like dynamic IDs or timestamps
+                        if 'vqid' in line.lower() or 'instanceid' in line.lower(): continue
                         stable_content.append(line)
                     # For AlarmGroup, keep only basic identifying information  
                     elif is_alarm_group:

@@ -211,6 +211,8 @@ def export_project(export_dir, projects_obj=None, silent=False):
         TYPE_GUIDS["task_config"]: ConfigManager(),
         TYPE_GUIDS["alarm_config"]: ConfigManager(),
         TYPE_GUIDS["visu_manager"]: ConfigManager(),
+        TYPE_GUIDS["device"]: ConfigManager(),
+        TYPE_GUIDS["softmotion_pool"]: ConfigManager(),
         "default": POUManager(),
         "native": NativeManager()
     }

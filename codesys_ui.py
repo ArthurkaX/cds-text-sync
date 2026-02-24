@@ -360,25 +360,26 @@ class CompareResultsForm(Form):
         # Create /diff/ directory
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         diff_dir = os.path.join(script_dir, "diff")
-        os.makedirs(diff_dir, exist_ok=True)
+        if not os.path.exists(diff_dir):
+            os.makedirs(diff_dir)
         
         # Save IDE version
-        ide_filename = f"ide_{safe_name}"
+        ide_filename = "ide_{0}".format(safe_name)
         ide_path = os.path.join(diff_dir, ide_filename)
-        with open(ide_path, 'w', encoding='utf-8') as f:
+        import codecs
+        with codecs.open(ide_path, 'w', 'utf-8') as f:
             f.write(ide_content)
         
         # Save disk version  
-        folder_filename = f"folder_{safe_name}"
+        folder_filename = "folder_{0}".format(safe_name)
         folder_path = os.path.join(diff_dir, folder_filename)
-        with open(folder_path, 'w', encoding='utf-8') as f:
+        with codecs.open(folder_path, 'w', 'utf-8') as f:
             f.write(disk_content)
         
         # Show notification
         from codesys_ui_diff import show_toast
-        show_toast("Diff Files Saved", 
-                  f"Saved both versions of '{obj_name}' to /diff/ directory", 
-                  timeout=3000)
+        msg = "Saved both versions of '{0}' to /diff/ directory".format(obj_name)
+        show_toast("Diff Files Saved", msg, timeout=3000)
     
     def get_selected(self):
         """Return list of selected items with their direction tags"""
