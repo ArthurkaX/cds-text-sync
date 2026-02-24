@@ -24,6 +24,7 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
 - **Background Service**: A daemon that provides global hotkeys (`Alt+Q`) for quick actions without switching windows.
+- **Hidden Folders Skip**: Any directory starting with a dot (e.g., `.git`, `.diff`, `.project`, `.docs`, `.lib`) is automatically ignored. This allows you to store documentation, libraries, or tool configs inside the sync folder without interference.
 
 ---
 
@@ -204,6 +205,9 @@ The tool organizes your repository into a clean structure:
 └── compare.log          # Comparison results log
 
 ```
+
+> [!TIP]
+> **Use Dot-Folders for Extra Content**: Since the engine ignores all folders starting with a dot, you can safely create folders like `.docs/`, `.libs/`, or `.gsd/` to store project-related files. They won't be deleted during "Export" and won't clutter your "Compare" results.
 
 ---
 
