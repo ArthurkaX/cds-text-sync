@@ -1024,8 +1024,8 @@ def find_object_by_path(rel_path, project):
         if "." in last_part:
             name_part, doc_type = last_part.rsplit(".", 1)
             # Verify if doc_type is a known CODESYS type name
-            from codesys_constants import TYPE_GUIDS
-            if doc_type in TYPE_GUIDS:
+            from codesys_constants import TYPE_NAMES
+            if doc_type in TYPE_NAMES.values() or doc_type == "pou_xml":
                 parts[-1] = name_part
 
     current_obj = project

@@ -296,7 +296,8 @@ def scan_new_disk_files(base_dir, ide_paths):
                 name = os.path.splitext(f)[0]
                 if f.endswith(".xml") and "." in name:
                     name_part, doc_type = name.rsplit(".", 1)
-                    if doc_type in TYPE_GUIDS:
+                    from codesys_constants import TYPE_NAMES
+                    if doc_type in TYPE_NAMES.values() or doc_type == "pou_xml":
                         name = name_part
                         
                 new_files.append({

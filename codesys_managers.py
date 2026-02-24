@@ -854,7 +854,19 @@ class NativeManager(ObjectManager):
         container = get_container_prefix(obj)
         path_parts = get_object_path(obj)
         clean_name = clean_filename(obj_name)
-        file_name = clean_name + ".xml"
+        
+        # Build filename with type for XML objects to avoid name collisions
+        # This must match build_expected_path in codesys_compare_engine.py
+        obj_type = safe_str(obj.type)
+        from codesys_constants import TYPE_NAMES, TYPE_GUIDS
+        
+        # Special case: Graphical POUs exported as XML
+        if obj_type == TYPE_GUIDS["pou"]:
+            type_name = "pou_xml"
+        else:
+            type_name = TYPE_NAMES.get(obj_type, obj_type[:8])
+            
+        file_name = clean_name + "." + type_name + ".xml"
         
         full_path_parts = container + path_parts
         target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
