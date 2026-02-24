@@ -77,10 +77,16 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj):
             # ConfigManager objects require recursive=True to include all children
             monolithic_types = [
                 TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"], 
-                TYPE_GUIDS["visu_manager"], TYPE_GUIDS["device"],
-                TYPE_GUIDS["softmotion_pool"]
+                TYPE_GUIDS["visu_manager"], TYPE_GUIDS["softmotion_pool"]
             ]
-            recursive = safe_str(obj.type) in monolithic_types
+            obj_type = safe_str(obj.type)
+            recursive = obj_type in monolithic_types
+            
+            # Special logic for devices: only recursive if not a project container
+            if obj_type == TYPE_GUIDS["device"]:
+                from codesys_utils import is_container_device
+                recursive = not is_container_device(obj)
+                
             projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
             if os.path.exists(tmp_path):
                 content = read_file(tmp_path)

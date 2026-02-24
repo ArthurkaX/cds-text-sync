@@ -12,7 +12,7 @@ import time
 from codesys_utils import (
     safe_str, clean_filename, calculate_hash, log_info, log_error, log_warning,
     format_st_content, format_property_content, parse_property_content,
-    resolve_projects
+    resolve_projects, is_container_device
 )
 from codesys_constants import TYPE_GUIDS, XML_TYPES, EXPORTABLE_TYPES, XML_TYPES as XML_TYPES_CONST
 
@@ -353,10 +353,11 @@ def classify_object(obj):
 
     # Skip all children of monolithic containers - they are exported as
     # recursive XML with their parent. Prevents duplicate export/sync.
+    # Logic for devices: Containers (PLCs) are NOT monolithic, so we don't
+    # skip their children (Applications and sub-devices).
     monolithic_types = [
         TYPE_GUIDS["alarm_config"], 
         TYPE_GUIDS["visu_manager"],
-        TYPE_GUIDS["device"],
         TYPE_GUIDS["task_config"],
         TYPE_GUIDS["softmotion_pool"]
     ]
@@ -364,6 +365,13 @@ def classify_object(obj):
         parent_type = safe_str(obj.parent.type) if hasattr(obj, 'parent') and obj.parent else ""
         if parent_type in monolithic_types:
             return obj_type, False, True
+            
+        # Device recursion check:
+        # If parent is a device, we only skip if the parent IS a monolithic unit.
+        if parent_type == TYPE_GUIDS["device"]:
+            if not is_container_device(obj.parent):
+                # Parent is functional device (monolithic), so skip children.
+                return obj_type, False, True
     except:
         pass
 
@@ -954,7 +962,13 @@ class NativeManager(ObjectManager):
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
     def export(self, obj, context):
-        return super(ConfigManager, self).export(obj, context, recursive=True)
+        # Devices are monolithic only if they are not containers (Project Roots)
+        recursive = True
+        if safe_str(obj.type) == TYPE_GUIDS["device"]:
+            if is_container_device(obj):
+                recursive = False
+        
+        return super(ConfigManager, self).export(obj, context, recursive=recursive)
     
     def create(self, container, name, file_path, type_guid):
         return super(ConfigManager, self).create(container, name, file_path, type_guid)

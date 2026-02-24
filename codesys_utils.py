@@ -810,6 +810,29 @@ def find_application_recursive(obj, depth=0):
     return None
 
 
+def is_container_device(obj):
+    """
+    Check if a device is a 'container' (like a PLC root) that contains logic/applications.
+    Such devices should NOT be monolithic XMLs because they are too large and
+    their children (Applications, etc.) are already handled separately.
+    """
+    try:
+        obj_type = safe_str(obj.type)
+        if obj_type != TYPE_GUIDS["device"]:
+            return False
+            
+        # Check if it has an Application or Plc Logic child
+        # We only check direct children to avoid heavy recursion
+        children = obj.get_children(recursive=False)
+        for child in children:
+            child_type = safe_str(child.type)
+            if child_type in [TYPE_GUIDS["application"], TYPE_GUIDS["plc_logic"]]:
+                return True
+        return False
+    except:
+        return False
+
+
 def _find_child_transparent(parent_obj, name):
     """
     Find a child object by name, transparently looking through 'Plc Logic' nodes.

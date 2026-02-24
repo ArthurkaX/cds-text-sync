@@ -44,9 +44,8 @@ TYPE_GUIDS = {
     "alarm_storage": "5bd56248-46fc-4108-be33-ed01ad87d070", # Alarm Storage
     "trace": "f7aa3620-8073-4c91-b6ec-86ed9eb60303",         # Trace
     "project_info": "085afe48-c5d8-4ea5-ab0d-b35701fa6009",  # Project Information
-    "type_f18": "f18bec89-9fef-401d-9953-2f11739a6808",      # Unknown (Visualization?)
-    "type_21f": "21f4ed1d-ec95-4666-820e-4abf64d93d6b",      # Unknown (Infeed/ER related)
-    "type_085": "085766fd-043e-4545-8e8d-d651d56d5d3b",      # Unknown (Hardware/PM_E)
+    "alarm_config_item": "21f4ed1d-ec95-4666-820e-4abf64d93d6b", # Alarm Configuration Sub-item
+    "device_module": "085766fd-043e-4545-8e8d-d651d56d5d3b",      # Device modules/sub-nodes
     "file_object": "a56744ff-693f-4597-95f9-0e1c529fffc2",   # External files/scripts
     "alarm_class": "b8b46f61-c7c1-4259-87e4-26fe674798f9",   # Alarm Class (Error, Warning, etc.)
     "imagepool_variant": "bb0b9044-714e-4614-ad3e-33cbdf34d16b", # Alternative ImagePool GUID
@@ -89,8 +88,8 @@ EXPORTABLE_TYPES = [
     TYPE_GUIDS["file_object"],
     TYPE_GUIDS["alarm_class"],
     TYPE_GUIDS["imagepool_variant"],
-    TYPE_GUIDS["type_21f"],        # Unknown type (46 count)
-    TYPE_GUIDS["type_085"],        # Device modules
+    TYPE_GUIDS["alarm_config_item"], # Discovered from auxiliary data
+    TYPE_GUIDS["device_module"],      # Discovered from auxiliary data
     TYPE_GUIDS["action"],
     TYPE_GUIDS["method"],
     TYPE_GUIDS["property"],
@@ -118,11 +117,11 @@ XML_TYPES = [
     TYPE_GUIDS["visu_style"],
     TYPE_GUIDS["project_settings"],
     TYPE_GUIDS["device"],
-    TYPE_GUIDS["type_085"],
+    TYPE_GUIDS["device_module"],
     TYPE_GUIDS["file_object"],
     TYPE_GUIDS["alarm_class"],
     TYPE_GUIDS["imagepool_variant"],
-    TYPE_GUIDS["type_21f"],
+    TYPE_GUIDS["alarm_config_item"],
     TYPE_GUIDS["task_local_gvl"],
     TYPE_GUIDS["nvl_sender"],
     TYPE_GUIDS["nvl_receiver"],
