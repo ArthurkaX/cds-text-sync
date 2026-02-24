@@ -201,6 +201,46 @@ def get_parent_pou_name(obj):
         pass
     return None
 
+def build_expected_path(obj, effective_type, is_xml):
+    """Build the expected rel_path for an IDE object."""
+    from codesys_constants import TYPE_NAMES, TYPE_GUIDS
+    
+    container = get_container_prefix(obj)
+    path_parts = get_object_path(obj)
+    obj_name = obj.get_name()
+    clean_name = clean_filename(obj_name)
+
+    if is_xml:
+        # Special case: POUs exported as XML (graphical) use 'pou_xml' extension
+        if effective_type == TYPE_GUIDS["pou"]:
+            type_name = "pou_xml"
+        else:
+            type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+        file_name = clean_name + "." + type_name + ".xml"
+    else:
+        obj_type = safe_str(obj.type)
+        parent_pou = get_parent_pou_name(obj)
+        # Nested objects (Action, Method, Property) prefix filename with parent POU name
+        if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
+            file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
+            clean_parent_pou = clean_filename(parent_pou)
+            # If the path already has the parent name as a folder, remove it to avoid redundancy
+            if path_parts and path_parts[-1] == clean_parent_pou:
+                path_parts = path_parts[:-1]
+        elif obj_type == TYPE_GUIDS["folder"]:
+            # Folders use their own name as the last part of path
+            file_name = ""
+        else:
+            file_name = clean_name + ".st"
+
+    full_path_parts = container + path_parts
+    if not file_name:
+        return "/".join(full_path_parts)
+    
+    if full_path_parts:
+        return "/".join(full_path_parts) + "/" + file_name
+    return file_name
+
 def export_object_content(obj):
     """Extract declaration and implementation text from object."""
     declaration = None
@@ -438,14 +478,8 @@ class ObjectManager(object):
 class FolderManager(ObjectManager):
     """Handle folder creation and management"""
     def export(self, obj, context):
-        container = get_container_prefix(obj)
-        path_parts = get_object_path(obj)
-        clean_name = clean_filename(obj.get_name())
-        path_parts.append(clean_name)
+        rel_path = build_expected_path(obj, safe_str(obj.type), False)
         
-        full_path_parts = container + path_parts
-        rel_path = "/".join(full_path_parts)
-
         # Track that we touched this path
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
@@ -483,23 +517,13 @@ class POUManager(ObjectManager):
         obj_name = obj.get_name()
         
         # Build path and filename
-        container = get_container_prefix(obj)
-        path_parts = get_object_path(obj)
-        clean_name = clean_filename(obj_name)
+        effective_type = context.get('effective_type', safe_str(obj.type))
+        rel_path = build_expected_path(obj, effective_type, False)
         
-        parent_pou = get_parent_pou_name(obj)
-        if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
-            file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-            if path_parts and path_parts[-1] == clean_filename(parent_pou):
-                path_parts = path_parts[:-1]
-        else:
-            file_name = clean_name + ".st"
-            
-        # Determine target directory
-        full_path_parts = container + path_parts
-        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-            
-        file_path = os.path.join(target_dir, file_name)
+        # Determine target directory and file path
+        file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
+        target_dir = os.path.dirname(file_path)
+        file_name = os.path.basename(rel_path)
         
         declaration, implementation = export_object_content(obj)
         content = format_st_content(declaration, implementation)
@@ -520,7 +544,6 @@ class POUManager(ObjectManager):
                     existing_content = f.read()
                 if calculate_hash(existing_content) == content_hash:
                     # Track path and return
-                    rel_path = "/".join(full_path_parts + [file_name])
                     if 'exported_paths' in context:
                         context['exported_paths'].add(rel_path)
                     return "identical"
@@ -534,7 +557,6 @@ class POUManager(ObjectManager):
             log_error("Failed to write ST file " + file_name + ": " + safe_str(e))
             return False
             
-        rel_path = "/".join(full_path_parts + [file_name])
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
         return "new" if is_new else "updated"
@@ -627,24 +649,13 @@ class PropertyManager(POUManager):
             
         prop_data = context['property_accessors'][obj_guid]
         
-        # Build path
-        container = get_container_prefix(obj)
-        path_parts = get_object_path(obj)
-        clean_name = clean_filename(obj_name)
-        file_name = clean_name + ".st"
+        effective_type = context.get('effective_type', safe_str(obj.type))
+        rel_path = build_expected_path(obj, effective_type, False)
         
-        # Handle nested objects
-        parent_pou = get_parent_pou_name(obj)
-        if parent_pou:
-            file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-            clean_parent_pou = clean_filename(parent_pou)
-            if path_parts and path_parts[-1] == clean_parent_pou:
-                path_parts = path_parts[:-1]
-        
-        full_path_parts = container + path_parts
-        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-            
-        file_path = os.path.join(target_dir, file_name)
+        # Determine target directory and file path
+        file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
+        target_dir = os.path.dirname(file_path)
+        file_name = os.path.basename(rel_path)
         
         # Export Declaration
         declaration, _ = export_object_content(obj)
@@ -679,7 +690,6 @@ class PropertyManager(POUManager):
                 with codecs.open(file_path, "r", "utf-8") as f:
                     existing_content = f.read()
                 if calculate_hash(existing_content) == content_hash:
-                    rel_path = "/".join(full_path_parts + [file_name])
                     if 'exported_paths' in context:
                         context['exported_paths'].add(rel_path)
                     return "identical"
@@ -693,7 +703,6 @@ class PropertyManager(POUManager):
             log_error("Failed to write Property file " + file_name + ": " + safe_str(e))
             return False
             
-        rel_path = "/".join(full_path_parts + [file_name])
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
         return "new" if is_new else "updated"
@@ -777,7 +786,7 @@ class NativeManager(ObjectManager):
             is_alarm_group = 'AlarmGroup' in content_full and 'GlobalTextList' not in content_full
             is_textlist = '<Single Name="Name" Type="string">GlobalTextList' in content_full
             is_alarm_config = 'Alarm Configuration' in content_full
-            is_device = '<TypeGuid>225bfe47-7336-4dbc-9419-4105a7c831fa</TypeGuid>' in content_full or '<Device' in content_full
+            is_device = '225bfe47-7336-4dbc-9419-4105a7c831fa' in content_full or '<Device' in content_full
             
             # Special handling for AlarmGroup and GlobalTextList: filter out dynamic content
             if is_alarm_group or is_textlist or is_alarm_config or is_device:
@@ -850,28 +859,13 @@ class NativeManager(ObjectManager):
             return ""
 
     def export(self, obj, context, recursive=False):
-        obj_name = obj.get_name()
-        container = get_container_prefix(obj)
-        path_parts = get_object_path(obj)
-        clean_name = clean_filename(obj_name)
+        effective_type = context.get('effective_type', safe_str(obj.type))
+        rel_path = build_expected_path(obj, effective_type, True)
         
-        # Build filename with type for XML objects to avoid name collisions
-        # This must match build_expected_path in codesys_compare_engine.py
-        obj_type = safe_str(obj.type)
-        from codesys_constants import TYPE_NAMES, TYPE_GUIDS
-        
-        # Special case: Graphical POUs exported as XML
-        if obj_type == TYPE_GUIDS["pou"]:
-            type_name = "pou_xml"
-        else:
-            type_name = TYPE_NAMES.get(obj_type, obj_type[:8])
-            
-        file_name = clean_name + "." + type_name + ".xml"
-        
-        full_path_parts = container + path_parts
-        target_dir = os.path.join(context['export_dir'], *full_path_parts) if full_path_parts else context['export_dir']
-            
-        file_path = os.path.join(target_dir, file_name)
+        # Determine target directory and file path
+        file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
+        target_dir = os.path.dirname(file_path)
+        file_name = os.path.basename(rel_path)
         is_new = not os.path.exists(file_path)
         
         # Get existing file hash before overwriting
@@ -905,7 +899,6 @@ class NativeManager(ObjectManager):
             # Content identical - remove temp, keep original
             try: os.remove(tmp_path)
             except: pass
-            rel_path = "/".join(full_path_parts + [file_name])
             if 'exported_paths' in context:
                 context['exported_paths'].add(rel_path)
             return "identical"
@@ -919,7 +912,6 @@ class NativeManager(ObjectManager):
             log_error("Failed to replace XML file " + file_name + ": " + safe_str(e))
             return False
             
-        rel_path = "/".join(full_path_parts + [file_name])
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
         return "new" if is_new else "updated"

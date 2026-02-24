@@ -348,38 +348,50 @@ class CompareResultsForm(Form):
         self.Close()
     
     def _save_diff_files(self, item):
-        """Save both IDE and disk file versions to /diff/ directory."""
+        """Save both IDE and disk file versions to /diff/ directory in project folder."""
         # Get file contents and name
         ide_content = item.get("ide_content", "")
         disk_content = item.get("disk_content", "")
         obj_name = item.get("name", "Unknown")
+        rel_path = item.get("path", "")
         
         # Clean the filename for safe file system usage
         safe_name = obj_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        ext = os.path.splitext(rel_path)[1] if rel_path else ".st"
         
-        # Create /diff/ directory
-        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        diff_dir = os.path.join(script_dir, "diff")
+        # Resolve project export directory
+        from codesys_utils import load_base_dir
+        base_dir, _ = load_base_dir()
+        if not base_dir:
+            # Fallback to current script directory if project not configured
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+        diff_dir = os.path.join(base_dir, "diff")
         if not os.path.exists(diff_dir):
-            os.makedirs(diff_dir)
+            try:
+                os.makedirs(diff_dir)
+            except:
+                pass
         
         # Save IDE version
-        ide_filename = "ide_{0}".format(safe_name)
+        ide_filename = "ide_{0}{1}".format(safe_name, ext)
         ide_path = os.path.join(diff_dir, ide_filename)
         import codecs
-        with codecs.open(ide_path, 'w', 'utf-8') as f:
-            f.write(ide_content)
-        
-        # Save disk version  
-        folder_filename = "folder_{0}".format(safe_name)
-        folder_path = os.path.join(diff_dir, folder_filename)
-        with codecs.open(folder_path, 'w', 'utf-8') as f:
-            f.write(disk_content)
-        
-        # Show notification
-        from codesys_ui_diff import show_toast
-        msg = "Saved both versions of '{0}' to /diff/ directory".format(obj_name)
-        show_toast("Diff Files Saved", msg, timeout=3000)
+        try:
+            with codecs.open(ide_path, 'w', 'utf-8') as f:
+                f.write(ide_content)
+            
+            # Save disk version  
+            disk_filename = "disk_{0}{1}".format(safe_name, ext)
+            disk_path = os.path.join(diff_dir, disk_filename)
+            with codecs.open(disk_path, 'w', 'utf-8') as f:
+                f.write(disk_content)
+            
+            # Show notification
+            msg = "Saved versions of '{0}' to {1}".format(obj_name, diff_dir)
+            show_toast("Diff Files Saved", msg, timeout=4000)
+        except Exception as e:
+            print("Failed to save diff files: " + str(e))
     
     def get_selected(self):
         """Return list of selected items with their direction tags"""

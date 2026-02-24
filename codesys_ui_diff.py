@@ -16,8 +16,10 @@ from System.Windows.Forms import (
 )
 from System.Drawing import (
     Size, Point, Font, FontStyle, Color, ContentAlignment,
-    SystemColors
+    SystemColors, Control, Keys
 )
+import os
+import codecs
 
 
 # ─── Diff Algorithm ──────────────────────────────────────────────────────────
@@ -229,6 +231,19 @@ class DiffViewerForm(Form):
         self._nav_label.AutoSize = True
         self._nav_label.Location = Point(295, 14)
         bottom_bar.Controls.Add(self._nav_label)
+        
+        # Save button (for Ctrl+Diff functionality inside the viewer)
+        btn_save = Button()
+        btn_save.Text = "Save to /diff/"
+        btn_save.Size = Size(100, 30)
+        btn_save.Location = Point(self.Size.Width - 125, 8)
+        btn_save.Anchor = getattr(AnchorStyles, "Top") | getattr(AnchorStyles, "Right")
+        btn_save.BackColor = CLR_BTN_BG
+        btn_save.ForeColor = Color.FromArgb(200, 255, 200) # Subtle green
+        btn_save.FlatStyle = 0
+        btn_save.Click += self._on_save_button_click
+        bottom_bar.Controls.Add(btn_save)
+        self._btn_save_internal = btn_save
         
         # ── Content panel (directly on form, no nesting) ──
         content_panel = Panel()
@@ -460,6 +475,38 @@ class DiffViewerForm(Form):
         # Update label
         total = len(self._change_positions)
         self._nav_label.Text = "Change {}/{}" .format(index + 1, total)
+        
+    def _on_save_button_click(self, sender, event):
+        """Save both versions displayed in the viewer to the /diff/ folder."""
+        from codesys_utils import load_base_dir, log_info
+        
+        base_dir, _ = load_base_dir()
+        if not base_dir:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+        diff_dir = os.path.join(base_dir, "diff")
+        if not os.path.exists(diff_dir):
+            try: os.makedirs(diff_dir)
+            except: pass
+            
+        safe_name = self.Text.replace("Diff: ", "").replace("/", "_").replace("\\", "_").replace(":", "_")
+        # Default extension to .st if we don't know it
+        ext = ".st" 
+        
+        try:
+            # Note: in codesys_ui call, left=Disk Content, right=IDE Content
+            path_left = os.path.join(diff_dir, "disk_{}_{}".format(safe_name, ext))
+            path_right = os.path.join(diff_dir, "ide_{}_{}".format(safe_name, ext))
+            
+            with codecs.open(path_left, "w", "utf-8") as f:
+                f.write(self._left_text)
+            with codecs.open(path_right, "w", "utf-8") as f:
+                f.write(self._right_text)
+                
+            from codesys_ui import show_toast
+            show_toast("Saved to /diff/", "Files saved for '{}' at {}".format(safe_name, diff_dir))
+        except Exception as e:
+            print("Failed to save from diff viewer: " + str(e))
     
     def _append_line(self, rtb, prefix, prefix_color, text, text_color, bg_color):
         """Append a styled line to a RichTextBox."""

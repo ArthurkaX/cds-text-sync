@@ -499,6 +499,8 @@ def ensure_git_configs(export_dir):
             "*.log",
             "*.tmp",
             "*.bak",
+            "/diff/",
+            "/diff/*",
             "",
             "# CODESYS temporary and build files",
             "*.~u",

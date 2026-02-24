@@ -28,7 +28,8 @@ from codesys_utils import (
 from codesys_managers import (
     NativeManager, FolderManager, PropertyManager, ConfigManager, POUManager,
     collect_property_accessors, classify_object, get_container_prefix,
-    get_object_path, get_parent_pou_name, export_object_content
+    get_object_path, get_parent_pou_name, export_object_content,
+    build_expected_path
 )
 
 
@@ -40,32 +41,7 @@ from codesys_managers import (
 #  COMPARISON ENGINE (2-WAY)
 # ═══════════════════════════════════════════════════════════════════
 
-def build_expected_path(obj, effective_type, is_xml):
-    """Build the expected rel_path for an IDE object."""
-    
-    container = get_container_prefix(obj)
-    path_parts = get_object_path(obj)
-    obj_name = obj.get_name()
-    clean_name = clean_filename(obj_name)
-
-    if is_xml:
-        type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
-        file_name = clean_name + "." + type_name + ".xml"
-    else:
-        obj_type = safe_str(obj.type)
-        parent_pou = get_parent_pou_name(obj)
-        if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
-            file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
-            clean_parent_pou = clean_filename(parent_pou)
-            if path_parts and path_parts[-1] == clean_parent_pou:
-                path_parts = path_parts[:-1]
-        else:
-            file_name = clean_name + ".st"
-
-    full_path_parts = container + path_parts
-    if full_path_parts:
-        return "/".join(full_path_parts) + "/" + file_name
-    return file_name
+# Removed local build_expected_path, now imported from codesys_managers
 
 def get_ide_content(obj, is_xml, property_accessors, projects_obj):
     """Extract content from IDE object for comparison."""
