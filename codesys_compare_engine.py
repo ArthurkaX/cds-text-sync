@@ -49,7 +49,8 @@ def build_expected_path(obj, effective_type, is_xml):
     clean_name = clean_filename(obj_name)
 
     if is_xml:
-        file_name = clean_name + ".xml"
+        type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+        file_name = clean_name + "." + type_name + ".xml"
     else:
         obj_type = safe_str(obj.type)
         parent_pou = get_parent_pou_name(obj)
@@ -293,6 +294,11 @@ def scan_new_disk_files(base_dir, ide_paths):
             if rel_path not in known_paths:
                 abs_path = os.path.join(root, f)
                 name = os.path.splitext(f)[0]
+                if f.endswith(".xml") and "." in name:
+                    name_part, doc_type = name.rsplit(".", 1)
+                    if doc_type in TYPE_GUIDS:
+                        name = name_part
+                        
                 new_files.append({
                     "name": name,
                     "path": rel_path,
