@@ -3,12 +3,14 @@
 codesys_ui.py - Modern UI components for CODESYS scripts
 """
 import clr
+import os
 try:
     clr.AddReference("System.Windows.Forms")
     clr.AddReference("System.Drawing")
     from System.Windows.Forms import (
         Application, Form, Label, CheckBox, Button, FormBorderStyle, 
-        DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox
+        DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
+        Control, Keys
     )
     from System.Drawing import Size, Point, Font, FontStyle, SystemIcons
 except:
@@ -312,16 +314,28 @@ class CompareResultsForm(Form):
         item = sender.Tag
         if not item:
             return
-        try:
-            from codesys_ui_diff import show_diff_dialog
-            ide_text = item.get("ide_content", "")
-            disk_text = item.get("disk_content", "")
-            obj_name = item.get("name", "Unknown")
-            show_diff_dialog(disk_text, ide_text, 
-                           "Disk (Folder)", "IDE (Project)", 
-                           obj_name)
-        except Exception as e:
-            print("Error opening diff: " + str(e))
+        
+        # Check if Ctrl key is pressed
+        is_ctrl_pressed = Control.ModifierKeys == Keys.Control
+        
+        if is_ctrl_pressed:
+            # Save both file versions to /diff/ directory
+            try:
+                self._save_diff_files(item)
+            except Exception as e:
+                print("Error saving diff files: " + str(e))
+        else:
+            # Normal diff dialog behavior
+            try:
+                from codesys_ui_diff import show_diff_dialog
+                ide_text = item.get("ide_content", "")
+                disk_text = item.get("disk_content", "")
+                obj_name = item.get("name", "Unknown")
+                show_diff_dialog(disk_text, ide_text, 
+                               "Disk (Folder)", "IDE (Project)", 
+                               obj_name)
+            except Exception as e:
+                print("Error opening diff: " + str(e))
     
     def _on_import(self, sender, event):
         self.result_action = self.IMPORT
@@ -332,6 +346,39 @@ class CompareResultsForm(Form):
         self.result_action = self.EXPORT
         self.DialogResult = DialogResult.OK
         self.Close()
+    
+    def _save_diff_files(self, item):
+        """Save both IDE and disk file versions to /diff/ directory."""
+        # Get file contents and name
+        ide_content = item.get("ide_content", "")
+        disk_content = item.get("disk_content", "")
+        obj_name = item.get("name", "Unknown")
+        
+        # Clean the filename for safe file system usage
+        safe_name = obj_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        
+        # Create /diff/ directory
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        diff_dir = os.path.join(script_dir, "diff")
+        os.makedirs(diff_dir, exist_ok=True)
+        
+        # Save IDE version
+        ide_filename = f"ide_{safe_name}"
+        ide_path = os.path.join(diff_dir, ide_filename)
+        with open(ide_path, 'w', encoding='utf-8') as f:
+            f.write(ide_content)
+        
+        # Save disk version  
+        folder_filename = f"folder_{safe_name}"
+        folder_path = os.path.join(diff_dir, folder_filename)
+        with open(folder_path, 'w', encoding='utf-8') as f:
+            f.write(disk_content)
+        
+        # Show notification
+        from codesys_ui_diff import show_toast
+        show_toast("Diff Files Saved", 
+                  f"Saved both versions of '{obj_name}' to /diff/ directory", 
+                  timeout=3000)
     
     def get_selected(self):
         """Return list of selected items with their direction tags"""
