@@ -12,11 +12,11 @@ clr.AddReference("System.Drawing")
 from System.Windows.Forms import (
     Form, Panel, RichTextBox, Label, Button, RichTextBoxScrollBars,
     FormBorderStyle, FormStartPosition, DialogResult,
-    DockStyle, AnchorStyles, BorderStyle, Padding
+    DockStyle, AnchorStyles, BorderStyle, Padding, Control, Keys
 )
 from System.Drawing import (
     Size, Point, Font, FontStyle, Color, ContentAlignment,
-    SystemColors, Control, Keys
+    SystemColors
 )
 import os
 import codecs
@@ -532,15 +532,20 @@ def show_diff_dialog(left_text, right_text, left_title="IDE Content",
                      right_title="Disk Content", object_name=""):
     """
     Show a side-by-side diff dialog.
-    
-    Args:
-        left_text: Text on the left (typically IDE content)
-        right_text: Text on the right (typically disk content)
-        left_title: Header for the left column
-        right_title: Header for the right column
-        object_name: Name of the object being compared
     """
     try:
+        # Performance check: LCS is O(N*M). If lines > 5000, it will be slow.
+        lines_a = (left_text or "").splitlines()
+        lines_b = (right_text or "").splitlines()
+        
+        if len(lines_a) > 5000 or len(lines_b) > 5000:
+            from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
+            msg = "The file '{}' is too large ({} lines). \nComparing it line-by-line might hang the UI for a while.\n\nContinue?".format(
+                object_name, max(len(lines_a), len(lines_b)))
+            res = MessageBox.Show(msg, "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
+            if res != DialogResult.Yes:
+                return
+
         form = DiffViewerForm(left_text, right_text, left_title, right_title, object_name)
         form.ShowDialog()
     except Exception as e:

@@ -10,7 +10,7 @@ try:
     from System.Windows.Forms import (
         Application, Form, Label, CheckBox, Button, FormBorderStyle, 
         DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
-        Control, Keys
+        Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle
     )
     from System.Drawing import Size, Point, Font, FontStyle, SystemIcons
 except:
@@ -172,6 +172,11 @@ class CompareResultsForm(Form):
         self.result_action = self.CLOSE
         self.checkboxes = []
         
+        # Main Layout: 
+        # [Header]
+        # [Scrollable Panel for List]
+        # [Summary + Selection + Action Buttons]
+        
         y = 15
         
         # Header
@@ -190,11 +195,21 @@ class CompareResultsForm(Form):
         self.Controls.Add(lbl2)
         y += 28
         
-        # Add sections
+        # Scrollable Panel
+        list_panel = Panel()
+        list_panel.Location = Point(0, y)
+        list_panel.Size = Size(495, 280) # Fixed height for scrollable area
+        list_panel.AutoScroll = True
+        # list_panel.BorderStyle = BorderStyle.FixedSingle
+        self.Controls.Add(list_panel)
+        self.list_panel = list_panel
+        
+        inner_y = 5
+        # Add sections to inner panel
         if different:
-            y = self._add_section(y, "Modified (IDE and Disk differ):", different, "different")
+            inner_y = self._add_section(inner_y, "Modified (IDE and Disk differ):", different, "different")
         if new_in_ide:
-            y = self._add_section(y, "New in IDE (not yet exported):", new_in_ide, "new")
+            inner_y = self._add_section(inner_y, "New in IDE (not yet exported):", new_in_ide, "new")
         if new_on_disk:
             # Map path/file_path to consistent structure for display
             mapped_new = []
@@ -203,16 +218,17 @@ class CompareResultsForm(Form):
                     "name": item["name"], "path": item["path"], "type": "new file",
                     "file_path": item["file_path"]
                 })
-            y = self._add_section(y, "New on Disk (need Import):", mapped_new, "new_on_disk")
+            inner_y = self._add_section(inner_y, "New on Disk (need Import):", mapped_new, "new_on_disk")
+        
+        y += list_panel.Height + 10
         
         # Summary
-        y += 5
         lbl_sum = Label()
         lbl_sum.Text = "M:" + str(len(different)) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  =:" + str(unchanged_count)
         lbl_sum.Location = Point(15, y)
         lbl_sum.AutoSize = True
         self.Controls.Add(lbl_sum)
-        y += 30
+        y += 25
         
         # Select All / None
         btn_all = Button()
@@ -262,17 +278,17 @@ class CompareResultsForm(Form):
         lbl.Location = Point(15, y)
         lbl.AutoSize = True
         lbl.Font = Font("Segoe UI", 9, FontStyle.Bold)
-        self.Controls.Add(lbl)
+        self.list_panel.Controls.Add(lbl)
         y += 22
         
-        for item in items[:15]:
+        for item in items:
             cb = CheckBox()
             cb.Text = item["name"] + "  [" + item["type"] + "]"
             cb.Location = Point(30, y)
-            cb.Size = Size(380, 20)
+            cb.Size = Size(350, 20)
             cb.Checked = True
             cb.Tag = (item, direction)
-            self.Controls.Add(cb)
+            self.list_panel.Controls.Add(cb)
             self.checkboxes.append(cb)
             
             # Add Diff button if both contents are available
@@ -281,22 +297,14 @@ class CompareResultsForm(Form):
             if has_ide or has_disk:
                 btn_diff = Button()
                 btn_diff.Text = "Diff"
-                btn_diff.Location = Point(418, y - 1)
+                btn_diff.Location = Point(390, y - 1)
                 btn_diff.Size = Size(48, 21)
                 btn_diff.Tag = item
                 btn_diff.Click += self._on_diff_click
                 btn_diff.Font = Font("Segoe UI", 7)
-                self.Controls.Add(btn_diff)
+                self.list_panel.Controls.Add(btn_diff)
             
             y += 22
-        
-        if len(items) > 15:
-            lbl_more = Label()
-            lbl_more.Text = "... and " + str(len(items) - 15) + " more"
-            lbl_more.Location = Point(45, y)
-            lbl_more.AutoSize = True
-            self.Controls.Add(lbl_more)
-            y += 20
         
         y += 8
         return y
