@@ -534,14 +534,18 @@ def show_diff_dialog(left_text, right_text, left_title="IDE Content",
     Show a side-by-side diff dialog.
     """
     try:
-        # Performance check: LCS is O(N*M). If lines > 5000, it will be slow.
-        lines_a = (left_text or "").splitlines()
-        lines_b = (right_text or "").splitlines()
+        # Performance check: LCS is O(N*M). Large files will be slow.
+        # If file > 100KB, warn the user.
+        size_a = len(left_text or "")
+        size_b = len(right_text or "")
+        max_size = max(size_a, size_b)
         
-        if len(lines_a) > 5000 or len(lines_b) > 5000:
+        if max_size > 100 * 1024:
             from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
-            msg = "The file '{}' is too large ({} lines). \nComparing it line-by-line might hang the UI for a while.\n\nContinue?".format(
-                object_name, max(len(lines_a), len(lines_b)))
+            msg = ("The file '{}' is large ({:.1f} KB). \n"
+                   "Comparing it line-by-line might take a long time and hang the UI.\n\n"
+                   "Are you sure? \n(Hint: use Ctrl + Diff to save files and use an external editor)").format(
+                object_name, max_size / 1024.0)
             res = MessageBox.Show(msg, "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
             if res != DialogResult.Yes:
                 return
