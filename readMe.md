@@ -23,7 +23,6 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 - **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing. (Note: Device and Module objects are excluded for project stability).
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
-- **Background Service**: A daemon that provides global hotkeys (`Alt+Q`) for quick actions without switching windows.
 - **Hidden Folders Skip**: Any directory starting with a dot (e.g., `.git`, `.diff`, `.project`, `.docs`, `.lib`) is automatically ignored. This allows you to store documentation, libraries, or tool configs inside the sync folder without interference.
 
 ---
@@ -150,8 +149,6 @@ Updates the CODESYS project from the files on disk.
 
 > [!NOTE]
 > **Temporarily Disabled**: This module is currently undergoing maintenance and is disabled in version 1.6.
-
-**The ultimate productivity booster.** This script is designed to run in the background and empower you to control CODESYS from anywhere.
 
 ### 6. `Project_compare.py` (Object Comparison)
 
