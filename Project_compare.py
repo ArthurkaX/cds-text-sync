@@ -131,12 +131,12 @@ def perform_import(primary_project, base_dir, selected):
         system.ui.info("No files selected for import.")
         return
     
-    updated, created, failed = perform_import_items(
+    updated, created, failed, deleted = perform_import_items(
         primary_project, base_dir, selected, globals()
     )
     
-    system.ui.info("Import complete!\n\nUpdated: {}\nCreated: {}\nFailed: {}".format(
-        updated, created, failed))
+    system.ui.info("Import complete!\n\nUpdated: {}\nCreated: {}\nDeleted: {}\nFailed: {}".format(
+        updated, created, deleted, failed))
 
 
 def perform_export(base_dir, selected):

@@ -390,6 +390,10 @@ def classify_object(obj):
         return obj_type, False, True
     if obj_type == TYPE_GUIDS["task"]:
         return obj_type, False, True
+    
+    # Hard-exclude devices and modules (feature request: too unstable for XML sync)
+    if obj_type in [TYPE_GUIDS.get("device"), TYPE_GUIDS.get("device_module")]:
+        return obj_type, False, True
 
     # Skip all children of monolithic containers - they are exported as
     # recursive XML with their parent. Prevents duplicate export/sync.

@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.6`
+**Version**: `1.6.1`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -20,7 +20,7 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 - **Reversible Sync**: Round-trip editing for Structured Text files.
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
 - **Timestamped Backups**: Automatically creates safety backups before imports to prevent data loss.
-- **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing.
+- **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing. (Note: Device and Module objects are excluded for project stability).
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
 - **Background Service**: A daemon that provides global hotkeys (`Alt+Q`) for quick actions without switching windows.
@@ -142,7 +142,7 @@ Exports the current project state to the sync folder.
 Updates the CODESYS project from the files on disk.
 
 - **Smart Update**: Updates existing objects, creates new ones, and builds folder hierarchies.
-- **Deletions**: If a file was deleted from disk, offers to delete the object from CODESYS.
+- **Deletions**: If a file was deleted from disk (e.g. via git pull), the script will now safely remove the corresponding object from the CODESYS project, ensuring your IDE matches your repository.
 - **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code in the `.project/` folder.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
@@ -191,8 +191,8 @@ The tool organizes your repository into a clean structure:
 
 ```
 /
-├── DeviceName/            # PLC Device Name (e.g., "PLC", "CODESYS_HMI")
-│   └── ApplicationName/   # Application Name (e.g., "ST_App", "HMI_App")
+├── DeviceName/            # PLC Device Name (Not synced, used as folder)
+│   └── ApplicationName/   # Application Name (Logic & Config root)
 │       ├── Folder/        # Project Folders (mirrors IDE tree)
 │       │   └── POU.st     # Logic Source code (.st files)
 │       ├── Task Config.xml# Native XML Configuration (Tasks)

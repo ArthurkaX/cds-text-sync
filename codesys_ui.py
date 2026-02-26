@@ -209,7 +209,7 @@ class CompareResultsForm(Form):
         if different:
             inner_y = self._add_section(inner_y, "Modified (IDE and Disk differ):", different, "different")
         if new_in_ide:
-            inner_y = self._add_section(inner_y, "New in IDE (not yet exported):", new_in_ide, "new")
+            inner_y = self._add_section(inner_y, "Missing on Disk (DELETE from IDE?):", new_in_ide, "new")
         if new_on_disk:
             # Map path/file_path to consistent structure for display
             mapped_new = []

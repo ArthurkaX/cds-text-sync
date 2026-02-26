@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.6.1 (2026-02-26)
+
+**Orphan Deletion & Stability Enhancements:**
+
+- **Bi-directional Orphan Management**:
+  - **IDE-to-Disk (Sync/Export)**: Existing logic in `Project_export.py` continues to clean up files on disk that are missing in the IDE.
+  - **Disk-to-IDE (Import)**: `Project_import.py` now supports deleting objects from the IDE if they were removed on disk (e.g., from a Git pull). The "Disk wins" principle is now fully enforced.
+- **Improved Comparison UI**:
+  - The Interactive Results dialog now clearly identifies objects missing on disk as **"Missing on Disk (DELETE from IDE?)"**.
+  - Importing these items will now safely remove them from the CODESYS project tree.
+- **Hardware Stability (Device Exclusion)**:
+  - Hard-excluded `device` and `device_module` objects from the synchronization engine.
+  - Syncing these components via XML was found to be unstable (can lead to tree reconstruction and project "emptying").
+  - Users should configure hardware manually and sync the application logic.
+- **Bug Fixes**:
+  - Fixed an issue where the import process could fail to report the correct number of updated/created items when deletions were involved.
+  - Updated default `.gitignore` template to include `*.device` and `*.device_xml` patterns as a safety measure.
+
 ### Version 1.6 (2026-02-24)
 
 **Core Engine Refactoring & Interactive Sync:**

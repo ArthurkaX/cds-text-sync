@@ -63,7 +63,7 @@ def import_project(projects_obj=None, silent=False):
     unchanged_count = results["unchanged_count"]
     
     # For import, we care about ANY difference (disk or ide side) — disk wins
-    # Also include new files found on disk
+    # Also include new files found on disk, and DELETE orphans from IDE
     to_import = []
     
     # Modified objects: disk wins
@@ -80,11 +80,16 @@ def import_project(projects_obj=None, silent=False):
             "type_guid": "",
             "obj": None
         })
+        
+    # Orphans in IDE (missing on disk) -> delete
+    for item in new_in_ide:
+        to_import.append(item)
     
     print("")
     print("Changes found:")
     print("  Modified (IDE<>Disk): " + str(len(different)))
     print("  New on disk: " + str(len(new_on_disk)))
+    print("  Missing on disk (delete): " + str(len(new_in_ide)))
     print("  Unchanged: " + str(unchanged_count))
     
     if not to_import:
@@ -99,10 +104,11 @@ def import_project(projects_obj=None, silent=False):
     print("")
     print("Importing " + str(len(to_import)) + " items to IDE:")
     for item in to_import:
-        print("  <- " + item["path"] + " (" + item["type"] + ")")
+        action = "delete" if item.get("is_orphan") else item["type"]
+        print("  <- " + item["path"] + " (" + action + ")")
     
     # ── Phase 2: Import all changes ──
-    updated, created, failed = perform_import_items(
+    updated, created, failed, deleted = perform_import_items(
         projects_obj.primary, base_dir, to_import, globals()
     )
     
@@ -110,7 +116,7 @@ def import_project(projects_obj=None, silent=False):
     
     print("")
     print("=== Import Complete ===")
-    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Failed: " + str(failed)
+    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Deleted: " + str(deleted) + ", Failed: " + str(failed)
     print(summary)
     print("Time elapsed: {:.2f} seconds".format(elapsed))
     

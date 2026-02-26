@@ -223,7 +223,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
         else:
             new_in_ide.append({
                 "name": obj.get_name(), "path": rel_path,
-                "type": type_name, "type_guid": effective_type, "obj": obj
+                "type": type_name, "type_guid": effective_type, "obj": obj,
+                "is_orphan": True
             })
 
     # ── Pass 2: Walk disk, find files not matching any IDE object ──
@@ -505,10 +506,10 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
         globals_ref: globals() from calling script (for resolve_projects)
         
     Returns:
-        (updated_count, created_count, failed_count)
+        (updated_count, created_count, failed_count, deleted_count)
     """
     if not to_sync:
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
     import_managers = create_import_managers()
     guid_map, name_map = build_object_cache(primary_project)
@@ -517,11 +518,24 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     updated_count = 0
     created_count = 0
     failed_count = 0
+    deleted_count = 0
     native_batches = {}
 
     # We no longer use MetadataLock as metadata files are removed
     for item in to_sync:
         try:
+            # Handle Deletions (Orphans)
+            if item.get("is_orphan"):
+                obj = item.get("obj")
+                if obj:
+                    try:
+                        obj.remove()
+                        deleted_count += 1
+                    except Exception as e:
+                        log_error("Failed to delete " + item["name"] + ": " + safe_str(e))
+                        failed_count += 1
+                    continue
+
             rel_path = item["path"]
             abs_path = item.get("file_path") or os.path.join(base_dir, rel_path.replace("/", os.sep))
 
@@ -596,6 +610,6 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     # Save project
     projects_obj = resolve_projects(None, globals_ref or globals())
     finalize_import(primary_project, projects_obj, base_dir,
-                    updated_count, created_count)
+                    updated_count, created_count, deleted_count)
 
-    return updated_count, created_count, failed_count
+    return updated_count, created_count, failed_count, deleted_count
