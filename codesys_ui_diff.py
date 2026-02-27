@@ -20,24 +20,10 @@ from System.Drawing import (
 )
 import os
 import codecs
+import difflib
 
 
 # ─── Diff Algorithm ──────────────────────────────────────────────────────────
-
-def _compute_lcs_matrix(lines_a, lines_b):
-    """Compute Longest Common Subsequence matrix between two line lists."""
-    m = len(lines_a)
-    n = len(lines_b)
-    # Use a flat list for memory efficiency
-    dp = [[0] * (n + 1) for _ in range(m + 1)]
-    for i in range(1, m + 1):
-        for j in range(1, n + 1):
-            if lines_a[i - 1] == lines_b[j - 1]:
-                dp[i][j] = dp[i - 1][j - 1] + 1
-            else:
-                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
-    return dp
-
 
 def compute_side_by_side_diff(text_left, text_right):
     """
@@ -49,56 +35,30 @@ def compute_side_by_side_diff(text_left, text_right):
     lines_a = (text_left or "").splitlines()
     lines_b = (text_right or "").splitlines()
     
-    dp = _compute_lcs_matrix(lines_a, lines_b)
-    
-    # Backtrack to find diff operations
     result = []
-    i, j = len(lines_a), len(lines_b)
+    matcher = difflib.SequenceMatcher(None, lines_a, lines_b)
     
-    ops = []
-    while i > 0 and j > 0:
-        if lines_a[i - 1] == lines_b[j - 1]:
-            ops.append(('equal', i - 1, j - 1))
-            i -= 1
-            j -= 1
-        elif dp[i - 1][j] >= dp[i][j - 1]:
-            ops.append(('removed', i - 1, None))
-            i -= 1
-        else:
-            ops.append(('added', None, j - 1))
-            j -= 1
-    
-    while i > 0:
-        ops.append(('removed', i - 1, None))
-        i -= 1
-    while j > 0:
-        ops.append(('added', None, j - 1))
-        j -= 1
-    
-    ops.reverse()
-    
-    # Build side-by-side output
-    for op, idx_a, idx_b in ops:
-        if op == 'equal':
-            result.append((lines_a[idx_a], lines_b[idx_b], 'equal'))
-        elif op == 'removed':
-            result.append((lines_a[idx_a], "", 'removed'))
-        elif op == 'added':
-            result.append(("", lines_b[idx_b], 'added'))
-    
-    # Post-process: merge adjacent removed+added pairs into 'modified'
-    merged = []
-    i = 0
-    while i < len(result):
-        if (i + 1 < len(result) and 
-            result[i][2] == 'removed' and result[i + 1][2] == 'added'):
-            merged.append((result[i][0], result[i + 1][1], 'modified'))
-            i += 2
-        else:
-            merged.append(result[i])
-            i += 1
-    
-    return merged
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            for i, j in zip(range(i1, i2), range(j1, j2)):
+                result.append((lines_a[i], lines_b[j], 'equal'))
+        elif tag == 'replace':
+            max_len = max(i2 - i1, j2 - j1)
+            for k in range(max_len):
+                if k < (i2 - i1) and k < (j2 - j1):
+                    result.append((lines_a[i1 + k], lines_b[j1 + k], 'modified'))
+                elif k < (i2 - i1):
+                    result.append((lines_a[i1 + k], "", 'removed'))
+                else:
+                    result.append(("", lines_b[j1 + k], 'added'))
+        elif tag == 'delete':
+            for i in range(i1, i2):
+                result.append((lines_a[i], "", 'removed'))
+        elif tag == 'insert':
+            for j in range(j1, j2):
+                result.append(("", lines_b[j], 'added'))
+                
+    return result
 
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
