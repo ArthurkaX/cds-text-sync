@@ -351,14 +351,14 @@ def collect_property_accessors(all_objects):
             if obj_type == TYPE_GUIDS["property"]:
                 obj_guid = safe_str(obj.guid)
                 try:
+                    if obj_guid not in property_accessors:
+                        property_accessors[obj_guid] = {
+                            'get': None, 'set': None, 'parent_obj': obj
+                        }
                     children = obj.get_children()
                     for child in children:
                         child_type = safe_str(child.type)
                         if child_type == TYPE_GUIDS["property_accessor"]:
-                            if obj_guid not in property_accessors:
-                                property_accessors[obj_guid] = {
-                                    'get': None, 'set': None, 'parent_obj': obj
-                                }
                             child_name = child.get_name().lower()
                             if child_name == "get":
                                 property_accessors[obj_guid]['get'] = child
@@ -648,10 +648,9 @@ class PropertyManager(POUManager):
         obj_name = obj.get_name()
         
         if obj_guid not in context['property_accessors']:
-            log_warning("Property " + obj_name + " has no textual accessors, skipping ST export.")
-            return False
-            
-        prop_data = context['property_accessors'][obj_guid]
+            prop_data = {'get': None, 'set': None, 'parent_obj': obj}
+        else:
+            prop_data = context['property_accessors'][obj_guid]
         
         effective_type = context.get('effective_type', safe_str(obj.type))
         rel_path = build_expected_path(obj, effective_type, False)
@@ -676,8 +675,7 @@ class PropertyManager(POUManager):
             set_decl, set_impl_raw = export_object_content(prop_data['set'])
             set_impl = format_st_content(set_decl, set_impl_raw)
             
-        if not get_impl and not set_impl:
-            return False
+        # Export even if implementations are empty
             
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
