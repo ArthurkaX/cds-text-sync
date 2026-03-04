@@ -29,7 +29,7 @@ from codesys_managers import (
     NativeManager, FolderManager, PropertyManager, ConfigManager, POUManager,
     collect_property_accessors, classify_object, get_container_prefix,
     get_object_path, get_parent_pou_name, export_object_content,
-    build_expected_path
+    build_expected_path, update_object_code
 )
 
 
@@ -386,8 +386,11 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
         parts = base_name.rsplit(".", 1)
         parent_name = parts[0]
         child_name = parts[1]
+        log_info("Looking for parent POU: " + parent_name + " for child: " + child_name)
+        log_info("Name map has " + str(len(name_map)) + " entries")
         pou_parent = find_object_by_name(parent_name, name_map)
         if pou_parent:
+            log_info("Found parent POU by name: " + safe_str(pou_parent))
             name = child_name
             container = pou_parent
             # If type_guid wasn't determined, infer from child name patterns
@@ -398,6 +401,26 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
                 else:
                     # Default to action for unknown nested children
                     type_guid = TYPE_GUIDS.get("action")
+        else:
+            # Try to find parent by path as fallback
+            parent_path = "/".join(path_parts[:-1])
+            parent_path_with_name = parent_path + "/" + parent_name
+            log_warning("Parent '" + parent_name + "' not found by name, trying path: " + parent_path_with_name)
+            pou_parent = find_object_by_path(parent_path_with_name, project)
+            if pou_parent:
+                log_info("Found parent POU by path: " + safe_str(pou_parent))
+                name = child_name
+                container = pou_parent
+                # If type_guid wasn't determined, infer from child name patterns
+                if not type_guid or type_guid == TYPE_GUIDS.get("pou"):
+                    upper_child = child_name.upper()
+                    if upper_child in ("GET", "SET"):
+                        type_guid = TYPE_GUIDS.get("property_accessor")
+                    else:
+                        # Default to action for unknown nested children
+                        type_guid = TYPE_GUIDS.get("action")
+            else:
+                log_warning("Could not find parent POU '" + parent_name + "' by name or path. Will use full name: " + name)
     
     manager = resolve_manager(import_managers, type_guid, rel_path)
     res = manager.create(container, name, file_path, type_guid)
@@ -412,6 +435,182 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
         log_error("Failed to create " + rel_path)
     
     return res
+
+
+def save_pou_children(pou_obj):
+    """
+    Save child objects (methods, actions, properties) of a POU before XML import.
+    
+    Returns list of child info dicts:
+        [{'name': str, 'type_guid': str, 'declaration': str, 'implementation': str}, ...]
+    """
+    children_info = []
+    
+    child_types = [
+        TYPE_GUIDS.get("action"),
+        TYPE_GUIDS.get("method"),
+        TYPE_GUIDS.get("property")
+    ]
+    
+    try:
+        for child in pou_obj.get_children():
+            try:
+                child_type = safe_str(child.type)
+                if child_type in child_types:
+                    decl, impl = export_object_content(child)
+                    children_info.append({
+                        'name': child.get_name(),
+                        'type_guid': child_type,
+                        'declaration': decl,
+                        'implementation': impl
+                    })
+            except Exception as e:
+                log_warning("Could not save child " + safe_str(child) + ": " + safe_str(e))
+    except Exception as e:
+        log_warning("Could not get children of " + safe_str(pou_obj) + ": " + safe_str(e))
+    
+    return children_info
+
+
+def restore_pou_children(pou_obj, saved_children, import_managers, project):
+    """
+    Restore child objects (methods, actions, properties) after XML import.
+    
+    Updates existing children or creates new ones.
+    """
+    if not saved_children:
+        return
+    
+    try:
+        existing_children = {}
+        for child in pou_obj.get_children():
+            existing_children[child.get_name().lower()] = child
+    except Exception as e:
+        log_warning("Could not get children of POU " + safe_str(pou_obj) + ": " + safe_str(e))
+        return
+    
+    for child_info in saved_children:
+        try:
+            child_name = child_info['name']
+            child_type = child_info['type_guid']
+            decl = child_info['declaration']
+            impl = child_info['implementation']
+            
+            existing_child = existing_children.get(child_name.lower())
+            
+            if existing_child:
+                log_info("Restoring child " + child_name + " of " + safe_str(pou_obj))
+                if update_object_code(existing_child, decl, impl):
+                    log_info("  Successfully updated " + child_name)
+            else:
+                log_info("Creating child " + child_name + " of " + safe_str(pou_obj))
+                try:
+                    new_child = pou_obj.create_object(
+                        name=child_name,
+                        type_guid=child_type
+                    )
+                    if new_child:
+                        if update_object_code(new_child, decl, impl):
+                            log_info("  Successfully created " + child_name)
+                        else:
+                            log_warning("  Could not update code for new child " + child_name)
+                    else:
+                        log_warning("  Could not create child " + child_name)
+                except Exception as e:
+                    log_warning("  Failed to create child " + child_name + ": " + safe_str(e))
+        except Exception as e:
+            log_warning("Failed to restore child: " + safe_str(e))
+
+
+def batch_import_native_xmls_with_children(native_batches, import_managers, project, pou_children_info=None):
+    """
+    Process batched native XML imports to reduce dialogs.
+    Restores POU children after XML import to prevent deletion.
+    
+    Args:
+        native_batches: dict of {container: [(rel_path, abs_path, name, type_guid, is_new), ...]}
+        import_managers: dict of managers
+        project: CODESYS project
+        pou_children_info: dict of {pou_name_lower: saved_children} to restore after import
+    
+    Returns:
+        (updated_count, created_count, failed_count)
+    """
+    if pou_children_info is None:
+        pou_children_info = {}
+    
+    updated = 0
+    created = 0
+    failed = 0
+    
+    for container, items in native_batches.items():
+        print("  Batch importing " + str(len(items)) + " native objects into " + safe_str(container))
+        temp_xml = os.path.join(tempfile.gettempdir(), "cds_sync_batch.xml")
+        file_paths = [item[1] for item in items]
+        
+        if merge_native_xmls(file_paths, temp_xml):
+            try:
+                if hasattr(container, "import_native"):
+                    container.import_native(temp_xml)
+                else:
+                    project.import_native(temp_xml)
+                
+                # Restore POU children after XML import
+                # Find POUs by name in the container
+                for rel_path, file_path, name, type_guid, is_new in items:
+                    pou_name_lower = name.lower()
+                    if pou_name_lower in pou_children_info:
+                        children = pou_children_info[pou_name_lower]
+                        # Find the POU object in the container
+                        pou_obj = None
+                        try:
+                            for child in container.get_children():
+                                if child.get_name().lower() == pou_name_lower:
+                                    pou_obj = child
+                                    break
+                        except Exception as e:
+                            log_warning("Could not find POU " + name + " in container: " + safe_str(e))
+                        
+                        if pou_obj:
+                            try:
+                                restore_pou_children(pou_obj, children, import_managers, project)
+                            except Exception as e:
+                                log_warning("Could not restore children for POU " + name + ": " + safe_str(e))
+                
+                for rel_path, file_path, name, type_guid, is_new in items:
+                    res = None
+                    try:
+                        for child in container.get_children():
+                            if child.get_name().lower() == name.lower():
+                                res = child
+                                break
+                    except:
+                        pass
+                    
+                    if res:
+                        if is_new:
+                            created += 1
+                        else:
+                            updated += 1
+                            print("  Updated (native batch): " + rel_path)
+                    else:
+                        log_error("Batch import could not find " + name + " after import.")
+                        failed += 1
+                        
+            except Exception as e:
+                log_error("Batch import failed for " + safe_str(container) + ": " + safe_str(e))
+                failed += len(items)
+        else:
+            log_error("Failed to merge XML for " + safe_str(container))
+            failed += len(items)
+        
+        if os.path.exists(temp_xml):
+            try:
+                os.remove(temp_xml)
+            except:
+                pass
+    
+    return updated, created, failed
 
 
 def batch_import_native_xmls(native_batches, import_managers, project):
@@ -432,10 +631,31 @@ def batch_import_native_xmls(native_batches, import_managers, project):
         
         if merge_native_xmls(file_paths, temp_xml):
             try:
+                # Save POU children before XML import to prevent them from being deleted
+                pou_children_to_restore = {}
+                for rel_path, file_path, name, type_guid, is_new in items:
+                    if type_guid == TYPE_GUIDS.get("pou") and not is_new:
+                        try:
+                            for child in container.get_children():
+                                if child.get_name().lower() == name.lower():
+                                    children = save_pou_children(child)
+                                    if children:
+                                        pou_children_to_restore[child] = children
+                                    break
+                        except Exception as e:
+                            log_warning("Could not save children for POU " + name + ": " + safe_str(e))
+                
                 if hasattr(container, "import_native"):
                     container.import_native(temp_xml)
                 else:
                     project.import_native(temp_xml)
+                
+                # Restore POU children after XML import
+                for pou_obj, children in pou_children_to_restore.items():
+                    try:
+                        restore_pou_children(pou_obj, children, import_managers, project)
+                    except Exception as e:
+                        log_warning("Could not restore children for POU " + safe_str(pou_obj) + ": " + safe_str(e))
                 
                 for rel_path, file_path, name, type_guid, is_new in items:
                     res = None
@@ -499,7 +719,9 @@ def finalize_import(project, projects_obj, base_dir, updated_count, created_coun
 
 # ═══════════════════════════════════════════════════════════════════
 #  HIGH-LEVEL IMPORT ORCHESTRATOR
-# ═══════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
+    #  HIGH-LEVEL IMPORT ORCHESTRATOR
+    # ═══════════════════════════════════════════════════════════════════
 
 def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     """
@@ -513,24 +735,26 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
         base_dir: Export/import directory path
         to_sync: list of item dicts (must have "path", "name", "type_guid"; optionally "obj")
         globals_ref: globals() from calling script (for resolve_projects)
-        
+    
     Returns:
         (updated_count, created_count, failed_count, deleted_count)
     """
-    if not to_sync:
-        return 0, 0, 0, 0
-
     import_managers = create_import_managers()
-    guid_map, name_map = build_object_cache(primary_project)
     folder_cache = {}
-
+    name_map = {}
+    
     updated_count = 0
     created_count = 0
-    failed_count = 0
     deleted_count = 0
+    failed_count = 0
+    
     native_batches = {}
-
-    # We no longer use MetadataLock as metadata files are removed
+    st_files_to_import = []
+    pou_children_info = {}
+    
+    # ═══════════════════════════════════════════════════════════════════
+    #  PASS 1: Collect XML batches and ST files, save POU children
+    # ═══════════════════════════════════════════════════════════════════
     for item in to_sync:
         try:
             # Handle Deletions (Orphans)
@@ -584,6 +808,70 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                 ))
                 continue
 
+            # ST files → collect for later import
+            st_files_to_import.append(item)
+
+        except Exception as e:
+            log_error("Failed to process " + item.get("path", "unknown") + ": " + safe_str(e))
+            failed_count += 1
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  PASS 2: Save POU children from existing POUs before XML import
+    # ═══════════════════════════════════════════════════════════════════
+    for container, items in native_batches.items():
+        for rel_path, abs_path, name, type_guid, is_new in items:
+            if type_guid == TYPE_GUIDS.get("pou") and not is_new:
+                try:
+                    for child in container.get_children():
+                        if child.get_name().lower() == name.lower():
+                            children = save_pou_children(child)
+                            if children:
+                                # Store children by POU name (not object) to find after import
+                                pou_children_info[name.lower()] = children
+                            break
+                except Exception as e:
+                    log_warning("Could not save children for POU " + name + ": " + safe_str(e))
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  PASS 3: Process batched XML imports (restores children)
+    # ═══════════════════════════════════════════════════════════════════
+    if native_batches:
+        u, c, f = batch_import_native_xmls_with_children(
+            native_batches, import_managers, primary_project, pou_children_info
+        )
+        updated_count += u
+        created_count += c
+        failed_count += f
+        
+        # Update name_map with newly created POUs from XML import
+        for container, items in native_batches.items():
+            for rel_path, abs_path, name, type_guid, is_new in items:
+                if is_new and type_guid == TYPE_GUIDS.get("pou"):
+                    try:
+                        for child in container.get_children():
+                            if child.get_name().lower() == name.lower():
+                                obj_name = child.get_name()
+                                if obj_name not in name_map:
+                                    name_map[obj_name] = []
+                                if child not in name_map[obj_name]:
+                                    name_map[obj_name].append(child)
+                                log_info("Added new POU to name_map: " + obj_name)
+                                break
+                    except Exception as e:
+                        log_warning("Could not update name_map for new POU " + name + ": " + safe_str(e))
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  PASS 4: Import ST files (after POUs exist)
+    # ═══════════════════════════════════════════════════════════════════
+    
+    for item in st_files_to_import:
+        try:
+            rel_path = item["path"]
+            abs_path = item.get("file_path") or os.path.join(base_dir, rel_path.replace("/", os.sep))
+            
+            if not os.path.exists(abs_path):
+                continue
+            
             # ST files → find or create
             obj = item.get("obj")
             if not obj:
@@ -604,17 +892,8 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                     failed_count += 1
 
         except Exception as e:
-            log_error("Failed to import " + item.get("path", "unknown") + ": " + safe_str(e))
+            log_error("Failed to import ST " + item.get("path", "unknown") + ": " + safe_str(e))
             failed_count += 1
-
-    # Process batched XML imports
-    if native_batches:
-        u, c, f = batch_import_native_xmls(
-            native_batches, import_managers, primary_project
-        )
-        updated_count += u
-        created_count += c
-        failed_count += f
 
     # Save project
     projects_obj = resolve_projects(None, globals_ref or globals())
