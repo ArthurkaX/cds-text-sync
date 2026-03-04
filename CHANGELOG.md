@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.6.2 (2026-03-04)
+
+**XML Import & Object Structure Enhancements:**
+
+- **POU Child Management**: Implemented saving and restoring of POU children during the XML import process to maintain project hierarchy.
+- **Parent Lookup**: Enhanced parent POU lookup logic during object creation for improved structural accuracy.
+- **Empty Implementation Handling**: Ensured that implementation markers are always present for specific object types, even if their implementation is empty (addressing issues where empty methods or properties might be skipped).
+
 ### Version 1.6.1 (2026-02-26)
 
 **Orphan Deletion & Stability Enhancements:**
