@@ -14,7 +14,7 @@ from codesys_utils import (
     format_st_content, format_property_content, parse_property_content,
     resolve_projects, is_container_device
 )
-from codesys_constants import TYPE_GUIDS, XML_TYPES, EXPORTABLE_TYPES, XML_TYPES as XML_TYPES_CONST
+from codesys_constants import TYPE_GUIDS, XML_TYPES, EXPORTABLE_TYPES, IMPLEMENTATION_TYPES, XML_TYPES as XML_TYPES_CONST
 
 # --- Helper Functions ---
 
@@ -530,7 +530,10 @@ class POUManager(ObjectManager):
         file_name = os.path.basename(rel_path)
         
         declaration, implementation = export_object_content(obj)
-        content = format_st_content(declaration, implementation)
+        # Check if this object type can have implementation even if empty
+        obj_type_guid = safe_str(obj.type)
+        can_have_impl = obj_type_guid in IMPLEMENTATION_TYPES
+        content = format_st_content(declaration, implementation, can_have_impl)
         
         if not content.strip():
             return False

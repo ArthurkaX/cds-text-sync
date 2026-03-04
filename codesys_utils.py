@@ -557,11 +557,16 @@ def ensure_git_configs(export_dir):
 # Removed MetadataLock and load_metadata (metadata files no longer used)
 
 
-def format_st_content(declaration, implementation):
+def format_st_content(declaration, implementation, can_have_impl=False):
     """
     Format ST file content with clean structure.
     Uses markers for import script to parse sections.
     Ensures consistent whitespace for reliable hashing.
+    
+    Args:
+        declaration: The declaration text
+        implementation: The implementation text (may be None or empty)
+        can_have_impl: True if object type can have implementation even if empty
     """
     content = []
     
@@ -570,11 +575,12 @@ def format_st_content(declaration, implementation):
         content.append(decl)
     
     impl = (implementation or "").strip()
-    if impl:
+    if impl or can_have_impl:
         if content:
             content.append("")  # Empty line separator
         content.append(IMPL_MARKER)
-        content.append(impl)
+        if impl:
+            content.append(impl)
     
     return "\n".join(content)
 

@@ -97,6 +97,14 @@ EXPORTABLE_TYPES = [
     TYPE_GUIDS["task_local_gvl"],  # Task Local GVL - same structure as regular GVL
 ]
 
+# Object types that can have implementation sections
+# These types should have the IMPLEMENTATION marker even if implementation is empty
+IMPLEMENTATION_TYPES = [
+    TYPE_GUIDS["pou"],
+    TYPE_GUIDS["action"],
+    TYPE_GUIDS["method"],
+]
+
 # Types that should be exported as native XML
 XML_TYPES = [
     TYPE_GUIDS["visu"],

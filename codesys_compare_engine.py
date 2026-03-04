@@ -17,7 +17,7 @@ Provides:
 import os
 import codecs
 import tempfile
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, RESERVED_FILES, TYPE_NAMES
+from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, RESERVED_FILES, TYPE_NAMES
 from codesys_utils import (
     safe_str, calculate_hash, clean_filename, log_info, log_error, log_warning,
     resolve_projects, backup_project_binary, merge_native_xmls,
@@ -43,8 +43,16 @@ from codesys_managers import (
 
 # Removed local build_expected_path, now imported from codesys_managers
 
-def get_ide_content(obj, is_xml, property_accessors, projects_obj):
-    """Extract content from IDE object for comparison."""
+def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl=False):
+    """Extract content from IDE object for comparison.
+    
+    Args:
+        obj: CODESYS object
+        is_xml: True if this is an XML object
+        property_accessors: Dictionary of property accessor objects
+        projects_obj: CODESYS projects object
+        can_have_impl: True if object type can have implementation even if empty
+    """
     
     if is_xml:
         native_mgr = NativeManager()
@@ -84,17 +92,17 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj):
         get_impl = None
         if prop_data['get']:
             get_decl, get_impl_raw = export_object_content(prop_data['get'])
-            get_impl = format_st_content(get_decl, get_impl_raw)
+            get_impl = format_st_content(get_decl, get_impl_raw, False)
 
         set_impl = None
         if prop_data['set']:
             set_decl, set_impl_raw = export_object_content(prop_data['set'])
-            set_impl = format_st_content(set_decl, set_impl_raw)
+            set_impl = format_st_content(set_decl, set_impl_raw, False)
 
         return format_property_content(declaration, get_impl, set_impl)
     
     declaration, implementation = export_object_content(obj)
-    return format_st_content(declaration, implementation)
+    return format_st_content(declaration, implementation, can_have_impl)
 
 def contents_are_equal(ide_content, disk_content, is_xml, rel_path="unknown"):
     """Compare two content strings, with XML-specific filtering."""
@@ -209,7 +217,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
 
         if os.path.exists(file_path):
             # Compare content
-            ide_content = get_ide_content(obj, is_xml, property_accessors, projects_obj)
+            can_have_impl = effective_type in IMPLEMENTATION_TYPES
+            ide_content = get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl)
             disk_content = read_file(file_path)
 
             if contents_are_equal(ide_content, disk_content, is_xml, rel_path):
