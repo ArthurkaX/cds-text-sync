@@ -9,7 +9,8 @@ for _mod_name in list(sys.modules.keys()):
     if _mod_name.startswith('codesys_'):
         del sys.modules[_mod_name]
 from codesys_constants import (
-    IMPL_MARKER, TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, FORBIDDEN_CHARS, RESERVED_FILES
+    IMPL_MARKER, TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, FORBIDDEN_CHARS, RESERVED_FILES,
+    SCRIPT_VERSION
 )
 from codesys_utils import (
     safe_str, clean_filename, load_base_dir,
@@ -25,6 +26,33 @@ from codesys_managers import (
 )
 
 # Shared constants and utilities imported from modules
+
+
+def save_export_metadata(export_dir, stats, elapsed_time):
+    """Save export metadata to sync_metadata.json and project property"""
+    from codesys_utils import set_project_prop
+    
+    metadata = {
+        "script_version": SCRIPT_VERSION,
+        "last_action": "export",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "duration_sec": round(elapsed_time, 2),
+        "statistics": stats
+    }
+    
+    metadata_path = os.path.join(export_dir, "sync_metadata.json")
+    try:
+        with codecs.open(metadata_path, "w", "utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        log_info("Export metadata saved to sync_metadata.json (v" + SCRIPT_VERSION + ")")
+    except Exception as e:
+        log_warning("Failed to save export metadata: " + safe_str(e))
+    
+    try:
+        set_project_prop("cds-sync-version", SCRIPT_VERSION)
+        log_info("Script version saved to project property")
+    except Exception as e:
+        log_warning("Failed to save version to project property: " + safe_str(e))
 
 
 def cleanup_orphaned_files(export_dir, current_objects, silent=False):
@@ -277,6 +305,14 @@ def export_project(export_dir, projects_obj=None, silent=False):
     exported_total = exported_new + exported_updated + exported_identical
     summary = "Exported: " + str(exported_total) + " (New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ")"
     log_info("Export complete! " + summary)
+    
+    # Save export metadata for version tracking
+    save_export_metadata(export_dir, {
+        "new": exported_new,
+        "updated": exported_updated,
+        "identical": exported_identical,
+        "total": exported_total
+    }, elapsed_time)
     
     # Show completion notification
     if silent:

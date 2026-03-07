@@ -6,6 +6,9 @@ Contains all CODESYS object type GUIDs, exportable types, and other
 constants used across multiple scripts.
 """
 
+# Script version - single source of truth for version tracking
+SCRIPT_VERSION = "1.6.3"
+
 # Object type GUIDs for reference
 TYPE_GUIDS = {
     "pou": "6f9dac99-8de1-4efc-8465-68ac443b7d08",           # PROGRAM, FUNCTION, FUNCTION_BLOCK
@@ -152,7 +155,7 @@ FORBIDDEN_CHARS = ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]
 RESERVED_FILES = {
     "_metadata.json", "_config.json", "_metadata.csv", "BASE_DIR",
     "sync_debug.log", "compare.log", ".project", ".gitattributes",
-    ".gitignore"
+    ".gitignore", "sync_metadata.json"
 }
 
 # Reverse mapping for human-readable type names

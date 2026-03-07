@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.6.3 (2026-03-07)
+
+**Version Tracking & Compatibility Detection:**
+
+- **Single Source of Truth**: Added `SCRIPT_VERSION = "1.6.3"` in `codesys_constants.py` as the central version reference for all scripts.
+- **Dual Storage Strategy**:
+  - **sync_metadata.json**: Metadata file stored in export directory containing script version, last action (export/import), timestamp, duration, and statistics.
+  - **Project Property**: Version also saved to CODESYS project property (`cds-sync-version`) for runtime compatibility checks.
+- **Import/Compare Warnings**: Both `Project_import.py` and `Project_compare.py` now detect version mismatches and display warnings without blocking operations (User can continue at their own risk).
+- **Improved Audit Trail**: Each export and import operation updates `sync_metadata.json` with current script version, making it easy to identify which scripts were used for operations.
+- **Git Integration**: The `sync_metadata.json` file is now tracked in version control, enabling teams to see export/import history.
+
+---
+
 ### Version 1.6.2 (2026-03-04)
 
 **XML Import & Object Structure Enhancements:**

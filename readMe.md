@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.6.2`
+**Version**: `1.6.3`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.

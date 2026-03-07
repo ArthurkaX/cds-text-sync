@@ -20,9 +20,12 @@ for _mod_name in list(sys.modules.keys()):
     if _mod_name.startswith('codesys_'):
         del sys.modules[_mod_name]
 
-from codesys_constants import TYPE_GUIDS
+import codecs
+import json
+
+from codesys_constants import TYPE_GUIDS, SCRIPT_VERSION
 from codesys_utils import (
-    safe_str, load_base_dir, init_logging, log_info, log_error,
+    safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
     resolve_projects, clean_filename, get_project_prop
 )
 from codesys_managers import (
@@ -32,6 +35,33 @@ from codesys_managers import (
 from codesys_compare_engine import (
     find_all_changes, perform_import_items, TYPE_NAMES, build_expected_path
 )
+
+
+def check_version_compatibility(base_dir, silent=False):
+    """Check if export was done with compatible script version"""
+    proj_version = get_project_prop("cds-sync-version")
+    if proj_version is None:
+        proj_version = "not set"
+    
+    metadata_path = os.path.join(base_dir, "sync_metadata.json")
+    
+    if proj_version != SCRIPT_VERSION:
+        msg = "Version mismatch: Project (v{}) vs Current (v{})".format(proj_version, SCRIPT_VERSION)
+        return False, msg
+    
+    if os.path.exists(metadata_path):
+        try:
+            with codecs.open(metadata_path, "r", "utf-8") as f:
+                data = json.load(f)
+            export_version = data.get("script_version")
+            if export_version and export_version != SCRIPT_VERSION:
+                msg = "Version mismatch: Export (v{}) vs Current (v{})".format(export_version, SCRIPT_VERSION)
+                return False, msg
+        except:
+            pass
+    
+    return True, None
+
 
 
 def compare_project(projects_obj=None, silent=False):
@@ -54,6 +84,16 @@ def compare_project(projects_obj=None, silent=False):
         else:
             print(error)
         return
+    
+    # Check version compatibility
+    version_ok, version_msg = check_version_compatibility(base_dir, silent)
+    if not version_ok:
+        if not silent:
+            print("WARNING: " + version_msg)
+            print("The export was created with a different version of the sync script.")
+            print("Comparison results may be unreliable.\n")
+        else:
+            log_warning("Version mismatch: " + version_msg)
     
     print("=== Starting Project Comparison ===")
     print("Comparing: CODESYS IDE <-> " + base_dir)
@@ -184,7 +224,7 @@ def perform_export(base_dir, selected):
         elif effective_type in managers:
             mgr = managers[effective_type]
         else:
-            mgr = managers[TYPE_GUIDS["pou"]] # Default
+            mgr = managers["default"]
 
         context['effective_type'] = effective_type
         try:

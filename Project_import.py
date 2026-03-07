@@ -16,11 +16,43 @@ for _mod_name in list(sys.modules.keys()):
     if _mod_name.startswith('codesys_'):
         del sys.modules[_mod_name]
 
+import codecs
+import json
+
 from codesys_utils import (
-    safe_str, load_base_dir, init_logging, log_info,
+    safe_str, load_base_dir, init_logging, log_info, log_warning,
     resolve_projects, get_project_prop
 )
 from codesys_compare_engine import find_all_changes, perform_import_items
+
+
+def check_version_compatibility(base_dir, silent=False):
+    """Check if export was done with compatible script version"""
+    from codesys_constants import SCRIPT_VERSION
+    
+    proj_version = get_project_prop("cds-sync-version")
+    if proj_version is None:
+        proj_version = "not set"
+    
+    metadata_path = os.path.join(base_dir, "sync_metadata.json")
+    
+    if proj_version != SCRIPT_VERSION:
+        msg = "Version mismatch: Project (v{}) vs Current (v{})".format(proj_version, SCRIPT_VERSION)
+        return False, msg
+    
+    if os.path.exists(metadata_path):
+        try:
+            with codecs.open(metadata_path, "r", "utf-8") as f:
+                data = json.load(f)
+            export_version = data.get("script_version")
+            if export_version and export_version != SCRIPT_VERSION:
+                msg = "Version mismatch: Export (v{}) vs Current (v{})".format(export_version, SCRIPT_VERSION)
+                return False, msg
+        except:
+            pass
+    
+    return True, None
+
 
 
 def import_project(projects_obj=None, silent=False):
@@ -46,6 +78,28 @@ def import_project(projects_obj=None, silent=False):
         else:
             print(error)
         return
+    
+    # Check version compatibility
+    version_ok, version_msg = check_version_compatibility(base_dir, silent)
+    if not version_ok:
+        if not silent:
+            msg = "Version Mismatch Warning!\n\n" + version_msg + "\n\n"
+            msg += "The export was created with a different version of the sync script.\n"
+            msg += "This may cause unexpected behavior during import.\n\n"
+            msg += "Recommendation: Re-export the project with the current script version.\n\n"
+            msg += "Continue anyway?"
+            
+            try:
+                result = system.ui.choose(msg, ("Continue", "Cancel"))
+                if result[0] == 1:
+                    print("Import cancelled due to version mismatch.")
+                    return
+            except:
+                print("WARNING: " + version_msg)
+                print("Proceeding with import anyway...")
+        else:
+            log_warning("Version mismatch: " + version_msg)
+            print("WARNING: " + version_msg)
     
     print("=== Starting Project Import ===")
     print("Importing from: " + base_dir)
@@ -121,6 +175,33 @@ def import_project(projects_obj=None, silent=False):
     print("Time elapsed: {:.2f} seconds".format(elapsed))
     
     log_info("Import complete! " + summary)
+    
+    # Update metadata after successful import
+    try:
+        from codesys_constants import SCRIPT_VERSION
+        from codesys_utils import set_project_prop
+        
+        metadata = {
+            "script_version": SCRIPT_VERSION,
+            "last_action": "import",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "duration_sec": round(elapsed, 2),
+            "statistics": {
+                "updated": updated,
+                "created": created,
+                "deleted": deleted,
+                "failed": failed
+            }
+        }
+        
+        metadata_path = os.path.join(base_dir, "sync_metadata.json")
+        with codecs.open(metadata_path, "w", "utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        log_info("Import metadata saved to sync_metadata.json (v" + SCRIPT_VERSION + ")")
+        
+        set_project_prop("cds-sync-version", SCRIPT_VERSION)
+    except Exception as e:
+        log_warning("Failed to update metadata: " + safe_str(e))
     
     if not silent:
         try:
