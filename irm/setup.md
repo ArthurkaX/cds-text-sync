@@ -18,8 +18,8 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 2.  **Directory Management**:
     - Ensures the required directory structure exists: `%LOCALAPPDATA%\CODESYS\ScriptDir\`.
 3.  **Deployment**:
-    - **First time install**: If the project is not present, it performs a `git clone` to download the tool.
-    - **Update**: If the project is already installed, it navigates into the folder and performs a `git pull` to fetch the latest updates from the repository.
+    - **First time install**: If the project is not present, it performs a `git clone --depth 1` (shallow clone) to download only the latest commit of the tool.
+    - **Update**: If the project is already installed, it navigates into the folder and performs a `git fetch --depth 1 && git reset --hard origin/HEAD` to aggressively fetch and reset to the latest changes from the repository, overwriting local modifications.
 
 ## Requirements
 
