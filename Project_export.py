@@ -3,11 +3,28 @@ import sys
 import time
 import codecs
 import json
+import imp
+
+# --- Hidden Module Loader ---
+def _load_hidden_module(name):
+    """Load a .pyw module from the script directory and register it in sys.modules."""
+    if name not in sys.modules:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(script_dir, name + ".pyw")
+        if os.path.exists(path):
+            sys.modules[name] = imp.load_source(name, path)
 
 # Force reload of shared modules to pick up latest changes
 for _mod_name in list(sys.modules.keys()):
     if _mod_name.startswith('codesys_'):
         del sys.modules[_mod_name]
+
+# Load shared core logic
+_load_hidden_module("codesys_constants")
+_load_hidden_module("codesys_utils")
+_load_hidden_module("codesys_managers")
+_load_hidden_module("codesys_ui")
+
 from codesys_constants import (
     IMPL_MARKER, TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, FORBIDDEN_CHARS, RESERVED_FILES,
     SCRIPT_VERSION

@@ -7,6 +7,23 @@ Project_parameters.py - Configure Project parameters
 Updates parameters in Project Information > Properties
 """
 import os
+import sys
+import imp
+
+# --- Hidden Module Loader ---
+def _load_hidden_module(name):
+    """Load a .pyw module from the script directory and register it in sys.modules."""
+    if name not in sys.modules:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(script_dir, name + ".pyw")
+        if os.path.exists(path):
+            sys.modules[name] = imp.load_source(name, path)
+
+# Load shared core logic
+_load_hidden_module("codesys_constants")
+_load_hidden_module("codesys_utils")
+_load_hidden_module("codesys_ui")
+
 from codesys_utils import safe_str, load_base_dir, get_project_prop, set_project_prop
 
 def main():

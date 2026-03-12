@@ -7,6 +7,22 @@ Compiles the active application and reports errors/warnings.
 import os
 import time
 import sys
+import imp
+
+# --- Hidden Module Loader ---
+def _load_hidden_module(name):
+    """Load a .pyw module from the script directory and register it in sys.modules."""
+    if name not in sys.modules:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(script_dir, name + ".pyw")
+        if os.path.exists(path):
+            sys.modules[name] = imp.load_source(name, path)
+
+# Load shared core logic
+_load_hidden_module("codesys_constants")
+_load_hidden_module("codesys_utils")
+_load_hidden_module("codesys_ui")
+
 from codesys_utils import safe_str, init_logging, load_base_dir, resolve_projects, update_application_count_flag
 
 def build_project(projects_obj=None, silent=False):

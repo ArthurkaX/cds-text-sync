@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.6.4 (2026-03-12)
+
+**UI Cleanup & Module Security:**
+
+- **Hidden Internal Modules**: Renamed all `codesys_*.py` files to `.pyw` extension. This hides them from the CODESYS Script Engine menu, providing a cleaner user interface that only shows primary `Project_*.py` commands.
+- **Custom Module Loader**: Implemented a robust `_load_hidden_module` mechanism in all entry scripts to handle `.pyw` imports with proper dependency ordering.
+- **Deprecated Scripts Cleanup**: Removed several unused and debug scripts (`debug_metadata.py`, `Project_Daemon.py`) to streamline the repository.
+
+---
+
 ### Version 1.6.3 (2026-03-07)
 
 **Version Tracking & Compatibility Detection:**
