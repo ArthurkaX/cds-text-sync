@@ -145,12 +145,7 @@ Updates the CODESYS project from the files on disk.
 - **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code in the `.project/` folder.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
-### 5. `Project_Daemon.py` (Background Service)
-
-> [!NOTE]
-> **Temporarily Disabled**: This module is currently undergoing maintenance and is disabled in version 1.6.
-
-### 6. `Project_compare.py` (Object Comparison)
+### 5. `Project_compare.py` (Object Comparison)
 
 **Identify differences between IDE and Disk.** Compares the objects in your CODESYS project with the exported files on disk using the new direct-comparison engine.
 
@@ -165,7 +160,7 @@ Updates the CODESYS project from the files on disk.
   - You can then open these files in your favorite diff tool.
 - **Clean Run**: The `compare.log` file is recreated every time you run the script, ensuring you only see the latest results.
 
-### 7. `Project_discover.py` (Diagnostic Tool)
+### 6. `Project_discover.py` (Diagnostic Tool)
 
 **Diagnostic tool for project structure.** Maps your CODESYS project tree and helps identify objects that might not be fully supported by the sync engine yet.
 
