@@ -221,7 +221,7 @@ def build_expected_path(obj, effective_type, is_xml):
         obj_type = safe_str(obj.type)
         parent_pou = get_parent_pou_name(obj)
         # Nested objects (Action, Method, Property) prefix filename with parent POU name
-        if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"]]:
+        if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"], TYPE_GUIDS["itf_method"]]:
             file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
             clean_parent_pou = clean_filename(parent_pou)
             # If the path already has the parent name as a folder, remove it to avoid redundancy
@@ -241,6 +241,34 @@ def build_expected_path(obj, effective_type, is_xml):
         return "/".join(full_path_parts) + "/" + file_name
     return file_name
 
+def export_interface_declaration(obj):
+    """Extract interface declaration via native XML export fallback."""
+    import re
+    try:
+        projects_obj = resolve_projects()
+        if not projects_obj or not projects_obj.primary:
+            return None
+            
+        tmp_path = os.path.join(tempfile.gettempdir(), "itf_%s.xml" % safe_str(obj.guid)[:8])
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        projects_obj.primary.export_native([obj], tmp_path, recursive=False)
+
+        if not os.path.exists(tmp_path):
+            return None
+
+        with codecs.open(tmp_path, "r", "utf-8") as xf:
+            xml_content = xf.read()
+        os.remove(tmp_path)
+
+        match = re.search(r'<Declaration><!\[CDATA\[(.*?)\]\]></Declaration>', xml_content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    except Exception as e:
+        log_warning("Could not extract interface declaration for " + safe_str(obj.get_name()) + ": " + safe_str(e))
+    return None
+
 def export_object_content(obj):
     """Extract declaration and implementation text from object."""
     declaration = None
@@ -249,6 +277,10 @@ def export_object_content(obj):
         if hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
             declaration = obj.textual_declaration.text
     except: pass
+    
+    if declaration is None and safe_str(obj.type) == TYPE_GUIDS["itf"]:
+        declaration = export_interface_declaration(obj)
+    
     try:
         if hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
             implementation = obj.textual_implementation.text

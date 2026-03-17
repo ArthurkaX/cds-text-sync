@@ -7,7 +7,7 @@ constants used across multiple scripts.
 """
 
 # Script version - single source of truth for version tracking
-SCRIPT_VERSION = "1.6.4"
+SCRIPT_VERSION = "1.6.5"
 
 # Object type GUIDs for reference
 TYPE_GUIDS = {
@@ -25,7 +25,8 @@ TYPE_GUIDS = {
     "library_manager": "adb5cb65-8e1d-4a00-b70a-375ea27582f3", # Library Manager
     "task_config": "ae1de277-a207-4a28-9efb-456c06bd52f3",   # Task Configuration
     "task": "98a2708a-9b18-4f31-82ed-a1465b24fa2d",          # Task
-    "itf": "54ce33d2-c430-4eb6-a66f-1f0624d7705b",           # Interface
+    "itf": "6654496c-404d-479a-aad2-8551054e5f1e",           # Interface
+    "itf_method": "f89f7675-27f1-46b3-8abb-b7da8e774ffd",     # Interface Method/Property
     "nvl_sender": "ffb96994-3252-4467-8507-6a1883584989",    # Network Variable List (Sender)
     "nvl_receiver": "ea9e7828-b80c-4ec7-9f68-52210f019623",  # Network Variable List (Receiver)
     "param_list": "f89f7675-27f3-455b-b98a-243e8673a5a8",    # Parameter List
@@ -95,6 +96,7 @@ EXPORTABLE_TYPES = [
     TYPE_GUIDS["device_module"],      # Discovered from auxiliary data
     TYPE_GUIDS["action"],
     TYPE_GUIDS["method"],
+    TYPE_GUIDS["itf_method"],
     TYPE_GUIDS["property"],
     TYPE_GUIDS["property_accessor"],
     TYPE_GUIDS["task_local_gvl"],  # Task Local GVL - same structure as regular GVL
