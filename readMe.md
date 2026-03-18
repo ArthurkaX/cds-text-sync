@@ -171,7 +171,7 @@ Updates the CODESYS project from the files on disk.
 
 **Analyze project objects by size/complexity.** Helps identify "code bloat" by measuring source code length and XML export size for graphical objects.
 
-![Resource Analysis](img/project_resources.png)
+![Resource Analysis](img/Project_resources.png)
 
 - **Interactive Grid**: Results displayed in a sortable dialog showing Object Name, Type, Size, and Category (Code/XML).
 - **Identify Bloat**: Quickly find large visualizations, complex POUs, or oversized configurations.
