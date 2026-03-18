@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.6.6 (2026-03-18)
+
+**Resource Analysis UI Enhancement:**
+
+- **Interactive Results Dialog**: `Project_resources.py` now displays results in a modern Windows Forms dialog instead of console output.
+- **Sortable Data Grid**: Click column headers to sort by Object Name, Type, Size, or Category.
+- **Full Object List**: Shows all analyzed objects with scrolling support (previously limited to top 30).
+- **Summary Panel**: Displays Total Code, Total XML, and Object count at the bottom.
+- **Fallback Support**: Console output still works if UI components are unavailable.
+
+---
+
 ### Version 1.6.5 (2026-03-17)
 
 **Interface Export Support:**

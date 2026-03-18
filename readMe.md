@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.6.5`
+**Version**: `1.6.6`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -166,6 +166,16 @@ Updates the CODESYS project from the files on disk.
 
 - **Validation**: If you run this on a project, check `sync_debug.log` to see a full tree of discovered objects and their types.
 - **Debugging**: Highlights "Unknown" types with their GUIDs, making it easy to report unsupported blocks.
+
+### 7. `Project_resources.py` (Size Analysis)
+
+**Analyze project objects by size/complexity.** Helps identify "code bloat" by measuring source code length and XML export size for graphical objects.
+
+![Resource Analysis](img/Project_resources.png)
+
+- **Interactive Grid**: Results displayed in a sortable dialog showing Object Name, Type, Size, and Category (Code/XML).
+- **Identify Bloat**: Quickly find large visualizations, complex POUs, or oversized configurations.
+- **Summary Stats**: Shows total code volume, XML volume, and object count.
 
 ---
 
