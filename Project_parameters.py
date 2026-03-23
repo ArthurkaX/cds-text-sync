@@ -25,6 +25,7 @@ _load_hidden_module("codesys_utils")
 _load_hidden_module("codesys_ui")
 
 from codesys_utils import safe_str, load_base_dir, get_project_prop, set_project_prop
+from codesys_constants import SCRIPT_VERSION
 
 def main():
     base_dir, error = load_base_dir()
@@ -53,7 +54,7 @@ def main():
     }
 
     # Show Dialog
-    new_settings = show_settings_dialog(current_settings)
+    new_settings = show_settings_dialog(current_settings, version=SCRIPT_VERSION)
     
     if new_settings:
         # Save changes

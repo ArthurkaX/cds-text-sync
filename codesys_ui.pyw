@@ -12,7 +12,7 @@ try:
         DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
         Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle
     )
-    from System.Drawing import Size, Point, Font, FontStyle, SystemIcons
+    from System.Drawing import Size, Point, Font, FontStyle, SystemIcons, Color
 except:
     # Fallback if forms not available (e.g. Linux/Headless)
     pass
@@ -45,7 +45,7 @@ def show_toast(title, message, timeout=3000):
     t.Start()
 
 class SettingsForm(Form):
-    def __init__(self, current_settings):
+    def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
         self.Size = Size(420, 360) # Increased height for more options
         self.FormBorderStyle = FormBorderStyle.FixedDialog
@@ -60,6 +60,16 @@ class SettingsForm(Form):
         lbl.AutoSize = True
         lbl.Font = Font("Segoe UI", 12, FontStyle.Bold)
         self.Controls.Add(lbl)
+        
+        # Version label (top-right corner)
+        if version:
+            lbl_version = Label()
+            lbl_version.Text = "v" + str(version)
+            lbl_version.Location = Point(320, 24)
+            lbl_version.AutoSize = True
+            lbl_version.Font = Font("Segoe UI", 8)
+            lbl_version.ForeColor = Color.Gray
+            self.Controls.Add(lbl_version)
         
         # Group 1: Export Settings
         y = 60
@@ -144,9 +154,9 @@ class SettingsForm(Form):
             "silent_mode": self.chk_silent.Checked
         }
 
-def show_settings_dialog(current_settings):
+def show_settings_dialog(current_settings, version=None):
     try:
-        form = SettingsForm(current_settings)
+        form = SettingsForm(current_settings, version)
         result = form.ShowDialog()
         if result == DialogResult.OK:
             return form.get_results()
