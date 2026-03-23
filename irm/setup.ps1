@@ -38,16 +38,19 @@ if (-not (Test-Path $targetBaseDir)) {
 }
 
 # 3. Clone repository (shallow) or update if it already exists
-    if (Test-Path $fullPath) {
-        Write-Host "[*] Project folder already exists. Attempting to update..." -ForegroundColor Cyan
-        # Navigate to the folder and pull latest changes
-        Push-Location $fullPath
-        git fetch --depth 1 && git reset --hard origin/HEAD
-        Pop-Location
-        Write-Host "[+] Update completed." -ForegroundColor Green
-    } else {
-        Write-Host "[*] Cloning repository to $fullPath..." -ForegroundColor Cyan
-        git clone --depth 1 $repoUrl $fullPath
+if (Test-Path $fullPath) {
+    Write-Host "[*] Project folder already exists. Attempting to update..." -ForegroundColor Cyan
+    # Navigate to the folder and pull latest changes
+    Push-Location $fullPath
+    git fetch --depth 1
+    if ($LASTEXITCODE -eq 0) {
+        git reset --hard origin/HEAD
+    }
+    Pop-Location
+    Write-Host "[+] Update completed." -ForegroundColor Green
+} else {
+    Write-Host "[*] Cloning repository to $fullPath..." -ForegroundColor Cyan
+    git clone --depth 1 $repoUrl $fullPath
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[+] Project successfully cloned!" -ForegroundColor Green
     } else {
