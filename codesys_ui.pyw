@@ -47,7 +47,7 @@ def show_toast(title, message, timeout=3000):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(420, 360) # Increased height for more options
+        self.Size = Size(420, 390) # Increased height for retention count
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -119,14 +119,19 @@ class SettingsForm(Form):
         self.chk_safety.Checked = current_settings.get("safety_backup", True)
         self.Controls.Add(self.chk_safety)
 
-        # Group 3: UX Settings
-        y += 40
-        self.chk_silent = CheckBox()
-        self.chk_silent.Text = "Silent Mode (Toast Notifications)"
-        self.chk_silent.Location = Point(30, y)
-        self.chk_silent.Size = Size(350, 24)
-        self.chk_silent.Checked = current_settings.get("silent_mode", False)
-        self.Controls.Add(self.chk_silent)
+        # Subsection: Backup Retention
+        y += 30
+        lbl_retention = Label()
+        lbl_retention.Text = "Max Backups to Keep (Optional):"
+        lbl_retention.Location = Point(50, y+3)
+        lbl_retention.AutoSize = True
+        self.Controls.Add(lbl_retention)
+        
+        self.txt_retention = TextBox()
+        self.txt_retention.Location = Point(250, y)
+        self.txt_retention.Size = Size(60, 20)
+        self.txt_retention.Text = str(current_settings.get("retention_count", 10))
+        self.Controls.Add(self.txt_retention)
 
         # Buttons
         btn_cancel = Button()
@@ -145,13 +150,20 @@ class SettingsForm(Form):
         self.CancelButton = btn_cancel
 
     def get_results(self):
+        try:
+            retention = int(self.txt_retention.Text.strip())
+            if retention < 1:
+                retention = 10
+        except:
+            retention = 10
+        
         return {
             "export_xml": self.chk_xml.Checked,
             "backup_binary": self.chk_bin.Checked,
             "backup_name": self.txt_backup_name.Text.strip(),
             "save_after_import": self.chk_save.Checked,
             "safety_backup": self.chk_safety.Checked,
-            "silent_mode": self.chk_silent.Checked
+            "retention_count": retention
         }
 
 def show_settings_dialog(current_settings, version=None):

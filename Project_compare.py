@@ -44,7 +44,7 @@ import json
 from codesys_constants import TYPE_GUIDS, SCRIPT_VERSION
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
-    resolve_projects, clean_filename, get_project_prop
+    resolve_projects, clean_filename, get_project_prop, backup_project_binary
 )
 from codesys_managers import (
     FolderManager, POUManager, NativeManager, ConfigManager, PropertyManager,
@@ -55,7 +55,7 @@ from codesys_compare_engine import (
 )
 
 
-def check_version_compatibility(base_dir, silent=False):
+def check_version_compatibility(base_dir):
     """Check if export was done with compatible script version"""
     proj_version = get_project_prop("cds-sync-version")
     if proj_version is None:
@@ -82,36 +82,27 @@ def check_version_compatibility(base_dir, silent=False):
 
 
 
-def compare_project(projects_obj=None, silent=False):
+def compare_project(projects_obj=None):
     """Compare CODESYS project objects with disk files"""
     
     projects_obj = resolve_projects(projects_obj, globals())
     
     if projects_obj is None or not projects_obj.primary:
         msg = "Error: 'projects' object not found or no project open."
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
+        system.ui.error(msg)
         return
     
     base_dir, error = load_base_dir()
     if error:
-        if not silent:
-            system.ui.warning(error)
-        else:
-            print(error)
+        system.ui.warning(error)
         return
     
     # Check version compatibility
-    version_ok, version_msg = check_version_compatibility(base_dir, silent)
+    version_ok, version_msg = check_version_compatibility(base_dir)
     if not version_ok:
-        if not silent:
-            print("WARNING: " + version_msg)
-            print("The export was created with a different version of the sync script.")
-            print("Comparison results may be unreliable.\n")
-        else:
-            log_warning("Version mismatch: " + version_msg)
+        print("WARNING: " + version_msg)
+        print("The export was created with a different version of the sync script.")
+        print("Comparison results may be unreliable.\n")
     
     print("=== Starting Project Comparison ===")
     print("Comparing: CODESYS IDE <-> " + base_dir)
@@ -168,19 +159,18 @@ def compare_project(projects_obj=None, silent=False):
         log_info("DIFF:\n" + "\n".join(diff_lines))
     
     # ── Show UI ──
-    if not silent:
-        if not diff_lines:
-            system.ui.info("IDE and Disk are in sync!\n\nObjects checked: " + str(unchanged_count))
-        else:
-            from codesys_ui import show_compare_dialog
-            action, selected = show_compare_dialog(
-                different, new_in_ide, new_on_disk, unchanged_count
-            )
-            
-            if action == "import":
-                perform_import(projects_obj.primary, base_dir, selected)
-            elif action == "export":
-                perform_export(base_dir, selected)
+    if not diff_lines:
+        system.ui.info("IDE and Disk are in sync!\n\nObjects checked: " + str(unchanged_count))
+    else:
+        from codesys_ui import show_compare_dialog
+        action, selected = show_compare_dialog(
+            different, new_in_ide, new_on_disk, unchanged_count
+        )
+        
+        if action == "import":
+            perform_import(projects_obj.primary, base_dir, selected)
+        elif action == "export":
+            perform_export(base_dir, selected)
 
 
 def perform_import(primary_project, base_dir, selected):
@@ -189,12 +179,23 @@ def perform_import(primary_project, base_dir, selected):
         system.ui.info("No files selected for import.")
         return
     
+    # Create timestamped safety backup if enabled
+    backup_filename = None
+    safety_backup = get_project_prop("cds-sync-safety-backup", True)
+    if safety_backup and selected:
+        projects_obj = resolve_projects(None, globals())
+        retention = get_project_prop("cds-sync-backup-retention-count", 10)
+        backup_filename = backup_project_binary(base_dir, projects_obj, timestamped=True, retention_count=retention)
+    
     updated, created, failed, deleted = perform_import_items(
         primary_project, base_dir, selected, globals()
     )
     
-    system.ui.info("Import complete!\n\nUpdated: {}\nCreated: {}\nDeleted: {}\nFailed: {}".format(
-        updated, created, deleted, failed))
+    message = "Import complete!\n\nUpdated: {}\nCreated: {}\nDeleted: {}\nFailed: {}".format(
+        updated, created, deleted, failed)
+    if backup_filename:
+        message += "\n\nBackup created: .project/" + backup_filename
+    system.ui.info(message)
 
 
 def perform_export(base_dir, selected):
@@ -257,8 +258,6 @@ def perform_export(base_dir, selected):
 def main():
     base_dir, error = load_base_dir()
     
-    is_silent = globals().get("SILENT", False)
-    
     log_file_obj = None
     original_stdout = sys.stdout
     original_stderr = sys.stderr
@@ -293,7 +292,7 @@ def main():
             pass
 
     try:
-        compare_project(silent=is_silent)
+        compare_project()
     finally:
         if log_file_obj:
             sys.stdout = original_stdout

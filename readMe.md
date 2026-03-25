@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.6.6`
+**Version**: `1.6.7`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -19,7 +19,7 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 - **Reversible Sync**: Round-trip editing for Structured Text files.
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
-- **Timestamped Backups**: Automatically creates safety backups before imports to prevent data loss.
+- **Timestamped Backups with Retention**: Automatically creates safety backups before imports with configurable retention policy (default: 10 backups). Old backups are automatically cleaned up while preserving Git LFS backups.
 - **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing. (Note: Device and Module objects are excluded for project stability).
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.

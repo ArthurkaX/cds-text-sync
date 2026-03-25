@@ -25,7 +25,7 @@ _load_hidden_module("codesys_ui")
 
 from codesys_utils import safe_str, init_logging, load_base_dir, resolve_projects, update_application_count_flag
 
-def build_project(projects_obj=None, silent=False):
+def build_project(projects_obj=None):
     """Build the active application in CODESYS and generate build.log"""
     from System import Guid
 
@@ -34,18 +34,12 @@ def build_project(projects_obj=None, silent=False):
     
     if projects_obj is None or not projects_obj.primary:
         msg = "Error: 'projects' object not found or no project open."
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
+        system.ui.error(msg)
         return
 
     if not projects_obj.primary:
         msg = "Error: No project open!"
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
+        system.ui.error(msg)
         return
 
     # Find application to build
@@ -53,7 +47,7 @@ def build_project(projects_obj=None, silent=False):
     has_multiple_apps = get_project_prop("cds-text-sync-multipleApps", False)
     
     app = None
-    if has_multiple_apps and not silent:
+    if has_multiple_apps:
         # Check if we should prompt for application
         try:
             APP_GUID = "639b491f-5557-464c-af91-1471bac9f549"
@@ -92,10 +86,7 @@ def build_project(projects_obj=None, silent=False):
         
     if not app:
         msg = "Error: No active application found to build."
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
+        system.ui.error(msg)
         return
 
     # CODESYS Build GUID Category
@@ -391,31 +382,21 @@ def build_project(projects_obj=None, silent=False):
         print(footer + " (Time: {:.2f}s)".format(elapsed))
         
         # Feedback
-        try:
-            from codesys_ui import show_toast
-            show_toast(msg_title, msg_body)
-        except:
-            if not silent:
-                if error_count == 0:
-                    system.ui.info(msg_body)
-                else:
-                    system.ui.error(msg_body)
+        if error_count == 0:
+            system.ui.info(msg_body)
+        else:
+            system.ui.error(msg_body)
                     
     except Exception as e:
         print("Build Error: " + str(e))
-        if not silent:
-            system.ui.error("Build process failed: " + str(e))
+        system.ui.error("Build process failed: " + str(e))
 
 def main():
     base_dir, error = load_base_dir()
     if error:
-        # Build doesn't strictly need base_dir, but we check for consistency
         pass
     
-    # Check if we are being run in silent mode (e.g. from Daemon)
-    is_silent = globals().get("SILENT", False)
-    
-    build_project(silent=is_silent)
+    build_project()
 
 if __name__ == "__main__":
     main()

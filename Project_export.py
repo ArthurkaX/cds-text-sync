@@ -72,7 +72,7 @@ def save_export_metadata(export_dir, stats, elapsed_time):
         log_warning("Failed to save version to project property: " + safe_str(e))
 
 
-def cleanup_orphaned_files(export_dir, current_objects, silent=False):
+def cleanup_orphaned_files(export_dir, current_objects):
     """
     Find and optionally delete files in export_dir that are not in current_objects.
     """
@@ -113,12 +113,8 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
     except:
         auto_delete = False
 
-    if silent:
-        if auto_delete:
-            result = (0,) # Simulate Delete
-        else:
-             print("Silent Mode: " + str(len(orphaned_items)) + " orphans ignored (set cds-sync-auto-delete-orphans=True to delete).")
-             return True # Ignore
+    if auto_delete:
+        result = (0,) # Simulate Delete
     else:
         # Prompt user
         message = "The following files exist in the export directory but are NOT in the CODESYS project (orphans):\n\n"
@@ -192,7 +188,7 @@ def cleanup_orphaned_files(export_dir, current_objects, silent=False):
 
 
 
-def export_project(export_dir, projects_obj=None, silent=False):
+def export_project(export_dir, projects_obj=None):
     """Export all project objects to folder structure with metadata"""
     
     # Resolving projects object
@@ -200,14 +196,10 @@ def export_project(export_dir, projects_obj=None, silent=False):
     
     if projects_obj is None or not projects_obj.primary:
         msg = "Error: 'projects' object not found or no project open."
-        if not silent:
-            try:
-                system.ui.error(msg)
-            except NameError:
-                print("Error:", msg)
-                return
-        else:
-            print(msg)
+        try:
+            system.ui.error(msg)
+        except NameError:
+            print("Error:", msg)
         return
     
     # Create export directory
@@ -308,7 +300,7 @@ def export_project(export_dir, projects_obj=None, silent=False):
             log_error("Error exporting " + safe_str(obj) + ": " + safe_str(e))
     
     # Orphan cleanup now uses exported_paths set directly
-    if not cleanup_orphaned_files(export_dir, exported_paths, silent=silent):
+    if not cleanup_orphaned_files(export_dir, exported_paths):
         return
             
     
@@ -332,26 +324,10 @@ def export_project(export_dir, projects_obj=None, silent=False):
     }, elapsed_time)
     
     # Show completion notification
-    if silent:
-        try:
-            from codesys_ui import show_toast
-            show_toast("Export Complete", summary + "\nTime: {:.2f}s".format(elapsed_time))
-        except:
-            print("Export complete (toast unavailable)")
-    else:
-        # Interactive mode: check if user prefers toast over modal dialog
-        silent_mode = get_project_prop("cds-sync-silent-mode", False)
-        if silent_mode:
-            try:
-                from codesys_ui import show_toast
-                show_toast("Export Complete", summary + "\nTime: {:.2f}s".format(elapsed_time))
-            except:
-                print("Export complete (Silent mode active, but UI module failed)")
-        else:
-            try:
-                system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
-            except NameError:
-                print("Export complete!\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+    try:
+        system.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+    except NameError:
+        print("Export complete!\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
 
 def main():
@@ -363,11 +339,8 @@ def main():
             print("Error:", error)
         return
         
-    # Check if we are being run in silent mode (e.g. from Daemon)
-    is_silent = globals().get("SILENT", False)
-    
     init_logging(base_dir)
-    export_project(base_dir, silent=is_silent)
+    export_project(base_dir)
 
 
 if __name__ == "__main__":

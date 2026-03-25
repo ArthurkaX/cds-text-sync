@@ -1049,11 +1049,74 @@ def find_object_by_path(rel_path, project):
     return current_obj
 
 
-def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
+def cleanup_old_backups(project_folder, retention_count):
     """
-    Copy the current project binary to the /project folder.
+    Clean up old timestamped backups in .project/ folder.
+    Only deletes files matching pattern: YYYYMMDD_HHMMSS_*.bak
+    Preserves non-timestamped backup files (Git LFS backups).
+    
+    Args:
+        project_folder: Path to the .project folder
+        retention_count: Number of timestamped backups to keep
+    """
+    if retention_count <= 0:
+        return
+    
+    if not os.path.exists(project_folder):
+        return
+    
+    import re
+    
+    timestamped_backups = []
+    try:
+        for filename in os.listdir(project_folder):
+            if not filename.endswith(".bak"):
+                continue
+            
+            # Pattern: YYYYMMDD_HHMMSS_*.bak
+            # Example: 20260325_143022_MyProject.project.bak
+            if re.match(r'^\d{8}_\d{6}_.*\.bak$', filename):
+                full_path = os.path.join(project_folder, filename)
+                if os.path.isfile(full_path):
+                    timestamped_backups.append(full_path)
+        
+        if len(timestamped_backups) <= retention_count:
+            return
+        
+        # Sort by filename (timestamp is encoded in name)
+        timestamped_backups.sort(reverse=True)
+        
+        # Delete files beyond retention count
+        files_to_delete = timestamped_backups[retention_count:]
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+                filename = os.path.basename(file_path)
+                log_info("Deleted old backup: .project/" + filename)
+                print("Deleted old backup: .project/" + filename)
+            except Exception as e:
+                log_warning("Failed to delete old backup " + file_path + ": " + safe_str(e))
+                print("Warning: Failed to delete old backup: " + file_path)
+    except Exception as e:
+        log_warning("Error during backup cleanup: " + safe_str(e))
+        print("Warning: Error during backup cleanup: " + safe_str(e))
+
+
+def backup_project_binary(export_dir, projects_obj=None, timestamped=False, retention_count=None):
+    """
+    Copy the current project binary to /project folder.
     Forces a project save before copying to ensure the backup is current.
     If timestamped=True, creates a backup with date and time.
+    
+    Args:
+        export_dir: Directory where .project folder will be created
+        projects_obj: CODESYS projects object
+        timestamped: If True, create timestamped backup with date and time
+        retention_count: Optional. If provided, clean up old timestamped backups
+                         keeping only this many (only applies to timestamped backups)
+    
+    Returns:
+        Backup filename if created successfully, None otherwise
     """
     try:
         if not projects_obj:
@@ -1066,7 +1129,7 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         if not projects_obj or not hasattr(projects_obj, "primary") or not projects_obj.primary:
             log_warning("Cannot identify project for backup.")
             print("Debug: Cannot identify project for backup (projects_obj missing or invalid).")
-            return
+            return None
 
         # Force save to ensure we backup the latest state
         try:
@@ -1080,7 +1143,7 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         if not hasattr(projects_obj.primary, "path") or not projects_obj.primary.path:
             log_warning("Project not saved to disk yet. Skipping binary backup.")
             print("Debug: Project has no path on disk.")
-            return
+            return None
 
         project_path = projects_obj.primary.path
         project_folder = os.path.join(export_dir, ".project")
@@ -1112,6 +1175,13 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         log_info("Binary backup created: .project/" + file_name)
         print("Binary backup created: .project/" + file_name)
         
+        # Clean up old timestamped backups if retention is specified
+        if timestamped and retention_count is not None:
+            cleanup_old_backups(project_folder, retention_count)
+        
+        return file_name
+        
     except Exception as e:
         log_error("Warning: Could not create binary backup: " + str(e))
         print("Warning: Could not create binary backup: " + str(e))
+        return None

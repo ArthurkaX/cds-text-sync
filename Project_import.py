@@ -38,12 +38,12 @@ import json
 
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_warning,
-    resolve_projects, get_project_prop
+    resolve_projects, get_project_prop, backup_project_binary
 )
 from codesys_compare_engine import find_all_changes, perform_import_items
 
 
-def check_version_compatibility(base_dir, silent=False):
+def check_version_compatibility(base_dir):
     """Check if export was done with compatible script version"""
     from codesys_constants import SCRIPT_VERSION
     
@@ -72,7 +72,7 @@ def check_version_compatibility(base_dir, silent=False):
 
 
 
-def import_project(projects_obj=None, silent=False):
+def import_project(projects_obj=None):
     """
     Main import entry point.
     Compares disk with IDE and imports all differences automatically.
@@ -82,41 +82,31 @@ def import_project(projects_obj=None, silent=False):
     
     if projects_obj is None or not projects_obj.primary:
         msg = "Error: 'projects' object not found or no project open."
-        if not silent:
-            system.ui.error(msg)
-        else:
-            print(msg)
+        system.ui.error(msg)
         return
     
     base_dir, error = load_base_dir()
     if error:
-        if not silent:
-            system.ui.warning(error)
-        else:
-            print(error)
+        system.ui.warning(error)
         return
     
     # Check version compatibility
-    version_ok, version_msg = check_version_compatibility(base_dir, silent)
+    version_ok, version_msg = check_version_compatibility(base_dir)
     if not version_ok:
-        if not silent:
-            msg = "Version Mismatch Warning!\n\n" + version_msg + "\n\n"
-            msg += "The export was created with a different version of the sync script.\n"
-            msg += "This may cause unexpected behavior during import.\n\n"
-            msg += "Recommendation: Re-export the project with the current script version.\n\n"
-            msg += "Continue anyway?"
-            
-            try:
-                result = system.ui.choose(msg, ("Continue", "Cancel"))
-                if result[0] == 1:
-                    print("Import cancelled due to version mismatch.")
-                    return
-            except:
-                print("WARNING: " + version_msg)
-                print("Proceeding with import anyway...")
-        else:
-            log_warning("Version mismatch: " + version_msg)
+        msg = "Version Mismatch Warning!\n\n" + version_msg + "\n\n"
+        msg += "The export was created with a different version of the sync script.\n"
+        msg += "This may cause unexpected behavior during import.\n\n"
+        msg += "Recommendation: Re-export the project with the current script version.\n\n"
+        msg += "Continue anyway?"
+        
+        try:
+            result = system.ui.choose(msg, ("Continue", "Cancel"))
+            if result[0] == 1:
+                print("Import cancelled due to version mismatch.")
+                return
+        except:
             print("WARNING: " + version_msg)
+            print("Proceeding with import anyway...")
     
     print("=== Starting Project Import ===")
     print("Importing from: " + base_dir)
@@ -167,8 +157,7 @@ def import_project(projects_obj=None, silent=False):
         elapsed = time.time() - start_time
         msg = "No changes to import.\nAll " + str(unchanged_count) + " objects are in sync."
         print(msg)
-        if not silent:
-            system.ui.info(msg + "\nTime: {:.2f}s".format(elapsed))
+        system.ui.info(msg + "\nTime: {:.2f}s".format(elapsed))
         return
     
     # Show what we're about to import
@@ -177,6 +166,13 @@ def import_project(projects_obj=None, silent=False):
     for item in to_import:
         action = "delete" if item.get("is_orphan") else item["type"]
         print("  <- " + item["path"] + " (" + action + ")")
+    
+    # ── Create timestamped safety backup if enabled ──
+    backup_filename = None
+    safety_backup = get_project_prop("cds-sync-safety-backup", True)
+    if safety_backup and to_import:
+        retention = get_project_prop("cds-sync-backup-retention-count", 10)
+        backup_filename = backup_project_binary(base_dir, projects_obj, timestamped=True, retention_count=retention)
     
     # ── Phase 2: Import all changes ──
     updated, created, failed, deleted = perform_import_items(
@@ -189,6 +185,8 @@ def import_project(projects_obj=None, silent=False):
     print("=== Import Complete ===")
     summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Deleted: " + str(deleted) + ", Failed: " + str(failed)
     print(summary)
+    if backup_filename:
+        print("Backup created: .project/" + backup_filename)
     print("Time elapsed: {:.2f} seconds".format(elapsed))
     
     log_info("Import complete! " + summary)
@@ -220,23 +218,22 @@ def import_project(projects_obj=None, silent=False):
     except Exception as e:
         log_warning("Failed to update metadata: " + safe_str(e))
     
-    if not silent:
-        try:
-            from codesys_ui import show_toast
-            show_toast("Import Complete", summary + "\nTime: {:.2f}s".format(elapsed))
-        except:
-            system.ui.info("Import complete!\n\n" + summary)
+    try:
+        message = "Import complete!\n\n" + summary + "\nTime: {:.2f}s".format(elapsed)
+        if backup_filename:
+            message += "\n\nBackup created: .project/" + backup_filename
+        system.ui.info(message)
+    except NameError:
+        print("Import complete!\n" + summary)
 
 
 def main():
     base_dir, error = load_base_dir()
     
-    is_silent = globals().get("SILENT", False)
-    
     if base_dir:
         init_logging(base_dir)
     
-    import_project(silent=is_silent)
+    import_project()
 
 
 if __name__ == "__main__":

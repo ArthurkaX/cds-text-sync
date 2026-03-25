@@ -50,7 +50,7 @@ def main():
         "save_after_import": get_project_prop("cds-sync-save-after-import", True),
         "safety_backup": get_project_prop("cds-sync-safety-backup", True),
         "backup_name": get_project_prop("cds-sync-backup-name", ""),
-        "silent_mode": get_project_prop("cds-sync-silent-mode", False)
+        "retention_count": get_project_prop("cds-sync-backup-retention-count", 10)
     }
 
     # Show Dialog
@@ -63,7 +63,7 @@ def main():
         set_project_prop("cds-sync-save-after-import", new_settings["save_after_import"])
         set_project_prop("cds-sync-safety-backup", new_settings["safety_backup"])
         set_project_prop("cds-sync-backup-name", new_settings["backup_name"])
-        set_project_prop("cds-sync-silent-mode", new_settings["silent_mode"])
+        set_project_prop("cds-sync-backup-retention-count", new_settings["retention_count"])
         
         print("Settings saved successfully.")
     else:
