@@ -116,7 +116,7 @@ def cleanup_orphaned_files(export_dir, current_objects):
         auto_delete = False
 
     if auto_delete:
-        result = (0,) # Simulate Delete
+        choice_idx = 0 # Delete
     else:
         # Prompt user
         message = "The following files exist in the export directory but are NOT in the CODESYS project (orphans):\n\n"
@@ -128,20 +128,15 @@ def cleanup_orphaned_files(export_dir, current_objects):
         
         message += "\nWould you like to delete these orphaned files?"
         
-        # buttons: Delete, Ignore, Cancel
-        try:
-            try:
-                result = system.ui.choose(message, ("Delete Orphans", "Ignore", "Cancel Export"))
-            except NameError:
-                # Running outside CODESYS - default to "Ignore"
-                result = ("Ignore",)
-        except:
-            # Fallback for environments where choose is not available or fails
-            print("UI Choose not available, skipping cleanup.")
-            return True
+        # buttons: Delete (Yes), Ignore (No)
+        from codesys_ui import ask_yes_no
+        if ask_yes_no("Delete Orphaned Files?", message):
+            choice_idx = 0 # Delete
+        else:
+            choice_idx = 1 # Ignore
     
     removed_count = 0
-    if result[0] == 0: # Delete
+    if choice_idx == 0: # Delete
         print("Cleaning up orphaned files...")
         for rel_path in orphaned_items:
             full_path = os.path.join(export_dir, rel_path.replace("/", os.sep))

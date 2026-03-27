@@ -72,14 +72,10 @@ def import_project(projects_obj=None):
         msg += "Recommendation: Re-export the project with the current script version.\n\n"
         msg += "Continue anyway?"
         
-        try:
-            result = system.ui.choose(msg, ("Continue", "Cancel"))
-            if result[0] == 1:
-                print("Import cancelled due to version mismatch.")
-                return
-        except:
-            print("WARNING: " + version_msg)
-            print("Proceeding with import anyway...")
+        from codesys_ui import ask_yes_no
+        if not ask_yes_no("Version Mismatch Warning", msg):
+            print("Import cancelled due to version mismatch.")
+            return
     
     print("=== Starting Project Import ===")
     print("Importing from: " + base_dir)
@@ -140,6 +136,15 @@ def import_project(projects_obj=None):
         action = "delete" if item.get("is_orphan") else item["type"]
         print("  <- " + item["path"] + " (" + action + ")")
     
+    # Final confirmation before touching the IDE
+    from codesys_ui import ask_yes_no
+    confirm_msg = "Ready to import {} changes into the IDE.\n\nModified: {}\nNew on disk: {}\nDelete orphans: {}\n\nProceed?".format(
+        len(to_import), len(different), len(new_on_disk), len(new_in_ide)
+    )
+    if not ask_yes_no("Confirm Import", confirm_msg):
+        print("Import cancelled by user.")
+        return
+        
     # ── Create timestamped safety backup if enabled ──
     backup_filename = create_safety_backup(base_dir, projects_obj, to_import)
     

@@ -60,8 +60,14 @@ def build_project(projects_obj=None):
                 options = [safe_str(a.get_name()) for a in apps]
                 # Add "Active Application" as first option? No, better just list them.
                 res = system.ui.choose("Multiple applications detected. Select application to build:", options)
-                if res and res[0] >= 0:
-                    app = apps[res[0]]
+                # res is usually index but in some environments/versions it's a tuple (index, label)
+                try:
+                    choice_idx = res[0]
+                except:
+                    choice_idx = res
+                
+                if choice_idx is not None and choice_idx >= 0:
+                    app = apps[choice_idx]
                 else:
                     print("Build cancelled by user.")
                     return

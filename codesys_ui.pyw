@@ -10,7 +10,8 @@ try:
     from System.Windows.Forms import (
         Application, Form, Label, CheckBox, Button, FormBorderStyle, 
         DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
-        Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle
+        Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle,
+        MessageBox, MessageBoxButtons, MessageBoxIcon
     )
     from System.Drawing import Size, Point, Font, FontStyle, SystemIcons, Color
 except:
@@ -43,6 +44,52 @@ def show_toast(title, message, timeout=3000):
     # Run in a daemon-like thread
     t = Thread(ThreadStart(run_toast))
     t.Start()
+
+def ask_yes_no(title, message):
+    """
+    Shows a standard Windows Yes/No dialog. 
+    Returns True for Yes, False for No or Cancel.
+    Avoids the CODESYS radio-button based choose dialog.
+    """
+    try:
+        from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon, DialogResult
+        result = MessageBox.Show(message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+        return result == DialogResult.Yes
+    except Exception as e:
+        print("ask_yes_no error: " + str(e))
+        # Fallback to pure CODESYS prompt if WinForms fails
+        try:
+            import __main__
+            if hasattr(__main__, "system"):
+                res = __main__.system.ui.prompt(message, __main__.PromptChoice.YesNo, __main__.PromptResult.No)
+                return res == __main__.PromptResult.Yes
+        except:
+            pass
+        return False
+
+def ask_yes_no_cancel(title, message):
+    """
+    Shows a Windows Yes/No/Cancel dialog.
+    Returns "yes", "no", or "cancel".
+    """
+    try:
+        from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon, DialogResult
+        result = MessageBox.Show(message, title, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question)
+        if result == DialogResult.Yes: return "yes"
+        if result == DialogResult.No: return "no"
+        return "cancel"
+    except Exception as e:
+        print("ask_yes_no_cancel error: " + str(e))
+        # Fallback to pure CODESYS prompt
+        try:
+            import __main__
+            if hasattr(__main__, "system"):
+                res = __main__.system.ui.prompt(message, __main__.PromptChoice.YesNoCancel, __main__.PromptResult.Cancel)
+                if res == __main__.PromptResult.Yes: return "yes"
+                if res == __main__.PromptResult.No: return "no"
+        except:
+            pass
+        return "cancel"
 
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):

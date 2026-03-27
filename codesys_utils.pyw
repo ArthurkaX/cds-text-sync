@@ -490,8 +490,10 @@ def load_base_dir():
                 except: pass
                 
                 if sys_ui:
-                    res = sys_ui.choose(message, ("Yes, Re-configure", "No, Keep Current", "Cancel Operation"))
-                    if res and res[0] == 0:
+                    from codesys_ui import ask_yes_no_cancel
+                    ans = ask_yes_no_cancel("Computer Mismatch Detected", message)
+                    
+                    if ans == "yes":
                         try:
                             import Project_directory
                             Project_directory.set_base_directory()
@@ -510,7 +512,7 @@ def load_base_dir():
                         except Exception as e:
                             log_warning("Could not launch Project_directory: " + safe_str(e))
                             return None, "Please run 'Project_directory.py' manually to re-configure sync."
-                    elif res and res[0] == 2:
+                    elif ans == "cancel":
                         return None, "Operation cancelled by user."
                 else:
                     log_warning("Computer mismatch detected ('%s' vs '%s') but UI (system.ui) is not available." % (safe_str(sync_pc), safe_str(current_pc)))

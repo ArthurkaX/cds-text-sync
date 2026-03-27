@@ -44,16 +44,17 @@ def set_base_directory():
         pass
 
     # Offer choice: Browse or Manual Input
-    choice = system.ui.choose(
-        "How would you like to set the sync directory?\n\n" +
-        "Browse: Select a folder using file browser\n" +
-        "Manual: Enter path manually (supports relative paths like ./ or ./foldername/)",
-        ("Browse", "Manual Input", "Cancel")
+    from codesys_ui import ask_yes_no_cancel
+    ans = ask_yes_no_cancel(
+        "Set Sync Directory", 
+        "Would you like to BROWSE for a folder?\n\n[Yes] = Select using file browser\n[No]  = Enter path manually\n[Cancel] = Abort operation"
     )
     
-    if not choice or choice[0] == 2:  # Cancel
+    if ans == "cancel":
         print("Operation cancelled by user.")
         return
+    
+    choice_idx = 0 if ans == "yes" else 1
     
     selected_path = None
     
@@ -194,9 +195,8 @@ def set_base_directory():
                         message += "Do you want to update the metadata to match the current project?"
                         
                         # Offer to update
-                        res = system.ui.choose(message, ("Yes, Update Metadata", "No, Keep As Is"))
-                        
-                        if res and res[0] == 0:
+                        from codesys_ui import ask_yes_no
+                        if ask_yes_no("Update Metadata?", message):
                             data['project_path'] = current_path
                             try:
                                 data['project_name'] = str(projects.primary)
