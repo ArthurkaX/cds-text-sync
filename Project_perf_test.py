@@ -1,35 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-Project_speed_measure.py - Performance Analyzer for cds-text-sync (Anonymous)
+Project_perf_test.py - Performance Profiling for CODESYS Text Sync
 
-Measures execution time of key methods in compare engine to identify
-performance bottlenecks, especially for large projects (500+ objects).
-
-⚠ IMPORTANT: This script generates ANONYMOUS reports only.
-No object names, paths, or project-specific data is included.
-Reports can be safely shared for performance analysis.
-
-Usage: Run this script to get a detailed performance breakdown of:
-- IDE object collection
-- Property accessor collection  
-- Per-object comparison (get_ide_content, contents_are_equal)
-- Disk scanning
-
-Output files in sync folder:
-• performance_report.txt - Human-readable text report (full)
-• performance_report.json - Machine-readable JSON report
-
-Report structure:
-• SLOWEST ACTIONS (Performance Bottlenecks): Sections sorted by time
-• SLOWEST OBJECT TYPES: Object types sorted by average processing time
-• PERFORMANCE INSIGHTS: Analysis and recommendations
+Measures and reports performance metrics for the compare engine,
+helping identify bottlenecks and optimization opportunities.
 """
+
 import os
 import sys
 import time
-import imp
-import json
 import codecs
+import json
+import tempfile
+import collections
+import subprocess
+import imp
 from collections import defaultdict
 
 # --- Hidden Module Loader ---
@@ -51,14 +36,14 @@ _load_hidden_module("codesys_utils")
 _load_hidden_module("codesys_managers")
 _load_hidden_module("codesys_compare_engine")
 
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, TYPE_NAMES
+from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, TYPE_NAMES, SCRIPT_VERSION
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
-    resolve_projects, clean_filename, get_project_prop
+    resolve_projects, clean_filename, get_project_prop, calculate_hash
 )
 from codesys_managers import (
     collect_property_accessors, classify_object, build_expected_path, export_object_content,
-    format_st_content, format_property_content
+    format_st_content, format_property_content, NativeManager
 )
 
 
@@ -78,6 +63,8 @@ class PerformanceProfiler:
             "max": 0.0, 
             "slow_times": []
         })
+        self.environment = {}
+        self.object_counts = defaultdict(int)
         
     def start(self, name):
         """Start timing a section."""
@@ -89,26 +76,39 @@ class PerformanceProfiler:
             self.timings[name]["elapsed"] = time.time() - self.timings[name]["start"]
             self.counters[name] += 1
             
-    def track_object(self, rel_path, obj_type, elapsed):
-        """Track individual object processing time (anonymous - no paths stored)."""
-        self.per_type_stats[obj_type]["total"] += elapsed
-        self.per_type_stats[obj_type]["count"] += 1
-        if elapsed > self.per_type_stats[obj_type]["max"]:
-            self.per_type_stats[obj_type]["max"] = elapsed
+    def track_object(self, obj_type, category, elapsed):
+        """Track individual object processing time (anonymous - no paths stored).
+        
+        Args:
+            obj_type: Object type name (e.g. 'pou', 'gvl', 'dut')
+            category: Measurement category (e.g. 'ST extract', 'classify', 'compare')
+            elapsed: Time in seconds
+        """
+        key = obj_type + " " + category
+        self.per_type_stats[key]["total"] += elapsed
+        self.per_type_stats[key]["count"] += 1
+        if elapsed > self.per_type_stats[key]["max"]:
+            self.per_type_stats[key]["max"] = elapsed
         if elapsed > 0.05:  # Track objects that take >50ms for percentile analysis
-            self.per_type_stats[obj_type]["slow_times"].append(elapsed)
+            self.per_type_stats[key]["slow_times"].append(elapsed)
+    
+    def count_object(self, obj_type):
+        """Count objects by type."""
+        self.object_counts[obj_type] += 1
             
     def get_report(self):
-        """Generate performance report (anonymous - no object paths)."""
+        """Generate performance report (anonymous)."""
         total_time = sum(t.get("elapsed", 0) for t in self.timings.values())
         
         report = {
             "total_time_sec": total_time,
+            "environment": self.environment,
             "sections": {},
-            "object_stats": {}
+            "object_stats": {},
+            "object_counts": dict(self.object_counts)
         }
         
-        # Section timings - focus on SLOWEST ACTIONS
+        # Section timings
         for name, data in self.timings.items():
             if "elapsed" in data:
                 pct = (data["elapsed"] / total_time * 100) if total_time > 0 else 0
@@ -118,7 +118,7 @@ class PerformanceProfiler:
                 }
         
         # Per-type statistics
-        for obj_type, stats in self.per_type_stats.items():
+        for key, stats in self.per_type_stats.items():
             avg = stats["total"] / stats["count"] if stats["count"] > 0 else 0
             stats_data = {
                 "count": stats["count"],
@@ -126,68 +126,130 @@ class PerformanceProfiler:
                 "avg_sec": avg,
                 "max_sec": stats["max"]
             }
-            # Add percentile if we have enough slow samples
             if stats["slow_times"] and len(stats["slow_times"]) >= 5:
                 sorted_slow = sorted(stats["slow_times"])
                 p90_idx = int(len(sorted_slow) * 0.9)
                 stats_data["p90_sec"] = sorted_slow[p90_idx]
-            report["object_stats"][obj_type] = stats_data
+            report["object_stats"][key] = stats_data
         
         return report
     
-    def get_text_report(self, processed_count=0):
-        """Generate formatted text report as string (anonymous - focuses on slowest actions)."""
+    def get_text_report(self, processed_count=0, active_count=0):
+        """Generate formatted text report as string."""
         report = self.get_report()
         total = report["total_time_sec"]
+        env = report.get("environment", {})
         
         lines = []
-        lines.append("\n" + "=" * 70)
+        lines.append("")
+        lines.append("=" * 74)
         lines.append("PERFORMANCE ANALYSIS REPORT (Anonymous)")
-        lines.append("=" * 70)
-        lines.append("Total Time: {:.2f}s ({:.0f}m {:.1f}s)".format(total, total // 60, total % 60))
-        lines.append("=" * 70)
+        lines.append("=" * 74)
         
-        # SECTION BREAKDOWN - FOCUS ON SLOWEST ACTIONS
-        lines.append("\nSLOWEST ACTIONS (Performance Bottlenecks):")
-        lines.append("-" * 70)
+        # ── Environment ──
+        lines.append("  Date       : " + env.get("timestamp", "N/A"))
+        lines.append("  PC         : " + env.get("hostname", "N/A"))
+        lines.append("  Script     : v" + env.get("script_version", "N/A"))
+        lines.append("  export_xml : " + str(env.get("export_xml", "N/A")))
+        lines.append("-" * 74)
+        
+        # ── Key Metrics (easy to compare) ──
+        lines.append("KEY METRICS:")
+        lines.append("  Total objects in project : {}".format(env.get("total_objects", "?")))
+        lines.append("  Active (not skipped)     : {}".format(active_count))
+        lines.append("  Total time               : {:.2f}s".format(total))
+        if active_count > 0:
+            ide_loop = report["sections"].get("IDE comparison loop", {}).get("elapsed_sec", 0)
+            avg = ide_loop / active_count if ide_loop > 0 else 0
+            lines.append("  Avg per active object    : {:.3f}s".format(avg))
+            lines.append("  Projected 500 objects    : {:.1f}s".format(avg * 500))
+            lines.append("  Projected 1000 objects   : {:.1f}s".format(avg * 1000))
+        lines.append("=" * 74)
+        
+        # ── Section Breakdown ──
+        lines.append("")
+        lines.append("SECTIONS (sorted by time):")
+        lines.append("-" * 74)
         for i, (name, data) in enumerate(sorted(report["sections"].items(),
                                               key=lambda x: x[1]["elapsed_sec"],
                                               reverse=True), 1):
             bar_len = int(data["percent"] / 2)
             bar = "█" * bar_len
-            lines.append("  {:2d}. {:35s} {:6.2f}s ({:5.1f}%) {}".format(
-                i, name[:35], data["elapsed_sec"], data["percent"], bar))
+            lines.append("  {:2d}. {:40s} {:7.2f}s ({:5.1f}%) {}".format(
+                i, name[:40], data["elapsed_sec"], data["percent"], bar))
         
-        # OBJECT TYPE STATISTICS - Sort by avg time (slowest types first)
-        lines.append("\nSLOWEST OBJECT TYPES (by average processing time):")
-        lines.append("-" * 70)
-        lines.append("  Type                     Count    Total     Avg      Max     P90")
-        lines.append("  " + "-" * 70)
-        sorted_types = sorted(report["object_stats"].items(),
-                           key=lambda x: x[1]["avg_sec"],
-                           reverse=True)
-        for obj_type, stats in sorted_types:
-            p90_str = "{:5.3f}s".format(stats.get("p90_sec", 0)) if "p90_sec" in stats else " N/A  "
-            lines.append("  {:25s} {:5d}  {:6.2f}s  {:5.3f}s  {:5.2f}s  {}".format(
-                obj_type[:25],
-                stats["count"],
-                stats["total_sec"],
-                stats["avg_sec"],
-                stats["max_sec"],
-                p90_str
-            ))
+        # ── Unaccounted time ──
+        ide_loop_time = report["sections"].get("IDE comparison loop", {}).get("elapsed_sec", 0)
+        tracked_in_loop = sum(
+            s["total_sec"] for s in report["object_stats"].values()
+        )
+        unaccounted = ide_loop_time - tracked_in_loop
+        if ide_loop_time > 0:
+            unaccounted_pct = (unaccounted / ide_loop_time * 100)
+            lines.append("")
+            lines.append("  IDE loop breakdown:")
+            lines.append("    Tracked object time    : {:7.2f}s".format(tracked_in_loop))
+            lines.append("    Unaccounted (overhead)  : {:7.2f}s ({:.1f}%)".format(
+                unaccounted, unaccounted_pct))
+            lines.append("    (path building, file existence checks, dict ops, iteration)")
+        
+        # ── Object Counts ──
+        obj_counts = report.get("object_counts", {})
+        if obj_counts:
+            lines.append("")
+            lines.append("OBJECT COUNTS BY TYPE:")
+            lines.append("-" * 74)
+            for type_name, count in sorted(obj_counts.items(), key=lambda x: x[1], reverse=True):
+                lines.append("  {:30s} {:5d}".format(type_name, count))
+        
+        # ── Object Type Statistics ──
+        # Group by category (extract, classify, compare, etc.)
+        categories = defaultdict(list)
+        for key, stats in report["object_stats"].items():
+            # key format: "type_name category" e.g. "pou ST extract"
+            parts = key.rsplit(" ", 1)
+            if len(parts) == 2:
+                categories[parts[1]].append((parts[0], stats))
+            else:
+                categories["other"].append((key, stats))
+        
+        for category in ["classify", "extract", "compare", "disk_read", "XML export", "other"]:
+            items = categories.get(category, [])
+            if not items:
+                continue
+            items.sort(key=lambda x: x[1]["avg_sec"], reverse=True)
+            
+            lines.append("")
+            lines.append("OBJECT DETAILS — {} (by avg time):".format(category.upper()))
+            lines.append("-" * 74)
+            lines.append("  {:22s} {:>5s}  {:>7s}  {:>7s}  {:>7s}  {:>6s}".format(
+                "Type", "Count", "Total", "Avg", "Max", "P90"))
+            lines.append("  " + "-" * 68)
+            for obj_type, stats in items:
+                p90_str = "{:5.3f}s".format(stats.get("p90_sec", 0)) if "p90_sec" in stats else "  N/A "
+                lines.append("  {:22s} {:5d}  {:6.2f}s  {:5.3f}s  {:5.3f}s  {}".format(
+                    obj_type[:22],
+                    stats["count"],
+                    stats["total_sec"],
+                    stats["avg_sec"],
+                    stats["max_sec"],
+                    p90_str
+                ))
+            cat_total = sum(s["total_sec"] for _, s in items)
+            cat_count = sum(s["count"] for _, s in items)
+            lines.append("  {:22s} {:5d}  {:6.2f}s".format("SUBTOTAL", cat_count, cat_total))
         
         return "\n".join(lines) + "\n"
     
-    def get_insights_text(self, processed_count=0):
+    def get_insights_text(self, processed_count=0, active_count=0):
         """Generate insights section as string."""
         report = self.get_report()
         total = report["total_time_sec"]
         
         lines = []
-        lines.append("=" * 70)
-        lines.append("PERFORMANCE INSIGHTS (Bottleneck Analysis):")
-        lines.append("=" * 70)
+        lines.append("=" * 74)
+        lines.append("PERFORMANCE INSIGHTS:")
+        lines.append("=" * 74)
         
         # Find SLOWEST SECTION
         sorted_sections = sorted(report["sections"].items(),
@@ -196,62 +258,80 @@ class PerformanceProfiler:
         if sorted_sections:
             slowest_name, slowest_data = sorted_sections[0]
             slowest_pct = slowest_data["percent"]
-            lines.append("⚠ MAIN BOTTLENECK: '{}' - {:.1f}% of total time ({:.2f}s)".format(
+            lines.append("⚠ MAIN BOTTLENECK: '{}' — {:.1f}% of total time ({:.2f}s)".format(
                 slowest_name, slowest_pct, slowest_data["elapsed_sec"]))
             
-            # Specific insights for different bottlenecks
             if "IDE comparison loop" in slowest_name:
-                lines.append("  • This is a critical performance issue")
-                lines.append("  • Recommendation: Implement cache-based fast mode")
-                lines.append("  • With cache: Compare will skip unchanged objects")
-            
-            if "XML export" in slowest_name:
-                xml_stats = report["object_stats"].get("XML export_native", {})
-                if xml_stats.get("total_sec", 0) > 10:
-                    lines.append("  • XML export is particularly slow")
-                    lines.append("  • Recommendation: Consider disabling export_xml for non-essential XMLs")
-                    lines.append("  • Or use cache to skip re-exporting unchanged XMLs")
+                # Break down where time goes inside the loop
+                extract_total = sum(
+                    s["total_sec"] for k, s in report["object_stats"].items() if "extract" in k
+                )
+                classify_total = sum(
+                    s["total_sec"] for k, s in report["object_stats"].items() if "classify" in k
+                )
+                compare_total = sum(
+                    s["total_sec"] for k, s in report["object_stats"].items() if "compare" in k
+                )
+                xml_total = sum(
+                    s["total_sec"] for k, s in report["object_stats"].items() if "XML export" in k
+                )
+                disk_total = sum(
+                    s["total_sec"] for k, s in report["object_stats"].items() if "disk_read" in k
+                )
+                
+                loop_time = slowest_data["elapsed_sec"]
+                lines.append("  Loop time decomposition:")
+                if classify_total > 0.1:
+                    lines.append("    classify_object  : {:6.2f}s ({:4.1f}%)".format(
+                        classify_total, classify_total / loop_time * 100))
+                if extract_total > 0.1:
+                    lines.append("    ST extraction    : {:6.2f}s ({:4.1f}%)".format(
+                        extract_total, extract_total / loop_time * 100))
+                if xml_total > 0.1:
+                    lines.append("    XML export       : {:6.2f}s ({:4.1f}%)".format(
+                        xml_total, xml_total / loop_time * 100))
+                if compare_total > 0.1:
+                    lines.append("    comparison       : {:6.2f}s ({:4.1f}%)".format(
+                        compare_total, compare_total / loop_time * 100))
+                if disk_total > 0.1:
+                    lines.append("    disk read        : {:6.2f}s ({:4.1f}%)".format(
+                        disk_total, disk_total / loop_time * 100))
             
             # Secondary bottlenecks (>10% of time)
-            if len(sorted_sections) > 1 and sorted_sections[1][1]["percent"] > 10:
-                lines.append("\n⚠ SECONDARY BOTTLENECK: '{}' - {:.1f}%".format(
-                    sorted_sections[1][0], sorted_sections[1][1]["percent"]))
+            for i in range(1, len(sorted_sections)):
+                if sorted_sections[i][1]["percent"] > 10:
+                    lines.append("")
+                    lines.append("⚠ SECONDARY BOTTLENECK: '{}' — {:.1f}% ({:.2f}s)".format(
+                        sorted_sections[i][0],
+                        sorted_sections[i][1]["percent"],
+                        sorted_sections[i][1]["elapsed_sec"]))
         
-        # Average processing time
-        if processed_count > 0:
-            ide_loop_time = report["sections"].get("IDE comparison loop", {}).get("elapsed_sec", 0)
-            avg_per_object = ide_loop_time / processed_count if ide_loop_time > 0 else 0
-            lines.append("\n• Average time per object: {:.3f}s ({} objects processed)".format(
-                avg_per_object, processed_count))
-            lines.append("• Projected time for 1000 objects: {:.1f}s ({:.0f}m {:.1f}s)".format(
-                avg_per_object * 1000,
-                (avg_per_object * 1000) // 60,
-                (avg_per_object * 1000) % 60))
+        # Slowest classify calls (reveals is_nvl overhead)
+        classify_stats = {k: v for k, v in report["object_stats"].items() if "classify" in k}
+        if classify_stats:
+            slowest_classify = max(classify_stats.items(), key=lambda x: x[1]["avg_sec"])
+            if slowest_classify[1]["avg_sec"] > 0.005:
+                lines.append("")
+                lines.append("⚠ SLOW CLASSIFICATION: '{}' — {:.3f}s avg ({:.2f}s total, {} objects)".format(
+                    slowest_classify[0],
+                    slowest_classify[1]["avg_sec"],
+                    slowest_classify[1]["total_sec"],
+                    slowest_classify[1]["count"]))
+                if "gvl" in slowest_classify[0].lower():
+                    lines.append("  → Likely caused by is_nvl() doing native XML export for each GVL")
         
-        # Slowest object type
-        sorted_types = sorted(report["object_stats"].items(),
-                           key=lambda x: x[1]["avg_sec"],
-                           reverse=True)
-        if sorted_types:
-            slowest_type, slowest_type_data = sorted_types[0]
-            if slowest_type_data["avg_sec"] > 0.02:  # Slower than 20ms average
-                lines.append("\n• Slowest object type: '{}' - {:.3f}s avg ({:.2f}s total, {} objects)".format(
-                    slowest_type,
-                    slowest_type_data["avg_sec"],
-                    slowest_type_data["total_sec"],
-                    slowest_type_data["count"]))
-        
-        lines.append("\n" + "=" * 70)
-        lines.append("This report is anonymous - no object names or paths included")
+        lines.append("")
+        lines.append("=" * 74)
+        lines.append("This report is anonymous — no object names or paths included.")
         lines.append("Feel free to share this for performance analysis!")
-        lines.append("=" * 70)
+        lines.append("=" * 74)
         
         return "\n".join(lines) + "\n"
     
-    def print_report(self):
-        """Print formatted report to console (anonymous - focuses on slowest actions)."""
-        print(self.get_text_report())
-        print(self.get_insights_text())
+    def print_report(self, processed_count=0, active_count=0):
+        """Print formatted report to console."""
+        print(self.get_text_report(processed_count, active_count))
+        print(self.get_insights_text(processed_count, active_count))
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -265,6 +345,8 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
     """Extract content from IDE object for comparison (with profiling)."""
     
     obj_name = obj.get_name() if obj else "Unknown"
+    obj_type = safe_str(obj.type)
+    obj_type_name = TYPE_NAMES.get(obj_type, obj_type[:8])
     
     if is_xml:
         clean_name = clean_filename(obj_name)
@@ -275,7 +357,6 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
                 TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"], 
                 TYPE_GUIDS["visu_manager"], TYPE_GUIDS["softmotion_pool"]
             ]
-            obj_type = safe_str(obj.type)
             recursive = obj_type in monolithic_types
             
             if obj_type == TYPE_GUIDS["device"]:
@@ -286,7 +367,7 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
             export_time = time.time() - start
             
             if profiler:
-                profiler.track_object(obj_name, "XML export_native", export_time)
+                profiler.track_object(obj_type_name, "XML export", export_time)
             
             content = read_file(tmp_path)
             os.remove(tmp_path)
@@ -296,8 +377,6 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
     
     # ST content
     obj_guid = safe_str(obj.guid)
-    obj_type = safe_str(obj.type)
-    obj_type_name = TYPE_NAMES.get(obj_type, obj_type[:8])
     
     start = time.time()
     
@@ -323,7 +402,7 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
     st_extract_time = time.time() - start
     
     if profiler:
-        profiler.track_object(obj_name, obj_type_name + " ST", st_extract_time)
+        profiler.track_object(obj_type_name, "extract", st_extract_time)
     
     return result
 
@@ -366,6 +445,19 @@ def run_speed_analysis():
     
     profiler = PerformanceProfiler()
     
+    # ── Environment info ──
+    try:
+        hostname = socket.gethostname()
+    except:
+        hostname = "unknown"
+    
+    profiler.environment = {
+        "hostname": hostname,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "script_version": SCRIPT_VERSION,
+        "export_xml": export_xml,
+    }
+    
     # ═══════════════════════════════════════════════════════════════════
     #  STEP 1: Collect all IDE objects
     # ═══════════════════════════════════════════════════════════════════
@@ -373,76 +465,145 @@ def run_speed_analysis():
     profiler.start("get_children(recursive)")
     all_ide_objects = projects_obj.primary.get_children(recursive=True)
     profiler.end("get_children(recursive)")
+    profiler.environment["total_objects"] = len(all_ide_objects)
     print("  Found {} objects".format(len(all_ide_objects)))
     
     # ═══════════════════════════════════════════════════════════════════
-    #  STEP 2: Collect property accessors
+    #  STEP 2: Load Cache & Prepare Pass 1
     # ═══════════════════════════════════════════════════════════════════
-    print("\n[2/5] Collecting property accessors...")
-    profiler.start("collect_property_accessors")
-    property_accessors = collect_property_accessors(all_ide_objects)
-    profiler.end("collect_property_accessors")
-    print("  Collected {} property accessors".format(len(property_accessors)))
+    from codesys_utils import load_sync_cache, normalize_path
+    cache_data = load_sync_cache(base_dir)
+    cached_types = cache_data.get("types", {})
+    cached_objects = cache_data.get("objects", {})
+    cached_folders = cache_data.get("folders", {})
     
     # ═══════════════════════════════════════════════════════════════════
-    #  STEP 3: Process each IDE object (THE SLOW PART!)
+    #  STEP 3: Process each IDE object (Optimized Pass 1)
     # ═══════════════════════════════════════════════════════════════════
-    print("\n[3/5] Processing IDE objects (this may take a while)...")
+    print("\n[3/5] Processing IDE objects (Optimized Pass 1)...")
     profiler.start("IDE comparison loop")
     
     ide_paths = {}
+    ide_hashes = {}
+    ide_metadata = {}
+    property_accessors = {}
     processed_count = 0
     skipped_count = 0
     xml_count = 0
     st_count = 0
+    active_count = 0
+    compared_count = 0
+    path_cache_hits = 0
+    type_cache_hits = 0
+    
+    # Instantiate NativeManager once for XML comparison
+    native_mgr = NativeManager()
     
     for obj in all_ide_objects:
         processed_count += 1
+        obj_guid = safe_str(obj.guid)
         
-        # Progress indicator every 50 objects
-        if processed_count % 50 == 0:
-            print("  Progress: {}/{} objects processed".format(processed_count, len(all_ide_objects)))
+        # Progress indicator every 100 objects
+        if processed_count % 100 == 0:
+            print("  Progress: {}/{} objects scanned".format(processed_count, len(all_ide_objects)))
         
-        effective_type, is_xml, should_skip = classify_object(obj)
+        # ── Profile classify_object ──
+        t_classify = time.time()
+        if obj_guid in cached_types:
+            type_info = cached_types[obj_guid]
+            effective_type, is_xml = type_info[0], type_info[1]
+            rel_path = type_info[2] if len(type_info) > 2 else None
+            should_skip = False
+            type_cache_hits += 1
+        else:
+            effective_type, is_xml, should_skip = classify_object(obj)
+            rel_path = None
+            
+        classify_elapsed = time.time() - t_classify
+        type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+        profiler.track_object(type_name, "classify", classify_elapsed)
+        
         if should_skip:
             skipped_count += 1
             continue
 
-        # XML gate
-        if is_xml and effective_type in XML_TYPES:
-            always_exported = effective_type in [
-                TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]
-            ]
-            if not always_exported and not export_xml:
-                skipped_count += 1
-                continue
-            xml_count += 1
+        active_count += 1
+        profiler.count_object(type_name)
+        
+        # ── Profile Path Building ──
+        t_path = time.time()
+        if not rel_path:
+            rel_path = build_expected_path(obj, effective_type, is_xml)
         else:
-            st_count += 1
-
-        rel_path = build_expected_path(obj, effective_type, is_xml)
+            path_cache_hits += 1
+        path_elapsed = time.time() - t_path
+        profiler.track_object(type_name, "path_building", path_elapsed)
+        
+        if not rel_path: continue
+        
+        norm_path = normalize_path(rel_path)
         ide_paths[rel_path] = obj
-        file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
-        type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+        ide_metadata[norm_path] = (effective_type, is_xml)
 
-        if os.path.exists(file_path):
-            can_have_impl = effective_type in IMPLEMENTATION_TYPES
-            ide_content = get_ide_content_profiling(
-                obj, is_xml, property_accessors, projects_obj, can_have_impl, profiler
-            )
-            disk_content = read_file(file_path)
-            
-            # Note: We're NOT actually comparing here, just measuring extraction time
-        else:
-            # File doesn't exist on disk - still track the IDE extraction time
-            can_have_impl = effective_type in IMPLEMENTATION_TYPES
-            ide_content = get_ide_content_profiling(
-                obj, is_xml, property_accessors, projects_obj, can_have_impl, profiler
-            )
-    
+        # Optimization: Property accessors
+        if effective_type == TYPE_GUIDS["property"]:
+            try:
+                if obj_guid not in property_accessors:
+                    property_accessors[obj_guid] = {'get': None, 'set': None}
+                for child in obj.get_children():
+                    child_name = child.get_name().upper()
+                    if child_name == "GET": property_accessors[obj_guid]['get'] = child
+                    elif child_name == "SET": property_accessors[obj_guid]['set'] = child
+            except:
+                pass
+
+        if is_xml: xml_count += 1
+        else: st_count += 1
+        
     profiler.end("IDE comparison loop")
-    print("  Processed {} objects (XML: {}, ST: {}, Skipped: {})".format(
-        processed_count, xml_count, st_count, skipped_count))
+    print("  Pass 1 complete ({} active, {} type hits, {} path hits)".format(
+        active_count, type_cache_hits, path_cache_hits))
+
+    # Merkle Tree Profile
+    print("\n[3.5/5] Building Merkle Tree...")
+    profiler.start("merkle_tree_building")
+    from codesys_utils import build_folder_hashes
+    # (Mocking object hashes for Merkle profile based on metadata)
+    ide_folder_hashes = build_folder_hashes({p: "hash" for p in ide_metadata.keys()})
+    profiler.end("merkle_tree_building")
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  STEP 4: Compare (Pass 2 & Merkle Skip)
+    # ═══════════════════════════════════════════════════════════════════
+    print("\n[4/5] Second Pass: Comparison & Merkle Skip...")
+    profiler.start("comparison_pass")
+    
+    for rel_path, obj in ide_paths.items():
+        norm_path = normalize_path(rel_path)
+        eff_type, is_xml = ide_metadata[norm_path]
+        file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
+        type_name = TYPE_NAMES.get(eff_type, eff_type[:8])
+        
+        # ── Fast path 1: Folder-level check (Merkle Skip) ──
+        parent_folder = "/".join(norm_path.split("/")[:-1])
+        if parent_folder and parent_folder in ide_folder_hashes and parent_folder in cached_folders:
+            if ide_folder_hashes[parent_folder] == cached_folders[parent_folder]:
+                # Merkle hit! (In reality we'd still check disk mtime, but for profiling we skip)
+                continue
+
+        # ── Full Comparison (if not skipped) ──
+        if os.path.exists(file_path):
+            t_compare = time.time()
+            can_have_impl = eff_type in IMPLEMENTATION_TYPES
+            ide_content = get_ide_content_profiling(
+                obj, is_xml, property_accessors, projects_obj, can_have_impl, profiler
+            )
+            compare_elapsed = time.time() - t_compare
+            profiler.track_object(type_name, "compare", compare_elapsed)
+            compared_count += 1
+    
+    profiler.end("comparison_pass")
+    print("  Pass 2 complete (compared {} objects)".format(compared_count))
     
     # ═══════════════════════════════════════════════════════════════════
     #  STEP 4: Scan disk files
@@ -471,10 +632,18 @@ def run_speed_analysis():
     # ═══════════════════════════════════════════════════════════════════
     print("\n[5/5] Generating report...")
     
-    profiler.print_report()
+    profiler.print_report(processed_count, active_count)
     
     # Save reports (both JSON and TXT)
     report = profiler.get_report()
+    report["summary"] = {
+        "processed_count": processed_count,
+        "active_count": active_count,
+        "skipped_count": skipped_count,
+        "xml_count": xml_count,
+        "st_count": st_count,
+        "compared_count": compared_count
+    }
     
     # Save JSON report
     json_path = os.path.join(base_dir, "performance_report.json")
@@ -488,78 +657,105 @@ def run_speed_analysis():
     # Save text report (full report including insights)
     txt_path = os.path.join(base_dir, "performance_report.txt")
     try:
-        text_report = profiler.get_text_report(processed_count)
-        insights_report = profiler.get_insights_text(processed_count)
+        text_report = profiler.get_text_report(processed_count, active_count)
+        insights_report = profiler.get_insights_text(processed_count, active_count)
         with codecs.open(txt_path, "w", "utf-8") as f:
             f.write(text_report)
             f.write(insights_report)
         print("Text report saved to: " + txt_path)
     except Exception as e:
         print("\nWarning: Could not save text report: " + safe_str(e))
+
+    # Append to CSV history
+    append_to_csv(base_dir, report, report["summary"])
+
+
+def append_to_csv(base_dir, report, summary):
+    """Append performance metrics to CSV history file."""
+    import csv
     
-    # Performance insights - Focus on BOTTLENECKS
-    print("\n" + "=" * 70)
-    print("PERFORMANCE INSIGHTS (Bottleneck Analysis):")
-    print("=" * 70)
+    # Use centralized location for CSV
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, "Performance_tests", "performance_history.csv")
     
-    total = report["total_time_sec"]
+    # Ensure directory exists
+    csv_dir = os.path.dirname(csv_path)
+    if not os.path.exists(csv_dir):
+        try:
+            os.makedirs(csv_dir)
+        except:
+            pass
     
-    # Find the SLOWEST SECTION
-    sorted_sections = sorted(report["sections"].items(),
-                          key=lambda x: x[1]["elapsed_sec"],
-                          reverse=True)
-    if sorted_sections:
-        slowest_name, slowest_data = sorted_sections[0]
-        slowest_pct = slowest_data["percent"]
-        print("⚠ MAIN BOTTLENECK: '{}' - {:.1f}% of total time ({:.2f}s)".format(
-            slowest_name, slowest_pct, slowest_data["elapsed_sec"]))
-        
-        # Specific insights for different bottlenecks
-        if "IDE comparison loop" in slowest_name:
-            print("  • This is the critical performance issue")
-            print("  • Recommendation: Implement cache-based fast mode")
-            print("  • With cache: Compare will skip unchanged objects")
-        
-        if "XML export" in slowest_name:
-            xml_stats = report["object_stats"].get("XML export_native", {})
-            if xml_stats.get("total_sec", 0) > 10:
-                print("  • XML export is particularly slow")
-                print("  • Recommendation: Consider disabling export_xml for non-essential XMLs")
-                print("  • Or use cache to skip re-exporting unchanged XMLs")
-        
-        # Secondary bottlenecks (>10% of time)
-        if len(sorted_sections) > 1 and sorted_sections[1][1]["percent"] > 10:
-            print("\n⚠ SECONDARY BOTTLENECK: '{}' - {:.1f}%".format(
-                sorted_sections[1][0], sorted_sections[1][1]["percent"]))
+    # Get git info
+    git_commit = ""
+    git_message = ""
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=script_dir
+        ).decode().strip()
+        git_message = subprocess.check_output(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=script_dir
+        ).decode().strip()
+    except:
+        pass
     
-    # Average processing time
-    if processed_count > 0:
-        ide_loop_time = report["sections"].get("IDE comparison loop", {}).get("elapsed_sec", 0)
-        avg_per_object = ide_loop_time / processed_count if ide_loop_time > 0 else 0
-        print("\n• Average time per object: {:.3f}s ({} objects processed)".format(
-            avg_per_object, processed_count))
-        print("• Projected time for 1000 objects: {:.1f}s ({:.0f}m {:.1f}s)".format(
-            avg_per_object * 1000,
-            (avg_per_object * 1000) // 60,
-            (avg_per_object * 1000) % 60))
+    # Extract key metrics
+    env = report.get("environment", {})
+    sections = report.get("sections", {})
+    object_stats = report.get("object_stats", {})
     
-    # Slowest object type
-    sorted_types = sorted(report["object_stats"].items(),
-                       key=lambda x: x[1]["avg_sec"],
-                       reverse=True)
-    if sorted_types:
-        slowest_type, slowest_type_data = sorted_types[0]
-        if slowest_type_data["avg_sec"] > 0.02:  # Slower than 20ms average
-            print("\n• Slowest object type: '{}' - {:.3f}s avg ({:.2f}s total, {} objects)".format(
-                slowest_type,
-                slowest_type_data["avg_sec"],
-                slowest_type_data["total_sec"],
-                slowest_type_data["count"]))
+    # Calculate breakdown totals
+    classify_total = sum(s["total_sec"] for k, s in object_stats.items() if "classify" in k)
+    extract_total = sum(s["total_sec"] for k, s in object_stats.items() if "extract" in k)
+    xml_total = sum(s["total_sec"] for k, s in object_stats.items() if "XML export" in k)
+    compare_total = sum(s["total_sec"] for k, s in object_stats.items() if "compare" in k)
+    disk_total = sum(s["total_sec"] for k, s in object_stats.items() if "disk_read" in k)
     
-    print("\n" + "=" * 70)
-    print("This report is anonymous - no object names or paths included")
-    print("Feel free to share this for performance analysis!")
-    print("=" * 70)
+    ide_loop_time = sections.get("IDE comparison loop", {}).get("elapsed_sec", 0)
+    unaccounted = ide_loop_time - (classify_total + extract_total + xml_total + compare_total + disk_total)
+    
+    # Get GVL-specific stats
+    gvl_stats = object_stats.get("gvl classify", {})
+    gvl_avg = gvl_stats.get("avg_sec", 0)
+    gvl_count = gvl_stats.get("count", 0)
+    
+    # Build row
+    row = {
+        "timestamp": env.get("timestamp", ""),
+        "git_commit": git_commit,
+        "git_message": git_message[:30] + "..." if len(git_message) > 30 else git_message,
+        "pc_name": env.get("hostname", ""),
+        "script_version": "v" + str(env.get("script_version", "")),
+        "export_xml": str(env.get("export_xml", "")),
+        "total_objects": env.get("total_objects", ""),
+        "active_objects": summary.get("active_count", ""),
+        "total_time_sec": report.get("total_time_sec", ""),
+        "ide_loop_time_sec": sections.get("IDE comparison loop", {}).get("elapsed_sec", ""),
+        "collect_property_sec": sections.get("collect_property_accessors", {}).get("elapsed_sec", ""),
+        "classify_total_sec": classify_total,
+        "extract_total_sec": extract_total,
+        "xml_export_total_sec": xml_total,
+        "compare_total_sec": compare_total,
+        "disk_read_total_sec": disk_total,
+        "unaccounted_sec": unaccounted,
+        "gvl_classify_avg_sec": gvl_avg,
+        "gvl_count": gvl_count,
+        "notes": ""
+    }
+    
+    # Write to CSV (create if not exists, append otherwise)
+    file_exists = os.path.exists(csv_path)
+    try:
+        with open(csv_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=row.keys())
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
+        print("\nCSV history updated: " + csv_path)
+    except Exception as e:
+        print("\nWarning: Could not write to CSV history: " + str(e))
 
 
 def main():

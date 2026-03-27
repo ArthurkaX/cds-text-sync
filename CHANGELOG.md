@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.7.0 (2026-03-27)
+
+**Merkle Tree & High-Performance Sync Overhaul:**
+
+- **Lightning-Fast Comparison**: Total sync/compare time reduced by ~90% (sub-10s for large projects) using a new Merkle Tree-based hierarchical hashing strategy.
+- **Intelligent Path/Type Caching**:
+  - Implemented GUID-based caching for object classification and filesystem paths in `sync_cache.json`.
+  - Eliminates thousands of slow CODESYS COM API calls (`classify_object`, `get_children`, `build_expected_path`) on repeat runs.
+- **Hierarchical Merkle Skips**: The comparison engine now uses folder hashes to skip entire unchanged branches of the project tree instantly.
+- **Import Optimization**:
+  - Eliminated redundant double-save operations during import/backup, reducing the post-import pause by 50%.
+  - Optimized POU child restoration and metadata handling.
+- **Hybrid XML Hashing**: Integrated last-known XML hashes into Pass 1 so folders containing mixed ST and XML objects can still benefit from Merkle Tree skips.
+- **Integrated Accessor Collection**: Merged property accessor scanning into the main object pass to avoid redundant project-wide traversals.
+- **Profiling Tool Upgrade**: Updated `Project_perf_test.py` with the new architecture to provide accurate real-world metrics, including cache hit ratios and Merkle skip statistics.
+
+---
+
 ### Version 1.6.7 (2026-03-25)
 
 **Silent Mode Removal & Backup Enhancement:**

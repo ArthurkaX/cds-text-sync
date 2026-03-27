@@ -1185,3 +1185,75 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False, rete
         log_error("Warning: Could not create binary backup: " + str(e))
         print("Warning: Could not create binary backup: " + str(e))
         return None
+
+
+def normalize_path(path):
+    """Normalize path separators to forward slashes for cross-platform consistency in cache keys."""
+    if path is None: return ""
+    return path.replace("\\", "/").strip("/")
+
+
+def build_folder_hashes(object_hashes):
+    """
+    Build hierarchical folder hashes from a dictionary of object hashes.
+    
+    Args:
+        object_hashes: dict of {norm_path: content_hash}
+    
+    Returns:
+        dict: {folder_path: folder_hash}
+    """
+    from collections import defaultdict
+    folder_children = defaultdict(list)
+    
+    for path, o_hash in object_hashes.items():
+        if not o_hash: continue
+        
+        parts = path.split("/")
+        # Add hash to all parent folders
+        for i in range(1, len(parts)):
+            folder_path = "/".join(parts[:i])
+            folder_children[folder_path].append(o_hash)
+            
+    result = {}
+    for folder_path, child_hashes in folder_children.items():
+        # Folder hash is the hash of sorted child hashes
+        sorted_hashes = "|".join(sorted(child_hashes))
+        result[folder_path] = calculate_hash(sorted_hashes)
+        
+    return result
+
+
+def load_sync_cache(base_dir):
+    """Load the synchronization cache from sync_cache.json in the base directory."""
+    cache_path = os.path.join(base_dir, "sync_cache.json")
+    if os.path.exists(cache_path):
+        try:
+            with codecs.open(cache_path, "r", "utf-8") as f:
+                data = json.load(f)
+                return {
+                    "objects": data.get("objects", {}),
+                    "folders": data.get("folders", {}),
+                    "types": data.get("types", {}),
+                    "version": data.get("version", "1.0")
+                }
+        except Exception as e:
+            log_warning("Could not load sync cache: " + safe_str(e))
+    return {"objects": {}, "folders": {}, "types": {}, "version": "2.0"}
+
+
+def save_sync_cache(base_dir, objects_cache, folder_hashes=None, type_cache=None):
+    """Save the synchronization cache to sync_cache.json in the base directory."""
+    cache_path = os.path.join(base_dir, "sync_cache.json")
+    cache_data = {
+        "version": "2.0",
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "folders": folder_hashes or {},
+        "types": type_cache or {},
+        "objects": objects_cache
+    }
+    try:
+        with codecs.open(cache_path, "w", "utf-8") as f:
+            json.dump(cache_data, f, indent=2)
+    except Exception as e:
+        log_warning("Could not save sync cache: " + safe_str(e))

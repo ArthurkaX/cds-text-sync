@@ -7,7 +7,7 @@ constants used across multiple scripts.
 """
 
 # Script version - single source of truth for version tracking
-SCRIPT_VERSION = "1.6.6"
+SCRIPT_VERSION = "1.7.0"
 
 # Object type GUIDs for reference
 TYPE_GUIDS = {
@@ -157,7 +157,7 @@ FORBIDDEN_CHARS = ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]
 RESERVED_FILES = {
     "_metadata.json", "_config.json", "_metadata.csv", "BASE_DIR",
     "sync_debug.log", "compare.log", ".project", ".gitattributes",
-    ".gitignore", "sync_metadata.json"
+    ".gitignore", "sync_metadata.json", "sync_cache.json"
 }
 
 # Reverse mapping for human-readable type names

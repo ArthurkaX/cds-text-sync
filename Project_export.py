@@ -302,8 +302,16 @@ def export_project(export_dir, projects_obj=None):
     # Orphan cleanup now uses exported_paths set directly
     if not cleanup_orphaned_files(export_dir, exported_paths):
         return
+
+    # Clear sync cache after full export to ensure consistency
+    cache_path = os.path.join(export_dir, "sync_cache.json")
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+            log_info("Cleared sync cache after full export.")
+        except:
+            pass
             
-    
     print("=== Export Complete ===")
     elapsed_time = time.time() - start_time
     print("New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical))

@@ -17,13 +17,15 @@ Provides:
 import os
 import codecs
 import tempfile
+import time
 from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, RESERVED_FILES, TYPE_NAMES
 from codesys_utils import (
     safe_str, calculate_hash, clean_filename, log_info, log_error, log_warning,
     resolve_projects, backup_project_binary, merge_native_xmls,
     parse_st_file, build_object_cache, find_object_by_path,
     ensure_folder_path, determine_object_type, find_object_by_name,
-    format_st_content, format_property_content, get_project_prop
+    format_st_content, format_property_content, get_project_prop,
+    load_sync_cache, save_sync_cache, normalize_path
 )
 from codesys_managers import (
     NativeManager, FolderManager, PropertyManager, ConfigManager, POUManager,
@@ -42,6 +44,31 @@ from codesys_managers import (
 # ═══════════════════════════════════════════════════════════════════
 
 # Removed local build_expected_path, now imported from codesys_managers
+
+def _get_quick_ide_hash(obj, is_xml):
+    """
+    Quickly calculate identification hash from IDE object without full export.
+    Returns None if full export is mandatory (e.g. XML types).
+    """
+    if is_xml:
+        return None  # XML requires full export for stable comparison
+        
+    try:
+        # For Structured Text objects, we can often get content directly from properties
+        # which is MUCH faster than full export_native
+        parts = []
+        if hasattr(obj, 'has_textual_declaration') and obj.has_textual_declaration:
+            parts.append(obj.textual_declaration.text or "")
+        
+        if hasattr(obj, 'has_textual_implementation') and obj.has_textual_implementation:
+            parts.append(obj.textual_implementation.text or "")
+            
+        if parts:
+            return calculate_hash("\n".join(parts))
+    except Exception as e:
+        log_warning("Quick hash failed for %s: %s" % (safe_str(obj), str(e)))
+        
+    return None
 
 def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl=False):
     """Extract content from IDE object for comparison.
@@ -177,64 +204,183 @@ def read_file(file_path):
 
 def find_all_changes(base_dir, projects_obj, export_xml=False):
     """
-    Direct two-way comparison: IDE objects ↔ Disk files.
-
-    Returns:
-        {
-            "different":        [{"name", "path", "type", "type_guid", "obj",
-                                  "ide_content", "disk_content"}, ...],
-            "new_in_ide":       [{"name", "path", "type", "type_guid", "obj"}, ...],
-            "new_on_disk":      [{"name", "path", "file_path"}, ...],
-            "unchanged_count":  int
-        }
+    Direct two-way comparison with Merkle Tree optimization.
+    
+    1. Pass 1: Quick IDE scan (.text only) and folder hash building.
+    2. Pass 2: Comparison using folder hashes to skip unchanged branches.
     """
+    total_start = time.time()
     all_ide_objects = projects_obj.primary.get_children(recursive=True)
-    property_accessors = collect_property_accessors(all_ide_objects)
-
-    ide_paths = {}  # rel_path → obj (to match disk files later)
+    
+    # Load cache
+    cache_data = load_sync_cache(base_dir)
+    cached_objects = cache_data["objects"]
+    cached_folders = cache_data["folders"]
+    cached_types = cache_data.get("types", {})
+    
     different = []
     new_in_ide = []
     unchanged_count = 0
-    # Pass 1: For each IDE object, find & compare with disk file
+    cache_hits = 0
+    
+    ide_paths = {}    # rel_path -> obj
+    ide_hashes = {}   # norm_path -> ide_hash
+    ide_metadata = {} # norm_path -> (eff_type, is_xml)
+    current_types = {} # guid -> (eff_type, is_xml, rel_path)
+    property_accessors = {} # (parent_guid, name) -> obj
+    
+    # ── Pass 1: Quick Batch Scan (IDE only) ──
+    print("  Pass 1: Batch hashing IDE objects...")
+    p1_start = time.time()
+    path_cache_hits = 0
     for obj in all_ide_objects:
-        effective_type, is_xml, should_skip = classify_object(obj)
-        if should_skip:
+        obj_guid = safe_str(obj.guid)
+        
+        # Check type cache first to avoid classify_object AND path building
+        # Cache stores (eff_type, is_xml, cached_rel_path)
+        if obj_guid in cached_types:
+            type_info = cached_types[obj_guid]
+            eff_type, is_xml = type_info[0], type_info[1]
+            rel_path = type_info[2] if len(type_info) > 2 else None
+            should_skip = False
+            if rel_path:
+                path_cache_hits += 1
+            else:
+                rel_path = build_expected_path(obj, eff_type, is_xml)
+        else:
+            eff_type, is_xml, should_skip = classify_object(obj)
+            if not should_skip:
+                rel_path = build_expected_path(obj, eff_type, is_xml)
+            else:
+                rel_path = None
+            
+        if should_skip or not rel_path: 
+            # Still check for property accessors even if folder/object is skipped
+            # Actually, properties themselves are not skipped.
             continue
+        
+        # Optimization: Collect property accessors during this same loop
+        if eff_type == TYPE_GUIDS["property"]:
+            try:
+                if obj_guid not in property_accessors:
+                    property_accessors[obj_guid] = {'get': None, 'set': None}
+                
+                for child in obj.get_children():
+                    child_name = child.get_name().upper()
+                    if child_name == "GET":
+                        property_accessors[obj_guid]['get'] = child
+                    elif child_name == "SET":
+                        property_accessors[obj_guid]['set'] = child
+            except:
+                pass
 
-        # XML gate: skip non-always-exported XML types when export_xml is off
-        if is_xml and effective_type in XML_TYPES:
-            always_exported = effective_type in [
-                TYPE_GUIDS["task_config"], TYPE_GUIDS["nvl_sender"], TYPE_GUIDS["nvl_receiver"]
-            ]
-            if not always_exported and not export_xml:
-                continue
+        # Update type cache with path
+        current_types[obj_guid] = (eff_type, is_xml, rel_path)
 
-        rel_path = build_expected_path(obj, effective_type, is_xml)
+        norm_path = normalize_path(rel_path)
         ide_paths[rel_path] = obj
+        ide_metadata[norm_path] = (eff_type, is_xml)
+        
+        # Quick hash for ST
+        q_hash = _get_quick_ide_hash(obj, is_xml)
+        
+        # For XML objects: use cached ide_hash to allow Merkle skip for mixed folders
+        if not q_hash and is_xml:
+            cached_entry = cached_objects.get(norm_path)
+            if cached_entry:
+                q_hash = cached_entry.get("ide_hash")
+                
+        ide_hashes[norm_path] = q_hash
 
+    # Build folder hashes (Merkle Tree)
+    from codesys_utils import build_folder_hashes
+    ide_folder_hashes = build_folder_hashes(ide_hashes)
+    log_info("  Pass 1 complete ({} objects, {} path cache hits) in {:.2f}s".format(
+        len(ide_hashes), path_cache_hits, time.time() - p1_start))
+
+    # ── Pass 2: Comparison ──
+    print("  Pass 2: Comparing with disk...")
+    p2_start = time.time()
+    new_cache_objects = {}
+    
+    for rel_path, obj in ide_paths.items():
+        norm_path = normalize_path(rel_path)
+        eff_type, is_xml = ide_metadata[norm_path]
         file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
-        type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
-
+        type_name = TYPE_NAMES.get(eff_type, eff_type[:8])
+        
         if os.path.exists(file_path):
-            # Compare content
-            can_have_impl = effective_type in IMPLEMENTATION_TYPES
+            # ── Fast path 1: Folder-level check ──
+            # If parent folder hash matches, IDE hasn't changed.
+            # We only need to check if disk file changed (mtime).
+            parent_folder = "/".join(norm_path.split("/")[:-1])
+            folder_match = False
+            if parent_folder and parent_folder in ide_folder_hashes:
+                if ide_folder_hashes[parent_folder] == cached_folders.get(parent_folder):
+                    folder_match = True
+            
+            # Disk check
+            mtime = os.path.getmtime(file_path)
+            size = os.path.getsize(file_path)
+            cached_entry = cached_objects.get(norm_path)
+            
+            disk_unchanged = cached_entry and \
+                             cached_entry.get("disk_mtime") == mtime and \
+                             cached_entry.get("disk_size") == size
+            
+            # ── CACHE HIT ──
+            if folder_match and disk_unchanged:
+                unchanged_count += 1
+                cache_hits += 1
+                new_cache_objects[norm_path] = cached_entry
+                continue
+                
+            # ── Slow path: Full Comparison ──
+            can_have_impl = eff_type in IMPLEMENTATION_TYPES
             ide_content = get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl)
             disk_content = read_file(file_path)
 
             if contents_are_equal(ide_content, disk_content, is_xml, rel_path):
                 unchanged_count += 1
+                # Update cache
+                q_hash = ide_hashes[norm_path] or calculate_hash(ide_content)
+                new_cache_objects[norm_path] = {
+                    "ide_hash": q_hash,
+                    "disk_hash": calculate_hash(disk_content),
+                    "disk_mtime": mtime,
+                    "disk_size": size
+                }
             else:
                 different.append({
                     "name": obj.get_name(), "path": rel_path,
-                    "type": type_name, "type_guid": effective_type,
+                    "type": type_name, "type_guid": eff_type,
                     "obj": obj, "ide_content": ide_content, "disk_content": disk_content
                 })
         else:
             new_in_ide.append({
                 "name": obj.get_name(), "path": rel_path,
-                "type": type_name, "type_guid": effective_type, "obj": obj,
+                "type": type_name, "type_guid": eff_type, "obj": obj,
                 "is_orphan": True
             })
+
+    # Finalize cache with newly built folder hashes and types
+    save_sync_cache(base_dir, new_cache_objects, ide_folder_hashes, current_types)
+    
+    p2_elapsed = time.time() - p2_start
+    total_elapsed = time.time() - total_start
+    log_info("  Pass 2 complete in {:.2f}s".format(p2_elapsed))
+    log_info("  Sync cache updated: %d hits, %d entries total" % (cache_hits, len(new_cache_objects)))
+    print("  Compare engine finished in {:.2f}s".format(total_elapsed))
+
+    # Pass 3: Disk Scan
+    new_on_disk = scan_new_disk_files(base_dir, ide_paths)
+
+    return {
+        "different": different,
+        "new_in_ide": new_in_ide,
+        "new_on_disk": new_on_disk,
+        "unchanged_count": unchanged_count
+    }
 
     # ── Pass 2: Walk disk, find files not matching any IDE object ──
     new_on_disk = scan_new_disk_files(base_dir, ide_paths)
@@ -696,21 +842,20 @@ def batch_import_native_xmls(native_batches, import_managers, project):
 def finalize_import(project, projects_obj, base_dir, updated_count, created_count, deleted_count=0):
     """
     Optionally save project + backup.
-    Called after all import operations are complete.
+    Avoids double-save if binary backup is enabled (which already saves).
     """
     if updated_count > 0 or created_count > 0 or deleted_count > 0:
-        
         should_save = get_project_prop("cds-sync-save-after-import", True)
         backup_binary = get_project_prop("cds-sync-backup-binary", False)
-        must_save = should_save or backup_binary
-        
-        if must_save:
+
+        if backup_binary:
+            # backup_project_binary already calls project.save()
+            print("  Updating binary backup and saving...")
+            backup_project_binary(base_dir, projects_obj)
+        elif should_save:
             try:
                 print("  Saving project...")
                 project.save()
-                if backup_binary:
-                    print("  Updating binary backup...")
-                    backup_project_binary(base_dir, projects_obj)
             except Exception as e:
                 print("  Warning: Could not save project: " + safe_str(e))
         else:
