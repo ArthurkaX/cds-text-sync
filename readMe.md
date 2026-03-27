@@ -17,13 +17,14 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ## 🚀 Key Features
 
-- **Reversible Sync**: Round-trip editing for Structured Text files.
+- **High-Performance Sync (90% faster)**: Uses a Merkle Tree-based hierarchical hashing strategy and intelligent caching to skip thousands of redundant API calls, achieving sub-10 second repeat sync times for large projects.
+- **Reversible Sync**: Round-trip editing for Structured Text files with modern external tools (VS Code, Cursor, Copilot).
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
-- **Timestamped Backups with Retention**: Automatically creates safety backups before imports with configurable retention policy (default: 10 backups). Old backups are automatically cleaned up while preserving Git LFS backups.
-- **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing. (Note: Device and Module objects are excluded for project stability).
+- **Timestamped Backups with Retention**: Automatically creates safety backups before imports with a configurable retention policy (default: 10 backups).
+- **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
-- **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
-- **Hidden Folders Skip**: Any directory starting with a dot (e.g., `.git`, `.diff`, `.project`, `.docs`, `.lib`) is automatically ignored. This allows you to store documentation, libraries, or tool configs inside the sync folder without interference.
+- **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by safely removing orphaned objects when files are deleted on disk.
+- **Hidden Folders Skip**: Folders starting with a dot (e.g., `.git`, `.docs`) are automatically ignored, letting you store documentation or tools in the sync directory.
 
 ---
 
@@ -121,13 +122,15 @@ When upgrading to a new version of `cds-text-sync`:
 - **Set Backup Name**:
   - Allows you to specify a **fixed filename** for the binary backup (e.g., `Project`).
   - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `.project/` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
+- **[ ] Save Project after Export**:
+  - If ENABLED: automatically saves the project after a successful export operation.
 - **[ ] Save Project after Import**:
   - If ENABLED: automatically saves the project after a successful import.
 - **[ ] Timestamped Backup before Import**:
   - If ENABLED: creates a unique, timestamped `.bak` file in the `.project/` folder _before_ starting the import process.
-- **[ ] Silent Mode**:
-  - If ENABLED: suppresses blocking popup messages and uses non-blocking system tray notifications (toasts).
-  - Recommended for "Developer Workflow" to stay in flow.
+- **Max Backups to Keep**:
+  - Sets the number of timestamped backups to keep (default: 10). The script automatically cleans up older backups while preserving your primary Git LFS backups.
+
 
 ### 3. `Project_export.py` (CODESYS -> Disk)
 
@@ -180,6 +183,21 @@ Updates the CODESYS project from the files on disk.
 - **Interactive Grid**: Results displayed in a sortable dialog showing Object Name, Type, Size, and Category (Code/XML).
 - **Identify Bloat**: Quickly find large visualizations, complex POUs, or oversized configurations.
 - **Summary Stats**: Shows total code volume, XML volume, and object count.
+
+### 8. `Project_Build.py` (Build & Diagnostic Log)
+
+**Trigger a build and get detailed error reporting.** Compiles the active application and generates a clean, readable table format in `build.log`.
+
+- **Accurate Line Numbers**: Translates internal CODESYS offsets into real line/column numbers for Structured Text files, making it easier to fix errors in external editors.
+- **Multi-App Support**: Detects multiple applications and allows you to select which one to compile.
+- **Visual Feedback**: Shows a final summary including error/warning counts and compilation duration.
+
+### 9. `Project_perf_test.py` (Benchmarking)
+
+**Performance profiling tool.** Measures exact execution times for object discovery, comparison, and hashing.
+
+- **Wait/API Analysis**: Identifies slow spots in the sync process (e.g., slow COM API calls).
+- **Cache Hit Ratio**: Reports how effective the `sync_cache.json` and Merkle Tree skips are for your specific project structure.
 
 ---
 
