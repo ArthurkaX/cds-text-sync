@@ -44,7 +44,8 @@ import json
 from codesys_constants import TYPE_GUIDS, SCRIPT_VERSION
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
-    resolve_projects, clean_filename, get_project_prop, backup_project_binary
+    resolve_projects, clean_filename, get_project_prop, backup_project_binary,
+    check_version_compatibility, finalize_sync_operation, create_safety_backup
 )
 from codesys_managers import (
     FolderManager, POUManager, NativeManager, ConfigManager, PropertyManager,
@@ -53,32 +54,6 @@ from codesys_managers import (
 from codesys_compare_engine import (
     find_all_changes, perform_import_items, TYPE_NAMES, build_expected_path
 )
-
-
-def check_version_compatibility(base_dir):
-    """Check if export was done with compatible script version"""
-    proj_version = get_project_prop("cds-sync-version")
-    if proj_version is None:
-        proj_version = "not set"
-    
-    metadata_path = os.path.join(base_dir, "sync_metadata.json")
-    
-    if proj_version != SCRIPT_VERSION:
-        msg = "Version mismatch: Project (v{}) vs Current (v{})".format(proj_version, SCRIPT_VERSION)
-        return False, msg
-    
-    if os.path.exists(metadata_path):
-        try:
-            with codecs.open(metadata_path, "r", "utf-8") as f:
-                data = json.load(f)
-            export_version = data.get("script_version")
-            if export_version and export_version != SCRIPT_VERSION:
-                msg = "Version mismatch: Export (v{}) vs Current (v{})".format(export_version, SCRIPT_VERSION)
-                return False, msg
-        except:
-            pass
-    
-    return True, None
 
 
 
@@ -180,12 +155,8 @@ def perform_import(primary_project, base_dir, selected, unchanged_count=0):
         return
     
     # Create timestamped safety backup if enabled
-    backup_filename = None
-    safety_backup = get_project_prop("cds-sync-safety-backup", True)
-    if safety_backup and selected:
-        projects_obj = resolve_projects(None, globals())
-        retention = get_project_prop("cds-sync-backup-retention-count", 10)
-        backup_filename = backup_project_binary(base_dir, projects_obj, timestamped=True, retention_count=retention)
+    projects_obj = resolve_projects(None, globals())
+    backup_filename = create_safety_backup(base_dir, projects_obj, selected)
     
     updated, created, failed, deleted = perform_import_items(
         primary_project, base_dir, selected, globals()
@@ -197,23 +168,9 @@ def perform_import(primary_project, base_dir, selected, unchanged_count=0):
         message += "\n\nBackup created: .project/" + backup_filename
     system.ui.info(message)
 
-    # Optional final save if enabled
-    save_after_import = get_project_prop("cds-sync-save-after-import", True)
-    backup_binary = get_project_prop("cds-sync-backup-binary", False)
-
-    if backup_binary:
-        try:
-            print("Action: Updating binary backup...")
-            backup_project_binary(base_dir, resolve_projects(None, globals()))
-        except Exception as e:
-            print("Warning: Could not update binary backup: " + safe_str(e))
-    elif save_after_import:
-        try:
-            print("Action: Saving project...")
-            primary_project.save()
-            print("Project saved successfully.")
-        except Exception as e:
-            print("Warning: Could not save project after import: " + safe_str(e))
+    # Handle final save and backup
+    projects_obj = resolve_projects(None, globals())
+    finalize_sync_operation(base_dir, projects_obj, is_import=True)
 
 
 def perform_export(base_dir, selected, unchanged_count=0):
@@ -305,23 +262,9 @@ def perform_export(base_dir, selected, unchanged_count=0):
         
     system.ui.info("Export complete!\n\n" + summary)
 
-    # Optional final save if enabled
-    save_after_export = get_project_prop("cds-sync-save-after-export", True)
-    backup_binary = get_project_prop("cds-sync-backup-binary", False)
-
-    if backup_binary and projects_obj and projects_obj.primary:
-        try:
-            print("Action: Updating binary backup...")
-            backup_project_binary(base_dir, projects_obj)
-        except Exception as e:
-            print("Warning: Could not update binary backup: " + safe_str(e))
-    elif save_after_export and projects_obj and projects_obj.primary:
-        try:
-            print("Action: Saving project...")
-            projects_obj.primary.save()
-            print("Project saved successfully.")
-        except Exception as e:
-            print("Warning: Could not save project after export: " + safe_str(e))
+    # Handle final save and backup
+    projects_obj = resolve_projects(None, globals())
+    finalize_sync_operation(base_dir, projects_obj, is_import=False)
 
 
 def main():

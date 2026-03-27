@@ -36,7 +36,7 @@ from codesys_utils import (
     init_logging, backup_project_binary, format_property_content,
     resolve_projects, update_application_count_flag, ensure_git_configs,
     get_quick_ide_hash, load_sync_cache, save_sync_cache, build_folder_hashes,
-    normalize_path
+    normalize_path, finalize_sync_operation
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
@@ -283,17 +283,20 @@ def export_project(export_dir, projects_obj=None):
             obj_guid = safe_str(obj.guid)
             cached_type = cache_data.get('types', {}).get(obj_guid)
             if cached_type:
-                effective_type, is_xml, rel_path = cached_type
-                should_skip = False # If it's in the cache, it wasn't skipped last time
+                effective_type, is_xml = cached_type[0], cached_type[1]
+                rel_path = cached_type[2] if len(cached_type) > 2 else None
+                should_skip = False if rel_path else True
             else:
                 effective_type, is_xml, should_skip = classify_object(obj)
-                rel_path = build_expected_path(obj, effective_type, is_xml)
+                rel_path = build_expected_path(obj, effective_type, is_xml) if not should_skip else None
             
-            norm_path = normalize_path(rel_path)
+            # Store for next cache save (always)
+            context['new_types'][obj_guid] = (effective_type, is_xml, rel_path)
             
-            # Store for next cache save
-            if not should_skip:
-                context['new_types'][obj_guid] = (effective_type, is_xml, rel_path)
+            if rel_path:
+                norm_path = normalize_path(rel_path)
+            else:
+                norm_path = None
             
             # --- PROPERTY ACCESSOR COLLECTION ---
             if effective_type == TYPE_GUIDS["property"]:
@@ -311,7 +314,7 @@ def export_project(export_dir, projects_obj=None):
                     pass
             
             # --- PERSIST CACHE FOR SKIPPED OBJECTS ---
-            if cache_data:
+            if cache_data and norm_path:
                 try:
                     cached_obj = cache_data.get('objects', {}).get(norm_path)
                     if cached_obj:
@@ -392,23 +395,8 @@ def export_project(export_dir, projects_obj=None):
     except NameError:
         print("Export complete!\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
-    # Optional final save if enabled
-    save_after_export = get_project_prop("cds-sync-save-after-export", True)
-    backup_binary = get_project_prop("cds-sync-backup-binary", False)
-
-    if backup_binary:
-        try:
-            print("Action: Updating binary backup...")
-            backup_project_binary(export_dir, projects_obj)
-        except Exception as e:
-            print("Warning: Could not update binary backup after export: " + safe_str(e))
-    elif save_after_export:
-        try:
-            print("Action: Saving project...")
-            projects_obj.primary.save()
-            print("Project saved successfully.")
-        except Exception as e:
-            print("Warning: Could not save project after export: " + safe_str(e))
+    # Handle final save and backup
+    finalize_sync_operation(export_dir, projects_obj, is_import=False)
 
 
 def main():

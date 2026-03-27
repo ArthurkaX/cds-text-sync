@@ -38,37 +38,10 @@ import json
 
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_warning,
-    resolve_projects, get_project_prop, backup_project_binary
+    resolve_projects, get_project_prop, backup_project_binary,
+    check_version_compatibility, finalize_sync_operation, create_safety_backup
 )
 from codesys_compare_engine import find_all_changes, perform_import_items
-
-
-def check_version_compatibility(base_dir):
-    """Check if export was done with compatible script version"""
-    from codesys_constants import SCRIPT_VERSION
-    
-    proj_version = get_project_prop("cds-sync-version")
-    if proj_version is None:
-        proj_version = "not set"
-    
-    metadata_path = os.path.join(base_dir, "sync_metadata.json")
-    
-    if proj_version != SCRIPT_VERSION:
-        msg = "Version mismatch: Project (v{}) vs Current (v{})".format(proj_version, SCRIPT_VERSION)
-        return False, msg
-    
-    if os.path.exists(metadata_path):
-        try:
-            with codecs.open(metadata_path, "r", "utf-8") as f:
-                data = json.load(f)
-            export_version = data.get("script_version")
-            if export_version and export_version != SCRIPT_VERSION:
-                msg = "Version mismatch: Export (v{}) vs Current (v{})".format(export_version, SCRIPT_VERSION)
-                return False, msg
-        except:
-            pass
-    
-    return True, None
 
 
 
@@ -168,11 +141,7 @@ def import_project(projects_obj=None):
         print("  <- " + item["path"] + " (" + action + ")")
     
     # ── Create timestamped safety backup if enabled ──
-    backup_filename = None
-    safety_backup = get_project_prop("cds-sync-safety-backup", True)
-    if safety_backup and to_import:
-        retention = get_project_prop("cds-sync-backup-retention-count", 10)
-        backup_filename = backup_project_binary(base_dir, projects_obj, timestamped=True, retention_count=retention)
+    backup_filename = create_safety_backup(base_dir, projects_obj, to_import)
     
     # ── Phase 2: Import all changes ──
     updated, created, failed, deleted = perform_import_items(
@@ -227,25 +196,8 @@ def import_project(projects_obj=None):
     except NameError:
         print("Import complete!\n" + summary)
 
-    # Optional final save if enabled
-    # We call this again here because property updates might have dirtied the project 
-    # AFTER the engine's internal finalize_import was called.
-    save_after_import = get_project_prop("cds-sync-save-after-import", True)
-    backup_binary = get_project_prop("cds-sync-backup-binary", False)
-    
-    if backup_binary:
-        try:
-            print("Action: Updating binary backup...")
-            backup_project_binary(base_dir, projects_obj)
-        except Exception as e:
-            print("Warning: Could not update binary backup: " + safe_str(e))
-    elif save_after_import:
-        try:
-            print("Action: Saving project...")
-            projects_obj.primary.save()
-            print("Project saved successfully.")
-        except Exception as e:
-            print("Warning: Could not save project after import: " + safe_str(e))
+    # Handle final save and backup
+    finalize_sync_operation(base_dir, projects_obj, is_import=True)
 
 
 def main():

@@ -571,9 +571,6 @@ class FolderManager(ObjectManager):
 class POUManager(ObjectManager):
     """Handle standard textual objects (POUs, GVLs, DUTs)"""
     def export(self, obj, context, rel_path=None):
-        obj_type = safe_str(obj.type)
-        obj_name = obj.get_name()
-        
         # Build path and filename
         if rel_path is None:
             effective_type = context.get('effective_type', safe_str(obj.type))
@@ -728,7 +725,6 @@ class PropertyManager(POUManager):
     """Handle properties specifically (combining declaration, Get, and Set)"""
     def export(self, obj, context, rel_path=None):
         obj_guid = safe_str(obj.guid)
-        obj_name = obj.get_name()
         
         if obj_guid not in context['property_accessors']:
             prop_data = {'get': None, 'set': None, 'parent_obj': obj}
@@ -760,6 +756,8 @@ class PropertyManager(POUManager):
                         self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
                         return "identical"
         # -------------------------------
+        
+        obj_name = obj.get_name()
 
         # Export Declaration
         declaration, _ = export_object_content(obj)

@@ -198,11 +198,9 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
             type_info = cached_types[obj_guid]
             eff_type, is_xml = type_info[0], type_info[1]
             rel_path = type_info[2] if len(type_info) > 2 else None
-            should_skip = False
+            should_skip = False if rel_path else True
             if rel_path:
                 path_cache_hits += 1
-            else:
-                rel_path = build_expected_path(obj, eff_type, is_xml)
         else:
             eff_type, is_xml, should_skip = classify_object(obj)
             if not should_skip:

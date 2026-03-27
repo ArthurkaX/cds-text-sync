@@ -1303,3 +1303,64 @@ def save_sync_cache(base_dir, objects_cache, folder_hashes=None, type_cache=None
             json.dump(cache_data, f, indent=2)
     except Exception as e:
         log_warning("Could not save sync cache: " + safe_str(e))
+
+
+def check_version_compatibility(base_dir):
+    """Check if export was done with compatible script version"""
+    from codesys_constants import SCRIPT_VERSION
+    
+    proj_version = get_project_prop("cds-sync-version")
+    if proj_version is None:
+        proj_version = "not set"
+    
+    metadata_path = os.path.join(base_dir, "sync_metadata.json")
+    
+    if proj_version != SCRIPT_VERSION:
+        msg = "Version mismatch: Project (v{}) vs Current (v{})".format(proj_version, SCRIPT_VERSION)
+        return False, msg
+    
+    if os.path.exists(metadata_path):
+        try:
+            with codecs.open(metadata_path, "r", "utf-8") as f:
+                data = json.load(f)
+            export_version = data.get("script_version")
+            if export_version and export_version != SCRIPT_VERSION:
+                msg = "Version mismatch: Export (v{}) vs Current (v{})".format(export_version, SCRIPT_VERSION)
+                return False, msg
+        except:
+            pass
+    
+    return True, None
+
+
+def finalize_sync_operation(base_dir, projects_obj, is_import=False):
+    """Handle final document save or binary backup according to user settings."""
+    save_prop = "cds-sync-save-after-import" if is_import else "cds-sync-save-after-export"
+    save_after_op = get_project_prop(save_prop, True)
+    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+
+    if backup_binary and projects_obj and getattr(projects_obj, 'primary', None):
+        try:
+            print("Action: Updating binary backup...")
+            backup_project_binary(base_dir, projects_obj)
+        except Exception as e:
+            print("Warning: Could not update binary backup: " + safe_str(e))
+    elif save_after_op and projects_obj and getattr(projects_obj, 'primary', None):
+        try:
+            print("Action: Saving project...")
+            projects_obj.primary.save()
+            print("Project saved successfully.")
+        except Exception as e:
+            op_str = "import" if is_import else "export"
+            print("Warning: Could not save project after " + op_str + ": " + safe_str(e))
+
+
+def create_safety_backup(base_dir, projects_obj, items_to_import):
+    """Create a timestamped safety backup of the project before importing changes."""
+    backup_filename = None
+    safety_backup = get_project_prop("cds-sync-safety-backup", True)
+    if safety_backup and items_to_import:
+        retention = get_project_prop("cds-sync-backup-retention-count", 10)
+        backup_filename = backup_project_binary(base_dir, projects_obj, timestamped=True, retention_count=retention)
+    return backup_filename
+
