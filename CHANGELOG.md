@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.7.1 (2026-03-27)
+
+**UI Robustness & Post-Sync Enhancements:**
+
+- **Standard Windows Prompts**: Replaced the unreliable native CODESYS `system.ui.choose` radio-button dialogs with standard Windows MessageBox dialogs (`ask_yes_no`, `ask_yes_no_cancel`) across all scripts.
+- **Cancel Button Fix**: Completely resolved an issue where clicking "Cancel" or closing dialogue windows would fail to halt script execution due to inconsistent CODESYS API return types.
+- **Import Final Confirmation**: Added an explicit final summary dialog (`Ready to import X changes into the IDE... Proceed?`) right before applying structural changes or deletions in `Project_import.py`.
+- **Auto-Save & Workflow**: 
+  - Introduced optional automatic project saving and binary backup after an export is completed.
+  - Added a new 'Save Project after Export' toggle in the Configuration UI (`Project_parameters.py`).
+  - Centralized version compatibility checks, safety backups, and post-sync operations into `codesys_utils.pyw` for cleaner architecture and standardized execution.
+
 ### Version 1.7.0 (2026-03-27)
 
 **Merkle Tree & High-Performance Sync Overhaul:**

@@ -1,6 +1,6 @@
 # cds-text-sync
 
-**Version**: `1.7.0`
+**Version**: `1.7.1`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -38,7 +38,10 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ### Method 1: Manual Copy
 
-1. **Copy Files**: Copy all `.py` files to the CODESYS scripts directory. Depending on your software and setup preference, use one of the following paths:
+1. **Copy Files**: Copy ALL `.py` **and** `.pyw` files to the CODESYS scripts directory.
+   - **Note on `.pyw`**: These are internal library modules. They are hidden from the CODESYS "Scripts" menu by design to keep your interface clean. Only the `Project_*.py` files will appear as executable commands.
+
+   Depending on your software and setup preference, use one of the following paths:
    - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
    - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
    - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
@@ -71,8 +74,9 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 When upgrading to a new version of `cds-text-sync`:
 
-1. **Replace Script Files**: Copy the new `.py` files to your CODESYS scripts directory, overwriting the old versions.
-2. **Clean Export**: Run `Project_export.py` to re-export all files with the updated format.
+1. **Replace All Files**: Copy BOTH `.py` and `.pyw` files, overwriting everything.
+   - **Important Note**: If a major refactor (like shifting to shared libraries) occurs, active scripts held in CODESYS memory may become **stale**. After copying new files, it is best to restart CODESYS or reload your project to ensure the Script Engine picks up the latest version of all modules.
+2. **Clean Export**: Run `Project_export.py` to refresh metadata and ensure your disk state matches the new script logic.
 3. **Commit Changes**: Review and commit the changes in Git.
 
 > **Tip**: A clean export after upgrading ensures all files use the latest export format and prevents inconsistencies.
