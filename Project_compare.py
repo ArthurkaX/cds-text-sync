@@ -197,6 +197,24 @@ def perform_import(primary_project, base_dir, selected):
         message += "\n\nBackup created: .project/" + backup_filename
     system.ui.info(message)
 
+    # Optional final save if enabled
+    save_after_import = get_project_prop("cds-sync-save-after-import", True)
+    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+
+    if backup_binary:
+        try:
+            print("Action: Updating binary backup...")
+            backup_project_binary(base_dir, resolve_projects(None, globals()))
+        except Exception as e:
+            print("Warning: Could not update binary backup: " + safe_str(e))
+    elif save_after_import:
+        try:
+            print("Action: Saving project...")
+            primary_project.save()
+            print("Project saved successfully.")
+        except Exception as e:
+            print("Warning: Could not save project after import: " + safe_str(e))
+
 
 def perform_export(base_dir, selected):
     """Trigger export for IDE-side changes"""
@@ -253,6 +271,24 @@ def perform_export(base_dir, selected):
             log_error("Export failed for " + item["name"] + ": " + safe_str(e))
     
     system.ui.info("Exported " + str(count) + " objects.")
+
+    # Optional final save if enabled
+    save_after_export = get_project_prop("cds-sync-save-after-export", True)
+    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+
+    if backup_binary and projects_obj and projects_obj.primary:
+        try:
+            print("Action: Updating binary backup...")
+            backup_project_binary(base_dir, projects_obj)
+        except Exception as e:
+            print("Warning: Could not update binary backup: " + safe_str(e))
+    elif save_after_export and projects_obj and projects_obj.primary:
+        try:
+            print("Action: Saving project...")
+            projects_obj.primary.save()
+            print("Project saved successfully.")
+        except Exception as e:
+            print("Warning: Could not save project after export: " + safe_str(e))
 
 
 def main():

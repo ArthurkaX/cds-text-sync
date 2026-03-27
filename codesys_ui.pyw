@@ -102,6 +102,14 @@ class SettingsForm(Form):
         self.txt_backup_name.Text = current_settings.get("backup_name", "")
         self.Controls.Add(self.txt_backup_name)
 
+        y += 30
+        self.chk_save_exp = CheckBox()
+        self.chk_save_exp.Text = "Save Project after Export"
+        self.chk_save_exp.Location = Point(30, y)
+        self.chk_save_exp.Size = Size(350, 24)
+        self.chk_save_exp.Checked = current_settings.get("save_after_export", True)
+        self.Controls.Add(self.chk_save_exp)
+
         # Group 2: Import Settings
         y += 40
         self.chk_save = CheckBox()
@@ -137,13 +145,13 @@ class SettingsForm(Form):
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
         btn_cancel.DialogResult = DialogResult.Cancel
-        btn_cancel.Location = Point(290, 280)
+        btn_cancel.Location = Point(290, 310)
         self.Controls.Add(btn_cancel)
 
         btn_save = Button()
         btn_save.Text = "Save Settings"
         btn_save.DialogResult = DialogResult.OK
-        btn_save.Location = Point(160, 280)
+        btn_save.Location = Point(160, 310)
         btn_save.Size = Size(120, 23)
         self.Controls.Add(btn_save)
         self.AcceptButton = btn_save
@@ -162,6 +170,7 @@ class SettingsForm(Form):
             "backup_binary": self.chk_bin.Checked,
             "backup_name": self.txt_backup_name.Text.strip(),
             "save_after_import": self.chk_save.Checked,
+            "save_after_export": self.chk_save_exp.Checked,
             "safety_backup": self.chk_safety.Checked,
             "retention_count": retention
         }

@@ -48,6 +48,7 @@ def main():
         "export_xml": get_project_prop("cds-sync-export-xml", False),
         "backup_binary": get_project_prop("cds-sync-backup-binary", False),
         "save_after_import": get_project_prop("cds-sync-save-after-import", True),
+        "save_after_export": get_project_prop("cds-sync-save-after-export", True),
         "safety_backup": get_project_prop("cds-sync-safety-backup", True),
         "backup_name": get_project_prop("cds-sync-backup-name", ""),
         "retention_count": get_project_prop("cds-sync-backup-retention-count", 10)
@@ -61,6 +62,7 @@ def main():
         set_project_prop("cds-sync-export-xml", new_settings["export_xml"])
         set_project_prop("cds-sync-backup-binary", new_settings["backup_binary"])
         set_project_prop("cds-sync-save-after-import", new_settings["save_after_import"])
+        set_project_prop("cds-sync-save-after-export", new_settings["save_after_export"])
         set_project_prop("cds-sync-safety-backup", new_settings["safety_backup"])
         set_project_prop("cds-sync-backup-name", new_settings["backup_name"])
         set_project_prop("cds-sync-backup-retention-count", new_settings["retention_count"])

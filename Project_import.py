@@ -226,6 +226,26 @@ def import_project(projects_obj=None):
     except NameError:
         print("Import complete!\n" + summary)
 
+    # Optional final save if enabled
+    # We call this again here because property updates might have dirtied the project 
+    # AFTER the engine's internal finalize_import was called.
+    save_after_import = get_project_prop("cds-sync-save-after-import", True)
+    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+    
+    if backup_binary:
+        try:
+            print("Action: Updating binary backup...")
+            backup_project_binary(base_dir, projects_obj)
+        except Exception as e:
+            print("Warning: Could not update binary backup: " + safe_str(e))
+    elif save_after_import:
+        try:
+            print("Action: Saving project...")
+            projects_obj.primary.save()
+            print("Project saved successfully.")
+        except Exception as e:
+            print("Warning: Could not save project after import: " + safe_str(e))
+
 
 def main():
     base_dir, error = load_base_dir()

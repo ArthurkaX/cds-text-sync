@@ -337,6 +337,24 @@ def export_project(export_dir, projects_obj=None):
     except NameError:
         print("Export complete!\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
 
+    # Optional final save if enabled
+    save_after_export = get_project_prop("cds-sync-save-after-export", True)
+    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+
+    if backup_binary:
+        try:
+            print("Action: Updating binary backup...")
+            backup_project_binary(export_dir, projects_obj)
+        except Exception as e:
+            print("Warning: Could not update binary backup after export: " + safe_str(e))
+    elif save_after_export:
+        try:
+            print("Action: Saving project...")
+            projects_obj.primary.save()
+            print("Project saved successfully.")
+        except Exception as e:
+            print("Warning: Could not save project after export: " + safe_str(e))
+
 
 def main():
     base_dir, error = load_base_dir()
