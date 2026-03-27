@@ -222,13 +222,8 @@ def perform_export(base_dir, selected, unchanged_count=0):
         system.ui.info("No objects selected for export.")
         return
         
-    # Collect all property accessors from current project
-    projects_obj = resolve_projects(None, globals())
-    if projects_obj and projects_obj.primary:
-        all_objects = projects_obj.primary.get_children(recursive=True)
-        property_accessors = collect_property_accessors(all_objects)
-    else:
-        property_accessors = {}
+    # Property accessors collected dynamically during export loop
+    property_accessors = {}
     
     context = {
         'export_dir': base_dir,
@@ -270,6 +265,22 @@ def perform_export(base_dir, selected, unchanged_count=0):
         from codesys_managers import classify_object
         effective_type, is_xml, should_skip = classify_object(obj)
         if should_skip: continue
+
+        # --- PROPERTY ACCESSOR COLLECTION ---
+        if effective_type == TYPE_GUIDS["property"]:
+            try:
+                obj_guid = safe_str(obj.guid)
+                if obj_guid not in context['property_accessors']:
+                    context['property_accessors'][obj_guid] = {'get': None, 'set': None}
+                
+                for child in obj.get_children():
+                    child_name = child.get_name().upper()
+                    if child_name == "GET":
+                        context['property_accessors'][obj_guid]['get'] = child
+                    elif child_name == "SET":
+                        context['property_accessors'][obj_guid]['set'] = child
+            except:
+                pass
 
         if is_xml:
             mgr = managers.get(effective_type, native_mgr)

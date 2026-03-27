@@ -499,14 +499,14 @@ def classify_object(obj):
 
 class ObjectManager(object):
     """Base class for managing CODESYS objects"""
-    def _update_cache_entry(self, obj, rel_path, file_path, context, q_hash=None):
+    def _update_cache_entry(self, obj, rel_path, file_path, context, q_hash=None, stat_info=None):
         """Update the shared context cache with latest object metadata."""
         if 'new_cache' not in context or not os.path.exists(file_path):
             return
         
         norm_path = normalize_path(rel_path)
         try:
-            s = os.stat(file_path)
+            s = stat_info if stat_info else os.stat(file_path)
             # If q_hash not provided, calculate it based on type
             if q_hash is None:
                 q_hash = get_quick_ide_hash(obj, False)
@@ -602,7 +602,7 @@ class POUManager(ObjectManager):
                     if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
                         if 'exported_paths' in context:
                             context['exported_paths'].add(rel_path)
-                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash)
+                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
                         return "identical"
         # -------------------------------
 
@@ -757,7 +757,7 @@ class PropertyManager(POUManager):
                     if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
                         if 'exported_paths' in context:
                             context['exported_paths'].add(rel_path)
-                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash)
+                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
                         return "identical"
         # -------------------------------
 
@@ -973,7 +973,23 @@ class NativeManager(ObjectManager):
         target_dir = os.path.dirname(file_path)
         file_name = os.path.basename(rel_path)
         is_new = not os.path.exists(file_path)
-        
+        # --- CACHE SKIP OPTIMIZATION ---
+        norm_path = normalize_path(rel_path)
+        cache = context.get('cache_data')
+        if cache:
+            # For XML, get_quick_ide_hash returns the stable content hash
+            q_hash = get_quick_ide_hash(obj, True)
+            cached_obj = cache.get('objects', {}).get(norm_path)
+            if q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash:
+                if os.path.exists(file_path):
+                    s = os.stat(file_path)
+                    if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
+                        if 'exported_paths' in context:
+                            context['exported_paths'].add(rel_path)
+                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
+                        return "identical"
+        # -------------------------------
+
         # Get existing file hash before overwriting
         old_hash = "" if is_new else self._hash_file(file_path)
         

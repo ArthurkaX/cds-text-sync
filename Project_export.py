@@ -245,9 +245,8 @@ def export_project(export_dir, projects_obj=None):
     
     # Metadata migration - no longer used
     
-    # Collect all property accessors
-    property_accessors = collect_property_accessors(all_objects)
-    print("Found " + str(len(property_accessors)) + " properties with accessors")
+    # Property accessors collected dynamically during main loop
+    property_accessors = {}
     
     # Initialize managers
     managers = {
@@ -274,17 +273,42 @@ def export_project(export_dir, projects_obj=None):
         'property_accessors': property_accessors,
         'exported_paths': exported_paths,
         'cache_data': cache_data,
-        'new_cache': new_cache
+        'new_cache': new_cache,
+        'new_types': {}
     }
 
     # Second pass: export all objects
     for obj in all_objects:
         try:
-            effective_type, is_xml, should_skip = classify_object(obj)
+            obj_guid = safe_str(obj.guid)
+            cached_type = cache_data.get('types', {}).get(obj_guid)
+            if cached_type:
+                effective_type, is_xml, rel_path = cached_type
+                should_skip = False # If it's in the cache, it wasn't skipped last time
+            else:
+                effective_type, is_xml, should_skip = classify_object(obj)
+                rel_path = build_expected_path(obj, effective_type, is_xml)
             
-            # Pre-calculate path once to avoid redundant tree traversal
-            rel_path = build_expected_path(obj, effective_type, is_xml)
             norm_path = normalize_path(rel_path)
+            
+            # Store for next cache save
+            if not should_skip:
+                context['new_types'][obj_guid] = (effective_type, is_xml, rel_path)
+            
+            # --- PROPERTY ACCESSOR COLLECTION ---
+            if effective_type == TYPE_GUIDS["property"]:
+                try:
+                    if obj_guid not in context['property_accessors']:
+                        context['property_accessors'][obj_guid] = {'get': None, 'set': None}
+                    
+                    for child in obj.get_children():
+                        child_name = child.get_name().upper()
+                        if child_name == "GET":
+                            context['property_accessors'][obj_guid]['get'] = child
+                        elif child_name == "SET":
+                            context['property_accessors'][obj_guid]['set'] = child
+                except:
+                    pass
             
             # --- PERSIST CACHE FOR SKIPPED OBJECTS ---
             if cache_data:
@@ -337,7 +361,7 @@ def export_project(export_dir, projects_obj=None):
         # build_folder_hashes expects a dict of {path: ide_hash}
         just_hashes = {path: entry.get('ide_hash') for path, entry in new_cache.items()}
         folder_hashes = build_folder_hashes(just_hashes)
-        save_sync_cache(export_dir, new_cache, folder_hashes)
+        save_sync_cache(export_dir, new_cache, folder_hashes, context.get('new_types'))
         log_info("Saved updated sync cache with {} objects and {} folders.".format(
             len(new_cache), len(folder_hashes)))
             
