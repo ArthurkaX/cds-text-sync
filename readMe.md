@@ -250,6 +250,12 @@ Refer to that repository's README for detailed verification procedures and contr
 
 ---
 
+## 🗣️ Community & Future Roadmap
+
+While Issues are great for reporting bugs, I invite you to join our **[GitHub Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions)** for everything else! There you can suggest improvements and influence the development of the project.
+
+---
+
 ## 📝 Changelog
 
 See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions.
