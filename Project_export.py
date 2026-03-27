@@ -34,12 +34,14 @@ from codesys_utils import (
     calculate_hash, format_st_content,
     log_info, log_warning, log_error,
     init_logging, backup_project_binary, format_property_content,
-    resolve_projects, update_application_count_flag, ensure_git_configs
+    resolve_projects, update_application_count_flag, ensure_git_configs,
+    get_quick_ide_hash, load_sync_cache, save_sync_cache, build_folder_hashes,
+    normalize_path
 )
 from codesys_managers import (
     FolderManager, POUManager, PropertyManager, NativeManager, ConfigManager,
     get_object_path, collect_property_accessors, is_nvl, is_graphical_pou,
-    classify_object
+    classify_object, build_expected_path
 )
 
 # Shared constants and utilities imported from modules
@@ -104,7 +106,7 @@ def cleanup_orphaned_files(export_dir, current_objects):
                 orphaned_items.append(rel_path)
 
     if not orphaned_items:
-        return True
+        return 0
 
     # Check for auto-delete property
     try:
@@ -138,6 +140,7 @@ def cleanup_orphaned_files(export_dir, current_objects):
             print("UI Choose not available, skipping cleanup.")
             return True
     
+    removed_count = 0
     if result[0] == 0: # Delete
         print("Cleaning up orphaned files...")
         for rel_path in orphaned_items:
@@ -145,6 +148,7 @@ def cleanup_orphaned_files(export_dir, current_objects):
             try:
                 if os.path.exists(full_path):
                     os.remove(full_path)
+                    removed_count += 1
                     print("Deleted: " + rel_path)
             except Exception as e:
                 print("Error deleting " + rel_path + ": " + safe_str(e))
@@ -176,13 +180,13 @@ def cleanup_orphaned_files(export_dir, current_objects):
                         print("Deleted empty folder: " + rel_path)
                 except:
                     pass
-        return True
+        return removed_count
     elif result[0] == 1: # Ignore
         print("Orphaned files ignored.")
-        return True
+        return 0
     else: # Cancel
         print("Export cancelled during cleanup.")
-        return False
+        return None
 
 
 
@@ -236,6 +240,7 @@ def export_project(export_dir, projects_obj=None):
     exported_new = 0
     exported_updated = 0
     exported_identical = 0
+    exported_failed = 0
     skipped_count = 0
     
     # Metadata migration - no longer used
@@ -257,17 +262,39 @@ def export_project(export_dir, projects_obj=None):
         "native": NativeManager()
     }
     
+    # Load sync cache for fast-export skipping
+    cache_data = load_sync_cache(export_dir)
+    new_cache = {}
+    if cache_data and cache_data.get('objects'):
+        log_info("Sync cache loaded! Enabling accelerated export (Merkle Tree skip).")
+    
     context = {
         'export_dir': export_dir,
         'export_xml': export_xml,
         'property_accessors': property_accessors,
-        'exported_paths': exported_paths
+        'exported_paths': exported_paths,
+        'cache_data': cache_data,
+        'new_cache': new_cache
     }
 
     # Second pass: export all objects
     for obj in all_objects:
         try:
             effective_type, is_xml, should_skip = classify_object(obj)
+            
+            # Pre-calculate path once to avoid redundant tree traversal
+            rel_path = build_expected_path(obj, effective_type, is_xml)
+            norm_path = normalize_path(rel_path)
+            
+            # --- PERSIST CACHE FOR SKIPPED OBJECTS ---
+            if cache_data:
+                try:
+                    cached_obj = cache_data.get('objects', {}).get(norm_path)
+                    if cached_obj:
+                        new_cache[norm_path] = cached_obj
+                except: pass
+            # ----------------------------------------
+
             if should_skip:
                 continue
 
@@ -288,7 +315,7 @@ def export_project(export_dir, projects_obj=None):
                 manager = managers["default"]
 
             context['effective_type'] = effective_type
-            result = manager.export(obj, context)
+            result = manager.export(obj, context, rel_path=rel_path)
             if result == "new":
                 exported_new += 1
             elif result == "updated":
@@ -297,37 +324,41 @@ def export_project(export_dir, projects_obj=None):
                 exported_identical += 1
                 
         except Exception as e:
+            exported_failed += 1
             log_error("Error exporting " + safe_str(obj) + ": " + safe_str(e))
     
     # Orphan cleanup now uses exported_paths set directly
-    if not cleanup_orphaned_files(export_dir, exported_paths):
+    removed_count = cleanup_orphaned_files(export_dir, exported_paths)
+    if removed_count is None:
         return
 
-    # Clear sync cache after full export to ensure consistency
-    cache_path = os.path.join(export_dir, "sync_cache.json")
-    if os.path.exists(cache_path):
-        try:
-            os.remove(cache_path)
-            log_info("Cleared sync cache after full export.")
-        except:
-            pass
+    # Calculate folder hashes (Merkle Tree) and save the updated cache
+    if new_cache:
+        # build_folder_hashes expects a dict of {path: ide_hash}
+        just_hashes = {path: entry.get('ide_hash') for path, entry in new_cache.items()}
+        folder_hashes = build_folder_hashes(just_hashes)
+        save_sync_cache(export_dir, new_cache, folder_hashes)
+        log_info("Saved updated sync cache with {} objects and {} folders.".format(
+            len(new_cache), len(folder_hashes)))
             
     print("=== Export Complete ===")
     elapsed_time = time.time() - start_time
-    print("New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical))
+    print("New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ", Removed: " + str(removed_count))
     print("Skipped: " + str(skipped_count) + " objects (no textual content)")
     print("Time elapsed: {:.2f} seconds".format(elapsed_time))
     print("Completed at: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     
     exported_total = exported_new + exported_updated + exported_identical
-    summary = "Exported: " + str(exported_total) + " (New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ")"
-    log_info("Export complete! " + summary)
+    summary = "Updated: " + str(exported_updated) + ", Created: " + str(exported_new) + ", Removed: " + str(removed_count) + ", Failed: " + str(exported_failed) + " (Identical: " + str(exported_identical) + ")"
+    log_info("Export complete! " + summary + " Time elapsed: {:.2f}s".format(elapsed_time))
     
     # Save export metadata for version tracking
     save_export_metadata(export_dir, {
         "new": exported_new,
         "updated": exported_updated,
         "identical": exported_identical,
+        "removed": removed_count,
+        "failed": exported_failed,
         "total": exported_total
     }, elapsed_time)
     

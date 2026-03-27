@@ -12,7 +12,7 @@ import time
 from codesys_utils import (
     safe_str, clean_filename, calculate_hash, log_info, log_error, log_warning,
     format_st_content, format_property_content, parse_property_content,
-    resolve_projects, is_container_device
+    resolve_projects, is_container_device, get_quick_ide_hash, normalize_path
 )
 from codesys_constants import TYPE_GUIDS, XML_TYPES, EXPORTABLE_TYPES, IMPLEMENTATION_TYPES, XML_TYPES as XML_TYPES_CONST
 
@@ -499,7 +499,26 @@ def classify_object(obj):
 
 class ObjectManager(object):
     """Base class for managing CODESYS objects"""
-    def export(self, obj, context):
+    def _update_cache_entry(self, obj, rel_path, file_path, context, q_hash=None):
+        """Update the shared context cache with latest object metadata."""
+        if 'new_cache' not in context or not os.path.exists(file_path):
+            return
+        
+        norm_path = normalize_path(rel_path)
+        try:
+            s = os.stat(file_path)
+            # If q_hash not provided, calculate it based on type
+            if q_hash is None:
+                q_hash = get_quick_ide_hash(obj, False)
+            
+            context['new_cache'][norm_path] = {
+                "ide_hash": q_hash,
+                "disk_mtime": int(s.st_mtime),
+                "disk_size": s.st_size
+            }
+        except: pass
+
+    def export(self, obj, context, rel_path=None):
         """Export object to file system and update metadata"""
         pass
     
@@ -513,19 +532,22 @@ class ObjectManager(object):
 
 class FolderManager(ObjectManager):
     """Handle folder creation and management"""
-    def export(self, obj, context):
-        rel_path = build_expected_path(obj, safe_str(obj.type), False)
+    def export(self, obj, context, rel_path=None):
+        if rel_path is None:
+            rel_path = build_expected_path(obj, safe_str(obj.type), False)
         
-        # Track that we touched this path
+        # Track and cache
+        file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
+        
+        # Folders use a constant hash since we just want to track their path/mtime
+        self._update_cache_entry(obj, rel_path, file_path, context, q_hash="folder")
 
-        # Skip creating Task Configuration and Alarm Configuration folders - they will be handled by ConfigManager as XML files
+        # Skip creating folders for special XML containers
         if safe_str(obj.type) in [TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"]]:
             return "identical"
-        
-        target_dir = os.path.join(context['export_dir'], *full_path_parts)
-        # Note: Directory creation is usually handled by child objects or os.makedirs
+            
         return "identical"
 
     def update(self, obj, file_path, obj_info=None):
@@ -548,19 +570,42 @@ class FolderManager(ObjectManager):
 
 class POUManager(ObjectManager):
     """Handle standard textual objects (POUs, GVLs, DUTs)"""
-    def export(self, obj, context):
+    def export(self, obj, context, rel_path=None):
         obj_type = safe_str(obj.type)
         obj_name = obj.get_name()
         
         # Build path and filename
-        effective_type = context.get('effective_type', safe_str(obj.type))
-        rel_path = build_expected_path(obj, effective_type, False)
+        if rel_path is None:
+            effective_type = context.get('effective_type', safe_str(obj.type))
+            rel_path = build_expected_path(obj, effective_type, False)
         
         # Determine target directory and file path
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
         target_dir = os.path.dirname(file_path)
         file_name = os.path.basename(rel_path)
         
+        # --- CACHE SKIP OPTIMIZATION ---
+        norm_path = normalize_path(rel_path)
+        cache = context.get('cache_data')
+        if cache:
+            # Try to skip slow extraction if IDE and Disk match cache
+            q_hash = get_quick_ide_hash(obj, False)
+            cached_obj = cache.get('objects', {}).get(norm_path)
+            if q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash:
+                # IDE matches cache. Now check if Disk matches cache.
+                if os.path.exists(file_path):
+                    # For performance, we trust mtime/size if available, 
+                    # but POUManager usually forces a content check if cache-mismatch.
+                    # Here we follow the 'Export' rules: IDE is source of truth.
+                    # If IDE matches CACHE, and DISK matches CACHE, then IDE == DISK.
+                    s = os.stat(file_path)
+                    if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
+                        if 'exported_paths' in context:
+                            context['exported_paths'].add(rel_path)
+                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash)
+                        return "identical"
+        # -------------------------------
+
         declaration, implementation = export_object_content(obj)
         # Check if this object type can have implementation even if empty
         obj_type_guid = safe_str(obj.type)
@@ -585,6 +630,8 @@ class POUManager(ObjectManager):
                     # Track path and return
                     if 'exported_paths' in context:
                         context['exported_paths'].add(rel_path)
+                    
+                    self._update_cache_entry(obj, rel_path, file_path, context, content_hash)
                     return "identical"
             except:
                 pass  # If we can't read existing file, just overwrite
@@ -598,6 +645,7 @@ class POUManager(ObjectManager):
             
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
+        self._update_cache_entry(obj, rel_path, file_path, context, content_hash)
         return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info=None):
@@ -678,7 +726,7 @@ class POUManager(ObjectManager):
 
 class PropertyManager(POUManager):
     """Handle properties specifically (combining declaration, Get, and Set)"""
-    def export(self, obj, context):
+    def export(self, obj, context, rel_path=None):
         obj_guid = safe_str(obj.guid)
         obj_name = obj.get_name()
         
@@ -687,14 +735,32 @@ class PropertyManager(POUManager):
         else:
             prop_data = context['property_accessors'][obj_guid]
         
-        effective_type = context.get('effective_type', safe_str(obj.type))
-        rel_path = build_expected_path(obj, effective_type, False)
+        if rel_path is None:
+            effective_type = context.get('effective_type', safe_str(obj.type))
+            rel_path = build_expected_path(obj, effective_type, False)
         
         # Determine target directory and file path
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
         target_dir = os.path.dirname(file_path)
         file_name = os.path.basename(rel_path)
         
+        # --- CACHE SKIP OPTIMIZATION ---
+        norm_path = normalize_path(rel_path)
+        cache = context.get('cache_data')
+        if cache:
+            # Properties are special: q_hash handles decl + kids
+            q_hash = get_quick_ide_hash(obj, False)
+            cached_obj = cache.get('objects', {}).get(norm_path)
+            if q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash:
+                if os.path.exists(file_path):
+                    s = os.stat(file_path)
+                    if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
+                        if 'exported_paths' in context:
+                            context['exported_paths'].add(rel_path)
+                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash)
+                        return "identical"
+        # -------------------------------
+
         # Export Declaration
         declaration, _ = export_object_content(obj)
         
@@ -729,6 +795,8 @@ class PropertyManager(POUManager):
                 if calculate_hash(existing_content) == content_hash:
                     if 'exported_paths' in context:
                         context['exported_paths'].add(rel_path)
+                    
+                    self._update_cache_entry(obj, rel_path, file_path, context, content_hash)
                     return "identical"
             except:
                 pass
@@ -742,6 +810,7 @@ class PropertyManager(POUManager):
             
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
+        self._update_cache_entry(obj, rel_path, file_path, context, content_hash)
         return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info=None):
@@ -861,7 +930,6 @@ class NativeManager(ObjectManager):
                 
                 if stable_content:
                     content = "".join(stable_content).encode("utf-8")
-                    log_info("Special hash computed for %s using %d stable lines" % (is_textlist and "GlobalTextList" or "AlarmGroup", len(stable_content)))
                     return str(zlib.crc32(content) & 0xFFFFFFFF)
                 else:
                     # Fallback: if no stable content found, use filename hash
@@ -895,9 +963,10 @@ class NativeManager(ObjectManager):
         except:
             return ""
 
-    def export(self, obj, context, recursive=False):
-        effective_type = context.get('effective_type', safe_str(obj.type))
-        rel_path = build_expected_path(obj, effective_type, True)
+    def export(self, obj, context, recursive=False, rel_path=None):
+        if rel_path is None:
+            effective_type = context.get('effective_type', safe_str(obj.type))
+            rel_path = build_expected_path(obj, effective_type, True)
         
         # Determine target directory and file path
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
@@ -920,7 +989,7 @@ class NativeManager(ObjectManager):
                 log_error("Native export failed: 'projects' object not found or no primary project.")
                 return False
         except Exception as e:
-            log_error("Native export failed for " + obj_name + ": " + safe_str(e))
+            log_error("Native export failed for " + obj.get_name() + ": " + safe_str(e))
             if os.path.exists(tmp_path):
                 try: os.remove(tmp_path)
                 except: pass
@@ -938,6 +1007,7 @@ class NativeManager(ObjectManager):
             except: pass
             if 'exported_paths' in context:
                 context['exported_paths'].add(rel_path)
+            self._update_cache_entry(obj, rel_path, file_path, context, new_hash)
             return "identical"
         
         # Content changed or new - replace with temp file
@@ -951,6 +1021,8 @@ class NativeManager(ObjectManager):
             
         if 'exported_paths' in context:
             context['exported_paths'].add(rel_path)
+        self._update_cache_entry(obj, rel_path, file_path, context, new_hash)
+            
         return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info=None):
@@ -1002,14 +1074,14 @@ class NativeManager(ObjectManager):
 
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
-    def export(self, obj, context):
+    def export(self, obj, context, rel_path=None):
         # Devices are monolithic only if they are not containers (Project Roots)
         recursive = True
         if safe_str(obj.type) == TYPE_GUIDS["device"]:
             if is_container_device(obj):
                 recursive = False
         
-        return super(ConfigManager, self).export(obj, context, recursive=recursive)
+        return super(ConfigManager, self).export(obj, context, recursive=recursive, rel_path=rel_path)
     
     def create(self, container, name, file_path, type_guid):
         return super(ConfigManager, self).create(container, name, file_path, type_guid)

@@ -18,7 +18,7 @@ import shutil
 
 # --- Global Thread Lock ---
 _metadata_thread_lock = threading.Lock()
-from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
+from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER, IMPLEMENTATION_TYPES
 
 
 # --- Logging System ---
@@ -203,6 +203,52 @@ def resolve_system(caller_globals=None):
                     return candidate
     except:
         pass
+        
+    return None
+
+
+def get_quick_ide_hash(obj, is_xml):
+    """
+    Quickly calculate identification hash from IDE object without full export.
+    Returns None if full export is mandatory (e.g. XML types).
+    """
+    if is_xml:
+        return None  # XML requires full export for stable comparison
+        
+    try:
+        obj_type_guid = safe_str(obj.type)
+        
+        # Extract decl and impl
+        decl = obj.textual_declaration.text if hasattr(obj, 'has_textual_declaration') and obj.has_textual_declaration else None
+            
+        if obj_type_guid == TYPE_GUIDS["property"]:
+            # Special Case: Properties combine Get and Set children
+            get_impl = None
+            set_impl = None
+            try:
+                for child in obj.get_children():
+                    c_name = child.get_name().lower()
+                    if c_name == "get":
+                        c_decl = child.textual_declaration.text if child.has_textual_declaration else ""
+                        c_impl = child.textual_implementation.text if child.has_textual_implementation else ""
+                        get_impl = format_st_content(c_decl, c_impl)
+                    elif c_name == "set":
+                        c_decl = child.textual_declaration.text if child.has_textual_declaration else ""
+                        c_impl = child.textual_implementation.text if child.has_textual_implementation else ""
+                        set_impl = format_st_content(c_decl, c_impl)
+            except: pass
+            
+            content = format_property_content(decl, get_impl, set_impl)
+            return calculate_hash(content)
+        else:
+            # Standard POU/GVL/DUT
+            impl = obj.textual_implementation.text if hasattr(obj, 'has_textual_implementation') and obj.has_textual_implementation else None
+            if decl is not None or impl is not None:
+                can_have_impl = obj_type_guid in IMPLEMENTATION_TYPES
+                content = format_st_content(decl, impl, can_have_impl)
+                return calculate_hash(content)
+    except Exception as e:
+        log_warning("Quick hash failed: " + str(e))
         
     return None
 

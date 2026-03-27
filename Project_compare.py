@@ -154,7 +154,7 @@ def compare_project(projects_obj=None):
     
     log_info("COMPARE: M:" + str(len(different)) + " +:" + str(len(new_in_ide)) 
              + " *:" + str(len(new_on_disk))
-             + " =:" + str(unchanged_count))
+             + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
     if diff_lines:
         log_info("DIFF:\n" + "\n".join(diff_lines))
     
@@ -168,12 +168,12 @@ def compare_project(projects_obj=None):
         )
         
         if action == "import":
-            perform_import(projects_obj.primary, base_dir, selected)
+            perform_import(projects_obj.primary, base_dir, selected, unchanged_count)
         elif action == "export":
-            perform_export(base_dir, selected)
+            perform_export(base_dir, selected, unchanged_count)
 
 
-def perform_import(primary_project, base_dir, selected):
+def perform_import(primary_project, base_dir, selected, unchanged_count=0):
     """Import selected items via the shared engine."""
     if not selected:
         system.ui.info("No files selected for import.")
@@ -191,8 +191,8 @@ def perform_import(primary_project, base_dir, selected):
         primary_project, base_dir, selected, globals()
     )
     
-    message = "Import complete!\n\nUpdated: {}\nCreated: {}\nDeleted: {}\nFailed: {}".format(
-        updated, created, deleted, failed)
+    message = "Import complete!\n\nUpdated: {}, Created: {}, Deleted: {}, Failed: {} (Identical: {})".format(
+        updated, created, deleted, failed, unchanged_count)
     if backup_filename:
         message += "\n\nBackup created: .project/" + backup_filename
     system.ui.info(message)
@@ -216,7 +216,7 @@ def perform_import(primary_project, base_dir, selected):
             print("Warning: Could not save project after import: " + safe_str(e))
 
 
-def perform_export(base_dir, selected):
+def perform_export(base_dir, selected, unchanged_count=0):
     """Trigger export for IDE-side changes"""
     if not selected:
         system.ui.info("No objects selected for export.")
@@ -246,12 +246,27 @@ def perform_export(base_dir, selected):
     }
     native_mgr = NativeManager()
     
-    count = 0
+    count_created = 0
+    count_updated = 0
+    count_removed = 0
+    count_failed = 0
+    
     for item in selected:
         obj = item.get("obj")
-        if not obj: continue
         
-        # Determine manager
+        # Scenario 1: Object missing in IDE (from 'new_on_disk' list) -> DELETION from disk
+        if not obj:
+            file_path = item.get("file_path")
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    count_removed += 1
+                except Exception as e:
+                    log_error("Could not remove orphaned file " + item.get("path") + ": " + safe_str(e))
+                    count_failed += 1
+            continue
+        
+        # Scenario 2: Object exists in IDE -> EXPORT to disk
         from codesys_managers import classify_object
         effective_type, is_xml, should_skip = classify_object(obj)
         if should_skip: continue
@@ -266,11 +281,18 @@ def perform_export(base_dir, selected):
         context['effective_type'] = effective_type
         try:
             res = mgr.export(obj, context)
-            if res: count += 1
+            if res == "new":
+                count_created += 1
+            elif res == "updated":
+                count_updated += 1
         except Exception as e:
             log_error("Export failed for " + item["name"] + ": " + safe_str(e))
+            count_failed += 1
     
-    system.ui.info("Exported " + str(count) + " objects.")
+    summary = "Updated: {}, Created: {}, Removed: {}, Failed: {} (Identical: {})".format(
+        count_updated, count_created, count_removed, count_failed, unchanged_count)
+        
+    system.ui.info("Export complete!\n\n" + summary)
 
     # Optional final save if enabled
     save_after_export = get_project_prop("cds-sync-save-after-export", True)

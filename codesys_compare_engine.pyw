@@ -25,7 +25,7 @@ from codesys_utils import (
     parse_st_file, build_object_cache, find_object_by_path,
     ensure_folder_path, determine_object_type, find_object_by_name,
     format_st_content, format_property_content, get_project_prop,
-    load_sync_cache, save_sync_cache, normalize_path
+    load_sync_cache, save_sync_cache, normalize_path, get_quick_ide_hash
 )
 from codesys_managers import (
     NativeManager, FolderManager, PropertyManager, ConfigManager, POUManager,
@@ -45,30 +45,6 @@ from codesys_managers import (
 
 # Removed local build_expected_path, now imported from codesys_managers
 
-def _get_quick_ide_hash(obj, is_xml):
-    """
-    Quickly calculate identification hash from IDE object without full export.
-    Returns None if full export is mandatory (e.g. XML types).
-    """
-    if is_xml:
-        return None  # XML requires full export for stable comparison
-        
-    try:
-        # For Structured Text objects, we can often get content directly from properties
-        # which is MUCH faster than full export_native
-        parts = []
-        if hasattr(obj, 'has_textual_declaration') and obj.has_textual_declaration:
-            parts.append(obj.textual_declaration.text or "")
-        
-        if hasattr(obj, 'has_textual_implementation') and obj.has_textual_implementation:
-            parts.append(obj.textual_implementation.text or "")
-            
-        if parts:
-            return calculate_hash("\n".join(parts))
-    except Exception as e:
-        log_warning("Quick hash failed for %s: %s" % (safe_str(obj), str(e)))
-        
-    return None
 
 def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl=False):
     """Extract content from IDE object for comparison.
@@ -133,63 +109,43 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl
 
 def contents_are_equal(ide_content, disk_content, is_xml, rel_path="unknown"):
     """Compare two content strings, with XML-specific filtering."""
-    log_info("=== Comparing %s ===" % rel_path)
-    log_info("IDE content length: %d, Disk content length: %d" % (len(ide_content), len(disk_content)))
-    
     if not ide_content or not disk_content:
-        result = ide_content == disk_content
-        log_info("Empty content check: %s (IDE empty: %s, Disk empty: %s)" % (result, not ide_content, not disk_content))
-        return result
+        return ide_content == disk_content
         
     if not is_xml:
         ide_hash = calculate_hash(ide_content)
         disk_hash = calculate_hash(disk_content)
-        result = ide_hash == disk_hash
-        log_info("Non-XML comparison: IDE hash=%s, Disk hash=%s, Equal=%s" % (ide_hash, disk_hash, result))
-        return result
+        are_equal = ide_hash == disk_hash
+        if not are_equal:
+            log_info("Content mismatch for %s: IDE hash=%s, Disk hash=%s" % (rel_path, ide_hash, disk_hash))
+        return are_equal
     
     # XML Comparison - use NativeManager's filtering logic
     native_mgr = NativeManager()
     
-    # We need to write ide_content to a temp file because _hash_file reads from disk
-    clean_name = "ide_temp_comp"
-    tmp_path = os.path.join(tempfile.gettempdir(), clean_name + ".xml")
-    tmp_path_disk = os.path.join(tempfile.gettempdir(), "disk_temp_comp" + ".xml")
+    # We need to write content to temp files because _hash_file reads from disk
+    tmp_path_ide = os.path.join(tempfile.gettempdir(), "cds_comp_ide.xml")
+    tmp_path_disk = os.path.join(tempfile.gettempdir(), "cds_comp_disk.xml")
     
     try:
-        with codecs.open(tmp_path, "w", "utf-8") as f:
+        with codecs.open(tmp_path_ide, "w", "utf-8") as f:
             f.write(ide_content)
         with codecs.open(tmp_path_disk, "w", "utf-8") as f:
             f.write(disk_content)
             
-        ide_hash = native_mgr._hash_file(tmp_path)
+        ide_hash = native_mgr._hash_file(tmp_path_ide)
         disk_hash = native_mgr._hash_file(tmp_path_disk)
         
-        os.remove(tmp_path)
-        os.remove(tmp_path_disk)
+        if os.path.exists(tmp_path_ide): os.remove(tmp_path_ide)
+        if os.path.exists(tmp_path_disk): os.remove(tmp_path_disk)
         
         are_equal = ide_hash == disk_hash
         if not are_equal:
-            log_info("Content mismatch: IDE hash=%s, Disk hash=%s" % (ide_hash, disk_hash))
-            
-            # Log first few lines of each content for debugging
-            ide_lines = ide_content.splitlines()[:5]
-            disk_lines = disk_content.splitlines()[:5]
-            
-            log_info("=== First 5 lines comparison ===")
-            for i, (ide_line, disk_line) in enumerate(zip(ide_lines, disk_lines), 1):
-                if ide_line != disk_line:
-                    log_info("Line %d DIFFERS:")
-                    log_info("  IDE: %s" % ide_line[:100])
-                    log_info("  Disk: %s" % disk_line[:100])
-                else:
-                    log_info("Line %d: %s" % (i, ide_line[:100]))
-        else:
             log_info("Content match: IDE hash=%s, Disk hash=%s" % (ide_hash, disk_hash))
-            
+            log_info("Content mismatch for %s (XML)" % rel_path)
         return are_equal
     except Exception as e:
-        log_info("Error during comparison: %s" % str(e))
+        log_warning("Error comparing XML contents for %s: %s" % (rel_path, str(e)))
         return False
 
 def read_file(file_path):
@@ -282,7 +238,7 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
         ide_metadata[norm_path] = (eff_type, is_xml)
         
         # Quick hash for ST
-        q_hash = _get_quick_ide_hash(obj, is_xml)
+        q_hash = get_quick_ide_hash(obj, is_xml)
         
         # For XML objects: use cached ide_hash to allow Merkle skip for mixed folders
         if not q_hash and is_xml:

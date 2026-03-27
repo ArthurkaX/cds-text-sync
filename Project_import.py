@@ -183,13 +183,13 @@ def import_project(projects_obj=None):
     
     print("")
     print("=== Import Complete ===")
-    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Deleted: " + str(deleted) + ", Failed: " + str(failed)
+    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Deleted: " + str(deleted) + ", Failed: " + str(failed) + " (Identical: " + str(unchanged_count) + ")"
     print(summary)
     if backup_filename:
         print("Backup created: .project/" + backup_filename)
     print("Time elapsed: {:.2f} seconds".format(elapsed))
     
-    log_info("Import complete! " + summary)
+    log_info("Import complete! " + summary + " Time elapsed: {:.2f}s".format(elapsed))
     
     # Update metadata after successful import
     try:
@@ -205,7 +205,8 @@ def import_project(projects_obj=None):
                 "updated": updated,
                 "created": created,
                 "deleted": deleted,
-                "failed": failed
+                "failed": failed,
+                "identical": unchanged_count
             }
         }
         
