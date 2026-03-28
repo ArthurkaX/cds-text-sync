@@ -14,6 +14,7 @@ def _load_hidden_module(name):
 # Load shared core logic
 _load_hidden_module("codesys_constants")
 _load_hidden_module("codesys_utils")
+_load_hidden_module("codesys_ui")
 
 def set_base_directory():
     # CODESYS provides the 'system' object for UI interactions
@@ -44,10 +45,10 @@ def set_base_directory():
         pass
 
     # Offer choice: Browse or Manual Input
-    from codesys_ui import ask_yes_no_cancel
-    ans = ask_yes_no_cancel(
-        "Set Sync Directory", 
-        "Would you like to BROWSE for a folder?\n\n[Yes] = Select using file browser\n[No]  = Enter path manually\n[Cancel] = Abort operation"
+    from codesys_ui import show_directory_choice_dialog
+    ans = show_directory_choice_dialog(
+        "Project Sync Configuration", 
+        "Would you like to BROWSE for a folder or enter the path manually?"
     )
     
     if ans == "cancel":
@@ -58,7 +59,7 @@ def set_base_directory():
     
     selected_path = None
     
-    if choice[0] == 0:  # Browse
+    if choice_idx == 0:  # Browse
         selected_path = system.ui.browse_directory_dialog("Select Sync Directory for this Project", initial_dir)
     else:  # Manual Input
         # Create a simple input dialog using Windows Forms

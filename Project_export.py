@@ -176,7 +176,7 @@ def cleanup_orphaned_files(export_dir, current_objects):
                 except:
                     pass
         return removed_count
-    elif result[0] == 1: # Ignore
+    elif choice_idx == 1: # Ignore
         print("Orphaned files ignored.")
         return 0
     else: # Cancel

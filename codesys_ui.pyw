@@ -11,9 +11,9 @@ try:
         Application, Form, Label, CheckBox, Button, FormBorderStyle, 
         DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
         Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle,
-        MessageBox, MessageBoxButtons, MessageBoxIcon
+        MessageBox, MessageBoxButtons, MessageBoxIcon, FlatStyle
     )
-    from System.Drawing import Size, Point, Font, FontStyle, SystemIcons, Color
+    from System.Drawing import Size, Point, Font, FontStyle, SystemIcons, Color, ContentAlignment
 except:
     # Fallback if forms not available (e.g. Linux/Headless)
     pass
@@ -499,3 +499,83 @@ def show_compare_dialog(different, new_in_ide, new_on_disk, unchanged_count):
     except Exception as e:
         print("Error showing compare dialog: " + str(e))
     return CompareResultsForm.CLOSE, []
+
+
+class DirectoryChoiceForm(Form):
+    """Modern choice dialog for setting the sync directory"""
+    def __init__(self, title, message):
+        self.Text = title
+        self.Size = Size(450, 270) # Increased height for better padding
+        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self.StartPosition = FormStartPosition.CenterScreen
+        self.MaximizeBox = False
+        self.MinimizeBox = False
+        self.BackColor = Color.FromArgb(250, 250, 250)
+        self.choice = "cancel"
+
+        # Main Text
+        lbl_msg = Label()
+        lbl_msg.Text = "Sync Directory Setup"
+        lbl_msg.Font = Font("Segoe UI", 14, FontStyle.Bold)
+        lbl_msg.Location = Point(20, 20)
+        lbl_msg.AutoSize = True
+        lbl_msg.ForeColor = Color.FromArgb(50, 50, 50)
+        self.Controls.Add(lbl_msg)
+
+        lbl_sub = Label()
+        lbl_sub.Text = "Choose how you would like to configure the primary sync folder."
+        lbl_sub.Font = Font("Segoe UI", 9)
+        lbl_sub.Location = Point(22, 50)
+        lbl_sub.AutoSize = True
+        lbl_sub.ForeColor = Color.Gray
+        self.Controls.Add(lbl_sub)
+
+        # Buttons - Big and Modern (Removed emojis for better compatibility)
+        btn_browse = Button()
+        btn_browse.Text = "  Browse Folder...\n  (Select via file explorer)"
+        btn_browse.Font = Font("Segoe UI", 10)
+        btn_browse.TextAlign = ContentAlignment.MiddleLeft
+        btn_browse.Location = Point(25, 90)
+        btn_browse.Size = Size(385, 55)
+        btn_browse.BackColor = Color.White
+        btn_browse.FlatStyle = FlatStyle.Flat
+        btn_browse.FlatAppearance.BorderColor = Color.LightGray
+        btn_browse.Click += self._on_browse
+        self.Controls.Add(btn_browse)
+
+        btn_manual = Button()
+        btn_manual.Text = "  Enter Manually...\n  (Use relative ./ paths or text input)"
+        btn_manual.Font = Font("Segoe UI", 10)
+        btn_manual.TextAlign = ContentAlignment.MiddleLeft
+        btn_manual.Location = Point(25, 155)
+        btn_manual.Size = Size(385, 55)
+        btn_manual.BackColor = Color.White
+        btn_manual.FlatStyle = FlatStyle.Flat
+        btn_manual.FlatAppearance.BorderColor = Color.LightGray
+        btn_manual.Click += self._on_manual
+        self.Controls.Add(btn_manual)
+
+    def _on_browse(self, sender, event):
+        self.choice = "yes"
+        self.DialogResult = DialogResult.OK
+        self.Close()
+
+    def _on_manual(self, sender, event):
+        self.choice = "no"
+        self.DialogResult = DialogResult.OK
+        self.Close()
+
+    def _on_cancel(self, sender, event):
+        self.choice = "cancel"
+        self.DialogResult = DialogResult.Cancel
+        self.Close()
+
+def show_directory_choice_dialog(title, message):
+    try:
+        form = DirectoryChoiceForm(title, message)
+        form.ShowDialog()
+        return form.choice
+    except:
+        # Fallback to standard if custom fails
+        from codesys_ui import ask_yes_no_cancel
+        return ask_yes_no_cancel(title, message)
