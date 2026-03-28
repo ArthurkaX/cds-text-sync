@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.7.2 (2026-03-28)
+
+**Critical Fixes & UX Optimization:**
+
+- **Module Import Fix**: Resolved a critical `ImportError` where `codesys_ui` was not being loaded in `Project_directory.py`, causing a crash on startup for new projects.
+- **Reference Bug Fixes**:
+  - Fixed an undefined variable crash (`choice[0]`) in `Project_directory.py`.
+  - Fixed an undefined variable crash (`result[0]`) in `Project_export.py` during orphaned file cleanup.
+- **Modern Directory Setup UI**:
+  - Replaced the confusing "Yes/No/Cancel" setup prompt with a dedicated, professional **Sync Directory Setup** dialog.
+  - Buttons now clearly describe actions: **"Browse Folder..."** and **"Enter Manually..."**.
+  - Streamlined design by removing redundant "Cancel" buttons in favor of standard window close (X) functionality.
+- **Improved Visual Consistency**: Cleaned up the UI by removing non-rendering emoji characters that appeared as squares in some CODESYS environments.
+
 ### Version 1.7.1 (2026-03-27)
 
 **UI Robustness & Post-Sync Enhancements:**

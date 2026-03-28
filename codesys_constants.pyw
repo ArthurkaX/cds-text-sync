@@ -7,7 +7,7 @@ constants used across multiple scripts.
 """
 
 # Script version - single source of truth for version tracking
-SCRIPT_VERSION = "1.7.1"
+SCRIPT_VERSION = "1.7.2"
 
 # Object type GUIDs for reference
 TYPE_GUIDS = {
