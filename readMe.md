@@ -131,7 +131,6 @@ When upgrading to a new version of `cds-text-sync`:
 - **Max Backups to Keep**:
   - Sets the number of timestamped backups to keep (default: 10). The script automatically cleans up older backups while preserving your primary Git LFS backups.
 
-
 ### 3. `Project_export.py` (CODESYS -> Disk)
 
 Exports the current project state to the sync folder.
@@ -224,6 +223,8 @@ The tool organizes your repository into a clean structure:
 ├── GlobalTextList.xml     # Global objects (Project-level root)
 ├── .project/            # (Optional) Binary .project backup for Git LFS
 ├── .diff/               # (Temporary) Files for external diff tool (CTRL + Diff)
+├── sync_cache.json      # Cache for performance optimization
+├── sync_metadata.json   # Metadata about the actions performed by the script
 ├── sync_debug.log       # Diagnostic log for sync/discovery
 ├── build.log            # Build output log
 └── compare.log          # Comparison results log
