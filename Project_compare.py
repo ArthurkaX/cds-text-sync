@@ -92,6 +92,7 @@ def compare_project(projects_obj=None):
     different = results["different"]
     new_in_ide = results["new_in_ide"]
     new_on_disk = results["new_on_disk"]
+    moved = results.get("moved", [])
     unchanged_count = results["unchanged_count"]
     # ── Generate report ──
     elapsed = time.time() - start_time
@@ -114,6 +115,11 @@ def compare_project(projects_obj=None):
             line = "  *  " + item["path"] + "  (new on disk)"
             diff_lines.append(line)
     
+    if moved:
+        for item in moved:
+            line = "  ~  " + item["name"] + "  (" + item["type"] + ")  IDE:" + item["ide_path"] + " -> Disk:" + item["disk_path"]
+            diff_lines.append(line)
+    
     print("")
     if diff_lines:
         print("CHANGES:")
@@ -125,10 +131,12 @@ def compare_project(projects_obj=None):
     print("")
     print("Summary: M:" + str(len(different)) + " +:" + str(len(new_in_ide)) 
           + " *:" + str(len(new_on_disk))
+          + " ~:" + str(len(moved))
           + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
     
     log_info("COMPARE: M:" + str(len(different)) + " +:" + str(len(new_in_ide)) 
              + " *:" + str(len(new_on_disk))
+             + " ~:" + str(len(moved))
              + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
     if diff_lines:
         log_info("DIFF:\n" + "\n".join(diff_lines))
@@ -139,7 +147,7 @@ def compare_project(projects_obj=None):
     else:
         from codesys_ui import show_compare_dialog
         action, selected = show_compare_dialog(
-            different, new_in_ide, new_on_disk, unchanged_count
+            different, new_in_ide, new_on_disk, unchanged_count, moved
         )
         
         if action == "import":
@@ -158,12 +166,12 @@ def perform_import(primary_project, base_dir, selected, unchanged_count=0):
     projects_obj = resolve_projects(None, globals())
     backup_filename = create_safety_backup(base_dir, projects_obj, selected)
     
-    updated, created, failed, deleted = perform_import_items(
+    updated, created, failed, deleted, moved = perform_import_items(
         primary_project, base_dir, selected, globals()
     )
     
-    message = "Import complete!\n\nUpdated: {}, Created: {}, Deleted: {}, Failed: {} (Identical: {})".format(
-        updated, created, deleted, failed, unchanged_count)
+    message = "Import complete!\n\nUpdated: {}, Created: {}, Moved: {}, Deleted: {}, Failed: {} (Identical: {})".format(
+        updated, created, moved, deleted, failed, unchanged_count)
     if backup_filename:
         message += "\n\nBackup created: .project/" + backup_filename
     system.ui.info(message)
@@ -253,6 +261,17 @@ def perform_export(base_dir, selected, unchanged_count=0):
                 count_created += 1
             elif res == "updated":
                 count_updated += 1
+            
+            # Moved file: clean up the old file at the stale disk location
+            if item.get("is_moved") and item.get("file_path"):
+                old_file = item["file_path"]
+                if os.path.exists(old_file):
+                    try:
+                        os.remove(old_file)
+                        log_info("Removed stale moved file: " + old_file)
+                        count_removed += 1
+                    except Exception as e2:
+                        log_warning("Could not remove old moved file: " + safe_str(e2))
         except Exception as e:
             log_error("Export failed for " + item["name"] + ": " + safe_str(e))
             count_failed += 1

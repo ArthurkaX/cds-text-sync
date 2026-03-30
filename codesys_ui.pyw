@@ -240,7 +240,7 @@ class CompareResultsForm(Form):
     EXPORT = "export"
     CLOSE = "close"
     
-    def __init__(self, different, new_in_ide, new_on_disk, unchanged_count):
+    def __init__(self, different, new_in_ide, new_on_disk, unchanged_count, moved=None):
         self.Text = "cds-text-sync: Comparison Results"
         self.Size = Size(500, 480)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
@@ -298,11 +298,29 @@ class CompareResultsForm(Form):
                 })
             inner_y = self._add_section(inner_y, "New on Disk (need Import):", mapped_new, "new_on_disk")
         
+        if moved:
+            # Moved items have a special two-line layout
+            mapped_moved = []
+            for item in moved:
+                mapped_moved.append({
+                    "name": item["name"],
+                    "path": item["ide_path"],
+                    "type": "~moved",
+                    "type_guid": item.get("type_guid", ""),
+                    "obj": item.get("obj"),
+                    "file_path": item.get("file_path", ""),
+                    "ide_path": item["ide_path"],
+                    "disk_path": item["disk_path"],
+                    "is_moved": True
+                })
+            inner_y = self._add_moved_section(inner_y, mapped_moved)
+        
         y += list_panel.Height + 10
         
         # Summary
         lbl_sum = Label()
-        lbl_sum.Text = "M:" + str(len(different)) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  =:" + str(unchanged_count)
+        moved_count = len(moved) if moved else 0
+        lbl_sum.Text = "M:" + str(len(different)) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  ~:" + str(moved_count) + "  =:" + str(unchanged_count)
         lbl_sum.Location = Point(15, y)
         lbl_sum.AutoSize = True
         self.Controls.Add(lbl_sum)
@@ -348,6 +366,40 @@ class CompareResultsForm(Form):
         
         # Resize form to fit content
         self.Size = Size(500, y + 65)
+    
+    def _add_moved_section(self, y, items):
+        """Add the Moved/Renamed section with path sub-labels"""
+        lbl = Label()
+        lbl.Text = "Moved/Renamed (path mismatch):"
+        lbl.Location = Point(15, y)
+        lbl.AutoSize = True
+        lbl.Font = Font("Segoe UI", 9, FontStyle.Bold)
+        self.list_panel.Controls.Add(lbl)
+        y += 22
+        
+        for item in items:
+            cb = CheckBox()
+            cb.Text = item["name"] + "  [~moved]"
+            cb.Location = Point(30, y)
+            cb.Size = Size(420, 20)
+            cb.Checked = True
+            cb.Tag = (item, "moved")
+            self.list_panel.Controls.Add(cb)
+            self.checkboxes.append(cb)
+            y += 20
+            
+            # Path sub-label: IDE path -> Disk path
+            path_lbl = Label()
+            path_lbl.Text = "IDE: " + item.get("ide_path", "") + "  ->  Disk: " + item.get("disk_path", "")
+            path_lbl.Location = Point(48, y)
+            path_lbl.AutoSize = True
+            path_lbl.Font = Font("Segoe UI", 7)
+            path_lbl.ForeColor = Color.Gray
+            self.list_panel.Controls.Add(path_lbl)
+            y += 18
+        
+        y += 8
+        return y
     
     def _add_section(self, y, title, items, direction):
         """Add a labeled section with checkboxes and optional diff buttons"""
@@ -489,10 +541,10 @@ class CompareResultsForm(Form):
         return selected
 
 
-def show_compare_dialog(different, new_in_ide, new_on_disk, unchanged_count):
+def show_compare_dialog(different, new_in_ide, new_on_disk, unchanged_count, moved=None):
     """Show the comparison results dialog. Returns (action, selected_items)"""
     try:
-        form = CompareResultsForm(different, new_in_ide, new_on_disk, unchanged_count)
+        form = CompareResultsForm(different, new_in_ide, new_on_disk, unchanged_count, moved)
         result = form.ShowDialog()
         if result == DialogResult.OK:
             return form.result_action, form.get_selected()

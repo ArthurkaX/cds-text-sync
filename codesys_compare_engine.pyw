@@ -164,6 +164,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     
     1. Pass 1: Quick IDE scan (.text only) and folder hash building.
     2. Pass 2: Comparison using folder hashes to skip unchanged branches.
+    3. Pass 3: Disk scan for new files.
+    4. Pass 4: Detect moved/renamed files by cross-referencing new_in_ide vs new_on_disk.
     """
     total_start = time.time()
     all_ide_objects = projects_obj.primary.get_children(recursive=True)
@@ -178,6 +180,7 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     new_in_ide = []
     unchanged_count = 0
     cache_hits = 0
+    path_invalidations = 0
     
     ide_paths = {}    # rel_path -> obj
     ide_hashes = {}   # norm_path -> ide_hash
@@ -197,10 +200,21 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
         if obj_guid in cached_types:
             type_info = cached_types[obj_guid]
             eff_type, is_xml = type_info[0], type_info[1]
-            rel_path = type_info[2] if len(type_info) > 2 else None
-            should_skip = False if rel_path else True
-            if rel_path:
-                path_cache_hits += 1
+            cached_rel_path = type_info[2] if len(type_info) > 2 else None
+            should_skip = False if cached_rel_path else True
+            
+            if cached_rel_path:
+                # Validate cached path: rebuild the real path from the live IDE tree.
+                # If the object was moved/renamed in IDE, the cached path is stale.
+                fresh_path = build_expected_path(obj, eff_type, is_xml)
+                if fresh_path and fresh_path != cached_rel_path:
+                    # Path changed in IDE — invalidate cached path
+                    rel_path = fresh_path
+                    path_invalidations += 1
+                    log_info("Path invalidated for GUID %s: '%s' -> '%s'" % (obj_guid, cached_rel_path, fresh_path))
+                else:
+                    rel_path = cached_rel_path
+                    path_cache_hits += 1
         else:
             eff_type, is_xml, should_skip = classify_object(obj)
             if not should_skip:
@@ -209,8 +223,6 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                 rel_path = None
             
         if should_skip or not rel_path: 
-            # Still check for property accessors even if folder/object is skipped
-            # Actually, properties themselves are not skipped.
             continue
         
         # Optimization: Collect property accessors during this same loop
@@ -249,8 +261,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     # Build folder hashes (Merkle Tree)
     from codesys_utils import build_folder_hashes
     ide_folder_hashes = build_folder_hashes(ide_hashes)
-    log_info("  Pass 1 complete ({} objects, {} path cache hits) in {:.2f}s".format(
-        len(ide_hashes), path_cache_hits, time.time() - p1_start))
+    log_info("  Pass 1 complete ({} objects, {} path cache hits, {} invalidated) in {:.2f}s".format(
+        len(ide_hashes), path_cache_hits, path_invalidations, time.time() - p1_start))
 
     # ── Pass 2: Comparison ──
     print("  Pass 2: Comparing with disk...")
@@ -329,22 +341,101 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     # Pass 3: Disk Scan
     new_on_disk = scan_new_disk_files(base_dir, ide_paths)
 
-    return {
-        "different": different,
-        "new_in_ide": new_in_ide,
-        "new_on_disk": new_on_disk,
-        "unchanged_count": unchanged_count
-    }
-
-    # ── Pass 2: Walk disk, find files not matching any IDE object ──
-    new_on_disk = scan_new_disk_files(base_dir, ide_paths)
+    # Pass 4: Detect moved/renamed files
+    moved, new_in_ide, new_on_disk = detect_moved_files(new_in_ide, new_on_disk)
+    if moved:
+        log_info("  Detected %d moved/renamed objects" % len(moved))
 
     return {
         "different": different,
         "new_in_ide": new_in_ide,
         "new_on_disk": new_on_disk,
+        "moved": moved,
         "unchanged_count": unchanged_count
     }
+
+
+def detect_moved_files(new_in_ide, new_on_disk):
+    """
+    Detect moved/renamed files by cross-referencing objects that exist
+    in the IDE but not on disk (new_in_ide) with files on disk that
+    don't match any IDE path (new_on_disk).
+    
+    Matching is done by object base name (case-insensitive).
+    
+    A "move" is when:
+    - IDE has object at path A, but file A doesn't exist on disk
+    - Disk has file at path B, but no IDE object maps to path B
+    - The base name matches (e.g. same "MyPOU.st" in different folders)
+    
+    Returns:
+        (moved_list, remaining_new_in_ide, remaining_new_on_disk)
+        
+        moved_list items: {
+            "name": str, "ide_path": str, "disk_path": str,
+            "type": str, "type_guid": str, "obj": CODESYS obj,
+            "file_path": str (absolute), "direction": "ide"|"disk"
+        }
+    """
+    if not new_in_ide or not new_on_disk:
+        return [], new_in_ide, new_on_disk
+    
+    moved = []
+    matched_ide_indices = set()
+    matched_disk_indices = set()
+    
+    # Build a lookup from base filename -> list of (index, item) for disk files
+    disk_by_name = {}  # base_name_lower -> [(index, item), ...]
+    for i, disk_item in enumerate(new_on_disk):
+        # Extract base filename from path for matching
+        disk_file = disk_item["path"].replace("\\", "/").split("/")[-1]
+        base_name = disk_file.lower()
+        if base_name not in disk_by_name:
+            disk_by_name[base_name] = []
+        disk_by_name[base_name].append((i, disk_item))
+    
+    # Try to match each IDE orphan to a disk orphan by filename
+    for ide_idx, ide_item in enumerate(new_in_ide):
+        ide_file = ide_item["path"].replace("\\", "/").split("/")[-1]
+        base_name = ide_file.lower()
+        
+        candidates = disk_by_name.get(base_name, [])
+        for disk_idx, disk_item in candidates:
+            if disk_idx in matched_disk_indices:
+                continue
+            
+            # Match found: same filename, different path
+            ide_path = ide_item["path"]
+            disk_path = disk_item["path"]
+            
+            if ide_path == disk_path:
+                # Same path — not a move (shouldn't happen but safety check)
+                continue
+            
+            # Determine direction: where is the "correct" location?
+            # IDE path = where the object currently lives in IDE
+            # Disk path = where the file currently lives on disk
+            moved.append({
+                "name": ide_item["name"],
+                "ide_path": ide_path,
+                "disk_path": disk_path,
+                "type": ide_item.get("type", "unknown"),
+                "type_guid": ide_item.get("type_guid", ""),
+                "obj": ide_item.get("obj"),
+                "file_path": disk_item.get("file_path", ""),
+            })
+            
+            matched_ide_indices.add(ide_idx)
+            matched_disk_indices.add(disk_idx)
+            log_info("Detected move: '%s' IDE:'%s' -> Disk:'%s'" % (
+                ide_item["name"], ide_path, disk_path))
+            break  # One match per IDE item
+    
+    # Filter out matched items from both lists
+    remaining_ide = [item for i, item in enumerate(new_in_ide) if i not in matched_ide_indices]
+    remaining_disk = [item for i, item in enumerate(new_on_disk) if i not in matched_disk_indices]
+    
+    return moved, remaining_ide, remaining_disk
 
 
 def scan_new_disk_files(base_dir, ide_paths):
@@ -793,12 +884,12 @@ def batch_import_native_xmls(native_batches, import_managers, project):
     return updated, created, failed
 
 
-def finalize_import(project, projects_obj, base_dir, updated_count, created_count, deleted_count=0):
+def finalize_import(project, projects_obj, base_dir, updated_count, created_count, deleted_count=0, moved_count=0):
     """
     Optionally save project + backup.
     Avoids double-save if binary backup is enabled (which already saves).
     """
-    if updated_count > 0 or created_count > 0 or deleted_count > 0:
+    if updated_count > 0 or created_count > 0 or deleted_count > 0 or moved_count > 0:
         should_save = get_project_prop("cds-sync-save-after-import", True)
         backup_binary = get_project_prop("cds-sync-backup-binary", False)
 
@@ -836,7 +927,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
         globals_ref: globals() from calling script (for resolve_projects)
     
     Returns:
-        (updated_count, created_count, failed_count, deleted_count)
+        (updated_count, created_count, failed_count, deleted_count, moved_count)
     """
     import_managers = create_import_managers()
     folder_cache = {}
@@ -846,6 +937,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     created_count = 0
     deleted_count = 0
     failed_count = 0
+    moved_count = 0
     
     native_batches = {}
     st_files_to_import = []
@@ -883,6 +975,23 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                 container = primary_project
                 is_new = True
                 if obj:
+                    # ── HANDLE MOVES (XML IMPORT) ──
+                    if item.get("is_moved"):
+                        target_rel_path = item.get("disk_path")
+                        if target_rel_path:
+                            path_parts = target_rel_path.split("/")
+                            if len(path_parts) > 1:
+                                folder_path = "/".join(path_parts[:-1])
+                                target_container = ensure_folder_path(folder_path, primary_project)
+                                if target_container and target_container != obj.parent:
+                                    log_info("Moving XML object '%s' in IDE: %s -> %s" % (
+                                        item["name"], item.get("ide_path"), folder_path))
+                                    try:
+                                        obj.move(target_container)
+                                        moved_count += 1
+                                    except Exception as me:
+                                        log_warning("Failed to move XML %s: %s" % (item["name"], safe_str(me)))
+
                     try:
                         container = obj.parent
                         is_new = False
@@ -977,6 +1086,24 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                 obj = find_object_by_path(rel_path, primary_project)
 
             if obj:
+                # ── HANDLE MOVES (IMPORT DIRECTION) ──
+                # If disk path doesn't match current IDE path, move the object in IDE
+                if item.get("is_moved"):
+                    target_rel_path = item.get("disk_path")
+                    if target_rel_path:
+                        path_parts = target_rel_path.split("/")
+                        if len(path_parts) > 1:
+                            folder_path = "/".join(path_parts[:-1])
+                            target_container = ensure_folder_path(folder_path, primary_project)
+                            if target_container and target_container != obj.parent:
+                                log_info("Moving object '%s' in IDE: %s -> %s" % (
+                                    item["name"], item.get("ide_path"), folder_path))
+                                try:
+                                    obj.move(target_container)
+                                    moved_count += 1
+                                except Exception as me:
+                                    log_warning("Failed to move %s: %s" % (item["name"], safe_str(me)))
+
                 if update_existing_object(obj, rel_path, abs_path, import_managers):
                     updated_count += 1
                     log_info("Updated " + item["name"])
@@ -997,6 +1124,6 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     # Save project
     projects_obj = resolve_projects(None, globals_ref or globals())
     finalize_import(primary_project, projects_obj, base_dir,
-                    updated_count, created_count, deleted_count)
+                    updated_count, created_count, deleted_count, moved_count)
 
-    return updated_count, created_count, failed_count, deleted_count
+    return updated_count, created_count, failed_count, deleted_count, moved_count

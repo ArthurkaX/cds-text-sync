@@ -149,7 +149,7 @@ def import_project(projects_obj=None):
     backup_filename = create_safety_backup(base_dir, projects_obj, to_import)
     
     # ── Phase 2: Import all changes ──
-    updated, created, failed, deleted = perform_import_items(
+    updated, created, failed, deleted, moved = perform_import_items(
         projects_obj.primary, base_dir, to_import, globals()
     )
     
@@ -157,7 +157,7 @@ def import_project(projects_obj=None):
     
     print("")
     print("=== Import Complete ===")
-    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Deleted: " + str(deleted) + ", Failed: " + str(failed) + " (Identical: " + str(unchanged_count) + ")"
+    summary = "Updated: " + str(updated) + ", Created: " + str(created) + ", Moved: " + str(moved) + ", Deleted: " + str(deleted) + ", Failed: " + str(failed) + " (Identical: " + str(unchanged_count) + ")"
     print(summary)
     if backup_filename:
         print("Backup created: .project/" + backup_filename)
@@ -178,6 +178,7 @@ def import_project(projects_obj=None):
             "statistics": {
                 "updated": updated,
                 "created": created,
+                "moved": moved,
                 "deleted": deleted,
                 "failed": failed,
                 "identical": unchanged_count
