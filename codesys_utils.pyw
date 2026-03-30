@@ -544,6 +544,7 @@ def ensure_git_configs(export_dir):
     if not os.path.exists(gitignore_path):
         content = [
             "# CODESYS Sync local files",
+            "*.json",
             "*.log",
             "*.tmp",
             "*.bak",
