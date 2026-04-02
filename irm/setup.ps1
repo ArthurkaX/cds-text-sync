@@ -74,7 +74,46 @@ if ($choice -eq "L") {
     }
 }
 
-# 5. Create required directories if they don't exist
+# 5. Installation Path Selection
+Write-Host "`n--- Installation Path ---" -ForegroundColor Cyan
+Write-Host "[1] Standard CODESYS (%LOCALAPPDATA%\CODESYS\ScriptDir\) [DEFAULT]"
+Write-Host "[2] Alternative path (for KeStudio, DIA Designer-AX, etc.)"
+
+$pathChoice = Read-Host "`nSelect installation path [1, 2] (default: 1)"
+if ([string]::IsNullOrWhiteSpace($pathChoice)) {
+    $pathChoice = "1"
+}
+
+if ($pathChoice -eq "2") {
+    Write-Host "`n[*] To copy the path:" -ForegroundColor Cyan
+    Write-Host "    1. Navigate to your ScriptDir folder in File Explorer"
+    Write-Host "    2. Hold Shift and right-click the folder"
+    Write-Host "    3. Select 'Copy as path'"
+    Write-Host "`nFor more details, see: https://github.com/ArthurkaX/cds-text-sync/blob/main/ALTERNATIVE_INSTALLATIONS.md" -ForegroundColor Yellow
+
+    $targetBaseDir = Read-Host "`nEnter the full path to ScriptDir"
+
+    # Remove quotes from path if present
+    $targetBaseDir = $targetBaseDir.Trim('"', "'")
+
+    # Validate path - create parent directories if needed
+    if (-not (Test-Path $targetBaseDir)) {
+        Write-Host "[*] Directory does not exist. Creating: $targetBaseDir" -ForegroundColor Yellow
+        try {
+            New-Item -ItemType Directory -Force -Path $targetBaseDir | Out-Null
+            Write-Host "[+] Directory created successfully." -ForegroundColor Green
+        } catch {
+            Write-Host "[!] Failed to create directory: $_" -ForegroundColor Red
+            Write-Host "[*] Falling back to standard path..." -ForegroundColor Yellow
+            $targetBaseDir = Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir"
+        }
+    }
+
+    # Update fullPath with new targetBaseDir
+    $fullPath = Join-Path $targetBaseDir $repoName
+}
+
+# 6. Create required directories if they don't exist
 if (-not (Test-Path $targetBaseDir)) {
     Write-Host "[*] Creating directory: $targetBaseDir" -ForegroundColor Cyan
     New-Item -ItemType Directory -Force -Path $targetBaseDir | Out-Null

@@ -65,6 +65,9 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 > [!TIP]
 > For a detailed explanation of what the script does, check the [Quick Setup Guide](irm/setup.md).
 
+> [!TIP]
+> Using a different CODESYS version or fork? See the [Alternative Installations Guide](ALTERNATIVE_INSTALLATIONS.md) for supported environments and installation paths.
+
 2. **Access in CODESYS**:
    - The scripts will be available in **Tools > Scripting > Scripts > P**.
 
