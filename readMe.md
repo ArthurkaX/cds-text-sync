@@ -1,6 +1,6 @@
 # cds-text-sync: Professional CODESYS Git Sync
 
-**Version**: `1.7.2`
+**Version**: `1.7.3`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -75,12 +75,54 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 When upgrading to a new version of `cds-text-sync`:
 
-1. **Replace All Files**: Copy BOTH `.py` and `.pyw` files, overwriting everything.
-   - **Important Note**: If a major refactor (like shifting to shared libraries) occurs, active scripts held in CODESYS memory may become **stale**. After copying new files, it is best to restart CODESYS or reload your project to ensure the Script Engine picks up the latest version of all modules.
-2. **Clean Export**: Run `Project_export.py` to refresh metadata and ensure your disk state matches the new script logic.
-3. **Commit Changes**: Review and commit the changes in Git.
+1. **Check Stable Releases**: First check if there's a newer stable release at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
+2. **Replace All Files**: Copy BOTH `.py` and `.pyw` files, overwriting everything.
+   - **Important Note**: If a major refactor (like shifting to shared libraries) occurs, active scripts held in CODESYS memory may become **stale**. After copying new files, it is best to restart CODESYS or reload your project to ensure the Script Engine picks up latest version of all modules.
+3. **Clean Export**: Run `Project_export.py` to refresh metadata and ensure your disk state matches the new script logic.
+4. **Commit Changes**: Review and commit the changes in Git.
 
 > **Tip**: A clean export after upgrading ensures all files use the latest export format and prevents inconsistencies.
+> 
+> **Rollback**: If you encounter issues with a new version, see [Stable Releases & Rollback](#-stable-releases--rollback) section for how to safely revert to a previous stable version.
+
+---
+
+## 🎯 Stable Releases & Rollback
+
+We maintain **stable, manually tested releases** for safe production use.
+
+### Finding Stable Releases
+- **GitHub Releases**: All stable releases are tagged and published on [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
+- **Latest Tagged Version**: The most recent stable version is marked as "Latest Release"
+- **Changelog**: See [CHANGELOG.md](CHANGELOG.md) for detailed change history
+
+### Rolling Back to a Stable Version
+If you encounter bugs in a newer version:
+
+**Option 1: Git Rollback (Recommended)**
+```bash
+# Check available stable tags
+git tag
+
+# Rollback to specific stable version (e.g., v1.7.2)
+git checkout v1.7.2
+
+# Update your CODESYS scripts with the stable version
+# Follow the installation steps to copy the files
+```
+
+**Option 2: Download from GitHub Releases**
+1. Go to [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
+2. Download the release archive for the stable version
+3. Extract and copy the scripts to your CODESYS ScriptDir
+
+### Version Policy
+- **Tags starting with `v`**: Official stable releases (e.g., `v1.7.3`, `v1.7.2`)
+- **Main branch**: Latest development code (may be unstable)
+- **Testing**: All stable releases are manually tested before tagging
+
+> [!NOTE]
+> Always backup your project before rolling back to a different version.
 
 ---
 
@@ -278,6 +320,8 @@ While Issues are great for reporting bugs, I invite you to join our **[GitHub Di
 ## 📝 Changelog
 
 See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions.
+
+For stable releases and download links, check [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases).
 
 ---
 
