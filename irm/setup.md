@@ -4,28 +4,34 @@ This directory contains a PowerShell setup script designed to automate the insta
 
 ## How to execute
 
-You can run the script directly from GitHub using a single command in PowerShell (run as Administrator if you need to install Git):
+You can run the script directly from GitHub using a single command in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
+**No Git installation required** - the script downloads clean zip archives from GitHub.
+
 ## What the script does
 
-1.  **Environment Check**:
-    - Verifies if **Git** is installed on your system.
-    - If Git is missing, it offers to install it automatically using `winget`.
-2.  **Version Selection**:
+1.  **Version Selection**:
     - Fetches available stable releases from GitHub (tags starting with `vX.Y.Z`).
     - Displays an interactive menu with the **last 5 stable versions**.
     - **Default option (L)**: Latest development version from `main` branch.
     - Shows the **recommended stable** version marked with `(recommended stable)`.
     - Allows you to select any version from the list.
-3.  **Directory Management**:
+2.  **Directory Management**:
     - Ensures the required directory structure exists: `%LOCALAPPDATA%\CODESYS\ScriptDir\`.
-4.  **Deployment**:
-    - **First time install**: If the project is not present, it performs a `git clone --depth 1` with the selected version branch.
-    - **Update**: If the project is already installed, it navigates into the folder and performs a `git fetch --depth 1` and `git reset --hard` to the selected version, overwriting local modifications.
+3.  **Installation**:
+    - Downloads the selected version as a clean zip archive from GitHub.
+    - **Stable releases**: Downloads from `archive/refs/tags/vX.Y.Z.zip` - no `.git` folder, smaller size.
+    - **Latest version**: Downloads from `archive/refs/heads/main.zip` - also clean archive without `.git`.
+    - Extracts to `%LOCALAPPDATA%\CODESYS\ScriptDir\cds-text-sync`.
+4.  **Update**:
+    - If an existing installation is found, it creates a backup.
+    - Downloads and extracts the new version.
+    - Replaces the old installation.
+    - Automatically cleans up temporary files and backup.
 
 ## Version Selection Menu Example
 
@@ -50,4 +56,11 @@ Select version [L, 1-3] (default: L)
 
 - **Operating System**: Windows (10/11)
 - **PowerShell**: Version 5.1 or higher
-- **Internet Connection**: Required to download Git and the repository.
+- **Internet Connection**: Required to download the script and the selected version.
+
+## Advantages
+
+- **No Git required**: The script uses `Invoke-WebRequest` to download zip archives directly from GitHub.
+- **Clean installation**: No `.git` folder, no repository history, smaller disk footprint (~5MB vs ~10MB+ with full history).
+- **Safe updates**: Automatic backup before updating, with rollback capability if something fails.
+- **Fast downloads**: Downloads only the files you need, not the entire repository history.

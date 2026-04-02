@@ -51,11 +51,16 @@ Professional Git integration for **CODESYS**. Sync Structured Text (ST) with ext
 
 ### Method 2: Quick PowerShell Setup (Recommended)
 
-Automate the installation, folder creation for Standard (User Profile), and Git configuration with one command:
+Automate the installation and folder creation for Standard (User Profile) with one command:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
+
+> [!NOTE]
+> - **No Git required**: This script downloads clean zip archives from GitHub, not the full repository with history.
+> - **Choose version**: You can select the latest development version or any stable release from the interactive menu.
+> - **Smaller footprint**: Installation is ~5MB instead of ~10MB+ when cloning with full Git history.
 
 > [!TIP]
 > For a detailed explanation of what the script does, check the [Quick Setup Guide](irm/setup.md).
@@ -115,6 +120,9 @@ git checkout v1.7.2
 1. Go to [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
 2. Download the release archive for the stable version
 3. Extract and copy the scripts to your CODESYS ScriptDir
+
+> [!NOTE]
+> You can also use the **Quick PowerShell Setup** script (Method 2 above) which automatically downloads stable releases as clean zip archives without requiring Git installation.
 
 ### Version Policy
 - **Tags starting with `v`**: Official stable releases (e.g., `v1.7.3`, `v1.7.2`)
@@ -300,6 +308,9 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 - **Prevents Bloat**: Normal Git stores the _entire file_ for every commit. If your project is 10MB, 100 commits would make your repo 1GB. LFS prevents this.
 - **Performance**: You only download the binary version you are currently working on, keeping `git clone` and `git fetch` fast.
 - **Code-Binary Sync**: It allows you to keep the "full state" of the project (Visualizations, HW config) exactly matched with the "logic state" in `src/`.
+
+> [!NOTE]
+> Git LFS is **optional** and only needed if you want to version control your `.project` binary files. The `cds-text-sync` tool itself does not require Git to be installed for normal operation.
 
 ---
 

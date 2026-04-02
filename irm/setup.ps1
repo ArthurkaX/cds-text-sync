@@ -1,59 +1,35 @@
 # Set encoding to UTF8 for correct character display
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$repoUrl = "https://github.com/ArthurkaX/cds-text-sync.git"
+$repoUrl = "https://github.com/ArthurkaX/cds-text-sync"
 $targetBaseDir = Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir"
 $repoName = "cds-text-sync"
 $fullPath = Join-Path $targetBaseDir $repoName
 
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
 
-# 1. Check for Git installation
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host "[-] Git not found." -ForegroundColor Yellow
-    $choice = Read-Host "Would you like to install Git via winget? (Y/N)"
-    if ($choice -eq 'Y' -or $choice -eq 'y') {
-        Write-Host "[*] Installing Git... Please wait." -ForegroundColor Cyan
-        winget install --id Git.Git -e --source winget
-        
-        # Refresh PATH environment variable for current session
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        
-        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-            Write-Host "[!] Git installed but terminal restart may be required. Please restart your console and run the script again." -ForegroundColor Red
-            return
-        }
-    } else {
-        Write-Host "[!] Git is required for this script to function. Aborting." -ForegroundColor Red
-        return
-    }
-} else {
-    Write-Host "[+] Git is already installed." -ForegroundColor Green
-}
-
 # 2. Get available stable releases
 Write-Host "`n[*] Fetching available versions..." -ForegroundColor Cyan
 $tags = @()
 try {
-    $remoteTags = git ls-remote --tags $repoUrl 2>&1
-    if ($LASTEXITCODE -eq 0) {
-            # Parse tags and filter only version tags (vX.Y.Z)
-            # Use -Unique to deduplicate (annotated tags produce v1.7.3 and v1.7.3^{} lines)
-            $tags = @($remoteTags | 
-                Select-String "refs/tags/v" | 
-                ForEach-Object { 
-                    $line = $_.ToString().Trim()
-                    if ($line -match "refs/tags/(v\d+\.\d+\.\d+)") {
-                        $matches[1]
-                    }
-                } | 
-                Where-Object { $_ -ne $null } | 
-                Select-Object -Unique)
-            
-            # Get last 5 stable versions
-            if ($tags.Count -gt 5) {
-                $tags = @($tags | Select-Object -Last 5)
-            }
+    $tagsUrl = "$repoUrl/tags"
+    $tagsResponse = Invoke-WebRequest -Uri $tagsUrl -UseBasicParsing
+    if ($tagsResponse.StatusCode -eq 200) {
+        # Parse tags from HTML - look for version tags (vX.Y.Z)
+        $tags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+" | 
+            ForEach-Object { 
+                $line = $_.ToString()
+                if ($line -match "v(\d+\.\d+\.\d+)") {
+                    "v" + $matches[1]
+                }
+            } | 
+            Where-Object { $_ -ne $null } | 
+            Select-Object -Unique)
+        
+        # Get last 5 stable versions
+        if ($tags.Count -gt 5) {
+            $tags = @($tags | Select-Object -Last 5)
+        }
     }
 } catch {
     Write-Host "[!] Warning: Could not fetch tags. Only main branch will be available." -ForegroundColor Yellow
@@ -78,65 +54,87 @@ if ([string]::IsNullOrWhiteSpace($choice)) {
     $choice = "L"
 }
 
-# 4. Create required directories if they don't exist
+# 4. Determine download URL and version name
+$zipUrl = ""
+$versionName = ""
+
+if ($choice -eq "L") {
+    $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
+    $versionName = "main"
+} else {
+    $tagIndex = [int]$choice - 1
+    if ($tagIndex -ge 0 -and $tagIndex -lt $tags.Count) {
+        $selectedTag = $tags[$tagIndex]
+        $zipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
+        $versionName = $selectedTag
+    } else {
+        Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
+        $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
+        $versionName = "main"
+    }
+}
+
+# 5. Create required directories if they don't exist
 if (-not (Test-Path $targetBaseDir)) {
     Write-Host "[*] Creating directory: $targetBaseDir" -ForegroundColor Cyan
     New-Item -ItemType Directory -Force -Path $targetBaseDir | Out-Null
 }
 
-# 5. Clone or update repository
-if (Test-Path $fullPath) {
-    Write-Host "[*] Project folder already exists. Attempting to update..." -ForegroundColor Cyan
-    # Navigate to the folder and fetch latest changes
-    Push-Location $fullPath
+# 6. Download and install
+$tempZipPath = "$env:TEMP\cds-text-sync-$versionName.zip"
+$tempExtractPath = "$env:TEMP\cds-text-sync-temp-$versionName"
+
+try {
+    Write-Host "[*] Downloading cds-text-sync ($versionName)..." -ForegroundColor Cyan
+    Invoke-WebRequest -Uri $zipUrl -OutFile $tempZipPath -UseBasicParsing
     
-    if ($choice -eq "L") {
-        # Update to latest main branch
-        git fetch --depth 1 origin main
-        if ($LASTEXITCODE -eq 0) {
-            git reset --hard origin/main
+    Write-Host "[*] Extracting archive..." -ForegroundColor Cyan
+    Expand-Archive -Path $tempZipPath -DestinationPath $tempExtractPath -Force
+    
+    # Find the extracted folder (it will be named "cds-text-sync-main" or "cds-text-sync-v1.7.3")
+    $extractedFolder = Get-ChildItem $tempExtractPath -Directory | Select-Object -First 1
+    $extractedPath = $extractedFolder.FullName
+    
+    if (Test-Path $fullPath) {
+        Write-Host "[*] Updating existing installation..." -ForegroundColor Cyan
+        # Backup existing installation
+        $backupPath = "$fullPath.backup"
+        if (Test-Path $backupPath) {
+            Remove-Item -Path $backupPath -Recurse -Force
         }
+        Copy-Item -Path $fullPath -Destination $backupPath -Recurse -Force
+        
+        # Replace with new version
+        Remove-Item -Path $fullPath -Recurse -Force
+        Move-Item -Path $extractedPath -Destination $fullPath
+        
+        Write-Host "[+] Update completed." -ForegroundColor Green
     } else {
-        # Update to selected tag
-        $tagIndex = [int]$choice - 1
-        if ($tagIndex -ge 0 -and $tagIndex -lt $tags.Count) {
-            $selectedTag = $tags[$tagIndex]
-            git fetch --depth 1 origin $selectedTag
-            if ($LASTEXITCODE -eq 0) {
-                git reset --hard $selectedTag
-            }
-        } else {
-            Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
-            git fetch --depth 1 origin main
-            if ($LASTEXITCODE -eq 0) {
-                git reset --hard origin/main
-            }
+        Write-Host "[*] Installing cds-text-sync to $fullPath..." -ForegroundColor Cyan
+        Move-Item -Path $extractedPath -Destination $fullPath
+        Write-Host "[+] Installation completed!" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "[!] An error occurred: $_" -ForegroundColor Red
+    Write-Host "[*] Cleaning up temporary files..." -ForegroundColor Cyan
+    
+    # Try to restore from backup if update failed
+    if (Test-Path "$fullPath.backup") {
+        if (-not (Test-Path $fullPath)) {
+            Write-Host "[*] Restoring from backup..." -ForegroundColor Cyan
+            Move-Item -Path "$fullPath.backup" -Destination $fullPath
         }
     }
-    
-    Pop-Location
-    Write-Host "[+] Update completed." -ForegroundColor Green
-} else {
-    # Clone repository
-    if ($choice -eq "L") {
-        Write-Host "[*] Cloning latest version from main branch to $fullPath..." -ForegroundColor Cyan
-        git clone --depth 1 --branch main $repoUrl $fullPath
-    } else {
-        $tagIndex = [int]$choice - 1
-        if ($tagIndex -ge 0 -and $tagIndex -lt $tags.Count) {
-            $selectedTag = $tags[$tagIndex]
-            Write-Host "[*] Cloning stable version $selectedTag to $fullPath..." -ForegroundColor Cyan
-            git clone --depth 1 --branch $selectedTag $repoUrl $fullPath
-        } else {
-            Write-Host "[!] Invalid selection. Cloning latest version from main branch..." -ForegroundColor Yellow
-            git clone --depth 1 --branch main $repoUrl $fullPath
-        }
+} finally {
+    # Cleanup temporary files
+    if (Test-Path $tempZipPath) {
+        Remove-Item -Path $tempZipPath -Force
     }
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "[+] Project successfully cloned!" -ForegroundColor Green
-    } else {
-        Write-Host "[!] An error occurred during cloning." -ForegroundColor Red
+    if (Test-Path $tempExtractPath) {
+        Remove-Item -Path $tempExtractPath -Recurse -Force
+    }
+    if (Test-Path "$fullPath.backup") {
+        Remove-Item -Path "$fullPath.backup" -Recurse -Force
     }
 }
 
