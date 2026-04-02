@@ -35,13 +35,17 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 Write-Host "`n[*] Fetching available versions..." -ForegroundColor Cyan
 $tags = @()
 try {
-    $remoteTags = $(git ls-remote --tags $repoUrl 2>&1)
+    $remoteTags = git ls-remote --tags $repoUrl 2>&1
     if ($LASTEXITCODE -eq 0) {
         # Parse tags and filter only version tags (vX.Y.Z)
         $tags = $remoteTags | 
             Select-String "refs/tags/v" | 
-            ForEach-Object { $_.ToString().Split('/')[-1] } |
-            Where-Object { $_ -match "^v\d+\.\d+\.\d+$" }
+            ForEach-Object { 
+                $line = $_.ToString().Trim()
+                if ($line -match "refs/tags/v(\d+\.\d+\.\d+)\^?\{\}?$") {
+                    "v" + $matches[1]
+                }
+            }
         
         # Get last 5 stable versions
         if ($tags.Count -gt 5) {
