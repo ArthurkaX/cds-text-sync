@@ -38,14 +38,17 @@ try {
     $remoteTags = git ls-remote --tags $repoUrl 2>&1
     if ($LASTEXITCODE -eq 0) {
         # Parse tags and filter only version tags (vX.Y.Z)
+        # Use -Unique to deduplicate (annotated tags produce v1.7.3 and v1.7.3^{} lines)
         $tags = $remoteTags | 
             Select-String "refs/tags/v" | 
             ForEach-Object { 
                 $line = $_.ToString().Trim()
-                if ($line -match "refs/tags/v(\d+\.\d+\.\d+)\^?\{\}?$") {
-                    "v" + $matches[1]
+                if ($line -match "refs/tags/(v\d+\.\d+\.\d+)") {
+                    $matches[1]
                 }
-            }
+            } | 
+            Where-Object { $_ -ne $null } | 
+            Select-Object -Unique
         
         # Get last 5 stable versions
         if ($tags.Count -gt 5) {
