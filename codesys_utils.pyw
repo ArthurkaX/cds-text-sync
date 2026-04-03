@@ -625,13 +625,13 @@ def format_st_content(declaration, implementation, can_have_impl=False):
     
     impl = (implementation or "").strip()
     if impl or can_have_impl:
-        if content:
+        if content and impl:
             content.append("")  # Empty line separator
         content.append(IMPL_MARKER)
         if impl:
             content.append(impl)
     
-    return "\n".join(content)
+    return "\n".join(content).replace('\r\n', '\n').replace('\r', '\n')
 
 
 def format_property_content(declaration, get_impl, set_impl):
@@ -665,8 +665,7 @@ def format_property_content(declaration, get_impl, set_impl):
         content.append(PROPERTY_SET_MARKER)
         content.append(set_content)
     
-    return "\n".join(content)
-
+    return "\n".join(content).replace('\r\n', '\n').replace('\r', '\n')
 
 def merge_native_xmls(file_paths, output_path):
     """
@@ -784,6 +783,8 @@ def parse_st_file(file_path):
     except Exception as e:
         print("Error reading file " + file_path + ": " + safe_str(e))
         return None, None
+    
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
     
     declaration = None
     implementation = None
