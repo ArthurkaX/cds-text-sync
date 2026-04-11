@@ -12,7 +12,8 @@ import time
 from codesys_utils import (
     safe_str, clean_filename, calculate_hash, log_info, log_error, log_warning,
     format_st_content, format_property_content, parse_property_content,
-    resolve_projects, is_container_device, get_quick_ide_hash, normalize_path
+    resolve_projects, is_container_device, get_quick_ide_hash, normalize_path,
+    read_ide_attrs, render_sync_pragmas, build_state_hash
 )
 from codesys_constants import TYPE_GUIDS, XML_TYPES, EXPORTABLE_TYPES, IMPLEMENTATION_TYPES, XML_TYPES as XML_TYPES_CONST
 
@@ -507,7 +508,6 @@ class ObjectManager(object):
         norm_path = normalize_path(rel_path)
         try:
             s = stat_info if stat_info else os.stat(file_path)
-            # If q_hash not provided, calculate it based on type
             if q_hash is None:
                 q_hash = get_quick_ide_hash(obj, False)
             
@@ -517,6 +517,33 @@ class ObjectManager(object):
                 "disk_size": s.st_size
             }
         except: pass
+
+    def _try_cache_skip(self, obj, rel_path, file_path, context, is_xml=False):
+        """Attempt to skip export via IDE-cache-disk fast path.
+
+        Returns "identical" if skip succeeds, None otherwise.
+        """
+        norm_path = normalize_path(rel_path)
+        cache = context.get('cache_data')
+        if not cache:
+            return None
+
+        q_hash = get_quick_ide_hash(obj, is_xml)
+        cached_obj = cache.get('objects', {}).get(norm_path)
+        if not (q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash):
+            return None
+
+        if not os.path.exists(file_path):
+            return None
+
+        s = os.stat(file_path)
+        if int(s.st_mtime) != cached_obj.get('disk_mtime') or s.st_size != cached_obj.get('disk_size'):
+            return None
+
+        if 'exported_paths' in context:
+            context['exported_paths'].add(rel_path)
+        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
+        return "identical"
 
     def export(self, obj, context, rel_path=None):
         """Export object to file system and update metadata"""
@@ -582,40 +609,28 @@ class POUManager(ObjectManager):
         file_name = os.path.basename(rel_path)
         
         # --- CACHE SKIP OPTIMIZATION ---
-        norm_path = normalize_path(rel_path)
-        cache = context.get('cache_data')
-        if cache:
-            # Try to skip slow extraction if IDE and Disk match cache
-            q_hash = get_quick_ide_hash(obj, False)
-            cached_obj = cache.get('objects', {}).get(norm_path)
-            if q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash:
-                # IDE matches cache. Now check if Disk matches cache.
-                if os.path.exists(file_path):
-                    # For performance, we trust mtime/size if available, 
-                    # but POUManager usually forces a content check if cache-mismatch.
-                    # Here we follow the 'Export' rules: IDE is source of truth.
-                    # If IDE matches CACHE, and DISK matches CACHE, then IDE == DISK.
-                    s = os.stat(file_path)
-                    if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
-                        if 'exported_paths' in context:
-                            context['exported_paths'].add(rel_path)
-                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
-                        return "identical"
+        skip = self._try_cache_skip(obj, rel_path, file_path, context, is_xml=False)
+        if skip:
+            return skip
         # -------------------------------
 
         declaration, implementation = export_object_content(obj)
         # Check if this object type can have implementation even if empty
         obj_type_guid = safe_str(obj.type)
         can_have_impl = obj_type_guid in IMPLEMENTATION_TYPES
-        content = format_st_content(declaration, implementation, can_have_impl)
+        clean_content = format_st_content(declaration, implementation, can_have_impl)
         
-        if not content.strip():
+        if not clean_content.strip():
             return False
+        
+        # Read IDE attributes and render sync pragmas
+        attrs = read_ide_attrs(obj)
+        content = render_sync_pragmas(attrs, clean_content)
         
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
         
-        content_hash = calculate_hash(content)
+        content_hash = build_state_hash(clean_content, attrs)
         is_new = not os.path.exists(file_path)
         
         # Check if content is identical to existing file
@@ -623,7 +638,7 @@ class POUManager(ObjectManager):
             try:
                 with codecs.open(file_path, "r", "utf-8") as f:
                     existing_content = f.read()
-                if calculate_hash(existing_content) == content_hash:
+                if calculate_hash(existing_content) == calculate_hash(content):
                     # Track path and return
                     if 'exported_paths' in context:
                         context['exported_paths'].add(rel_path)
@@ -646,17 +661,18 @@ class POUManager(ObjectManager):
         return "new" if is_new else "updated"
 
     def update(self, obj, file_path, obj_info=None):
-        from codesys_utils import parse_st_file
-        declaration, implementation = parse_st_file(file_path)
+        from codesys_utils import parse_st_file, parse_sync_pragmas, write_ide_attrs
+        declaration, implementation, attrs = parse_st_file(file_path)
         if declaration is None and implementation is None:
             return False
-            
-        # We assume the engine already decided we need to update based on content hash
-        return update_object_code(obj, declaration, implementation)
+        
+        updated = update_object_code(obj, declaration, implementation)
+        write_ide_attrs(obj, attrs)
+        return updated
 
     def create(self, container, name, file_path, type_guid):
-        from codesys_utils import parse_st_file
-        declaration, implementation = parse_st_file(file_path)
+        from codesys_utils import parse_st_file, write_ide_attrs
+        declaration, implementation, attrs = parse_st_file(file_path)
         
         obj = None
         try:
@@ -716,6 +732,7 @@ class POUManager(ObjectManager):
                 
             if obj:
                 update_object_code(obj, declaration, implementation)
+                write_ide_attrs(obj, attrs)
                 return obj
         except Exception as e:
             log_error("Failed to create " + name + ": " + safe_str(e))
@@ -741,20 +758,9 @@ class PropertyManager(POUManager):
         file_name = os.path.basename(rel_path)
         
         # --- CACHE SKIP OPTIMIZATION ---
-        norm_path = normalize_path(rel_path)
-        cache = context.get('cache_data')
-        if cache:
-            # Properties are special: q_hash handles decl + kids
-            q_hash = get_quick_ide_hash(obj, False)
-            cached_obj = cache.get('objects', {}).get(norm_path)
-            if q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash:
-                if os.path.exists(file_path):
-                    s = os.stat(file_path)
-                    if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
-                        if 'exported_paths' in context:
-                            context['exported_paths'].add(rel_path)
-                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
-                        return "identical"
+        skip = self._try_cache_skip(obj, rel_path, file_path, context, is_xml=False)
+        if skip:
+            return skip
         # -------------------------------
         
         obj_name = obj.get_name()
@@ -781,7 +787,11 @@ class PropertyManager(POUManager):
             
         # Combine into Property Format
         combined_content = format_property_content(declaration, get_impl, set_impl)
-        content_hash = calculate_hash(combined_content)
+        
+        # Read IDE attributes and render sync pragmas
+        attrs = read_ide_attrs(obj)
+        content = render_sync_pragmas(attrs, combined_content)
+        content_hash = build_state_hash(combined_content, attrs)
         
         is_new = not os.path.exists(file_path)
         
@@ -790,7 +800,7 @@ class PropertyManager(POUManager):
             try:
                 with codecs.open(file_path, "r", "utf-8") as f:
                     existing_content = f.read()
-                if calculate_hash(existing_content) == content_hash:
+                if calculate_hash(existing_content) == calculate_hash(content):
                     if 'exported_paths' in context:
                         context['exported_paths'].add(rel_path)
                     
@@ -801,7 +811,7 @@ class PropertyManager(POUManager):
         
         try:
             with codecs.open(file_path, "w", "utf-8") as f:
-                f.write(combined_content)
+                f.write(content)
         except Exception as e:
             log_error("Failed to write Property file " + file_name + ": " + safe_str(e))
             return False
@@ -814,10 +824,13 @@ class PropertyManager(POUManager):
     def update(self, obj, file_path, obj_info=None):
         try:
             with codecs.open(file_path, "r", "utf-8") as f:
-                content = f.read()
+                raw_content = f.read()
         except: return False
         
-        declaration, get_impl_combined, set_impl_combined = parse_property_content(content)
+        from codesys_utils import parse_sync_pragmas, write_ide_attrs
+        attrs, clean_content = parse_sync_pragmas(raw_content.replace('\r\n', '\n').replace('\r', '\n'))
+        
+        declaration, get_impl_combined, set_impl_combined = parse_property_content(clean_content)
         updated = False
         
         if declaration and update_object_code(obj, declaration, None):
@@ -841,15 +854,21 @@ class PropertyManager(POUManager):
                         updated = True
                     break
         
+        if attrs:
+            write_ide_attrs(obj, attrs)
+        
         return updated
 
     def create(self, container, name, file_path, type_guid):
         try:
             with codecs.open(file_path, "r", "utf-8") as f:
-                content = f.read()
+                raw_content = f.read()
         except: return None
         
-        declaration, get_impl_combined, set_impl_combined = parse_property_content(content)
+        from codesys_utils import parse_sync_pragmas, write_ide_attrs
+        attrs, clean_content = parse_sync_pragmas(raw_content.replace('\r\n', '\n').replace('\r', '\n'))
+        
+        declaration, get_impl_combined, set_impl_combined = parse_property_content(clean_content)
         
         obj = None
         try:
@@ -871,6 +890,9 @@ class PropertyManager(POUManager):
                     set_obj = obj.create_set_accessor()
                     s_decl, s_code = parse_accessor_content(set_impl_combined)
                     update_object_code(set_obj, s_decl, s_code)
+                
+                if attrs:
+                    write_ide_attrs(obj, attrs)
                 
                 return obj
         except Exception as e:
@@ -972,20 +994,9 @@ class NativeManager(ObjectManager):
         file_name = os.path.basename(rel_path)
         is_new = not os.path.exists(file_path)
         # --- CACHE SKIP OPTIMIZATION ---
-        norm_path = normalize_path(rel_path)
-        cache = context.get('cache_data')
-        if cache:
-            # For XML, get_quick_ide_hash returns the stable content hash
-            q_hash = get_quick_ide_hash(obj, True)
-            cached_obj = cache.get('objects', {}).get(norm_path)
-            if q_hash and cached_obj and cached_obj.get('ide_hash') == q_hash:
-                if os.path.exists(file_path):
-                    s = os.stat(file_path)
-                    if int(s.st_mtime) == cached_obj.get('disk_mtime') and s.st_size == cached_obj.get('disk_size'):
-                        if 'exported_paths' in context:
-                            context['exported_paths'].add(rel_path)
-                        self._update_cache_entry(obj, rel_path, file_path, context, q_hash, s)
-                        return "identical"
+        skip = self._try_cache_skip(obj, rel_path, file_path, context, is_xml=True)
+        if skip:
+            return skip
         # -------------------------------
 
         # Get existing file hash before overwriting

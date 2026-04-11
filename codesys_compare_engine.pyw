@@ -10,7 +10,7 @@ Provides:
   - create_import_managers() : create manager dict for import operations
   - update_existing_object() : update an existing IDE object from disk file  
   - create_new_object()      : create a new IDE object from disk file
-  - batch_import_native_xmls() : batch-import native XML objects
+  - batch_import_native_xmls_with_children() : batch-import native XML objects with child restore
   - update_object_metadata() : update metadata entry after import
   - finalize_import()        : save metadata and project after import
 """
@@ -25,7 +25,9 @@ from codesys_utils import (
     parse_st_file, build_object_cache, find_object_by_path,
     ensure_folder_path, determine_object_type, find_object_by_name,
     format_st_content, format_property_content, get_project_prop,
-    load_sync_cache, save_sync_cache, normalize_path, get_quick_ide_hash
+    load_sync_cache, save_sync_cache, normalize_path, get_quick_ide_hash,
+    parse_sync_pragmas, read_ide_attrs, normalize_sync_attrs,
+    build_state_hash, render_sync_pragmas
 )
 from codesys_managers import (
     NativeManager, FolderManager, PropertyManager, ConfigManager, POUManager,
@@ -47,15 +49,13 @@ from codesys_managers import (
 
 
 def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl=False):
-    """Extract content from IDE object for comparison.
+    """Extract content and attributes from IDE object for comparison.
     
-    Args:
-        obj: CODESYS object
-        is_xml: True if this is an XML object
-        property_accessors: Dictionary of property accessor objects
-        projects_obj: CODESYS projects object
-        can_have_impl: True if object type can have implementation even if empty
+    Returns:
+        (ide_content, ide_attrs) where ide_attrs is a dict of non-default
+        attributes, or empty dict for XML objects or on error.
     """
+    ide_attrs = read_ide_attrs(obj)
     
     if is_xml:
         native_mgr = NativeManager()
@@ -79,10 +79,10 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl
             if os.path.exists(tmp_path):
                 content = read_file(tmp_path)
                 os.remove(tmp_path)
-                return content
+                return content, {}
         except:
             pass
-        return ""
+        return "", {}
     
     # ST content
     obj_guid = safe_str(obj.guid)
@@ -102,22 +102,41 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl
             set_decl, set_impl_raw = export_object_content(prop_data['set'])
             set_impl = format_st_content(set_decl, set_impl_raw, False)
 
-        return format_property_content(declaration, get_impl, set_impl)
+        return format_property_content(declaration, get_impl, set_impl), ide_attrs
     
     declaration, implementation = export_object_content(obj)
-    return format_st_content(declaration, implementation, can_have_impl)
+    return format_st_content(declaration, implementation, can_have_impl), ide_attrs
 
-def contents_are_equal(ide_content, disk_content, is_xml, rel_path="unknown"):
-    """Compare two content strings, with XML-specific filtering."""
+def contents_are_equal(ide_content, disk_content, is_xml, rel_path="unknown", ide_attrs=None, disk_attrs=None):
+    """Compare two content strings, with XML-specific filtering.
+    
+    For ST files, also compares sync pragma attributes if provided.
+    Returns True only if both code and attributes match.
+    """
     if not ide_content or not disk_content:
         return ide_content == disk_content
         
     if not is_xml:
+        # For ST files: strip pragmas from disk content for code comparison
+        _, clean_disk_st = parse_sync_pragmas(disk_content)
         ide_hash = calculate_hash(ide_content)
-        disk_hash = calculate_hash(disk_content)
+        disk_hash = calculate_hash(clean_disk_st)
         are_equal = ide_hash == disk_hash
         if not are_equal:
             log_info("Content mismatch for %s: IDE hash=%s, Disk hash=%s" % (rel_path, ide_hash, disk_hash))
+            return False
+        
+        # Code matches — now compare attributes
+        if ide_attrs is not None and disk_attrs is not None:
+            if normalize_sync_attrs(ide_attrs) != normalize_sync_attrs(disk_attrs):
+                attr_diff = []
+                from codesys_constants import ATTR_ORDER
+                for k in ATTR_ORDER:
+                    if ide_attrs.get(k) != disk_attrs.get(k):
+                        attr_diff.append("%s: IDE=%s Disk=%s" % (k, ide_attrs.get(k), disk_attrs.get(k)))
+                log_info("Attribute mismatch for %s: %s" % (rel_path, ", ".join(attr_diff)))
+                return False
+        
         return are_equal
     
     # XML Comparison - use NativeManager's filtering logic
@@ -303,13 +322,18 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                 
             # ── Slow path: Full Comparison ──
             can_have_impl = eff_type in IMPLEMENTATION_TYPES
-            ide_content = get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl)
+            ide_content, ide_attrs = get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl)
             disk_content = read_file(file_path)
 
-            if contents_are_equal(ide_content, disk_content, is_xml, rel_path):
+            # For ST files, parse pragmas from disk content for attribute comparison
+            disk_attrs = {}
+            if not is_xml and disk_content:
+                disk_attrs, _ = parse_sync_pragmas(disk_content)
+
+            if contents_are_equal(ide_content, disk_content, is_xml, rel_path, ide_attrs, disk_attrs):
                 unchanged_count += 1
                 # Update cache
-                q_hash = ide_hashes[norm_path] or calculate_hash(ide_content)
+                q_hash = ide_hashes[norm_path] or build_state_hash(ide_content, ide_attrs)
                 new_cache_objects[norm_path] = {
                     "ide_hash": q_hash,
                     "disk_hash": calculate_hash(disk_content),
@@ -317,10 +341,15 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                     "disk_size": size
                 }
             else:
+                full_ide_content = ide_content
+                if not is_xml and ide_attrs:
+                    full_ide_content = render_sync_pragmas(ide_attrs, ide_content)
+
                 different.append({
                     "name": obj.get_name(), "path": rel_path,
                     "type": type_name, "type_guid": eff_type,
-                    "obj": obj, "ide_content": ide_content, "disk_content": disk_content
+                    "obj": obj, "ide_content": full_ide_content, "disk_content": disk_content,
+                    "ide_attrs": ide_attrs, "disk_attrs": disk_attrs
                 })
         else:
             new_in_ide.append({
@@ -551,10 +580,10 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
     base_name = os.path.splitext(path_parts[-1])[0]
     
     if rel_path.endswith(".xml"):
-        # XML files are handled by batch_import_native_xmls
+        # XML files are handled by batch_import
         return None
     
-    decl, impl = parse_st_file(file_path)
+    decl, impl, attrs = parse_st_file(file_path)
     content_check = decl if decl else impl
     if not content_check:
         return None
@@ -767,86 +796,6 @@ def batch_import_native_xmls_with_children(native_batches, import_managers, proj
                                 restore_pou_children(pou_obj, children, import_managers, project)
                             except Exception as e:
                                 log_warning("Could not restore children for POU " + name + ": " + safe_str(e))
-                
-                for rel_path, file_path, name, type_guid, is_new in items:
-                    res = None
-                    try:
-                        for child in container.get_children():
-                            if child.get_name().lower() == name.lower():
-                                res = child
-                                break
-                    except:
-                        pass
-                    
-                    if res:
-                        if is_new:
-                            created += 1
-                        else:
-                            updated += 1
-                            print("  Updated (native batch): " + rel_path)
-                    else:
-                        log_error("Batch import could not find " + name + " after import.")
-                        failed += 1
-                        
-            except Exception as e:
-                log_error("Batch import failed for " + safe_str(container) + ": " + safe_str(e))
-                failed += len(items)
-        else:
-            log_error("Failed to merge XML for " + safe_str(container))
-            failed += len(items)
-        
-        if os.path.exists(temp_xml):
-            try:
-                os.remove(temp_xml)
-            except:
-                pass
-    
-    return updated, created, failed
-
-
-def batch_import_native_xmls(native_batches, import_managers, project):
-    """
-    Process batched native XML imports to reduce dialogs.
-    
-    Returns:
-        (updated_count, created_count, failed_count)
-    """
-    updated = 0
-    created = 0
-    failed = 0
-    
-    for container, items in native_batches.items():
-        print("  Batch importing " + str(len(items)) + " native objects into " + safe_str(container))
-        temp_xml = os.path.join(tempfile.gettempdir(), "cds_sync_batch.xml")
-        file_paths = [item[1] for item in items]
-        
-        if merge_native_xmls(file_paths, temp_xml):
-            try:
-                # Save POU children before XML import to prevent them from being deleted
-                pou_children_to_restore = {}
-                for rel_path, file_path, name, type_guid, is_new in items:
-                    if type_guid == TYPE_GUIDS.get("pou") and not is_new:
-                        try:
-                            for child in container.get_children():
-                                if child.get_name().lower() == name.lower():
-                                    children = save_pou_children(child)
-                                    if children:
-                                        pou_children_to_restore[child] = children
-                                    break
-                        except Exception as e:
-                            log_warning("Could not save children for POU " + name + ": " + safe_str(e))
-                
-                if hasattr(container, "import_native"):
-                    container.import_native(temp_xml)
-                else:
-                    project.import_native(temp_xml)
-                
-                # Restore POU children after XML import
-                for pou_obj, children in pou_children_to_restore.items():
-                    try:
-                        restore_pou_children(pou_obj, children, import_managers, project)
-                    except Exception as e:
-                        log_warning("Could not restore children for POU " + safe_str(pou_obj) + ": " + safe_str(e))
                 
                 for rel_path, file_path, name, type_guid, is_new in items:
                     res = None

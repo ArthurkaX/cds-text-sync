@@ -23,6 +23,7 @@ for _mod_name in list(sys.modules.keys()):
 _load_hidden_module("codesys_constants")
 _load_hidden_module("codesys_utils")
 _load_hidden_module("codesys_managers")
+_load_hidden_module("codesys_compare_engine")
 _load_hidden_module("codesys_ui")
 
 from codesys_constants import (
@@ -43,35 +44,15 @@ from codesys_managers import (
     get_object_path, collect_property_accessors, is_nvl, is_graphical_pou,
     classify_object, build_expected_path
 )
+from codesys_compare_engine import create_import_managers
 
 # Shared constants and utilities imported from modules
 
 
 def save_export_metadata(export_dir, stats, elapsed_time):
     """Save export metadata to sync_metadata.json and project property"""
-    from codesys_utils import set_project_prop
-    
-    metadata = {
-        "script_version": SCRIPT_VERSION,
-        "last_action": "export",
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "duration_sec": round(elapsed_time, 2),
-        "statistics": stats
-    }
-    
-    metadata_path = os.path.join(export_dir, "sync_metadata.json")
-    try:
-        with codecs.open(metadata_path, "w", "utf-8") as f:
-            json.dump(metadata, f, indent=2)
-        log_info("Export metadata saved to sync_metadata.json (v" + SCRIPT_VERSION + ")")
-    except Exception as e:
-        log_warning("Failed to save export metadata: " + safe_str(e))
-    
-    try:
-        set_project_prop("cds-sync-version", SCRIPT_VERSION)
-        log_info("Script version saved to project property")
-    except Exception as e:
-        log_warning("Failed to save version to project property: " + safe_str(e))
+    from codesys_utils import save_sync_metadata
+    save_sync_metadata(export_dir, "export", stats, elapsed_time)
 
 
 def cleanup_orphaned_files(export_dir, current_objects):
@@ -244,17 +225,7 @@ def export_project(export_dir, projects_obj=None):
     property_accessors = {}
     
     # Initialize managers
-    managers = {
-        TYPE_GUIDS["folder"]: FolderManager(),
-        TYPE_GUIDS["property"]: PropertyManager(),
-        TYPE_GUIDS["task_config"]: ConfigManager(),
-        TYPE_GUIDS["alarm_config"]: ConfigManager(),
-        TYPE_GUIDS["visu_manager"]: ConfigManager(),
-        TYPE_GUIDS["device"]: ConfigManager(),
-        TYPE_GUIDS["softmotion_pool"]: ConfigManager(),
-        "default": POUManager(),
-        "native": NativeManager()
-    }
+    managers = create_import_managers()
     
     # Load sync cache for fast-export skipping
     cache_data = load_sync_cache(export_dir)

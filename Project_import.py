@@ -167,30 +167,16 @@ def import_project(projects_obj=None):
     
     # Update metadata after successful import
     try:
-        from codesys_constants import SCRIPT_VERSION
-        from codesys_utils import set_project_prop
-        
-        metadata = {
-            "script_version": SCRIPT_VERSION,
-            "last_action": "import",
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "duration_sec": round(elapsed, 2),
-            "statistics": {
-                "updated": updated,
-                "created": created,
-                "moved": moved,
-                "deleted": deleted,
-                "failed": failed,
-                "identical": unchanged_count
-            }
+        from codesys_utils import save_sync_metadata
+        stats = {
+            "updated": updated,
+            "created": created,
+            "moved": moved,
+            "deleted": deleted,
+            "failed": failed,
+            "identical": unchanged_count
         }
-        
-        metadata_path = os.path.join(base_dir, "sync_metadata.json")
-        with codecs.open(metadata_path, "w", "utf-8") as f:
-            json.dump(metadata, f, indent=2)
-        log_info("Import metadata saved to sync_metadata.json (v" + SCRIPT_VERSION + ")")
-        
-        set_project_prop("cds-sync-version", SCRIPT_VERSION)
+        save_sync_metadata(base_dir, "import", stats, elapsed)
     except Exception as e:
         log_warning("Failed to update metadata: " + safe_str(e))
     

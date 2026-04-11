@@ -52,7 +52,7 @@ from codesys_managers import (
     is_graphical_pou, collect_property_accessors, classify_object
 )
 from codesys_compare_engine import (
-    find_all_changes, perform_import_items, TYPE_NAMES, build_expected_path
+    find_all_changes, perform_import_items, create_import_managers, TYPE_NAMES, build_expected_path
 )
 
 
@@ -196,15 +196,7 @@ def perform_export(base_dir, selected, unchanged_count=0):
         'property_accessors': property_accessors
     }
     
-    managers = {
-        TYPE_GUIDS["folder"]: FolderManager(),
-        TYPE_GUIDS["property"]: PropertyManager(),
-        TYPE_GUIDS["task_config"]: ConfigManager(),
-        TYPE_GUIDS["alarm_config"]: ConfigManager(),
-        "default": POUManager(),
-        "native": NativeManager()
-    }
-    native_mgr = NativeManager()
+    managers = create_import_managers()
     
     count_created = 0
     count_updated = 0
@@ -248,7 +240,7 @@ def perform_export(base_dir, selected, unchanged_count=0):
                 pass
 
         if is_xml:
-            mgr = managers.get(effective_type, native_mgr)
+            mgr = managers.get(effective_type, managers["native"])
         elif effective_type in managers:
             mgr = managers[effective_type]
         else:
