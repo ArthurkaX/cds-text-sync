@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.7.4 (2026-04-11)
+
+**Attribute Synchronization (DRY Sync):**
+
+- **Pragma-Based Metadata**: Implemented a new synchronization system for IDE-specific attributes (e.g., "Exclude from build", "Link always") using `//% cds-text-sync.key=value` pragmas directly in `.st` files.
+- **CODESYS API Fixes**: Resolved issues with attribute access by correctly utilizing the `obj.build_properties` (ScriptBuildProperties) API for reading and writing IDE flags.
+- **Bi-directional Sync**: Ensured that removing a pragma from the source file correctly clears the corresponding attribute in the IDE during import.
+- **Cache Integrity**: Updated the quick hashing logic to include object attributes, ensuring that toggling IDE flags correctly invalidates the cache and triggers a re-export.
+- **Comparison UI Enhancement**: The built-in diff viewer now renders IDE attributes as pragmas, allowing users to see and review metadata changes alongside code changes.
+- **Cache Migration**: Bumped `CACHE_VERSION` to `3.1` to force a clean state rebuild and ensure all objects are tracked with attribute-aware hashes.
+
 ### Version 1.7.3 (2026-04-02)
 
 **Move/Rename Detection & Stale File Cleanup:**

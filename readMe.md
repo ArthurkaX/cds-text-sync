@@ -1,6 +1,6 @@
 # cds-text-sync: Professional CODESYS Git Sync
 
-**Version**: `1.7.3`
+**Version**: `1.7.4`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -23,6 +23,7 @@ Professional Git integration for **CODESYS**. Sync Structured Text (ST) with ext
 - **Timestamped Backups with Retention**: Automatically creates safety backups before imports with a configurable retention policy (default: 10 backups).
 - **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
+- **Integrated Attribute Sync**: Synchronize IDE block attributes (Exclude from build, Link always, etc.) directly within the `.st` file header using pragmas.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by safely removing orphaned objects when files are deleted on disk.
 - **Hidden Folders Skip**: Folders starting with a dot (e.g., `.git`, `.docs`) are automatically ignored, letting you store documentation or tools in the sync directory.
 
