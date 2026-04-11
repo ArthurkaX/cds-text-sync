@@ -51,7 +51,8 @@ def main():
         "save_after_export": get_project_prop("cds-sync-save-after-export", True),
         "safety_backup": get_project_prop("cds-sync-safety-backup", True),
         "backup_name": get_project_prop("cds-sync-backup-name", ""),
-        "retention_count": get_project_prop("cds-sync-backup-retention-count", 10)
+        "retention_count": get_project_prop("cds-sync-backup-retention-count", 10),
+        "enable_logging": get_project_prop("cds-sync-enable-logging", False)
     }
 
     # Show Dialog
@@ -66,6 +67,7 @@ def main():
         set_project_prop("cds-sync-safety-backup", new_settings["safety_backup"])
         set_project_prop("cds-sync-backup-name", new_settings["backup_name"])
         set_project_prop("cds-sync-backup-retention-count", new_settings["retention_count"])
+        set_project_prop("cds-sync-enable-logging", new_settings["enable_logging"])
         
         print("Settings saved successfully.")
     else:

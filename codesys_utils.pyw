@@ -30,8 +30,12 @@ class Logger:
     def __init__(self):
         self.log_file = None
         self.is_final = False
+        self.logging_enabled = None  # None = not yet checked, True/False = override
         
     def _initialize(self, base_dir=None):
+        if not self.logging_enabled:
+            return
+
         # If explicitly providing base_dir, override everything
         if base_dir:
             self.log_file = os.path.join(base_dir, "sync_debug.log")
@@ -69,7 +73,6 @@ class Logger:
             self.is_final = False
 
     def log(self, level, message, include_traceback=False):
-        self._initialize()
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         log_entry = "[%s] [%s] %s\n" % (timestamp, level, message)
         
@@ -78,6 +81,13 @@ class Logger:
             
         print("[%s] %s" % (level, message))
         
+        if not self.logging_enabled:
+            return
+
+        self._initialize()
+        if not self.log_file:
+            return
+
         try:
             with codecs.open(self.log_file, "a", "utf-8") as f:
                 f.write(log_entry)
@@ -93,16 +103,27 @@ def log_warning(message):
     _logger.log("WARNING", message)
 
 def init_logging(base_dir):
-    """Explicitly set the logging directory"""
-    if base_dir and os.path.exists(base_dir):
+    """Explicitly set the logging directory and check if logging is enabled"""
+    enabled = get_project_prop("cds-sync-enable-logging", False)
+    _logger.logging_enabled = enabled
+    if enabled and base_dir and os.path.exists(base_dir):
         _logger._initialize(base_dir)
+
+def is_logging_enabled():
+    """Check if file logging is enabled via project settings"""
+    if _logger.logging_enabled is None:
+        _logger.logging_enabled = get_project_prop("cds-sync-enable-logging", False)
+    return _logger.logging_enabled
 
 def log_error(message, critical=False):
     _logger.log("ERROR", message, include_traceback=True)
     if critical:
         try:
             import system
-            system.ui.error("CRITICAL ERROR: " + message + "\n\nSee sync_debug.log for details.")
+            if _logger.logging_enabled:
+                system.ui.error("CRITICAL ERROR: " + message + "\n\nSee sync_debug.log for details.")
+            else:
+                system.ui.error("CRITICAL ERROR: " + message)
         except:
             pass
 

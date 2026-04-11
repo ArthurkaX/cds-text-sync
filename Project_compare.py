@@ -288,31 +288,33 @@ def main():
     if base_dir:
         init_logging(base_dir)
         
-        try:
-            log_path = os.path.join(base_dir, "compare.log")
-            log_file_obj = codecs.open(log_path, "w", "utf-8")
-            
-            class Tee(object):
-                def __init__(self, terminal, file_obj):
-                    self.terminal = terminal
-                    self.file_obj = file_obj
-                def write(self, message):
-                    self.terminal.write(message)
-                    try:
-                        self.file_obj.write(message)
-                    except:
-                        pass
-                def flush(self):
-                    self.terminal.flush()
-                    try:
-                        self.file_obj.flush()
-                    except:
-                        pass
-            
-            sys.stdout = Tee(original_stdout, log_file_obj)
-            sys.stderr = Tee(original_stderr, log_file_obj)
-        except Exception as e:
-            pass
+        logging_enabled = get_project_prop("cds-sync-enable-logging", False)
+        if logging_enabled:
+            try:
+                log_path = os.path.join(base_dir, "compare.log")
+                log_file_obj = codecs.open(log_path, "w", "utf-8")
+                
+                class Tee(object):
+                    def __init__(self, terminal, file_obj):
+                        self.terminal = terminal
+                        self.file_obj = file_obj
+                    def write(self, message):
+                        self.terminal.write(message)
+                        try:
+                            self.file_obj.write(message)
+                        except:
+                            pass
+                    def flush(self):
+                        self.terminal.flush()
+                        try:
+                            self.file_obj.flush()
+                        except:
+                            pass
+                
+                sys.stdout = Tee(original_stdout, log_file_obj)
+                sys.stderr = Tee(original_stderr, log_file_obj)
+            except Exception as e:
+                pass
 
     try:
         compare_project()

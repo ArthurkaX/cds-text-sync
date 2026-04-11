@@ -94,7 +94,7 @@ def ask_yes_no_cancel(title, message):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(420, 390) # Increased height for retention count
+        self.Size = Size(420, 420) # Increased height for retention count and logging option
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -188,6 +188,15 @@ class SettingsForm(Form):
         self.txt_retention.Text = str(current_settings.get("retention_count", 10))
         self.Controls.Add(self.txt_retention)
 
+        # Group 3: Logging
+        y += 40
+        self.chk_logging = CheckBox()
+        self.chk_logging.Text = "Enable *.log Files (sync_debug.log, compare.log)"
+        self.chk_logging.Location = Point(30, y)
+        self.chk_logging.Size = Size(350, 24)
+        self.chk_logging.Checked = current_settings.get("enable_logging", False)
+        self.Controls.Add(self.chk_logging)
+
         # Buttons
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
@@ -219,7 +228,8 @@ class SettingsForm(Form):
             "save_after_import": self.chk_save.Checked,
             "save_after_export": self.chk_save_exp.Checked,
             "safety_backup": self.chk_safety.Checked,
-            "retention_count": retention
+            "retention_count": retention,
+            "enable_logging": self.chk_logging.Checked
         }
 
 def show_settings_dialog(current_settings, version=None):
