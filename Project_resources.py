@@ -7,7 +7,6 @@ and XML export size for graphical objects.
 """
 import os
 import sys
-import imp
 import tempfile
 import codecs
 
@@ -26,19 +25,13 @@ try:
 except:
     HAS_UI = False
 
-# --- Hidden Module Loader ---
-def _load_hidden_module(name):
-    """Load a .pyw module from the script directory and register it in sys.modules."""
-    if name not in sys.modules:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(script_dir, name + ".pyw")
-        if os.path.exists(path):
-            sys.modules[name] = imp.load_source(name, path)
+from Project_bootstrap import load_hidden_modules
 
-# Load shared core logic
-_load_hidden_module("codesys_constants")
-_load_hidden_module("codesys_utils")
-_load_hidden_module("codesys_managers")
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_managers",
+], script_file=__file__)
 
 from codesys_constants import TYPE_NAMES, TYPE_GUIDS, IMPLEMENTATION_TYPES
 from codesys_utils import safe_str, resolve_projects, format_st_content, format_property_content

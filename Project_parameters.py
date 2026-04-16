@@ -7,25 +7,19 @@ Project_parameters.py - Configure Project parameters
 Updates parameters in Project Information > Properties
 """
 import os
-import sys
-import imp
 
-# --- Hidden Module Loader ---
-def _load_hidden_module(name):
-    """Load a .pyw module from the script directory and register it in sys.modules."""
-    if name not in sys.modules:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(script_dir, name + ".pyw")
-        if os.path.exists(path):
-            sys.modules[name] = imp.load_source(name, path)
+from Project_bootstrap import load_hidden_modules
 
-# Load shared core logic
-_load_hidden_module("codesys_constants")
-_load_hidden_module("codesys_utils")
-_load_hidden_module("codesys_ui")
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_ui",
+    "codesys_type_profiles",
+], script_file=__file__)
 
-from codesys_utils import safe_str, load_base_dir, get_project_prop, set_project_prop
+from codesys_utils import safe_str, load_base_dir, get_project_prop, set_project_prop, get_detected_codesys_version
 from codesys_constants import SCRIPT_VERSION
+from codesys_type_profiles import PROJECT_PROPERTY_KEY, list_profiles, DEFAULT_PROFILE_NAME, get_profile_label
 
 def main():
     base_dir, error = load_base_dir()
@@ -52,7 +46,11 @@ def main():
         "safety_backup": get_project_prop("cds-sync-safety-backup", True),
         "backup_name": get_project_prop("cds-sync-backup-name", ""),
         "retention_count": get_project_prop("cds-sync-backup-retention-count", 10),
-        "enable_logging": get_project_prop("cds-sync-enable-logging", False)
+        "enable_logging": get_project_prop("cds-sync-enable-logging", False),
+        "type_profile": get_project_prop(PROJECT_PROPERTY_KEY, DEFAULT_PROFILE_NAME),
+        "available_profiles": list_profiles(),
+        "available_profile_labels": dict((name, get_profile_label(name)) for name in list_profiles()),
+        "detected_codesys_version": get_detected_codesys_version()
     }
 
     # Show Dialog
@@ -68,7 +66,11 @@ def main():
         set_project_prop("cds-sync-backup-name", new_settings["backup_name"])
         set_project_prop("cds-sync-backup-retention-count", new_settings["retention_count"])
         set_project_prop("cds-sync-enable-logging", new_settings["enable_logging"])
-        
+        selected_profile = new_settings.get("type_profile", DEFAULT_PROFILE_NAME) or DEFAULT_PROFILE_NAME
+        set_project_prop(PROJECT_PROPERTY_KEY, selected_profile)
+
+        print("Detected CODESYS version: " + safe_str(current_settings.get("detected_codesys_version")))
+        print("Selected type profile: " + safe_str(selected_profile) + " (" + safe_str(get_profile_label(selected_profile)) + ")")
         print("Settings saved successfully.")
     else:
         print("Settings cancelled.")

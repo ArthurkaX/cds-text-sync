@@ -18,7 +18,52 @@ import os
 import codecs
 import tempfile
 import time
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, RESERVED_FILES, TYPE_NAMES
+import sys
+
+try:
+    import importlib.util
+    _HAS_IMPORTLIB_UTIL = True
+except ImportError:
+    _HAS_IMPORTLIB_UTIL = False
+
+try:
+    import imp
+    _HAS_IMP = True
+except ImportError:
+    _HAS_IMP = False
+
+
+def _load_sibling_module(name):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + ".pyw")
+    if _HAS_IMPORTLIB_UTIL:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            return module
+    if _HAS_IMP:
+        module = imp.load_source(name, path)
+        sys.modules[name] = module
+        return module
+    raise ImportError(name + ".pyw not found.")
+from codesys_constants import RESERVED_FILES
+try:
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+except ImportError:
+    PROJECT_PROPERTY_KEY = _load_sibling_module("codesys_type_profiles").PROJECT_PROPERTY_KEY
+try:
+    from codesys_type_system import (
+        resolve_runtime_object, semantic_kind_to_guid, SEMANTIC_TYPE_NAMES,
+        can_have_implementation_kind, is_xml_kind
+    )
+except ImportError:
+    _type_system = _load_sibling_module("codesys_type_system")
+    resolve_runtime_object = _type_system.resolve_runtime_object
+    semantic_kind_to_guid = _type_system.semantic_kind_to_guid
+    SEMANTIC_TYPE_NAMES = _type_system.SEMANTIC_TYPE_NAMES
+    can_have_implementation_kind = _type_system.can_have_implementation_kind
+    is_xml_kind = _type_system.is_xml_kind
 from codesys_utils import (
     safe_str, calculate_hash, clean_filename, log_info, log_error, log_warning,
     resolve_projects, backup_project_binary, merge_native_xmls,
@@ -48,6 +93,16 @@ from codesys_managers import (
 # Removed local build_expected_path, now imported from codesys_managers
 
 
+def _new_temp_xml_path(prefix):
+    fd, path = tempfile.mkstemp(prefix=prefix, suffix=".xml")
+    os.close(fd)
+    try:
+        os.remove(path)
+    except:
+        pass
+    return path
+
+
 def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl=False):
     """Extract content and attributes from IDE object for comparison.
     
@@ -56,39 +111,43 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl
         attributes, or empty dict for XML objects or on error.
     """
     ide_attrs = read_ide_attrs(obj)
+    obj_name = safe_str(obj.get_name()) if obj else "<unknown>"
+    obj_guid = safe_str(getattr(obj, "guid", None))
     
     if is_xml:
         native_mgr = NativeManager()
-        clean_name = clean_filename(obj.get_name())
-        tmp_path = os.path.join(tempfile.gettempdir(), "cds_comp_" + clean_name + ".xml")
+        tmp_path = _new_temp_xml_path("cds_comp_native_")
         try:
             # ConfigManager objects require recursive=True to include all children
-            monolithic_types = [
-                TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"], 
-                TYPE_GUIDS["visu_manager"], TYPE_GUIDS["softmotion_pool"]
-            ]
-            obj_type = safe_str(obj.type)
-            recursive = obj_type in monolithic_types
+            resolution = resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY))
+            obj_kind = resolution.get("semantic_kind")
+            monolithic_types = ["task_config", "alarm_config", "visu_manager", "softmotion_pool"]
+            recursive = obj_kind in monolithic_types
             
             # Special logic for devices: only recursive if not a project container
-            if obj_type == TYPE_GUIDS["device"]:
+            if obj_kind == "device":
                 from codesys_utils import is_container_device
                 recursive = not is_container_device(obj)
-                
+
+            log_info("COMPARE XML export start: %s (%s), recursive=%s -> %s" % (
+                obj_name, obj_guid, recursive, tmp_path))
             projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
+            log_info("COMPARE XML export done: %s (%s)" % (obj_name, obj_guid))
             if os.path.exists(tmp_path):
                 content = read_file(tmp_path)
                 os.remove(tmp_path)
                 return content, {}
-        except:
-            pass
+        except Exception as e:
+            log_warning("COMPARE XML export failed: %s (%s): %s" % (
+                obj_name, obj_guid, safe_str(e)))
         return "", {}
     
     # ST content
     obj_guid = safe_str(obj.guid)
     obj_type = safe_str(obj.type)
-    
-    if obj_type == TYPE_GUIDS["property"] and obj_guid in property_accessors:
+    obj_resolution = resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY))
+
+    if obj_resolution.get("semantic_kind") == "property" and obj_guid in property_accessors:
         prop_data = property_accessors[obj_guid]
         declaration, _ = export_object_content(obj)
 
@@ -143,8 +202,8 @@ def contents_are_equal(ide_content, disk_content, is_xml, rel_path="unknown", id
     native_mgr = NativeManager()
     
     # We need to write content to temp files because _hash_file reads from disk
-    tmp_path_ide = os.path.join(tempfile.gettempdir(), "cds_comp_ide.xml")
-    tmp_path_disk = os.path.join(tempfile.gettempdir(), "cds_comp_disk.xml")
+    tmp_path_ide = _new_temp_xml_path("cds_comp_ide_")
+    tmp_path_disk = _new_temp_xml_path("cds_comp_disk_")
     
     try:
         with codecs.open(tmp_path_ide, "w", "utf-8") as f:
@@ -177,6 +236,41 @@ def read_file(file_path):
     except:
         return ""
 
+
+def _apply_nvl_path_hint(rel_path, resolution, base_dir):
+    if not rel_path or not isinstance(resolution, dict):
+        return rel_path, resolution
+
+    semantic_kind = resolution.get("semantic_kind")
+    if semantic_kind not in ("gvl", "nvl_sender"):
+        return rel_path, resolution
+
+    hinted_path = rel_path
+    if rel_path.endswith(".gvl.xml"):
+        candidate = rel_path[:-len(".gvl.xml")] + ".nvl_sender.xml"
+        candidate_full = os.path.join(base_dir, candidate.replace("/", os.sep))
+        if os.path.exists(candidate_full):
+            hinted_path = candidate
+    elif rel_path.endswith(".nvl_sender.xml"):
+        hinted_path = rel_path
+
+    if hinted_path.endswith(".nvl_sender.xml"):
+        profile_name = resolution.get("profile_name")
+        resolution = dict(resolution)
+        resolution["semantic_kind"] = "nvl_sender"
+        resolution["sync_profile"] = "native_xml"
+        resolution["is_xml"] = True
+        resolution["manager_key"] = "nvl_sender"
+        resolution["canonical_guid"] = semantic_kind_to_guid("nvl_sender", profile_name) or resolution.get("canonical_guid")
+        resolution["effective_type"] = resolution.get("canonical_guid") or resolution.get("effective_type")
+        resolution["type_guid"] = resolution.get("effective_type")
+        evidence = list(resolution.get("evidence") or [])
+        if "path_hint=nvl_sender" not in evidence:
+            evidence.append("path_hint=nvl_sender")
+        resolution["evidence"] = evidence
+
+    return hinted_path, resolution
+
 def find_all_changes(base_dir, projects_obj, export_xml=False):
     """
     Direct two-way comparison with Merkle Tree optimization.
@@ -204,6 +298,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     ide_paths = {}    # rel_path -> obj
     ide_hashes = {}   # norm_path -> ide_hash
     ide_metadata = {} # norm_path -> (eff_type, is_xml)
+    ide_resolutions = {} # norm_path -> resolution dict
+    ide_type_names = {}   # norm_path -> semantic/type label
     current_types = {} # guid -> (eff_type, is_xml, rel_path)
     property_accessors = {} # (parent_guid, name) -> obj
     
@@ -213,6 +309,9 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     path_cache_hits = 0
     for obj in all_ide_objects:
         obj_guid = safe_str(obj.guid)
+        resolution = classify_object(obj)
+        semantic_kind = resolution.get("semantic_kind")
+        type_name = semantic_kind or safe_str(obj.type)[:8]
         
         # Check type cache first to avoid classify_object AND path building
         # Cache stores (eff_type, is_xml, cached_rel_path)
@@ -223,29 +322,46 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
             should_skip = False if cached_rel_path else True
             
             if cached_rel_path:
+                cached_rel_path, resolution = _apply_nvl_path_hint(cached_rel_path, resolution, base_dir)
                 # Validate cached path: rebuild the real path from the live IDE tree.
                 # If the object was moved/renamed in IDE, the cached path is stale.
-                fresh_path = build_expected_path(obj, eff_type, is_xml)
+                fresh_path = build_expected_path(obj, resolution, is_xml)
                 if fresh_path and fresh_path != cached_rel_path:
-                    # Path changed in IDE — invalidate cached path
-                    rel_path = fresh_path
-                    path_invalidations += 1
-                    log_info("Path invalidated for GUID %s: '%s' -> '%s'" % (obj_guid, cached_rel_path, fresh_path))
+                    cached_nvl = cached_rel_path.endswith(".nvl_sender.xml")
+                    fresh_gvl = fresh_path.endswith(".gvl.xml")
+                    if cached_nvl and fresh_gvl and resolution.get("semantic_kind") == "gvl":
+                        rel_path = cached_rel_path
+                        path_cache_hits += 1
+                        log_info("Keeping cached NVL path for GUID %s: '%s' (fresh path '%s' ignored)" % (
+                            obj_guid, cached_rel_path, fresh_path
+                        ))
+                    else:
+                        # Path changed in IDE — invalidate cached path
+                        rel_path = fresh_path
+                        path_invalidations += 1
+                        log_info("Path invalidated for GUID %s: '%s' -> '%s'" % (obj_guid, cached_rel_path, fresh_path))
                 else:
                     rel_path = cached_rel_path
                     path_cache_hits += 1
         else:
-            eff_type, is_xml, should_skip = classify_object(obj)
+            eff_type = resolution.get("manager_key") or semantic_kind or resolution.get("canonical_guid") or safe_str(obj.type)
+            is_xml = bool(resolution.get("is_xml"))
+            should_skip = bool(resolution.get("should_skip"))
             if not should_skip:
-                rel_path = build_expected_path(obj, eff_type, is_xml)
+                rel_path = build_expected_path(obj, resolution, is_xml)
+                rel_path, resolution = _apply_nvl_path_hint(rel_path, resolution, base_dir)
             else:
                 rel_path = None
             
         if should_skip or not rel_path: 
             continue
+
+        semantic_kind = resolution.get("semantic_kind")
+        type_name = semantic_kind or safe_str(obj.type)[:8]
+        eff_type = semantic_kind or eff_type
         
         # Optimization: Collect property accessors during this same loop
-        if eff_type == TYPE_GUIDS["property"]:
+        if semantic_kind == "property":
             try:
                 if obj_guid not in property_accessors:
                     property_accessors[obj_guid] = {'get': None, 'set': None}
@@ -265,6 +381,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
         norm_path = normalize_path(rel_path)
         ide_paths[rel_path] = obj
         ide_metadata[norm_path] = (eff_type, is_xml)
+        ide_resolutions[norm_path] = resolution
+        ide_type_names[norm_path] = type_name
         
         # Quick hash for ST
         q_hash = get_quick_ide_hash(obj, is_xml)
@@ -291,9 +409,9 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     for rel_path, obj in ide_paths.items():
         norm_path = normalize_path(rel_path)
         eff_type, is_xml = ide_metadata[norm_path]
+        resolution = ide_resolutions.get(norm_path, {})
+        type_name = ide_type_names.get(norm_path, resolution.get("semantic_kind") or safe_str(obj.type)[:8])
         file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
-        type_name = TYPE_NAMES.get(eff_type, eff_type[:8])
-        
         if os.path.exists(file_path):
             # ── Fast path 1: Folder-level check ──
             # If parent folder hash matches, IDE hasn't changed.
@@ -321,8 +439,10 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                 continue
                 
             # ── Slow path: Full Comparison ──
-            can_have_impl = eff_type in IMPLEMENTATION_TYPES
+            can_have_impl = can_have_implementation_kind(resolution.get("semantic_kind"))
+            log_info("COMPARE slow-path start: %s | xml=%s | path=%s" % (safe_str(obj.get_name()), is_xml, rel_path))
             ide_content, ide_attrs = get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl)
+            log_info("COMPARE slow-path content ready: %s | path=%s" % (safe_str(obj.get_name()), rel_path))
             disk_content = read_file(file_path)
 
             # For ST files, parse pragmas from disk content for attribute comparison
@@ -341,20 +461,28 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                     "disk_size": size
                 }
             else:
+                log_info("COMPARE difference detected: %s | path=%s" % (safe_str(obj.get_name()), rel_path))
                 full_ide_content = ide_content
                 if not is_xml and ide_attrs:
                     full_ide_content = render_sync_pragmas(ide_attrs, ide_content)
 
                 different.append({
                     "name": obj.get_name(), "path": rel_path,
-                    "type": type_name, "type_guid": eff_type,
+                    "type": type_name, "type_guid": resolution.get("canonical_guid"),
+                    "semantic_kind": resolution.get("semantic_kind"),
+                    "sync_profile": resolution.get("sync_profile"),
+                    "resolution": resolution,
                     "obj": obj, "ide_content": full_ide_content, "disk_content": disk_content,
                     "ide_attrs": ide_attrs, "disk_attrs": disk_attrs
                 })
         else:
             new_in_ide.append({
                 "name": obj.get_name(), "path": rel_path,
-                "type": type_name, "type_guid": eff_type, "obj": obj,
+                "type": type_name, "type_guid": resolution.get("canonical_guid"),
+                "semantic_kind": resolution.get("semantic_kind"),
+                "sync_profile": resolution.get("sync_profile"),
+                "resolution": resolution,
+                "obj": obj,
                 "is_orphan": True
             })
 
@@ -380,7 +508,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
         "new_in_ide": new_in_ide,
         "new_on_disk": new_on_disk,
         "moved": moved,
-        "unchanged_count": unchanged_count
+        "unchanged_count": unchanged_count,
+        "sync_plan": build_sync_plan(different, new_in_ide, new_on_disk, moved, unchanged_count)
     }
 
 
@@ -467,6 +596,148 @@ def detect_moved_files(new_in_ide, new_on_disk):
     return moved, remaining_ide, remaining_disk
 
 
+def build_sync_plan(different, new_in_ide, new_on_disk, moved, unchanged_count):
+    """Build a normalized sync plan from compare results."""
+    modified = []
+    for item in different:
+        modified.append({
+            "name": item.get("name"),
+            "path": item.get("path"),
+            "type": item.get("type"),
+            "semantic_kind": item.get("semantic_kind"),
+            "sync_profile": item.get("sync_profile"),
+            "type_guid": item.get("type_guid"),
+            "resolution": item.get("resolution"),
+        })
+
+    ide_only = []
+    for item in new_in_ide:
+        ide_only.append({
+            "name": item.get("name"),
+            "path": item.get("path"),
+            "type": item.get("type"),
+            "semantic_kind": item.get("semantic_kind"),
+            "sync_profile": item.get("sync_profile"),
+            "type_guid": item.get("type_guid"),
+            "resolution": item.get("resolution"),
+        })
+
+    disk_only = []
+    for item in new_on_disk:
+        disk_only.append({
+            "name": item.get("name"),
+            "path": item.get("path"),
+            "file_path": item.get("file_path"),
+        })
+
+    moves = []
+    for item in moved:
+        moves.append({
+            "name": item.get("name"),
+            "ide_path": item.get("ide_path"),
+            "disk_path": item.get("disk_path"),
+            "type": item.get("type"),
+            "type_guid": item.get("type_guid"),
+        })
+
+    return {
+        "summary": {
+            "modified": len(different),
+            "new_in_ide": len(new_in_ide),
+            "new_on_disk": len(new_on_disk),
+            "moved": len(moved),
+            "unchanged": unchanged_count,
+        },
+        "categories": {
+            "modified": modified,
+            "ide_only": ide_only,
+            "disk_only": disk_only,
+            "moved": moves,
+        }
+    }
+
+
+def plan_items_for_import(sync_plan):
+    """Convert a normalized sync plan into items for disk -> IDE import."""
+    if not sync_plan:
+        return []
+
+    categories = sync_plan.get("categories", {})
+    import_items = []
+
+    for item in categories.get("modified", []):
+        legacy = dict(item)
+        legacy["action"] = "update"
+        import_items.append(legacy)
+
+    for item in categories.get("disk_only", []):
+        legacy = dict(item)
+        legacy["action"] = "create"
+        import_items.append(legacy)
+
+    for item in categories.get("ide_only", []):
+        legacy = dict(item)
+        legacy["action"] = "delete"
+        legacy["is_orphan"] = True
+        import_items.append(legacy)
+
+    for item in categories.get("moved", []):
+        legacy = dict(item)
+        legacy["action"] = "move"
+        legacy["is_moved"] = True
+        import_items.append(legacy)
+
+    return import_items
+
+
+def normalize_sync_items(items, base_dir=None):
+    """Normalize mixed sync items into the legacy import item shape."""
+    normalized = []
+    if not items:
+        return normalized
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        action = item.get("action")
+        legacy = dict(item)
+
+        if not action:
+            if legacy.get("is_orphan"):
+                action = "delete"
+            elif legacy.get("is_moved"):
+                action = "move"
+            elif legacy.get("file_path") and not legacy.get("obj"):
+                action = "create"
+            elif legacy.get("obj"):
+                action = "update"
+
+        if action == "ide_only":
+            legacy["is_orphan"] = True
+            legacy["action"] = "delete"
+        elif action == "disk_only":
+            legacy.setdefault("file_path", item.get("file_path"))
+            legacy["action"] = "create"
+        elif action == "modified":
+            legacy["action"] = "update"
+        elif action == "moved":
+            legacy["is_moved"] = True
+            legacy["action"] = "move"
+        elif action:
+            legacy["action"] = action
+
+        if base_dir and not legacy.get("file_path") and legacy.get("path"):
+            legacy["file_path"] = os.path.join(base_dir, legacy["path"].replace("/", os.sep))
+
+        if "type_guid" not in legacy:
+            legacy["type_guid"] = legacy.get("semantic_kind") or ""
+
+        normalized.append(legacy)
+
+    return normalized
+
+
 def scan_new_disk_files(base_dir, ide_paths):
     """
     Walk the export directory and find .st / .xml files that are
@@ -502,8 +773,7 @@ def scan_new_disk_files(base_dir, ide_paths):
                 name = os.path.splitext(f)[0]
                 if f.endswith(".xml") and "." in name:
                     name_part, doc_type = name.rsplit(".", 1)
-                    from codesys_constants import TYPE_NAMES
-                    if doc_type in TYPE_NAMES.values() or doc_type == "pou_xml":
+                    if doc_type in SEMANTIC_TYPE_NAMES or doc_type == "pou_xml":
                         name = name_part
                         
                 new_files.append({
@@ -522,28 +792,43 @@ def scan_new_disk_files(base_dir, ide_paths):
 def create_import_managers():
     """Create the standard manager dict used by import operations."""
     return {
-        TYPE_GUIDS["folder"]: FolderManager(),
-        TYPE_GUIDS["property"]: PropertyManager(),
-        TYPE_GUIDS["task_config"]: ConfigManager(),
-        TYPE_GUIDS["alarm_config"]: ConfigManager(),
-        TYPE_GUIDS["visu_manager"]: ConfigManager(),
-        TYPE_GUIDS["device"]: ConfigManager(),
-        TYPE_GUIDS["softmotion_pool"]: ConfigManager(),
+        "folder": FolderManager(),
+        "property": PropertyManager(),
+        "task_config": ConfigManager(),
+        "alarm_config": ConfigManager(),
+        "visu_manager": ConfigManager(),
+        "device": ConfigManager(),
+        "softmotion_pool": ConfigManager(),
         "default": POUManager(),
         "native": NativeManager()
     }
 
 
-def resolve_manager(import_managers, type_guid, rel_path):
-    """Pick the correct manager for a given type/path."""
+def resolve_manager(import_managers, type_info, rel_path):
+    """Pick the correct manager for a given semantic kind / resolution."""
     if rel_path.endswith(".xml"):
         return import_managers["native"]
-    mgr = import_managers.get(type_guid)
-    if not mgr:
-        if type_guid in XML_TYPES:
-            return import_managers["native"]
-        return import_managers["default"]
-    return mgr
+
+    semantic_kind = None
+    sync_profile = None
+    if isinstance(type_info, dict):
+        semantic_kind = type_info.get("semantic_kind") or type_info.get("manager_key")
+        sync_profile = type_info.get("sync_profile")
+    else:
+        semantic_kind = safe_str(type_info).lower()
+
+    kind_key = safe_str(semantic_kind).lower()
+    if sync_profile == "native_xml":
+        return import_managers["native"]
+
+    mgr = import_managers.get(kind_key)
+    if mgr:
+        return mgr
+
+    if is_xml_kind(kind_key):
+        return import_managers["native"]
+
+    return import_managers["default"]
 
 
 # Removed update_object_metadata (metadata files no longer used)
@@ -553,7 +838,9 @@ def update_existing_object(obj, rel_path, file_path, import_managers):
     """Update an existing IDE object from a disk file."""
     # We no longer use obj_info/metadata hashes. Import always forces content update.
     # managers[type].update already checks for change before applying to IDE.
-    manager = resolve_manager(import_managers, safe_str(obj.type), rel_path)
+    profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+    resolved = resolve_runtime_object(obj, profile_name)
+    manager = resolve_manager(import_managers, resolved, rel_path)
     return manager.update(obj, file_path, {})
 
 
@@ -588,20 +875,13 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
     if not content_check:
         return None
     
-    type_guid = determine_object_type(content_check)
+    semantic_kind = determine_object_type(content_check)
     
     # Handle nested objects (Action, Method, Property)
     # A dotted base_name like "ST_PROGRAMM.ST_ACTION" means it's a child object.
-    # We check both: (a) when type_guid indicates a child type, and
-    #                 (b) when type_guid is None/unknown but filename has a dot.
     name = base_name
-    nested_types = [TYPE_GUIDS.get("action"), TYPE_GUIDS.get("method"), 
-                    TYPE_GUIDS.get("property"), TYPE_GUIDS.get("property_accessor")]
-    is_nested = "." in base_name and (
-        type_guid in nested_types or       # Known child type (method, property, etc.)
-        not type_guid or                   # Unknown type (e.g. action with no keyword)
-        type_guid == TYPE_GUIDS.get("pou") # Misdetected as POU
-    )
+    nested_types = ["action", "method", "property", "property_accessor"]
+    is_nested = "." in base_name and (semantic_kind in nested_types or not semantic_kind or semantic_kind == "pou")
     if is_nested:
         parts = base_name.rsplit(".", 1)
         parent_name = parts[0]
@@ -609,41 +889,31 @@ def create_new_object(rel_path, file_path, import_managers, name_map,
         log_info("Looking for parent POU: " + parent_name + " for child: " + child_name)
         log_info("Name map has " + str(len(name_map)) + " entries")
         pou_parent = find_object_by_name(parent_name, name_map)
-        if pou_parent:
-            log_info("Found parent POU by name: " + safe_str(pou_parent))
-            name = child_name
-            container = pou_parent
-            # If type_guid wasn't determined, infer from child name patterns
-            if not type_guid or type_guid == TYPE_GUIDS.get("pou"):
-                upper_child = child_name.upper()
-                if upper_child in ("GET", "SET"):
-                    type_guid = TYPE_GUIDS.get("property_accessor")
-                else:
-                    # Default to action for unknown nested children
-                    type_guid = TYPE_GUIDS.get("action")
-        else:
-            # Try to find parent by path as fallback
+        if not pou_parent:
             parent_path = "/".join(path_parts[:-1])
             parent_path_with_name = parent_path + "/" + parent_name
-            log_warning("Parent '" + parent_name + "' not found by name, trying path: " + parent_path_with_name)
             pou_parent = find_object_by_path(parent_path_with_name, project)
-            if pou_parent:
-                log_info("Found parent POU by path: " + safe_str(pou_parent))
-                name = child_name
-                container = pou_parent
-                # If type_guid wasn't determined, infer from child name patterns
-                if not type_guid or type_guid == TYPE_GUIDS.get("pou"):
-                    upper_child = child_name.upper()
-                    if upper_child in ("GET", "SET"):
-                        type_guid = TYPE_GUIDS.get("property_accessor")
-                    else:
-                        # Default to action for unknown nested children
-                        type_guid = TYPE_GUIDS.get("action")
+        if not pou_parent:
+            log_error("Could not resolve parent POU '" + parent_name + "' for nested object '" + base_name + "'")
+            return None
+
+        log_info("Found parent POU: " + safe_str(pou_parent))
+        name = child_name
+        container = pou_parent
+        if not semantic_kind or semantic_kind == "pou":
+            upper_child = child_name.upper()
+            if upper_child in ("GET", "SET"):
+                semantic_kind = "property_accessor"
             else:
-                log_warning("Could not find parent POU '" + parent_name + "' by name or path. Will use full name: " + name)
+                semantic_kind = "action"
     
-    manager = resolve_manager(import_managers, type_guid, rel_path)
-    res = manager.create(container, name, file_path, type_guid)
+    resolution = {
+        "semantic_kind": semantic_kind,
+        "canonical_guid": semantic_kind_to_guid(semantic_kind),
+        "manager_key": semantic_kind
+    }
+    manager = resolve_manager(import_managers, resolution, rel_path)
+    res = manager.create(container, name, file_path, semantic_kind, resolution=resolution)
     
     if res:
         obj_name = res.get_name()
@@ -662,25 +932,21 @@ def save_pou_children(pou_obj):
     Save child objects (methods, actions, properties) of a POU before XML import.
     
     Returns list of child info dicts:
-        [{'name': str, 'type_guid': str, 'declaration': str, 'implementation': str}, ...]
+        [{'name': str, 'semantic_kind': str, 'declaration': str, 'implementation': str}, ...]
     """
     children_info = []
     
-    child_types = [
-        TYPE_GUIDS.get("action"),
-        TYPE_GUIDS.get("method"),
-        TYPE_GUIDS.get("property")
-    ]
+    child_types = ["action", "method", "property"]
     
     try:
         for child in pou_obj.get_children():
             try:
-                child_type = safe_str(child.type)
+                child_type = resolve_runtime_object(child, get_project_prop(PROJECT_PROPERTY_KEY)).get("semantic_kind")
                 if child_type in child_types:
                     decl, impl = export_object_content(child)
                     children_info.append({
                         'name': child.get_name(),
-                        'type_guid': child_type,
+                        'semantic_kind': child_type,
                         'declaration': decl,
                         'implementation': impl
                     })
@@ -690,6 +956,19 @@ def save_pou_children(pou_obj):
         log_warning("Could not get children of " + safe_str(pou_obj) + ": " + safe_str(e))
     
     return children_info
+
+
+def _resolve_creation_guid(semantic_kind, profile_name=None, legacy_type_guid=None):
+    """Resolve the GUID to use when creating an IDE object."""
+    if not semantic_kind and legacy_type_guid:
+        semantic_kind = _resolve_kind_value(legacy_type_guid)
+
+    if not semantic_kind:
+        return legacy_type_guid
+
+    profile_name = profile_name or get_project_prop(PROJECT_PROPERTY_KEY)
+    guid = semantic_kind_to_guid(semantic_kind, profile_name)
+    return guid or legacy_type_guid
 
 
 def restore_pou_children(pou_obj, saved_children, import_managers, project):
@@ -712,9 +991,11 @@ def restore_pou_children(pou_obj, saved_children, import_managers, project):
     for child_info in saved_children:
         try:
             child_name = child_info['name']
-            child_type = child_info['type_guid']
+            child_type = child_info.get('semantic_kind')
+            legacy_type_guid = child_info.get('type_guid')
             decl = child_info['declaration']
             impl = child_info['implementation']
+            profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
             
             existing_child = existing_children.get(child_name.lower())
             
@@ -725,9 +1006,12 @@ def restore_pou_children(pou_obj, saved_children, import_managers, project):
             else:
                 log_info("Creating child " + child_name + " of " + safe_str(pou_obj))
                 try:
+                    creation_guid = _resolve_creation_guid(
+                        child_type, profile_name, legacy_type_guid
+                    )
                     new_child = pou_obj.create_object(
                         name=child_name,
-                        type_guid=child_type
+                        type_guid=creation_guid
                     )
                     if new_child:
                         if update_object_code(new_child, decl, impl):
@@ -748,7 +1032,7 @@ def batch_import_native_xmls_with_children(native_batches, import_managers, proj
     Restores POU children after XML import to prevent deletion.
     
     Args:
-        native_batches: dict of {container: [(rel_path, abs_path, name, type_guid, is_new), ...]}
+        native_batches: dict of {container: [(rel_path, abs_path, name, semantic_kind, is_new), ...]}
         import_managers: dict of managers
         project: CODESYS project
         pou_children_info: dict of {pou_name_lower: saved_children} to restore after import
@@ -777,7 +1061,7 @@ def batch_import_native_xmls_with_children(native_batches, import_managers, proj
                 
                 # Restore POU children after XML import
                 # Find POUs by name in the container
-                for rel_path, file_path, name, type_guid, is_new in items:
+                for rel_path, file_path, name, semantic_kind, is_new in items:
                     pou_name_lower = name.lower()
                     if pou_name_lower in pou_children_info:
                         children = pou_children_info[pou_name_lower]
@@ -879,6 +1163,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
         (updated_count, created_count, failed_count, deleted_count, moved_count)
     """
     import_managers = create_import_managers()
+    to_sync = normalize_sync_items(to_sync, base_dir)
     folder_cache = {}
     name_map = {}
     
@@ -897,8 +1182,10 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     # ═══════════════════════════════════════════════════════════════════
     for item in to_sync:
         try:
-            # Handle Deletions (Orphans)
-            if item.get("is_orphan"):
+            action = item.get("action")
+
+            # Handle Deletions
+            if action == "delete" or item.get("is_orphan"):
                 obj = item.get("obj")
                 if obj:
                     try:
@@ -925,7 +1212,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                 is_new = True
                 if obj:
                     # ── HANDLE MOVES (XML IMPORT) ──
-                    if item.get("is_moved"):
+                    if action == "move" or item.get("is_moved"):
                         target_rel_path = item.get("disk_path")
                         if target_rel_path:
                             path_parts = target_rel_path.split("/")
@@ -961,7 +1248,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
                     native_batches[container] = []
                 native_batches[container].append((
                     rel_path, abs_path, item.get("name", os.path.basename(rel_path)),
-                    item.get("type_guid"), is_new
+                    item.get("semantic_kind") or item.get("type_guid"), is_new
                 ))
                 continue
 
@@ -976,8 +1263,8 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     #  PASS 2: Save POU children from existing POUs before XML import
     # ═══════════════════════════════════════════════════════════════════
     for container, items in native_batches.items():
-        for rel_path, abs_path, name, type_guid, is_new in items:
-            if type_guid == TYPE_GUIDS.get("pou") and not is_new:
+        for rel_path, abs_path, name, semantic_kind, is_new in items:
+            if semantic_kind == "pou" and not is_new:
                 try:
                     for child in container.get_children():
                         if child.get_name().lower() == name.lower():
@@ -1002,8 +1289,8 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
         
         # Update name_map with newly created POUs from XML import
         for container, items in native_batches.items():
-            for rel_path, abs_path, name, type_guid, is_new in items:
-                if is_new and type_guid == TYPE_GUIDS.get("pou"):
+            for rel_path, abs_path, name, semantic_kind, is_new in items:
+                if is_new and semantic_kind == "pou":
                     try:
                         for child in container.get_children():
                             if child.get_name().lower() == name.lower():
@@ -1023,6 +1310,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     
     for item in st_files_to_import:
         try:
+            action = item.get("action")
             rel_path = item["path"]
             abs_path = item.get("file_path") or os.path.join(base_dir, rel_path.replace("/", os.sep))
             
@@ -1037,7 +1325,7 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
             if obj:
                 # ── HANDLE MOVES (IMPORT DIRECTION) ──
                 # If disk path doesn't match current IDE path, move the object in IDE
-                if item.get("is_moved"):
+                if action == "move" or item.get("is_moved"):
                     target_rel_path = item.get("disk_path")
                     if target_rel_path:
                         path_parts = target_rel_path.split("/")

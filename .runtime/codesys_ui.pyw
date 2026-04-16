@@ -10,7 +10,7 @@ try:
     from System.Windows.Forms import (
         Application, Form, Label, CheckBox, Button, FormBorderStyle, 
         DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
-        Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle,
+        Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle, ComboBox,
         MessageBox, MessageBoxButtons, MessageBoxIcon, FlatStyle
     )
     from System.Drawing import Size, Point, Font, FontStyle, SystemIcons, Color, ContentAlignment
@@ -94,11 +94,12 @@ def ask_yes_no_cancel(title, message):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(420, 420) # Increased height for retention count and logging option
+        self.Size = Size(440, 520)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
         self.MinimizeBox = False
+        self.profile_labels = current_settings.get("available_profile_labels", {})
         
         # Heading
         lbl = Label()
@@ -118,8 +119,23 @@ class SettingsForm(Form):
             lbl_version.ForeColor = Color.Gray
             self.Controls.Add(lbl_version)
         
-        # Group 1: Export Settings
+        # Runtime info
         y = 60
+        lbl_detected_version = Label()
+        lbl_detected_version.Text = "Detected CODESYS Version:"
+        lbl_detected_version.Location = Point(30, y + 3)
+        lbl_detected_version.AutoSize = True
+        self.Controls.Add(lbl_detected_version)
+
+        self.txt_detected_version = TextBox()
+        self.txt_detected_version.Location = Point(210, y)
+        self.txt_detected_version.Size = Size(170, 20)
+        self.txt_detected_version.Text = current_settings.get("detected_codesys_version", "N/A")
+        self.txt_detected_version.ReadOnly = True
+        self.Controls.Add(self.txt_detected_version)
+
+        # Group 1: Export Settings
+        y += 35
         self.chk_xml = CheckBox()
         self.chk_xml.Text = "Export Native XML (Visu/Alarms)"
         self.chk_xml.Location = Point(30, y)
@@ -197,21 +213,59 @@ class SettingsForm(Form):
         self.chk_logging.Checked = current_settings.get("enable_logging", False)
         self.Controls.Add(self.chk_logging)
 
+        y += 35
+        lbl_profile = Label()
+        lbl_profile.Text = "Type Profile:"
+        lbl_profile.Location = Point(30, y + 3)
+        lbl_profile.AutoSize = True
+        self.Controls.Add(lbl_profile)
+
+        self.cmb_profile = ComboBox()
+        self.cmb_profile.Location = Point(140, y)
+        self.cmb_profile.Size = Size(210, 21)
+        for profile_name in current_settings.get("available_profiles", []):
+            self.cmb_profile.Items.Add(profile_name)
+        selected_profile = current_settings.get("type_profile", "")
+        if selected_profile:
+            self.cmb_profile.Text = selected_profile
+        self.Controls.Add(self.cmb_profile)
+
+        y += 28
+        self.lbl_profile_info = Label()
+        self.lbl_profile_info.Location = Point(30, y)
+        self.lbl_profile_info.Size = Size(380, 32)
+        self.lbl_profile_info.ForeColor = Color.DimGray
+        self.Controls.Add(self.lbl_profile_info)
+        self.cmb_profile.SelectedIndexChanged += self.OnProfileChanged
+        self.cmb_profile.TextChanged += self.OnProfileChanged
+        self._update_profile_info()
+
         # Buttons
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
         btn_cancel.DialogResult = DialogResult.Cancel
-        btn_cancel.Location = Point(290, 310)
+        btn_cancel.Location = Point(300, 410)
         self.Controls.Add(btn_cancel)
 
         btn_save = Button()
         btn_save.Text = "Save Settings"
         btn_save.DialogResult = DialogResult.OK
-        btn_save.Location = Point(160, 310)
+        btn_save.Location = Point(170, 410)
         btn_save.Size = Size(120, 23)
         self.Controls.Add(btn_save)
         self.AcceptButton = btn_save
         self.CancelButton = btn_cancel
+
+    def _update_profile_info(self):
+        profile_name = self.cmb_profile.Text.strip()
+        profile_label = self.profile_labels.get(profile_name, "")
+        if profile_label:
+            self.lbl_profile_info.Text = "Profile meaning: " + profile_label
+        else:
+            self.lbl_profile_info.Text = "Profile meaning: Unknown profile name"
+
+    def OnProfileChanged(self, sender, event):
+        self._update_profile_info()
 
     def get_results(self):
         try:
@@ -229,7 +283,8 @@ class SettingsForm(Form):
             "save_after_export": self.chk_save_exp.Checked,
             "safety_backup": self.chk_safety.Checked,
             "retention_count": retention,
-            "enable_logging": self.chk_logging.Checked
+            "enable_logging": self.chk_logging.Checked,
+            "type_profile": self.cmb_profile.Text.strip()
         }
 
 def show_settings_dialog(current_settings, version=None):

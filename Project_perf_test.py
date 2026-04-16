@@ -14,27 +14,18 @@ import json
 import tempfile
 import collections
 import subprocess
-import imp
 from collections import defaultdict
 
-# --- Hidden Module Loader ---
-def _load_hidden_module(name):
-    """Load a .pyw module from the script directory and register it in sys.modules."""
-    if name not in sys.modules:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(script_dir, name + ".pyw")
-        if os.path.exists(path):
-            sys.modules[name] = imp.load_source(name, path)
+from Project_bootstrap import clear_hidden_modules, load_hidden_modules
 
 # Force reload of shared modules
-for _mod_name in list(sys.modules.keys()):
-    if _mod_name.startswith('codesys_'):
-        del sys.modules[_mod_name]
-
-_load_hidden_module("codesys_constants")
-_load_hidden_module("codesys_utils")
-_load_hidden_module("codesys_managers")
-_load_hidden_module("codesys_compare_engine")
+clear_hidden_modules()
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_managers",
+    "codesys_compare_engine",
+], script_file=__file__)
 
 from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, TYPE_NAMES, SCRIPT_VERSION
 from codesys_utils import (

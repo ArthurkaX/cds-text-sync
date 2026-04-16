@@ -9,15 +9,85 @@ import codecs
 import tempfile
 import zlib
 import time
+import sys
+import threading
+
+try:
+    import importlib.util
+    _HAS_IMPORTLIB_UTIL = True
+except ImportError:
+    _HAS_IMPORTLIB_UTIL = False
+
+try:
+    import imp
+    _HAS_IMP = True
+except ImportError:
+    _HAS_IMP = False
+
+
+def _load_sibling_module(name):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + ".pyw")
+    if _HAS_IMPORTLIB_UTIL:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            return module
+    if _HAS_IMP:
+        module = imp.load_source(name, path)
+        sys.modules[name] = module
+        return module
+    raise ImportError(name + ".pyw not found.")
 from codesys_utils import (
     safe_str, clean_filename, calculate_hash, log_info, log_error, log_warning,
     format_st_content, format_property_content, parse_property_content,
     resolve_projects, is_container_device, get_quick_ide_hash, normalize_path,
-    read_ide_attrs, render_sync_pragmas, build_state_hash
+    read_ide_attrs, render_sync_pragmas, build_state_hash, get_project_prop
 )
-from codesys_constants import TYPE_GUIDS, XML_TYPES, EXPORTABLE_TYPES, IMPLEMENTATION_TYPES, XML_TYPES as XML_TYPES_CONST
+try:
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+except ImportError:
+    PROJECT_PROPERTY_KEY = _load_sibling_module("codesys_type_profiles").PROJECT_PROPERTY_KEY
+try:
+    from codesys_type_system import (
+        resolve_runtime_object, get_selected_profile_name, semantic_kind_to_guid,
+        semantic_kind_from_guid, is_xml_kind, is_exportable_kind,
+        can_have_implementation_kind
+    )
+except ImportError:
+    _type_system = _load_sibling_module("codesys_type_system")
+    resolve_runtime_object = _type_system.resolve_runtime_object
+    get_selected_profile_name = _type_system.get_selected_profile_name
+    semantic_kind_to_guid = _type_system.semantic_kind_to_guid
+    semantic_kind_from_guid = _type_system.semantic_kind_from_guid
+    is_xml_kind = _type_system.is_xml_kind
+    is_exportable_kind = _type_system.is_exportable_kind
+    can_have_implementation_kind = _type_system.can_have_implementation_kind
 
 # --- Helper Functions ---
+_NVL_STATUS_CACHE = {}
+
+
+def _get_profile_name():
+    return get_selected_profile_name(project_profile=get_project_prop(PROJECT_PROPERTY_KEY))
+
+
+def _get_kind(obj, profile_name=None):
+    profile_name = profile_name or _get_profile_name()
+    return resolve_runtime_object(obj, profile_name).get("semantic_kind")
+
+
+def _resolve_kind_value(value):
+    if isinstance(value, dict):
+        return value.get("semantic_kind") or value.get("manager_key") or value.get("canonical_guid") or value.get("type_guid")
+    value = safe_str(value).lower()
+    if not value:
+        return ""
+    resolved = semantic_kind_from_guid(value, _get_profile_name())
+    if resolved:
+        return resolved
+    return value
 
 def get_task_for_write(obj, project):
     """
@@ -75,10 +145,20 @@ def is_nvl(obj):
     
     Returns True if the object is an NVL, False otherwise.
     """
+    obj_guid = safe_str(getattr(obj, "guid", ""))
+    if obj_guid in _NVL_STATUS_CACHE:
+        return _NVL_STATUS_CACHE[obj_guid]
+
+    if threading.current_thread() is not threading.main_thread():
+        log_info("Skipping NVL native probe on background thread for " + safe_str(obj.get_name()))
+        _NVL_STATUS_CACHE[obj_guid] = False
+        return False
+
     import tempfile, re
     try:
         projects_obj = resolve_projects()
         if not projects_obj or not projects_obj.primary:
+            _NVL_STATUS_CACHE[obj_guid] = False
             return False
             
         tmp_path = os.path.join(tempfile.gettempdir(), "nvl_check_%s.xml" % safe_str(obj.guid)[:8])
@@ -88,6 +168,7 @@ def is_nvl(obj):
         projects_obj.primary.export_native([obj], tmp_path, recursive=False)
 
         if not os.path.exists(tmp_path):
+            _NVL_STATUS_CACHE[obj_guid] = False
             return False
 
         import codecs as _codecs
@@ -97,12 +178,15 @@ def is_nvl(obj):
 
         # NVL XML contains ListIdentifier and/or NetworkType elements
         if 'ListIdentifier' in xml_content or 'NetworkType' in xml_content:
+            _NVL_STATUS_CACHE[obj_guid] = True
             return True
         
+        _NVL_STATUS_CACHE[obj_guid] = False
         return False
 
     except Exception as e:
         log_warning("Could not check NVL status for " + safe_str(obj.get_name()) + ": " + safe_str(e))
+        _NVL_STATUS_CACHE[obj_guid] = False
         return False
 
 def is_graphical_pou(obj):
@@ -143,18 +227,18 @@ def get_object_path(obj, stop_at_application=True):
             parent = current.parent
             if not hasattr(parent, "type") or not hasattr(parent, "get_name"):
                 break
-            
-            parent_type = safe_str(parent.type)
-            if stop_at_application and parent_type == TYPE_GUIDS["application"]:
+
+            parent_kind = _get_kind(parent)
+            if stop_at_application and parent_kind == "application":
                 break
-            
-            if parent_type in [TYPE_GUIDS["plc_logic"], TYPE_GUIDS["device"]]:
+
+            if parent_kind in ["plc_logic", "device"]:
                 break
-            
+
             # Skip Task Configuration and individual Tasks in path building
             # Tasks are exported as monolithic Task Configuration XML,
             # so their children should not create Task subfolders on disk
-            if parent_type in [TYPE_GUIDS["task_config"], TYPE_GUIDS["task"]]:
+            if parent_kind in ["task_config", "task"]:
                 break
             
             parent_name = clean_filename(parent.get_name())
@@ -175,10 +259,10 @@ def get_container_prefix(obj):
     # We walk up to the root to find the containing app and device
     while current is not None:
         try:
-            curr_type = safe_str(current.type)
-            if curr_type == TYPE_GUIDS.get("application"):
+            curr_kind = _get_kind(current)
+            if curr_kind == "application":
                 app_name = clean_filename(current.get_name())
-            elif curr_type == TYPE_GUIDS.get("device"):
+            elif curr_kind == "device":
                 device_name = clean_filename(current.get_name())
             
             if not hasattr(current, "parent"): break
@@ -195,8 +279,8 @@ def get_parent_pou_name(obj):
         if hasattr(obj, "parent") and obj.parent:
             if not hasattr(obj.parent, "type") or not hasattr(obj.parent, "get_name"):
                 return None
-            parent_type = safe_str(obj.parent.type)
-            if parent_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["itf"]]:
+            parent_kind = _get_kind(obj.parent)
+            if parent_kind in ["pou", "itf"]:
                 return obj.parent.get_name()
     except:
         pass
@@ -204,31 +288,31 @@ def get_parent_pou_name(obj):
 
 def build_expected_path(obj, effective_type, is_xml):
     """Build the expected rel_path for an IDE object."""
-    from codesys_constants import TYPE_NAMES, TYPE_GUIDS
-    
+    effective_kind = _resolve_kind_value(effective_type)
     container = get_container_prefix(obj)
     path_parts = get_object_path(obj)
     obj_name = obj.get_name()
     clean_name = clean_filename(obj_name)
+    obj_kind = _get_kind(obj)
+    is_xml = bool(is_xml)
 
     if is_xml:
         # Special case: POUs exported as XML (graphical) use 'pou_xml' extension
-        if effective_type == TYPE_GUIDS["pou"]:
+        if effective_kind == "pou":
             type_name = "pou_xml"
         else:
-            type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+            type_name = effective_kind or safe_str(effective_type)[:8]
         file_name = clean_name + "." + type_name + ".xml"
     else:
-        obj_type = safe_str(obj.type)
         parent_pou = get_parent_pou_name(obj)
         # Nested objects (Action, Method, Property) prefix filename with parent POU name
-        if parent_pou and obj_type in [TYPE_GUIDS["action"], TYPE_GUIDS["method"], TYPE_GUIDS["property"], TYPE_GUIDS["itf_method"]]:
+        if parent_pou and obj_kind in ["action", "method", "property", "itf_method"]:
             file_name = clean_filename(parent_pou) + "." + clean_name + ".st"
             clean_parent_pou = clean_filename(parent_pou)
             # If the path already has the parent name as a folder, remove it to avoid redundancy
             if path_parts and path_parts[-1] == clean_parent_pou:
                 path_parts = path_parts[:-1]
-        elif obj_type == TYPE_GUIDS["folder"]:
+        elif obj_kind == "folder":
             # Folders use their own name as the last part of path
             file_name = ""
         else:
@@ -279,7 +363,7 @@ def export_object_content(obj):
             declaration = obj.textual_declaration.text
     except: pass
     
-    if declaration is None and safe_str(obj.type) == TYPE_GUIDS["itf"]:
+    if declaration is None and _get_kind(obj) == "itf":
         declaration = export_interface_declaration(obj)
     
     try:
@@ -358,10 +442,10 @@ def collect_property_accessors(all_objects):
             if not hasattr(obj, 'type') or not hasattr(obj, 'get_name'):
                 continue
             obj_type = safe_str(obj.type)
-            if obj_type == TYPE_GUIDS["property_accessor"]:
+            if _resolve_kind_value(obj_type) == "property_accessor":
                 if hasattr(obj, "parent") and obj.parent:
                     parent_type = safe_str(obj.parent.type)
-                    if parent_type == TYPE_GUIDS["property"]:
+                    if _resolve_kind_value(parent_type) == "property":
                         parent_guid = safe_str(obj.parent.guid)
                         if parent_guid not in property_accessors:
                             property_accessors[parent_guid] = {
@@ -381,7 +465,7 @@ def collect_property_accessors(all_objects):
             if not hasattr(obj, 'type'):
                 continue
             obj_type = safe_str(obj.type)
-            if obj_type == TYPE_GUIDS["property"]:
+            if _resolve_kind_value(obj_type) == "property":
                 obj_guid = safe_str(obj.guid)
                 try:
                     if obj_guid not in property_accessors:
@@ -391,7 +475,7 @@ def collect_property_accessors(all_objects):
                     children = obj.get_children()
                     for child in children:
                         child_type = safe_str(child.type)
-                        if child_type == TYPE_GUIDS["property_accessor"]:
+                        if _resolve_kind_value(child_type) == "property_accessor":
                             child_name = child.get_name().lower()
                             if child_name == "get":
                                 property_accessors[obj_guid]['get'] = child
@@ -409,92 +493,101 @@ def classify_object(obj):
     Determine the effective export type for a CODESYS object.
 
     Returns:
-        (effective_type, is_xml, should_skip)
-        - effective_type: the resolved type GUID (e.g. NVL replaces GVL)
-        - is_xml: True if object should be exported/compared as native XML
-        - should_skip: True if object should be ignored (property_accessor, task, etc.)
+        resolution dict with semantic kind, sync profile and legacy compatibility fields.
     """
+    profile_name = _get_profile_name()
+    resolution = resolve_runtime_object(obj, profile_name)
     obj_type = safe_str(obj.type)
-    effective_type = obj_type
-    is_xml = False
+    semantic_kind = resolution.get("semantic_kind")
+    effective_type = resolution.get("canonical_guid") or obj_type
+    is_xml = bool(resolution.get("is_xml"))
+    should_skip = False
 
     # Skip non-exportable
-    if obj_type == TYPE_GUIDS["property_accessor"]:
-        return obj_type, False, True
-    if obj_type == TYPE_GUIDS["task"]:
-        return obj_type, False, True
+    if semantic_kind == "property_accessor":
+        should_skip = True
+    if semantic_kind == "task":
+        should_skip = True
     
     # Hard-exclude devices and modules (feature request: too unstable for XML sync)
-    if obj_type in [TYPE_GUIDS.get("device"), TYPE_GUIDS.get("device_module")]:
-        return obj_type, False, True
+    if semantic_kind in ["device", "device_module"]:
+        should_skip = True
 
     # Skip all children of monolithic containers - they are exported as
     # recursive XML with their parent. Prevents duplicate export/sync.
     # Logic for devices: Containers (PLCs) are NOT monolithic, so we don't
     # skip their children (Applications and sub-devices).
-    monolithic_types = [
-        TYPE_GUIDS["alarm_config"], 
-        TYPE_GUIDS["visu_manager"],
-        TYPE_GUIDS["task_config"],
-        TYPE_GUIDS["softmotion_pool"]
-    ]
+    monolithic_kinds = ["alarm_config", "visu_manager", "task_config", "softmotion_pool"]
     try:
-        parent_type = safe_str(obj.parent.type) if hasattr(obj, 'parent') and obj.parent else ""
-        if parent_type in monolithic_types:
-            return obj_type, False, True
+        parent_kind = _get_kind(obj.parent, profile_name) if hasattr(obj, 'parent') and obj.parent else ""
+        if parent_kind in monolithic_kinds:
+            should_skip = True
             
         # Device recursion check:
         # If parent is a device, we only skip if the parent IS a monolithic unit.
-        if parent_type == TYPE_GUIDS["device"]:
+        if parent_kind == "device":
             if not is_container_device(obj.parent):
                 # Parent is functional device (monolithic), so skip children.
-                return obj_type, False, True
+                should_skip = True
     except:
         pass
 
     # Skip per-POU alarm groups/classes — these are auto-generated children of
     # POUs and can't be independently exported. Only alarm groups under the
     # Alarm Configuration tree are valid standalone exports.
-    if obj_type in [TYPE_GUIDS["alarm_group"], TYPE_GUIDS["alarm_class"]]:
+    if semantic_kind in ["alarm_group", "alarm_class"]:
         try:
-            parent_type = safe_str(obj.parent.type)
-            if parent_type != TYPE_GUIDS["alarm_config"]:
-                return obj_type, False, True
+            parent_kind = _get_kind(obj.parent, profile_name)
+            if parent_kind != "alarm_config":
+                should_skip = True
         except:
             pass
 
     # Skip auto-generated VisualizationStyle objects
     # These are created by CODESYS at multiple locations (Visualization Manager,
     # Application root, project root) and should never be exported/synced.
-    if obj_type == TYPE_GUIDS["visu_style"]:
-        return obj_type, False, True
+    if semantic_kind == "visu_style":
+        should_skip = True
 
     # NVL detection: GVL that is actually a Network Variable List
-    if obj_type == TYPE_GUIDS["gvl"]:
+    if semantic_kind == "gvl":
         try:
             if is_nvl(obj):
-                effective_type = TYPE_GUIDS["nvl_sender"]
+                semantic_kind = "nvl_sender"
+                effective_type = semantic_kind_to_guid(semantic_kind, profile_name) or effective_type
                 is_xml = True
+                resolution["semantic_kind"] = semantic_kind
+                resolution["canonical_guid"] = effective_type
+                resolution["sync_profile"] = "native_xml"
+                resolution["creation_strategy"] = "create_child"
+                resolution["evidence"] = list(resolution.get("evidence") or []) + ["nvl_detected"]
         except:
             pass
 
     # Graphical POU detection (LD, CFC, FBD → XML)
-    if not is_xml and effective_type in [TYPE_GUIDS["pou"], TYPE_GUIDS["action"], TYPE_GUIDS["method"]]:
+    if not is_xml and semantic_kind in ["pou", "action", "method"]:
         try:
             if is_graphical_pou(obj):
                 is_xml = True
         except:
             pass
 
-    # XML_TYPES are always XML
-    if effective_type in XML_TYPES:
+    # Semantic XML kinds are always XML
+    if is_xml_kind(semantic_kind):
         is_xml = True
 
     # Check if type is exportable at all
-    if effective_type not in EXPORTABLE_TYPES and effective_type not in XML_TYPES:
-        return effective_type, is_xml, True
+    if semantic_kind and not is_exportable_kind(semantic_kind) and not is_xml_kind(semantic_kind):
+        should_skip = True
 
-    return effective_type, is_xml, False
+    resolution.update({
+        "effective_type": effective_type,
+        "is_xml": is_xml,
+        "should_skip": should_skip,
+        "manager_key": semantic_kind or effective_type,
+        "type_guid": effective_type,
+    })
+    return resolution
 
 # --- Manager Classes ---
 
@@ -553,7 +646,7 @@ class ObjectManager(object):
         """Update existing object from file system"""
         pass
     
-    def create(self, container, name, file_path, type_guid):
+    def create(self, container, name, file_path, type_guid, resolution=None):
         """Create new object from file system"""
         pass
 
@@ -572,7 +665,7 @@ class FolderManager(ObjectManager):
         self._update_cache_entry(obj, rel_path, file_path, context, q_hash="folder")
 
         # Skip creating folders for special XML containers
-        if safe_str(obj.type) in [TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"]]:
+        if _get_kind(obj) in ["task_config", "alarm_config"]:
             return "identical"
             
         return "identical"
@@ -581,7 +674,7 @@ class FolderManager(ObjectManager):
         # Folders don't have textual content to update
         return False
 
-    def create(self, container, name, file_path, type_guid):
+    def create(self, container, name, file_path, type_guid, resolution=None):
         # For folders, container should be the parent folder/application
         # But we also have absolute path in file_path (which is relative in metadata)
         from codesys_utils import ensure_folder_path
@@ -617,7 +710,8 @@ class POUManager(ObjectManager):
         declaration, implementation = export_object_content(obj)
         # Check if this object type can have implementation even if empty
         obj_type_guid = safe_str(obj.type)
-        can_have_impl = obj_type_guid in IMPLEMENTATION_TYPES
+        obj_kind = _get_kind(obj)
+        can_have_impl = can_have_implementation_kind(obj_kind)
         clean_content = format_st_content(declaration, implementation, can_have_impl)
         
         if not clean_content.strip():
@@ -670,23 +764,34 @@ class POUManager(ObjectManager):
         write_ide_attrs(obj, attrs)
         return updated
 
-    def create(self, container, name, file_path, type_guid):
+    def create(self, container, name, file_path, type_guid, resolution=None):
         from codesys_utils import parse_st_file, write_ide_attrs
         declaration, implementation, attrs = parse_st_file(file_path)
         
         obj = None
+        semantic_kind = None
+        canonical_guid = None
+        profile_name = _get_profile_name()
+        if isinstance(resolution, dict):
+            semantic_kind = resolution.get("semantic_kind")
+            canonical_guid = resolution.get("canonical_guid")
+            profile_name = resolution.get("profile_name") or profile_name
+        if not semantic_kind:
+            semantic_kind = _resolve_kind_value(type_guid)
+        if not canonical_guid:
+            canonical_guid = semantic_kind_to_guid(semantic_kind, profile_name)
         try:
-            if type_guid == TYPE_GUIDS["gvl"] and hasattr(container, "create_gvl"):
+            if semantic_kind in ["gvl", "task_local_gvl", "persistent_gvl"] and hasattr(container, "create_gvl"):
                 obj = container.create_gvl(name)
-            elif type_guid == TYPE_GUIDS["dut"] and hasattr(container, "create_dut"):
+            elif semantic_kind == "dut" and hasattr(container, "create_dut"):
                 obj = container.create_dut(name)
-            elif type_guid == TYPE_GUIDS["itf"] and hasattr(container, "create_interface"):
+            elif semantic_kind == "itf" and hasattr(container, "create_interface"):
                 obj = container.create_interface(name)
-            elif type_guid == TYPE_GUIDS["method"] and hasattr(container, "create_method"):
+            elif semantic_kind == "method" and hasattr(container, "create_method"):
                 obj = container.create_method(name)
-            elif type_guid == TYPE_GUIDS["property"] and hasattr(container, "create_property"):
+            elif semantic_kind == "property" and hasattr(container, "create_property"):
                 obj = container.create_property(name)
-            elif type_guid == TYPE_GUIDS["action"] and hasattr(container, "create_action"):
+            elif semantic_kind == "action" and hasattr(container, "create_action"):
                 obj = container.create_action(name)
             elif hasattr(container, "create_pou"):
                 # Always create as Program first — update_object_code will replace
@@ -726,9 +831,11 @@ class POUManager(ObjectManager):
                     obj = container.create_pou(name, p_type)
                 else:
                     log_error("Cannot resolve PouType enum. Falling back to create_child.")
-                    obj = container.create_child(name, type_guid) if hasattr(container, "create_child") else None
+                    fallback_guid = canonical_guid or semantic_kind_to_guid(semantic_kind, profile_name) or type_guid
+                    obj = container.create_child(name, fallback_guid) if hasattr(container, "create_child") else None
             elif hasattr(container, "create_child"):
-                obj = container.create_child(name, type_guid)
+                fallback_guid = canonical_guid or semantic_kind_to_guid(semantic_kind, profile_name) or type_guid
+                obj = container.create_child(name, fallback_guid)
                 
             if obj:
                 update_object_code(obj, declaration, implementation)
@@ -859,7 +966,7 @@ class PropertyManager(POUManager):
         
         return updated
 
-    def create(self, container, name, file_path, type_guid):
+    def create(self, container, name, file_path, type_guid, resolution=None):
         try:
             with codecs.open(file_path, "r", "utf-8") as f:
                 raw_content = f.read()
@@ -875,7 +982,14 @@ class PropertyManager(POUManager):
             if hasattr(container, "create_property"):
                 obj = container.create_property(name)
             elif hasattr(container, "create_child"):
-                obj = container.create_child(name, type_guid)
+                canonical_guid = None
+                if isinstance(resolution, dict):
+                    canonical_guid = resolution.get("canonical_guid")
+                    profile_name = resolution.get("profile_name") or _get_profile_name()
+                else:
+                    profile_name = _get_profile_name()
+                fallback_guid = canonical_guid or semantic_kind_to_guid(_resolve_kind_value(type_guid), profile_name) or type_guid
+                obj = container.create_child(name, fallback_guid)
                 
             if obj:
                 if declaration:
@@ -1075,7 +1189,7 @@ class NativeManager(ObjectManager):
             log_error("Native update failed for " + obj_name + ": " + safe_str(e))
             return False
 
-    def create(self, container, name, file_path, type_guid):
+    def create(self, container, name, file_path, type_guid, resolution=None):
         try:
             # CODESYS import_native imports into the project/container
             # If container is provided, use its import_native method
@@ -1102,14 +1216,14 @@ class ConfigManager(NativeManager):
     def export(self, obj, context, rel_path=None):
         # Devices are monolithic only if they are not containers (Project Roots)
         recursive = True
-        if safe_str(obj.type) == TYPE_GUIDS["device"]:
+        if _get_kind(obj) == "device":
             if is_container_device(obj):
                 recursive = False
         
         return super(ConfigManager, self).export(obj, context, recursive=recursive, rel_path=rel_path)
     
-    def create(self, container, name, file_path, type_guid):
-        return super(ConfigManager, self).create(container, name, file_path, type_guid)
+    def create(self, container, name, file_path, type_guid, resolution=None):
+        return super(ConfigManager, self).create(container, name, file_path, type_guid, resolution=resolution)
 
     def update(self, obj, file_path, obj_info):
         return super(ConfigManager, self).update(obj, file_path, obj_info)

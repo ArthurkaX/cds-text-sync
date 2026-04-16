@@ -1,20 +1,12 @@
 import os
-import sys
-import imp
 
-# --- Hidden Module Loader ---
-def _load_hidden_module(name):
-    """Load a .pyw module from the script directory and register it in sys.modules."""
-    if name not in sys.modules:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(script_dir, name + ".pyw")
-        if os.path.exists(path):
-            sys.modules[name] = imp.load_source(name, path)
+from Project_bootstrap import load_hidden_modules
 
-# Load shared core logic
-_load_hidden_module("codesys_constants")
-_load_hidden_module("codesys_utils")
-_load_hidden_module("codesys_ui")
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_ui",
+], script_file=__file__)
 
 def set_base_directory():
     # CODESYS provides the 'system' object for UI interactions

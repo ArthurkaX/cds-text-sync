@@ -16,9 +16,21 @@ import tempfile
 import threading
 import shutil
 
+try:
+    import clr
+    clr.AddReference("System")
+    from System import Environment
+    from System.Diagnostics import Process, FileVersionInfo
+except:
+    Environment = None
+    Process = None
+    FileVersionInfo = None
+
 # --- Global Thread Lock ---
 _metadata_thread_lock = threading.Lock()
 from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER, IMPLEMENTATION_TYPES
+
+FOLDER_GUID = "738bea1e-99bb-4f04-90bb-a7a567e74e3a"
 
 # Cache version — bump when format changes to force full rebuild
 CACHE_VERSION = "3.1"  # 3.1: hashes now include build_properties (exclude_from_build, etc.)
@@ -243,11 +255,17 @@ def get_quick_ide_hash(obj, is_xml):
         
     try:
         obj_type_guid = safe_str(obj.type)
+        try:
+            from codesys_type_profiles import PROJECT_PROPERTY_KEY
+            from codesys_type_system import resolve_runtime_object
+            obj_kind = resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY)).get("semantic_kind")
+        except:
+            obj_kind = None
         
         # Extract decl and impl
         decl = obj.textual_declaration.text if hasattr(obj, 'has_textual_declaration') and obj.has_textual_declaration else None
             
-        if obj_type_guid == TYPE_GUIDS["property"]:
+        if obj_kind == "property":
             # Special Case: Properties combine Get and Set children
             get_impl = None
             set_impl = None
@@ -269,7 +287,8 @@ def get_quick_ide_hash(obj, is_xml):
             # Standard POU/GVL/DUT
             impl = obj.textual_implementation.text if hasattr(obj, 'has_textual_implementation') and obj.has_textual_implementation else None
             if decl is not None or impl is not None:
-                can_have_impl = obj_type_guid in IMPLEMENTATION_TYPES
+                from codesys_type_system import can_have_implementation_kind
+                can_have_impl = can_have_implementation_kind(obj_kind) or obj_type_guid in IMPLEMENTATION_TYPES
                 content = format_st_content(decl, impl, can_have_impl)
             else:
                 return None
@@ -309,54 +328,96 @@ def safe_str(value):
         return "N/A"
 
 
+def get_process_version_info():
+    result = {
+        "process_name": None,
+        "exe_path": None,
+        "product_name": None,
+        "product_version": None,
+        "file_version": None,
+        "company_name": None,
+        "main_window_title": None,
+        "is_64bit_process": None
+    }
+
+    if not Process:
+        return result
+
+    try:
+        proc = Process.GetCurrentProcess()
+        result["process_name"] = safe_str(getattr(proc, "ProcessName", None)) or None
+        result["main_window_title"] = safe_str(getattr(proc, "MainWindowTitle", None)) or None
+        result["is_64bit_process"] = bool(Environment.Is64BitProcess) if Environment else None
+
+        exe_path = None
+        try:
+            exe_path = safe_str(proc.MainModule.FileName) or None
+        except:
+            exe_path = None
+        result["exe_path"] = exe_path
+
+        if exe_path and FileVersionInfo:
+            try:
+                info = FileVersionInfo.GetVersionInfo(exe_path)
+                result["product_name"] = safe_str(getattr(info, "ProductName", None)) or None
+                result["product_version"] = safe_str(getattr(info, "ProductVersion", None)) or None
+                result["file_version"] = safe_str(getattr(info, "FileVersion", None)) or None
+                result["company_name"] = safe_str(getattr(info, "CompanyName", None)) or None
+            except:
+                pass
+    except:
+        pass
+
+    return result
+
+
+def get_detected_codesys_version(system_obj=None):
+    candidates = []
+
+    if not system_obj:
+        system_obj = resolve_system()
+
+    if system_obj:
+        for attr_name in ("version", "Version", "product_version", "ProductVersion"):
+            try:
+                value = safe_str(getattr(system_obj, attr_name, None)).strip()
+            except:
+                value = ""
+            if value and value not in ("N/A", "None"):
+                candidates.append(value)
+
+    process_info = get_process_version_info()
+    for key in ("product_version", "file_version"):
+        value = safe_str(process_info.get(key)).strip()
+        if value and value not in ("N/A", "None"):
+            candidates.append(value)
+
+    return candidates[0] if candidates else "N/A"
+
+
+def _get_semantic_kind(obj, profile_name=None):
+    """Resolve an object's semantic kind using the active profile."""
+    try:
+        from codesys_type_profiles import PROJECT_PROPERTY_KEY
+        from codesys_type_system import resolve_runtime_object
+        if profile_name is None:
+            profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+        return resolve_runtime_object(obj, profile_name).get("semantic_kind")
+    except:
+        try:
+            return safe_str(getattr(obj, "type", None))
+        except:
+            return ""
+
+
 def determine_object_type(content):
-    """Determine CODESYS object type from ST content"""
-    import re
-    # Remove comments and pragmas to avoid false matches
-    
-    # 1. Remove (* ... *) multiline comments
-    content = re.sub(r"\(\*[\s\S]*?\*\)", "", content)
-    
-    # 2. Remove { ... } pragmas/attributes
-    content = re.sub(r"\{[\s\S]*?\}", "", content)
-    
-    # 3. Remove // ... single line comments
-    content = re.sub(r"//.*", "", content)
-    
-    content = content.strip()
-    lines = content.splitlines()
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Check keywords
-        parts = line.split()
-        if not parts:
-            continue
-        word = parts[0].upper()
-        
-        if word == "PROGRAM":
-            return TYPE_GUIDS["pou"]
-        if word == "FUNCTION_BLOCK":
-            return TYPE_GUIDS["pou"]
-        if word == "FUNCTION":
-            return TYPE_GUIDS["pou"]
-        if word == "VAR_GLOBAL":
-            return TYPE_GUIDS["gvl"]
-        if word == "TYPE":
-            return TYPE_GUIDS["dut"]
-        if word == "INTERFACE":
-            return TYPE_GUIDS["itf"]
-        if word == "METHOD":
-            return TYPE_GUIDS["method"]
-        if word == "PROPERTY":
-            return TYPE_GUIDS["property"]
-        if word == "ACTION":
-            return TYPE_GUIDS["action"]
-        
-    return None
+    """Determine CODESYS object type from ST content.
+
+    Returns the semantic kind instead of a raw GUID so callers can route
+    through the profile-aware type system.
+    """
+    from codesys_type_system import determine_semantic_kind
+    return determine_semantic_kind(content)
 
 
 def clean_filename(name):
@@ -414,6 +475,9 @@ def set_project_prop(key, value):
 
 def update_application_count_flag():
     """Count internal 'Application' objects and set 'boolean' property to True if > 1."""
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+    from codesys_type_system import resolve_runtime_object
+
     try:
         proj = None
         try:
@@ -426,15 +490,18 @@ def update_application_count_flag():
         
         if not proj: return False
         
-        # Count all application objects
-        # We use the GUID from codesys_constants.py: 639b491f-5557-464c-af91-1471bac9f549
+        profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+
+        # Count all application objects using the selected type profile.
         all_objs = proj.get_children(recursive=True)
         app_count = 0
-        APP_GUID = "639b491f-5557-464c-af91-1471bac9f549"
-        
+
         for obj in all_objs:
-            if hasattr(obj, 'type') and str(obj.type).lower() == APP_GUID:
-                app_count += 1
+            try:
+                if resolve_runtime_object(obj, profile_name).get("semantic_kind") == "application":
+                    app_count += 1
+            except:
+                pass
         
         has_multiple_apps = (app_count > 1)
         log_info("Application count summary: Found %d applications. Setting 'cds-text-sync-multipleApps' flag to %s" % (app_count, str(has_multiple_apps)))
@@ -1089,10 +1156,10 @@ def find_application_recursive(obj, depth=0):
         children = obj.get_children()
         for child in children:
             try:
-                child_type = safe_str(child.type)
-                if child_type == TYPE_GUIDS.get("application"):
+                child_kind = _get_semantic_kind(child)
+                if child_kind == "application":
                     return child
-                if child_type == TYPE_GUIDS.get("device") or child_type == TYPE_GUIDS.get("plc_logic"):
+                if child_kind in ("device", "plc_logic"):
                     result = find_application_recursive(child, depth + 1)
                     if result:
                         return result
@@ -1110,16 +1177,16 @@ def is_container_device(obj):
     their children (Applications, etc.) are already handled separately.
     """
     try:
-        obj_type = safe_str(obj.type)
-        if obj_type != TYPE_GUIDS["device"]:
+        obj_kind = _get_semantic_kind(obj)
+        if obj_kind != "device":
             return False
             
         # Check if it has an Application or Plc Logic child
         # We only check direct children to avoid heavy recursion
         children = obj.get_children(recursive=False)
         for child in children:
-            child_type = safe_str(child.type)
-            if child_type in [TYPE_GUIDS["application"], TYPE_GUIDS["plc_logic"]]:
+            child_kind = _get_semantic_kind(child)
+            if child_kind in ["application", "plc_logic"]:
                 return True
         return False
     except:
@@ -1158,8 +1225,8 @@ def _find_child_transparent(parent_obj, name):
     # (the export skips this level in the path)
     for child in children:
         try:
-            c_type = safe_str(child.type)
-            if c_type == TYPE_GUIDS.get("plc_logic"):
+            c_type = _get_semantic_kind(child)
+            if c_type == "plc_logic":
                 for grandchild in child.get_children():
                     try:
                         if grandchild.get_name().lower() == name_lower:
@@ -1225,7 +1292,7 @@ def ensure_folder_path(path_str, project):
                     log_info("    create_folder('" + part + "') returned: " + safe_str(found))
                 elif hasattr(current_obj, "create_child"):
                     # Use folder GUID from constants
-                    found = current_obj.create_child(part, TYPE_GUIDS.get("folder", "738bea1e-99bb-4f04-90bb-a7a567e74e3a"))
+                    found = current_obj.create_child(part, FOLDER_GUID)
                     log_info("    create_child('" + part + "') returned: " + safe_str(found))
                 else:
                     # If we reached a level where we can't create (e.g. Device level), log it

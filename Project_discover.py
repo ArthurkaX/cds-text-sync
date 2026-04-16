@@ -6,40 +6,30 @@ Uses get_children(recursive=True) for reliable enumeration,
 then reconstructs the tree structure from parent references.
 """
 import os
-import sys
 
-import os
-import sys
-import imp
-
-# --- Hidden Module Loader ---
-def _load_hidden_module(name):
-    """Load a .pyw module from the script directory and register it in sys.modules."""
-    if name not in sys.modules:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(script_dir, name + ".pyw")
-        if os.path.exists(path):
-            sys.modules[name] = imp.load_source(name, path)
+from Project_bootstrap import clear_hidden_modules, load_hidden_modules
 
 # Force reload of shared modules to pick up latest changes
-for _mod_name in list(sys.modules.keys()):
-    if _mod_name.startswith('codesys_'):
-        del sys.modules[_mod_name]
-
-# Load shared core logic
-_load_hidden_module("codesys_constants")
-_load_hidden_module("codesys_utils")
-_load_hidden_module("codesys_managers")
+clear_hidden_modules()
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_managers",
+    "codesys_type_profiles",
+    "codesys_type_system",
+], script_file=__file__)
 
 # Import shared constants and utilities
 from codesys_constants import TYPE_GUIDS
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_warning, log_error,
-    resolve_projects
+    resolve_projects, get_project_prop, get_detected_codesys_version
 )
 from codesys_managers import is_nvl
+from codesys_type_profiles import PROJECT_PROPERTY_KEY, get_profile_label
+from codesys_type_system import resolve_runtime_object, get_selected_profile_name
 
-# Reverse mapping of TYPE_GUIDS for logging human-readable type names
+# Reverse mapping of TYPE_GUIDS kept only as a compatibility label fallback.
 TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
 
 def discover_project():
@@ -62,7 +52,12 @@ def discover_project():
         # Use recursive=True for reliable enumeration (same approach as export)
         all_objects = proj.get_children(recursive=True)
         
-        print("\n=== CODESYS Project Tree (" + str(len(all_objects)) + " objects) ===\n")
+        profile_name = get_selected_profile_name(project_profile=get_project_prop(PROJECT_PROPERTY_KEY))
+        detected_version = get_detected_codesys_version()
+        profile_label = get_profile_label(profile_name)
+        print("\n=== CODESYS Project Tree (" + str(len(all_objects)) + " objects) ===")
+        print("Detected CODESYS version: " + safe_str(detected_version))
+        print("Selected type profile: " + profile_name + " (" + safe_str(profile_label) + ")\n")
         
         # Build a set of all known GUIDs
         known_guids = set()
@@ -105,9 +100,14 @@ def discover_project():
                 obj_name = safe_str(obj.get_name())
                 obj_type_guid = safe_str(obj.type)
                 obj_class = obj.__class__.__name__
-                
-                is_unknown = obj_type_guid not in TYPE_NAMES
-                obj_type_name = TYPE_NAMES.get(obj_type_guid, "UNKNOWN_%s" % obj_type_guid[:8])
+
+                resolution = resolve_runtime_object(obj, profile_name)
+                obj_type_name = resolution.get("semantic_kind")
+                sync_profile = resolution.get("sync_profile") or ""
+                evidence = resolution.get("evidence") or []
+                is_unknown = not obj_type_name
+                if not obj_type_name:
+                    obj_type_name = TYPE_NAMES.get(obj_type_guid, "UNKNOWN_%s" % obj_type_guid[:8])
                 
                 # Special case: GVLs that are actually NVLs
                 if obj_type_guid == TYPE_GUIDS["gvl"]:
@@ -121,9 +121,18 @@ def discover_project():
                 if is_unknown:
                     unknown_types[obj_type_guid] = obj_name
 
-                line = "  " * level + "|-- " + prefix + obj_name + " (" + obj_type_name + " | " + obj_type_guid + " | " + obj_class + ")"
+                parts = [obj_type_name, obj_type_guid]
+                if sync_profile:
+                    parts.append(sync_profile)
+                parts.append(obj_class)
+                line = "  " * level + "|-- " + prefix + obj_name + " (" + " | ".join(parts) + ")"
                 print(line)
                 tree_lines.append(line)
+
+                if evidence:
+                    evidence_line = "  " * (level + 1) + "evidence: " + ", ".join([safe_str(item) for item in evidence])
+                    print(evidence_line)
+                    tree_lines.append(evidence_line)
                 
                 # Print children from our map
                 obj_guid = safe_str(obj.guid)
@@ -144,12 +153,12 @@ def discover_project():
         # Summary of unknown types
         if unknown_types:
             print("\n!!! UNKNOWN OBJECT TYPES FOUND !!!")
-            print("These GUIDs are missing from codesys_constants.py:")
+            print("These GUIDs are unresolved for the selected type profile:")
             for guid, name in unknown_types.items():
                 line = " - %s (Example: %s)" % (guid, name)
                 print(line)
                 log_warning("Unknown object type found: " + line)
-            print("Please add them to TYPE_GUIDS in codesys_constants.py\n")
+            print("Consider updating the selected profile or adding a new alias/context rule.\n")
 
         print("\n=== Discovery Complete (" + str(len(tree_lines)) + " nodes). Tree stored in sync_debug.log ===")
 
