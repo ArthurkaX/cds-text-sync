@@ -10,7 +10,17 @@ Also detects new files on disk (e.g. from git pull) not yet tracked in metadata.
 import os
 import sys
 import time
-import imp
+
+try:
+    import importlib.util
+    _HAS_IMPORTLIB_UTIL = True
+except ImportError:
+    _HAS_IMPORTLIB_UTIL = False
+    try:
+        import imp
+        _HAS_IMP = True
+    except ImportError:
+        _HAS_IMP = False
 
 # --- Hidden Module Loader ---
 def _load_hidden_module(name):
@@ -19,7 +29,14 @@ def _load_hidden_module(name):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(script_dir, name + ".pyw")
         if os.path.exists(path):
-            sys.modules[name] = imp.load_source(name, path)
+            if _HAS_IMPORTLIB_UTIL:
+                spec = importlib.util.spec_from_file_location(name, path)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[name] = mod
+                    spec.loader.exec_module(mod)
+            elif _HAS_IMP:
+                sys.modules[name] = imp.load_source(name, path)
 
 # Force reload of shared modules to pick up latest changes
 for _mod_name in list(sys.modules.keys()):
@@ -192,7 +209,7 @@ def import_project(projects_obj=None):
     finalize_sync_operation(base_dir, projects_obj, is_import=True)
 
 
-def main():
+def main(params=None):
     base_dir, error = load_base_dir()
     
     if base_dir:
