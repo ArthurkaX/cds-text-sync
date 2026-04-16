@@ -1,6 +1,8 @@
 /__pycache__
 /__pycache__/*
 
+/.dev_tools/
+/.dev_tools/*
 /.github/.dev_tools/
 /.github/.dev_tools/*
 TODO.md

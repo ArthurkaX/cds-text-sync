@@ -28,7 +28,7 @@ except:
 
 # --- Global Thread Lock ---
 _metadata_thread_lock = threading.Lock()
-from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER, IMPLEMENTATION_TYPES
+from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
 
 FOLDER_GUID = "738bea1e-99bb-4f04-90bb-a7a567e74e3a"
 
@@ -254,7 +254,6 @@ def get_quick_ide_hash(obj, is_xml):
         return None  # XML requires full export for stable comparison
         
     try:
-        obj_type_guid = safe_str(obj.type)
         try:
             from codesys_type_profiles import PROJECT_PROPERTY_KEY
             from codesys_type_system import resolve_runtime_object
@@ -288,7 +287,7 @@ def get_quick_ide_hash(obj, is_xml):
             impl = obj.textual_implementation.text if hasattr(obj, 'has_textual_implementation') and obj.has_textual_implementation else None
             if decl is not None or impl is not None:
                 from codesys_type_system import can_have_implementation_kind
-                can_have_impl = can_have_implementation_kind(obj_kind) or obj_type_guid in IMPLEMENTATION_TYPES
+                can_have_impl = can_have_implementation_kind(obj_kind)
                 content = format_st_content(decl, impl, can_have_impl)
             else:
                 return None
@@ -956,15 +955,31 @@ def read_ide_attrs(obj):
     """Read supported IDE attributes from live CODESYS object.
 
     Uses obj.build_properties (ScriptBuildProperties) to access build flags.
-    Uses ATTR_REGISTRY to determine which attributes apply to this object type.
+    Uses ATTR_REGISTRY to determine which attributes apply to this object's semantic kind.
     Returns dict of {attr_key: True} for non-default attributes.
     """
-    from codesys_constants import ATTR_REGISTRY
-    obj_type = safe_str(obj.type)
+    from codesys_constants import ATTR_REGISTRY, TYPE_NAMES
+    from codesys_type_system import resolve_runtime_object
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+
+    obj_type_guid = safe_str(obj.type)
     obj_name = safe_str(obj.get_name()) if hasattr(obj, "get_name") else "<unknown>"
+
+    # Resolve semantic kind from runtime type
+    semantic_kind = None
+    try:
+        profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+        resolution = resolve_runtime_object(obj, profile_name)
+        semantic_kind = resolution.get("semantic_kind")
+    except:
+        pass
+    # Fallback: reverse-lookup GUID to semantic kind name
+    if not semantic_kind:
+        semantic_kind = TYPE_NAMES.get(obj_type_guid)
+
     attrs = {}
 
-    applicable = [key for key, spec in ATTR_REGISTRY.items() if obj_type in spec["types"]]
+    applicable = [key for key, spec in ATTR_REGISTRY.items() if semantic_kind and semantic_kind in spec.get("kinds", set())]
     if not applicable:
         return attrs
 
@@ -985,7 +1000,7 @@ def read_ide_attrs(obj):
         read_ide_attrs._bp_dumped = True
         try:
             bp_attrs = [a for a in dir(build_props) if not a.startswith("_")]
-            log_info("BUILD_PROPERTIES DISCOVERY for %s (%s): %s" % (obj_name, obj_type[:8], bp_attrs))
+            log_info("BUILD_PROPERTIES DISCOVERY for %s (%s): %s" % (obj_name, semantic_kind, bp_attrs))
             for a in bp_attrs:
                 try:
                     val = getattr(build_props, a)
@@ -997,7 +1012,7 @@ def read_ide_attrs(obj):
             log_info("BUILD_PROPERTIES DISCOVERY failed: %s" % safe_str(e))
 
     for key, spec in ATTR_REGISTRY.items():
-        if obj_type not in spec["types"]:
+        if semantic_kind and semantic_kind not in spec.get("kinds", set()):
             continue
         prop_name = spec["api_prop"]
         try:
@@ -1025,12 +1040,26 @@ def read_ide_attrs(obj):
 def write_ide_attrs(obj, attrs):
     """Apply parsed attributes to a CODESYS IDE object via build_properties.
 
-    Only sets attributes that are supported for this object type per ATTR_REGISTRY.
+    Only sets attributes that are supported for this object's semantic kind per ATTR_REGISTRY.
     Skips silently if attribute is not in attrs (preserves current IDE state).
     """
-    from codesys_constants import ATTR_REGISTRY
-    obj_type = safe_str(obj.type)
+    from codesys_constants import ATTR_REGISTRY, TYPE_NAMES
+    from codesys_type_system import resolve_runtime_object
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+
+    obj_type_guid = safe_str(obj.type)
     obj_name = safe_str(obj.get_name()) if hasattr(obj, "get_name") else "<unknown>"
+
+    # Resolve semantic kind from runtime type
+    semantic_kind = None
+    try:
+        profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+        resolution = resolve_runtime_object(obj, profile_name)
+        semantic_kind = resolution.get("semantic_kind")
+    except:
+        pass
+    if not semantic_kind:
+        semantic_kind = TYPE_NAMES.get(obj_type_guid)
 
     # Access the build_properties sub-object
     build_props = None
@@ -1045,7 +1074,7 @@ def write_ide_attrs(obj, attrs):
         return
 
     for key, spec in ATTR_REGISTRY.items():
-        if obj_type not in spec["types"]:
+        if semantic_kind and semantic_kind not in spec.get("kinds", set()):
             continue
             
         prop_name = spec["api_prop"]

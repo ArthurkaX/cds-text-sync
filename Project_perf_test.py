@@ -27,7 +27,7 @@ load_hidden_modules([
     "codesys_compare_engine",
 ], script_file=__file__)
 
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, TYPE_NAMES, SCRIPT_VERSION
+from codesys_constants import TYPE_NAMES, SCRIPT_VERSION
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
     resolve_projects, clean_filename, get_project_prop, calculate_hash
@@ -36,6 +36,7 @@ from codesys_managers import (
     collect_property_accessors, classify_object, build_expected_path, export_object_content,
     format_st_content, format_property_content, NativeManager
 )
+from codesys_type_system import can_have_implementation_kind
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -337,20 +338,22 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
     
     obj_name = obj.get_name() if obj else "Unknown"
     obj_type = safe_str(obj.type)
-    obj_type_name = TYPE_NAMES.get(obj_type, obj_type[:8])
+    from codesys_type_system import resolve_runtime_object
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+    profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+    resolution = resolve_runtime_object(obj, profile_name)
+    semantic_kind = resolution.get("semantic_kind", "")
+    obj_type_name = semantic_kind or TYPE_NAMES.get(obj_type, obj_type[:8])
     
     if is_xml:
         clean_name = clean_filename(obj_name)
         tmp_path = os.path.join(tempfile.gettempdir(), "cds_comp_" + clean_name + ".xml")
         start = time.time()
         try:
-            monolithic_types = [
-                TYPE_GUIDS["task_config"], TYPE_GUIDS["alarm_config"], 
-                TYPE_GUIDS["visu_manager"], TYPE_GUIDS["softmotion_pool"]
-            ]
-            recursive = obj_type in monolithic_types
+            monolithic_kinds = {"task_config", "alarm_config", "visu_manager", "softmotion_pool"}
+            recursive = semantic_kind in monolithic_kinds
             
-            if obj_type == TYPE_GUIDS["device"]:
+            if semantic_kind == "device":
                 from codesys_utils import is_container_device
                 recursive = not is_container_device(obj)
             
@@ -371,7 +374,7 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
     
     start = time.time()
     
-    if obj_type == TYPE_GUIDS["property"] and obj_guid in property_accessors:
+    if semantic_kind == "property" and obj_guid in property_accessors:
         prop_data = property_accessors[obj_guid]
         declaration, _ = export_object_content(obj)
 
@@ -502,16 +505,23 @@ def run_speed_analysis():
         t_classify = time.time()
         if obj_guid in cached_types:
             type_info = cached_types[obj_guid]
-            effective_type, is_xml = type_info[0], type_info[1]
+            resolution = {"semantic_kind": type_info[0], "is_xml": type_info[1], "manager_key": type_info[0]}
+            semantic_kind = type_info[0]
+            effective_type = type_info[0]
+            is_xml = type_info[1]
             rel_path = type_info[2] if len(type_info) > 2 else None
             should_skip = False
             type_cache_hits += 1
         else:
-            effective_type, is_xml, should_skip = classify_object(obj)
+            resolution = classify_object(obj)
+            semantic_kind = resolution.get("semantic_kind", "")
+            effective_type = resolution.get("effective_type") or semantic_kind or safe_str(obj.type)
+            is_xml = bool(resolution.get("is_xml"))
+            should_skip = bool(resolution.get("should_skip"))
             rel_path = None
             
         classify_elapsed = time.time() - t_classify
-        type_name = TYPE_NAMES.get(effective_type, effective_type[:8])
+        type_name = semantic_kind or TYPE_NAMES.get(effective_type, effective_type[:8] if effective_type else "unknown")
         profiler.track_object(type_name, "classify", classify_elapsed)
         
         if should_skip:
@@ -524,7 +534,7 @@ def run_speed_analysis():
         # ── Profile Path Building ──
         t_path = time.time()
         if not rel_path:
-            rel_path = build_expected_path(obj, effective_type, is_xml)
+            rel_path = build_expected_path(obj, resolution)
         else:
             path_cache_hits += 1
         path_elapsed = time.time() - t_path
@@ -534,10 +544,10 @@ def run_speed_analysis():
         
         norm_path = normalize_path(rel_path)
         ide_paths[rel_path] = obj
-        ide_metadata[norm_path] = (effective_type, is_xml)
+        ide_metadata[norm_path] = (semantic_kind, is_xml)
 
         # Optimization: Property accessors
-        if effective_type == TYPE_GUIDS["property"]:
+        if semantic_kind == "property":
             try:
                 if obj_guid not in property_accessors:
                     property_accessors[obj_guid] = {'get': None, 'set': None}
@@ -571,9 +581,9 @@ def run_speed_analysis():
     
     for rel_path, obj in ide_paths.items():
         norm_path = normalize_path(rel_path)
-        eff_type, is_xml = ide_metadata[norm_path]
+        eff_kind, is_xml = ide_metadata[norm_path]
         file_path = os.path.join(base_dir, rel_path.replace("/", os.sep))
-        type_name = TYPE_NAMES.get(eff_type, eff_type[:8])
+        type_name = eff_kind or "unknown"
         
         # ── Fast path 1: Folder-level check (Merkle Skip) ──
         parent_folder = "/".join(norm_path.split("/")[:-1])
@@ -585,7 +595,7 @@ def run_speed_analysis():
         # ── Full Comparison (if not skipped) ──
         if os.path.exists(file_path):
             t_compare = time.time()
-            can_have_impl = eff_type in IMPLEMENTATION_TYPES
+            can_have_impl = can_have_implementation_kind(eff_kind)
             ide_content = get_ide_content_profiling(
                 obj, is_xml, property_accessors, projects_obj, can_have_impl, profiler
             )

@@ -286,15 +286,33 @@ def get_parent_pou_name(obj):
         pass
     return None
 
-def build_expected_path(obj, effective_type, is_xml):
-    """Build the expected rel_path for an IDE object."""
-    effective_kind = _resolve_kind_value(effective_type)
+def build_expected_path(obj, resolution, is_xml=None):
+    """Build the expected rel_path for an IDE object.
+    
+    Args:
+        obj: The CODESYS IDE object
+        resolution: A resolution dict (from classify_object or resolve_runtime_object)
+                    containing semantic_kind, sync_profile, is_xml, etc.
+        is_xml: DEPRECATED - kept for backward compatibility. If provided, 
+                overrides the resolution-derived value.
+    
+    The function now derives is_xml from resolution.sync_profile == "native_xml"
+    or resolution.is_xml, rather than requiring a separate boolean parameter.
+    """
+    effective_kind = _resolve_kind_value(resolution)
     container = get_container_prefix(obj)
     path_parts = get_object_path(obj)
     obj_name = obj.get_name()
     clean_name = clean_filename(obj_name)
     obj_kind = _get_kind(obj)
-    is_xml = bool(is_xml)
+    if is_xml is not None:
+        derived_is_xml = bool(is_xml)
+    elif isinstance(resolution, dict):
+        sync_profile = resolution.get("sync_profile", "")
+        derived_is_xml = (sync_profile == "native_xml") or bool(resolution.get("is_xml", False))
+    else:
+        derived_is_xml = False
+    is_xml = derived_is_xml
 
     if is_xml:
         # Special case: POUs exported as XML (graphical) use 'pou_xml' extension
@@ -654,7 +672,8 @@ class FolderManager(ObjectManager):
     """Handle folder creation and management"""
     def export(self, obj, context, rel_path=None):
         if rel_path is None:
-            rel_path = build_expected_path(obj, safe_str(obj.type), False)
+            resolution = context.get("resolution") or {"semantic_kind": "folder", "sync_profile": "textual"}
+            rel_path = build_expected_path(obj, resolution)
         
         # Track and cache
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
@@ -693,8 +712,8 @@ class POUManager(ObjectManager):
     def export(self, obj, context, rel_path=None):
         # Build path and filename
         if rel_path is None:
-            effective_type = context.get('effective_type', safe_str(obj.type))
-            rel_path = build_expected_path(obj, effective_type, False)
+            resolution = context.get("resolution") or {"semantic_kind": context.get('effective_type', safe_str(obj.type)), "sync_profile": "textual"}
+            rel_path = build_expected_path(obj, resolution)
         
         # Determine target directory and file path
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
@@ -856,8 +875,8 @@ class PropertyManager(POUManager):
             prop_data = context['property_accessors'][obj_guid]
         
         if rel_path is None:
-            effective_type = context.get('effective_type', safe_str(obj.type))
-            rel_path = build_expected_path(obj, effective_type, False)
+            resolution = context.get("resolution") or {"semantic_kind": context.get('effective_type', safe_str(obj.type)), "sync_profile": "textual"}
+            rel_path = build_expected_path(obj, resolution)
         
         # Determine target directory and file path
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))
@@ -1099,8 +1118,8 @@ class NativeManager(ObjectManager):
 
     def export(self, obj, context, recursive=False, rel_path=None):
         if rel_path is None:
-            effective_type = context.get('effective_type', safe_str(obj.type))
-            rel_path = build_expected_path(obj, effective_type, True)
+            resolution = context.get("resolution") or {"semantic_kind": context.get('effective_type', safe_str(obj.type)), "sync_profile": "native_xml"}
+            rel_path = build_expected_path(obj, resolution)
         
         # Determine target directory and file path
         file_path = os.path.join(context['export_dir'], rel_path.replace("/", os.sep))

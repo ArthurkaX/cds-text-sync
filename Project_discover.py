@@ -28,9 +28,44 @@ from codesys_utils import (
 from codesys_managers import is_nvl
 from codesys_type_profiles import PROJECT_PROPERTY_KEY, get_profile_label
 from codesys_type_system import resolve_runtime_object, get_selected_profile_name
+from codesys_type_system import SYNC_PROFILE_CATEGORIES
 
 # Reverse mapping of TYPE_GUIDS kept only as a compatibility label fallback.
 TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
+
+
+def suggest_profile_rules(unknown_types, profile_name):
+    """Generate concrete profile rule suggestions for unresolved GUIDs.
+
+    For each unknown GUID, suggests a guid_aliases entry that can be pasted
+    into the profile definition in codesys_type_profiles.pyw,
+    and recommends which sync_profile category the new kind should belong to.
+    """
+    if not unknown_types:
+        return []
+
+    profile_label = get_profile_label(profile_name)
+    lines = []
+    lines.append("")
+    lines.append("=== SUGGESTED PROFILE RULES for %s ===" % profile_label)
+    lines.append("Add these entries to the guid_aliases dict in PROFILES['%s']:" % profile_name)
+    lines.append("")
+
+    for guid, example_name in unknown_types.items():
+        kind_hint = "unknown_kind_%s" % guid[:8]
+        profile_entry = '    "%s": ["%s"],' % (kind_hint, guid)
+        lines.append("# Unknown GUID found in: %s" % example_name)
+        lines.append("#   GUID: %s" % guid)
+        lines.append(profile_entry)
+        lines.append("")
+
+    lines.append("Then register each new kind in the appropriate set in codesys_type_system.pyw:")
+    for category_name, kinds in SYNC_PROFILE_CATEGORIES.items():
+        examples = sorted(list(kinds))[:3]
+        lines.append("  - _%s_KINDS (e.g. %s)" % (category_name.upper(), ", ".join(examples) if category_name != "skip" else "skip"))
+    lines.append("")
+
+    return lines
 
 def discover_project():
     """Discover and log all project objects as a tree."""
@@ -150,7 +185,7 @@ def discover_project():
         else:
             log_error("No tree nodes were generated. root_children=" + str(len(root_children)) + " all_objects=" + str(len(all_objects)))
         
-        # Summary of unknown types
+# Summary of unknown types
         if unknown_types:
             print("\n!!! UNKNOWN OBJECT TYPES FOUND !!!")
             print("These GUIDs are unresolved for the selected type profile:")
@@ -158,7 +193,11 @@ def discover_project():
                 line = " - %s (Example: %s)" % (guid, name)
                 print(line)
                 log_warning("Unknown object type found: " + line)
-            print("Consider updating the selected profile or adding a new alias/context rule.\n")
+            print("Consider updating the selected profile or adding a new alias/context rule.")
+
+            suggestions = suggest_profile_rules(unknown_types, profile_name)
+            for line in suggestions:
+                print(line)
 
         print("\n=== Discovery Complete (" + str(len(tree_lines)) + " nodes). Tree stored in sync_debug.log ===")
 

@@ -129,6 +129,14 @@ _CREATION_STRATEGY_BY_KIND = {
 }
 
 
+SYNC_PROFILE_CATEGORIES = {
+    "textual": _TEXTUAL_KINDS,
+    "native_xml": _NATIVE_XML_KINDS,
+    "nested_member": _NESTED_MEMBER_KINDS,
+    "skip": _SKIP_KINDS,
+}
+
+
 def _safe_str(value):
     if value is None:
         return ""

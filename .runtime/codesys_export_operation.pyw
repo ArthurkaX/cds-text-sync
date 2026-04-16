@@ -22,6 +22,78 @@ def save_export_metadata(export_dir, stats, elapsed_time):
     save_sync_metadata(export_dir, "export", stats, elapsed_time)
 
 
+def build_export_plan(all_objects, export_dir, cache_data=None):
+    """Build a structured export plan from all IDE objects.
+
+    Returns a dict:
+        plan_items: list of export plan items, each containing:
+            obj, resolution, rel_path, effective_type, is_xml,
+            manager_key, should_skip
+        property_accessors: collected accessor dict
+        new_types: type cache dict {guid: (eff_type, is_xml, rel_path)}
+    """
+    property_accessors = {}
+    plan_items = []
+    new_types = {}
+
+    for obj in all_objects:
+        try:
+            obj_guid = safe_str(obj.guid)
+            resolution = classify_object(obj)
+            cached_type = None
+            if cache_data:
+                cached_type = cache_data.get("types", {}).get(obj_guid)
+
+            if cached_type:
+                effective_type = cached_type[0]
+                is_xml = cached_type[1]
+                rel_path = cached_type[2] if len(cached_type) > 2 else None
+                should_skip = False if rel_path else True
+                rel_path, resolution = _apply_nvl_path_hint(rel_path, resolution, export_dir)
+            else:
+                effective_type = resolution.get("manager_key") or resolution.get("semantic_kind") or resolution.get("canonical_guid")
+                is_xml = bool(resolution.get("is_xml"))
+                should_skip = bool(resolution.get("should_skip"))
+                rel_path = build_expected_path(obj, resolution) if not should_skip else None
+                rel_path, resolution = _apply_nvl_path_hint(rel_path, resolution, export_dir)
+
+            manager_key = resolution.get("manager_key") or resolution.get("semantic_kind") or effective_type
+
+            new_types[obj_guid] = (effective_type, is_xml, rel_path)
+
+            if resolution.get("semantic_kind") == "property":
+                try:
+                    if obj_guid not in property_accessors:
+                        property_accessors[obj_guid] = {"get": None, "set": None}
+                    for child in obj.get_children():
+                        child_name = child.get_name().upper()
+                        if child_name == "GET":
+                            property_accessors[obj_guid]["get"] = child
+                        elif child_name == "SET":
+                            property_accessors[obj_guid]["set"] = child
+                except Exception:
+                    pass
+
+            plan_items.append({
+                "obj": obj,
+                "resolution": resolution,
+                "rel_path": rel_path,
+                "effective_type": effective_type,
+                "is_xml": is_xml,
+                "manager_key": manager_key,
+                "should_skip": should_skip,
+                "norm_path": normalize_path(rel_path) if rel_path else None,
+            })
+        except Exception as error:
+            log_error("Error classifying " + safe_str(obj) + ": " + safe_str(error))
+
+    return {
+        "plan_items": plan_items,
+        "property_accessors": property_accessors,
+        "new_types": new_types,
+    }
+
+
 def _apply_nvl_path_hint(rel_path, resolution, export_dir):
     if not rel_path or not isinstance(resolution, dict):
         return rel_path, resolution
@@ -152,7 +224,6 @@ def export_project(export_dir, runtime=None, params=None):
 
     export_xml = get_project_prop("cds-sync-export-xml", False)
     backup_binary = get_project_prop("cds-sync-backup-binary", False)
-    exported_paths = set()
 
     if backup_binary:
         print("Binary backup enabled.")
@@ -163,18 +234,23 @@ def export_project(export_dir, runtime=None, params=None):
     all_objects = projects_obj.primary.get_children(recursive=True)
     print("Found " + str(len(all_objects)) + " total objects")
 
-    exported_new = 0
-    exported_updated = 0
-    exported_identical = 0
-    exported_failed = 0
-    skipped_count = 0
-    property_accessors = {}
-
     managers = create_import_managers()
     cache_data = load_sync_cache(export_dir)
     new_cache = {}
     if cache_data and cache_data.get("objects"):
         log_info("Sync cache loaded! Enabling accelerated export (Merkle Tree skip).")
+
+    plan = build_export_plan(all_objects, export_dir, cache_data=cache_data)
+    plan_items = plan["plan_items"]
+    property_accessors = plan["property_accessors"]
+    new_types = plan["new_types"]
+
+    exported_new = 0
+    exported_updated = 0
+    exported_identical = 0
+    exported_failed = 0
+    skipped_count = 0
+    exported_paths = set()
 
     context = {
         "export_dir": export_dir,
@@ -183,44 +259,19 @@ def export_project(export_dir, runtime=None, params=None):
         "exported_paths": exported_paths,
         "cache_data": cache_data,
         "new_cache": new_cache,
-        "new_types": {}
+        "new_types": new_types,
     }
 
-    for obj in all_objects:
+    for item in plan_items:
         try:
-            obj_guid = safe_str(obj.guid)
-            resolution = classify_object(obj)
-            cached_type = cache_data.get("types", {}).get(obj_guid)
-            if cached_type:
-                effective_type = cached_type[0]
-                is_xml = cached_type[1]
-                rel_path = cached_type[2] if len(cached_type) > 2 else None
-                should_skip = False if rel_path else True
-                rel_path, resolution = _apply_nvl_path_hint(rel_path, resolution, export_dir)
-            else:
-                effective_type = resolution.get("manager_key") or resolution.get("semantic_kind") or resolution.get("canonical_guid")
-                is_xml = bool(resolution.get("is_xml"))
-                should_skip = bool(resolution.get("should_skip"))
-                rel_path = build_expected_path(obj, resolution, is_xml) if not should_skip else None
-                rel_path, resolution = _apply_nvl_path_hint(rel_path, resolution, export_dir)
-            manager_key = resolution.get("manager_key") or resolution.get("semantic_kind") or effective_type
-
-            context["new_types"][obj_guid] = (effective_type, is_xml, rel_path)
-            norm_path = normalize_path(rel_path) if rel_path else None
-
-            if resolution.get("semantic_kind") == "property":
-                try:
-                    if obj_guid not in context["property_accessors"]:
-                        context["property_accessors"][obj_guid] = {"get": None, "set": None}
-
-                    for child in obj.get_children():
-                        child_name = child.get_name().upper()
-                        if child_name == "GET":
-                            context["property_accessors"][obj_guid]["get"] = child
-                        elif child_name == "SET":
-                            context["property_accessors"][obj_guid]["set"] = child
-                except Exception:
-                    pass
+            obj = item["obj"]
+            resolution = item["resolution"]
+            rel_path = item["rel_path"]
+            effective_type = item["effective_type"]
+            is_xml = item["is_xml"]
+            manager_key = item["manager_key"]
+            should_skip = item["should_skip"]
+            norm_path = item["norm_path"]
 
             if cache_data and norm_path:
                 try:
@@ -231,13 +282,15 @@ def export_project(export_dir, runtime=None, params=None):
                     pass
 
             if should_skip:
+                skipped_count += 1
                 continue
 
             if is_xml:
-                always_exported = resolution.get("semantic_kind") in [
+                always_exported = resolution.get("sync_profile") == "native_xml" or resolution.get("semantic_kind") in [
                     "task_config", "nvl_sender", "nvl_receiver"
                 ]
                 if not always_exported and not export_xml:
+                    skipped_count += 1
                     continue
 
             try:
@@ -251,6 +304,7 @@ def export_project(export_dir, runtime=None, params=None):
                     manager = managers["default"]
 
             context["effective_type"] = manager_key
+            context["resolution"] = resolution
             result = manager.export(obj, context, rel_path=rel_path)
             if result == "new":
                 exported_new += 1
@@ -261,7 +315,7 @@ def export_project(export_dir, runtime=None, params=None):
 
         except Exception as error:
             exported_failed += 1
-            log_error("Error exporting " + safe_str(obj) + ": " + safe_str(error))
+            log_error("Error exporting " + safe_str(item.get("obj", "unknown")) + ": " + safe_str(error))
 
     removed_count = cleanup_orphaned_files(export_dir, exported_paths, runtime)
     if removed_count is None:

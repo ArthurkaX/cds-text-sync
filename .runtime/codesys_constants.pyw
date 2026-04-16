@@ -164,43 +164,24 @@ RESERVED_FILES = {
 TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
 
 # --- Sync Attribute Registry ---
-# Maps attr_key to the set of type GUIDs that support it.
+# Maps attr_key to the set of semantic kinds that support it.
 # Only non-default (True) values are serialized.
 ATTR_REGISTRY = {
     "exclude_from_build": {
         "api_prop": "exclude_from_build",
-        "types": {
-            TYPE_GUIDS["pou"],
-            TYPE_GUIDS["gvl"],
-            TYPE_GUIDS["dut"],
-            TYPE_GUIDS["method"],
-            TYPE_GUIDS["property"],
-        },
+        "kinds": {"pou", "gvl", "dut", "method", "property"},
     },
     "link_always": {
         "api_prop": "link_always",
-        "types": {
-            TYPE_GUIDS["pou"],
-            TYPE_GUIDS["gvl"],
-            TYPE_GUIDS["method"],
-            TYPE_GUIDS["property"],
-        },
+        "kinds": {"pou", "gvl", "method", "property"},
     },
     "external_implementation": {
         "api_prop": "external_implementation",
-        "types": {
-            TYPE_GUIDS["pou"],
-            TYPE_GUIDS["dut"],
-            TYPE_GUIDS["method"],
-        },
+        "kinds": {"pou", "dut", "method"},
     },
     "enable_system_call": {
         "api_prop": "enable_system_call",
-        "types": {
-            TYPE_GUIDS["pou"],
-            TYPE_GUIDS["method"],
-            TYPE_GUIDS["property"],
-        },
+        "kinds": {"pou", "method", "property"},
     },
 }
 

@@ -325,7 +325,7 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
                 cached_rel_path, resolution = _apply_nvl_path_hint(cached_rel_path, resolution, base_dir)
                 # Validate cached path: rebuild the real path from the live IDE tree.
                 # If the object was moved/renamed in IDE, the cached path is stale.
-                fresh_path = build_expected_path(obj, resolution, is_xml)
+                fresh_path = build_expected_path(obj, resolution)
                 if fresh_path and fresh_path != cached_rel_path:
                     cached_nvl = cached_rel_path.endswith(".nvl_sender.xml")
                     fresh_gvl = fresh_path.endswith(".gvl.xml")
@@ -348,7 +348,7 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
             is_xml = bool(resolution.get("is_xml"))
             should_skip = bool(resolution.get("should_skip"))
             if not should_skip:
-                rel_path = build_expected_path(obj, resolution, is_xml)
+                rel_path = build_expected_path(obj, resolution)
                 rel_path, resolution = _apply_nvl_path_hint(rel_path, resolution, base_dir)
             else:
                 rel_path = None
