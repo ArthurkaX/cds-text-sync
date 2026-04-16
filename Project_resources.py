@@ -33,10 +33,9 @@ load_hidden_modules([
     "codesys_managers",
 ], script_file=__file__)
 
-from codesys_constants import TYPE_NAMES
 from codesys_utils import safe_str, resolve_projects, format_st_content, format_property_content
 from codesys_managers import classify_object, export_object_content, collect_property_accessors
-from codesys_type_system import can_have_implementation_kind
+from codesys_type_system import can_have_implementation_kind, semantic_kind_from_guid
 
 
 class ResourcesResultsForm(Form):
@@ -201,7 +200,7 @@ def get_size_metrics():
             is_xml = resolution.get("is_xml", False)
             effective_type = resolution.get("effective_type", "")
             name = safe_str(obj.get_name())
-            type_label = semantic_kind or TYPE_NAMES.get(effective_type, "Unknown")
+            type_label = semantic_kind or semantic_kind_from_guid(effective_type) or "Unknown"
             size = 0
             
             if is_xml:

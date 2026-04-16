@@ -27,7 +27,7 @@ load_hidden_modules([
     "codesys_compare_engine",
 ], script_file=__file__)
 
-from codesys_constants import TYPE_NAMES, SCRIPT_VERSION
+from codesys_constants import SCRIPT_VERSION
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
     resolve_projects, clean_filename, get_project_prop, calculate_hash
@@ -36,7 +36,7 @@ from codesys_managers import (
     collect_property_accessors, classify_object, build_expected_path, export_object_content,
     format_st_content, format_property_content, NativeManager
 )
-from codesys_type_system import can_have_implementation_kind
+from codesys_type_system import can_have_implementation_kind, semantic_kind_from_guid
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -343,7 +343,7 @@ def get_ide_content_profiling(obj, is_xml, property_accessors, projects_obj,
     profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
     resolution = resolve_runtime_object(obj, profile_name)
     semantic_kind = resolution.get("semantic_kind", "")
-    obj_type_name = semantic_kind or TYPE_NAMES.get(obj_type, obj_type[:8])
+    obj_type_name = semantic_kind or semantic_kind_from_guid(obj_type) or obj_type[:8]
     
     if is_xml:
         clean_name = clean_filename(obj_name)
@@ -521,7 +521,7 @@ def run_speed_analysis():
             rel_path = None
             
         classify_elapsed = time.time() - t_classify
-        type_name = semantic_kind or TYPE_NAMES.get(effective_type, effective_type[:8] if effective_type else "unknown")
+        type_name = semantic_kind or semantic_kind_from_guid(effective_type) or (effective_type[:8] if effective_type else "unknown")
         profiler.track_object(type_name, "classify", classify_elapsed)
         
         if should_skip:

@@ -958,8 +958,8 @@ def read_ide_attrs(obj):
     Uses ATTR_REGISTRY to determine which attributes apply to this object's semantic kind.
     Returns dict of {attr_key: True} for non-default attributes.
     """
-    from codesys_constants import ATTR_REGISTRY, TYPE_NAMES
-    from codesys_type_system import resolve_runtime_object
+    from codesys_constants import ATTR_REGISTRY
+    from codesys_type_system import resolve_runtime_object, semantic_kind_from_guid
     from codesys_type_profiles import PROJECT_PROPERTY_KEY
 
     obj_type_guid = safe_str(obj.type)
@@ -973,9 +973,8 @@ def read_ide_attrs(obj):
         semantic_kind = resolution.get("semantic_kind")
     except:
         pass
-    # Fallback: reverse-lookup GUID to semantic kind name
     if not semantic_kind:
-        semantic_kind = TYPE_NAMES.get(obj_type_guid)
+        semantic_kind = semantic_kind_from_guid(obj_type_guid)
 
     attrs = {}
 
@@ -1043,8 +1042,8 @@ def write_ide_attrs(obj, attrs):
     Only sets attributes that are supported for this object's semantic kind per ATTR_REGISTRY.
     Skips silently if attribute is not in attrs (preserves current IDE state).
     """
-    from codesys_constants import ATTR_REGISTRY, TYPE_NAMES
-    from codesys_type_system import resolve_runtime_object
+    from codesys_constants import ATTR_REGISTRY
+    from codesys_type_system import resolve_runtime_object, semantic_kind_from_guid
     from codesys_type_profiles import PROJECT_PROPERTY_KEY
 
     obj_type_guid = safe_str(obj.type)
@@ -1059,7 +1058,7 @@ def write_ide_attrs(obj, attrs):
     except:
         pass
     if not semantic_kind:
-        semantic_kind = TYPE_NAMES.get(obj_type_guid)
+        semantic_kind = semantic_kind_from_guid(obj_type_guid)
 
     # Access the build_properties sub-object
     build_props = None
@@ -1413,8 +1412,8 @@ def find_object_by_path(rel_path, project):
         if "." in last_part:
             name_part, doc_type = last_part.rsplit(".", 1)
             # Verify if doc_type is a known CODESYS type name
-            from codesys_constants import TYPE_NAMES
-            if doc_type in TYPE_NAMES.values() or doc_type == "pou_xml":
+            from codesys_type_system import SEMANTIC_TYPE_NAMES
+            if doc_type in SEMANTIC_TYPE_NAMES or doc_type == "pou_xml":
                 parts[-1] = name_part
 
     current_obj = project

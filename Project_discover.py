@@ -20,18 +20,14 @@ load_hidden_modules([
 ], script_file=__file__)
 
 # Import shared constants and utilities
-from codesys_constants import TYPE_GUIDS
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_warning, log_error,
     resolve_projects, get_project_prop, get_detected_codesys_version
 )
 from codesys_managers import is_nvl
 from codesys_type_profiles import PROJECT_PROPERTY_KEY, get_profile_label
-from codesys_type_system import resolve_runtime_object, get_selected_profile_name
+from codesys_type_system import resolve_runtime_object, get_selected_profile_name, semantic_kind_from_guid
 from codesys_type_system import SYNC_PROFILE_CATEGORIES
-
-# Reverse mapping of TYPE_GUIDS kept only as a compatibility label fallback.
-TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
 
 
 def suggest_profile_rules(unknown_types, profile_name):
@@ -142,10 +138,10 @@ def discover_project():
                 evidence = resolution.get("evidence") or []
                 is_unknown = not obj_type_name
                 if not obj_type_name:
-                    obj_type_name = TYPE_NAMES.get(obj_type_guid, "UNKNOWN_%s" % obj_type_guid[:8])
+                    obj_type_name = semantic_kind_from_guid(obj_type_guid, profile_name) or "UNKNOWN_%s" % obj_type_guid[:8]
                 
                 # Special case: GVLs that are actually NVLs
-                if obj_type_guid == TYPE_GUIDS["gvl"]:
+                if resolution.get("semantic_kind") == "gvl":
                     try:
                         if is_nvl(obj):
                             obj_type_name = "nvl"
@@ -185,7 +181,7 @@ def discover_project():
         else:
             log_error("No tree nodes were generated. root_children=" + str(len(root_children)) + " all_objects=" + str(len(all_objects)))
         
-# Summary of unknown types
+        # Summary of unknown types
         if unknown_types:
             print("\n!!! UNKNOWN OBJECT TYPES FOUND !!!")
             print("These GUIDs are unresolved for the selected type profile:")

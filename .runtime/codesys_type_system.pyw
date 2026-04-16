@@ -41,7 +41,7 @@ def _load_sibling_module(name):
         return module
     raise ImportError(name + ".pyw not found.")
 
-from codesys_constants import TYPE_GUIDS, EXPORTABLE_TYPES, XML_TYPES, IMPLEMENTATION_TYPES, TYPE_NAMES
+from codesys_constants import TYPE_GUIDS
 try:
     from codesys_type_profiles import (
         DEFAULT_PROFILE_NAME, PROJECT_PROPERTY_KEY, get_profile_guid_to_kind,
@@ -60,13 +60,27 @@ except ImportError:
 
 SEMANTIC_TYPE_NAMES = sorted(TYPE_GUIDS.keys())
 SEMANTIC_EXPORTABLE_KINDS = set([
-    TYPE_NAMES[guid] for guid in EXPORTABLE_TYPES if guid in TYPE_NAMES
+    "pou", "gvl", "dut", "itf", "nvl_sender", "nvl_receiver",
+    "param_list", "textlist", "global_text_list", "symbol_config",
+    "imagepool", "unit_conversion", "visu", "visu_manager",
+    "alarm_config", "alarm_group", "alarm_storage", "task_config",
+    "task", "library_manager", "trace", "softmotion_pool", "visu_style",
+    "project_settings", "device", "file_object", "alarm_class",
+    "imagepool_variant", "alarm_config_item", "device_module",
+    "action", "method", "itf_method", "property", "property_accessor",
+    "task_local_gvl",
 ])
 SEMANTIC_XML_KINDS = set([
-    TYPE_NAMES[guid] for guid in XML_TYPES if guid in TYPE_NAMES
+    "visu", "textlist", "global_text_list", "imagepool",
+    "symbol_config", "alarm_config", "alarm_group", "alarm_storage",
+    "visu_manager", "task_config", "task", "library_manager",
+    "trace", "softmotion_pool", "visu_style", "project_settings",
+    "device", "device_module", "file_object", "alarm_class",
+    "imagepool_variant", "alarm_config_item", "task_local_gvl",
+    "nvl_sender", "nvl_receiver",
 ])
 SEMANTIC_IMPLEMENTATION_KINDS = set([
-    TYPE_NAMES[guid] for guid in IMPLEMENTATION_TYPES if guid in TYPE_NAMES
+    "pou", "action", "method",
 ])
 _SKIP_KINDS = set([
     "property_accessor",
