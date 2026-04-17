@@ -1,6 +1,6 @@
 # cds-text-sync: Professional CODESYS Git Sync
 
-**Version**: `1.7.4`
+**Version**: `1.7.5`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -21,7 +21,8 @@ Professional Git integration for **CODESYS**. Sync Structured Text (ST) with ext
 - **Reversible Sync**: Round-trip editing for Structured Text files with modern external tools (VS Code, Cursor, Copilot).
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
 - **Timestamped Backups with Retention**: Automatically creates safety backups before imports with a configurable retention policy (default: 10 backups).
-- **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing.
+- **Profile-Aware Type System**: JSON type profiles let you remap GUIDs, merge vendor-specific kinds, change sync behavior, and tune handling per project without editing code.
+- **Native XML Export**: Supports XML-based objects for diffing, including profile-controlled export-only kinds such as `library_manager` and hardware devices.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Integrated Attribute Sync**: Synchronize IDE block attributes (Exclude from build, Link always, etc.) directly within the `.st` file header using pragmas.
 - **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by safely removing orphaned objects when files are deleted on disk.
@@ -40,8 +41,9 @@ Professional Git integration for **CODESYS**. Sync Structured Text (ST) with ext
 
 ### Method 1: Manual Copy
 
-1. **Copy Files**: Copy ALL `.py` **and** `.pyw` files to the CODESYS scripts directory.
-   - **Note on `.pyw`**: These are internal library modules. They are hidden from the CODESYS "Scripts" menu by design to keep your interface clean. Only the `Project_*.py` files will appear as executable commands.
+1. **Copy Files**: Copy the root command scripts, `cds_bootstrap.py`, the entire `.runtime/` folder, and the entire `profiles/` folder to the CODESYS scripts directory.
+   - **Note on `.pyw`**: Files inside `.runtime/` are internal runtime modules. They are hidden from the CODESYS "Scripts" menu by design.
+   - **Note on `cds_bootstrap.py`**: This is a support loader used by the public `Project_*.py` entrypoints. Do not run it directly.
 
    Depending on your software and setup preference, use one of the following paths:
    - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
@@ -85,7 +87,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 When upgrading to a new version of `cds-text-sync`:
 
 1. **Check Stable Releases**: First check if there's a newer stable release at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
-2. **Replace All Files**: Copy BOTH `.py` and `.pyw` files, overwriting everything.
+2. **Replace All Files**: Copy the full script payload again: root scripts, `cds_bootstrap.py`, `.runtime/`, and `profiles/`.
    - **Important Note**: If a major refactor (like shifting to shared libraries) occurs, active scripts held in CODESYS memory may become **stale**. After copying new files, it is best to restart CODESYS or reload your project to ensure the Script Engine picks up latest version of all modules.
 3. **Clean Export**: Run `Project_export.py` to refresh metadata and ensure your disk state matches the new script logic.
 4. **Commit Changes**: Review and commit the changes in Git.
@@ -165,11 +167,11 @@ git checkout v1.7.2
 
 ### 2. `Project_parameters.py` (Configuration)
 
-**Configure how the sync works.** Runs an interactive menu to toggle options. Settings are saved in the project file.
+**Configure how the sync works.** Opens the settings dialog and stores the selected options in the project file.
 
 - **[ ] Export Native XML**:
-  - If ENABLED: visual objects (Visualizations, Alarms, ImagePools) are exported to `/xml` folder in PLCopenXML format.
-  - Useful for tracking changes in non-textual objects.
+  - If ENABLED: additional XML-based objects such as visualizations, alarms, and image/text resources are exported for diffing.
+  - XML files are written into the normal mirrored project tree, next to related objects, not into a separate `/xml` folder.
 - **[ ] Backup .project binary**:
   - If ENABLED: the script creates a copy of your `.project` file in the `.project/` folder.
   - Essential for **Git LFS** workflows. Ensures your binary state matches your code state.
@@ -184,6 +186,12 @@ git checkout v1.7.2
   - If ENABLED: creates a unique, timestamped `.bak` file in the `.project/` folder _before_ starting the import process.
 - **Max Backups to Keep**:
   - Sets the number of timestamped backups to keep (default: 10). The script automatically cleans up older backups while preserving your primary Git LFS backups.
+- **[ ] Enable File Logging**:
+  - If ENABLED: writes `sync_debug.log` into the sync directory for export/import/compare diagnostics.
+  - If DISABLED: normal runs stay quieter and rely on dialogs / Script Output only.
+- **Type Profile**:
+  - Selects the JSON type profile used to interpret runtime GUIDs and choose export/import handling.
+  - This is where fork-specific GUID mappings, `native_xml`, `skip`, and direction overrides such as `export_only` come from.
 
 ### 3. `Project_export.py` (CODESYS -> Disk)
 
@@ -191,8 +199,8 @@ Exports the current project state to the sync folder.
 
 ![Export Changes](img/Export.gif)
 
-- **Source Code**: Exports all POUs, GVLs, DUTs to `/src` as `.st` files.
-- **Libraries**: Saves `_libraries.csv` for dependency tracking.
+- **Source Code**: Exports textual objects as `.st` files into a mirrored `Device/Application/...` folder structure.
+- **XML Objects**: Exports supported XML objects into the same mirrored tree. By default, `library_manager`, `device`, and `device_module` are export-only profile-controlled XML kinds.
 - **Binary Backup**: If enabled, saves the project and copies it to `.project/`.
 - **Cleanup**: Detects files on disk that no longer exist in CODESYS and offers to delete them.
 
@@ -202,6 +210,7 @@ Updates the CODESYS project from the files on disk.
 
 - **Smart Update**: Updates existing objects, creates new ones, and builds folder hierarchies.
 - **Deletions**: If a file was deleted from disk (e.g. via git pull), the script will now safely remove the corresponding object from the CODESYS project, ensuring your IDE matches your repository.
+- **Direction-Aware Import**: Objects marked as `export_only` by the active type profile are shown in compare/export but are not imported back into CODESYS.
 - **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code in the `.project/` folder.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
@@ -213,12 +222,12 @@ Updates the CODESYS project from the files on disk.
 
 - **Detection**: Finds modified objects, new objects in IDE, and objects deleted from IDE.
 - **Interactive Update**: Launches a dialog where you can selectively **Import** disk changes into CODESYS or **Export** IDE changes to disk.
-- **Output**: Generates a detailed report in the Script Output window and saves it to `compare.log`.
+- **Output**: Shows results in the comparison dialog and Script Output window.
 - **External Diff**: If you need to compare large files (like XML) in an external editor (VS Code, WinMerge):
   - **Press CTRL + Click "Diff"** in the comparison dialog.
   - This saves both versions (IDE and Disk) to the **`.diff/`** folder in your project directory.
   - You can then open these files in your favorite diff tool.
-- **Clean Run**: The `compare.log` file is recreated every time you run the script, ensuring you only see the latest results.
+- **Profile-Aware Compare**: Export-only kinds such as hardware and `library_manager` can still participate in compare/export workflows without being imported back into the IDE.
 
 ### 6. `Project_discover.py` (Diagnostic Tool)
 
@@ -268,20 +277,20 @@ The tool organizes your repository into a clean structure:
 
 ```
 /
-├── DeviceName/            # PLC Device Name (Not synced, used as folder)
-│   └── ApplicationName/   # Application Name (Logic & Config root)
-│       ├── Folder/        # Project Folders (mirrors IDE tree)
-│       │   └── POU.st     # Logic Source code (.st files)
-│       ├── Task Config.xml# Native XML Configuration (Tasks)
-│       └── Library Mgr.xml# Native XML for Libraries
+├── DeviceName/              # PLC device root
+│   ├── DeviceName.device.xml# Export-only hardware/device XML (profile-controlled)
+│   └── ApplicationName/     # Application root (logic & config)
+│       ├── Folder/          # Project folders (mirrors IDE tree)
+│       │   └── POU.st       # Logic source code (.st files)
+│       ├── Task Config.xml  # Native XML configuration
+│       └── Library Mgr.xml  # Export-only native XML for libraries
 ├── GlobalTextList.xml     # Global objects (Project-level root)
 ├── .project/            # (Optional) Binary .project backup for Git LFS
 ├── .diff/               # (Temporary) Files for external diff tool (CTRL + Diff)
 ├── sync_cache.json      # Cache for performance optimization
 ├── sync_metadata.json   # Metadata about the actions performed by the script
-├── sync_debug.log       # Diagnostic log for sync/discovery
-├── build.log            # Build output log
-└── compare.log          # Comparison results log
+├── sync_debug.log       # Diagnostic log for sync/discovery when file logging is enabled
+└── build.log            # Build output log
 
 ```
 
@@ -294,7 +303,7 @@ The tool organizes your repository into a clean structure:
 
 1.  **Configure**: Run `Project_parameters.py` and enable **"Backup .project binary"**.
 2.  **Export**: Run `Project_export.py`.
-    - Code goes to `/src`.
+    - Code goes into the mirrored `Device/Application/...` tree as `.st` files.
     - Binary goes to `.project/`.
 3.  **Commit**:
     - `git add .`

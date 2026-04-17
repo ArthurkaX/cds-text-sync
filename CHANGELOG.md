@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 1.7.5 (2026-04-17)
+
+**Profiles, Semantic Kinds & Sync Policy:**
+
+- **JSON Type Profiles**: Added profile files in `profiles/` with inheritance, `guid_aliases`, `context_rules`, `sync_profile_overrides`, and `sync_direction_overrides` so projects can remap, merge, force XML handling, or skip types without code changes.
+- **Semantic-First Type Resolution**: Completed the migration from scattered GUID checks to centralized semantic kind resolution, making object classification more consistent across export, compare, import, and discovery.
+- **Per-Type Direction Control**: Added `bidirectional`, `export_only`, `import_only`, and `disabled` sync direction policies per semantic kind.
+- **Library Manager as Export-Only**: `library_manager` now exports for Git visibility and diffing, but is skipped on import to avoid unreliable placeholder restoration.
+- **Hardware Policy in Profiles**: `device` and `device_module` are now controlled by profile settings instead of hardcoded skips, using `native_xml` + `export_only` by default.
+- **Profile Documentation**: Reworked profile docs into `profiles/profiles.md` and added a reusable `profiles/template.json`.
+
+**Runtime Architecture & Entry Points:**
+
+- **Internal Runtime Extraction**: Moved internal engine modules into `.runtime/` and reduced the top-level `Project_*` scripts to thin entrypoints.
+- **Shared Bootstrap Layer**: Centralized runtime loading into a shared bootstrap module and renamed the public bootstrap entrypoint to `cds_bootstrap.py`.
+- **Automation-Friendly Script Calls**: Updated the main entry scripts so they can be invoked more cleanly by external tooling and scripted workflows.
+
+**Compare/Import Robustness:**
+
+- **Nested ST Import Order Fix**: Import now sorts textual files so parent POUs are created before nested children like `TaskMain.Method.st`, fixing first-pass import into empty projects.
+- **Shared Native XML Snapshot Path**: Export and compare now use the same native XML snapshot builder and the same recursion policy for XML-based objects.
+- **Reduced False Hardware Diffs**: Folder hash invalidation is now limited to the direct parent folder, preventing one `.st` edit from forcing untouched `device` and `task_config` objects into noisy XML re-compare.
+- **Cache Recovery for Exported Objects**: Added export-side cache backfilling and better cache warnings so successfully exported objects are less likely to disappear from `sync_cache.json` bookkeeping.
+- **More Explainable Compare Logging**: Compare now logs the exact reason an object dropped into slow-path XML comparison.
+
+**Logging, UI & Runtime Noise Reduction:**
+
+- **Toggleable File Logging**: Added a project setting to enable or disable file logging and updated ignore patterns accordingly.
+- **Quieter Compare/Import/Export Output**: Reduced console/log spam in normal workflows and removed compare log teeing to `compare.log`.
+- **Settings Dialog Cleanup**: Refined the Settings UI layout and grouping for a cleaner configuration flow.
+- **Unsupported Build Property Silence**: Missing `build_properties` members such as `external_implementation` are now skipped quietly instead of spamming `INFO`/`WARNING` for every object.
+- **Python 3 Compatibility Cleanup**: Replaced deprecated `callable()` usage in runtime diagnostics with a Python-3-compatible check.
+
 ### Version 1.7.4 (2026-04-11)
 
 **Attribute Synchronization (DRY Sync):**

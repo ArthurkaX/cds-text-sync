@@ -12,7 +12,7 @@ from codesys_utils import (
     init_logging, backup_project_binary, resolve_projects, update_application_count_flag,
     set_info_logging, set_console_silence,
     ensure_git_configs, get_project_prop, load_sync_cache, save_sync_cache,
-    build_folder_hashes, normalize_path, finalize_sync_operation
+    build_folder_hashes, normalize_path, finalize_sync_operation, get_quick_ide_hash
 )
 from codesys_managers import classify_object, build_expected_path
 from codesys_compare_engine import create_import_managers, resolve_manager
@@ -21,6 +21,67 @@ from codesys_compare_engine import create_import_managers, resolve_manager
 def save_export_metadata(export_dir, stats, elapsed_time):
     from codesys_utils import save_sync_metadata
     save_sync_metadata(export_dir, "export", stats, elapsed_time)
+
+
+def _ensure_cache_entry_after_export(obj, rel_path, file_path, result, is_xml, manager, context):
+    """Backfill missing object cache entries after a successful export.
+
+    Export and compare both rely on sync_cache.json. If a manager export
+    succeeds but forgets to populate context['new_cache'], compare falls back
+    to live IDE extraction and can produce false diffs immediately after export.
+    """
+    if result not in ("new", "updated", "identical"):
+        return
+    if not rel_path or not file_path or not os.path.exists(file_path):
+        return
+
+    new_cache = context.get("new_cache")
+    if new_cache is None:
+        return
+
+    norm_path = normalize_path(rel_path)
+    if norm_path in new_cache:
+        return
+
+    ide_hash = None
+    try:
+        if is_xml:
+            if hasattr(manager, "_hash_file"):
+                ide_hash = manager._hash_file(file_path)
+        else:
+            ide_hash = get_quick_ide_hash(obj, False)
+    except Exception as e:
+        log_warning("Failed to synthesize cache hash for %s (%s): %s" % (
+            safe_str(obj.get_name()) if obj and hasattr(obj, "get_name") else "<unknown>",
+            rel_path,
+            safe_str(e)
+        ))
+        return
+
+    if not ide_hash:
+        log_warning("Export succeeded but cache hash is empty for %s (%s)" % (
+            safe_str(obj.get_name()) if obj and hasattr(obj, "get_name") else "<unknown>",
+            rel_path
+        ))
+        return
+
+    try:
+        stat_info = os.stat(file_path)
+        new_cache[norm_path] = {
+            "ide_hash": ide_hash,
+            "disk_mtime": int(stat_info.st_mtime),
+            "disk_size": stat_info.st_size
+        }
+        log_warning("Recovered missing export cache entry for %s (%s)" % (
+            safe_str(obj.get_name()) if obj and hasattr(obj, "get_name") else "<unknown>",
+            rel_path
+        ))
+    except Exception as e:
+        log_warning("Failed to recover cache entry for %s (%s): %s" % (
+            safe_str(obj.get_name()) if obj and hasattr(obj, "get_name") else "<unknown>",
+            rel_path,
+            safe_str(e)
+        ))
 
 
 def build_export_plan(all_objects, export_dir, cache_data=None):
@@ -328,6 +389,10 @@ def export_project(export_dir, runtime=None, params=None):
                 context["effective_type"] = manager_key
                 context["resolution"] = resolution
                 result = manager.export(obj, context, rel_path=rel_path)
+                _ensure_cache_entry_after_export(
+                    obj, rel_path, os.path.join(export_dir, rel_path.replace("/", os.sep)),
+                    result, is_xml, manager, context
+                )
                 if result == "new":
                     exported_new += 1
                 elif result == "updated":

@@ -1614,7 +1614,7 @@ def normalize_path(path):
 
 def build_folder_hashes(object_hashes):
     """
-    Build hierarchical folder hashes from a dictionary of object hashes.
+    Build direct-parent folder hashes from a dictionary of object hashes.
     
     Args:
         object_hashes: dict of {norm_path: content_hash}
@@ -1626,13 +1626,18 @@ def build_folder_hashes(object_hashes):
     folder_children = defaultdict(list)
     
     for path, o_hash in object_hashes.items():
-        if not o_hash: continue
-        
+        if not o_hash:
+            continue
+
         parts = path.split("/")
-        # Add hash to all parent folders
-        for i in range(1, len(parts)):
-            folder_path = "/".join(parts[:i])
-            folder_children[folder_path].append(o_hash)
+        if len(parts) < 2:
+            continue
+
+        # Folder hashes are intentionally local to immediate file children.
+        # A change in PLC/ST_Application/... must not invalidate untouched
+        # device XML files that merely share the top-level PLC folder.
+        folder_path = "/".join(parts[:-1])
+        folder_children[folder_path].append(o_hash)
             
     result = {}
     for folder_path, child_hashes in folder_children.items():

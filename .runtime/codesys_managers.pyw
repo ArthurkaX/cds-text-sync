@@ -89,6 +89,65 @@ def _resolve_kind_value(value):
         return resolved
     return value
 
+
+_MONOLITHIC_NATIVE_KINDS = set([
+    "task_config", "alarm_config", "visu_manager", "softmotion_pool"
+])
+
+
+def get_native_snapshot_recursive(obj, resolution=None):
+    """Return the canonical recursive export policy for native XML snapshots."""
+    resolution = resolution or resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY))
+    semantic_kind = (resolution or {}).get("semantic_kind")
+
+    if semantic_kind in _MONOLITHIC_NATIVE_KINDS:
+        return True
+
+    if semantic_kind == "device":
+        return not is_container_device(obj)
+
+    return False
+
+
+def export_native_snapshot(obj, target_path, projects_obj=None, resolution=None, recursive=None):
+    """Export one IDE object to native XML using the shared snapshot policy."""
+    resolution = resolution or resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY))
+    projects_obj = projects_obj or resolve_projects()
+    project = getattr(projects_obj, "primary", None) if projects_obj else None
+    if not project:
+        raise RuntimeError("Native export failed: 'projects' object not found or no primary project.")
+
+    if recursive is None:
+        recursive = get_native_snapshot_recursive(obj, resolution)
+    project.export_native([obj], target_path, recursive=recursive)
+
+    return {
+        "semantic_kind": (resolution or {}).get("semantic_kind"),
+        "recursive": recursive,
+        "content_hash": NativeManager()._hash_file(target_path)
+    }
+
+
+def build_native_xml_snapshot(obj, projects_obj=None, resolution=None, temp_prefix="cds_native_snapshot_"):
+    """Build an in-memory native XML snapshot plus its normalized hash."""
+    fd, tmp_path = tempfile.mkstemp(prefix=temp_prefix, suffix=".xml")
+    os.close(fd)
+    try:
+        os.remove(tmp_path)
+    except:
+        pass
+
+    try:
+        meta = export_native_snapshot(obj, tmp_path, projects_obj=projects_obj, resolution=resolution)
+        with codecs.open(tmp_path, "r", "utf-8") as stream:
+            return stream.read(), meta
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+
 def get_task_for_write(obj, project):
     """
     Extract the 'TaskForWrite' (assigned task) GUID from a Task Local GVL
@@ -620,13 +679,25 @@ class ObjectManager(object):
             s = stat_info if stat_info else os.stat(file_path)
             if q_hash is None:
                 q_hash = get_quick_ide_hash(obj, False)
-            
+
+            if not q_hash:
+                log_warning("Cache entry skipped for %s: empty ide_hash (%s)" % (
+                    safe_str(obj.get_name()) if obj and hasattr(obj, "get_name") else "<unknown>",
+                    rel_path
+                ))
+                return
+
             context['new_cache'][norm_path] = {
                 "ide_hash": q_hash,
                 "disk_mtime": int(s.st_mtime),
                 "disk_size": s.st_size
             }
-        except: pass
+        except Exception as e:
+            log_warning("Failed to update cache entry for %s (%s): %s" % (
+                safe_str(obj.get_name()) if obj and hasattr(obj, "get_name") else "<unknown>",
+                rel_path,
+                safe_str(e)
+            ))
 
     def _try_cache_skip(self, obj, rel_path, file_path, context, is_xml=False):
         """Attempt to skip export via IDE-cache-disk fast path.
@@ -1115,9 +1186,12 @@ class NativeManager(ObjectManager):
         except:
             return ""
 
-    def export(self, obj, context, recursive=False, rel_path=None):
+    def export(self, obj, context, recursive=None, rel_path=None):
+        resolution = context.get("resolution") or {
+            "semantic_kind": context.get('effective_type', safe_str(obj.type)),
+            "sync_profile": "native_xml"
+        }
         if rel_path is None:
-            resolution = context.get("resolution") or {"semantic_kind": context.get('effective_type', safe_str(obj.type)), "sync_profile": "native_xml"}
             rel_path = build_expected_path(obj, resolution)
         
         # Determine target directory and file path
@@ -1137,14 +1211,14 @@ class NativeManager(ObjectManager):
         # Export to a temp file first, then compare
         tmp_path = file_path + ".tmp"
         try:
-            projects_obj = resolve_projects()
-            if projects_obj and projects_obj.primary:
-                if not os.path.exists(target_dir):
-                    os.makedirs(target_dir)
-                projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
-            else:
-                log_error("Native export failed: 'projects' object not found or no primary project.")
-                return False
+            if recursive is None:
+                recursive = get_native_snapshot_recursive(obj, resolution)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+            snapshot_meta = export_native_snapshot(
+                obj, tmp_path, projects_obj=resolve_projects(), resolution=resolution, recursive=recursive
+            )
+            recursive = snapshot_meta.get("recursive")
         except Exception as e:
             log_error("Native export failed for " + obj.get_name() + ": " + safe_str(e))
             if os.path.exists(tmp_path):
@@ -1155,7 +1229,9 @@ class NativeManager(ObjectManager):
         if not os.path.exists(tmp_path):
             return False
         
-        new_hash = self._hash_file(tmp_path)
+        new_hash = snapshot_meta.get("content_hash") if snapshot_meta else ""
+        if not new_hash:
+            new_hash = self._hash_file(tmp_path)
         
         # Compare hashes
         if not is_new and old_hash and old_hash == new_hash:
@@ -1232,13 +1308,7 @@ class NativeManager(ObjectManager):
 class ConfigManager(NativeManager):
     """Specialized handling for configurations (forced XML)"""
     def export(self, obj, context, rel_path=None):
-        # Devices are monolithic only if they are not containers (Project Roots)
-        recursive = True
-        if _get_kind(obj) == "device":
-            if is_container_device(obj):
-                recursive = False
-        
-        return super(ConfigManager, self).export(obj, context, recursive=recursive, rel_path=rel_path)
+        return super(ConfigManager, self).export(obj, context, rel_path=rel_path)
     
     def create(self, container, name, file_path, type_guid, resolution=None):
         return super(ConfigManager, self).create(container, name, file_path, type_guid, resolution=resolution)

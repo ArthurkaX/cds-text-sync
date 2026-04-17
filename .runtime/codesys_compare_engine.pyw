@@ -78,7 +78,7 @@ from codesys_managers import (
     NativeManager, FolderManager, PropertyManager, ConfigManager, POUManager,
     collect_property_accessors, classify_object, get_container_prefix,
     get_object_path, get_parent_pou_name, export_object_content,
-    build_expected_path, update_object_code
+    build_expected_path, update_object_code, build_native_xml_snapshot
 )
 
 
@@ -115,28 +115,17 @@ def get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl
     obj_guid = safe_str(getattr(obj, "guid", None))
     
     if is_xml:
-        native_mgr = NativeManager()
-        tmp_path = _new_temp_xml_path("cds_comp_native_")
         try:
-            # ConfigManager objects require recursive=True to include all children
             resolution = resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY))
-            obj_kind = resolution.get("semantic_kind")
-            monolithic_types = ["task_config", "alarm_config", "visu_manager", "softmotion_pool"]
-            recursive = obj_kind in monolithic_types
-            
-            # Special logic for devices: only recursive if not a project container
-            if obj_kind == "device":
-                from codesys_utils import is_container_device
-                recursive = not is_container_device(obj)
-
-            log_info("COMPARE XML export start: %s (%s), recursive=%s -> %s" % (
-                obj_name, obj_guid, recursive, tmp_path))
-            projects_obj.primary.export_native([obj], tmp_path, recursive=recursive)
-            log_info("COMPARE XML export done: %s (%s)" % (obj_name, obj_guid))
-            if os.path.exists(tmp_path):
-                content = read_file(tmp_path)
-                os.remove(tmp_path)
-                return content, {}
+            content, snapshot_meta = build_native_xml_snapshot(
+                obj,
+                projects_obj=projects_obj,
+                resolution=resolution,
+                temp_prefix="cds_comp_native_"
+            )
+            log_info("COMPARE XML snapshot built: %s (%s), recursive=%s" % (
+                obj_name, obj_guid, snapshot_meta.get("recursive")))
+            return content, {}
         except Exception as e:
             log_warning("COMPARE XML export failed: %s (%s): %s" % (
                 obj_name, obj_guid, safe_str(e)))
@@ -443,7 +432,23 @@ def find_all_changes(base_dir, projects_obj, export_xml=False, verbose=False):
                 
             # ── Slow path: Full Comparison ──
             can_have_impl = can_have_implementation_kind(resolution.get("semantic_kind"))
-            log_info("COMPARE slow-path start: %s | xml=%s | path=%s" % (safe_str(obj.get_name()), is_xml, rel_path))
+            slow_path_reasons = []
+            if not cached_entry:
+                slow_path_reasons.append("no cache entry")
+            if not folder_match:
+                slow_path_reasons.append("parent folder hash mismatch")
+            if not disk_unchanged:
+                if not cached_entry:
+                    slow_path_reasons.append("disk state unknown")
+                elif cached_entry.get("disk_mtime") != mtime:
+                    slow_path_reasons.append("disk mtime changed")
+                elif cached_entry.get("disk_size") != size:
+                    slow_path_reasons.append("disk size changed")
+                else:
+                    slow_path_reasons.append("disk state changed")
+            log_info("COMPARE slow-path start: %s | xml=%s | path=%s | reason=%s" % (
+                safe_str(obj.get_name()), is_xml, rel_path, ", ".join(slow_path_reasons) or "unknown"
+            ))
             ide_content, ide_attrs = get_ide_content(obj, is_xml, property_accessors, projects_obj, can_have_impl)
             log_info("COMPARE slow-path content ready: %s | path=%s" % (safe_str(obj.get_name()), rel_path))
             disk_content = read_file(file_path)
