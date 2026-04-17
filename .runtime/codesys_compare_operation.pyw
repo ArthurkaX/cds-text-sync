@@ -11,7 +11,7 @@ import time
 from codesys_runtime import resolve_runtime, make_json_safe
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_error, log_warning,
-    get_project_prop, check_version_compatibility,
+    get_project_prop, check_version_compatibility, set_info_logging,
     finalize_sync_operation, create_safety_backup, resolve_projects
 )
 from codesys_managers import classify_object
@@ -235,89 +235,110 @@ def compare_project(runtime=None, params=None):
         runtime.ui.warning(error)
         return {"status": "error", "error": error}
 
-    version_ok, version_msg = check_version_compatibility(base_dir)
-    if not version_ok:
-        print("WARNING: " + safe_str(version_msg))
-        print("The export was created with a different version of the sync script.")
-        print("Comparison results may be unreliable.\n")
+    quiet_compare = not bool(params.get("compare_verbose", False) or params.get("verbose", False))
+    previous_info_state = True
+    try:
+        previous_info_state = getattr(__import__("codesys_utils"), "_logger").info_enabled
+    except Exception:
+        previous_info_state = True
 
-    print("=== Starting Project Comparison ===")
-    print("Comparing: CODESYS IDE <-> " + base_dir)
-    start_time = time.time()
+    set_info_logging(not quiet_compare)
+    try:
+        version_ok, version_msg = check_version_compatibility(base_dir)
+        if not version_ok and not quiet_compare:
+            print("WARNING: " + safe_str(version_msg))
+            print("The export was created with a different version of the sync script.")
+            print("Comparison results may be unreliable.\n")
 
-    export_xml = get_project_prop("cds-sync-export-xml", False)
-    print("Comparing IDE objects with disk...")
-    results = find_all_changes(base_dir, projects_obj, export_xml=export_xml)
+        if not quiet_compare:
+            print("=== Starting Project Comparison ===")
+            print("Comparing: CODESYS IDE <-> " + base_dir)
 
-    different = results["different"]
-    new_in_ide = results["new_in_ide"]
-    new_on_disk = results["new_on_disk"]
-    moved = results.get("moved", [])
-    unchanged_count = results["unchanged_count"]
+        start_time = time.time()
+        export_xml = get_project_prop("cds-sync-export-xml", False)
 
-    elapsed = time.time() - start_time
-    diff_lines = []
+        if not quiet_compare:
+            print("Comparing IDE objects with disk...")
 
-    for item in different:
-        diff_lines.append("  M  " + item["path"] + "  (" + item["type"] + ")")
-    for item in new_in_ide:
-        diff_lines.append("  +  " + item["path"] + "  (" + item["type"] + ")")
-    for item in new_on_disk:
-        diff_lines.append("  *  " + item["path"] + "  (new on disk)")
-    for item in moved:
-        diff_lines.append("  ~  " + item["name"] + "  (" + item["type"] + ")  IDE:" + item["ide_path"] + " -> Disk:" + item["disk_path"])
+        results = find_all_changes(base_dir, projects_obj, export_xml=export_xml, verbose=not quiet_compare)
 
-    print("")
-    if diff_lines:
-        print("CHANGES:")
-        for line in diff_lines:
-            print(line)
-    else:
-        print("No differences found - IDE and disk are in sync!")
+        different = results["different"]
+        new_in_ide = results["new_in_ide"]
+        new_on_disk = results["new_on_disk"]
+        moved = results.get("moved", [])
+        unchanged_count = results["unchanged_count"]
 
-    print("")
-    print("Summary: M:" + str(len(different)) + " +:" + str(len(new_in_ide))
-          + " *:" + str(len(new_on_disk))
-          + " ~:" + str(len(moved))
-          + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
+        elapsed = time.time() - start_time
+        report = build_compare_report(
+            base_dir, version_ok, version_msg, different, new_in_ide,
+            new_on_disk, moved, unchanged_count, elapsed
+        )
+        report["sync_plan"] = results.get("sync_plan", {})
 
-    log_info("COMPARE: M:" + str(len(different)) + " +:" + str(len(new_in_ide))
-             + " *:" + str(len(new_on_disk))
-             + " ~:" + str(len(moved))
-             + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
-    if diff_lines:
-        log_info("DIFF:\n" + "\n".join(diff_lines))
+        diff_lines = []
+        for item in different:
+            diff_lines.append("  M  " + item["path"] + "  (" + item["type"] + ")")
+        for item in new_in_ide:
+            diff_lines.append("  +  " + item["path"] + "  (" + item["type"] + ")")
+        for item in new_on_disk:
+            diff_lines.append("  *  " + item["path"] + "  (new on disk)")
+        for item in moved:
+            diff_lines.append("  ~  " + item["name"] + "  (" + item["type"] + ")  IDE:" + item["ide_path"] + " -> Disk:" + item["disk_path"])
 
-    report = build_compare_report(
-        base_dir, version_ok, version_msg, different, new_in_ide,
-        new_on_disk, moved, unchanged_count, elapsed
-    )
-    report["sync_plan"] = results.get("sync_plan", {})
+        log_info("COMPARE: M:" + str(len(different)) + " +:" + str(len(new_in_ide))
+                 + " *:" + str(len(new_on_disk))
+                 + " ~:" + str(len(moved))
+                 + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
+        if diff_lines:
+            log_info("DIFF:\n" + "\n".join(diff_lines))
 
-    if not diff_lines:
-        runtime.ui.info("IDE and Disk are in sync!\n\nObjects checked: " + str(unchanged_count))
-        report["action"] = "sync"
+        if quiet_compare:
+            print("Summary: M:" + str(len(different)) + " +:" + str(len(new_in_ide))
+                  + " *:" + str(len(new_on_disk))
+                  + " ~:" + str(len(moved))
+                  + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
+        else:
+            print("")
+            if diff_lines:
+                print("CHANGES:")
+                for line in diff_lines:
+                    print(line)
+            else:
+                print("No differences found - IDE and disk are in sync!")
+
+            print("")
+            print("Summary: M:" + str(len(different)) + " +:" + str(len(new_in_ide))
+                  + " *:" + str(len(new_on_disk))
+                  + " ~:" + str(len(moved))
+                  + " =:" + str(unchanged_count) + " | {:.2f}s".format(elapsed))
+
+        if not diff_lines:
+            if not quiet_compare:
+                runtime.ui.info("IDE and Disk are in sync!\n\nObjects checked: " + str(unchanged_count))
+            report["action"] = "sync"
+            return report
+
+        ui_result = runtime.ui.show_compare_dialog(
+            different, new_in_ide, new_on_disk, unchanged_count, moved
+        )
+        action = ui_result.get("action", "close")
+        selected = ui_result.get("selected", [])
+        selected = _derive_selection_from_plan(report.get("sync_plan"), selected)
+
+        if action == "import":
+            report["action"] = "import"
+            report["operation"] = perform_import(runtime, projects_obj.primary, base_dir, selected, unchanged_count, report.get("sync_plan"))
+            return report
+
+        if action == "export":
+            report["action"] = "export"
+            report["operation"] = perform_export(runtime, base_dir, selected, unchanged_count, report.get("sync_plan"))
+            return report
+
+        report["action"] = "report"
         return report
-
-    ui_result = runtime.ui.show_compare_dialog(
-        different, new_in_ide, new_on_disk, unchanged_count, moved
-    )
-    action = ui_result.get("action", "close")
-    selected = ui_result.get("selected", [])
-    selected = _derive_selection_from_plan(report.get("sync_plan"), selected)
-
-    if action == "import":
-        report["action"] = "import"
-        report["operation"] = perform_import(runtime, projects_obj.primary, base_dir, selected, unchanged_count, report.get("sync_plan"))
-        return report
-
-    if action == "export":
-        report["action"] = "export"
-        report["operation"] = perform_export(runtime, base_dir, selected, unchanged_count, report.get("sync_plan"))
-        return report
-
-    report["action"] = "report"
-    return report
+    finally:
+        set_info_logging(previous_info_state)
 
 
 def main(params=None, runtime=None):

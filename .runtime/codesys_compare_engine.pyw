@@ -271,7 +271,7 @@ def _apply_nvl_path_hint(rel_path, resolution, base_dir):
 
     return hinted_path, resolution
 
-def find_all_changes(base_dir, projects_obj, export_xml=False):
+def find_all_changes(base_dir, projects_obj, export_xml=False, verbose=False):
     """
     Direct two-way comparison with Merkle Tree optimization.
     
@@ -304,7 +304,8 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     property_accessors = {} # (parent_guid, name) -> obj
     
     # ── Pass 1: Quick Batch Scan (IDE only) ──
-    print("  Pass 1: Batch hashing IDE objects...")
+    if verbose:
+        print("  Pass 1: Batch hashing IDE objects...")
     p1_start = time.time()
     path_cache_hits = 0
     for obj in all_ide_objects:
@@ -398,11 +399,13 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     # Build folder hashes (Merkle Tree)
     from codesys_utils import build_folder_hashes
     ide_folder_hashes = build_folder_hashes(ide_hashes)
-    log_info("  Pass 1 complete ({} objects, {} path cache hits, {} invalidated) in {:.2f}s".format(
-        len(ide_hashes), path_cache_hits, path_invalidations, time.time() - p1_start))
+    if verbose:
+        print("  Pass 1 complete ({} objects, {} path cache hits, {} invalidated) in {:.2f}s".format(
+            len(ide_hashes), path_cache_hits, path_invalidations, time.time() - p1_start))
 
     # ── Pass 2: Comparison ──
-    print("  Pass 2: Comparing with disk...")
+    if verbose:
+        print("  Pass 2: Comparing with disk...")
     p2_start = time.time()
     new_cache_objects = {}
     
@@ -491,9 +494,10 @@ def find_all_changes(base_dir, projects_obj, export_xml=False):
     
     p2_elapsed = time.time() - p2_start
     total_elapsed = time.time() - total_start
-    log_info("  Pass 2 complete in {:.2f}s".format(p2_elapsed))
+    if verbose:
+        print("  Pass 2 complete in {:.2f}s".format(p2_elapsed))
+        print("  Compare engine finished in {:.2f}s".format(total_elapsed))
     log_info("  Sync cache updated: %d hits, %d entries total" % (cache_hits, len(new_cache_objects)))
-    print("  Compare engine finished in {:.2f}s".format(total_elapsed))
 
     # Pass 3: Disk Scan
     new_on_disk = scan_new_disk_files(base_dir, ide_paths)

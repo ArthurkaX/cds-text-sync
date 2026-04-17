@@ -43,6 +43,7 @@ class Logger:
         self.log_file = None
         self.is_final = False
         self.logging_enabled = None  # None = not yet checked, True/False = override
+        self.info_enabled = True
         
     def _initialize(self, base_dir=None):
         if not self.logging_enabled:
@@ -85,6 +86,9 @@ class Logger:
             self.is_final = False
 
     def log(self, level, message, include_traceback=False):
+        if level == "INFO" and not self.info_enabled:
+            return
+
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         log_entry = "[%s] [%s] %s\n" % (timestamp, level, message)
         
@@ -113,6 +117,10 @@ def log_info(message):
 
 def log_warning(message):
     _logger.log("WARNING", message)
+
+def set_info_logging(enabled):
+    """Enable or suppress INFO-level console/log output."""
+    _logger.info_enabled = bool(enabled)
 
 def init_logging(base_dir):
     """Explicitly set the logging directory and check if logging is enabled"""

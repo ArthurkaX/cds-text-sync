@@ -4,6 +4,7 @@ codesys_ui.py - Modern UI components for CODESYS scripts
 """
 import clr
 import os
+import textwrap
 try:
     clr.AddReference("System.Windows.Forms")
     clr.AddReference("System.Drawing")
@@ -94,14 +95,37 @@ def ask_yes_no_cancel(title, message):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(530, 440)
+        self.Size = Size(530, 470)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
         self.MinimizeBox = False
+        self.tooltip = ToolTip()
+        self.tooltip.AutomaticDelay = 1200
+        self.tooltip.AutoPopDelay = 18000
+        self.tooltip.InitialDelay = 1200
+        self.tooltip.ReshowDelay = 400
+        self.tooltip.IsBalloon = False
+        self.tooltip.UseAnimation = True
+        self.tooltip.UseFading = True
+        self.tooltip.ShowAlways = True
         self.profile_labels = current_settings.get("available_profile_labels", {})
         self.profile_descriptions = current_settings.get("available_profile_descriptions", {})
         self.user_profiles = set(current_settings.get("user_profiles", []))
+
+        def format_tip(text, width=48):
+            lines = []
+            for paragraph in str(text).split("\n"):
+                chunk = paragraph.strip()
+                if not chunk:
+                    lines.append("")
+                else:
+                    lines.extend(textwrap.wrap(chunk, width=width))
+            return "\n".join(lines)
+
+        def set_tip(control, text):
+            if text:
+                self.tooltip.SetToolTip(control, format_tip(text))
 
         # Heading
         lbl_heading = Label()
@@ -126,6 +150,11 @@ class SettingsForm(Form):
         lbl_detected_version.Text = "Detected CODESYS Version:"
         lbl_detected_version.Location = Point(20, 50)
         lbl_detected_version.AutoSize = True
+        set_tip(
+            lbl_detected_version,
+            "Shows the CODESYS runtime/version detected from the current session. "
+            "This value is read-only and is only meant to help you confirm which IDE build the script is running against."
+        )
         self.Controls.Add(lbl_detected_version)
 
         self.txt_detected_version = TextBox()
@@ -133,6 +162,11 @@ class SettingsForm(Form):
         self.txt_detected_version.Size = Size(140, 20)
         self.txt_detected_version.Text = current_settings.get("detected_codesys_version", "N/A")
         self.txt_detected_version.ReadOnly = True
+        set_tip(
+            self.txt_detected_version,
+            "Read-only version field populated by the script. "
+            "Use it to verify the detected CODESYS version before changing any project sync options."
+        )
         self.Controls.Add(self.txt_detected_version)
 
         # Group A: Sync & Export (left side)
@@ -140,6 +174,11 @@ class SettingsForm(Form):
         grp_sync.Text = "Sync Configuration"
         grp_sync.Location = Point(20, 80)
         grp_sync.Size = Size(240, 175)
+        set_tip(
+            grp_sync,
+            "Controls how the project is exported and synchronized with disk. "
+            "These options affect whether text-based source files, logs, and other sync artifacts are produced."
+        )
         self.Controls.Add(grp_sync)
 
         # Type Profile (in Sync group)
@@ -148,6 +187,11 @@ class SettingsForm(Form):
         lbl_profile.Text = "Type Profile:"
         lbl_profile.Location = Point(10, y_sync)
         lbl_profile.AutoSize = True
+        set_tip(
+            lbl_profile,
+            "Selects the type profile that maps CODESYS object types to export/import behavior. "
+            "The chosen profile determines how the script interprets projects, folders, and special object categories."
+        )
         grp_sync.Controls.Add(lbl_profile)
 
         self.cmb_profile = ComboBox()
@@ -165,6 +209,12 @@ class SettingsForm(Form):
             else:
                 self.cmb_profile.Text = selected_profile
         grp_sync.Controls.Add(self.cmb_profile)
+        set_tip(
+            self.cmb_profile,
+            "Choose which type profile to use for this project. "
+            "Built-in profiles are provided by the script; user profiles come from the local profiles directory. "
+            "The tooltip updates to show the selected profile label and description."
+        )
 
         # Profile info (no tooltip)
         profile_label = self.profile_labels.get(selected_profile, "")
@@ -184,6 +234,11 @@ class SettingsForm(Form):
         self.chk_xml.Location = Point(10, y_sync)
         self.chk_xml.Size = Size(200, 24)
         self.chk_xml.Checked = current_settings.get("export_xml", False)
+        set_tip(
+            self.chk_xml,
+            "When enabled, the script exports non-textual project objects such as visualizations, alarms, image pools, and text lists to a companion XML folder. "
+            "Use this if you want broader diff coverage beyond Structured Text files."
+        )
         grp_sync.Controls.Add(self.chk_xml)
 
         # Enable .log Files
@@ -193,13 +248,23 @@ class SettingsForm(Form):
         self.chk_logging.Location = Point(10, y_sync)
         self.chk_logging.Size = Size(200, 24)
         self.chk_logging.Checked = current_settings.get("enable_logging", False)
+        set_tip(
+            self.chk_logging,
+            "When enabled, the script writes additional log files during export and import operations. "
+            "This is useful for troubleshooting, auditing sync runs, and reviewing the exact actions taken by the engine."
+        )
         grp_sync.Controls.Add(self.chk_logging)
 
         # Group B: Backup & Safety (right side)
         grp_backup = GroupBox()
         grp_backup.Text = "Automation & Backups"
         grp_backup.Location = Point(270, 80)
-        grp_backup.Size = Size(240, 175)
+        grp_backup.Size = Size(240, 205)
+        set_tip(
+            grp_backup,
+            "Controls automated project backups and import/export convenience settings. "
+            "These options determine whether the script saves the project, creates binary backups, and preserves timestamped recovery copies."
+        )
         self.Controls.Add(grp_backup)
 
         y_backup = 20
@@ -208,6 +273,11 @@ class SettingsForm(Form):
         self.chk_bin.Location = Point(10, y_backup)
         self.chk_bin.Size = Size(200, 24)
         self.chk_bin.Checked = current_settings.get("backup_binary", False)
+        set_tip(
+            self.chk_bin,
+            "When enabled, the script keeps a binary copy of the active CODESYS project file in the backup folder. "
+            "This is especially useful for Git LFS or for preserving a restorable binary snapshot alongside the text export."
+        )
         grp_backup.Controls.Add(self.chk_bin)
 
         y_backup += 35
@@ -215,12 +285,22 @@ class SettingsForm(Form):
         lbl_name.Text = "Backup Name:"
         lbl_name.Location = Point(10, y_backup)
         lbl_name.AutoSize = True
+        set_tip(
+            lbl_name,
+            "Defines the fixed base name used for the binary backup file. "
+            "Set this if you want the backup filename to remain stable even when the project is renamed."
+        )
         grp_backup.Controls.Add(lbl_name)
 
         self.txt_backup_name = TextBox()
         self.txt_backup_name.Location = Point(10, y_backup + 20)
         self.txt_backup_name.Size = Size(200, 20)
         self.txt_backup_name.Text = current_settings.get("backup_name", "")
+        set_tip(
+            self.txt_backup_name,
+            "Enter the fixed filename stem for the binary backup copy. "
+            "If left blank, the script uses the current project naming behavior instead of forcing a custom backup name."
+        )
         grp_backup.Controls.Add(self.txt_backup_name)
 
         y_backup += 50
@@ -229,6 +309,11 @@ class SettingsForm(Form):
         self.chk_safety.Location = Point(10, y_backup)
         self.chk_safety.Size = Size(200, 24)
         self.chk_safety.Checked = current_settings.get("safety_backup", True)
+        set_tip(
+            self.chk_safety,
+            "When enabled, the script creates a unique timestamped backup before import operations. "
+            "This protects you from accidental overwrites and gives you a rollback point for risky changes."
+        )
         grp_backup.Controls.Add(self.chk_safety)
 
         y_backup += 30
@@ -237,6 +322,11 @@ class SettingsForm(Form):
         self.chk_save.Location = Point(10, y_backup)
         self.chk_save.Size = Size(100, 24)
         self.chk_save.Checked = current_settings.get("save_after_import", True)
+        set_tip(
+            self.chk_save,
+            "When enabled, the project is saved automatically after a successful import. "
+            "This helps keep the IDE state and the exported disk state aligned without requiring a manual save."
+        )
         grp_backup.Controls.Add(self.chk_save)
 
         self.chk_save_exp = CheckBox()
@@ -244,12 +334,40 @@ class SettingsForm(Form):
         self.chk_save_exp.Location = Point(120, y_backup)
         self.chk_save_exp.Size = Size(100, 24)
         self.chk_save_exp.Checked = current_settings.get("save_after_export", True)
+        set_tip(
+            self.chk_save_exp,
+            "When enabled, the project is saved automatically after a successful export. "
+            "This is useful when you want the latest IDE changes written to disk immediately after synchronization."
+        )
         grp_backup.Controls.Add(self.chk_save_exp)
+
+        y_backup += 32
+        lbl_retention = Label()
+        lbl_retention.Text = "Backup Retention:"
+        lbl_retention.Location = Point(10, y_backup)
+        lbl_retention.AutoSize = True
+        set_tip(
+            lbl_retention,
+            "Sets how many timestamped safety backups are kept before older ones are removed. "
+            "Higher values provide more rollback history, while lower values keep the backup folder smaller."
+        )
+        grp_backup.Controls.Add(lbl_retention)
+
+        self.txt_retention = TextBox()
+        self.txt_retention.Location = Point(140, y_backup - 3)
+        self.txt_retention.Size = Size(50, 20)
+        self.txt_retention.Text = str(current_settings.get("retention_count", 10))
+        set_tip(
+            self.txt_retention,
+            "Enter the maximum number of timestamped backups to keep. "
+            "The script will preserve this many recent backups and prune older ones during cleanup."
+        )
+        grp_backup.Controls.Add(self.txt_retention)
 
         # Separator line above buttons
         lbl_separator = Label()
         lbl_separator.Text = ""
-        lbl_separator.Location = Point(20, 275)
+        lbl_separator.Location = Point(20, 305)
         lbl_separator.Size = Size(490, 2)
         lbl_separator.BorderStyle = BorderStyle.Fixed3D
         lbl_separator.BackColor = Color.LightGray
@@ -260,25 +378,40 @@ class SettingsForm(Form):
         if profiles_dir:
             lbl_profiles_dir = Label()
             lbl_profiles_dir.Text = "Profiles: " + profiles_dir
-            lbl_profiles_dir.Location = Point(20, 290)
+            lbl_profiles_dir.Location = Point(20, 320)
             lbl_profiles_dir.AutoSize = True
             lbl_profiles_dir.Font = Font("Segoe UI", 8)
             lbl_profiles_dir.ForeColor = Color.FromArgb(85, 85, 85)
+            set_tip(
+                lbl_profiles_dir,
+                "Shows the directory where user-defined type profiles are stored. "
+                "Add or edit profile JSON files here if you want custom export/import behavior."
+            )
             self.Controls.Add(lbl_profiles_dir)
 
         # Buttons (bottom right)
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
         btn_cancel.DialogResult = DialogResult.Cancel
-        btn_cancel.Location = Point(350, 370)
+        btn_cancel.Location = Point(350, 400)
         btn_cancel.Size = Size(75, 23)
+        set_tip(
+            btn_cancel,
+            "Close the dialog without applying any changes. "
+            "All current selections are discarded if you cancel."
+        )
         self.Controls.Add(btn_cancel)
 
         btn_save = Button()
         btn_save.Text = "Save"
         btn_save.DialogResult = DialogResult.OK
-        btn_save.Location = Point(435, 370)
+        btn_save.Location = Point(435, 400)
         btn_save.Size = Size(75, 23)
+        set_tip(
+            btn_save,
+            "Save the selected configuration options back into the project properties. "
+            "Only press this when you are ready to apply the settings for the current project."
+        )
         self.Controls.Add(btn_save)
         self.AcceptButton = btn_save
         self.CancelButton = btn_cancel
@@ -339,6 +472,20 @@ class CompareResultsForm(Form):
     EXPORT = "export"
     CLOSE = "close"
     
+    def _format_tip(self, text, width=48):
+        lines = []
+        for paragraph in str(text).split("\n"):
+            chunk = paragraph.strip()
+            if not chunk:
+                lines.append("")
+            else:
+                lines.extend(textwrap.wrap(chunk, width=width))
+        return "\n".join(lines)
+
+    def _set_tip(self, control, text):
+        if text:
+            self.tooltip.SetToolTip(control, self._format_tip(text))
+    
     def __init__(self, different, new_in_ide, new_on_disk, unchanged_count, moved=None):
         self.Text = "cds-text-sync: Comparison Results"
         self.Size = Size(500, 480)
@@ -348,6 +495,15 @@ class CompareResultsForm(Form):
         self.MinimizeBox = False
         self.result_action = self.CLOSE
         self.checkboxes = []
+        self.tooltip = ToolTip()
+        self.tooltip.AutomaticDelay = 1200
+        self.tooltip.AutoPopDelay = 18000
+        self.tooltip.InitialDelay = 1200
+        self.tooltip.ReshowDelay = 400
+        self.tooltip.IsBalloon = False
+        self.tooltip.UseAnimation = True
+        self.tooltip.UseFading = True
+        self.tooltip.ShowAlways = True
         
         # Main Layout: 
         # [Header]
@@ -362,6 +518,11 @@ class CompareResultsForm(Form):
         lbl.Location = Point(15, y)
         lbl.AutoSize = True
         lbl.Font = Font("Segoe UI", 10, FontStyle.Bold)
+        self._set_tip(
+            lbl,
+            "This dialog lists all objects that differ between the IDE project and the files on disk. "
+            "Use the checkboxes to choose which items should be synchronized."
+        )
         self.Controls.Add(lbl)
         y += 30
         
@@ -369,6 +530,11 @@ class CompareResultsForm(Form):
         lbl2.Text = "Select the objects you want to synchronize:"
         lbl2.Location = Point(15, y)
         lbl2.AutoSize = True
+        self._set_tip(
+            lbl2,
+            "Select only the items you want to move between the IDE and disk. "
+            "Unchecked items will be left unchanged when you run Import or Export."
+        )
         self.Controls.Add(lbl2)
         y += 28
         
@@ -378,6 +544,11 @@ class CompareResultsForm(Form):
         list_panel.Size = Size(495, 280) # Fixed height for scrollable area
         list_panel.AutoScroll = True
         # list_panel.BorderStyle = BorderStyle.FixedSingle
+        self._set_tip(
+            list_panel,
+            "Scrollable list of detected differences. "
+            "Each row represents an object that can be imported, exported, or compared in detail."
+        )
         self.Controls.Add(list_panel)
         self.list_panel = list_panel
         
@@ -422,6 +593,11 @@ class CompareResultsForm(Form):
         lbl_sum.Text = "M:" + str(len(different)) + "  +:" + str(len(new_in_ide)) + "  *:" + str(len(new_on_disk or [])) + "  ~:" + str(moved_count) + "  =:" + str(unchanged_count)
         lbl_sum.Location = Point(15, y)
         lbl_sum.AutoSize = True
+        self._set_tip(
+            lbl_sum,
+            "Summary counts for the current comparison run. "
+            "M = modified, + = missing on disk, * = new on disk, ~ = moved or renamed, = = unchanged."
+        )
         self.Controls.Add(lbl_sum)
         y += 25
         
@@ -431,6 +607,11 @@ class CompareResultsForm(Form):
         btn_all.Location = Point(15, y)
         btn_all.Size = Size(55, 25)
         btn_all.Click += self._select_all
+        self._set_tip(
+            btn_all,
+            "Select every item in the list. "
+            "Use this when you want all detected differences to be included in the next sync action."
+        )
         self.Controls.Add(btn_all)
         
         btn_none = Button()
@@ -438,6 +619,11 @@ class CompareResultsForm(Form):
         btn_none.Location = Point(75, y)
         btn_none.Size = Size(55, 25)
         btn_none.Click += self._select_none
+        self._set_tip(
+            btn_none,
+            "Clear all selections in the list. "
+            "Use this when you want to manually choose only a few objects to synchronize."
+        )
         self.Controls.Add(btn_none)
         
         # Action buttons
@@ -446,6 +632,11 @@ class CompareResultsForm(Form):
         btn_close.Location = Point(380, y)
         btn_close.Size = Size(90, 28)
         btn_close.DialogResult = DialogResult.Cancel
+        self._set_tip(
+            btn_close,
+            "Close this dialog without starting import or export. "
+            "No synchronization action is performed when you close the window."
+        )
         self.Controls.Add(btn_close)
         self.CancelButton = btn_close
         
@@ -454,6 +645,11 @@ class CompareResultsForm(Form):
         btn_export.Location = Point(260, y)
         btn_export.Size = Size(110, 28)
         btn_export.Click += self._on_export
+        self._set_tip(
+            btn_export,
+            "Export the selected IDE objects to disk. "
+            "This pushes the chosen changes from the CODESYS project into the filesystem representation."
+        )
         self.Controls.Add(btn_export)
         
         btn_import = Button()
@@ -461,6 +657,11 @@ class CompareResultsForm(Form):
         btn_import.Location = Point(140, y)
         btn_import.Size = Size(110, 28)
         btn_import.Click += self._on_import
+        self._set_tip(
+            btn_import,
+            "Import the selected disk files into the IDE project. "
+            "This applies the chosen file changes back into CODESYS."
+        )
         self.Controls.Add(btn_import)
         
         # Resize form to fit content
@@ -473,6 +674,11 @@ class CompareResultsForm(Form):
         lbl.Location = Point(15, y)
         lbl.AutoSize = True
         lbl.Font = Font("Segoe UI", 9, FontStyle.Bold)
+        self._set_tip(
+            lbl,
+            "These items exist on both sides but their paths do not match. "
+            "Treat them as renamed or moved objects rather than deleted and recreated items."
+        )
         self.list_panel.Controls.Add(lbl)
         y += 22
         
@@ -483,6 +689,11 @@ class CompareResultsForm(Form):
             cb.Size = Size(420, 20)
             cb.Checked = True
             cb.Tag = (item, "moved")
+            self._set_tip(
+                cb,
+                "Moved or renamed object. "
+                "It is present in both IDE and disk, but the paths differ, so synchronization should preserve the object identity."
+            )
             self.list_panel.Controls.Add(cb)
             self.checkboxes.append(cb)
             y += 20
@@ -494,6 +705,11 @@ class CompareResultsForm(Form):
             path_lbl.AutoSize = True
             path_lbl.Font = Font("Segoe UI", 7)
             path_lbl.ForeColor = Color.Gray
+            self._set_tip(
+                path_lbl,
+                "Shows the old IDE path and the current disk path for this moved or renamed object. "
+                "Use this information to confirm that the path change is intentional."
+            )
             self.list_panel.Controls.Add(path_lbl)
             y += 18
         
@@ -507,6 +723,16 @@ class CompareResultsForm(Form):
         lbl.Location = Point(15, y)
         lbl.AutoSize = True
         lbl.Font = Font("Segoe UI", 9, FontStyle.Bold)
+        if direction == "different":
+            section_tip = "Objects whose content differs between IDE and disk. "
+            section_tip += "Use Diff to inspect the changes before importing or exporting."
+        elif direction == "new":
+            section_tip = "Objects that exist in the IDE but not on disk. "
+            section_tip += "Exporting will write them to files, while importing may remove them from the IDE."
+        else:
+            section_tip = "Objects that exist on disk but are missing in the IDE. "
+            section_tip += "Importing will create or update them inside the project."
+        self._set_tip(lbl, section_tip)
         self.list_panel.Controls.Add(lbl)
         y += 22
         
@@ -517,6 +743,16 @@ class CompareResultsForm(Form):
             cb.Size = Size(350, 20)
             cb.Checked = True
             cb.Tag = (item, direction)
+            tooltip_text = "Name: " + item.get("name", "") + "\nType: " + item.get("type", "")
+            path_value = item.get("path", "")
+            if path_value:
+                tooltip_text += "\nPath: " + path_value
+            if item.get("file_path", ""):
+                tooltip_text += "\nDisk file: " + item.get("file_path", "")
+            self._set_tip(
+                cb,
+                tooltip_text + "\n\nCheck this item to include it in the next synchronization step."
+            )
             self.list_panel.Controls.Add(cb)
             self.checkboxes.append(cb)
             
@@ -531,6 +767,11 @@ class CompareResultsForm(Form):
                 btn_diff.Tag = item
                 btn_diff.Click += self._on_diff_click
                 btn_diff.Font = Font("Segoe UI", 7)
+                self._set_tip(
+                    btn_diff,
+                    "Open a side-by-side diff for this item. "
+                    "Hold Ctrl while clicking to save both versions into the .diff folder instead."
+                )
                 self.list_panel.Controls.Add(btn_diff)
             
             y += 22
