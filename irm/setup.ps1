@@ -44,19 +44,33 @@ try {
         $tagsUrl = "$repoUrl/tags"
         $tagsResponse = Invoke-WebRequest -Uri $tagsUrl -UseBasicParsing
         if ($tagsResponse.StatusCode -eq 200) {
-            # Parse tags from HTML - look for version tags (vX.Y.Z)
-            $stableTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+" | 
+            # Parse tags from HTML - look for stable and prerelease tags
+            $stableTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?" | 
                 ForEach-Object { 
                     $line = $_.ToString()
-                    if ($line -match "v(\d+\.\d+\.\d+)") {
+                    if ($line -match "v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)") {
                         "v" + $matches[1]
                     }
                 } | 
                 Where-Object { $_ -ne $null } | 
                 Select-Object -Unique)
-            
+
+            $stableTags = @($stableTags | Where-Object { $_ -match "^v\d+\.\d+\.\d+$" })
+            $testTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+-test\.\d+" |
+                ForEach-Object {
+                    $line = $_.ToString()
+                    if ($line -match "(v\d+\.\d+\.\d+-test\.\d+)") {
+                        $matches[1]
+                    }
+                } |
+                Where-Object { $_ -ne $null } |
+                Select-Object -Unique)
+
             if ($stableTags.Count -gt 5) {
                 $stableTags = @($stableTags | Select-Object -Last 5)
+            }
+            if ($testTags.Count -gt 5) {
+                $testTags = @($testTags | Select-Object -Last 5)
             }
         }
     } catch {
