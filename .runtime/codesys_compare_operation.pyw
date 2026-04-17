@@ -4,8 +4,6 @@ codesys_compare_operation.py - Shared compare workflow with interactive or headl
 """
 from __future__ import print_function
 import os
-import sys
-import codecs
 import time
 
 from codesys_runtime import resolve_runtime, make_json_safe
@@ -351,10 +349,6 @@ def main(params=None, runtime=None):
         previous_info_state = True
     set_info_logging(not quiet_compare)
 
-    log_file_obj = None
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
-
     try:
         base_dir, error = load_base_dir()
         if error:
@@ -363,40 +357,6 @@ def main(params=None, runtime=None):
         if base_dir:
             init_logging(base_dir)
 
-            logging_enabled = get_project_prop("cds-sync-enable-logging", False)
-            if logging_enabled:
-                try:
-                    log_path = os.path.join(base_dir, "compare.log")
-                    log_file_obj = codecs.open(log_path, "w", "utf-8")
-
-                    class Tee(object):
-                        def __init__(self, terminal, file_obj):
-                            self.terminal = terminal
-                            self.file_obj = file_obj
-
-                        def write(self, message):
-                            self.terminal.write(message)
-                            try:
-                                self.file_obj.write(message)
-                            except Exception:
-                                pass
-
-                        def flush(self):
-                            self.terminal.flush()
-                            try:
-                                self.file_obj.flush()
-                            except Exception:
-                                pass
-
-                    sys.stdout = Tee(original_stdout, log_file_obj)
-                    sys.stderr = Tee(original_stderr, log_file_obj)
-                except Exception:
-                    pass
-
         return compare_project(runtime=runtime, params=params)
     finally:
-        if log_file_obj:
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
-            log_file_obj.close()
         set_info_logging(previous_info_state)
