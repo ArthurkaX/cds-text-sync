@@ -94,7 +94,7 @@ def ask_yes_no_cancel(title, message):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(520, 480)
+        self.Size = Size(530, 440)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -102,10 +102,6 @@ class SettingsForm(Form):
         self.profile_labels = current_settings.get("available_profile_labels", {})
         self.profile_descriptions = current_settings.get("available_profile_descriptions", {})
         self.user_profiles = set(current_settings.get("user_profiles", []))
-        self.tooltip = ToolTip()
-        self.tooltip.AutoPopDelay = 100
-        self.tooltip.InitialDelay = 500
-        self.tooltip.ReshowDelay = 100
 
         # Heading
         lbl_heading = Label()
@@ -119,7 +115,7 @@ class SettingsForm(Form):
         if version:
             lbl_version = Label()
             lbl_version.Text = "v" + str(version)
-            lbl_version.Location = Point(400, 18)
+            lbl_version.Location = Point(410, 18)
             lbl_version.AutoSize = True
             lbl_version.Font = Font("Segoe UI", 8)
             lbl_version.ForeColor = Color.Gray
@@ -143,7 +139,7 @@ class SettingsForm(Form):
         grp_sync = GroupBox()
         grp_sync.Text = "Sync Configuration"
         grp_sync.Location = Point(20, 80)
-        grp_sync.Size = Size(235, 180)
+        grp_sync.Size = Size(240, 175)
         self.Controls.Add(grp_sync)
 
         # Type Profile (in Sync group)
@@ -170,14 +166,16 @@ class SettingsForm(Form):
                 self.cmb_profile.Text = selected_profile
         grp_sync.Controls.Add(self.cmb_profile)
 
-        # Profile tooltip (info icon)
+        # Profile info (no tooltip)
         profile_label = self.profile_labels.get(selected_profile, "")
         profile_desc = self.profile_descriptions.get(selected_profile, "")
         if profile_label or profile_desc:
-            tooltip_text = "Label: " + profile_label
+            info_text = profile_label
             if profile_desc:
-                tooltip_text += "\n\n" + profile_desc
-            self.tooltip.SetToolTip(self.cmb_profile, tooltip_text)
+                info_text += " - " + profile_desc
+            if profile_name in self.user_profiles:
+                info_text += " [user]"
+            self.cmb_profile.DropDownWidth = 200
 
         # Export Native XML
         y_sync += 55
@@ -201,7 +199,7 @@ class SettingsForm(Form):
         grp_backup = GroupBox()
         grp_backup.Text = "Automation & Backups"
         grp_backup.Location = Point(270, 80)
-        grp_backup.Size = Size(230, 180)
+        grp_backup.Size = Size(240, 175)
         self.Controls.Add(grp_backup)
 
         y_backup = 20
@@ -235,24 +233,24 @@ class SettingsForm(Form):
 
         y_backup += 30
         self.chk_save = CheckBox()
-        self.chk_save.Text = "Save after Import"
+        self.chk_save.Text = "Save (Import)"
         self.chk_save.Location = Point(10, y_backup)
-        self.chk_save.Size = Size(95, 24)
+        self.chk_save.Size = Size(100, 24)
         self.chk_save.Checked = current_settings.get("save_after_import", True)
         grp_backup.Controls.Add(self.chk_save)
 
         self.chk_save_exp = CheckBox()
-        self.chk_save_exp.Text = "Save after Export"
-        self.chk_save_exp.Location = Point(115, y_backup)
-        self.chk_save_exp.Size = Size(95, 24)
+        self.chk_save_exp.Text = "Save (Export)"
+        self.chk_save_exp.Location = Point(120, y_backup)
+        self.chk_save_exp.Size = Size(100, 24)
         self.chk_save_exp.Checked = current_settings.get("save_after_export", True)
         grp_backup.Controls.Add(self.chk_save_exp)
 
         # Separator line above buttons
         lbl_separator = Label()
         lbl_separator.Text = ""
-        lbl_separator.Location = Point(20, 280)
-        lbl_separator.Size = Size(480, 2)
+        lbl_separator.Location = Point(20, 275)
+        lbl_separator.Size = Size(490, 2)
         lbl_separator.BorderStyle = BorderStyle.Fixed3D
         lbl_separator.BackColor = Color.LightGray
         self.Controls.Add(lbl_separator)
@@ -262,7 +260,7 @@ class SettingsForm(Form):
         if profiles_dir:
             lbl_profiles_dir = Label()
             lbl_profiles_dir.Text = "Profiles: " + profiles_dir
-            lbl_profiles_dir.Location = Point(20, 295)
+            lbl_profiles_dir.Location = Point(20, 290)
             lbl_profiles_dir.AutoSize = True
             lbl_profiles_dir.Font = Font("Segoe UI", 8)
             lbl_profiles_dir.ForeColor = Color.FromArgb(85, 85, 85)
@@ -272,14 +270,14 @@ class SettingsForm(Form):
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
         btn_cancel.DialogResult = DialogResult.Cancel
-        btn_cancel.Location = Point(350, 405)
+        btn_cancel.Location = Point(350, 370)
         btn_cancel.Size = Size(75, 23)
         self.Controls.Add(btn_cancel)
 
         btn_save = Button()
         btn_save.Text = "Save"
         btn_save.DialogResult = DialogResult.OK
-        btn_save.Location = Point(435, 405)
+        btn_save.Location = Point(435, 370)
         btn_save.Size = Size(75, 23)
         self.Controls.Add(btn_save)
         self.AcceptButton = btn_save
