@@ -373,6 +373,19 @@ def run_operation(command, params=None, runtime=None, caller_globals=None, scrip
 
     operation_module.system = runtime.system
     operation_module.projects = runtime.projects
+
+    if command in ("export", "import"):
+        try:
+            utils_mod = sys.modules.get("codesys_utils")
+            if utils_mod and hasattr(utils_mod, "set_info_logging"):
+                verbose_key = command + "_verbose"
+                verbose = bool((params or {}).get(verbose_key, False) or (params or {}).get("verbose", False))
+                utils_mod.set_info_logging(verbose)
+                if hasattr(utils_mod, "set_console_silence"):
+                    utils_mod.set_console_silence(not verbose)
+        except Exception:
+            pass
+
     return operation_module.main(params=params or {}, runtime=runtime)
 
 

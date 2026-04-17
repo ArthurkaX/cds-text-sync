@@ -44,6 +44,7 @@ class Logger:
         self.is_final = False
         self.logging_enabled = None  # None = not yet checked, True/False = override
         self.info_enabled = True
+        self.console_silent = False
         
     def _initialize(self, base_dir=None):
         if not self.logging_enabled:
@@ -86,7 +87,7 @@ class Logger:
             self.is_final = False
 
     def log(self, level, message, include_traceback=False):
-        if level == "INFO" and not self.info_enabled:
+        if level == "INFO" and (not self.info_enabled or self.console_silent):
             return
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -121,6 +122,11 @@ def log_warning(message):
 def set_info_logging(enabled):
     """Enable or suppress INFO-level console/log output."""
     _logger.info_enabled = bool(enabled)
+
+
+def set_console_silence(enabled):
+    """Force console INFO output off/on without touching file logging."""
+    _logger.console_silent = bool(enabled)
 
 def init_logging(base_dir):
     """Explicitly set the logging directory and check if logging is enabled"""
@@ -1437,7 +1443,7 @@ def find_object_by_path(rel_path, project):
     return current_obj
 
 
-def cleanup_old_backups(project_folder, retention_count):
+def cleanup_old_backups(project_folder, retention_count, verbose=True):
     """
     Clean up old timestamped backups in .project/ folder.
     Only deletes files matching pattern: YYYYMMDD_HHMMSS_*.bak
@@ -1481,16 +1487,19 @@ def cleanup_old_backups(project_folder, retention_count):
                 os.remove(file_path)
                 filename = os.path.basename(file_path)
                 log_info("Deleted old backup: .project/" + filename)
-                print("Deleted old backup: .project/" + filename)
+                if verbose:
+                    print("Deleted old backup: .project/" + filename)
             except Exception as e:
                 log_warning("Failed to delete old backup " + file_path + ": " + safe_str(e))
-                print("Warning: Failed to delete old backup: " + file_path)
+                if verbose:
+                    print("Warning: Failed to delete old backup: " + file_path)
     except Exception as e:
         log_warning("Error during backup cleanup: " + safe_str(e))
-        print("Warning: Error during backup cleanup: " + safe_str(e))
+        if verbose:
+            print("Warning: Error during backup cleanup: " + safe_str(e))
 
 
-def backup_project_binary(export_dir, projects_obj=None, timestamped=False, retention_count=None):
+def backup_project_binary(export_dir, projects_obj=None, timestamped=False, retention_count=None, verbose=True):
     """
     Copy the current project binary to /project folder.
     Forces a project save before copying to ensure the backup is current.
@@ -1516,7 +1525,8 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False, rete
         
         if not projects_obj or not hasattr(projects_obj, "primary") or not projects_obj.primary:
             log_warning("Cannot identify project for backup.")
-            print("Debug: Cannot identify project for backup (projects_obj missing or invalid).")
+            if verbose:
+                print("Debug: Cannot identify project for backup (projects_obj missing or invalid).")
             return None
 
         # Force save to ensure we backup the latest state
@@ -1526,11 +1536,13 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False, rete
         except Exception as e:
             msg = "Could not save project before backup: " + safe_str(e)
             log_warning(msg)
-            print("Debug: " + msg)
+            if verbose:
+                print("Debug: " + msg)
 
         if not hasattr(projects_obj.primary, "path") or not projects_obj.primary.path:
             log_warning("Project not saved to disk yet. Skipping binary backup.")
-            print("Debug: Project has no path on disk.")
+            if verbose:
+                print("Debug: Project has no path on disk.")
             return None
 
         project_path = projects_obj.primary.path
@@ -1561,17 +1573,19 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False, rete
         
         shutil.copy2(project_path, target_path)
         log_info("Binary backup created: .project/" + file_name)
-        print("Binary backup created: .project/" + file_name)
+        if verbose:
+            print("Binary backup created: .project/" + file_name)
         
         # Clean up old timestamped backups if retention is specified
         if timestamped and retention_count is not None:
-            cleanup_old_backups(project_folder, retention_count)
+            cleanup_old_backups(project_folder, retention_count, verbose=verbose)
         
         return file_name
         
     except Exception as e:
         log_error("Warning: Could not create binary backup: " + str(e))
-        print("Warning: Could not create binary backup: " + str(e))
+        if verbose:
+            print("Warning: Could not create binary backup: " + str(e))
         return None
 
 
@@ -1710,7 +1724,7 @@ def save_sync_metadata(base_dir, action, stats, elapsed):
         log_warning("Failed to save version to project property: " + safe_str(e))
 
 
-def finalize_sync_operation(base_dir, projects_obj, is_import=False):
+def finalize_sync_operation(base_dir, projects_obj, is_import=False, verbose=True):
     """Handle final document save or binary backup according to user settings."""
     save_prop = "cds-sync-save-after-import" if is_import else "cds-sync-save-after-export"
     save_after_op = get_project_prop(save_prop, True)
@@ -1718,18 +1732,23 @@ def finalize_sync_operation(base_dir, projects_obj, is_import=False):
 
     if backup_binary and projects_obj and getattr(projects_obj, 'primary', None):
         try:
-            print("Action: Updating binary backup...")
-            backup_project_binary(base_dir, projects_obj)
+            if verbose:
+                print("Action: Updating binary backup...")
+            backup_project_binary(base_dir, projects_obj, verbose=verbose)
         except Exception as e:
-            print("Warning: Could not update binary backup: " + safe_str(e))
+            if verbose:
+                print("Warning: Could not update binary backup: " + safe_str(e))
     elif save_after_op and projects_obj and getattr(projects_obj, 'primary', None):
         try:
-            print("Action: Saving project...")
+            if verbose:
+                print("Action: Saving project...")
             projects_obj.primary.save()
-            print("Project saved successfully.")
+            if verbose:
+                print("Project saved successfully.")
         except Exception as e:
             op_str = "import" if is_import else "export"
-            print("Warning: Could not save project after " + op_str + ": " + safe_str(e))
+            if verbose:
+                print("Warning: Could not save project after " + op_str + ": " + safe_str(e))
 
 
 def create_safety_backup(base_dir, projects_obj, items_to_import):

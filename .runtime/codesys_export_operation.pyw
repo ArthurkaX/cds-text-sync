@@ -10,6 +10,7 @@ from codesys_runtime import resolve_runtime
 from codesys_utils import (
     safe_str, load_base_dir, log_info, log_warning, log_error,
     init_logging, backup_project_binary, resolve_projects, update_application_count_flag,
+    set_info_logging, set_console_silence,
     ensure_git_configs, get_project_prop, load_sync_cache, save_sync_cache,
     build_folder_hashes, normalize_path, finalize_sync_operation
 )
@@ -126,7 +127,7 @@ def _apply_nvl_path_hint(rel_path, resolution, export_dir):
     return hinted_path, resolution
 
 
-def cleanup_orphaned_files(export_dir, current_objects, runtime):
+def cleanup_orphaned_files(export_dir, current_objects, runtime, verbose=False):
     orphaned_items = []
 
     for root, dirs, files in os.walk(export_dir):
@@ -164,16 +165,19 @@ def cleanup_orphaned_files(export_dir, current_objects, runtime):
 
     removed_count = 0
     if should_delete:
-        print("Cleaning up orphaned files...")
+        if verbose:
+            print("Cleaning up orphaned files...")
         for rel_path in orphaned_items:
             full_path = os.path.join(export_dir, rel_path.replace("/", os.sep))
             try:
                 if os.path.exists(full_path):
                     os.remove(full_path)
                     removed_count += 1
-                    print("Deleted: " + rel_path)
+                    if verbose:
+                        print("Deleted: " + rel_path)
             except Exception as error:
-                print("Error deleting " + rel_path + ": " + safe_str(error))
+                if verbose:
+                    print("Error deleting " + rel_path + ": " + safe_str(error))
 
         for root, dirs, files in os.walk(export_dir, topdown=False):
             dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -193,188 +197,228 @@ def cleanup_orphaned_files(export_dir, current_objects, runtime):
                 try:
                     if not os.listdir(root):
                         os.rmdir(root)
-                        print("Deleted empty folder: " + rel_path)
+                        if verbose:
+                            print("Deleted empty folder: " + rel_path)
                 except Exception:
                     pass
         return removed_count
 
-    print("Orphaned files ignored.")
+    if verbose:
+        print("Orphaned files ignored.")
     return 0
 
 
 def export_project(export_dir, runtime=None, params=None):
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=globals(), params=params)
+    verbose = bool(params.get("export_verbose", False) or params.get("verbose", False))
+    previous_info_state = True
+    previous_console_silence = False
+    try:
+        previous_info_state = getattr(__import__("codesys_utils"), "_logger").info_enabled
+        previous_console_silence = getattr(__import__("codesys_utils"), "_logger").console_silent
+    except Exception:
+        previous_info_state = True
+        previous_console_silence = False
+    set_info_logging(not verbose)
+    set_console_silence(not verbose)
     projects_obj = resolve_projects(runtime.projects, runtime.caller_globals)
 
-    if projects_obj is None or not projects_obj.primary:
-        message = "Error: 'projects' object not found or no project open."
-        runtime.ui.error(message)
-        return {"status": "error", "error": message}
+    try:
+        if projects_obj is None or not projects_obj.primary:
+            message = "Error: 'projects' object not found or no project open."
+            runtime.ui.error(message)
+            return {"status": "error", "error": message}
 
-    if not os.path.exists(export_dir):
-        os.makedirs(export_dir)
+        if not os.path.exists(export_dir):
+            os.makedirs(export_dir)
 
-    ensure_git_configs(export_dir)
+        ensure_git_configs(export_dir)
 
-    print("=== Starting Project Export ===")
-    update_application_count_flag()
-    start_time = time.time()
-    print("Export directory: " + export_dir)
+        update_application_count_flag()
+        start_time = time.time()
+        if verbose:
+            print("=== Starting Project Export ===")
+            print("Export directory: " + export_dir)
 
-    export_xml = get_project_prop("cds-sync-export-xml", False)
-    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+        export_xml = get_project_prop("cds-sync-export-xml", False)
+        backup_binary = get_project_prop("cds-sync-backup-binary", False)
 
-    if backup_binary:
-        print("Binary backup enabled.")
-        backup_project_binary(export_dir, projects_obj)
-    else:
-        print("Binary backup disabled (skipping .project copy).")
+        if backup_binary:
+            if verbose:
+                print("Binary backup enabled.")
+            backup_project_binary(export_dir, projects_obj, verbose=verbose)
+        else:
+            if verbose:
+                print("Binary backup disabled (skipping .project copy).")
 
-    all_objects = projects_obj.primary.get_children(recursive=True)
-    print("Found " + str(len(all_objects)) + " total objects")
+        all_objects = projects_obj.primary.get_children(recursive=True)
+        if verbose:
+            print("Found " + str(len(all_objects)) + " total objects")
 
-    managers = create_import_managers()
-    cache_data = load_sync_cache(export_dir)
-    new_cache = {}
-    if cache_data and cache_data.get("objects"):
-        log_info("Sync cache loaded! Enabling accelerated export (Merkle Tree skip).")
+        managers = create_import_managers()
+        cache_data = load_sync_cache(export_dir)
+        new_cache = {}
+        if cache_data and cache_data.get("objects"):
+            log_info("Sync cache loaded! Enabling accelerated export (Merkle Tree skip).")
 
-    plan = build_export_plan(all_objects, export_dir, cache_data=cache_data)
-    plan_items = plan["plan_items"]
-    property_accessors = plan["property_accessors"]
-    new_types = plan["new_types"]
+        plan = build_export_plan(all_objects, export_dir, cache_data=cache_data)
+        plan_items = plan["plan_items"]
+        property_accessors = plan["property_accessors"]
+        new_types = plan["new_types"]
 
-    exported_new = 0
-    exported_updated = 0
-    exported_identical = 0
-    exported_failed = 0
-    skipped_count = 0
-    exported_paths = set()
+        exported_new = 0
+        exported_updated = 0
+        exported_identical = 0
+        exported_failed = 0
+        skipped_count = 0
+        exported_paths = set()
 
-    context = {
-        "export_dir": export_dir,
-        "export_xml": export_xml,
-        "property_accessors": property_accessors,
-        "exported_paths": exported_paths,
-        "cache_data": cache_data,
-        "new_cache": new_cache,
-        "new_types": new_types,
-    }
+        context = {
+            "export_dir": export_dir,
+            "export_xml": export_xml,
+            "property_accessors": property_accessors,
+            "exported_paths": exported_paths,
+            "cache_data": cache_data,
+            "new_cache": new_cache,
+            "new_types": new_types,
+        }
 
-    for item in plan_items:
-        try:
-            obj = item["obj"]
-            resolution = item["resolution"]
-            rel_path = item["rel_path"]
-            effective_type = item["effective_type"]
-            is_xml = item["is_xml"]
-            manager_key = item["manager_key"]
-            should_skip = item["should_skip"]
-            norm_path = item["norm_path"]
+        for item in plan_items:
+            try:
+                obj = item["obj"]
+                resolution = item["resolution"]
+                rel_path = item["rel_path"]
+                effective_type = item["effective_type"]
+                is_xml = item["is_xml"]
+                manager_key = item["manager_key"]
+                should_skip = item["should_skip"]
+                norm_path = item["norm_path"]
 
-            if cache_data and norm_path:
-                try:
-                    cached_obj = cache_data.get("objects", {}).get(norm_path)
-                    if cached_obj:
-                        new_cache[norm_path] = cached_obj
-                except Exception:
-                    pass
+                if cache_data and norm_path:
+                    try:
+                        cached_obj = cache_data.get("objects", {}).get(norm_path)
+                        if cached_obj:
+                            new_cache[norm_path] = cached_obj
+                    except Exception:
+                        pass
 
-            if should_skip:
-                skipped_count += 1
-                continue
-
-            if is_xml:
-                always_exported = resolution.get("sync_profile") == "native_xml" or resolution.get("semantic_kind") in [
-                    "task_config", "nvl_sender", "nvl_receiver"
-                ]
-                if not always_exported and not export_xml:
+                if should_skip:
                     skipped_count += 1
                     continue
 
-            try:
-                manager = resolve_manager(managers, resolution, rel_path)
-            except Exception:
                 if is_xml:
-                    manager = managers["native"] if manager_key not in managers else managers[manager_key]
-                elif manager_key in managers:
-                    manager = managers[manager_key]
-                else:
-                    manager = managers["default"]
+                    always_exported = resolution.get("sync_profile") == "native_xml" or resolution.get("semantic_kind") in [
+                        "task_config", "nvl_sender", "nvl_receiver"
+                    ]
+                    if not always_exported and not export_xml:
+                        skipped_count += 1
+                        continue
 
-            context["effective_type"] = manager_key
-            context["resolution"] = resolution
-            result = manager.export(obj, context, rel_path=rel_path)
-            if result == "new":
-                exported_new += 1
-            elif result == "updated":
-                exported_updated += 1
-            elif result == "identical":
-                exported_identical += 1
+                try:
+                    manager = resolve_manager(managers, resolution, rel_path)
+                except Exception:
+                    if is_xml:
+                        manager = managers["native"] if manager_key not in managers else managers[manager_key]
+                    elif manager_key in managers:
+                        manager = managers[manager_key]
+                    else:
+                        manager = managers["default"]
 
-        except Exception as error:
-            exported_failed += 1
-            log_error("Error exporting " + safe_str(item.get("obj", "unknown")) + ": " + safe_str(error))
+                context["effective_type"] = manager_key
+                context["resolution"] = resolution
+                result = manager.export(obj, context, rel_path=rel_path)
+                if result == "new":
+                    exported_new += 1
+                elif result == "updated":
+                    exported_updated += 1
+                elif result == "identical":
+                    exported_identical += 1
 
-    removed_count = cleanup_orphaned_files(export_dir, exported_paths, runtime)
-    if removed_count is None:
-        return {"status": "cancelled"}
+            except Exception as error:
+                exported_failed += 1
+                log_error("Error exporting " + safe_str(item.get("obj", "unknown")) + ": " + safe_str(error))
 
-    if new_cache:
-        just_hashes = {}
-        for path, entry in new_cache.items():
-            just_hashes[path] = entry.get("ide_hash")
-        folder_hashes = build_folder_hashes(just_hashes)
-        save_sync_cache(export_dir, new_cache, folder_hashes, context.get("new_types"))
-        log_info("Saved updated sync cache with {} objects and {} folders.".format(
-            len(new_cache), len(folder_hashes)))
+        removed_count = cleanup_orphaned_files(export_dir, exported_paths, runtime, verbose=verbose)
+        if removed_count is None:
+            return {"status": "cancelled"}
 
-    print("=== Export Complete ===")
-    elapsed_time = time.time() - start_time
-    print("New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ", Removed: " + str(removed_count))
-    print("Skipped: " + str(skipped_count) + " objects (no textual content)")
-    print("Time elapsed: {:.2f} seconds".format(elapsed_time))
-    print("Completed at: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        if new_cache:
+            just_hashes = {}
+            for path, entry in new_cache.items():
+                just_hashes[path] = entry.get("ide_hash")
+            folder_hashes = build_folder_hashes(just_hashes)
+            save_sync_cache(export_dir, new_cache, folder_hashes, context.get("new_types"))
+            log_info("Saved updated sync cache with {} objects and {} folders.".format(
+                len(new_cache), len(folder_hashes)))
 
-    exported_total = exported_new + exported_updated + exported_identical
-    summary = "Updated: " + str(exported_updated) + ", Created: " + str(exported_new) + ", Removed: " + str(removed_count) + ", Failed: " + str(exported_failed) + " (Identical: " + str(exported_identical) + ")"
-    log_info("Export complete! " + summary + " Time elapsed: {:.2f}s".format(elapsed_time))
+        elapsed_time = time.time() - start_time
+        summary = "Updated: " + str(exported_updated) + ", Created: " + str(exported_new) + ", Removed: " + str(removed_count) + ", Failed: " + str(exported_failed) + " (Identical: " + str(exported_identical) + ")"
+        dry_report = "Export complete | " + summary + " | Skipped: " + str(skipped_count) + " | Time: {:.2f}s".format(elapsed_time)
+        if verbose:
+            print("=== Export Complete ===")
+            print("New: " + str(exported_new) + ", Updated: " + str(exported_updated) + ", Identical: " + str(exported_identical) + ", Removed: " + str(removed_count))
+            print("Skipped: " + str(skipped_count) + " objects (no textual content)")
+            print("Time elapsed: {:.2f} seconds".format(elapsed_time))
+            print("Completed at: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        else:
+            print(dry_report)
 
-    stats = {
-        "new": exported_new,
-        "updated": exported_updated,
-        "identical": exported_identical,
-        "removed": removed_count,
-        "failed": exported_failed,
-        "total": exported_total
-    }
-    save_export_metadata(export_dir, stats, elapsed_time)
+        exported_total = exported_new + exported_updated + exported_identical
+        log_info("Export complete! " + summary + " Time elapsed: {:.2f}s".format(elapsed_time))
 
-    runtime.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
-    finalize_sync_operation(export_dir, projects_obj, is_import=False)
-
-    return {
-        "status": "success",
-        "summary": {
+        stats = {
+            "new": exported_new,
             "updated": exported_updated,
-            "created": exported_new,
+            "identical": exported_identical,
             "removed": removed_count,
             "failed": exported_failed,
-            "identical": exported_identical,
-            "elapsed_seconds": round(elapsed_time, 3)
+            "total": exported_total
         }
-    }
+        save_export_metadata(export_dir, stats, elapsed_time)
+
+        runtime.ui.info("Export complete!\n\n" + summary + "\nLocation: " + export_dir + "\nTime elapsed: {:.2f} seconds".format(elapsed_time))
+        finalize_sync_operation(export_dir, projects_obj, is_import=False, verbose=verbose)
+
+        return {
+            "status": "success",
+            "summary": {
+                "updated": exported_updated,
+                "created": exported_new,
+                "removed": removed_count,
+                "failed": exported_failed,
+                "identical": exported_identical,
+                "elapsed_seconds": round(elapsed_time, 3)
+            }
+        }
+    finally:
+        set_info_logging(previous_info_state)
+        set_console_silence(previous_console_silence)
 
 
 def main(params=None, runtime=None):
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=globals(), params=params)
+    verbose = bool(params.get("export_verbose", False) or params.get("verbose", False))
+    previous_info_state = True
+    previous_console_silence = False
+    try:
+        previous_info_state = getattr(__import__("codesys_utils"), "_logger").info_enabled
+        previous_console_silence = getattr(__import__("codesys_utils"), "_logger").console_silent
+    except Exception:
+        previous_info_state = True
+        previous_console_silence = False
+    set_info_logging(not verbose)
+    set_console_silence(not verbose)
 
-    base_dir, error = load_base_dir()
-    if error:
-        runtime.ui.warning(error)
-        return {"status": "error", "error": error}
+    try:
+        base_dir, error = load_base_dir()
+        if error:
+            runtime.ui.warning(error)
+            return {"status": "error", "error": error}
 
-    init_logging(base_dir)
-    return export_project(base_dir, runtime=runtime, params=params)
+        init_logging(base_dir)
+        return export_project(base_dir, runtime=runtime, params=params)
+    finally:
+        set_info_logging(previous_info_state)
+        set_console_silence(previous_console_silence)

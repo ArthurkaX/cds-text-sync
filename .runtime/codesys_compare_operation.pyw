@@ -224,6 +224,13 @@ def compare_project(runtime=None, params=None):
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=globals(), params=params)
     projects_obj = resolve_projects(runtime.projects, runtime.caller_globals)
+    quiet_compare = not bool(params.get("compare_verbose", False) or params.get("verbose", False))
+    previous_info_state = True
+    try:
+        previous_info_state = getattr(__import__("codesys_utils"), "_logger").info_enabled
+    except Exception:
+        previous_info_state = True
+    set_info_logging(not quiet_compare)
 
     if projects_obj is None or not projects_obj.primary:
         message = "Error: 'projects' object not found or no project open."
@@ -235,14 +242,6 @@ def compare_project(runtime=None, params=None):
         runtime.ui.warning(error)
         return {"status": "error", "error": error}
 
-    quiet_compare = not bool(params.get("compare_verbose", False) or params.get("verbose", False))
-    previous_info_state = True
-    try:
-        previous_info_state = getattr(__import__("codesys_utils"), "_logger").info_enabled
-    except Exception:
-        previous_info_state = True
-
-    set_info_logging(not quiet_compare)
     try:
         version_ok, version_msg = check_version_compatibility(base_dir)
         if not version_ok and not quiet_compare:
@@ -344,49 +343,60 @@ def compare_project(runtime=None, params=None):
 def main(params=None, runtime=None):
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=globals(), params=params)
+    quiet_compare = not bool(params.get("compare_verbose", False) or params.get("verbose", False))
+    previous_info_state = True
+    try:
+        previous_info_state = getattr(__import__("codesys_utils"), "_logger").info_enabled
+    except Exception:
+        previous_info_state = True
+    set_info_logging(not quiet_compare)
 
-    base_dir, error = load_base_dir()
     log_file_obj = None
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
-    if base_dir:
-        init_logging(base_dir)
-
-        logging_enabled = get_project_prop("cds-sync-enable-logging", False)
-        if logging_enabled:
-            try:
-                log_path = os.path.join(base_dir, "compare.log")
-                log_file_obj = codecs.open(log_path, "w", "utf-8")
-
-                class Tee(object):
-                    def __init__(self, terminal, file_obj):
-                        self.terminal = terminal
-                        self.file_obj = file_obj
-
-                    def write(self, message):
-                        self.terminal.write(message)
-                        try:
-                            self.file_obj.write(message)
-                        except Exception:
-                            pass
-
-                    def flush(self):
-                        self.terminal.flush()
-                        try:
-                            self.file_obj.flush()
-                        except Exception:
-                            pass
-
-                sys.stdout = Tee(original_stdout, log_file_obj)
-                sys.stderr = Tee(original_stderr, log_file_obj)
-            except Exception:
-                pass
-
     try:
+        base_dir, error = load_base_dir()
+        if error:
+            return {"status": "error", "error": error}
+
+        if base_dir:
+            init_logging(base_dir)
+
+            logging_enabled = get_project_prop("cds-sync-enable-logging", False)
+            if logging_enabled:
+                try:
+                    log_path = os.path.join(base_dir, "compare.log")
+                    log_file_obj = codecs.open(log_path, "w", "utf-8")
+
+                    class Tee(object):
+                        def __init__(self, terminal, file_obj):
+                            self.terminal = terminal
+                            self.file_obj = file_obj
+
+                        def write(self, message):
+                            self.terminal.write(message)
+                            try:
+                                self.file_obj.write(message)
+                            except Exception:
+                                pass
+
+                        def flush(self):
+                            self.terminal.flush()
+                            try:
+                                self.file_obj.flush()
+                            except Exception:
+                                pass
+
+                    sys.stdout = Tee(original_stdout, log_file_obj)
+                    sys.stderr = Tee(original_stderr, log_file_obj)
+                except Exception:
+                    pass
+
         return compare_project(runtime=runtime, params=params)
     finally:
         if log_file_obj:
             sys.stdout = original_stdout
             sys.stderr = original_stderr
             log_file_obj.close()
+        set_info_logging(previous_info_state)
