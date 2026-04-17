@@ -2,7 +2,7 @@
 """
 Project_compare.py - User entrypoint for comparing CODESYS state with disk files.
 """
-from Project_bootstrap import run_project_command
+from cds_bootstrap import run_project_command
 
 
 def main(params=None):

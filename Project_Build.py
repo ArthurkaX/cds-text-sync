@@ -2,7 +2,7 @@
 """
 Project_Build.py - User entrypoint for building the active CODESYS application.
 """
-from Project_bootstrap import run_project_command
+from cds_bootstrap import run_project_command
 
 
 def main(params=None):

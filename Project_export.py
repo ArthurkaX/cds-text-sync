@@ -2,7 +2,7 @@
 """
 Project_export.py - User entrypoint for exporting the active CODESYS project.
 """
-from Project_bootstrap import run_project_command
+from cds_bootstrap import run_project_command
 
 
 def main(params=None):

@@ -16,7 +16,7 @@ import collections
 import subprocess
 from collections import defaultdict
 
-from Project_bootstrap import clear_hidden_modules, load_hidden_modules
+from cds_bootstrap import clear_hidden_modules, load_hidden_modules
 
 # Force reload of shared modules
 clear_hidden_modules()

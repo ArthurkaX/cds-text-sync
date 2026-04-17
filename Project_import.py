@@ -2,7 +2,7 @@
 """
 Project_import.py - User entrypoint for importing disk changes into CODESYS.
 """
-from Project_bootstrap import run_project_command
+from cds_bootstrap import run_project_command
 
 
 def main(params=None):

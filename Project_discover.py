@@ -8,7 +8,7 @@ then reconstructs the tree structure from parent references.
 import os
 import json
 
-from Project_bootstrap import clear_hidden_modules, load_hidden_modules
+from cds_bootstrap import clear_hidden_modules, load_hidden_modules
 
 # Force reload of shared modules to pick up latest changes
 clear_hidden_modules()

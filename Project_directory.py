@@ -1,6 +1,6 @@
 import os
 
-from Project_bootstrap import load_hidden_modules
+from cds_bootstrap import load_hidden_modules
 
 load_hidden_modules([
     "codesys_constants",
