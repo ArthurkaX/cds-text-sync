@@ -8,10 +8,10 @@ try:
     clr.AddReference("System.Windows.Forms")
     clr.AddReference("System.Drawing")
     from System.Windows.Forms import (
-        Application, Form, Label, CheckBox, Button, FormBorderStyle, 
+        Application, Form, Label, CheckBox, Button, FormBorderStyle,
         DialogResult, FormStartPosition, NotifyIcon, ToolTipIcon, TextBox,
         Control, Keys, Panel, RichTextBoxScrollBars, BorderStyle, ComboBox,
-        MessageBox, MessageBoxButtons, MessageBoxIcon, FlatStyle
+        MessageBox, MessageBoxButtons, MessageBoxIcon, FlatStyle, GroupBox, ToolTip
     )
     from System.Drawing import Size, Point, Font, FontStyle, SystemIcons, Color, ContentAlignment
 except:
@@ -94,7 +94,7 @@ def ask_yes_no_cancel(title, message):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(440, 550)
+        self.Size = Size(520, 480)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -102,129 +102,61 @@ class SettingsForm(Form):
         self.profile_labels = current_settings.get("available_profile_labels", {})
         self.profile_descriptions = current_settings.get("available_profile_descriptions", {})
         self.user_profiles = set(current_settings.get("user_profiles", []))
-        
+        self.tooltip = ToolTip()
+        self.tooltip.AutoPopDelay = 100
+        self.tooltip.InitialDelay = 500
+        self.tooltip.ReshowDelay = 100
+
         # Heading
-        lbl = Label()
-        lbl.Text = "Configure Sync Behavior"
-        lbl.Location = Point(20, 20)
-        lbl.AutoSize = True
-        lbl.Font = Font("Segoe UI", 12, FontStyle.Bold)
-        self.Controls.Add(lbl)
-        
+        lbl_heading = Label()
+        lbl_heading.Text = "Configure Sync Behavior"
+        lbl_heading.Location = Point(20, 15)
+        lbl_heading.AutoSize = True
+        lbl_heading.Font = Font("Segoe UI", 12, FontStyle.Bold)
+        self.Controls.Add(lbl_heading)
+
         # Version label (top-right corner)
         if version:
             lbl_version = Label()
             lbl_version.Text = "v" + str(version)
-            lbl_version.Location = Point(320, 24)
+            lbl_version.Location = Point(400, 18)
             lbl_version.AutoSize = True
             lbl_version.Font = Font("Segoe UI", 8)
             lbl_version.ForeColor = Color.Gray
             self.Controls.Add(lbl_version)
-        
-        # Runtime info
-        y = 60
+
+        # Runtime info (outside groups)
         lbl_detected_version = Label()
         lbl_detected_version.Text = "Detected CODESYS Version:"
-        lbl_detected_version.Location = Point(30, y + 3)
+        lbl_detected_version.Location = Point(20, 50)
         lbl_detected_version.AutoSize = True
         self.Controls.Add(lbl_detected_version)
 
         self.txt_detected_version = TextBox()
-        self.txt_detected_version.Location = Point(210, y)
-        self.txt_detected_version.Size = Size(170, 20)
+        self.txt_detected_version.Location = Point(180, 47)
+        self.txt_detected_version.Size = Size(140, 20)
         self.txt_detected_version.Text = current_settings.get("detected_codesys_version", "N/A")
         self.txt_detected_version.ReadOnly = True
         self.Controls.Add(self.txt_detected_version)
 
-        # Group 1: Export Settings
-        y += 35
-        self.chk_xml = CheckBox()
-        self.chk_xml.Text = "Export Native XML (Visu/Alarms)"
-        self.chk_xml.Location = Point(30, y)
-        self.chk_xml.Size = Size(350, 24)
-        self.chk_xml.Checked = current_settings.get("export_xml", False)
-        self.Controls.Add(self.chk_xml)
-        
-        y += 30
-        self.chk_bin = CheckBox()
-        self.chk_bin.Text = "Backup .project Binary (Git LFS)"
-        self.chk_bin.Location = Point(30, y)
-        self.chk_bin.Size = Size(350, 24)
-        self.chk_bin.Checked = current_settings.get("backup_binary", False)
-        self.Controls.Add(self.chk_bin)
+        # Group A: Sync & Export (left side)
+        grp_sync = GroupBox()
+        grp_sync.Text = "Sync Configuration"
+        grp_sync.Location = Point(20, 80)
+        grp_sync.Size = Size(235, 180)
+        self.Controls.Add(grp_sync)
 
-        # Subsection: Backup Name
-        y += 30
-        lbl_name = Label()
-        lbl_name.Text = "Backup Name (Optional):"
-        lbl_name.Location = Point(50, y+3)
-        lbl_name.AutoSize = True
-        self.Controls.Add(lbl_name)
-        
-        self.txt_backup_name = TextBox()
-        self.txt_backup_name.Location = Point(200, y)
-        self.txt_backup_name.Size = Size(150, 20)
-        self.txt_backup_name.Text = current_settings.get("backup_name", "")
-        self.Controls.Add(self.txt_backup_name)
-
-        y += 30
-        self.chk_save_exp = CheckBox()
-        self.chk_save_exp.Text = "Save Project after Export"
-        self.chk_save_exp.Location = Point(30, y)
-        self.chk_save_exp.Size = Size(350, 24)
-        self.chk_save_exp.Checked = current_settings.get("save_after_export", True)
-        self.Controls.Add(self.chk_save_exp)
-
-        # Group 2: Import Settings
-        y += 40
-        self.chk_save = CheckBox()
-        self.chk_save.Text = "Save Project after Import"
-        self.chk_save.Location = Point(30, y)
-        self.chk_save.Size = Size(350, 24)
-        self.chk_save.Checked = current_settings.get("save_after_import", True)
-        self.Controls.Add(self.chk_save)
-
-        y += 30
-        self.chk_safety = CheckBox()
-        self.chk_safety.Text = "Timestamped Backup before Import"
-        self.chk_safety.Location = Point(30, y)
-        self.chk_safety.Size = Size(350, 24)
-        self.chk_safety.Checked = current_settings.get("safety_backup", True)
-        self.Controls.Add(self.chk_safety)
-
-        # Subsection: Backup Retention
-        y += 30
-        lbl_retention = Label()
-        lbl_retention.Text = "Max Backups to Keep (Optional):"
-        lbl_retention.Location = Point(50, y+3)
-        lbl_retention.AutoSize = True
-        self.Controls.Add(lbl_retention)
-        
-        self.txt_retention = TextBox()
-        self.txt_retention.Location = Point(250, y)
-        self.txt_retention.Size = Size(60, 20)
-        self.txt_retention.Text = str(current_settings.get("retention_count", 10))
-        self.Controls.Add(self.txt_retention)
-
-        # Group 3: Logging
-        y += 40
-        self.chk_logging = CheckBox()
-        self.chk_logging.Text = "Enable *.log Files (sync_debug.log, compare.log)"
-        self.chk_logging.Location = Point(30, y)
-        self.chk_logging.Size = Size(350, 24)
-        self.chk_logging.Checked = current_settings.get("enable_logging", False)
-        self.Controls.Add(self.chk_logging)
-
-        y += 35
+        # Type Profile (in Sync group)
+        y_sync = 20
         lbl_profile = Label()
         lbl_profile.Text = "Type Profile:"
-        lbl_profile.Location = Point(30, y + 3)
+        lbl_profile.Location = Point(10, y_sync)
         lbl_profile.AutoSize = True
-        self.Controls.Add(lbl_profile)
+        grp_sync.Controls.Add(lbl_profile)
 
         self.cmb_profile = ComboBox()
-        self.cmb_profile.Location = Point(140, y)
-        self.cmb_profile.Size = Size(210, 21)
+        self.cmb_profile.Location = Point(10, y_sync + 20)
+        self.cmb_profile.Size = Size(195, 21)
         for profile_name in current_settings.get("available_profiles", []):
             display_name = profile_name
             if profile_name in self.user_profiles:
@@ -236,41 +168,119 @@ class SettingsForm(Form):
                 self.cmb_profile.Text = selected_profile + " [user]"
             else:
                 self.cmb_profile.Text = selected_profile
-        self.Controls.Add(self.cmb_profile)
+        grp_sync.Controls.Add(self.cmb_profile)
 
-        y += 28
-        self.lbl_profile_info = Label()
-        self.lbl_profile_info.Location = Point(30, y)
-        self.lbl_profile_info.Size = Size(380, 48)
-        self.lbl_profile_info.ForeColor = Color.DimGray
-        self.Controls.Add(self.lbl_profile_info)
-        self.cmb_profile.SelectedIndexChanged += self.OnProfileChanged
-        self.cmb_profile.TextChanged += self.OnProfileChanged
-        self._update_profile_info()
+        # Profile tooltip (info icon)
+        profile_label = self.profile_labels.get(selected_profile, "")
+        profile_desc = self.profile_descriptions.get(selected_profile, "")
+        if profile_label or profile_desc:
+            tooltip_text = "Label: " + profile_label
+            if profile_desc:
+                tooltip_text += "\n\n" + profile_desc
+            self.tooltip.SetToolTip(self.cmb_profile, tooltip_text)
 
+        # Export Native XML
+        y_sync += 55
+        self.chk_xml = CheckBox()
+        self.chk_xml.Text = "Export Native XML"
+        self.chk_xml.Location = Point(10, y_sync)
+        self.chk_xml.Size = Size(200, 24)
+        self.chk_xml.Checked = current_settings.get("export_xml", False)
+        grp_sync.Controls.Add(self.chk_xml)
+
+        # Enable .log Files
+        y_sync += 30
+        self.chk_logging = CheckBox()
+        self.chk_logging.Text = "Enable *.log Files"
+        self.chk_logging.Location = Point(10, y_sync)
+        self.chk_logging.Size = Size(200, 24)
+        self.chk_logging.Checked = current_settings.get("enable_logging", False)
+        grp_sync.Controls.Add(self.chk_logging)
+
+        # Group B: Backup & Safety (right side)
+        grp_backup = GroupBox()
+        grp_backup.Text = "Automation & Backups"
+        grp_backup.Location = Point(270, 80)
+        grp_backup.Size = Size(230, 180)
+        self.Controls.Add(grp_backup)
+
+        y_backup = 20
+        self.chk_bin = CheckBox()
+        self.chk_bin.Text = "Backup .project Binary"
+        self.chk_bin.Location = Point(10, y_backup)
+        self.chk_bin.Size = Size(200, 24)
+        self.chk_bin.Checked = current_settings.get("backup_binary", False)
+        grp_backup.Controls.Add(self.chk_bin)
+
+        y_backup += 35
+        lbl_name = Label()
+        lbl_name.Text = "Backup Name:"
+        lbl_name.Location = Point(10, y_backup)
+        lbl_name.AutoSize = True
+        grp_backup.Controls.Add(lbl_name)
+
+        self.txt_backup_name = TextBox()
+        self.txt_backup_name.Location = Point(10, y_backup + 20)
+        self.txt_backup_name.Size = Size(200, 20)
+        self.txt_backup_name.Text = current_settings.get("backup_name", "")
+        grp_backup.Controls.Add(self.txt_backup_name)
+
+        y_backup += 50
+        self.chk_safety = CheckBox()
+        self.chk_safety.Text = "Timestamped Backup"
+        self.chk_safety.Location = Point(10, y_backup)
+        self.chk_safety.Size = Size(200, 24)
+        self.chk_safety.Checked = current_settings.get("safety_backup", True)
+        grp_backup.Controls.Add(self.chk_safety)
+
+        y_backup += 30
+        self.chk_save = CheckBox()
+        self.chk_save.Text = "Save after Import"
+        self.chk_save.Location = Point(10, y_backup)
+        self.chk_save.Size = Size(95, 24)
+        self.chk_save.Checked = current_settings.get("save_after_import", True)
+        grp_backup.Controls.Add(self.chk_save)
+
+        self.chk_save_exp = CheckBox()
+        self.chk_save_exp.Text = "Save after Export"
+        self.chk_save_exp.Location = Point(115, y_backup)
+        self.chk_save_exp.Size = Size(95, 24)
+        self.chk_save_exp.Checked = current_settings.get("save_after_export", True)
+        grp_backup.Controls.Add(self.chk_save_exp)
+
+        # Separator line above buttons
+        lbl_separator = Label()
+        lbl_separator.Text = ""
+        lbl_separator.Location = Point(20, 280)
+        lbl_separator.Size = Size(480, 2)
+        lbl_separator.BorderStyle = BorderStyle.Fixed3D
+        lbl_separator.BackColor = Color.LightGray
+        self.Controls.Add(lbl_separator)
+
+        # Profiles directory path (status bar style - bottom left)
         profiles_dir = current_settings.get("profiles_dir", "")
         if profiles_dir:
-            y += 50
             lbl_profiles_dir = Label()
-            lbl_profiles_dir.Text = "Profiles dir: " + profiles_dir
-            lbl_profiles_dir.Location = Point(30, y)
-            lbl_profiles_dir.Size = Size(380, 18)
-            lbl_profiles_dir.Font = Font("Segoe UI", 7)
-            lbl_profiles_dir.ForeColor = Color.LightGray
+            lbl_profiles_dir.Text = "Profiles: " + profiles_dir
+            lbl_profiles_dir.Location = Point(20, 295)
+            lbl_profiles_dir.AutoSize = True
+            lbl_profiles_dir.Font = Font("Segoe UI", 8)
+            lbl_profiles_dir.ForeColor = Color.FromArgb(85, 85, 85)
             self.Controls.Add(lbl_profiles_dir)
 
-        # Buttons
+        # Buttons (bottom right)
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
         btn_cancel.DialogResult = DialogResult.Cancel
-        btn_cancel.Location = Point(300, 440)
+        btn_cancel.Location = Point(350, 405)
+        btn_cancel.Size = Size(75, 23)
         self.Controls.Add(btn_cancel)
 
         btn_save = Button()
-        btn_save.Text = "Save Settings"
+        btn_save.Text = "Save"
         btn_save.DialogResult = DialogResult.OK
-        btn_save.Location = Point(170, 440)
-        btn_save.Size = Size(120, 23)
+        btn_save.Location = Point(435, 405)
+        btn_save.Size = Size(75, 23)
         self.Controls.Add(btn_save)
         self.AcceptButton = btn_save
         self.CancelButton = btn_cancel
@@ -279,18 +289,16 @@ class SettingsForm(Form):
         raw_text = self.cmb_profile.Text.strip()
         profile_name = raw_text.replace(" [user]", "")
         profile_label = self.profile_labels.get(profile_name, "")
-        desc = self.profile_descriptions.get(profile_name, "")
-        parts = []
-        if profile_label:
-            parts.append(profile_label)
-        if profile_name in self.user_profiles:
-            parts.append("(user profile)")
-        if desc:
-            parts.append(desc)
-        if parts:
-            self.lbl_profile_info.Text = "  ".join(parts)
+        profile_desc = self.profile_descriptions.get(profile_name, "")
+        if profile_label or profile_desc:
+            tooltip_text = "Label: " + profile_label
+            if profile_desc:
+                tooltip_text += "\n\n" + profile_desc
+            if profile_name in self.user_profiles:
+                tooltip_text += "\n\n(user profile)"
+            self.tooltip.SetToolTip(self.cmb_profile, tooltip_text)
         else:
-            self.lbl_profile_info.Text = "Unknown profile name"
+            self.tooltip.SetToolTip(self.cmb_profile, "Unknown profile name")
 
     def OnProfileChanged(self, sender, event):
         self._update_profile_info()
