@@ -6,6 +6,7 @@
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
 
 Professional Git integration for **CODESYS**. Sync Structured Text (ST) with external editors (VS Code, Cursor, Copilot) and manage PLC projects with robust version control.
+Custom type and sync behavior are profile-driven; see [profiles/profiles.md](profiles/profiles.md).
 
 ### ⚡ External Editing & Sync (The "Developer" Workflow)
 
@@ -21,7 +22,7 @@ Professional Git integration for **CODESYS**. Sync Structured Text (ST) with ext
 - **Reversible Sync**: Round-trip editing for Structured Text files with modern external tools (VS Code, Cursor, Copilot).
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
 - **Timestamped Backups with Retention**: Automatically creates safety backups before imports with a configurable retention policy (default: 10 backups).
-- **Profile-Aware Type System**: JSON type profiles let you remap GUIDs, merge vendor-specific kinds, change sync behavior, and tune handling per project without editing code.
+- **Profile-Aware Type System**: JSON type profiles let you remap GUIDs, merge vendor-specific kinds, change sync behavior, and tune handling per project without editing code. See [profiles/profiles.md](profiles/profiles.md) for the format and examples.
 - **Native XML Export**: Supports XML-based objects for diffing, including profile-controlled export-only kinds such as `library_manager` and hardware devices.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
 - **Integrated Attribute Sync**: Synchronize IDE block attributes (Exclude from build, Link always, etc.) directly within the `.st` file header using pragmas.
@@ -167,11 +168,12 @@ git checkout v1.7.2
 
 ### 2. `Project_parameters.py` (Configuration)
 
-**Configure how the sync works.** Opens the settings dialog and stores the selected options in the project file.
+**Configure how the sync works.** Opens the settings dialog and stores the selected options in the project file. Custom type behavior is defined in [profiles/profiles.md](profiles/profiles.md).
 
 - **[ ] Export Native XML**:
-  - If ENABLED: additional XML-based objects such as visualizations, alarms, and image/text resources are exported for diffing.
+  - If ENABLED: additional XML-based objects such as visualizations, alarms, image/text resources, and profile-controlled export-only kinds are exported for diffing.
   - XML files are written into the normal mirrored project tree, next to related objects, not into a separate `/xml` folder.
+  - See [profiles/profiles.md](profiles/profiles.md) for the kinds that can be remapped to `native_xml` or `export_only`.
 - **[ ] Backup .project binary**:
   - If ENABLED: the script creates a copy of your `.project` file in the `.project/` folder.
   - Essential for **Git LFS** workflows. Ensures your binary state matches your code state.
@@ -192,6 +194,8 @@ git checkout v1.7.2
 - **Type Profile**:
   - Selects the JSON type profile used to interpret runtime GUIDs and choose export/import handling.
   - This is where fork-specific GUID mappings, `native_xml`, `skip`, and direction overrides such as `export_only` come from.
+  - See [profiles/profiles.md](profiles/profiles.md) for the profile format and custom behavior options.
+  - If you need fork-specific or vendor-specific handling, add or edit a profile JSON instead of changing code.
 
 ### 3. `Project_export.py` (CODESYS -> Disk)
 
