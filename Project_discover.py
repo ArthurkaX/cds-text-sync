@@ -6,6 +6,7 @@ Uses get_children(recursive=True) for reliable enumeration,
 then reconstructs the tree structure from parent references.
 """
 import os
+import json
 
 from Project_bootstrap import clear_hidden_modules, load_hidden_modules
 
@@ -25,41 +26,64 @@ from codesys_utils import (
     resolve_projects, get_project_prop, get_detected_codesys_version
 )
 from codesys_managers import is_nvl
-from codesys_type_profiles import PROJECT_PROPERTY_KEY, get_profile_label
+from codesys_type_profiles import PROJECT_PROPERTY_KEY, get_profile_label, get_profiles_dir
 from codesys_type_system import resolve_runtime_object, get_selected_profile_name, semantic_kind_from_guid
 from codesys_type_system import SYNC_PROFILE_CATEGORIES
 
 
 def suggest_profile_rules(unknown_types, profile_name):
-    """Generate concrete profile rule suggestions for unresolved GUIDs.
+    """Generate a complete JSON profile for unresolved GUIDs.
 
-    For each unknown GUID, suggests a guid_aliases entry that can be pasted
-    into the profile definition in codesys_type_profiles.pyw,
-    and recommends which sync_profile category the new kind should belong to.
+    Creates a ready-to-use JSON profile file that extends the current profile
+    with new guid_aliases entries for unknown GUIDs found in the project.
     """
     if not unknown_types:
         return []
 
     profile_label = get_profile_label(profile_name)
+    profiles_dir = get_profiles_dir()
+
+    json_profile = {
+        "name": "%s_custom" % profile_name,
+        "label": "%s (Custom)" % profile_label,
+        "description": "Custom profile extending %s with unknown GUIDs found in project" % profile_label,
+        "extends": profile_name,
+        "guid_aliases": {}
+    }
+
     lines = []
     lines.append("")
-    lines.append("=== SUGGESTED PROFILE RULES for %s ===" % profile_label)
-    lines.append("Add these entries to the guid_aliases dict in PROFILES['%s']:" % profile_name)
+    lines.append("=== SUGGESTED PROFILE JSON ===")
+    lines.append("Save this file to: %s" % profiles_dir)
+    lines.append("Filename: %s.json" % json_profile["name"])
+    lines.append("")
+    lines.append("This profile extends %s and adds new entries for unknown GUIDs." % profile_label)
+    lines.append("Edit the kind names (e.g. 'unknown_kind_xxxxxxxx') to meaningful names,")
+    lines.append("and add sync_profile_overrides if needed.")
     lines.append("")
 
     for guid, example_name in unknown_types.items():
         kind_hint = "unknown_kind_%s" % guid[:8]
-        profile_entry = '    "%s": ["%s"],' % (kind_hint, guid)
+        json_profile["guid_aliases"][kind_hint] = [guid]
         lines.append("# Unknown GUID found in: %s" % example_name)
         lines.append("#   GUID: %s" % guid)
-        lines.append(profile_entry)
+        lines.append("#   Kind: %s (rename to something meaningful)" % kind_hint)
         lines.append("")
 
-    lines.append("Then register each new kind in the appropriate set in codesys_type_system.pyw:")
-    for category_name, kinds in SYNC_PROFILE_CATEGORIES.items():
-        examples = sorted(list(kinds))[:3]
-        lines.append("  - _%s_KINDS (e.g. %s)" % (category_name.upper(), ", ".join(examples) if category_name != "skip" else "skip"))
     lines.append("")
+    lines.append("--- JSON FILE CONTENT ---")
+    lines.append(json.dumps(json_profile, indent=2))
+    lines.append("")
+    lines.append("--- END JSON FILE ---")
+    lines.append("")
+    lines.append("After saving, you can:")
+    lines.append("1. Edit the kind names to something meaningful")
+    lines.append("2. Add sync_profile_overrides for each new kind if needed:")
+    lines.append("   - 'textual' for ST source files (pou, gvl, dut, itf)")
+    lines.append("   - 'native_xml' for CODESYS XML (task_config, visu, alarm_config)")
+    lines.append("   - 'skip' for things you don't want to export")
+    lines.append("3. Add context_rules if needed to reclassify ambiguous GUIDs")
+    lines.append("4. Select this profile in the Parameters dialog")
 
     return lines
 

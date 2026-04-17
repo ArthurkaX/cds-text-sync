@@ -45,7 +45,8 @@ from codesys_constants import TYPE_GUIDS
 try:
     from codesys_type_profiles import (
         DEFAULT_PROFILE_NAME, PROJECT_PROPERTY_KEY, get_profile_guid_to_kind,
-        get_profile_raw_guid, get_profile_label, list_profiles, resolve_profile_name
+        get_profile_raw_guid, get_profile_label, list_profiles, resolve_profile_name,
+        get_profile_context_rules, get_profile_sync_profile_overrides,
     )
 except ImportError:
     _type_profiles = _load_sibling_module("codesys_type_profiles")
@@ -56,6 +57,8 @@ except ImportError:
     get_profile_label = _type_profiles.get_profile_label
     list_profiles = _type_profiles.list_profiles
     resolve_profile_name = _type_profiles.resolve_profile_name
+    get_profile_context_rules = _type_profiles.get_profile_context_rules
+    get_profile_sync_profile_overrides = _type_profiles.get_profile_sync_profile_overrides
 
 
 SEMANTIC_TYPE_NAMES = sorted(TYPE_GUIDS.keys())
@@ -193,9 +196,14 @@ def can_have_implementation_kind(semantic_kind):
     return semantic_kind in SEMANTIC_IMPLEMENTATION_KINDS
 
 
-def _resolve_sync_profile(semantic_kind, is_xml=False):
+def _resolve_sync_profile(semantic_kind, is_xml=False, profile_name=None):
     if not semantic_kind:
         return "skip"
+    if profile_name:
+        overrides = get_profile_sync_profile_overrides(profile_name)
+        override = overrides.get(semantic_kind)
+        if override:
+            return override
     if semantic_kind in _SKIP_KINDS:
         return "skip"
     if semantic_kind in _NATIVE_XML_KINDS or is_xml:
@@ -224,7 +232,7 @@ def is_guid_kind(raw_guid, semantic_kind, profile_name=None):
     return semantic_kind_from_guid(raw_guid, profile_name) == semantic_kind
 
 
-def _apply_context_rules(raw_guid, semantic_kind, parent_kind=None, obj_name=None):
+def _apply_context_rules(raw_guid, semantic_kind, parent_kind=None, obj_name=None, profile_name=None):
     obj_name = _safe_str(obj_name).lower()
 
     if semantic_kind == "alarm_group":
@@ -232,6 +240,28 @@ def _apply_context_rules(raw_guid, semantic_kind, parent_kind=None, obj_name=Non
             return "task_call", ["context_parent=%s" % parent_kind]
         if parent_kind != "alarm_config" and (obj_name.endswith(".cyclic") or obj_name.endswith(".bustask")):
             return "task_call", ["context_name=%s" % obj_name]
+
+    if semantic_kind and profile_name:
+        rules = get_profile_context_rules(profile_name)
+        for rule in rules:
+            if rule.get("when_kind") != semantic_kind:
+                continue
+            wpk = rule.get("when_parent_kind")
+            if wpk and wpk != parent_kind:
+                continue
+            wns = rule.get("when_name_suffix")
+            if wns and not obj_name.endswith(wns.lower()):
+                continue
+            then_kind = rule.get("then_kind")
+            if then_kind:
+                evidence_parts = []
+                if wpk:
+                    evidence_parts.append("profile_context_parent=%s" % wpk)
+                if wns:
+                    evidence_parts.append("profile_context_name=%s" % wns)
+                if not evidence_parts:
+                    evidence_parts.append("profile_context_kind=%s" % semantic_kind)
+                return then_kind, evidence_parts
 
     return semantic_kind, []
 
@@ -247,14 +277,14 @@ def resolve_runtime_guid(raw_guid, profile_name=None, parent_kind=None, obj_name
         evidence.append("unknown_guid")
 
     semantic_kind, context_evidence = _apply_context_rules(
-        raw_guid, semantic_kind, parent_kind=parent_kind, obj_name=obj_name
+        raw_guid, semantic_kind, parent_kind=parent_kind, obj_name=obj_name, profile_name=profile_name
     )
     evidence.extend(context_evidence)
 
     canonical_guid = semantic_kind_to_guid(semantic_kind, profile_name)
     if not canonical_guid and raw_guid:
         canonical_guid = raw_guid
-    sync_profile = _resolve_sync_profile(semantic_kind, is_xml=semantic_kind in _NATIVE_XML_KINDS)
+    sync_profile = _resolve_sync_profile(semantic_kind, is_xml=semantic_kind in _NATIVE_XML_KINDS, profile_name=profile_name)
     creation_strategy = _resolve_creation_strategy(semantic_kind)
     manager_key = semantic_kind or canonical_guid
 

@@ -1,161 +1,213 @@
 # -*- coding: utf-8 -*-
 """
-codesys_type_profiles.py - Manual type profiles for CODESYS variants.
+codesys_type_profiles.py - JSON-based type profiles for CODESYS variants.
 
-Profiles map runtime GUIDs to semantic kinds. The semantic kinds are then
-resolved to canonical GUIDs from codesys_constants.pyw, so the rest of the
-sync engine can continue to use the existing manager and path logic.
+Profiles are loaded from .json files in the profiles/ directory.
+Each profile maps runtime GUIDs to semantic kinds and optionally
+provides context rules and sync profile overrides.
+
+If profiles/ is missing or empty, a built-in hardcoded fallback is used.
 """
 from __future__ import print_function
 import os
 import sys
 
 try:
-    from codesys_constants import TYPE_GUIDS
+    import json
+    _HAS_JSON = True
 except ImportError:
-    try:
-        import importlib.util
-        _HAS_IMPORTLIB_UTIL = True
-    except ImportError:
-        _HAS_IMPORTLIB_UTIL = False
-
-    try:
-        import imp
-        _HAS_IMP = True
-    except ImportError:
-        _HAS_IMP = False
-
-    def _load_constants():
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codesys_constants.pyw")
-        if _HAS_IMPORTLIB_UTIL:
-            spec = importlib.util.spec_from_file_location("codesys_constants", path)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                sys.modules["codesys_constants"] = module
-                spec.loader.exec_module(module)
-                return module
-        if _HAS_IMP:
-            module = imp.load_source("codesys_constants", path)
-            sys.modules["codesys_constants"] = module
-            return module
-        raise ImportError("codesys_constants.pyw not found.")
-
-    TYPE_GUIDS = _load_constants().TYPE_GUIDS
+    _HAS_JSON = False
 
 
 DEFAULT_PROFILE_NAME = "codesys_sp20_plus"
 PROJECT_PROPERTY_KEY = "cds-sync-type-profile"
 
+_BUILT_IN_PROFILES = {
+    "codesys_sp20_plus", "codesys_sp17", "astra_sp17", "cont_sp16",
+}
 
-def _unique_guids(*values):
-    result = []
-    seen = set()
-    for value in values:
-        if not value:
-            continue
-        lowered = str(value).lower()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        result.append(lowered)
+
+def _profiles_dir():
+    try:
+        this_file = os.path.abspath(__file__)
+    except Exception:
+        this_file = os.path.abspath(sys.modules.get(__name__, type('', (), {})).__file__ if hasattr(sys.modules.get(__name__, type('', (), {})), '__file__') else '.')
+    runtime_dir = os.path.dirname(this_file)
+    tool_root = os.path.dirname(runtime_dir)
+    candidate = os.path.join(tool_root, "profiles")
+    if os.path.isdir(candidate):
+        return candidate
+    parent_root = os.path.dirname(os.path.dirname(tool_root))
+    candidate2 = os.path.join(parent_root, "profiles")
+    if os.path.isdir(candidate2):
+        return candidate2
+    script_dir = os.path.dirname(os.path.abspath(sys.argv[0] if sys.argv else '.'))
+    candidate3 = os.path.join(script_dir, "profiles")
+    if os.path.isdir(candidate3):
+        return candidate3
+    return candidate
+
+
+def _parse_simple_json(text):
+    text = text.strip()
+    if not text:
+        return None
+    text = text.replace("\t", " ")
+    mapping = {"true": "True", "false": "False", "null": "None"}
+    for old, new in mapping.items():
+        text = text.replace(old, new)
+    try:
+        return eval(text)
+    except Exception:
+        return None
+
+
+def _load_json_profile(filepath):
+    try:
+        with open(filepath, "r") as f:
+            text = f.read()
+        if _HAS_JSON:
+            return json.loads(text)
+        return _parse_simple_json(text)
+    except Exception:
+        return None
+
+
+def _normalize_aliases(raw_aliases):
+    result = {}
+    if not raw_aliases or not isinstance(raw_aliases, dict):
+        return result
+    for kind, guids in raw_aliases.items():
+        if isinstance(guids, str):
+            guids = [guids]
+        result[kind] = [str(g).lower() for g in guids]
     return result
 
 
-def _profile_guid(kind, *extras):
-    return _unique_guids(TYPE_GUIDS.get(kind), *extras)
+def _merge_aliases(base, override):
+    merged = dict(base)
+    for kind, guids in override.items():
+        if kind in merged:
+            seen = set(merged[kind])
+            for g in guids:
+                if g not in seen:
+                    merged[kind].append(g)
+                    seen.add(g)
+        else:
+            merged[kind] = list(guids)
+    return merged
 
 
-_BASE_GUID_ALIASES = {
-    "pou": _profile_guid("pou"),
-    "gvl": _profile_guid("gvl"),
-    "dut": _profile_guid("dut"),
-    "action": _profile_guid("action"),
-    "method": _profile_guid("method"),
-    "property": _profile_guid("property"),
-    "property_accessor": _profile_guid("property_accessor"),
-    "folder": _profile_guid("folder"),
-    "device": _profile_guid("device"),
-    "device_module": _profile_guid("device_module"),
-    "plc_logic": _profile_guid("plc_logic"),
-    "application": _profile_guid(
-        "application",
-        "6394ad93-46a4-4927-8819-c1ca8654c6ad"
-    ),
-    "library_manager": _profile_guid("library_manager"),
-    "task_config": _profile_guid("task_config"),
-    "task": _profile_guid("task"),
-    "task_call": _profile_guid("task_call"),
-    "itf": _profile_guid("itf"),
-    "itf_method": _profile_guid("itf_method"),
-    "nvl_sender": _profile_guid("nvl_sender"),
-    "nvl_receiver": _profile_guid("nvl_receiver"),
-    "param_list": _profile_guid("param_list"),
-    "persistent_gvl": _profile_guid(
-        "persistent_gvl",
-        "261bd6e6-249c-4232-bb6f-84c2fbeef430"
-    ),
-    "recipe_manager": _profile_guid("recipe_manager"),
-    "recipe": _profile_guid("recipe"),
-    "visu": _profile_guid("visu"),
-    "textlist": _profile_guid("textlist"),
-    "global_text_list": _profile_guid("global_text_list"),
-    "imagepool": _profile_guid("imagepool"),
-    "visu_manager": _profile_guid("visu_manager"),
-    "web_visu": _profile_guid("web_visu"),
-    "alarm_config": _profile_guid("alarm_config"),
-    "alarm_group": _profile_guid("alarm_group"),
-    "alarm_storage": _profile_guid("alarm_storage"),
-    "symbol_config": _profile_guid("symbol_config"),
-    "target_visu": _profile_guid("target_visu"),
-    "image": _profile_guid("image"),
-    "trace": _profile_guid("trace"),
-    "project_info": _profile_guid("project_info"),
-    "alarm_config_item": _profile_guid("alarm_config_item"),
-    "file_object": _profile_guid("file_object"),
-    "alarm_class": _profile_guid("alarm_class"),
-    "imagepool_variant": _profile_guid("imagepool_variant"),
-    "unit_conversion": _profile_guid("unit_conversion"),
-    "softmotion_pool": _profile_guid("softmotion_pool"),
-    "visu_style": _profile_guid("visu_style"),
-    "task_local_gvl": _profile_guid("task_local_gvl"),
-    "project_settings": _profile_guid("project_settings"),
-}
+def _merge_rules(base, override):
+    if not base:
+        return list(override or [])
+    if not override:
+        return list(base)
+    return list(base) + list(override)
 
 
-PROFILES = {
-    "codesys_sp20_plus": {
-        "label": "CODESYS SP20+",
-        "guid_aliases": dict((k, list(v)) for k, v in _BASE_GUID_ALIASES.items()),
-    },
-    "codesys_sp17": {
-        "label": "CODESYS SP17-SP19",
-        "guid_aliases": dict((k, list(v)) for k, v in _BASE_GUID_ALIASES.items()),
-    },
-    "astra_sp17": {
-        "label": "Astra IDE SP17 Fork",
-        "guid_aliases": dict((k, list(v)) for k, v in _BASE_GUID_ALIASES.items()),
-    },
-    "cont_sp16": {
-        "label": "CONT Designer SP16 Fork",
-        "guid_aliases": dict((k, list(v)) for k, v in _BASE_GUID_ALIASES.items()),
-    },
-}
+def _resolve_extends(profile_data, all_raw):
+    extends = profile_data.get("extends")
+    if not extends:
+        return profile_data
+    parent = all_raw.get(extends)
+    if not parent:
+        return profile_data
+    parent = _resolve_extends(parent, all_raw)
+    parent_aliases = _normalize_aliases(parent.get("guid_aliases", {}))
+    child_aliases = _normalize_aliases(profile_data.get("guid_aliases", {}))
+    merged = _merge_aliases(parent_aliases, child_aliases)
+    parent_rules = parent.get("context_rules", [])
+    child_rules = profile_data.get("context_rules", [])
+    result = {
+        "name": profile_data.get("name"),
+        "label": profile_data.get("label", parent.get("label")),
+        "description": profile_data.get("description", parent.get("description")),
+        "guid_aliases": merged,
+        "context_rules": _merge_rules(parent_rules, child_rules),
+    }
+    parent_overrides = parent.get("sync_profile_overrides", {})
+    child_overrides = profile_data.get("sync_profile_overrides", {})
+    if parent_overrides or child_overrides:
+        overrides = dict(parent_overrides)
+        overrides.update(child_overrides)
+        result["sync_profile_overrides"] = overrides
+    return result
+
+
+def _hardcoded_fallback():
+    return {
+        "codesys_sp20_plus": {
+            "name": "codesys_sp20_plus",
+            "label": "CODESYS SP20+ (built-in fallback)",
+            "guid_aliases": {},
+            "context_rules": [],
+        },
+    }
+
+
+_cache = None
+_cache_raw = None
+
+
+def _ensure_loaded():
+    global _cache, _cache_raw
+    if _cache is None:
+        try:
+            raw = {}
+            profiles_dir = _profiles_dir()
+            if os.path.isdir(profiles_dir):
+                for filename in os.listdir(profiles_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(profiles_dir, filename)
+                    data = _load_json_profile(filepath)
+                    if data and data.get("name"):
+                        raw[data["name"]] = data
+            _cache_raw = raw
+            resolved = {}
+            for name, data in raw.items():
+                resolved[name] = _resolve_extends(data, raw)
+            _cache = resolved
+        except Exception:
+            _cache = _hardcoded_fallback()
+            _cache_raw = {}
+        if not _cache:
+            _cache = _hardcoded_fallback()
+            _cache_raw = {}
+    return _cache
+
+
+def _ensure_loaded_raw():
+    _ensure_loaded()
+    return _cache_raw or {}
+
+
+def reload_profiles():
+    global _cache, _cache_raw
+    _cache = None
+    _cache_raw = None
+    return _ensure_loaded()
+
+
+def _get_profiles():
+    return _ensure_loaded()
 
 
 def list_profiles():
-    return sorted(PROFILES.keys())
+    return sorted(_get_profiles().keys())
 
 
 def get_profile(profile_name=None):
     name = normalize_profile_name(profile_name)
-    return PROFILES.get(name, PROFILES[DEFAULT_PROFILE_NAME])
+    return _get_profiles().get(name, _get_profiles().get(DEFAULT_PROFILE_NAME, {}))
 
 
 def normalize_profile_name(profile_name):
     if not profile_name:
         return DEFAULT_PROFILE_NAME
     value = str(profile_name).strip()
-    if value in PROFILES:
+    if value in _get_profiles():
         return value
     return DEFAULT_PROFILE_NAME
 
@@ -179,7 +231,36 @@ def get_profile_raw_guid(kind, profile_name=None):
     aliases = profile.get("guid_aliases", {}).get(kind, [])
     if aliases:
         return aliases[0]
-    return str(TYPE_GUIDS.get(kind, "")).lower() or None
+    return None
+
+
+def get_profile_context_rules(profile_name=None):
+    profile = get_profile(profile_name)
+    return profile.get("context_rules", [])
+
+
+def get_profile_sync_profile_overrides(profile_name=None):
+    profile = get_profile(profile_name)
+    return profile.get("sync_profile_overrides", {})
+
+
+def get_profile_description(profile_name):
+    profile = get_profile(profile_name)
+    return profile.get("description", "")
+
+
+def get_profile_extends(profile_name):
+    raw = _ensure_loaded_raw()
+    data = raw.get(normalize_profile_name(profile_name), {})
+    return data.get("extends", "")
+
+
+def is_user_profile(profile_name):
+    return normalize_profile_name(profile_name) not in _BUILT_IN_PROFILES
+
+
+def get_profiles_dir():
+    return _profiles_dir()
 
 
 def resolve_profile_name(explicit_profile=None, params=None, project_profile=None):

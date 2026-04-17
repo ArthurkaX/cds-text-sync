@@ -6,3 +6,8 @@
 /.github/.dev_tools/
 /.github/.dev_tools/*
 TODO.md
+__pycache__
+/.runtime/__pycache__
+test_profiles.py
+IMPLEMENTATION_COMPLETE.md
+TESTING_IDE_TESTS.md

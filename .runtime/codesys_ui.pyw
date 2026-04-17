@@ -94,12 +94,14 @@ def ask_yes_no_cancel(title, message):
 class SettingsForm(Form):
     def __init__(self, current_settings, version=None):
         self.Text = "CODESYS Sync Settings"
-        self.Size = Size(440, 520)
+        self.Size = Size(440, 550)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
         self.MinimizeBox = False
         self.profile_labels = current_settings.get("available_profile_labels", {})
+        self.profile_descriptions = current_settings.get("available_profile_descriptions", {})
+        self.user_profiles = set(current_settings.get("user_profiles", []))
         
         # Heading
         lbl = Label()
@@ -224,45 +226,71 @@ class SettingsForm(Form):
         self.cmb_profile.Location = Point(140, y)
         self.cmb_profile.Size = Size(210, 21)
         for profile_name in current_settings.get("available_profiles", []):
-            self.cmb_profile.Items.Add(profile_name)
+            display_name = profile_name
+            if profile_name in self.user_profiles:
+                display_name = profile_name + " [user]"
+            self.cmb_profile.Items.Add(display_name)
         selected_profile = current_settings.get("type_profile", "")
         if selected_profile:
-            self.cmb_profile.Text = selected_profile
+            if selected_profile in self.user_profiles:
+                self.cmb_profile.Text = selected_profile + " [user]"
+            else:
+                self.cmb_profile.Text = selected_profile
         self.Controls.Add(self.cmb_profile)
 
         y += 28
         self.lbl_profile_info = Label()
         self.lbl_profile_info.Location = Point(30, y)
-        self.lbl_profile_info.Size = Size(380, 32)
+        self.lbl_profile_info.Size = Size(380, 48)
         self.lbl_profile_info.ForeColor = Color.DimGray
         self.Controls.Add(self.lbl_profile_info)
         self.cmb_profile.SelectedIndexChanged += self.OnProfileChanged
         self.cmb_profile.TextChanged += self.OnProfileChanged
         self._update_profile_info()
 
+        profiles_dir = current_settings.get("profiles_dir", "")
+        if profiles_dir:
+            y += 50
+            lbl_profiles_dir = Label()
+            lbl_profiles_dir.Text = "Profiles dir: " + profiles_dir
+            lbl_profiles_dir.Location = Point(30, y)
+            lbl_profiles_dir.Size = Size(380, 18)
+            lbl_profiles_dir.Font = Font("Segoe UI", 7)
+            lbl_profiles_dir.ForeColor = Color.LightGray
+            self.Controls.Add(lbl_profiles_dir)
+
         # Buttons
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
         btn_cancel.DialogResult = DialogResult.Cancel
-        btn_cancel.Location = Point(300, 410)
+        btn_cancel.Location = Point(300, 440)
         self.Controls.Add(btn_cancel)
 
         btn_save = Button()
         btn_save.Text = "Save Settings"
         btn_save.DialogResult = DialogResult.OK
-        btn_save.Location = Point(170, 410)
+        btn_save.Location = Point(170, 440)
         btn_save.Size = Size(120, 23)
         self.Controls.Add(btn_save)
         self.AcceptButton = btn_save
         self.CancelButton = btn_cancel
 
     def _update_profile_info(self):
-        profile_name = self.cmb_profile.Text.strip()
+        raw_text = self.cmb_profile.Text.strip()
+        profile_name = raw_text.replace(" [user]", "")
         profile_label = self.profile_labels.get(profile_name, "")
+        desc = self.profile_descriptions.get(profile_name, "")
+        parts = []
         if profile_label:
-            self.lbl_profile_info.Text = "Profile meaning: " + profile_label
+            parts.append(profile_label)
+        if profile_name in self.user_profiles:
+            parts.append("(user profile)")
+        if desc:
+            parts.append(desc)
+        if parts:
+            self.lbl_profile_info.Text = "  ".join(parts)
         else:
-            self.lbl_profile_info.Text = "Profile meaning: Unknown profile name"
+            self.lbl_profile_info.Text = "Unknown profile name"
 
     def OnProfileChanged(self, sender, event):
         self._update_profile_info()
@@ -284,7 +312,7 @@ class SettingsForm(Form):
             "safety_backup": self.chk_safety.Checked,
             "retention_count": retention,
             "enable_logging": self.chk_logging.Checked,
-            "type_profile": self.cmb_profile.Text.strip()
+            "type_profile": self.cmb_profile.Text.strip().replace(" [user]", "")
         }
 
 def show_settings_dialog(current_settings, version=None):

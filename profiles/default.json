@@ -1,0 +1,87 @@
+{
+  "name": "codesys_sp20_plus",
+  "label": "CODESYS SP20+",
+  "description": "Standard CODESYS 3.5 SP20 and later with context rules for alarm groups and device modules",
+  "guid_aliases": {
+    "pou": ["6f9dac99-8de1-4efc-8465-68ac443b7d08"],
+    "gvl": ["ffbfa93a-b94d-45fc-a329-229860183b1d"],
+    "dut": ["2db5746d-d284-4425-9f7f-2663a34b0ebc"],
+    "action": ["8ac092e5-3128-4e26-9e7e-11016c6684f2"],
+    "method": ["f8a58466-d7f6-439f-bbb8-d4600e41d099"],
+    "property": ["5a3b8626-d3e9-4f37-98b5-66420063d91e"],
+    "property_accessor": ["792f2eb6-721e-4e64-ba20-bc98351056db"],
+    "folder": ["738bea1e-99bb-4f04-90bb-a7a567e74e3a"],
+    "device": ["225bfe47-7336-4dbc-9419-4105a7c831fa"],
+    "device_module": ["085766fd-043e-4545-8e8d-d651d56d5d3b"],
+    "plc_logic": ["40b404f9-e5dc-42c6-907f-c89f4a517386"],
+    "application": [
+      "639b491f-5557-464c-af91-1471bac9f549",
+      "6394ad93-46a4-4927-8819-c1ca8654c6ad"
+    ],
+    "library_manager": ["adb5cb65-8e1d-4a00-b70a-375ea27582f3"],
+    "task_config": ["ae1de277-a207-4a28-9efb-456c06bd52f3"],
+    "task": ["98a2708a-9b18-4f31-82ed-a1465b24fa2d"],
+    "task_call": ["6f9da924-d2e2-4467-9c9e-5e26bc1c1111"],
+    "itf": ["6654496c-404d-479a-aad2-8551054e5f1e"],
+    "itf_method": ["f89f7675-27f1-46b3-8abb-b7da8e774ffd"],
+    "nvl_sender": ["ffb96994-3252-4467-8507-6a1883584989"],
+    "nvl_receiver": ["ea9e7828-b80c-4ec7-9f68-52210f019623"],
+    "param_list": ["f89f7675-27f3-455b-b98a-243e8673a5a8"],
+    "persistent_gvl": [
+      "3183921b-cc91-4712-9781-c3b6555122b5",
+      "261bd6e6-249c-4232-bb6f-84c2fbeef430"
+    ],
+    "recipe_manager": ["47225134-2e90-48e0-a42e-9ed7cf91c010"],
+    "recipe": ["3e9a7218-1e43-4f9e-a0e2-656f4d36e8b4"],
+    "visu": ["f18bec89-9fef-401d-9953-2f11739a6808"],
+    "textlist": ["2bef0454-1bd3-412a-ac2c-af0f31dbc40f"],
+    "global_text_list": ["63784cbb-9ba0-45e6-9d69-babf3f040511"],
+    "imagepool": ["6507a8fd-035f-464a-bd5b-7f15e8ac084a"],
+    "visu_manager": ["4d3fdb8f-ab50-4c35-9d3a-d4bb9bb9a628"],
+    "web_visu": ["0fdbf158-1ae0-47d9-9269-cd84be308e9d"],
+    "alarm_config": ["c0a56ce5-14a3-4757-ac56-3eab44c974b3"],
+    "alarm_group": ["413e2a7d-adb1-4d2c-be29-6ae6e4fab820"],
+    "alarm_storage": ["5bd56248-46fc-4108-be33-ed01ad87d070"],
+    "symbol_config": ["21d4fe94-4123-4e23-9091-ead220afbd1f"],
+    "target_visu": ["bc63f5fa-d286-4786-994e-7b27e4f97bd5"],
+    "image": ["9001d745-b9c5-4d77-90b7-b29c3f77a23b"],
+    "trace": ["f7aa3620-8073-4c91-b6ec-86ed9eb60303"],
+    "project_info": ["085afe48-c5d8-4ea5-ab0d-b35701fa6009"],
+    "alarm_config_item": ["21f4ed1d-ec95-4666-820e-4abf64d93d6b"],
+    "file_object": ["a56744ff-693f-4597-95f9-0e1c529fffc2"],
+    "alarm_class": ["b8b46f61-c7c1-4259-87e4-26fe674798f9"],
+    "imagepool_variant": ["bb0b9044-714e-4614-ad3e-33cbdf34d16b"],
+    "unit_conversion": ["3662d04a-384c-4734-9189-9e8756910793"],
+    "softmotion_pool": ["e9159722-55bc-49e5-8034-fbd278ef718f"],
+    "visu_style": ["8e687a04-7ca7-42d3-be06-fcbda676c5ef"],
+    "task_local_gvl": ["c2cda7a9-0ba4-4146-b563-22a42fa0eb72"],
+    "project_settings": ["8753fe6f-4a22-4320-8103-e553c4fc8e04"]
+  },
+  "context_rules": [
+    {
+      "when_kind": "alarm_group",
+      "when_parent_kind": "task_config",
+      "then_kind": "task_call"
+    },
+    {
+      "when_kind": "alarm_group",
+      "when_parent_kind": "task",
+      "then_kind": "task_call"
+    },
+    {
+      "when_kind": "alarm_group",
+      "when_name_suffix": ".cyclic",
+      "then_kind": "task_call"
+    },
+    {
+      "when_kind": "alarm_group",
+      "when_name_suffix": ".bustask",
+      "then_kind": "task_call"
+    },
+    {
+      "when_kind": "softmotion_pool",
+      "when_parent_kind": "device",
+      "then_kind": "device_module"
+    }
+  ]
+}
