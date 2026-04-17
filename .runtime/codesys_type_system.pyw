@@ -47,6 +47,7 @@ try:
         DEFAULT_PROFILE_NAME, PROJECT_PROPERTY_KEY, get_profile_guid_to_kind,
         get_profile_raw_guid, get_profile_label, list_profiles, resolve_profile_name,
         get_profile_context_rules, get_profile_sync_profile_overrides,
+        get_profile_sync_direction_overrides,
     )
 except ImportError:
     _type_profiles = _load_sibling_module("codesys_type_profiles")
@@ -59,6 +60,7 @@ except ImportError:
     resolve_profile_name = _type_profiles.resolve_profile_name
     get_profile_context_rules = _type_profiles.get_profile_context_rules
     get_profile_sync_profile_overrides = _type_profiles.get_profile_sync_profile_overrides
+    get_profile_sync_direction_overrides = _type_profiles.get_profile_sync_direction_overrides
 
 
 SEMANTIC_TYPE_NAMES = sorted(TYPE_GUIDS.keys())
@@ -219,6 +221,24 @@ def _resolve_creation_strategy(semantic_kind):
     return _CREATION_STRATEGY_BY_KIND.get(semantic_kind, "create_child")
 
 
+def _resolve_sync_direction(semantic_kind, profile_name=None):
+    direction = "bidirectional"
+    if semantic_kind and profile_name:
+        overrides = get_profile_sync_direction_overrides(profile_name)
+        override = overrides.get(semantic_kind)
+        if override:
+            direction = _safe_str(override).strip().lower()
+
+    if direction not in ("bidirectional", "export_only", "import_only", "disabled"):
+        direction = "bidirectional"
+
+    return {
+        "sync_direction": direction,
+        "export_enabled": direction in ("bidirectional", "export_only"),
+        "import_enabled": direction in ("bidirectional", "import_only"),
+    }
+
+
 def semantic_kind_from_guid(raw_guid, profile_name=None):
     if not raw_guid:
         return None
@@ -287,6 +307,7 @@ def resolve_runtime_guid(raw_guid, profile_name=None, parent_kind=None, obj_name
     sync_profile = _resolve_sync_profile(semantic_kind, is_xml=semantic_kind in _NATIVE_XML_KINDS, profile_name=profile_name)
     creation_strategy = _resolve_creation_strategy(semantic_kind)
     manager_key = semantic_kind or canonical_guid
+    direction_flags = _resolve_sync_direction(semantic_kind, profile_name)
 
     return {
         "profile_name": profile_name or DEFAULT_PROFILE_NAME,
@@ -296,6 +317,9 @@ def resolve_runtime_guid(raw_guid, profile_name=None, parent_kind=None, obj_name
         "known": bool(semantic_kind),
         "evidence": evidence,
         "sync_profile": sync_profile,
+        "sync_direction": direction_flags["sync_direction"],
+        "export_enabled": direction_flags["export_enabled"],
+        "import_enabled": direction_flags["import_enabled"],
         "creation_strategy": creation_strategy,
         "manager_key": manager_key,
     }

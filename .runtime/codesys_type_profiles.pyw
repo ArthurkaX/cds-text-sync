@@ -132,6 +132,12 @@ def _resolve_extends(profile_data, all_raw):
         overrides = dict(parent_overrides)
         overrides.update(child_overrides)
         result["sync_profile_overrides"] = overrides
+    parent_direction_overrides = parent.get("sync_direction_overrides", {})
+    child_direction_overrides = profile_data.get("sync_direction_overrides", {})
+    if parent_direction_overrides or child_direction_overrides:
+        direction_overrides = dict(parent_direction_overrides)
+        direction_overrides.update(child_direction_overrides)
+        result["sync_direction_overrides"] = direction_overrides
     return result
 
 
@@ -242,6 +248,11 @@ def get_profile_context_rules(profile_name=None):
 def get_profile_sync_profile_overrides(profile_name=None):
     profile = get_profile(profile_name)
     return profile.get("sync_profile_overrides", {})
+
+
+def get_profile_sync_direction_overrides(profile_name=None):
+    profile = get_profile(profile_name)
+    return profile.get("sync_direction_overrides", {})
 
 
 def get_profile_description(profile_name):

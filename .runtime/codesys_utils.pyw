@@ -991,6 +991,8 @@ def read_ide_attrs(obj):
         semantic_kind = semantic_kind_from_guid(obj_type_guid)
 
     attrs = {}
+    unsupported_props = getattr(read_ide_attrs, "_unsupported_props", set())
+    read_ide_attrs._unsupported_props = unsupported_props
 
     applicable = [key for key, spec in ATTR_REGISTRY.items() if semantic_kind and semantic_kind in spec.get("kinds", set())]
     if not applicable:
@@ -1017,7 +1019,7 @@ def read_ide_attrs(obj):
             for a in bp_attrs:
                 try:
                     val = getattr(build_props, a)
-                    if not callable(val):
+                    if not hasattr(val, "__call__"):
                         log_info("  build_properties.%s = %s" % (a, repr(val)))
                 except Exception as e2:
                     log_info("  build_properties.%s -> ERROR: %s" % (a, safe_str(e2)))
@@ -1041,8 +1043,11 @@ def read_ide_attrs(obj):
                     attrs[key] = True
                     log_info("  %s.build_properties.%s = %s" % (obj_name, prop_name, repr(val)))
             else:
-                log_info("  %s: build_properties has NO attribute '%s'" % (obj_name, prop_name))
+                unsupported_props.add(prop_name)
         except Exception as e:
+            if "has no attribute" in safe_str(e).lower():
+                unsupported_props.add(prop_name)
+                continue
             log_warning("Cannot read attr '%s' from %s: %s" % (key, obj_name, safe_str(e)))
 
     if attrs:
@@ -1076,6 +1081,8 @@ def write_ide_attrs(obj, attrs):
 
     # Access the build_properties sub-object
     build_props = None
+    unsupported_props = getattr(write_ide_attrs, "_unsupported_props", set())
+    write_ide_attrs._unsupported_props = unsupported_props
     try:
         build_props = getattr(obj, "build_properties", None)
     except Exception as e:
@@ -1093,6 +1100,9 @@ def write_ide_attrs(obj, attrs):
         prop_name = spec["api_prop"]
         # Treat missing pragmas as False (unset)
         target_val = attrs.get(key, False)
+
+        if prop_name in unsupported_props:
+            continue
         
         try:
             # Check if this property is valid for this object type
@@ -1102,12 +1112,19 @@ def write_ide_attrs(obj, attrs):
                     log_info("write_ide_attrs: %s.%s is not valid, skipping" % (obj_name, prop_name))
                     continue
 
+            if not hasattr(build_props, prop_name):
+                unsupported_props.add(prop_name)
+                continue
+
             # Only set it if it actually differs from target (to avoid dirtifying IDE unnecessarily)
             current_val = getattr(build_props, prop_name)
             if bool(current_val) != bool(target_val):
                 setattr(build_props, prop_name, target_val)
                 log_info("write_ide_attrs: updated %s.build_properties.%s = %s" % (obj_name, prop_name, target_val))
         except Exception as e:
+            if "has no attribute" in safe_str(e).lower():
+                unsupported_props.add(prop_name)
+                continue
             log_warning("Cannot write attr '%s' on %s: %s" % (key, obj_name, safe_str(e)))
 
 

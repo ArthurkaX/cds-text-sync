@@ -661,6 +661,42 @@ def build_sync_plan(different, new_in_ide, new_on_disk, moved, unchanged_count):
     }
 
 
+def _infer_semantic_kind_from_path(rel_path):
+    rel_path = safe_str(rel_path).replace("\\", "/")
+    file_name = os.path.basename(rel_path)
+    lower_name = file_name.lower()
+
+    if lower_name.endswith(".xml"):
+        base_name = file_name[:-4]
+        if "." in base_name:
+            _, suffix = base_name.rsplit(".", 1)
+            suffix = suffix.lower()
+            if suffix == "pou_xml":
+                return "pou"
+            if suffix in SEMANTIC_TYPE_NAMES:
+                return suffix
+
+    return None
+
+
+def _get_import_policy_for_item(item):
+    resolution = item.get("resolution")
+    if isinstance(resolution, dict) and "import_enabled" in resolution:
+        return bool(resolution.get("import_enabled")), resolution
+
+    semantic_kind = item.get("semantic_kind") or _infer_semantic_kind_from_path(item.get("path"))
+    if not semantic_kind:
+        return True, resolution
+
+    try:
+        from codesys_type_system import resolve_runtime_guid
+    except ImportError:
+        resolve_runtime_guid = _load_sibling_module("codesys_type_system").resolve_runtime_guid
+
+    inferred = resolve_runtime_guid(semantic_kind_to_guid(semantic_kind), profile_name=get_project_prop(PROJECT_PROPERTY_KEY))
+    return bool(inferred.get("import_enabled", True)), inferred
+
+
 def plan_items_for_import(sync_plan):
     """Convert a normalized sync plan into items for disk -> IDE import."""
     if not sync_plan:
@@ -670,23 +706,51 @@ def plan_items_for_import(sync_plan):
     import_items = []
 
     for item in categories.get("modified", []):
+        import_enabled, resolution = _get_import_policy_for_item(item)
+        if not import_enabled:
+            continue
         legacy = dict(item)
+        if resolution and not legacy.get("resolution"):
+            legacy["resolution"] = resolution
+        if resolution and not legacy.get("semantic_kind"):
+            legacy["semantic_kind"] = resolution.get("semantic_kind")
         legacy["action"] = "update"
         import_items.append(legacy)
 
     for item in categories.get("disk_only", []):
+        import_enabled, resolution = _get_import_policy_for_item(item)
+        if not import_enabled:
+            continue
         legacy = dict(item)
+        if resolution and not legacy.get("resolution"):
+            legacy["resolution"] = resolution
+        if resolution and not legacy.get("semantic_kind"):
+            legacy["semantic_kind"] = resolution.get("semantic_kind")
         legacy["action"] = "create"
         import_items.append(legacy)
 
     for item in categories.get("ide_only", []):
+        import_enabled, resolution = _get_import_policy_for_item(item)
+        if not import_enabled:
+            continue
         legacy = dict(item)
+        if resolution and not legacy.get("resolution"):
+            legacy["resolution"] = resolution
+        if resolution and not legacy.get("semantic_kind"):
+            legacy["semantic_kind"] = resolution.get("semantic_kind")
         legacy["action"] = "delete"
         legacy["is_orphan"] = True
         import_items.append(legacy)
 
     for item in categories.get("moved", []):
+        import_enabled, resolution = _get_import_policy_for_item(item)
+        if not import_enabled:
+            continue
         legacy = dict(item)
+        if resolution and not legacy.get("resolution"):
+            legacy["resolution"] = resolution
+        if resolution and not legacy.get("semantic_kind"):
+            legacy["semantic_kind"] = resolution.get("semantic_kind")
         legacy["action"] = "move"
         legacy["is_moved"] = True
         import_items.append(legacy)
@@ -736,6 +800,15 @@ def normalize_sync_items(items, base_dir=None):
 
         if "type_guid" not in legacy:
             legacy["type_guid"] = legacy.get("semantic_kind") or ""
+
+        import_enabled, resolution = _get_import_policy_for_item(legacy)
+        if not import_enabled:
+            continue
+
+        if resolution and not legacy.get("resolution"):
+            legacy["resolution"] = resolution
+        if resolution and not legacy.get("semantic_kind"):
+            legacy["semantic_kind"] = resolution.get("semantic_kind")
 
         normalized.append(legacy)
 
@@ -1144,6 +1217,21 @@ def finalize_import(project, projects_obj, base_dir, updated_count, created_coun
             print("  Skipping project save (user option).")
 
 
+def _st_import_sort_key(item):
+    """
+    Sort ST imports so parent objects are created before nested members.
+
+    This prevents first-pass imports into empty projects from trying to create
+    files like `TaskMain.mInit.st` before `TaskMain.st` exists.
+    """
+    rel_path = safe_str(item.get("path", "")).replace("\\", "/")
+    file_name = os.path.basename(rel_path)
+    base_name = os.path.splitext(file_name)[0]
+    is_nested = "." in base_name
+    path_depth = rel_path.count("/")
+    return (1 if is_nested else 0, path_depth, rel_path.lower())
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  HIGH-LEVEL IMPORT ORCHESTRATOR
     # ═══════════════════════════════════════════════════════════════════
@@ -1311,7 +1399,8 @@ def perform_import_items(primary_project, base_dir, to_sync, globals_ref=None):
     # ═══════════════════════════════════════════════════════════════════
     #  PASS 4: Import ST files (after POUs exist)
     # ═══════════════════════════════════════════════════════════════════
-    
+    st_files_to_import.sort(key=_st_import_sort_key)
+
     for item in st_files_to_import:
         try:
             action = item.get("action")

@@ -83,5 +83,14 @@
       "when_parent_kind": "device",
       "then_kind": "device_module"
     }
-  ]
+  ],
+  "sync_profile_overrides": {
+    "device": "native_xml",
+    "device_module": "native_xml"
+  },
+  "sync_direction_overrides": {
+    "library_manager": "export_only",
+    "device": "export_only",
+    "device_module": "export_only"
+  }
 }

@@ -56,5 +56,13 @@
     "visu_style": ["8e687a04-7ca7-42d3-be06-fcbda676c5ef"],
     "task_local_gvl": ["c2cda7a9-0ba4-4146-b563-22a42fa0eb72"],
     "project_settings": ["8753fe6f-4a22-4320-8103-e553c4fc8e04"]
+  },
+  "sync_profile_overrides": {
+    "device": "native_xml",
+    "device_module": "native_xml"
+  },
+  "sync_direction_overrides": {
+    "device": "export_only",
+    "device_module": "export_only"
   }
 }

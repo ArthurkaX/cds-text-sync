@@ -521,14 +521,13 @@ def classify_object(obj):
     is_xml = bool(resolution.get("is_xml"))
     should_skip = False
 
+    if not resolution.get("export_enabled", True):
+        should_skip = True
+
     # Skip non-exportable
     if semantic_kind == "property_accessor":
         should_skip = True
     if semantic_kind == "task":
-        should_skip = True
-    
-    # Hard-exclude devices and modules (feature request: too unstable for XML sync)
-    if semantic_kind in ["device", "device_module"]:
         should_skip = True
 
     # Skip all children of monolithic containers - they are exported as
