@@ -62,7 +62,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 > [!NOTE]
 > - **No Git required**: This script downloads clean zip archives from GitHub, not the full repository with history.
-> - **Choose version**: You can select the latest development version or any stable release from the interactive menu.
+> - **Choose version**: You can select the latest development version, a stable release, or a test / pre-release build from the interactive menu.
 > - **Smaller footprint**: Installation is ~5MB instead of ~10MB+ when cloning with full Git history.
 
 > [!TIP]

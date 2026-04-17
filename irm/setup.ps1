@@ -8,48 +8,89 @@ $fullPath = Join-Path $targetBaseDir $repoName
 
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
 
-# 2. Get available stable releases
+# 2. Get available releases
 Write-Host "`n[*] Fetching available versions..." -ForegroundColor Cyan
-$tags = @()
+$stableTags = @()
+$testTags = @()
 try {
-    $tagsUrl = "$repoUrl/tags"
-    $tagsResponse = Invoke-WebRequest -Uri $tagsUrl -UseBasicParsing
-    if ($tagsResponse.StatusCode -eq 200) {
-        # Parse tags from HTML - look for version tags (vX.Y.Z)
-        $tags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+" | 
-            ForEach-Object { 
-                $line = $_.ToString()
-                if ($line -match "v(\d+\.\d+\.\d+)") {
-                    "v" + $matches[1]
-                }
-            } | 
-            Where-Object { $_ -ne $null } | 
-            Select-Object -Unique)
-        
-        # Get last 5 stable versions
-        if ($tags.Count -gt 5) {
-            $tags = @($tags | Select-Object -Last 5)
+    $releasesUrl = "https://api.github.com/repos/ArthurkaX/cds-text-sync/releases?per_page=100"
+    $headers = @{
+        "User-Agent" = "cds-text-sync-setup"
+        "Accept" = "application/vnd.github+json"
+    }
+    $releases = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get
+    if ($releases) {
+        foreach ($release in $releases) {
+            $tag = [string]$release.tag_name
+            if ($tag -match "^v\d+\.\d+\.\d+$") {
+                $stableTags += $tag
+            } elseif ($tag -match "^v\d+\.\d+\.\d+-test\.\d+$" -or [bool]$release.prerelease) {
+                $testTags += $tag
+            }
+        }
+
+        $stableTags = @($stableTags | Select-Object -Unique)
+        $testTags = @($testTags | Select-Object -Unique)
+
+        if ($stableTags.Count -gt 5) {
+            $stableTags = @($stableTags | Select-Object -First 5)
+        }
+        if ($testTags.Count -gt 5) {
+            $testTags = @($testTags | Select-Object -First 5)
         }
     }
 } catch {
-    Write-Host "[!] Warning: Could not fetch tags. Only main branch will be available." -ForegroundColor Yellow
+    try {
+        $tagsUrl = "$repoUrl/tags"
+        $tagsResponse = Invoke-WebRequest -Uri $tagsUrl -UseBasicParsing
+        if ($tagsResponse.StatusCode -eq 200) {
+            # Parse tags from HTML - look for version tags (vX.Y.Z)
+            $stableTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+" | 
+                ForEach-Object { 
+                    $line = $_.ToString()
+                    if ($line -match "v(\d+\.\d+\.\d+)") {
+                        "v" + $matches[1]
+                    }
+                } | 
+                Where-Object { $_ -ne $null } | 
+                Select-Object -Unique)
+            
+            if ($stableTags.Count -gt 5) {
+                $stableTags = @($stableTags | Select-Object -Last 5)
+            }
+        }
+    } catch {
+        Write-Host "[!] Warning: Could not fetch releases. Only main branch will be available." -ForegroundColor Yellow
+    }
 }
 
 # 3. Show version selection menu
 Write-Host "`n--- Version Selection ---" -ForegroundColor Cyan
 Write-Host "[L] Latest (main branch) [DEFAULT]" -ForegroundColor Green
 
-if ($tags.Count -gt 0) {
-    Write-Host "Stable Releases (last $($tags.Count)):" -ForegroundColor Cyan
-    for ($i = 0; $i -lt $tags.Count; $i++) {
-        $tag = $tags[$i]
-        $isLatest = ($i -eq ($tags.Count - 1))
+if ($stableTags.Count -gt 0) {
+    Write-Host "Stable Releases (last $($stableTags.Count)):" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $stableTags.Count; $i++) {
+        $tag = $stableTags[$i]
+        $isLatest = ($i -eq ($stableTags.Count - 1))
         $label = if ($isLatest) { " (recommended stable)" } else { "" }
         Write-Host "[$($i+1)] $tag$label" -ForegroundColor Yellow
     }
 }
 
-$choice = Read-Host "`nSelect version [L, 1-$($tags.Count)] (default: L)"
+if ($testTags.Count -gt 0) {
+    Write-Host "Test / Pre-release Builds (last $($testTags.Count)):" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $testTags.Count; $i++) {
+        $tag = $testTags[$i]
+        $isLatest = ($i -eq 0)
+        $label = if ($isLatest) { " (latest test build)" } else { "" }
+        Write-Host "[T$($i+1)] $tag$label" -ForegroundColor Yellow
+    }
+}
+
+$stableRange = if ($stableTags.Count -gt 0) { "1-$($stableTags.Count)" } else { "none" }
+$testRange = if ($testTags.Count -gt 0) { "T1-T$($testTags.Count)" } else { "none" }
+$choice = Read-Host "`nSelect version [L, $stableRange, $testRange] (default: L)"
 if ([string]::IsNullOrWhiteSpace($choice)) {
     $choice = "L"
 }
@@ -61,10 +102,21 @@ $versionName = ""
 if ($choice -eq "L") {
     $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
     $versionName = "main"
+} elseif ($choice -match '^[Tt](\d+)$') {
+    $testIndex = [int]$matches[1] - 1
+    if ($testIndex -ge 0 -and $testIndex -lt $testTags.Count) {
+        $selectedTag = $testTags[$testIndex]
+        $zipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
+        $versionName = $selectedTag
+    } else {
+        Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
+        $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
+        $versionName = "main"
+    }
 } else {
     $tagIndex = [int]$choice - 1
-    if ($tagIndex -ge 0 -and $tagIndex -lt $tags.Count) {
-        $selectedTag = $tags[$tagIndex]
+    if ($tagIndex -ge 0 -and $tagIndex -lt $stableTags.Count) {
+        $selectedTag = $stableTags[$tagIndex]
         $zipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
         $versionName = $selectedTag
     } else {

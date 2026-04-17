@@ -16,7 +16,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 ## Features
 
 - **Path Selection**: Choose between standard CODESYS paths or custom paths for forks (KeStudio, DIA Designer, etc.).
-- **Version Control**: Interactive menu with the last 5 stable releases and the latest `main` branch.
+- **Version Control**: Interactive menu with the latest `main` branch, the last 5 stable releases, and the last 5 test / pre-release builds.
 - **Auto-Update**: Detects existing versions, creates backups, and replaces files safely.
 - **Clean Install**: No `.git` history, minimal disk footprint (~5MB).
 
