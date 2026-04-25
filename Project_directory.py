@@ -1,5 +1,12 @@
-# -*- coding: utf-8 -*-
 import os
+
+from cds_bootstrap import load_hidden_modules
+
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_ui",
+], script_file=__file__)
 
 def set_base_directory():
     # CODESYS provides the 'system' object for UI interactions
@@ -30,20 +37,21 @@ def set_base_directory():
         pass
 
     # Offer choice: Browse or Manual Input
-    choice = system.ui.choose(
-        "How would you like to set the sync directory?\n\n" +
-        "Browse: Select a folder using file browser\n" +
-        "Manual: Enter path manually (supports relative paths like ./ or ./foldername/)",
-        ("Browse", "Manual Input", "Cancel")
+    from codesys_ui import show_directory_choice_dialog
+    ans = show_directory_choice_dialog(
+        "Project Sync Configuration", 
+        "Would you like to BROWSE for a folder or enter the path manually?"
     )
     
-    if not choice or choice[0] == 2:  # Cancel
+    if ans == "cancel":
         print("Operation cancelled by user.")
         return
     
+    choice_idx = 0 if ans == "yes" else 1
+    
     selected_path = None
     
-    if choice[0] == 0:  # Browse
+    if choice_idx == 0:  # Browse
         selected_path = system.ui.browse_directory_dialog("Select Sync Directory for this Project", initial_dir)
     else:  # Manual Input
         # Create a simple input dialog using Windows Forms
@@ -180,9 +188,8 @@ def set_base_directory():
                         message += "Do you want to update the metadata to match the current project?"
                         
                         # Offer to update
-                        res = system.ui.choose(message, ("Yes, Update Metadata", "No, Keep As Is"))
-                        
-                        if res and res[0] == 0:
+                        from codesys_ui import ask_yes_no
+                        if ask_yes_no("Update Metadata?", message):
                             data['project_path'] = current_path
                             try:
                                 data['project_name'] = str(projects.primary)

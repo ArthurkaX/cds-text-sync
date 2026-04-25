@@ -16,9 +16,24 @@ import tempfile
 import threading
 import shutil
 
+try:
+    import clr
+    clr.AddReference("System")
+    from System import Environment
+    from System.Diagnostics import Process, FileVersionInfo
+except:
+    Environment = None
+    Process = None
+    FileVersionInfo = None
+
 # --- Global Thread Lock ---
 _metadata_thread_lock = threading.Lock()
-from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, TYPE_GUIDS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
+from codesys_constants import IMPL_MARKER, FORBIDDEN_CHARS, PROPERTY_GET_MARKER, PROPERTY_SET_MARKER
+
+FOLDER_GUID = "738bea1e-99bb-4f04-90bb-a7a567e74e3a"
+
+# Cache version — bump when format changes to force full rebuild
+CACHE_VERSION = "3.1"  # 3.1: hashes now include build_properties (exclude_from_build, etc.)
 
 
 # --- Logging System ---
@@ -27,8 +42,14 @@ class Logger:
     def __init__(self):
         self.log_file = None
         self.is_final = False
+        self.logging_enabled = None  # None = not yet checked, True/False = override
+        self.info_enabled = True
+        self.console_silent = False
         
     def _initialize(self, base_dir=None):
+        if not self.logging_enabled:
+            return
+
         # If explicitly providing base_dir, override everything
         if base_dir:
             self.log_file = os.path.join(base_dir, "sync_debug.log")
@@ -66,7 +87,9 @@ class Logger:
             self.is_final = False
 
     def log(self, level, message, include_traceback=False):
-        self._initialize()
+        if level == "INFO" and (not self.info_enabled or self.console_silent):
+            return
+
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         log_entry = "[%s] [%s] %s\n" % (timestamp, level, message)
         
@@ -75,6 +98,13 @@ class Logger:
             
         print("[%s] %s" % (level, message))
         
+        if not self.logging_enabled:
+            return
+
+        self._initialize()
+        if not self.log_file:
+            return
+
         try:
             with codecs.open(self.log_file, "a", "utf-8") as f:
                 f.write(log_entry)
@@ -89,17 +119,37 @@ def log_info(message):
 def log_warning(message):
     _logger.log("WARNING", message)
 
+def set_info_logging(enabled):
+    """Enable or suppress INFO-level console/log output."""
+    _logger.info_enabled = bool(enabled)
+
+
+def set_console_silence(enabled):
+    """Force console INFO output off/on without touching file logging."""
+    _logger.console_silent = bool(enabled)
+
 def init_logging(base_dir):
-    """Explicitly set the logging directory"""
-    if base_dir and os.path.exists(base_dir):
+    """Explicitly set the logging directory and check if logging is enabled"""
+    enabled = get_project_prop("cds-sync-enable-logging", False)
+    _logger.logging_enabled = enabled
+    if enabled and base_dir and os.path.exists(base_dir):
         _logger._initialize(base_dir)
+
+def is_logging_enabled():
+    """Check if file logging is enabled via project settings"""
+    if _logger.logging_enabled is None:
+        _logger.logging_enabled = get_project_prop("cds-sync-enable-logging", False)
+    return _logger.logging_enabled
 
 def log_error(message, critical=False):
     _logger.log("ERROR", message, include_traceback=True)
     if critical:
         try:
             import system
-            system.ui.error("CRITICAL ERROR: " + message + "\n\nSee sync_debug.log for details.")
+            if _logger.logging_enabled:
+                system.ui.error("CRITICAL ERROR: " + message + "\n\nSee sync_debug.log for details.")
+            else:
+                system.ui.error("CRITICAL ERROR: " + message)
         except:
             pass
 
@@ -207,6 +257,65 @@ def resolve_system(caller_globals=None):
     return None
 
 
+def get_quick_ide_hash(obj, is_xml):
+    """
+    Quickly calculate identification hash from IDE object without full export.
+    Includes build_properties (sync attributes) so attribute-only changes
+    invalidate the cache.
+    Returns None if full export is mandatory (e.g. XML types).
+    """
+    if is_xml:
+        return None  # XML requires full export for stable comparison
+        
+    try:
+        try:
+            from codesys_type_profiles import PROJECT_PROPERTY_KEY
+            from codesys_type_system import resolve_runtime_object
+            obj_kind = resolve_runtime_object(obj, get_project_prop(PROJECT_PROPERTY_KEY)).get("semantic_kind")
+        except:
+            obj_kind = None
+        
+        # Extract decl and impl
+        decl = obj.textual_declaration.text if hasattr(obj, 'has_textual_declaration') and obj.has_textual_declaration else None
+            
+        if obj_kind == "property":
+            # Special Case: Properties combine Get and Set children
+            get_impl = None
+            set_impl = None
+            try:
+                for child in obj.get_children():
+                    c_name = child.get_name().lower()
+                    if c_name == "get":
+                        c_decl = child.textual_declaration.text if child.has_textual_declaration else ""
+                        c_impl = child.textual_implementation.text if child.has_textual_implementation else ""
+                        get_impl = format_st_content(c_decl, c_impl)
+                    elif c_name == "set":
+                        c_decl = child.textual_declaration.text if child.has_textual_declaration else ""
+                        c_impl = child.textual_implementation.text if child.has_textual_implementation else ""
+                        set_impl = format_st_content(c_decl, c_impl)
+            except: pass
+            
+            content = format_property_content(decl, get_impl, set_impl)
+        else:
+            # Standard POU/GVL/DUT
+            impl = obj.textual_implementation.text if hasattr(obj, 'has_textual_implementation') and obj.has_textual_implementation else None
+            if decl is not None or impl is not None:
+                from codesys_type_system import can_have_implementation_kind
+                can_have_impl = can_have_implementation_kind(obj_kind)
+                content = format_st_content(decl, impl, can_have_impl)
+            else:
+                return None
+
+        # Include build attributes in the hash so attribute-only changes
+        # (like toggling Exclude from build) invalidate the cache
+        attrs = read_ide_attrs(obj)
+        return build_state_hash(content, attrs)
+    except Exception as e:
+        log_warning("Quick hash failed: " + str(e))
+        
+    return None
+
+
 def calculate_hash(content):
     """Calculate CRC32 checksum of string content (faster than SHA256)"""
     if content is None:
@@ -232,54 +341,96 @@ def safe_str(value):
         return "N/A"
 
 
+def get_process_version_info():
+    result = {
+        "process_name": None,
+        "exe_path": None,
+        "product_name": None,
+        "product_version": None,
+        "file_version": None,
+        "company_name": None,
+        "main_window_title": None,
+        "is_64bit_process": None
+    }
+
+    if not Process:
+        return result
+
+    try:
+        proc = Process.GetCurrentProcess()
+        result["process_name"] = safe_str(getattr(proc, "ProcessName", None)) or None
+        result["main_window_title"] = safe_str(getattr(proc, "MainWindowTitle", None)) or None
+        result["is_64bit_process"] = bool(Environment.Is64BitProcess) if Environment else None
+
+        exe_path = None
+        try:
+            exe_path = safe_str(proc.MainModule.FileName) or None
+        except:
+            exe_path = None
+        result["exe_path"] = exe_path
+
+        if exe_path and FileVersionInfo:
+            try:
+                info = FileVersionInfo.GetVersionInfo(exe_path)
+                result["product_name"] = safe_str(getattr(info, "ProductName", None)) or None
+                result["product_version"] = safe_str(getattr(info, "ProductVersion", None)) or None
+                result["file_version"] = safe_str(getattr(info, "FileVersion", None)) or None
+                result["company_name"] = safe_str(getattr(info, "CompanyName", None)) or None
+            except:
+                pass
+    except:
+        pass
+
+    return result
+
+
+def get_detected_codesys_version(system_obj=None):
+    candidates = []
+
+    if not system_obj:
+        system_obj = resolve_system()
+
+    if system_obj:
+        for attr_name in ("version", "Version", "product_version", "ProductVersion"):
+            try:
+                value = safe_str(getattr(system_obj, attr_name, None)).strip()
+            except:
+                value = ""
+            if value and value not in ("N/A", "None"):
+                candidates.append(value)
+
+    process_info = get_process_version_info()
+    for key in ("product_version", "file_version"):
+        value = safe_str(process_info.get(key)).strip()
+        if value and value not in ("N/A", "None"):
+            candidates.append(value)
+
+    return candidates[0] if candidates else "N/A"
+
+
+def _get_semantic_kind(obj, profile_name=None):
+    """Resolve an object's semantic kind using the active profile."""
+    try:
+        from codesys_type_profiles import PROJECT_PROPERTY_KEY
+        from codesys_type_system import resolve_runtime_object
+        if profile_name is None:
+            profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+        return resolve_runtime_object(obj, profile_name).get("semantic_kind")
+    except:
+        try:
+            return safe_str(getattr(obj, "type", None))
+        except:
+            return ""
+
+
 def determine_object_type(content):
-    """Determine CODESYS object type from ST content"""
-    import re
-    # Remove comments and pragmas to avoid false matches
-    
-    # 1. Remove (* ... *) multiline comments
-    content = re.sub(r"\(\*[\s\S]*?\*\)", "", content)
-    
-    # 2. Remove { ... } pragmas/attributes
-    content = re.sub(r"\{[\s\S]*?\}", "", content)
-    
-    # 3. Remove // ... single line comments
-    content = re.sub(r"//.*", "", content)
-    
-    content = content.strip()
-    lines = content.splitlines()
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Check keywords
-        parts = line.split()
-        if not parts:
-            continue
-        word = parts[0].upper()
-        
-        if word == "PROGRAM":
-            return TYPE_GUIDS["pou"]
-        if word == "FUNCTION_BLOCK":
-            return TYPE_GUIDS["pou"]
-        if word == "FUNCTION":
-            return TYPE_GUIDS["pou"]
-        if word == "VAR_GLOBAL":
-            return TYPE_GUIDS["gvl"]
-        if word == "TYPE":
-            return TYPE_GUIDS["dut"]
-        if word == "INTERFACE":
-            return TYPE_GUIDS["itf"]
-        if word == "METHOD":
-            return TYPE_GUIDS["method"]
-        if word == "PROPERTY":
-            return TYPE_GUIDS["property"]
-        if word == "ACTION":
-            return TYPE_GUIDS["action"]
-        
-    return None
+    """Determine CODESYS object type from ST content.
+
+    Returns the semantic kind instead of a raw GUID so callers can route
+    through the profile-aware type system.
+    """
+    from codesys_type_system import determine_semantic_kind
+    return determine_semantic_kind(content)
 
 
 def clean_filename(name):
@@ -337,6 +488,9 @@ def set_project_prop(key, value):
 
 def update_application_count_flag():
     """Count internal 'Application' objects and set 'boolean' property to True if > 1."""
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+    from codesys_type_system import resolve_runtime_object
+
     try:
         proj = None
         try:
@@ -349,15 +503,18 @@ def update_application_count_flag():
         
         if not proj: return False
         
-        # Count all application objects
-        # We use the GUID from codesys_constants.py: 639b491f-5557-464c-af91-1471bac9f549
+        profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+
+        # Count all application objects using the selected type profile.
         all_objs = proj.get_children(recursive=True)
         app_count = 0
-        APP_GUID = "639b491f-5557-464c-af91-1471bac9f549"
-        
+
         for obj in all_objs:
-            if hasattr(obj, 'type') and str(obj.type).lower() == APP_GUID:
-                app_count += 1
+            try:
+                if resolve_runtime_object(obj, profile_name).get("semantic_kind") == "application":
+                    app_count += 1
+            except:
+                pass
         
         has_multiple_apps = (app_count > 1)
         log_info("Application count summary: Found %d applications. Setting 'cds-text-sync-multipleApps' flag to %s" % (app_count, str(has_multiple_apps)))
@@ -444,8 +601,10 @@ def load_base_dir():
                 except: pass
                 
                 if sys_ui:
-                    res = sys_ui.choose(message, ("Yes, Re-configure", "No, Keep Current", "Cancel Operation"))
-                    if res and res[0] == 0:
+                    from codesys_ui import ask_yes_no_cancel
+                    ans = ask_yes_no_cancel("Computer Mismatch Detected", message)
+                    
+                    if ans == "yes":
                         try:
                             import Project_directory
                             Project_directory.set_base_directory()
@@ -464,7 +623,7 @@ def load_base_dir():
                         except Exception as e:
                             log_warning("Could not launch Project_directory: " + safe_str(e))
                             return None, "Please run 'Project_directory.py' manually to re-configure sync."
-                    elif res and res[0] == 2:
+                    elif ans == "cancel":
                         return None, "Operation cancelled by user."
                 else:
                     log_warning("Computer mismatch detected ('%s' vs '%s') but UI (system.ui) is not available." % (safe_str(sync_pc), safe_str(current_pc)))
@@ -496,6 +655,7 @@ def ensure_git_configs(export_dir):
     if not os.path.exists(gitignore_path):
         content = [
             "# CODESYS Sync local files",
+            "*.json",
             "*.log",
             "*.tmp",
             "*.bak",
@@ -557,11 +717,16 @@ def ensure_git_configs(export_dir):
 # Removed MetadataLock and load_metadata (metadata files no longer used)
 
 
-def format_st_content(declaration, implementation):
+def format_st_content(declaration, implementation, can_have_impl=False):
     """
     Format ST file content with clean structure.
     Uses markers for import script to parse sections.
     Ensures consistent whitespace for reliable hashing.
+    
+    Args:
+        declaration: The declaration text
+        implementation: The implementation text (may be None or empty)
+        can_have_impl: True if object type can have implementation even if empty
     """
     content = []
     
@@ -570,13 +735,14 @@ def format_st_content(declaration, implementation):
         content.append(decl)
     
     impl = (implementation or "").strip()
-    if impl:
-        if content:
+    if impl or can_have_impl:
+        if content and impl:
             content.append("")  # Empty line separator
         content.append(IMPL_MARKER)
-        content.append(impl)
+        if impl:
+            content.append(impl)
     
-    return "\n".join(content)
+    return "\n".join(content).replace('\r\n', '\n').replace('\r', '\n')
 
 
 def format_property_content(declaration, get_impl, set_impl):
@@ -610,8 +776,7 @@ def format_property_content(declaration, get_impl, set_impl):
         content.append(PROPERTY_SET_MARKER)
         content.append(set_content)
     
-    return "\n".join(content)
-
+    return "\n".join(content).replace('\r\n', '\n').replace('\r', '\n')
 
 def merge_native_xmls(file_paths, output_path):
     """
@@ -718,30 +883,282 @@ def parse_property_content(content):
 # Removed save_metadata (metadata files no longer used)
 
 
-def parse_st_file(file_path):
+# --- Sync Pragma API ---
+
+def parse_sync_pragmas(content):
+    """Parse leading cds-text-sync pragma lines from file content.
+
+    Returns:
+        (attrs, clean_st)
+        - attrs: dict {"exclude_from_build": True, ...} (only True keys)
+        - clean_st: content with pragma block removed
     """
-    Parse an ST file and extract declaration and implementation sections.
-    Returns tuple (declaration, implementation).
+    from codesys_constants import SYNC_PRAGMA_PREFIX
+    lines = content.split("\n")
+    attrs = {}
+    first_non_pragma = 0
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(SYNC_PRAGMA_PREFIX):
+            kv = stripped[len(SYNC_PRAGMA_PREFIX):]
+            if "=" in kv:
+                key, val = kv.split("=", 1)
+                key = key.strip()
+                val = val.strip().lower()
+                if val == "true":
+                    attrs[key] = True
+            first_non_pragma = i + 1
+        elif stripped == "":
+            if not attrs:
+                break
+            first_non_pragma = i + 1
+        else:
+            break
+
+    clean_st = "\n".join(lines[first_non_pragma:])
+    clean_st = clean_st.lstrip("\n")
+    return attrs, clean_st
+
+
+def render_sync_pragmas(attrs, clean_st):
+    """Render sync pragmas + clean ST content to final file content.
+
+    Args:
+        attrs: dict {"exclude_from_build": True, ...}
+        clean_st: ST content without pragmas
+    Returns:
+        Final file content string
+    """
+    from codesys_constants import ATTR_ORDER, SYNC_PRAGMA_PREFIX
+    pragma_lines = []
+    for key in ATTR_ORDER:
+        if attrs.get(key):
+            pragma_lines.append("%s%s=true" % (SYNC_PRAGMA_PREFIX, key))
+
+    if pragma_lines:
+        return "\n".join(pragma_lines) + "\n\n" + clean_st
+    return clean_st
+
+
+def normalize_sync_attrs(attrs):
+    """Normalize attrs dict to a stable, hashable tuple.
+
+    Only includes keys from ATTR_ORDER that are True.
+    Returns a tuple of sorted (key, True) pairs for deterministic hashing.
+    """
+    from codesys_constants import ATTR_ORDER
+    return tuple((k, True) for k in ATTR_ORDER if attrs.get(k))
+
+
+def build_state_hash(code_content, attrs):
+    """Build combined state hash from code content and attributes.
+
+    Args:
+        code_content: ST code string (already clean, no pragmas)
+        attrs: dict {"exclude_from_build": True, ...}
+    Returns:
+        str: hex hash representing full object state
+    """
+    code_hash = calculate_hash(code_content)
+    attrs_hash = calculate_hash(str(normalize_sync_attrs(attrs)))
+    return calculate_hash(code_hash + "|" + attrs_hash)
+
+
+def read_ide_attrs(obj):
+    """Read supported IDE attributes from live CODESYS object.
+
+    Uses obj.build_properties (ScriptBuildProperties) to access build flags.
+    Uses ATTR_REGISTRY to determine which attributes apply to this object's semantic kind.
+    Returns dict of {attr_key: True} for non-default attributes.
+    """
+    from codesys_constants import ATTR_REGISTRY
+    from codesys_type_system import resolve_runtime_object, semantic_kind_from_guid
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+
+    obj_type_guid = safe_str(obj.type)
+    obj_name = safe_str(obj.get_name()) if hasattr(obj, "get_name") else "<unknown>"
+
+    # Resolve semantic kind from runtime type
+    semantic_kind = None
+    try:
+        profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+        resolution = resolve_runtime_object(obj, profile_name)
+        semantic_kind = resolution.get("semantic_kind")
+    except:
+        pass
+    if not semantic_kind:
+        semantic_kind = semantic_kind_from_guid(obj_type_guid)
+
+    attrs = {}
+    unsupported_props = getattr(read_ide_attrs, "_unsupported_props", set())
+    read_ide_attrs._unsupported_props = unsupported_props
+
+    applicable = [key for key, spec in ATTR_REGISTRY.items() if semantic_kind and semantic_kind in spec.get("kinds", set())]
+    if not applicable:
+        return attrs
+
+    # Access the build_properties sub-object (ScriptBuildProperties)
+    build_props = None
+    try:
+        build_props = getattr(obj, "build_properties", None)
+    except Exception as e:
+        log_info("read_ide_attrs: %s has no build_properties: %s" % (obj_name, safe_str(e)))
+
+    if build_props is None:
+        log_info("read_ide_attrs: %s -> build_properties is None (object may not support build flags)" % obj_name)
+        return attrs
+
+    # One-time diagnostic: dump all build_properties attributes for the first applicable object
+    _dumped = getattr(read_ide_attrs, '_bp_dumped', False)
+    if not _dumped:
+        read_ide_attrs._bp_dumped = True
+        try:
+            bp_attrs = [a for a in dir(build_props) if not a.startswith("_")]
+            log_info("BUILD_PROPERTIES DISCOVERY for %s (%s): %s" % (obj_name, semantic_kind, bp_attrs))
+            for a in bp_attrs:
+                try:
+                    val = getattr(build_props, a)
+                    if not hasattr(val, "__call__"):
+                        log_info("  build_properties.%s = %s" % (a, repr(val)))
+                except Exception as e2:
+                    log_info("  build_properties.%s -> ERROR: %s" % (a, safe_str(e2)))
+        except Exception as e:
+            log_info("BUILD_PROPERTIES DISCOVERY failed: %s" % safe_str(e))
+
+    for key, spec in ATTR_REGISTRY.items():
+        if semantic_kind and semantic_kind not in spec.get("kinds", set()):
+            continue
+        prop_name = spec["api_prop"]
+        try:
+            # Check if this property is valid for this object type
+            valid_check = prop_name + "_is_valid"
+            if hasattr(build_props, valid_check):
+                if not getattr(build_props, valid_check):
+                    continue
+
+            if hasattr(build_props, prop_name):
+                val = getattr(build_props, prop_name)
+                if val:
+                    attrs[key] = True
+                    log_info("  %s.build_properties.%s = %s" % (obj_name, prop_name, repr(val)))
+            else:
+                unsupported_props.add(prop_name)
+        except Exception as e:
+            if "has no attribute" in safe_str(e).lower():
+                unsupported_props.add(prop_name)
+                continue
+            log_warning("Cannot read attr '%s' from %s: %s" % (key, obj_name, safe_str(e)))
+
+    if attrs:
+        log_info("read_ide_attrs: %s -> %s" % (obj_name, list(attrs.keys())))
+    return attrs
+
+
+def write_ide_attrs(obj, attrs):
+    """Apply parsed attributes to a CODESYS IDE object via build_properties.
+
+    Only sets attributes that are supported for this object's semantic kind per ATTR_REGISTRY.
+    Skips silently if attribute is not in attrs (preserves current IDE state).
+    """
+    from codesys_constants import ATTR_REGISTRY
+    from codesys_type_system import resolve_runtime_object, semantic_kind_from_guid
+    from codesys_type_profiles import PROJECT_PROPERTY_KEY
+
+    obj_type_guid = safe_str(obj.type)
+    obj_name = safe_str(obj.get_name()) if hasattr(obj, "get_name") else "<unknown>"
+
+    # Resolve semantic kind from runtime type
+    semantic_kind = None
+    try:
+        profile_name = get_project_prop(PROJECT_PROPERTY_KEY)
+        resolution = resolve_runtime_object(obj, profile_name)
+        semantic_kind = resolution.get("semantic_kind")
+    except:
+        pass
+    if not semantic_kind:
+        semantic_kind = semantic_kind_from_guid(obj_type_guid)
+
+    # Access the build_properties sub-object
+    build_props = None
+    unsupported_props = getattr(write_ide_attrs, "_unsupported_props", set())
+    write_ide_attrs._unsupported_props = unsupported_props
+    try:
+        build_props = getattr(obj, "build_properties", None)
+    except Exception as e:
+        log_warning("write_ide_attrs: %s has no build_properties: %s" % (obj_name, safe_str(e)))
+        return
+
+    if build_props is None:
+        log_warning("write_ide_attrs: %s -> build_properties is None, cannot apply attrs" % obj_name)
+        return
+
+    for key, spec in ATTR_REGISTRY.items():
+        if semantic_kind and semantic_kind not in spec.get("kinds", set()):
+            continue
+            
+        prop_name = spec["api_prop"]
+        # Treat missing pragmas as False (unset)
+        target_val = attrs.get(key, False)
+
+        if prop_name in unsupported_props:
+            continue
+        
+        try:
+            # Check if this property is valid for this object type
+            valid_check = prop_name + "_is_valid"
+            if hasattr(build_props, valid_check):
+                if not getattr(build_props, valid_check):
+                    log_info("write_ide_attrs: %s.%s is not valid, skipping" % (obj_name, prop_name))
+                    continue
+
+            if not hasattr(build_props, prop_name):
+                unsupported_props.add(prop_name)
+                continue
+
+            # Only set it if it actually differs from target (to avoid dirtifying IDE unnecessarily)
+            current_val = getattr(build_props, prop_name)
+            if bool(current_val) != bool(target_val):
+                setattr(build_props, prop_name, target_val)
+                log_info("write_ide_attrs: updated %s.build_properties.%s = %s" % (obj_name, prop_name, target_val))
+        except Exception as e:
+            if "has no attribute" in safe_str(e).lower():
+                unsupported_props.add(prop_name)
+                continue
+            log_warning("Cannot write attr '%s' on %s: %s" % (key, obj_name, safe_str(e)))
+
+
+def parse_st_file(file_path):
+    """Parse an ST file: strip sync pragmas, then extract declaration and implementation.
+
+    Returns tuple (declaration, implementation, attrs).
+    attrs is a dict of sync pragma attributes (may be empty).
+    For backward compatibility, callers that unpack only 2 values will get (decl, impl)
+    and attrs is the 3rd element.
     """
     try:
         with codecs.open(file_path, "r", "utf-8") as f:
             content = f.read()
     except Exception as e:
         print("Error reading file " + file_path + ": " + safe_str(e))
-        return None, None
+        return None, None, {}
     
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Strip sync pragmas first
+    attrs, clean_content = parse_sync_pragmas(content)
+
     declaration = None
     implementation = None
     
-    if IMPL_MARKER in content:
-        parts = content.split(IMPL_MARKER)
+    if IMPL_MARKER in clean_content:
+        parts = clean_content.split(IMPL_MARKER)
         declaration = parts[0].strip()
         implementation = parts[1].strip() if len(parts) > 1 else None
     else:
-        # No implementation marker - entire content is declaration
-        declaration = content.strip()
+        declaration = clean_content.strip()
     
-    return declaration, implementation
+    return declaration, implementation, attrs
 
 
 def build_object_cache(project=None):
@@ -798,10 +1215,10 @@ def find_application_recursive(obj, depth=0):
         children = obj.get_children()
         for child in children:
             try:
-                child_type = safe_str(child.type)
-                if child_type == TYPE_GUIDS.get("application"):
+                child_kind = _get_semantic_kind(child)
+                if child_kind == "application":
                     return child
-                if child_type == TYPE_GUIDS.get("device") or child_type == TYPE_GUIDS.get("plc_logic"):
+                if child_kind in ("device", "plc_logic"):
                     result = find_application_recursive(child, depth + 1)
                     if result:
                         return result
@@ -819,16 +1236,16 @@ def is_container_device(obj):
     their children (Applications, etc.) are already handled separately.
     """
     try:
-        obj_type = safe_str(obj.type)
-        if obj_type != TYPE_GUIDS["device"]:
+        obj_kind = _get_semantic_kind(obj)
+        if obj_kind != "device":
             return False
             
         # Check if it has an Application or Plc Logic child
         # We only check direct children to avoid heavy recursion
         children = obj.get_children(recursive=False)
         for child in children:
-            child_type = safe_str(child.type)
-            if child_type in [TYPE_GUIDS["application"], TYPE_GUIDS["plc_logic"]]:
+            child_kind = _get_semantic_kind(child)
+            if child_kind in ["application", "plc_logic"]:
                 return True
         return False
     except:
@@ -867,8 +1284,8 @@ def _find_child_transparent(parent_obj, name):
     # (the export skips this level in the path)
     for child in children:
         try:
-            c_type = safe_str(child.type)
-            if c_type == TYPE_GUIDS.get("plc_logic"):
+            c_type = _get_semantic_kind(child)
+            if c_type == "plc_logic":
                 for grandchild in child.get_children():
                     try:
                         if grandchild.get_name().lower() == name_lower:
@@ -934,7 +1351,7 @@ def ensure_folder_path(path_str, project):
                     log_info("    create_folder('" + part + "') returned: " + safe_str(found))
                 elif hasattr(current_obj, "create_child"):
                     # Use folder GUID from constants
-                    found = current_obj.create_child(part, TYPE_GUIDS.get("folder", "738bea1e-99bb-4f04-90bb-a7a567e74e3a"))
+                    found = current_obj.create_child(part, FOLDER_GUID)
                     log_info("    create_child('" + part + "') returned: " + safe_str(found))
                 else:
                     # If we reached a level where we can't create (e.g. Device level), log it
@@ -1026,8 +1443,8 @@ def find_object_by_path(rel_path, project):
         if "." in last_part:
             name_part, doc_type = last_part.rsplit(".", 1)
             # Verify if doc_type is a known CODESYS type name
-            from codesys_constants import TYPE_NAMES
-            if doc_type in TYPE_NAMES.values() or doc_type == "pou_xml":
+            from codesys_type_system import SEMANTIC_TYPE_NAMES
+            if doc_type in SEMANTIC_TYPE_NAMES or doc_type == "pou_xml":
                 parts[-1] = name_part
 
     current_obj = project
@@ -1043,11 +1460,77 @@ def find_object_by_path(rel_path, project):
     return current_obj
 
 
-def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
+def cleanup_old_backups(project_folder, retention_count, verbose=True):
     """
-    Copy the current project binary to the /project folder.
+    Clean up old timestamped backups in .project/ folder.
+    Only deletes files matching pattern: YYYYMMDD_HHMMSS_*.bak
+    Preserves non-timestamped backup files (Git LFS backups).
+    
+    Args:
+        project_folder: Path to the .project folder
+        retention_count: Number of timestamped backups to keep
+    """
+    if retention_count <= 0:
+        return
+    
+    if not os.path.exists(project_folder):
+        return
+    
+    import re
+    
+    timestamped_backups = []
+    try:
+        for filename in os.listdir(project_folder):
+            if not filename.endswith(".bak"):
+                continue
+            
+            # Pattern: YYYYMMDD_HHMMSS_*.bak
+            # Example: 20260325_143022_MyProject.project.bak
+            if re.match(r'^\d{8}_\d{6}_.*\.bak$', filename):
+                full_path = os.path.join(project_folder, filename)
+                if os.path.isfile(full_path):
+                    timestamped_backups.append(full_path)
+        
+        if len(timestamped_backups) <= retention_count:
+            return
+        
+        # Sort by filename (timestamp is encoded in name)
+        timestamped_backups.sort(reverse=True)
+        
+        # Delete files beyond retention count
+        files_to_delete = timestamped_backups[retention_count:]
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+                filename = os.path.basename(file_path)
+                log_info("Deleted old backup: .project/" + filename)
+                if verbose:
+                    print("Deleted old backup: .project/" + filename)
+            except Exception as e:
+                log_warning("Failed to delete old backup " + file_path + ": " + safe_str(e))
+                if verbose:
+                    print("Warning: Failed to delete old backup: " + file_path)
+    except Exception as e:
+        log_warning("Error during backup cleanup: " + safe_str(e))
+        if verbose:
+            print("Warning: Error during backup cleanup: " + safe_str(e))
+
+
+def backup_project_binary(export_dir, projects_obj=None, timestamped=False, retention_count=None, verbose=True):
+    """
+    Copy the current project binary to /project folder.
     Forces a project save before copying to ensure the backup is current.
     If timestamped=True, creates a backup with date and time.
+    
+    Args:
+        export_dir: Directory where .project folder will be created
+        projects_obj: CODESYS projects object
+        timestamped: If True, create timestamped backup with date and time
+        retention_count: Optional. If provided, clean up old timestamped backups
+                         keeping only this many (only applies to timestamped backups)
+    
+    Returns:
+        Backup filename if created successfully, None otherwise
     """
     try:
         if not projects_obj:
@@ -1059,8 +1542,9 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         
         if not projects_obj or not hasattr(projects_obj, "primary") or not projects_obj.primary:
             log_warning("Cannot identify project for backup.")
-            print("Debug: Cannot identify project for backup (projects_obj missing or invalid).")
-            return
+            if verbose:
+                print("Debug: Cannot identify project for backup (projects_obj missing or invalid).")
+            return None
 
         # Force save to ensure we backup the latest state
         try:
@@ -1069,12 +1553,14 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         except Exception as e:
             msg = "Could not save project before backup: " + safe_str(e)
             log_warning(msg)
-            print("Debug: " + msg)
+            if verbose:
+                print("Debug: " + msg)
 
         if not hasattr(projects_obj.primary, "path") or not projects_obj.primary.path:
             log_warning("Project not saved to disk yet. Skipping binary backup.")
-            print("Debug: Project has no path on disk.")
-            return
+            if verbose:
+                print("Debug: Project has no path on disk.")
+            return None
 
         project_path = projects_obj.primary.path
         project_folder = os.path.join(export_dir, ".project")
@@ -1104,8 +1590,195 @@ def backup_project_binary(export_dir, projects_obj=None, timestamped=False):
         
         shutil.copy2(project_path, target_path)
         log_info("Binary backup created: .project/" + file_name)
-        print("Binary backup created: .project/" + file_name)
+        if verbose:
+            print("Binary backup created: .project/" + file_name)
+        
+        # Clean up old timestamped backups if retention is specified
+        if timestamped and retention_count is not None:
+            cleanup_old_backups(project_folder, retention_count, verbose=verbose)
+        
+        return file_name
         
     except Exception as e:
         log_error("Warning: Could not create binary backup: " + str(e))
-        print("Warning: Could not create binary backup: " + str(e))
+        if verbose:
+            print("Warning: Could not create binary backup: " + str(e))
+        return None
+
+
+def normalize_path(path):
+    """Normalize path separators to forward slashes for cross-platform consistency in cache keys."""
+    if path is None: return ""
+    return path.replace("\\", "/").strip("/")
+
+
+def build_folder_hashes(object_hashes):
+    """
+    Build direct-parent folder hashes from a dictionary of object hashes.
+    
+    Args:
+        object_hashes: dict of {norm_path: content_hash}
+    
+    Returns:
+        dict: {folder_path: folder_hash}
+    """
+    from collections import defaultdict
+    folder_children = defaultdict(list)
+    
+    for path, o_hash in object_hashes.items():
+        if not o_hash:
+            continue
+
+        parts = path.split("/")
+        if len(parts) < 2:
+            continue
+
+        # Folder hashes are intentionally local to immediate file children.
+        # A change in PLC/ST_Application/... must not invalidate untouched
+        # device XML files that merely share the top-level PLC folder.
+        folder_path = "/".join(parts[:-1])
+        folder_children[folder_path].append(o_hash)
+            
+    result = {}
+    for folder_path, child_hashes in folder_children.items():
+        # Folder hash is the hash of sorted child hashes
+        sorted_hashes = "|".join(sorted(child_hashes))
+        result[folder_path] = calculate_hash(sorted_hashes)
+        
+    return result
+
+
+def load_sync_cache(base_dir):
+    """Load the synchronization cache from sync_cache.json in the base directory."""
+    cache_path = os.path.join(base_dir, "sync_cache.json")
+    if os.path.exists(cache_path):
+        try:
+            with codecs.open(cache_path, "r", "utf-8") as f:
+                data = json.load(f)
+                cache_version = data.get("version", "1.0")
+                if cache_version != CACHE_VERSION:
+                    log_info("Cache version mismatch (%s vs %s), triggering full rebuild." % (cache_version, CACHE_VERSION))
+                    return {"objects": {}, "folders": {}, "types": {}, "version": CACHE_VERSION}
+                return {
+                    "objects": data.get("objects", {}),
+                    "folders": data.get("folders", {}),
+                    "types": data.get("types", {}),
+                    "version": cache_version
+                }
+        except Exception as e:
+            log_warning("Could not load sync cache: " + safe_str(e))
+    return {"objects": {}, "folders": {}, "types": {}, "version": CACHE_VERSION}
+
+
+def save_sync_cache(base_dir, objects_cache, folder_hashes=None, type_cache=None):
+    """Save the synchronization cache to sync_cache.json in the base directory."""
+    cache_path = os.path.join(base_dir, "sync_cache.json")
+    cache_data = {
+        "version": CACHE_VERSION,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "folders": folder_hashes or {},
+        "types": type_cache or {},
+        "objects": objects_cache
+    }
+    try:
+        with codecs.open(cache_path, "w", "utf-8") as f:
+            json.dump(cache_data, f, indent=2)
+    except Exception as e:
+        log_warning("Could not save sync cache: " + safe_str(e))
+
+
+def check_version_compatibility(base_dir):
+    """Check if export was done with compatible script version"""
+    from codesys_constants import SCRIPT_VERSION
+    
+    proj_version = get_project_prop("cds-sync-version")
+    if proj_version is None:
+        proj_version = "not set"
+    
+    metadata_path = os.path.join(base_dir, "sync_metadata.json")
+    
+    if proj_version != SCRIPT_VERSION:
+        msg = "Version mismatch: Project (v{}) vs Current (v{})".format(proj_version, SCRIPT_VERSION)
+        return False, msg
+    
+    if os.path.exists(metadata_path):
+        try:
+            with codecs.open(metadata_path, "r", "utf-8") as f:
+                data = json.load(f)
+            export_version = data.get("script_version")
+            if export_version and export_version != SCRIPT_VERSION:
+                msg = "Version mismatch: Export (v{}) vs Current (v{})".format(export_version, SCRIPT_VERSION)
+                return False, msg
+        except:
+            pass
+    
+    return True, None
+
+
+def save_sync_metadata(base_dir, action, stats, elapsed):
+    """Save sync_metadata.json and update project version property.
+
+    Used by both Project_export.py and Project_import.py.
+    Args:
+        base_dir: Export/import directory path
+        action: "export" or "import"
+        stats: Statistics dict
+        elapsed: Elapsed time in seconds (float)
+    """
+    from codesys_constants import SCRIPT_VERSION
+    metadata = {
+        "script_version": SCRIPT_VERSION,
+        "last_action": action,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "duration_sec": round(elapsed, 2),
+        "statistics": stats
+    }
+    metadata_path = os.path.join(base_dir, "sync_metadata.json")
+    try:
+        with codecs.open(metadata_path, "w", "utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        log_info("%s metadata saved to sync_metadata.json (v%s)" % (action.capitalize(), SCRIPT_VERSION))
+    except Exception as e:
+        log_warning("Failed to save %s metadata: %s" % (action, safe_str(e)))
+    try:
+        set_project_prop("cds-sync-version", SCRIPT_VERSION)
+    except Exception as e:
+        log_warning("Failed to save version to project property: " + safe_str(e))
+
+
+def finalize_sync_operation(base_dir, projects_obj, is_import=False, verbose=True):
+    """Handle final document save or binary backup according to user settings."""
+    save_prop = "cds-sync-save-after-import" if is_import else "cds-sync-save-after-export"
+    save_after_op = get_project_prop(save_prop, True)
+    backup_binary = get_project_prop("cds-sync-backup-binary", False)
+
+    if backup_binary and projects_obj and getattr(projects_obj, 'primary', None):
+        try:
+            if verbose:
+                print("Action: Updating binary backup...")
+            backup_project_binary(base_dir, projects_obj, verbose=verbose)
+        except Exception as e:
+            if verbose:
+                print("Warning: Could not update binary backup: " + safe_str(e))
+    elif save_after_op and projects_obj and getattr(projects_obj, 'primary', None):
+        try:
+            if verbose:
+                print("Action: Saving project...")
+            projects_obj.primary.save()
+            if verbose:
+                print("Project saved successfully.")
+        except Exception as e:
+            op_str = "import" if is_import else "export"
+            if verbose:
+                print("Warning: Could not save project after " + op_str + ": " + safe_str(e))
+
+
+def create_safety_backup(base_dir, projects_obj, items_to_import):
+    """Create a timestamped safety backup of the project before importing changes."""
+    backup_filename = None
+    safety_backup = get_project_prop("cds-sync-safety-backup", True)
+    if safety_backup and items_to_import:
+        retention = get_project_prop("cds-sync-backup-retention-count", 10)
+        backup_filename = backup_project_binary(base_dir, projects_obj, timestamped=True, retention_count=retention)
+    return backup_filename
+

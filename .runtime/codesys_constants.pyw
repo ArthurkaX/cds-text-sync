@@ -6,6 +6,9 @@ Contains all CODESYS object type GUIDs, exportable types, and other
 constants used across multiple scripts.
 """
 
+# Script version - single source of truth for version tracking
+SCRIPT_VERSION = "1.7.5"
+
 # Object type GUIDs for reference
 TYPE_GUIDS = {
     "pou": "6f9dac99-8de1-4efc-8465-68ac443b7d08",           # PROGRAM, FUNCTION, FUNCTION_BLOCK
@@ -22,7 +25,8 @@ TYPE_GUIDS = {
     "library_manager": "adb5cb65-8e1d-4a00-b70a-375ea27582f3", # Library Manager
     "task_config": "ae1de277-a207-4a28-9efb-456c06bd52f3",   # Task Configuration
     "task": "98a2708a-9b18-4f31-82ed-a1465b24fa2d",          # Task
-    "itf": "54ce33d2-c430-4eb6-a66f-1f0624d7705b",           # Interface
+    "itf": "6654496c-404d-479a-aad2-8551054e5f1e",           # Interface
+    "itf_method": "f89f7675-27f1-46b3-8abb-b7da8e774ffd",     # Interface Method/Property
     "nvl_sender": "ffb96994-3252-4467-8507-6a1883584989",    # Network Variable List (Sender)
     "nvl_receiver": "ea9e7828-b80c-4ec7-9f68-52210f019623",  # Network Variable List (Receiver)
     "param_list": "f89f7675-27f3-455b-b98a-243e8673a5a8",    # Parameter List
@@ -56,77 +60,6 @@ TYPE_GUIDS = {
     "project_settings": "8753fe6f-4a22-4320-8103-e553c4fc8e04", # Project Settings
 }
 
-# Types that contain exportable ST code
-EXPORTABLE_TYPES = [
-    TYPE_GUIDS["pou"],
-    TYPE_GUIDS["gvl"],
-    TYPE_GUIDS["dut"],
-    TYPE_GUIDS["itf"],
-    TYPE_GUIDS["nvl_sender"],
-    TYPE_GUIDS["nvl_receiver"],
-    TYPE_GUIDS["param_list"],
-    TYPE_GUIDS["textlist"],
-    TYPE_GUIDS["global_text_list"],
-    TYPE_GUIDS["symbol_config"],
-    TYPE_GUIDS["imagepool"],
-    TYPE_GUIDS["unit_conversion"],
-    TYPE_GUIDS["visu"],            # Authorization for Visualization export
-    TYPE_GUIDS["visu_manager"],
-    # web_visu and target_visu are NOT listed here — they are children of
-    # visu_manager and exported as part of its recursive XML export.
-    TYPE_GUIDS["alarm_config"],
-    TYPE_GUIDS["alarm_group"],
-    TYPE_GUIDS["alarm_storage"],
-    TYPE_GUIDS["task_config"],
-    TYPE_GUIDS["task"],
-    TYPE_GUIDS["library_manager"],
-    TYPE_GUIDS["trace"],
-    TYPE_GUIDS["softmotion_pool"],
-    TYPE_GUIDS["visu_style"],
-    TYPE_GUIDS["project_settings"],
-    TYPE_GUIDS["device"],
-    TYPE_GUIDS["file_object"],
-    TYPE_GUIDS["alarm_class"],
-    TYPE_GUIDS["imagepool_variant"],
-    TYPE_GUIDS["alarm_config_item"], # Discovered from auxiliary data
-    TYPE_GUIDS["device_module"],      # Discovered from auxiliary data
-    TYPE_GUIDS["action"],
-    TYPE_GUIDS["method"],
-    TYPE_GUIDS["property"],
-    TYPE_GUIDS["property_accessor"],
-    TYPE_GUIDS["task_local_gvl"],  # Task Local GVL - same structure as regular GVL
-]
-
-# Types that should be exported as native XML
-XML_TYPES = [
-    TYPE_GUIDS["visu"],
-    TYPE_GUIDS["textlist"],
-    TYPE_GUIDS["global_text_list"],
-    TYPE_GUIDS["imagepool"],
-    TYPE_GUIDS["symbol_config"],
-    TYPE_GUIDS["alarm_config"],
-    TYPE_GUIDS["alarm_group"],
-    TYPE_GUIDS["alarm_storage"],
-    TYPE_GUIDS["visu_manager"],
-    # web_visu and target_visu are part of visu_manager's recursive export
-    TYPE_GUIDS["task_config"],
-    TYPE_GUIDS["task"],
-    TYPE_GUIDS["library_manager"],
-    TYPE_GUIDS["trace"],
-    TYPE_GUIDS["softmotion_pool"],
-    TYPE_GUIDS["visu_style"],
-    TYPE_GUIDS["project_settings"],
-    TYPE_GUIDS["device"],
-    TYPE_GUIDS["device_module"],
-    TYPE_GUIDS["file_object"],
-    TYPE_GUIDS["alarm_class"],
-    TYPE_GUIDS["imagepool_variant"],
-    TYPE_GUIDS["alarm_config_item"],
-    TYPE_GUIDS["task_local_gvl"],
-    TYPE_GUIDS["nvl_sender"],
-    TYPE_GUIDS["nvl_receiver"],
-]
-
 # Implementation section marker used in ST files
 IMPL_MARKER = "// === IMPLEMENTATION ==="
 
@@ -144,8 +77,33 @@ FORBIDDEN_CHARS = ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]
 RESERVED_FILES = {
     "_metadata.json", "_config.json", "_metadata.csv", "BASE_DIR",
     "sync_debug.log", "compare.log", ".project", ".gitattributes",
-    ".gitignore"
+    ".gitignore", "sync_metadata.json", "sync_cache.json"
 }
 
-# Reverse mapping for human-readable type names
-TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
+# --- Sync Attribute Registry ---
+# Maps attr_key to the set of semantic kinds that support it.
+# Only non-default (True) values are serialized.
+ATTR_REGISTRY = {
+    "exclude_from_build": {
+        "api_prop": "exclude_from_build",
+        "kinds": {"pou", "gvl", "dut", "method", "property"},
+    },
+    "link_always": {
+        "api_prop": "link_always",
+        "kinds": {"pou", "gvl", "method", "property"},
+    },
+    "external_implementation": {
+        "api_prop": "external_implementation",
+        "kinds": {"pou", "dut", "method"},
+    },
+    "enable_system_call": {
+        "api_prop": "enable_system_call",
+        "kinds": {"pou", "method", "property"},
+    },
+}
+
+# Deterministic ordering for stable file diffs
+ATTR_ORDER = ["exclude_from_build", "link_always", "external_implementation", "enable_system_call"]
+
+# Sync pragma prefix
+SYNC_PRAGMA_PREFIX = "//% cds-text-sync."

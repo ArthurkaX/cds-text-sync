@@ -1,11 +1,12 @@
-# cds-text-sync
+# cds-text-sync: Professional CODESYS Git Sync
 
-**Version**: `1.6.1`
+**Version**: `1.7.5`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
 
-This repository contains a set of Python scripts for **CODESYS** that facilitate a modern Git-based workflow for PLC development.
+Professional Git integration for **CODESYS**. Sync Structured Text (ST) with external editors (VS Code, Cursor, Copilot) and manage PLC projects with robust version control.
+Custom type and sync behavior are profile-driven; see [profiles/profiles.md](profiles/profiles.md).
 
 ### ⚡ External Editing & Sync (The "Developer" Workflow)
 
@@ -17,13 +18,16 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ## 🚀 Key Features
 
-- **Reversible Sync**: Round-trip editing for Structured Text files.
+- **High-Performance Sync (90% faster)**: Uses a Merkle Tree-based hierarchical hashing strategy and intelligent caching to skip thousands of redundant API calls, achieving sub-10 second repeat sync times for large projects.
+- **Reversible Sync**: Round-trip editing for Structured Text files with modern external tools (VS Code, Cursor, Copilot).
 - **Binary Backup (Git LFS)**: Optionally keeps a synchronized copy of your `.project` file for version control.
-- **Timestamped Backups**: Automatically creates safety backups before imports to prevent data loss.
-- **Native XML Export**: Optionally exports visualizations, alarms, and text lists to XML for diffing. (Note: Device and Module objects are excluded for project stability).
+- **Timestamped Backups with Retention**: Automatically creates safety backups before imports with a configurable retention policy (default: 10 backups).
+- **Profile-Aware Type System**: JSON type profiles let you remap GUIDs, merge vendor-specific kinds, change sync behavior, and tune handling per project without editing code. See [profiles/profiles.md](profiles/profiles.md) for the format and examples.
+- **Native XML Export**: Supports XML-based objects for diffing, including profile-controlled export-only kinds such as `library_manager` and hardware devices.
 - **Safety**: Built-in checks (PC Name, Project Name) to prevent overwriting the wrong project.
-- **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by removing orphaned files.
-- **Hidden Folders Skip**: Any directory starting with a dot (e.g., `.git`, `.diff`, `.project`, `.docs`, `.lib`) is automatically ignored. This allows you to store documentation, libraries, or tool configs inside the sync folder without interference.
+- **Integrated Attribute Sync**: Synchronize IDE block attributes (Exclude from build, Link always, etc.) directly within the `.st` file header using pragmas.
+- **Bi-directional Deletion**: Keep your file system and CODESYS project in sync by safely removing orphaned objects when files are deleted on disk.
+- **Hidden Folders Skip**: Folders starting with a dot (e.g., `.git`, `.docs`) are automatically ignored, letting you store documentation or tools in the sync directory.
 
 ---
 
@@ -38,7 +42,11 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ### Method 1: Manual Copy
 
-1. **Copy Files**: Copy all `.py` files to the CODESYS scripts directory. Depending on your software and setup preference, use one of the following paths:
+1. **Copy Files**: Copy the root command scripts, `cds_bootstrap.py`, the entire `.runtime/` folder, and the entire `profiles/` folder to the CODESYS scripts directory.
+   - **Note on `.pyw`**: Files inside `.runtime/` are internal runtime modules. They are hidden from the CODESYS "Scripts" menu by design.
+   - **Note on `cds_bootstrap.py`**: This is a support loader used by the public `Project_*.py` entrypoints. Do not run it directly.
+
+   Depending on your software and setup preference, use one of the following paths:
    - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
    - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
    - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
@@ -47,14 +55,22 @@ This repository contains a set of Python scripts for **CODESYS** that facilitate
 
 ### Method 2: Quick PowerShell Setup (Recommended)
 
-Automate the installation, folder creation for Standard (User Profile), and Git configuration with one command:
+Automate the installation and folder creation for Standard (User Profile) with one command:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
+> [!NOTE]
+> - **No Git required**: This script downloads clean zip archives from GitHub, not the full repository with history.
+> - **Choose version**: You can select the latest development version, a stable release, or a test / pre-release build from the interactive menu.
+> - **Smaller footprint**: Installation is ~5MB instead of ~10MB+ when cloning with full Git history.
+
 > [!TIP]
 > For a detailed explanation of what the script does, check the [Quick Setup Guide](irm/setup.md).
+
+> [!TIP]
+> Using a different CODESYS version or fork? See the [Alternative Installations Guide](ALTERNATIVE_INSTALLATIONS.md) for supported environments and installation paths.
 
 2. **Access in CODESYS**:
    - The scripts will be available in **Tools > Scripting > Scripts > P**.
@@ -71,11 +87,57 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 When upgrading to a new version of `cds-text-sync`:
 
-1. **Replace Script Files**: Copy the new `.py` files to your CODESYS scripts directory, overwriting the old versions.
-2. **Clean Export**: Run `Project_export.py` to re-export all files with the updated format.
-3. **Commit Changes**: Review and commit the changes in Git.
+1. **Check Stable Releases**: First check if there's a newer stable release at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
+2. **Replace All Files**: Copy the full script payload again: root scripts, `cds_bootstrap.py`, `.runtime/`, and `profiles/`.
+   - **Important Note**: If a major refactor (like shifting to shared libraries) occurs, active scripts held in CODESYS memory may become **stale**. After copying new files, it is best to restart CODESYS or reload your project to ensure the Script Engine picks up latest version of all modules.
+3. **Clean Export**: Run `Project_export.py` to refresh metadata and ensure your disk state matches the new script logic.
+4. **Commit Changes**: Review and commit the changes in Git.
 
 > **Tip**: A clean export after upgrading ensures all files use the latest export format and prevents inconsistencies.
+> 
+> **Rollback**: If you encounter issues with a new version, see [Stable Releases & Rollback](#-stable-releases--rollback) section for how to safely revert to a previous stable version.
+
+---
+
+## 🎯 Stable Releases & Rollback
+
+We maintain **stable, manually tested releases** for safe production use.
+
+### Finding Stable Releases
+- **GitHub Releases**: All stable releases are tagged and published on [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
+- **Latest Tagged Version**: The most recent stable version is marked as "Latest Release"
+- **Changelog**: See [CHANGELOG.md](CHANGELOG.md) for detailed change history
+
+### Rolling Back to a Stable Version
+If you encounter bugs in a newer version:
+
+**Option 1: Git Rollback (Recommended)**
+```bash
+# Check available stable tags
+git tag
+
+# Rollback to specific stable version (e.g., v1.7.2)
+git checkout v1.7.2
+
+# Update your CODESYS scripts with the stable version
+# Follow the installation steps to copy the files
+```
+
+**Option 2: Download from GitHub Releases**
+1. Go to [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
+2. Download the release archive for the stable version
+3. Extract and copy the scripts to your CODESYS ScriptDir
+
+> [!NOTE]
+> You can also use the **Quick PowerShell Setup** script (Method 2 above) which automatically downloads stable releases as clean zip archives without requiring Git installation.
+
+### Version Policy
+- **Tags starting with `v`**: Official stable releases (e.g., `v1.7.3`, `v1.7.2`)
+- **Main branch**: Latest development code (may be unstable)
+- **Testing**: All stable releases are manually tested before tagging
+
+> [!NOTE]
+> Always backup your project before rolling back to a different version.
 
 ---
 
@@ -106,24 +168,34 @@ When upgrading to a new version of `cds-text-sync`:
 
 ### 2. `Project_parameters.py` (Configuration)
 
-**Configure how the sync works.** Runs an interactive menu to toggle options. Settings are saved in the project file.
+**Configure how the sync works.** Opens the settings dialog and stores the selected options in the project file. Custom type behavior is defined in [profiles/profiles.md](profiles/profiles.md).
 
 - **[ ] Export Native XML**:
-  - If ENABLED: visual objects (Visualizations, Alarms, ImagePools) are exported to `/xml` folder in PLCopenXML format.
-  - Useful for tracking changes in non-textual objects.
+  - If ENABLED: additional XML-based objects such as visualizations, alarms, image/text resources, and profile-controlled export-only kinds are exported for diffing.
+  - XML files are written into the normal mirrored project tree, next to related objects, not into a separate `/xml` folder.
+  - See [profiles/profiles.md](profiles/profiles.md) for the kinds that can be remapped to `native_xml` or `export_only`.
 - **[ ] Backup .project binary**:
   - If ENABLED: the script creates a copy of your `.project` file in the `.project/` folder.
   - Essential for **Git LFS** workflows. Ensures your binary state matches your code state.
 - **Set Backup Name**:
   - Allows you to specify a **fixed filename** for the binary backup (e.g., `Project`).
   - **Why use it?** If you often rename your `.project` files or work in a team where project names vary, setting a fixed name ensures the backup always overwrites the same file. This keeps your `.project/` folder clean and prevents Git history from being cluttered with "new" files that are just renamed versions of the old ones.
+- **[ ] Save Project after Export**:
+  - If ENABLED: automatically saves the project after a successful export operation.
 - **[ ] Save Project after Import**:
   - If ENABLED: automatically saves the project after a successful import.
 - **[ ] Timestamped Backup before Import**:
   - If ENABLED: creates a unique, timestamped `.bak` file in the `.project/` folder _before_ starting the import process.
-- **[ ] Silent Mode**:
-  - If ENABLED: suppresses blocking popup messages and uses non-blocking system tray notifications (toasts).
-  - Recommended for "Developer Workflow" to stay in flow.
+- **Max Backups to Keep**:
+  - Sets the number of timestamped backups to keep (default: 10). The script automatically cleans up older backups while preserving your primary Git LFS backups.
+- **[ ] Enable File Logging**:
+  - If ENABLED: writes `sync_debug.log` into the sync directory for export/import/compare diagnostics.
+  - If DISABLED: normal runs stay quieter and rely on dialogs / Script Output only.
+- **Type Profile**:
+  - Selects the JSON type profile used to interpret runtime GUIDs and choose export/import handling.
+  - This is where fork-specific GUID mappings, `native_xml`, `skip`, and direction overrides such as `export_only` come from.
+  - See [profiles/profiles.md](profiles/profiles.md) for the profile format and custom behavior options.
+  - If you need fork-specific or vendor-specific handling, add or edit a profile JSON instead of changing code.
 
 ### 3. `Project_export.py` (CODESYS -> Disk)
 
@@ -131,8 +203,8 @@ Exports the current project state to the sync folder.
 
 ![Export Changes](img/Export.gif)
 
-- **Source Code**: Exports all POUs, GVLs, DUTs to `/src` as `.st` files.
-- **Libraries**: Saves `_libraries.csv` for dependency tracking.
+- **Source Code**: Exports textual objects as `.st` files into a mirrored `Device/Application/...` folder structure.
+- **XML Objects**: Exports supported XML objects into the same mirrored tree. By default, `library_manager`, `device`, and `device_module` are export-only profile-controlled XML kinds.
 - **Binary Backup**: If enabled, saves the project and copies it to `.project/`.
 - **Cleanup**: Detects files on disk that no longer exist in CODESYS and offers to delete them.
 
@@ -142,15 +214,11 @@ Updates the CODESYS project from the files on disk.
 
 - **Smart Update**: Updates existing objects, creates new ones, and builds folder hierarchies.
 - **Deletions**: If a file was deleted from disk (e.g. via git pull), the script will now safely remove the corresponding object from the CODESYS project, ensuring your IDE matches your repository.
+- **Direction-Aware Import**: Objects marked as `export_only` by the active type profile are shown in compare/export but are not imported back into CODESYS.
 - **Safety Backup**: If enabled, creates a timestamped project backup (`YYYYMMDD_HHMMSS_ProjectName.project.bak`) before modifying any code in the `.project/` folder.
 - **Binary Sync**: If "Backup .project binary" is enabled, it **automatically saves** the project after import and updates the binary backup, ensuring Git consistency.
 
-### 5. `Project_Daemon.py` (Background Service)
-
-> [!NOTE]
-> **Temporarily Disabled**: This module is currently undergoing maintenance and is disabled in version 1.6.
-
-### 6. `Project_compare.py` (Object Comparison)
+### 5. `Project_compare.py` (Object Comparison)
 
 **Identify differences between IDE and Disk.** Compares the objects in your CODESYS project with the exported files on disk using the new direct-comparison engine.
 
@@ -158,19 +226,44 @@ Updates the CODESYS project from the files on disk.
 
 - **Detection**: Finds modified objects, new objects in IDE, and objects deleted from IDE.
 - **Interactive Update**: Launches a dialog where you can selectively **Import** disk changes into CODESYS or **Export** IDE changes to disk.
-- **Output**: Generates a detailed report in the Script Output window and saves it to `compare.log`.
+- **Output**: Shows results in the comparison dialog and Script Output window.
 - **External Diff**: If you need to compare large files (like XML) in an external editor (VS Code, WinMerge):
   - **Press CTRL + Click "Diff"** in the comparison dialog.
   - This saves both versions (IDE and Disk) to the **`.diff/`** folder in your project directory.
   - You can then open these files in your favorite diff tool.
-- **Clean Run**: The `compare.log` file is recreated every time you run the script, ensuring you only see the latest results.
+- **Profile-Aware Compare**: Export-only kinds such as hardware and `library_manager` can still participate in compare/export workflows without being imported back into the IDE.
 
-### 7. `Project_discover.py` (Diagnostic Tool)
+### 6. `Project_discover.py` (Diagnostic Tool)
 
 **Diagnostic tool for project structure.** Maps your CODESYS project tree and helps identify objects that might not be fully supported by the sync engine yet.
 
 - **Validation**: If you run this on a project, check `sync_debug.log` to see a full tree of discovered objects and their types.
 - **Debugging**: Highlights "Unknown" types with their GUIDs, making it easy to report unsupported blocks.
+
+### 7. `Project_resources.py` (Size Analysis)
+
+**Analyze project objects by size/complexity.** Helps identify "code bloat" by measuring source code length and XML export size for graphical objects.
+
+![Resource Analysis](img/Project_resources.png)
+
+- **Interactive Grid**: Results displayed in a sortable dialog showing Object Name, Type, Size, and Category (Code/XML).
+- **Identify Bloat**: Quickly find large visualizations, complex POUs, or oversized configurations.
+- **Summary Stats**: Shows total code volume, XML volume, and object count.
+
+### 8. `Project_Build.py` (Build & Diagnostic Log)
+
+**Trigger a build and get detailed error reporting.** Compiles the active application and generates a clean, readable table format in `build.log`.
+
+- **Accurate Line Numbers**: Translates internal CODESYS offsets into real line/column numbers for Structured Text files, making it easier to fix errors in external editors.
+- **Multi-App Support**: Detects multiple applications and allows you to select which one to compile.
+- **Visual Feedback**: Shows a final summary including error/warning counts and compilation duration.
+
+### 9. `Project_perf_test.py` (Benchmarking)
+
+**Performance profiling tool.** Measures exact execution times for object discovery, comparison, and hashing.
+
+- **Wait/API Analysis**: Identifies slow spots in the sync process (e.g., slow COM API calls).
+- **Cache Hit Ratio**: Reports how effective the `sync_cache.json` and Merkle Tree skips are for your specific project structure.
 
 ---
 
@@ -188,18 +281,20 @@ The tool organizes your repository into a clean structure:
 
 ```
 /
-├── DeviceName/            # PLC Device Name (Not synced, used as folder)
-│   └── ApplicationName/   # Application Name (Logic & Config root)
-│       ├── Folder/        # Project Folders (mirrors IDE tree)
-│       │   └── POU.st     # Logic Source code (.st files)
-│       ├── Task Config.xml# Native XML Configuration (Tasks)
-│       └── Library Mgr.xml# Native XML for Libraries
+├── DeviceName/              # PLC device root
+│   ├── DeviceName.device.xml# Export-only hardware/device XML (profile-controlled)
+│   └── ApplicationName/     # Application root (logic & config)
+│       ├── Folder/          # Project folders (mirrors IDE tree)
+│       │   └── POU.st       # Logic source code (.st files)
+│       ├── Task Config.xml  # Native XML configuration
+│       └── Library Mgr.xml  # Export-only native XML for libraries
 ├── GlobalTextList.xml     # Global objects (Project-level root)
 ├── .project/            # (Optional) Binary .project backup for Git LFS
 ├── .diff/               # (Temporary) Files for external diff tool (CTRL + Diff)
-├── sync_debug.log       # Diagnostic log for sync/discovery
-├── build.log            # Build output log
-└── compare.log          # Comparison results log
+├── sync_cache.json      # Cache for performance optimization
+├── sync_metadata.json   # Metadata about the actions performed by the script
+├── sync_debug.log       # Diagnostic log for sync/discovery when file logging is enabled
+└── build.log            # Build output log
 
 ```
 
@@ -212,7 +307,7 @@ The tool organizes your repository into a clean structure:
 
 1.  **Configure**: Run `Project_parameters.py` and enable **"Backup .project binary"**.
 2.  **Export**: Run `Project_export.py`.
-    - Code goes to `/src`.
+    - Code goes into the mirrored `Device/Application/...` tree as `.st` files.
     - Binary goes to `.project/`.
 3.  **Commit**:
     - `git add .`
@@ -231,6 +326,9 @@ Since `.project` is a **binary file**, standard Git is not efficient at tracking
 - **Performance**: You only download the binary version you are currently working on, keeping `git clone` and `git fetch` fast.
 - **Code-Binary Sync**: It allows you to keep the "full state" of the project (Visualizations, HW config) exactly matched with the "logic state" in `src/`.
 
+> [!NOTE]
+> Git LFS is **optional** and only needed if you want to version control your `.project` binary files. The `cds-text-sync` tool itself does not require Git to be installed for normal operation.
+
 ---
 
 ## 🧪 Reference Project & Examples
@@ -241,9 +339,17 @@ Refer to that repository's README for detailed verification procedures and contr
 
 ---
 
+## 🗣️ Community & Future Roadmap
+
+While Issues are great for reporting bugs, I invite you to join our **[GitHub Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions)** for everything else! There you can suggest improvements and influence the development of the project.
+
+---
+
 ## 📝 Changelog
 
 See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions.
+
+For stable releases and download links, check [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases).
 
 ---
 

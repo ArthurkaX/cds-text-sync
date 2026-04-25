@@ -6,23 +6,86 @@ Uses get_children(recursive=True) for reliable enumeration,
 then reconstructs the tree structure from parent references.
 """
 import os
-import sys
+import json
+
+from cds_bootstrap import clear_hidden_modules, load_hidden_modules
 
 # Force reload of shared modules to pick up latest changes
-for _mod_name in list(sys.modules.keys()):
-    if _mod_name.startswith('codesys_'):
-        del sys.modules[_mod_name]
+clear_hidden_modules()
+load_hidden_modules([
+    "codesys_constants",
+    "codesys_utils",
+    "codesys_managers",
+    "codesys_type_profiles",
+    "codesys_type_system",
+], script_file=__file__)
 
 # Import shared constants and utilities
-from codesys_constants import TYPE_GUIDS
 from codesys_utils import (
     safe_str, load_base_dir, init_logging, log_info, log_warning, log_error,
-    resolve_projects
+    resolve_projects, get_project_prop, get_detected_codesys_version
 )
 from codesys_managers import is_nvl
+from codesys_type_profiles import PROJECT_PROPERTY_KEY, get_profile_label, get_profiles_dir
+from codesys_type_system import resolve_runtime_object, get_selected_profile_name, semantic_kind_from_guid
+from codesys_type_system import SYNC_PROFILE_CATEGORIES
 
-# Reverse mapping of TYPE_GUIDS for logging human-readable type names
-TYPE_NAMES = {v: k for k, v in TYPE_GUIDS.items()}
+
+def suggest_profile_rules(unknown_types, profile_name):
+    """Generate a complete JSON profile for unresolved GUIDs.
+
+    Creates a ready-to-use JSON profile file that extends the current profile
+    with new guid_aliases entries for unknown GUIDs found in the project.
+    """
+    if not unknown_types:
+        return []
+
+    profile_label = get_profile_label(profile_name)
+    profiles_dir = get_profiles_dir()
+
+    json_profile = {
+        "name": "%s_custom" % profile_name,
+        "label": "%s (Custom)" % profile_label,
+        "description": "Custom profile extending %s with unknown GUIDs found in project" % profile_label,
+        "extends": profile_name,
+        "guid_aliases": {}
+    }
+
+    lines = []
+    lines.append("")
+    lines.append("=== SUGGESTED PROFILE JSON ===")
+    lines.append("Save this file to: %s" % profiles_dir)
+    lines.append("Filename: %s.json" % json_profile["name"])
+    lines.append("")
+    lines.append("This profile extends %s and adds new entries for unknown GUIDs." % profile_label)
+    lines.append("Edit the kind names (e.g. 'unknown_kind_xxxxxxxx') to meaningful names,")
+    lines.append("and add sync_profile_overrides if needed.")
+    lines.append("")
+
+    for guid, example_name in unknown_types.items():
+        kind_hint = "unknown_kind_%s" % guid[:8]
+        json_profile["guid_aliases"][kind_hint] = [guid]
+        lines.append("# Unknown GUID found in: %s" % example_name)
+        lines.append("#   GUID: %s" % guid)
+        lines.append("#   Kind: %s (rename to something meaningful)" % kind_hint)
+        lines.append("")
+
+    lines.append("")
+    lines.append("--- JSON FILE CONTENT ---")
+    lines.append(json.dumps(json_profile, indent=2))
+    lines.append("")
+    lines.append("--- END JSON FILE ---")
+    lines.append("")
+    lines.append("After saving, you can:")
+    lines.append("1. Edit the kind names to something meaningful")
+    lines.append("2. Add sync_profile_overrides for each new kind if needed:")
+    lines.append("   - 'textual' for ST source files (pou, gvl, dut, itf)")
+    lines.append("   - 'native_xml' for CODESYS XML (task_config, visu, alarm_config)")
+    lines.append("   - 'skip' for things you don't want to export")
+    lines.append("3. Add context_rules if needed to reclassify ambiguous GUIDs")
+    lines.append("4. Select this profile in the Parameters dialog")
+
+    return lines
 
 def discover_project():
     """Discover and log all project objects as a tree."""
@@ -44,7 +107,12 @@ def discover_project():
         # Use recursive=True for reliable enumeration (same approach as export)
         all_objects = proj.get_children(recursive=True)
         
-        print("\n=== CODESYS Project Tree (" + str(len(all_objects)) + " objects) ===\n")
+        profile_name = get_selected_profile_name(project_profile=get_project_prop(PROJECT_PROPERTY_KEY))
+        detected_version = get_detected_codesys_version()
+        profile_label = get_profile_label(profile_name)
+        print("\n=== CODESYS Project Tree (" + str(len(all_objects)) + " objects) ===")
+        print("Detected CODESYS version: " + safe_str(detected_version))
+        print("Selected type profile: " + profile_name + " (" + safe_str(profile_label) + ")\n")
         
         # Build a set of all known GUIDs
         known_guids = set()
@@ -87,12 +155,17 @@ def discover_project():
                 obj_name = safe_str(obj.get_name())
                 obj_type_guid = safe_str(obj.type)
                 obj_class = obj.__class__.__name__
-                
-                is_unknown = obj_type_guid not in TYPE_NAMES
-                obj_type_name = TYPE_NAMES.get(obj_type_guid, "UNKNOWN_%s" % obj_type_guid[:8])
+
+                resolution = resolve_runtime_object(obj, profile_name)
+                obj_type_name = resolution.get("semantic_kind")
+                sync_profile = resolution.get("sync_profile") or ""
+                evidence = resolution.get("evidence") or []
+                is_unknown = not obj_type_name
+                if not obj_type_name:
+                    obj_type_name = semantic_kind_from_guid(obj_type_guid, profile_name) or "UNKNOWN_%s" % obj_type_guid[:8]
                 
                 # Special case: GVLs that are actually NVLs
-                if obj_type_guid == TYPE_GUIDS["gvl"]:
+                if resolution.get("semantic_kind") == "gvl":
                     try:
                         if is_nvl(obj):
                             obj_type_name = "nvl"
@@ -103,9 +176,18 @@ def discover_project():
                 if is_unknown:
                     unknown_types[obj_type_guid] = obj_name
 
-                line = "  " * level + "|-- " + prefix + obj_name + " (" + obj_type_name + " | " + obj_type_guid + " | " + obj_class + ")"
+                parts = [obj_type_name, obj_type_guid]
+                if sync_profile:
+                    parts.append(sync_profile)
+                parts.append(obj_class)
+                line = "  " * level + "|-- " + prefix + obj_name + " (" + " | ".join(parts) + ")"
                 print(line)
                 tree_lines.append(line)
+
+                if evidence:
+                    evidence_line = "  " * (level + 1) + "evidence: " + ", ".join([safe_str(item) for item in evidence])
+                    print(evidence_line)
+                    tree_lines.append(evidence_line)
                 
                 # Print children from our map
                 obj_guid = safe_str(obj.guid)
@@ -126,12 +208,16 @@ def discover_project():
         # Summary of unknown types
         if unknown_types:
             print("\n!!! UNKNOWN OBJECT TYPES FOUND !!!")
-            print("These GUIDs are missing from codesys_constants.py:")
+            print("These GUIDs are unresolved for the selected type profile:")
             for guid, name in unknown_types.items():
                 line = " - %s (Example: %s)" % (guid, name)
                 print(line)
                 log_warning("Unknown object type found: " + line)
-            print("Please add them to TYPE_GUIDS in codesys_constants.py\n")
+            print("Consider updating the selected profile or adding a new alias/context rule.")
+
+            suggestions = suggest_profile_rules(unknown_types, profile_name)
+            for line in suggestions:
+                print(line)
 
         print("\n=== Discovery Complete (" + str(len(tree_lines)) + " nodes). Tree stored in sync_debug.log ===")
 

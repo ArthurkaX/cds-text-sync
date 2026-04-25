@@ -1,28 +1,35 @@
 # Setup Script for cds-text-sync
 
-This directory contains a PowerShell setup script designed to automate the installation and update process for the `cds-text-sync` tool.
+Automate the installation and update of `cds-text-sync` with a single command.
 
-## How to execute
+## Quick Start
 
-You can run the script directly from GitHub using a single command in PowerShell (run as Administrator if you need to install Git):
+Run in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
-## What the script does
+> [!NOTE]
+> **No Git required.** The script downloads clean zip archives directly from GitHub.
 
-1.  **Environment Check**:
-    - Verifies if **Git** is installed on your system.
-    - If Git is missing, it offers to install it automatically using `winget`.
-2.  **Directory Management**:
-    - Ensures the required directory structure exists: `%LOCALAPPDATA%\CODESYS\ScriptDir\`.
-3.  **Deployment**:
-    - **First time install**: If the project is not present, it performs a `git clone` to download the tool.
-    - **Update**: If the project is already installed, it navigates into the folder and performs a `git pull` to fetch the latest updates from the repository.
+## Features
+
+- **Path Selection**: Choose between standard CODESYS paths or custom paths for forks (KeStudio, DIA Designer, etc.).
+- **Version Control**: Interactive menu with the latest `main` branch, the last 5 stable releases, and the last 5 test / pre-release builds.
+- **Auto-Update**: Detects existing versions, creates backups, and replaces files safely.
+- **Clean Install**: No `.git` history, minimal disk footprint (~5MB).
 
 ## Requirements
 
-- **Operating System**: Windows (10/11)
-- **PowerShell**: Version 5.1 or higher
-- **Internet Connection**: Required to download Git and the repository.
+- **OS**: Windows 10/11
+- **PowerShell**: 5.1 or higher
+- **Internet**: Required for download
+
+## Alternative Installations (Forks)
+
+If you use KeStudio, DIA Designer-AX, or another fork:
+
+1. Select **Option 2** in the installer.
+2. Provide your `ScriptDir` path (Shift + Right-click folder -> **Copy as path**).
+3. See [ALTERNATIVE_INSTALLATIONS.md](../ALTERNATIVE_INSTALLATIONS.md) for details.
