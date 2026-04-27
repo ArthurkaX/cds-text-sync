@@ -1423,6 +1423,9 @@ def find_object_by_path(rel_path, project):
     Find a CODESYS object using its hierarchical path.
     Example rel_path: "PLC/ST_Application/02_Object_GVL/_02_TaskLocalGVL.xml"
     
+    For textual .st exports of nested POU members, the last segment may be
+    "ParentPou.ChildName" (one path segment); that resolves to the child under ParentPou.
+    
     Note: The export skips 'Plc Logic' nodes in paths, so this function
     transparently looks through plc_logic children when a direct match
     isn't found.
@@ -1448,15 +1451,27 @@ def find_object_by_path(rel_path, project):
                 parts[-1] = name_part
 
     current_obj = project
-    for part in parts:
-        if not part: continue
+    num_parts = len(parts)
+    for i, part in enumerate(parts):
+        if not part:
+            continue
         found = _find_child_transparent(current_obj, part)
-        
+        if (
+            not found
+            and ext.lower() == ".st"
+            and i == num_parts - 1
+            and "." in part
+        ):
+            pou_segment, member_segment = part.rsplit(".", 1)
+            if pou_segment:
+                pou_obj = _find_child_transparent(current_obj, pou_segment)
+                if pou_obj:
+                    found = _find_child_transparent(pou_obj, member_segment)
         if found:
             current_obj = found
         else:
             return None
-            
+
     return current_obj
 
 
