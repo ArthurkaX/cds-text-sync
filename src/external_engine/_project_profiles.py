@@ -20,6 +20,69 @@ def _read_json(path):
         return json.load(handle)
 
 
+def _merge_unique_list(base_items, override_items):
+    result = []
+    seen = set()
+    for value in list(base_items or []) + list(override_items or []):
+        key = str(value).strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
+def _merge_profiles(base, override):
+    base = dict(_safe_dict(base))
+    override = _safe_dict(override)
+    result = dict(base)
+
+    for key, value in override.items():
+        if key == "guid_aliases":
+            aliases = {}
+            for kind, values in _safe_dict(base.get("guid_aliases")).items():
+                aliases[kind] = list(values or [])
+            for kind, values in _safe_dict(value).items():
+                aliases[kind] = _merge_unique_list(aliases.get(kind), values)
+            result[key] = aliases
+        elif key == "context_rules":
+            result[key] = list(base.get("context_rules") or []) + list(value or [])
+        elif key in ("sync_profile_overrides", "sync_direction_overrides"):
+            merged = dict(_safe_dict(base.get(key)))
+            merged.update(_safe_dict(value))
+            result[key] = merged
+        elif key == "projections":
+            result[key] = list(value or [])
+        else:
+            result[key] = value
+    return result
+
+
+def _load_profile_file(profile_name, profiles_dir, visited=None):
+    visited = visited or set()
+    profile_name = profile_name or "default"
+    if profile_name in visited:
+        raise ValueError("Profile inheritance cycle: " + profile_name)
+    visited.add(profile_name)
+
+    path = os.path.join(profiles_dir, profile_name + ".json")
+    if not os.path.exists(path):
+        return None
+
+    data = _read_json(path)
+    if not isinstance(data, dict):
+        return None
+
+    base_name = data.get("extends")
+    if base_name:
+        base = _load_profile_file(str(base_name), profiles_dir, visited)
+        if isinstance(base, dict):
+            data = _merge_profiles(base, data)
+
+    data["_profile_id"] = os.path.splitext(os.path.basename(path))[0]
+    return data
+
+
 def list_profiles(profiles_dir=None):
     profiles_dir = profiles_dir or PROFILES_DIR
     result = []
@@ -49,20 +112,12 @@ def list_profiles(profiles_dir=None):
 def load_profile(profile_name, profiles_dir=None):
     profiles_dir = profiles_dir or PROFILES_DIR
     profile_name = profile_name or "default"
-    candidates = [
-        os.path.join(profiles_dir, profile_name + ".json"),
-        os.path.join(profiles_dir, "default.json"),
-    ]
-
-    for path in candidates:
-        if not os.path.exists(path):
-            continue
+    for candidate in (profile_name, "default"):
         try:
-            data = _read_json(path)
+            data = _load_profile_file(candidate, profiles_dir)
         except Exception:
             continue
         if isinstance(data, dict):
-            data["_profile_id"] = os.path.splitext(os.path.basename(path))[0]
             return data
     return {"_profile_id": "default"}
 

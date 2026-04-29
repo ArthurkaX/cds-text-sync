@@ -106,7 +106,8 @@ elements into the handling of that target kind.
 ## extends (Inheritance)
 
 When `extends` is set, the profile inherits all `guid_aliases`, `context_rules`,
-`sync_profile_overrides`, and `sync_direction_overrides` from the base profile.
+`sync_profile_overrides`, `sync_direction_overrides`, and `projections` from the
+base profile.
 Your own entries are merged on top:
 
 - `guid_aliases`: new kinds are added, existing kinds get additional GUIDs appended

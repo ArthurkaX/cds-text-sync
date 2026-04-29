@@ -45,6 +45,8 @@ class SnapshotReader:
             return "graphical"
         if implementation.find(".//{0}Single[@Name='TextBlobForSerialisation']".format(self.ns)) is not None:
             return "textual"
+        if implementation.find(".//{0}Array[@Name='TextLines']".format(self.ns)) is not None:
+            return "textual"
         return None
 
     def _extract_path(self, entry_elem):
