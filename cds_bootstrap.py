@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Shared bootstrap helpers for root-level CODESYS scripts.
-
-This keeps the public script layer thin while preserving compatibility with
-embedded runtimes that may only support `imp`.
-"""
+"""Shared bootstrap helpers for root-level CODESYS scripts."""
 import os
 import sys
 
@@ -20,35 +15,35 @@ try:
 except ImportError:
     _HAS_IMP = False
 
-
 def _script_dir(script_file=None):
     return os.path.dirname(os.path.abspath(script_file or __file__))
 
 
-def _module_path(name, script_file=None, extension=".pyw"):
+def ensure_runtime_path(script_file=None):
     script_dir = _script_dir(script_file)
-    runtime_path = os.path.join(script_dir, ".runtime", name + extension)
-    if os.path.exists(runtime_path):
-        return runtime_path
-    root_path = os.path.join(script_dir, name + extension)
-    if os.path.exists(root_path):
-        return root_path
-    return None
+    runtime_dir = os.path.join(script_dir, ".runtime")
+    if runtime_dir not in sys.path:
+        sys.path.insert(0, runtime_dir)
+    return runtime_dir
 
 
-def load_module(name, script_file=None, extension=".pyw", force=False):
+def import_runtime_module(name, script_file=None, force=False):
+    ensure_runtime_path(script_file)
+
     if force and name in sys.modules:
         del sys.modules[name]
 
     if not force and name in sys.modules:
         return sys.modules[name]
 
-    path = _module_path(name, script_file=script_file, extension=extension)
-    if not path:
+    module_path = os.path.join(_script_dir(script_file), ".runtime", name + ".pyw")
+    if not os.path.exists(module_path):
+        module_path = os.path.join(_script_dir(script_file), name + ".pyw")
+    if not os.path.exists(module_path):
         return None
 
     if _HAS_IMPORTLIB_UTIL:
-        spec = importlib.util.spec_from_file_location(name, path)
+        spec = importlib.util.spec_from_file_location(name, module_path)
         if spec and spec.loader:
             module = importlib.util.module_from_spec(spec)
             sys.modules[name] = module
@@ -56,35 +51,23 @@ def load_module(name, script_file=None, extension=".pyw", force=False):
             return module
 
     if _HAS_IMP:
-        module = imp.load_source(name, path)
+        module = imp.load_source(name, module_path)
         sys.modules[name] = module
         return module
 
     return None
 
 
-def load_hidden_module(name, script_file=None, force=False):
-    return load_module(name, script_file=script_file, extension=".pyw", force=force)
-
-
-def clear_hidden_modules(prefix="codesys_"):
-    for mod_name in list(sys.modules.keys()):
-        if mod_name.startswith(prefix):
-            del sys.modules[mod_name]
-
-
-def load_hidden_modules(module_names, script_file=None, clear=False):
-    if clear:
-        clear_hidden_modules()
-
+def preload_runtime_modules(module_names, script_file=None, force=False):
+    ensure_runtime_path(script_file)
     loaded = {}
     for name in module_names:
-        loaded[name] = load_hidden_module(name, script_file=script_file)
+        loaded[name] = import_runtime_module(name, script_file=script_file, force=force)
     return loaded
 
 
 def run_project_command(command, params=None, script_file=None, caller_globals=None):
-    runtime_module = load_hidden_module("codesys_runtime", script_file=script_file)
+    runtime_module = import_runtime_module("codesys_runtime", script_file=script_file)
     if not runtime_module:
         raise RuntimeError("codesys_runtime.pyw not found.")
     return runtime_module.run_project_command(

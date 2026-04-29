@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Project_Build.py - User entrypoint for building the active CODESYS application.
+Project_build.py - User entrypoint for building the active CODESYS application.
 """
 from cds_bootstrap import run_project_command
 

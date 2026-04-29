@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-codesys_compare_operation.pyw - Delegating compare workflow.
-Uses the XML-first bridge to produce a compare report.
+codesys_extractor_operation.pyw - Delegating extract workflow.
+Now delegates to the new ide_bridge and external engine architecture.
 """
 from __future__ import print_function
 
 from codesys_runtime import run_bridge_operation
 
-
 def main(params=None, runtime=None):
     def invoke(system, project, base_dir, view_root, layout_mode):
-        import ide_compare
-        return ide_compare.compare_project(
+        import ide_run_action
+        return ide_run_action.run_action(
+            "export",
             system,
             project,
             base_dir,
@@ -23,7 +23,7 @@ def main(params=None, runtime=None):
         params,
         runtime,
         globals(),
-        "compare",
+        "export",
         invoke,
-        "Compare failed. Check logs in the external engine.",
+        "Extraction failed. Check logs in the external engine.",
     )

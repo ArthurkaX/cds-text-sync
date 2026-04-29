@@ -4,6 +4,62 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.0.0 (2026-04-29)
+
+**XML-First Synchronization Core:**
+
+- **Native XML Snapshot Contract**: Reworked the sync flow around a fresh CODESYS Native XML snapshot for every export, compare, and import operation.
+- **External Python 3 Engine**: Moved comparison, folder modeling, patch building, profile handling, and diagnostics out of the IDE bridge and into `src/external_engine/`.
+- **Thin CODESYS Bridge**: Reduced IDE-side scripts to snapshot export, external engine dispatch, targeted text API updates, and native XML patch application.
+- **Semantic XML Compare**: Added normalization for CODESYS serialization noise such as volatile timestamps, generated IDs, dictionary ordering, and whitespace.
+- **Mixed Patch Application**: Textual POUs are now applied through CODESYS text APIs before native XML patch import handles remaining non-textual objects, preserving child method/action/property bindings.
+
+**Public Script Set:**
+
+- **User-Facing Commands**: Stabilized the public root entrypoints as `Project_directory.py`, `Project_options.py`, `Project_export.py`, `Project_import.py`, `Project_compare.py`, and `Project_compare_ui.py`.
+- **Diagnostics Commands**: Added `Project_build.py`, `Project_discover.py`, and `Project_resources.py` for build checks, environment/type discovery, and snapshot resource analysis.
+- **Hidden Engine Helpers**: Kept patch builders, project models, and runtime internals behind the `Project_*.py` scripts and external engine CLI.
+- **Legacy Archive**: Preserved older scripts under `old_scripts/` for reference while making the new XML-first workflow the active path.
+
+**Project Layout & Settings:**
+
+- **Project Settings File**: Added tracked `cds-text-sync.json` support for layout, profile, and projection choices.
+- **View Root Modes**: Added support for legacy `.dump/views`, default `project-view/`, explicit `--view-root`, and experimental root-view mode.
+- **Generated State Separation**: Standardized generated folders around `.dump/`, `.backup/`, and `.diff/`, with stale managed files cleaned by manifest ownership.
+- **Options UI**: Reworked `Project_options.py` so users can choose layout, active CODESYS profile, and optional derived text projections from a dialog.
+- **Pre-Import Safety Backups**: Added optional timestamped `.project` backups before IDE-changing imports, stored only in `.backup/` with retention cleanup.
+
+**Optional Text Projections:**
+
+- **Readable POU `.st` Views**: Added opt-in `.st` projections for POU text with declaration first, `// --- implementation ---`, and implementation second.
+- **Flat Child POU Files**: Added `.st` projections for methods, actions, properties, and accessors as sibling files such as `ST_FB.ST_METHOD.st`.
+- **DUT `.st` Views**: Added declaration-only `.st` projections for DUT objects such as structures, enums, unions, and aliases.
+- **Standalone `.st` Creates**: Added controlled creation of new text objects from standalone `.st` files when the semantic kind can be detected.
+- **Text List CSV**: Added import-safe CSV projections for TextList objects, limited to editing existing rows and translations.
+- **Alarm Item CSV**: Added import-safe CSV projections for alarm items, limited to existing alarm row updates.
+- **No Duplicate PR Diffs**: When projections are enabled, export externalizes owned text into `.st` or `.csv` and redacts the duplicate text from the XML sidecar.
+- **Projection Conflict Detection**: Compare/import now fail explicitly when both canonical XML and its derived projection changed since the last export.
+
+**Compare & Review Workflow:**
+
+- **Interactive Compare UI**: Added checkbox review, object metadata, and disk-vs-IDE diff viewing through `Project_compare_ui.py`.
+- **Projection-First Diffs**: Compare UI prefers `.st` or `.csv` diffs when a projection owns the edited text, while keeping XML available for fallback cases.
+- **Selected Actions**: Added filtered import/export support by GUID so Compare UI can apply only checked objects.
+- **Large Project Stability**: Reduced compare report memory pressure and avoided flooding IDE output with repeated missing-resource messages.
+
+**Diagnostics & Large Project Support:**
+
+- **Build Diagnostics**: `Project_build.py` builds the active or selected application and writes `.dump/build_<Application>.log` plus `.dump/build_report.json`.
+- **Discover Diagnostics**: `Project_discover.py` records live IDE tree/type information into `.dump/discover_tree.log` and `.dump/discover_report.json`.
+- **Resource Diagnostics**: `Project_resources.py` analyzes snapshot object sizes and categories, writing `.dump/resources_report.json` and `.dump/resources_top.log`.
+- **Missing External Resource Skip**: Snapshot export skips missing image/file-like resources that can block CODESYS native export on large projects.
+
+**Known Limitations:**
+
+- Visualization objects can report native import success while specific visual property edits are not applied by CODESYS; this remains a targeted investigation area.
+- CSV projections are update-only in this release: inserted, removed, renamed, or duplicate rows fail explicitly.
+- Graphical CFC/FBD/LD implementations are intentionally excluded from `.st` projections unless a profile explicitly marks a safe textual representation.
+
 ### Version 1.7.5 (2026-04-17)
 
 **Profiles, Semantic Kinds & Sync Policy:**

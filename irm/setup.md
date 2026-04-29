@@ -25,6 +25,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 - **OS**: Windows 10/11
 - **PowerShell**: 5.1 or higher
 - **Internet**: Required for download
+- **Python 3**: The installer checks for the `python` command and can offer either a manual download page or a `winget` install if Python is missing
 
 ## Alternative Installations (Forks)
 
