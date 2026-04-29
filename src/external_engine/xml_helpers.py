@@ -72,14 +72,61 @@ def _is_text_blob_element(element):
     )
 
 
+def _is_text_lines_element(element):
+    return (
+        element is not None
+        and element.attrib.get("Name") == "TextLines"
+        and (element.tag == "Array" or str(element.tag).endswith("}Array"))
+    )
+
+
+def _named_text_child(element):
+    if element is None:
+        return None
+    for child in list(element):
+        if (
+            child.attrib.get("Name") == "Text"
+            and (child.tag == "Single" or str(child.tag).endswith("}Single"))
+        ):
+            return child
+    return None
+
+
+def _text_lines_value(text_lines):
+    lines = []
+    for line in list(text_lines or []):
+        text_child = _named_text_child(line)
+        if text_child is not None:
+            lines.append(text_child.text or "")
+    return "\n".join(lines)
+
+
+def _text_section_elements(entry_element):
+    if entry_element is None:
+        return []
+    result = []
+    for element in entry_element.iter():
+        if _is_text_blob_element(element):
+            result.append({"kind": "blob", "element": element})
+        elif _is_text_lines_element(element):
+            result.append({"kind": "lines", "element": element})
+    return result
+
+
 def text_blob_elements(entry_element):
     if entry_element is None:
         return []
-    return [element for element in entry_element.iter() if _is_text_blob_element(element)]
+    return [section["element"] for section in _text_section_elements(entry_element)]
 
 
 def text_blob_values(entry_element):
-    return [(element.text or "") for element in text_blob_elements(entry_element)]
+    values = []
+    for section in _text_section_elements(entry_element):
+        if section["kind"] == "blob":
+            values.append(section["element"].text or "")
+        elif section["kind"] == "lines":
+            values.append(_text_lines_value(section["element"]))
+    return values
 
 
 def _text_blob_sections(entry_element):
@@ -92,14 +139,18 @@ def _text_blob_sections(entry_element):
         element_name = element.attrib.get("Name")
         if element_name:
             next_names.append(element_name)
-        if _is_text_blob_element(element):
+        if _is_text_blob_element(element) or _is_text_lines_element(element):
             lowered = [name.lower() for name in names]
             role = "section"
             if "interface" in lowered or "declaration" in lowered:
                 role = "declaration"
             elif "implementation" in lowered:
                 role = "implementation"
-            sections.append({"role": role, "text": element.text or ""})
+            if _is_text_lines_element(element):
+                text = _text_lines_value(element)
+            else:
+                text = element.text or ""
+            sections.append({"role": role, "text": text})
             return
         for child in list(element):
             walk(child, next_names)
@@ -239,11 +290,41 @@ def split_st_projection_values(value, entry_element):
 
 
 def replace_text_blob_values(entry_element, values):
-    blobs = text_blob_elements(entry_element)
+    blobs = _text_section_elements(entry_element)
     values = list(values or [])
-    for index, blob in enumerate(blobs):
-        blob.text = values[index] if index < len(values) else ""
+    for index, section in enumerate(blobs):
+        value = values[index] if index < len(values) else ""
+        if section["kind"] == "blob":
+            section["element"].text = value
+        elif section["kind"] == "lines":
+            _replace_text_lines_value(section["element"], value)
     return len(blobs)
+
+
+def _replace_text_lines_value(text_lines, value):
+    existing = list(text_lines or [])
+    template = existing[0] if existing else None
+    lines = (value or "").splitlines()
+    if value and (value.endswith("\n") or value.endswith("\r\n")):
+        lines = lines[:-1] if lines and lines[-1] == "" else lines
+    if not lines:
+        lines = [""]
+
+    for child in existing:
+        text_lines.remove(child)
+
+    if template is None:
+        return
+
+    for index, line_text in enumerate(lines):
+        line_element = copy.deepcopy(template)
+        id_child = _named_child(line_element, "Single", "Id")
+        text_child = _named_text_child(line_element)
+        if id_child is not None:
+            id_child.text = str(index + 1)
+        if text_child is not None:
+            text_child.text = line_text
+        text_lines.append(line_element)
 
 
 def externalized_text_xml(entry_element):
@@ -685,8 +766,18 @@ def normalize_xml_element(element):
     element.text = (element.text or "").strip()
     element.tail = None
 
+    if _is_text_lines_element(element):
+        while list(element):
+            last_child = list(element)[-1]
+            text_child = _named_text_child(last_child)
+            if text_child is None or (text_child.text or "").strip():
+                break
+            element.remove(last_child)
+
     for child in list(element):
-        if child.attrib.get("Name") in VOLATILE_XML_NAMES:
+        if child.attrib.get("Name") == "Id" and _named_text_child(element) is not None:
+            element.remove(child)
+        elif child.attrib.get("Name") in VOLATILE_XML_NAMES:
             element.remove(child)
         else:
             normalize_xml_element(child)
