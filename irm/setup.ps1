@@ -8,6 +8,88 @@ $fullPath = Join-Path $targetBaseDir $repoName
 
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
 
+function Test-PythonCommand {
+    try {
+        $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($pythonCmd) {
+            return $true
+        }
+        $pythonExeCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+        if ($pythonExeCmd) {
+            return $true
+        }
+    } catch {
+    }
+    return $false
+}
+
+function Offer-PythonInstall {
+    Write-Host "`n[!] Python 3 was not found on this system." -ForegroundColor Yellow
+    Write-Host '    cds-text-sync needs the `python` command available from PowerShell/CMD.' -ForegroundColor Yellow
+    Write-Host "`nChoose an installation path:" -ForegroundColor Cyan
+    Write-Host "[W] Install with winget" -ForegroundColor Green
+    Write-Host "[M] Open manual download page" -ForegroundColor Green
+    Write-Host "[S] Skip for now and continue anyway" -ForegroundColor Green
+
+    $pythonChoice = Read-Host "`nSelect option [W, M, S] (default: W)"
+    if ([string]::IsNullOrWhiteSpace($pythonChoice)) {
+        $pythonChoice = "W"
+    }
+
+    switch ($pythonChoice.ToUpperInvariant()) {
+        "W" {
+            $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+            if (-not $wingetCmd) {
+                Write-Host "[!] winget was not found on this machine." -ForegroundColor Yellow
+                Write-Host "[*] Opening the manual download page instead..." -ForegroundColor Cyan
+                Start-Process "https://www.python.org/downloads/windows/"
+                return $false
+            }
+
+            Write-Host "[*] Installing Python with winget..." -ForegroundColor Cyan
+            $wingetArgs = @(
+                "install",
+                "-e",
+                "--id",
+                "Python.Python.3.13",
+                "--accept-package-agreements",
+                "--accept-source-agreements"
+            )
+            $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru
+            if ($proc.ExitCode -ne 0) {
+                Write-Host "[!] winget install failed with exit code $($proc.ExitCode)." -ForegroundColor Red
+                Write-Host "[*] You can install Python manually from: https://www.python.org/downloads/windows/" -ForegroundColor Yellow
+                return $false
+            }
+
+            if (Test-PythonCommand) {
+                Write-Host "[+] Python is now available." -ForegroundColor Green
+                return $true
+            }
+
+            Write-Host '[!] winget finished, but `python` is still not available in this shell.' -ForegroundColor Yellow
+            Write-Host "[*] Restart the terminal or install Python manually from: https://www.python.org/downloads/windows/" -ForegroundColor Yellow
+            return $false
+        }
+        "M" {
+            Write-Host "[*] Opening the Python download page..." -ForegroundColor Cyan
+            Start-Process "https://www.python.org/downloads/windows/"
+            return $false
+        }
+        default {
+            Write-Host "[*] Skipping Python installation step." -ForegroundColor Yellow
+            return $false
+        }
+    }
+}
+
+if (-not (Test-PythonCommand)) {
+    $pythonReady = Offer-PythonInstall
+    if (-not $pythonReady -and -not (Test-PythonCommand)) {
+        Write-Host '[!] Python is still unavailable. The installer can continue, but the package will not run until `python` is installed.' -ForegroundColor Yellow
+    }
+}
+
 # 2. Get available releases
 Write-Host "`n[*] Fetching available versions..." -ForegroundColor Cyan
 $stableTags = @()

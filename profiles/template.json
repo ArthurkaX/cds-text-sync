@@ -64,5 +64,72 @@
   "sync_direction_overrides": {
     "device": "export_only",
     "device_module": "export_only"
-  }
+  },
+  "projections": [
+    {
+      "id": "pou_st",
+      "label": "POU Structured Text (.st)",
+      "kind": "pou",
+      "format": "st",
+      "default_enabled": false,
+      "import_safe": false,
+      "requires_textual_implementation": true,
+      "sections": ["declaration", "implementation"],
+      "description": "Optional derived ST view for textual POU declaration and implementation."
+    },
+    {
+      "id": "pou_child_st",
+      "label": "POU child Structured Text (.st)",
+      "kind": "method",
+      "kinds": ["method", "action", "property", "property_accessor"],
+      "format": "st",
+      "default_enabled": false,
+      "import_safe": false,
+      "sections": ["declaration", "implementation"],
+      "description": "Optional derived ST view for methods, actions, properties, and property accessors under a POU."
+    },
+    {
+      "id": "gvl_st",
+      "label": "GVL Structured Text (.st)",
+      "kind": "gvl",
+      "format": "st",
+      "default_enabled": false,
+      "import_safe": false,
+      "sections": ["declaration"],
+      "description": "Optional derived ST view for global variable lists."
+    },
+    {
+      "id": "dut_st",
+      "label": "DUT Structured Text (.st)",
+      "kind": "dut",
+      "format": "st",
+      "default_enabled": false,
+      "import_safe": false,
+      "sections": ["declaration"],
+      "description": "Optional derived ST view for data unit types such as STRUCT, ENUM, UNION, and aliases."
+    },
+    {
+      "id": "textlist_csv",
+      "label": "Text lists (.csv)",
+      "kind": "textlist",
+      "kinds": ["textlist", "global_text_list"],
+      "format": "csv",
+      "exclude_names": ["AlarmGroup"],
+      "default_enabled": false,
+      "import_safe": true,
+      "sections": ["entries"],
+      "description": "Optional derived CSV view for text-list style data."
+    },
+    {
+      "id": "alarm_items_csv",
+      "label": "Alarm items (.csv)",
+      "kind": "alarm_config_item",
+      "format": "csv",
+      "extractor": "alarm_items_csv",
+      "default_enabled": false,
+      "import_safe": true,
+      "sections": ["alarms"],
+      "description": "Optional derived CSV view for alarm item definitions."
+    }
+  ]
 }

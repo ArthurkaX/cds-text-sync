@@ -1,8 +1,11 @@
+"""
+Project_directory.py - User entrypoint for setting the sync directory.
+"""
 import os
 
-from cds_bootstrap import load_hidden_modules
+from cds_bootstrap import preload_runtime_modules
 
-load_hidden_modules([
+preload_runtime_modules([
     "codesys_constants",
     "codesys_utils",
     "codesys_ui",

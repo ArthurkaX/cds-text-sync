@@ -1,516 +1,312 @@
 # -*- coding: utf-8 -*-
 """
-codesys_ui_diff.py - Side-by-side diff viewer for CODESYS scripts
-
-Renders two columns showing IDE vs Disk text content with highlighted differences.
-Uses WinForms RichTextBox for colored diff rendering.
+codesys_ui_diff.pyw - Side-by-side diff viewer for compare UI.
 """
-import clr
-clr.AddReference("System.Windows.Forms")
-clr.AddReference("System.Drawing")
+from __future__ import print_function
 
-from System.Windows.Forms import (
-    Form, Panel, RichTextBox, Label, Button, RichTextBoxScrollBars,
-    FormBorderStyle, FormStartPosition, DialogResult,
-    DockStyle, AnchorStyles, BorderStyle, Padding, Control, Keys
-)
-from System.Drawing import (
-    Size, Point, Font, FontStyle, Color, ContentAlignment,
-    SystemColors
-)
-import os
-import codecs
 import difflib
+import os
+
+try:
+    import clr
+    clr.AddReference("System.Windows.Forms")
+    clr.AddReference("System.Drawing")
+    from System.Windows.Forms import (
+        Form, Panel, RichTextBox, Label, Button, RichTextBoxScrollBars,
+        FormBorderStyle, FormStartPosition, DialogResult, DockStyle,
+        AnchorStyles, BorderStyle, Padding, MessageBox, MessageBoxButtons,
+        MessageBoxIcon, FlatStyle
+    )
+    from System.Drawing import Size, Point, Font, FontStyle, Color
+except Exception:
+    Form = None
 
 
-# ─── Diff Algorithm ──────────────────────────────────────────────────────────
-
-def compute_side_by_side_diff(text_left, text_right):
-    """
-    Compute a side-by-side diff between two texts.
-    
-    Returns list of tuples: (left_line, right_line, status)
-    Status: 'equal', 'modified', 'added', 'removed'
-    """
-    lines_a = (text_left or "").splitlines()
-    lines_b = (text_right or "").splitlines()
-    
+def compute_side_by_side_diff(left_text, right_text):
+    left_lines = (left_text or "").splitlines()
+    right_lines = (right_text or "").splitlines()
     result = []
-    matcher = difflib.SequenceMatcher(None, lines_a, lines_b)
-    
+    matcher = difflib.SequenceMatcher(None, left_lines, right_lines)
+
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'equal':
+        if tag == "equal":
             for i, j in zip(range(i1, i2), range(j1, j2)):
-                result.append((lines_a[i], lines_b[j], 'equal'))
-        elif tag == 'replace':
+                result.append((left_lines[i], right_lines[j], "equal"))
+        elif tag == "replace":
             max_len = max(i2 - i1, j2 - j1)
-            for k in range(max_len):
-                if k < (i2 - i1) and k < (j2 - j1):
-                    result.append((lines_a[i1 + k], lines_b[j1 + k], 'modified'))
-                elif k < (i2 - i1):
-                    result.append((lines_a[i1 + k], "", 'removed'))
+            for offset in range(max_len):
+                has_left = offset < (i2 - i1)
+                has_right = offset < (j2 - j1)
+                if has_left and has_right:
+                    result.append((left_lines[i1 + offset], right_lines[j1 + offset], "modified"))
+                elif has_left:
+                    result.append((left_lines[i1 + offset], "", "removed"))
                 else:
-                    result.append(("", lines_b[j1 + k], 'added'))
-        elif tag == 'delete':
+                    result.append(("", right_lines[j1 + offset], "added"))
+        elif tag == "delete":
             for i in range(i1, i2):
-                result.append((lines_a[i], "", 'removed'))
-        elif tag == 'insert':
+                result.append((left_lines[i], "", "removed"))
+        elif tag == "insert":
             for j in range(j1, j2):
-                result.append(("", lines_b[j], 'added'))
-                
+                result.append(("", right_lines[j], "added"))
+
     return result
 
 
-# ─── Colors ───────────────────────────────────────────────────────────────────
-
-CLR_BG_DARK       = Color.FromArgb(30, 30, 30)
-CLR_BG_PANEL      = Color.FromArgb(37, 37, 38)
-CLR_TEXT_NORMAL    = Color.FromArgb(212, 212, 212)
-CLR_TEXT_LINE_NO   = Color.FromArgb(100, 100, 100)
-
-CLR_ADDED_BG      = Color.FromArgb(35, 65, 35)
-CLR_ADDED_TEXT     = Color.FromArgb(120, 220, 120)
-
-CLR_REMOVED_BG    = Color.FromArgb(75, 30, 30)
-CLR_REMOVED_TEXT   = Color.FromArgb(240, 120, 120)
-
-CLR_MODIFIED_L_BG  = Color.FromArgb(75, 55, 20)
-CLR_MODIFIED_L_TXT = Color.FromArgb(240, 200, 100)
-CLR_MODIFIED_R_BG  = Color.FromArgb(30, 55, 75)
-CLR_MODIFIED_R_TXT = Color.FromArgb(100, 200, 240)
-
-CLR_HEADER_BG      = Color.FromArgb(45, 45, 48)
-CLR_HEADER_TEXT     = Color.FromArgb(200, 200, 200)
-CLR_BTN_BG         = Color.FromArgb(60, 60, 65)
-CLR_BTN_TEXT       = Color.FromArgb(220, 220, 220)
-CLR_SEPARATOR      = Color.FromArgb(60, 60, 65)
+if Form is not None:
+    CLR_BG = Color.FromArgb(30, 30, 30)
+    CLR_PANEL = Color.FromArgb(37, 37, 38)
+    CLR_TEXT = Color.FromArgb(220, 220, 220)
+    CLR_DIM = Color.FromArgb(120, 120, 120)
+    CLR_HEADER = Color.FromArgb(45, 45, 48)
+    CLR_BUTTON_BG = Color.FromArgb(72, 72, 78)
+    CLR_BUTTON_BORDER = Color.FromArgb(115, 115, 125)
+    CLR_BUTTON_TEXT = Color.FromArgb(245, 245, 245)
+    CLR_ADDED_BG = Color.FromArgb(35, 65, 35)
+    CLR_ADDED = Color.FromArgb(130, 230, 130)
+    CLR_REMOVED_BG = Color.FromArgb(75, 30, 30)
+    CLR_REMOVED = Color.FromArgb(245, 130, 130)
+    CLR_MOD_LEFT_BG = Color.FromArgb(75, 55, 20)
+    CLR_MOD_LEFT = Color.FromArgb(245, 205, 110)
+    CLR_MOD_RIGHT_BG = Color.FromArgb(30, 55, 75)
+    CLR_MOD_RIGHT = Color.FromArgb(120, 205, 245)
 
 
-# ─── Diff Viewer Form ────────────────────────────────────────────────────────
-
-class DiffViewerForm(Form):
-    """Side-by-side diff viewer with dark theme and syntax-highlighted differences."""
-    
-    def __init__(self, left_text, right_text, left_title="IDE Content", right_title="Disk Content", object_name=""):
-        self.Text = "Diff: " + object_name if object_name else "Diff Viewer"
-        self.Size = Size(1100, 700)
-        self.MinimumSize = Size(600, 400)
+class DiffViewerForm(Form if Form is not None else object):
+    def __init__(self, left_text, right_text, left_title, right_title, object_name):
+        self.Text = "Diff: " + (object_name or "object")
+        self.Size = Size(1120, 720)
+        self.MinimumSize = Size(700, 440)
         self.StartPosition = FormStartPosition.CenterScreen
-        self.BackColor = CLR_BG_DARK
         self.FormBorderStyle = FormBorderStyle.Sizable
-        
+        self.BackColor = CLR_BG
         self._left_text = left_text or ""
         self._right_text = right_text or ""
-        self._syncing_scroll = False
-        self._change_positions = []   # char indices of each diff hunk in left RTB
-        self._current_change = -1
-        
-        # ── Top bar (title + column headers in one panel) ─────────────
-        top_bar = Panel()
-        top_bar.Height = 60
-        top_bar.Dock = DockStyle.Top
-        top_bar.BackColor = CLR_HEADER_BG
-        self.Controls.Add(top_bar)
-        
-        title_label = Label()
-        title_label.Text = object_name if object_name else "Diff Viewer"
-        title_label.ForeColor = CLR_HEADER_TEXT
-        title_label.Font = Font("Segoe UI", 11, FontStyle.Bold)
-        title_label.AutoSize = True
-        title_label.Location = Point(12, 6)
-        top_bar.Controls.Add(title_label)
-        
-        # Stats label (right side of title row)
-        self._stats_label = Label()
-        self._stats_label.ForeColor = CLR_TEXT_LINE_NO
-        self._stats_label.Font = Font("Segoe UI", 9)
-        self._stats_label.AutoSize = True
-        self._stats_label.Location = Point(500, 8)
-        top_bar.Controls.Add(self._stats_label)
-        
-        # Column labels (second row inside top bar)
-        lbl_left = Label()
-        lbl_left.Text = left_title
-        lbl_left.ForeColor = CLR_ADDED_TEXT
-        lbl_left.Font = Font("Segoe UI Semibold", 9)
-        lbl_left.Location = Point(15, 36)
-        lbl_left.AutoSize = True
-        top_bar.Controls.Add(lbl_left)
-        
-        lbl_right = Label()
-        lbl_right.Text = right_title
-        lbl_right.ForeColor = Color.FromArgb(200, 160, 255)
-        lbl_right.Font = Font("Segoe UI Semibold", 9)
-        lbl_right.AutoSize = True
-        top_bar.Controls.Add(lbl_right)
-        self._lbl_right_header = lbl_right
-        
-        # ── Bottom bar ──────────
-        bottom_bar = Panel()
-        bottom_bar.Height = 45
-        bottom_bar.Dock = DockStyle.Bottom
-        bottom_bar.BackColor = CLR_HEADER_BG
-        self.Controls.Add(bottom_bar)
-        
-        btn_close = Button()
-        btn_close.Text = "Close"
-        btn_close.Size = Size(90, 30)
-        btn_close.Location = Point(10, 8)
-        btn_close.BackColor = CLR_BTN_BG
-        btn_close.ForeColor = CLR_BTN_TEXT
-        btn_close.FlatStyle = 0  # Flat
-        btn_close.DialogResult = DialogResult.Cancel
-        bottom_bar.Controls.Add(btn_close)
-        self.CancelButton = btn_close
-        
-        # Navigation buttons
-        btn_prev = Button()
-        btn_prev.Text = "<< Prev"
-        btn_prev.Size = Size(80, 30)
-        btn_prev.Location = Point(120, 8)
-        btn_prev.BackColor = CLR_BTN_BG
-        btn_prev.ForeColor = CLR_BTN_TEXT
-        btn_prev.FlatStyle = 0
-        btn_prev.Click += self._on_prev
-        bottom_bar.Controls.Add(btn_prev)
-        
-        btn_next = Button()
-        btn_next.Text = "Next >>"
-        btn_next.Size = Size(80, 30)
-        btn_next.Location = Point(205, 8)
-        btn_next.BackColor = CLR_BTN_BG
-        btn_next.ForeColor = CLR_BTN_TEXT
-        btn_next.FlatStyle = 0
-        btn_next.Click += self._on_next
-        bottom_bar.Controls.Add(btn_next)
-        
-        self._nav_label = Label()
-        self._nav_label.Text = ""
-        self._nav_label.ForeColor = CLR_TEXT_LINE_NO
-        self._nav_label.Font = Font("Segoe UI", 9)
-        self._nav_label.AutoSize = True
-        self._nav_label.Location = Point(295, 14)
-        bottom_bar.Controls.Add(self._nav_label)
-        
-        # Save button (for Ctrl+Diff functionality inside the viewer)
-        btn_save = Button()
-        btn_save.Text = "Save to /.diff/"
-        btn_save.Size = Size(100, 30)
-        btn_save.Location = Point(self.Size.Width - 125, 8)
-        btn_save.Anchor = getattr(AnchorStyles, "Top") | getattr(AnchorStyles, "Right")
-        btn_save.BackColor = CLR_BTN_BG
-        btn_save.ForeColor = Color.FromArgb(200, 255, 200) # Subtle green
-        btn_save.FlatStyle = 0
-        btn_save.Click += self._on_save_button_click
-        bottom_bar.Controls.Add(btn_save)
-        self._btn_save_internal = btn_save
-        
-        # ── Content panel (directly on form, no nesting) ──
-        content_panel = Panel()
-        content_panel.Dock = DockStyle.Fill
-        content_panel.BackColor = CLR_BG_DARK
-        content_panel.Padding = Padding(5, 5, 5, 5)
-        self.Controls.Add(content_panel)
-        # Fix docking order: Fill must be docked LAST (lowest z-index)
-        # so it only takes the space remaining after Top/Bottom bars.
-        content_panel.BringToFront()
-        
-        # Separator
-        separator = Panel()
-        separator.Width = 2
-        separator.BackColor = CLR_SEPARATOR
-        
-        self._rtb_left = self._create_rtb()
-        self._rtb_right = self._create_rtb()
-        
-        # Sync scrolling between the two panels
-        self._rtb_left.VScroll += self._on_left_scroll
-        self._rtb_right.VScroll += self._on_right_scroll
-        
-        # Add to content panel
-        content_panel.Controls.Add(self._rtb_right)
-        content_panel.Controls.Add(separator)
-        content_panel.Controls.Add(self._rtb_left)
-        
-        self._content_panel = content_panel
-        self._separator = separator
-        
-        # Handle resize
-        self.Resize += self._on_resize
-        
-        # Populate diff
-        self._populate_diff()
-        
-        # Initial layout
-        self._trigger_layout()
-    
-    def _create_rtb(self):
-        """Create a styled RichTextBox for diff display."""
-        rtb = RichTextBox()
-        rtb.ReadOnly = True
-        rtb.BackColor = CLR_BG_PANEL
-        rtb.ForeColor = CLR_TEXT_NORMAL
-        rtb.Font = Font("Consolas", 10)
-        rtb.BorderStyle = getattr(BorderStyle, "None")
-        rtb.WordWrap = False
-        rtb.ScrollBars = RichTextBoxScrollBars.Both
-        rtb.DetectUrls = False
-        return rtb
-    
-    def _on_left_scroll(self, sender, event):
-        if self._syncing_scroll:
-            return
-        self._syncing_scroll = True
-        try:
-            # Sync right panel to left panel scroll position
-            pos = self._rtb_left.GetPositionFromCharIndex(0)
-            char_idx = self._rtb_right.GetCharIndexFromPosition(pos)
-            # Use SendMessage to sync - simpler approach: set first visible line
-            first_line = self._rtb_left.GetLineFromCharIndex(self._rtb_left.GetCharIndexFromPosition(Point(0, 0)))
-            first_char_right = self._rtb_right.GetFirstCharIndexFromLine(first_line)
-            if first_char_right >= 0:
-                self._rtb_right.Select(first_char_right, 0)
-                self._rtb_right.ScrollToCaret()
-        except:
-            pass
-        self._syncing_scroll = False
-    
-    def _on_right_scroll(self, sender, event):
-        if self._syncing_scroll:
-            return
-        self._syncing_scroll = True
-        try:
-            first_line = self._rtb_right.GetLineFromCharIndex(self._rtb_right.GetCharIndexFromPosition(Point(0, 0)))
-            first_char_left = self._rtb_left.GetFirstCharIndexFromLine(first_line)
-            if first_char_left >= 0:
-                self._rtb_left.Select(first_char_left, 0)
-                self._rtb_left.ScrollToCaret()
-        except:
-            pass
-        self._syncing_scroll = False
-    
-    def _on_resize(self, sender, event):
-        self._trigger_layout()
-    
-    def _trigger_layout(self):
-        """Manually position panels side by side."""
-        if not self._content_panel or not hasattr(self._content_panel, 'ClientSize'):
-            return
-        w = self._content_panel.ClientSize.Width
-        h = self._content_panel.ClientSize.Height
-        half = (w - 2) // 2
-        
-        self._rtb_left.Location = Point(0, 0)
-        self._rtb_left.Size = Size(half, h)
-        
-        self._separator.Location = Point(half, 0)
-        self._separator.Size = Size(2, h)
-        
-        self._rtb_right.Location = Point(half + 2, 0)
-        self._rtb_right.Size = Size(w - half - 2, h)
-        
-        # Position right-column header label in top bar
-        if self._lbl_right_header:
-            total_w = self.ClientSize.Width
-            self._lbl_right_header.Location = Point(total_w // 2 + 10, 36)
-        
-        # Position stats label in top bar
-        if self._stats_label:
-            self._stats_label.Location = Point(self.ClientSize.Width - 280, 8)
-    
-    def _populate_diff(self):
-        """Compute diff and render into both RichTextBox panels."""
-        diff_lines = compute_side_by_side_diff(self._left_text, self._right_text)
-        
-        # Stats
-        added = sum(1 for _, _, s in diff_lines if s == 'added')
-        removed = sum(1 for _, _, s in diff_lines if s == 'removed')
-        modified = sum(1 for _, _, s in diff_lines if s == 'modified')
-        equal = sum(1 for _, _, s in diff_lines if s == 'equal')
-        self._stats_label.Text = "+{} -{} ~{} ={} lines".format(added, removed, modified, equal)
-        
-        # Render
-        self._rtb_left.Clear()
-        self._rtb_right.Clear()
         self._change_positions = []
-        
-        left_line_no = 0
-        right_line_no = 0
-        in_change = False
-        
-        for left_line, right_line, status in diff_lines:
-            if status == 'equal':
-                left_line_no += 1
-                right_line_no += 1
-                prefix_l = "{:>4}  ".format(left_line_no)
-                prefix_r = "{:>4}  ".format(right_line_no)
-                self._append_line(self._rtb_left, prefix_l, CLR_TEXT_LINE_NO, left_line, CLR_TEXT_NORMAL, None)
-                self._append_line(self._rtb_right, prefix_r, CLR_TEXT_LINE_NO, right_line, CLR_TEXT_NORMAL, None)
-                in_change = False
-                
-            elif status == 'removed':
-                if not in_change:
-                    self._change_positions.append(self._rtb_left.TextLength)
-                    in_change = True
-                left_line_no += 1
-                prefix_l = "{:>4} -".format(left_line_no)
-                self._append_line(self._rtb_left, prefix_l, CLR_REMOVED_TEXT, left_line, CLR_REMOVED_TEXT, CLR_REMOVED_BG)
-                self._append_line(self._rtb_right, "      ", CLR_TEXT_LINE_NO, "", CLR_TEXT_NORMAL, None)
-                
-            elif status == 'added':
-                if not in_change:
-                    self._change_positions.append(self._rtb_left.TextLength)
-                    in_change = True
-                right_line_no += 1
-                prefix_r = "{:>4} +".format(right_line_no)
-                self._append_line(self._rtb_left, "      ", CLR_TEXT_LINE_NO, "", CLR_TEXT_NORMAL, None)
-                self._append_line(self._rtb_right, prefix_r, CLR_ADDED_TEXT, right_line, CLR_ADDED_TEXT, CLR_ADDED_BG)
-                
-            elif status == 'modified':
-                if not in_change:
-                    self._change_positions.append(self._rtb_left.TextLength)
-                    in_change = True
-                left_line_no += 1
-                right_line_no += 1
-                prefix_l = "{:>4} ~".format(left_line_no)
-                prefix_r = "{:>4} ~".format(right_line_no)
-                self._append_line(self._rtb_left, prefix_l, CLR_MODIFIED_L_TXT, left_line, CLR_MODIFIED_L_TXT, CLR_MODIFIED_L_BG)
-                self._append_line(self._rtb_right, prefix_r, CLR_MODIFIED_R_TXT, right_line, CLR_MODIFIED_R_TXT, CLR_MODIFIED_R_BG)
-        
-        # Update nav label
-        total = len(self._change_positions)
-        self._nav_label.Text = str(total) + " change" + ("s" if total != 1 else "")
         self._current_change = -1
-        
-        # Reset scroll to top – Select(0,0) alone sometimes leaves the
-        # first few lines above the viewport.  Force position to line 0.
-        for rtb in (self._rtb_left, self._rtb_right):
-            rtb.SelectionStart = 0
-            rtb.SelectionLength = 0
-            rtb.ScrollToCaret()
-            # Double-ensure: jump to the first char of line 0
-            idx0 = rtb.GetFirstCharIndexFromLine(0)
-            if idx0 >= 0:
-                rtb.SelectionStart = idx0
-                rtb.ScrollToCaret()
-    
+
+        top = Panel()
+        top.Dock = DockStyle.Top
+        top.Height = 62
+        top.BackColor = CLR_HEADER
+        self.Controls.Add(top)
+
+        title = Label()
+        title.Text = object_name or "Object diff"
+        title.ForeColor = CLR_TEXT
+        title.Font = Font("Segoe UI", 11, FontStyle.Bold)
+        title.AutoSize = True
+        title.Location = Point(12, 8)
+        top.Controls.Add(title)
+
+        self._stats = Label()
+        self._stats.ForeColor = CLR_DIM
+        self._stats.AutoSize = True
+        self._stats.Location = Point(820, 10)
+        self._stats.Anchor = AnchorStyles.Top | AnchorStyles.Right
+        top.Controls.Add(self._stats)
+
+        left_label = Label()
+        left_label.Text = left_title
+        left_label.ForeColor = CLR_ADDED
+        left_label.AutoSize = True
+        left_label.Location = Point(15, 39)
+        top.Controls.Add(left_label)
+
+        self._right_label = Label()
+        self._right_label.Text = right_title
+        self._right_label.ForeColor = CLR_MOD_RIGHT
+        self._right_label.AutoSize = True
+        self._right_label.Location = Point(570, 39)
+        top.Controls.Add(self._right_label)
+
+        bottom = Panel()
+        bottom.Dock = DockStyle.Bottom
+        bottom.Height = 45
+        bottom.BackColor = CLR_HEADER
+        self.Controls.Add(bottom)
+
+        close_btn = Button()
+        close_btn.Text = "Close"
+        close_btn.Size = Size(90, 28)
+        close_btn.Location = Point(10, 8)
+        close_btn.DialogResult = DialogResult.Cancel
+        self._style_button(close_btn)
+        bottom.Controls.Add(close_btn)
+        self.CancelButton = close_btn
+
+        prev_btn = Button()
+        prev_btn.Text = "<< Prev"
+        prev_btn.Size = Size(80, 28)
+        prev_btn.Location = Point(118, 8)
+        prev_btn.Click += self._on_prev
+        self._style_button(prev_btn)
+        bottom.Controls.Add(prev_btn)
+
+        next_btn = Button()
+        next_btn.Text = "Next >>"
+        next_btn.Size = Size(80, 28)
+        next_btn.Location = Point(204, 8)
+        next_btn.Click += self._on_next
+        self._style_button(next_btn)
+        bottom.Controls.Add(next_btn)
+
+        self._nav = Label()
+        self._nav.ForeColor = CLR_DIM
+        self._nav.AutoSize = True
+        self._nav.Location = Point(300, 14)
+        bottom.Controls.Add(self._nav)
+
+        content = Panel()
+        content.Dock = DockStyle.Fill
+        content.Padding = Padding(6, 6, 6, 6)
+        content.BackColor = CLR_BG
+        self.Controls.Add(content)
+        content.BringToFront()
+
+        self._left_box = self._create_text_box()
+        self._right_box = self._create_text_box()
+        self._separator = Panel()
+        self._separator.BackColor = Color.FromArgb(70, 70, 70)
+        self._separator.Width = 2
+
+        content.Controls.Add(self._right_box)
+        content.Controls.Add(self._separator)
+        content.Controls.Add(self._left_box)
+        self._content = content
+        self.Resize += self._on_resize
+
+        self._populate()
+        self._layout()
+
+    def _style_button(self, button):
+        button.BackColor = CLR_BUTTON_BG
+        button.ForeColor = CLR_BUTTON_TEXT
+        button.FlatStyle = FlatStyle.Flat
+        button.FlatAppearance.BorderColor = CLR_BUTTON_BORDER
+        button.FlatAppearance.BorderSize = 1
+        button.UseVisualStyleBackColor = False
+
+    def _create_text_box(self):
+        box = RichTextBox()
+        box.ReadOnly = True
+        box.BackColor = CLR_PANEL
+        box.ForeColor = CLR_TEXT
+        box.Font = Font("Consolas", 10)
+        box.BorderStyle = getattr(BorderStyle, "None")
+        box.WordWrap = False
+        box.ScrollBars = RichTextBoxScrollBars.Both
+        box.DetectUrls = False
+        return box
+
+    def _layout(self):
+        width = self._content.ClientSize.Width
+        height = self._content.ClientSize.Height
+        half = (width - 2) // 2
+        self._left_box.Location = Point(0, 0)
+        self._left_box.Size = Size(half, height)
+        self._separator.Location = Point(half, 0)
+        self._separator.Size = Size(2, height)
+        self._right_box.Location = Point(half + 2, 0)
+        self._right_box.Size = Size(width - half - 2, height)
+        self._right_label.Location = Point(max(570, self.ClientSize.Width // 2 + 12), 39)
+
+    def _on_resize(self, sender, event):
+        self._layout()
+
+    def _append_line(self, box, prefix, prefix_color, text, text_color, bg_color):
+        start = box.TextLength
+        box.AppendText(prefix)
+        box.Select(start, len(prefix))
+        box.SelectionColor = prefix_color
+        if bg_color is not None:
+            box.SelectionBackColor = bg_color
+        text_start = box.TextLength
+        box.AppendText(text + "\n")
+        box.Select(text_start, len(text))
+        box.SelectionColor = text_color
+        if bg_color is not None:
+            box.SelectionBackColor = bg_color
+
+    def _populate(self):
+        diff_lines = compute_side_by_side_diff(self._left_text, self._right_text)
+        added = sum(1 for _, _, status in diff_lines if status == "added")
+        removed = sum(1 for _, _, status in diff_lines if status == "removed")
+        modified = sum(1 for _, _, status in diff_lines if status == "modified")
+        equal = sum(1 for _, _, status in diff_lines if status == "equal")
+        self._stats.Text = "+{0} -{1} ~{2} ={3} lines".format(added, removed, modified, equal)
+
+        left_line = 0
+        right_line = 0
+        in_change = False
+        for left, right, status in diff_lines:
+            if status == "equal":
+                left_line += 1
+                right_line += 1
+                self._append_line(self._left_box, "{0:>5}  ".format(left_line), CLR_DIM, left, CLR_TEXT, None)
+                self._append_line(self._right_box, "{0:>5}  ".format(right_line), CLR_DIM, right, CLR_TEXT, None)
+                in_change = False
+            elif status == "removed":
+                if not in_change:
+                    self._change_positions.append(self._left_box.TextLength)
+                    in_change = True
+                left_line += 1
+                self._append_line(self._left_box, "{0:>5} -".format(left_line), CLR_REMOVED, left, CLR_REMOVED, CLR_REMOVED_BG)
+                self._append_line(self._right_box, "       ", CLR_DIM, "", CLR_TEXT, None)
+            elif status == "added":
+                if not in_change:
+                    self._change_positions.append(self._left_box.TextLength)
+                    in_change = True
+                right_line += 1
+                self._append_line(self._left_box, "       ", CLR_DIM, "", CLR_TEXT, None)
+                self._append_line(self._right_box, "{0:>5} +".format(right_line), CLR_ADDED, right, CLR_ADDED, CLR_ADDED_BG)
+            else:
+                if not in_change:
+                    self._change_positions.append(self._left_box.TextLength)
+                    in_change = True
+                left_line += 1
+                right_line += 1
+                self._append_line(self._left_box, "{0:>5} ~".format(left_line), CLR_MOD_LEFT, left, CLR_MOD_LEFT, CLR_MOD_LEFT_BG)
+                self._append_line(self._right_box, "{0:>5} ~".format(right_line), CLR_MOD_RIGHT, right, CLR_MOD_RIGHT, CLR_MOD_RIGHT_BG)
+
+        self._nav.Text = "{0} changes".format(len(self._change_positions))
+        self._left_box.SelectionStart = 0
+        self._right_box.SelectionStart = 0
+
     def _on_prev(self, sender, event):
-        """Navigate to previous change."""
         if not self._change_positions:
             return
-        if self._current_change <= 0:
-            self._current_change = len(self._change_positions) - 1
-        else:
-            self._current_change -= 1
-        self._navigate_to_change(self._current_change)
-    
+        self._current_change = (self._current_change - 1) % len(self._change_positions)
+        self._navigate()
+
     def _on_next(self, sender, event):
-        """Navigate to next change."""
         if not self._change_positions:
             return
-        if self._current_change >= len(self._change_positions) - 1:
-            self._current_change = 0
-        else:
-            self._current_change += 1
-        self._navigate_to_change(self._current_change)
-    
-    def _navigate_to_change(self, index):
-        """Scroll both panels to the change at given index."""
-        if index < 0 or index >= len(self._change_positions):
+        self._current_change = (self._current_change + 1) % len(self._change_positions)
+        self._navigate()
+
+    def _navigate(self):
+        position = self._change_positions[self._current_change]
+        self._left_box.Select(position, 0)
+        self._left_box.ScrollToCaret()
+        line = self._left_box.GetLineFromCharIndex(position)
+        right_position = self._right_box.GetFirstCharIndexFromLine(line)
+        if right_position >= 0:
+            self._right_box.Select(right_position, 0)
+            self._right_box.ScrollToCaret()
+        self._nav.Text = "Change {0}/{1}".format(self._current_change + 1, len(self._change_positions))
+
+
+def show_diff_dialog(left_text, right_text, left_title="Disk", right_title="IDE", object_name=""):
+    if Form is None:
+        print("Diff viewer is unavailable outside WinForms.")
+        return
+
+    max_size = max(len(left_text or ""), len(right_text or ""))
+    if max_size > 100 * 1024:
+        message = "The object is large ({0:.1f} KB). Open the UI diff anyway?".format(max_size / 1024.0)
+        result = MessageBox.Show(message, "Large diff", MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
+        if result != DialogResult.Yes:
             return
-        
-        char_pos = self._change_positions[index]
-        
-        # Scroll left panel
-        self._rtb_left.Select(char_pos, 0)
-        self._rtb_left.ScrollToCaret()
-        
-        # Sync right panel to same line
-        line_no = self._rtb_left.GetLineFromCharIndex(char_pos)
-        right_char = self._rtb_right.GetFirstCharIndexFromLine(line_no)
-        if right_char >= 0:
-            self._rtb_right.Select(right_char, 0)
-            self._rtb_right.ScrollToCaret()
-        
-        # Update label
-        total = len(self._change_positions)
-        self._nav_label.Text = "Change {}/{}" .format(index + 1, total)
-        
-    def _on_save_button_click(self, sender, event):
-        """Save both versions displayed in the viewer to the /.diff/ folder."""
-        from codesys_utils import load_base_dir, log_info
-        
-        base_dir, _ = load_base_dir()
-        if not base_dir:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            
-        diff_dir = os.path.join(base_dir, ".diff")
-        if not os.path.exists(diff_dir):
-            try: os.makedirs(diff_dir)
-            except: pass
-            
-        safe_name = self.Text.replace("Diff: ", "").replace("/", "_").replace("\\", "_").replace(":", "_")
-        # Default extension to .st if we don't know it
-        ext = ".st" 
-        
-        try:
-            # Note: in codesys_ui call, left=Disk Content, right=IDE Content
-            path_left = os.path.join(diff_dir, "disk_{}_{}".format(safe_name, ext))
-            path_right = os.path.join(diff_dir, "ide_{}_{}".format(safe_name, ext))
-            
-            with codecs.open(path_left, "w", "utf-8") as f:
-                f.write(self._left_text)
-            with codecs.open(path_right, "w", "utf-8") as f:
-                f.write(self._right_text)
-                
-            from codesys_ui import show_toast
-            show_toast("Saved to /.diff/", "Files saved for '{}' at {}".format(safe_name, diff_dir))
-        except Exception as e:
-            print("Failed to save from diff viewer: " + str(e))
-    
-    def _append_line(self, rtb, prefix, prefix_color, text, text_color, bg_color):
-        """Append a styled line to a RichTextBox."""
-        start = rtb.TextLength
-        
-        # Add prefix (line number)
-        rtb.AppendText(prefix)
-        rtb.Select(start, len(prefix))
-        rtb.SelectionColor = prefix_color
-        if bg_color:
-            rtb.SelectionBackColor = bg_color
-        
-        # Add text content
-        text_start = rtb.TextLength
-        rtb.AppendText(text + "\n")
-        rtb.Select(text_start, len(text))
-        rtb.SelectionColor = text_color
-        if bg_color:
-            rtb.SelectionBackColor = bg_color
 
-
-def show_diff_dialog(left_text, right_text, left_title="IDE Content", 
-                     right_title="Disk Content", object_name=""):
-    """
-    Show a side-by-side diff dialog.
-    """
-    try:
-        # Performance check: LCS is O(N*M). Large files will be slow.
-        # If file > 100KB, warn the user.
-        size_a = len(left_text or "")
-        size_b = len(right_text or "")
-        max_size = max(size_a, size_b)
-        
-        if max_size > 100 * 1024:
-            from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
-            msg = ("The file '{}' is large ({:.1f} KB). \n"
-                   "Comparing it line-by-line might take a long time and hang the UI.\n\n"
-                   "Are you sure? \n(Hint: use Ctrl + Diff to save files and use an external editor)").format(
-                object_name, max_size / 1024.0)
-            res = MessageBox.Show(msg, "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
-            if res != DialogResult.Yes:
-                return
-
-        form = DiffViewerForm(left_text, right_text, left_title, right_title, object_name)
-        form.ShowDialog()
-    except Exception as e:
-        print("Error showing diff dialog: " + str(e))
+    DiffViewerForm(left_text, right_text, left_title, right_title, object_name).ShowDialog()
