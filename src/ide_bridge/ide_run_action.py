@@ -26,6 +26,22 @@ def _selected_guid_args(selected_guids):
     return ["--filter-guids", ",".join(guids)]
 
 
+def _show_warning(system, message):
+    try:
+        if system and hasattr(system, "ui") and hasattr(system.ui, "warning"):
+            system.ui.warning(message)
+            return
+    except Exception:
+        pass
+    try:
+        if system and hasattr(system, "ui") and hasattr(system.ui, "info"):
+            system.ui.info("Warning:\n" + message)
+            return
+    except Exception:
+        pass
+    ide_runtime_common.log_error(message)
+
+
 def run_action(
     action,
     system,
@@ -72,7 +88,10 @@ def run_action(
         patch_path = os.path.join(dump_root, "IMPORT.xml")
         args.extend(["--patch", patch_path])
 
-    if not ide_runtime_common.run_external_engine(args, project_root=project_root, dump_root=dump_root):
+    def warning_fn(message):
+        _show_warning(system, message)
+
+    if not ide_runtime_common.run_external_engine(args, project_root=project_root, dump_root=dump_root, warning_fn=warning_fn):
         ide_runtime_common.log_error("External engine action failed.")
         return False
     

@@ -87,6 +87,9 @@ def _load_models(args, context):
     except ProjectionValidationError as error:
         print("Invalid projection edit:", error)
         sys.exit(1)
+    except RuntimeError as error:
+        print("Error:", error)
+        sys.exit(1)
 
     if not ide_model or not folder_model:
         print("Failed to read models for {0}.".format(context))
@@ -189,7 +192,11 @@ def run_export(args):
         projections=settings.get("projections"),
         selected_guids=selected_guids,
     )
-    writer.write(model)
+    try:
+        writer.write(model)
+    except RuntimeError as error:
+        print("Error:", error)
+        sys.exit(1)
 
 def run_compare(args):
     project_layout = _layout(args)

@@ -8,6 +8,7 @@ updates cds-text-sync.json from explicit params and reports the active values.
 from __future__ import print_function
 import os
 import sys
+import json
 
 from codesys_runtime import resolve_runtime
 from codesys_utils import load_base_dir, init_logging
@@ -61,6 +62,36 @@ def _compact_settings(settings):
     )
 
 
+def _export_lock_info(project_root):
+    manifest_path = os.path.join(project_root, ".dump", "manifest.json")
+    if not os.path.exists(manifest_path):
+        return {
+            "locked": False,
+            "path": manifest_path,
+            "view_root": None,
+        }
+    view_root = None
+    try:
+        with open(manifest_path, "r") as handle:
+            manifest = json.load(handle)
+        view_root = manifest.get("view_root") or manifest.get("views_path")
+    except Exception:
+        view_root = None
+    return {
+        "locked": True,
+        "path": manifest_path,
+        "view_root": view_root,
+    }
+
+
+def _setting_changed(settings, key, value):
+    current = settings.get(key)
+    if key == "view_root":
+        current = current or None
+        value = value or None
+    return current != value
+
+
 def main(params=None, runtime=None):
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=globals(), params=params)
@@ -82,6 +113,10 @@ def main(params=None, runtime=None):
         from _project_settings import load_project_settings, save_project_settings, settings_path
 
         settings = load_project_settings(base_dir)
+        export_lock = _export_lock_info(base_dir)
+        settings["_view_root_locked"] = export_lock.get("locked")
+        settings["_view_root_lock_path"] = export_lock.get("path")
+        settings["_view_root_lock_value"] = export_lock.get("view_root")
         profile = load_profile(settings.get("profile"))
         settings["_available_profiles"] = list_profiles()
         settings["_available_projections"] = projection_options(profile)
@@ -96,6 +131,15 @@ def main(params=None, runtime=None):
             "pre_import_backup_enabled",
             "backup_retention_count",
         ))
+
+        if export_lock.get("locked") and "layout" in params and _setting_changed(settings, "layout", params.get("layout")):
+            message = "View storage cannot be changed after export. To choose another folder, start over with a clean sync directory."
+            runtime.ui.error(message)
+            return {"status": "error", "error": message}
+        if export_lock.get("locked") and "view_root" in params and _setting_changed(settings, "view_root", params.get("view_root")):
+            message = "Custom view root cannot be changed after export. To choose another folder, start over with a clean sync directory."
+            runtime.ui.error(message)
+            return {"status": "error", "error": message}
 
         if "layout" in params:
             settings["layout"] = params.get("layout")
