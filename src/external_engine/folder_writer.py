@@ -70,26 +70,30 @@ class FolderWriter:
     def __init__(self, views_path, dump_path, profile=None, projections=None, selected_guids=None):
         self.views_path = views_path
         self.dump_path = dump_path
+        self.project_root = os.path.dirname(os.path.abspath(os.path.normpath(dump_path or "")))
         self.manifest_path = os.path.join(dump_path, "manifest.json")
         self.profile = profile or {}
         self.projections = projections or {}
         self.selected_guids = set(normalize_guid(guid) for guid in (selected_guids or []) if normalize_guid(guid))
 
-    def _safe_view_path(self, relative_path):
+    def _safe_path_in_root(self, relative_path, root_path):
         if not relative_path:
             return None
         parts = relative_path.replace("\\", os.sep).split(os.sep)
         if parts and is_reserved_root_child(parts[0]):
             _log("Warning: Ignoring reserved root view path: {0}".format(relative_path))
             return None
-        full_path = _absolute_view_path(os.path.join(self.views_path, relative_path))
-        view_root = _normalize_fs_path(self.views_path)
+        full_path = _absolute_view_path(os.path.join(root_path, relative_path))
+        view_root = _normalize_fs_path(root_path)
         if _normalize_fs_path(full_path) == view_root:
             return None
         if _normalize_fs_path(full_path) and not _normalize_fs_path(full_path).startswith(view_root + os.sep):
             _log("Warning: Ignoring managed path outside view root: {0}".format(relative_path))
             return None
         return full_path
+
+    def _safe_view_path(self, relative_path):
+        return self._safe_path_in_root(relative_path, self.views_path)
 
     def _load_existing_manifest(self):
         if not os.path.exists(self.manifest_path):
@@ -101,8 +105,8 @@ class FolderWriter:
             _log("Warning: Could not read existing manifest: {0}".format(e))
             return None
 
-    def _remove_empty_parent_dirs(self, path):
-        view_root = _normalize_fs_path(self.views_path)
+    def _remove_empty_parent_dirs(self, path, root_path=None):
+        view_root = _normalize_fs_path(root_path or self.views_path)
         current = _normalize_fs_path(os.path.dirname(path))
         while current.startswith(view_root + os.sep):
             try:
@@ -144,10 +148,38 @@ class FolderWriter:
 
             current_actual = actual_child
 
-    def _remove_previous_managed_files(self, selected_guids=None):
-        manifest = self._load_existing_manifest()
-        if not manifest:
-            return
+    def _relative_or_absolute_view_root(self, root_path):
+        root_path = _absolute_view_path(root_path)
+        project_root = _normalize_fs_path(self.project_root)
+        normalized_root = _normalize_fs_path(root_path)
+        if normalized_root == project_root:
+            return "."
+        if normalized_root.startswith(project_root + os.sep):
+            return os.path.relpath(root_path, self.project_root)
+        return root_path
+
+    def _manifest_view_root(self, manifest):
+        value = manifest.get("view_root") or manifest.get("views_path")
+        if not value:
+            return None
+        text = str(value)
+        if text == ".":
+            return self.project_root
+        if os.path.isabs(text):
+            return _absolute_view_path(text)
+        return _absolute_view_path(os.path.join(self.project_root, text))
+
+    def _managed_relative_paths(self, entry):
+        relative_paths = []
+        if entry.get("xml_path") or entry.get("view_path"):
+            relative_paths.append(entry.get("xml_path") or entry.get("view_path"))
+        for projection_path in entry.get("projection_paths") or []:
+            relative_paths.append(projection_path)
+        return relative_paths
+
+    def _remove_previous_managed_files_from_root(self, manifest, root_path, selected_guids=None):
+        if not manifest or not root_path:
+            return 0
 
         removed = 0
         seen = set()
@@ -156,13 +188,9 @@ class FolderWriter:
                 guid = normalize_guid(entry.get("guid"))
                 if guid not in selected_guids:
                     continue
-            relative_paths = []
-            if entry.get("xml_path") or entry.get("view_path"):
-                relative_paths.append(entry.get("xml_path") or entry.get("view_path"))
-            relative_paths.extend(entry.get("projection_paths") or [])
 
-            for relative_path in relative_paths:
-                full_path = self._safe_view_path(relative_path)
+            for relative_path in self._managed_relative_paths(entry):
+                full_path = self._safe_path_in_root(relative_path, root_path)
                 if not full_path or full_path in seen:
                     continue
                 seen.add(full_path)
@@ -170,9 +198,58 @@ class FolderWriter:
                     try:
                         os.remove(full_path)
                         removed += 1
-                        self._remove_empty_parent_dirs(full_path)
+                        self._remove_empty_parent_dirs(full_path, root_path=root_path)
                     except Exception as e:
                         _log("Warning: Could not remove managed view file: {0} {1}".format(full_path, e))
+        return removed
+
+    def _ensure_view_root_not_changed(self, previous_root):
+        if not previous_root:
+            return
+        if _normalize_fs_path(previous_root) == _normalize_fs_path(self.views_path):
+            return
+        raise RuntimeError(
+            "Export view root changed from {0} to {1}. "
+            "Changing the export directory after data has been exported is blocked. "
+            "Continue with the existing view root, or start from a clean sync directory.".format(
+                previous_root,
+                self.views_path,
+            )
+        )
+
+    def _ensure_no_legacy_root_view_duplicates(self, manifest):
+        if _normalize_fs_path(self.views_path) == _normalize_fs_path(self.project_root):
+            return
+
+        for entry in manifest.get("entries", []):
+            for relative_path in self._managed_relative_paths(entry):
+                full_path = self._safe_path_in_root(relative_path, self.project_root)
+                if full_path and os.path.isfile(full_path):
+                    raise RuntimeError(
+                        "Possible legacy root-view export files found outside the active view root. "
+                        "Changing the export directory after data has been exported is blocked. "
+                        "Continue with the existing root-view export, remove the duplicate exported files manually, "
+                        "or start from a clean sync directory. Active view root: {0}".format(
+                            self.views_path
+                        )
+                    )
+
+    def _remove_previous_managed_files(self, selected_guids=None):
+        manifest = self._load_existing_manifest()
+        if not manifest:
+            return
+
+        previous_root = self._manifest_view_root(manifest)
+        self._ensure_view_root_not_changed(previous_root)
+        self._ensure_no_legacy_root_view_duplicates(manifest)
+        if previous_root and _normalize_fs_path(previous_root) != _normalize_fs_path(self.views_path):
+            return
+
+        removed = self._remove_previous_managed_files_from_root(
+            manifest,
+            self.views_path,
+            selected_guids=selected_guids,
+        )
 
         if removed:
             _log("Removed {0} previously managed view files.".format(removed))
@@ -409,6 +486,7 @@ class FolderWriter:
 
         manifest = {
             "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "view_root": self._relative_or_absolute_view_root(self.views_path),
             "ns": project_model.ns,
             "entries": manifest_entries
         }

@@ -113,7 +113,21 @@ def make_detailed_logger(log_path):
 
     return _log
 
-def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None):
+def _external_notice_lines(stdout_text, stderr_text):
+    lines = []
+    seen = set()
+    for text in (stdout_text or "", stderr_text or ""):
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if "Warning:" not in line and "Error:" not in line:
+                continue
+            if line in seen:
+                continue
+            seen.add(line)
+            lines.append(line)
+    return lines
+
+def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None):
     root_dir = get_workspace_dir(script_file)
     engine_cli = os.path.join(root_dir, "src", "external_engine", "engine_cli.py")
     command_name = command_args[0] if command_args else "engine"
@@ -157,6 +171,17 @@ def run_external_engine(command_args, script_file=None, project_root=None, dump_
                 out_text,
                 err_text,
             )
+
+        warning_lines = _external_notice_lines(out_text, err_text)
+        if warning_lines:
+            warning_text = "\n".join(warning_lines)
+            if warning_fn:
+                try:
+                    warning_fn(warning_text)
+                except Exception:
+                    log_error(warning_text)
+            else:
+                log_error(warning_text)
 
         if p.returncode != 0:
             log_error("External engine failed with return code " + str(p.returncode))

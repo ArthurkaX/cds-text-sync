@@ -189,6 +189,7 @@ The active root entry points are `Project_directory.py`, `Project_options.py`, `
 Use this after selecting the sync root.
 
 - **View Storage**: Choose default `project-view/`, root-view, or an explicit custom view root.
+- **View Root Lock**: Choose the view storage before the first export. After `.dump/manifest.json` has been created, `Project_options.py` locks the layout and custom view root controls. To use a different export folder, start again with a clean sync directory.
 - **Profile**: Select the active CODESYS profile for object type handling.
 - **Projections**: Enable optional readable files such as `.st` and `.csv` based on the active profile.
 - **Safety Backup**: Enable or disable timestamped binary backup before import and set how many generated backups to keep.
@@ -203,6 +204,7 @@ Exports the current project state into the XML-first workspace under the configu
 - **Fresh Snapshot**: Exports the live IDE project to `.dump/IDE.xml`.
 - **Views Refresh**: Rebuilds the configured view root from the snapshot using the external Python 3 engine.
 - **Manifest Update**: Writes `.dump/manifest.json` so later compare/import steps use the same exported object inventory.
+- **Layout Guard**: Export, compare, and import fail with a clear error if the current view root does not match the manifest. This prevents duplicate editable folders after changing storage settings.
 - **Offline-Friendly**: The heavy parsing and folder generation happen outside the IDE bridge.
 
 ### 5. `Project_import.py` (Disk -> CODESYS)

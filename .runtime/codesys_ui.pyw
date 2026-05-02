@@ -157,6 +157,9 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.BackColor = Color.FromArgb(250, 250, 250)
         self.result_settings = None
         self.projection_controls = []
+        self.view_root_locked = bool(current_settings.get("_view_root_locked"))
+        self.initial_layout = current_settings.get("layout") or "project-view"
+        self.initial_view_root = current_settings.get("view_root") or None
 
         title = Label()
         title.Text = "Project Sync Options"
@@ -193,10 +196,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
                 break
         self.cmb_layout.SelectedIndex = selected_index
         self.cmb_layout.SelectedIndexChanged += self._on_layout_changed
+        self.cmb_layout.Enabled = not self.view_root_locked
         self.Controls.Add(self.cmb_layout)
 
         lbl_layout_help = Label()
-        lbl_layout_help.Text = "Choose where generated views live by default."
+        if self.view_root_locked:
+            lbl_layout_help.Text = "Folder choice is locked after first export."
+        else:
+            lbl_layout_help.Text = "Choose where generated views live by default."
         lbl_layout_help.Location = Point(150, 111)
         lbl_layout_help.Size = Size(340, 18)
         lbl_layout_help.ForeColor = Color.FromArgb(110, 110, 110)
@@ -209,6 +216,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.chk_custom_view_root.Size = Size(200, 22)
         self.chk_custom_view_root.Checked = bool(current_settings.get("view_root"))
         self.chk_custom_view_root.CheckedChanged += self._on_custom_view_root_changed
+        self.chk_custom_view_root.Enabled = not self.view_root_locked
         self.Controls.Add(self.chk_custom_view_root)
 
         lbl_view_root = Label()
@@ -221,7 +229,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.txt_view_root.Location = Point(150, 157)
         self.txt_view_root.Size = Size(310, 22)
         self.txt_view_root.Text = current_settings.get("view_root") or ""
-        self.txt_view_root.Enabled = bool(current_settings.get("view_root"))
+        self.txt_view_root.Enabled = bool(current_settings.get("view_root")) and not self.view_root_locked
         self.txt_view_root.TextChanged += self._on_view_root_changed
         self.Controls.Add(self.txt_view_root)
 
@@ -234,7 +242,10 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.Controls.Add(self.lbl_view_root_mode)
 
         hint = Label()
-        hint.Text = "Leave custom view root off to use the preset. Relative paths stay portable."
+        if self.view_root_locked:
+            hint.Text = "To choose another folder, start over with a clean sync directory."
+        else:
+            hint.Text = "Leave custom view root off to use the preset. Relative paths stay portable."
         hint.Location = Point(150, 216)
         hint.Size = Size(340, 34)
         hint.ForeColor = Color.FromArgb(110, 110, 110)
@@ -374,10 +385,19 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
     def _refresh_view_root_state(self):
         if hasattr(self, "txt_view_root") and hasattr(self, "chk_custom_view_root"):
-            self.txt_view_root.Enabled = bool(self.chk_custom_view_root.Checked)
+            self.txt_view_root.Enabled = bool(self.chk_custom_view_root.Checked) and not self.view_root_locked
 
     def _refresh_view_root_summary(self):
         if not hasattr(self, "lbl_view_root_mode"):
+            return
+        if self.view_root_locked:
+            locked_value = self.initial_view_root
+            if locked_value:
+                self.lbl_view_root_mode.Text = "Locked path: custom view root = {0}".format(locked_value)
+            elif self.initial_layout == "root-view":
+                self.lbl_view_root_mode.Text = "Locked path: sync root"
+            else:
+                self.lbl_view_root_mode.Text = "Locked path: project-view/"
             return
         layout_value = self._selected_layout_value()
         if layout_value == "project-view":
@@ -454,10 +474,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
     def _on_save(self, sender, event):
         view_root_value = None
-        if self.chk_custom_view_root.Checked:
+        layout_value = self._selected_layout_value()
+        if self.view_root_locked:
+            layout_value = self.initial_layout
+            view_root_value = self.initial_view_root
+        elif self.chk_custom_view_root.Checked:
             view_root_value = self.txt_view_root.Text.strip() or None
         self.result_settings = {
-            "layout": self._selected_layout_value(),
+            "layout": layout_value,
             "view_root": view_root_value,
             "profile": str(self.cmb_profile.SelectedItem) or "default",
             "projections": self._selected_projections(),

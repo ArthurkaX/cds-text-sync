@@ -64,7 +64,68 @@ class FolderReader:
     def __init__(self, views_path, dump_path):
         self.views_path = views_path
         self.dump_path = dump_path
+        self.project_root = os.path.dirname(os.path.abspath(os.path.normpath(dump_path or "")))
         self.manifest_path = os.path.join(dump_path, "manifest.json")
+
+    def _normalize_fs_path(self, path):
+        return os.path.normcase(os.path.abspath(os.path.normpath(path or "")))
+
+    def _manifest_view_root(self, manifest):
+        value = manifest.get("view_root") or manifest.get("views_path")
+        if not value:
+            return None
+        text = str(value)
+        if text == ".":
+            return self.project_root
+        if os.path.isabs(text):
+            return os.path.abspath(os.path.normpath(text))
+        return os.path.abspath(os.path.normpath(os.path.join(self.project_root, text)))
+
+    def _safe_path_in_root(self, relative_path, root_path):
+        if not relative_path:
+            return None
+        parts = relative_path.replace("\\", os.sep).split(os.sep)
+        if parts and parts[0].startswith("."):
+            return None
+        full_path = os.path.abspath(os.path.normpath(os.path.join(root_path, relative_path)))
+        normalized_root = self._normalize_fs_path(root_path)
+        normalized_full = self._normalize_fs_path(full_path)
+        if normalized_full == normalized_root:
+            return None
+        if not normalized_full.startswith(normalized_root + os.sep):
+            return None
+        return full_path
+
+    def _managed_relative_paths(self, entry):
+        relative_paths = []
+        if entry.get("xml_path") or entry.get("view_path"):
+            relative_paths.append(entry.get("xml_path") or entry.get("view_path"))
+        for projection_path in entry.get("projection_paths") or []:
+            relative_paths.append(projection_path)
+        return relative_paths
+
+    def _ensure_view_root_is_current(self, manifest):
+        previous_root = self._manifest_view_root(manifest)
+        if previous_root and self._normalize_fs_path(previous_root) != self._normalize_fs_path(self.views_path):
+            raise RuntimeError(
+                "Manifest view root is {0}, but current settings point to {1}. "
+                "Changing the export directory after data has been exported is blocked.".format(
+                    previous_root,
+                    self.views_path,
+                )
+            )
+
+        if previous_root or self._normalize_fs_path(self.views_path) == self._normalize_fs_path(self.project_root):
+            return
+
+        for entry in manifest.get("entries", []):
+            for relative_path in self._managed_relative_paths(entry):
+                full_path = self._safe_path_in_root(relative_path, self.project_root)
+                if full_path and os.path.isfile(full_path):
+                    raise RuntimeError(
+                        "Possible legacy root-view export files found outside the active view root. "
+                        "Changing the export directory after data has been exported is blocked."
+                    )
 
     def _extract_bool_property(self, xml_text, property_name):
         if not xml_text:
@@ -216,6 +277,7 @@ class FolderReader:
             
         with open(self.manifest_path, "r") as f:
             manifest = json.load(f)
+        self._ensure_view_root_is_current(manifest)
             
         ns = manifest.get("ns", "")
         model = ProjectModel(namespace=ns)
