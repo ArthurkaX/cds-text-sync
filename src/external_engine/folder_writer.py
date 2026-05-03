@@ -81,14 +81,14 @@ class FolderWriter:
             return None
         parts = relative_path.replace("\\", os.sep).split(os.sep)
         if parts and is_reserved_root_child(parts[0]):
-            _log("Warning: Ignoring reserved root view path: {0}".format(relative_path))
+            _log("Notice: Ignoring reserved root view path: {0}".format(relative_path))
             return None
         full_path = _absolute_view_path(os.path.join(root_path, relative_path))
         view_root = _normalize_fs_path(root_path)
         if _normalize_fs_path(full_path) == view_root:
             return None
         if _normalize_fs_path(full_path) and not _normalize_fs_path(full_path).startswith(view_root + os.sep):
-            _log("Warning: Ignoring managed path outside view root: {0}".format(relative_path))
+            _log("Notice: Ignoring managed path outside view root: {0}".format(relative_path))
             return None
         return full_path
 
