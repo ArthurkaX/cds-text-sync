@@ -954,6 +954,52 @@ def main():
         pathless_node = list(pathless_model.nodes.values())[0]
         _assert_equal(pathless_node.display_path, ["POUs"], "pathless project object display path")
 
+        duplicate_view_snapshot = os.path.join(work_dir, "duplicate_structured_view_guids.xml")
+        _write_text(duplicate_view_snapshot, """<?xml version='1.0' encoding='utf-8'?>
+<Project>
+  <StructuredView Guid="{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}">
+    <Single>
+      <List2 Name="EntryList">
+        <Single>
+          <Single Name="MetaObject">
+            <Single Name="Guid" Type="System.Guid">{22222222-2222-2222-2222-222222222222}</Single>
+            <Single Name="ParentGuid" Type="System.Guid">{00000000-0000-0000-0000-000000000000}</Single>
+            <Single Name="Name" Type="System.String">FB_DUPLICATE</Single>
+            <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
+          </Single>
+          <Array Name="Path"><Single>FBs</Single></Array>
+          <Single Name="Object" />
+        </Single>
+      </List2>
+    </Single>
+  </StructuredView>
+  <StructuredView Guid="{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}">
+    <Single>
+      <List2 Name="EntryList">
+        <Single>
+          <Single Name="MetaObject">
+            <Single Name="Guid" Type="System.Guid">22222222-2222-2222-2222-222222222222</Single>
+            <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+            <Single Name="Name" Type="System.String">FB_DUPLICATE</Single>
+            <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
+          </Single>
+          <Array Name="Path"><Single>Device</Single><Single>PLC Logic</Single><Single>Application</Single><Single>FBs</Single></Array>
+          <Single Name="Object" />
+        </Single>
+      </List2>
+    </Single>
+  </StructuredView>
+</Project>
+""")
+        sys.path.insert(0, os.path.join(ROOT_DIR, "src", "external_engine"))
+        try:
+            from snapshot_reader import SnapshotReader
+            duplicate_view_model = SnapshotReader(duplicate_view_snapshot, project_name="VKO-Beumer").read()
+        finally:
+            if sys.path[0] == os.path.join(ROOT_DIR, "src", "external_engine"):
+                del sys.path[0]
+        _assert_equal(len(duplicate_view_model.nodes), 1, "structured view GUID normalization deduplicates nodes")
+
         resources_report_path = os.path.join(dump_path, "resources_report.json")
         resources_log_path = os.path.join(dump_path, "resources_top.log")
         _run([

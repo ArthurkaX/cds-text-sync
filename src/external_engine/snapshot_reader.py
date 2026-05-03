@@ -6,7 +6,14 @@ import xml.etree.ElementTree as ET
 import ntpath
 
 from _project_model import ProjectModel, ProjectNode
-from xml_helpers import entry_to_xml, extract_bool_property, get_namespace, join_text_blob_values, text_blob_values
+from xml_helpers import (
+    entry_to_xml,
+    extract_bool_property,
+    get_namespace,
+    join_text_blob_values,
+    normalize_guid,
+    text_blob_values,
+)
 
 PROJECT_ROOT_POUS_TYPE_GUIDS = set([
     # Project-level objects shown by CODESYS under POUs/<project name>.
@@ -126,13 +133,13 @@ class SnapshotReader:
                 if guid_elem is None:
                     continue
                     
-                guid = (guid_elem.text or "").strip().lower()
+                guid = normalize_guid(guid_elem.text)
                 
                 # Deduplicate nodes if multiple EntryLists contain the same guid
                 if guid in model.nodes:
                     continue
                     
-                parent_guid = (parent_elem.text or "").strip().lower() if parent_elem is not None else None
+                parent_guid = normalize_guid(parent_elem.text) if parent_elem is not None else None
                 if parent_guid == "00000000-0000-0000-0000-000000000000":
                     parent_guid = None
                     
