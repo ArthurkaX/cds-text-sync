@@ -118,8 +118,8 @@ class PatchBuilder:
         patch_guids = modified_guids + [guid for guid in added_guids if guid not in create_guids]
 
         if deleted_guids:
-            raise UnsupportedPatchError(
-                "Deleted objects are detected but IMPORT.xml deletion is not supported yet: {0}".format(
+            print(
+                "Warning: Deleted objects are ignored because IMPORT.xml deletion is not supported yet: {0}".format(
                     ", ".join(deleted_guids)
                 )
             )
