@@ -4,6 +4,7 @@ snapshot_reader.py - Reads and normalizes the native IDE.xml snapshot.
 """
 import xml.etree.ElementTree as ET
 import ntpath
+import hashlib
 
 from _project_model import ProjectModel, ProjectNode
 from xml_helpers import (
@@ -26,6 +27,13 @@ PROJECT_ROOT_POUS_TYPE_GUIDS = set([
 
 EMBEDDED_RESOURCE_TYPE_GUID = "9001d745-b9c5-4d77-90b7-b29c3f77a23b"
 SYSTEM_TEXT_LIST_TYPE_GUID = "2bef0454-1bd3-412a-ac2c-af0f31dbc40f"
+ALIAS_DEDUP_TYPE_GUIDS = set([
+    # CODESYS can expose the same logical application objects through both a
+    # short POU view and the concrete Device/PLC Logic/Application tree.
+    "6f9dac99-8de1-4efc-8465-68ac443b7d08",  # POU
+    "ffbfa93a-b94d-45fc-a329-229860183b1d",  # GVL
+    "2db5746d-d284-4425-9f7f-2663a34b0ebc",  # DUT
+])
 
 class SnapshotReader:
     def __init__(self, snapshot_path, project_name=None):
@@ -100,6 +108,75 @@ class SnapshotReader:
         elif node_type == SYSTEM_TEXT_LIST_TYPE_GUID and node.name == "System":
             node.display_path = ["Resources"]
 
+    def _output_key_parts(self, node):
+        parts = [part.strip().lower() for part in (node.display_path or []) if part and part.strip()]
+        parts.append((node.output_name or node.name or "").strip().lower())
+        return tuple(parts)
+
+    def _output_log_path(self, node):
+        parts = [part.strip() for part in (node.display_path or []) if part and part.strip()]
+        parts.append((node.output_name or node.name or "").strip())
+        return "\\".join(parts)
+
+    def _is_path_suffix_alias(self, left, right):
+        if not left or not right or left == right:
+            return False
+        shorter, longer = (left, right) if len(left) < len(right) else (right, left)
+        return longer[-len(shorter):] == shorter
+
+    def _alias_identity(self, node):
+        node_type = (node.type or "").strip().lower()
+        if node_type not in ALIAS_DEDUP_TYPE_GUIDS:
+            return None
+        code_hash = hashlib.sha1((node.code or "").encode("utf-8")).hexdigest()
+        return (node_type, (node.output_name or node.name or "").strip().lower(), code_hash)
+
+    def _preferred_alias_node(self, existing, candidate):
+        existing_parts = self._output_key_parts(existing)
+        candidate_parts = self._output_key_parts(candidate)
+        if len(candidate_parts) > len(existing_parts):
+            return candidate
+        return existing
+
+    def _deduplicate_structured_view_aliases(self, nodes):
+        result = []
+        aliases = {}
+        for node in nodes:
+            identity = self._alias_identity(node)
+            if not identity:
+                result.append(node)
+                continue
+
+            existing_index = None
+            for index in aliases.get(identity, []):
+                existing = result[index]
+                if self._is_path_suffix_alias(self._output_key_parts(existing), self._output_key_parts(node)):
+                    existing_index = index
+                    break
+
+            if existing_index is None:
+                aliases.setdefault(identity, []).append(len(result))
+                result.append(node)
+                continue
+
+            preferred = self._preferred_alias_node(result[existing_index], node)
+            if preferred is not result[existing_index]:
+                result[existing_index] = preferred
+                print(
+                    "Deduplicated StructuredView alias, kept concrete path: {0} -> {1}".format(
+                        node.name,
+                        self._output_log_path(preferred),
+                    )
+                )
+            else:
+                print(
+                    "Deduplicated StructuredView alias, ignored duplicate path: {0} -> {1}".format(
+                        node.name,
+                        self._output_log_path(node),
+                    )
+                )
+        return result
+
     def read(self):
         try:
             tree = ET.parse(self.snapshot_path)
@@ -109,7 +186,7 @@ class SnapshotReader:
             print("Error parsing XML:", e)
             return None
 
-        model = ProjectModel(namespace=self.ns)
+        nodes = []
 
         # In Native XML, the tree is spread across multiple StructuredViews.
         entry_lists = self._structured_view_entry_lists(root)
@@ -134,10 +211,6 @@ class SnapshotReader:
                     continue
                     
                 guid = normalize_guid(guid_elem.text)
-                
-                # Deduplicate nodes if multiple EntryLists contain the same guid
-                if guid in model.nodes:
-                    continue
                     
                 parent_guid = normalize_guid(parent_elem.text) if parent_elem is not None else None
                 if parent_guid == "00000000-0000-0000-0000-000000000000":
@@ -165,6 +238,11 @@ class SnapshotReader:
                 if implementation_kind:
                     p_node.metadata["implementation_kind"] = implementation_kind
                 
-                model.add_node(p_node)
+                nodes.append(p_node)
 
+        model = ProjectModel(namespace=self.ns)
+        for node in self._deduplicate_structured_view_aliases(nodes):
+            if node.guid in model.nodes:
+                continue
+            model.add_node(node)
         return model

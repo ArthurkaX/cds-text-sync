@@ -221,6 +221,7 @@ def run_import(args):
         _log(f"Importing view root {project_layout.view_root} against snapshot {args.snapshot} to generate {args.patch}")
     diff_result, ide_model, folder_model, _ = _load_diff(args, "import")
     diff_result = _filter_diff_result(diff_result, selected_guids)
+    _log_compare_details(diff_result, ide_model, folder_model)
     
     patcher = PatchBuilder(diff_result, ide_model, folder_model)
     try:

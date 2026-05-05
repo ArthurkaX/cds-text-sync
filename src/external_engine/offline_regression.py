@@ -1000,6 +1000,58 @@ def main():
                 del sys.path[0]
         _assert_equal(len(duplicate_view_model.nodes), 1, "structured view GUID normalization deduplicates nodes")
 
+        alias_view_snapshot = os.path.join(work_dir, "alias_structured_view_paths.xml")
+        _write_text(alias_view_snapshot, """<?xml version='1.0' encoding='utf-8'?>
+<Project>
+  <StructuredView Guid="{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}">
+    <Single>
+      <List2 Name="EntryList">
+        <Single>
+          <Single Name="MetaObject">
+            <Single Name="Guid" Type="System.Guid">33333333-3333-3333-3333-333333333333</Single>
+            <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+            <Single Name="Name" Type="System.String">FB_ALIAS</Single>
+            <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
+          </Single>
+          <Array Name="Path"><Single>FBs</Single></Array>
+          <Single Name="Object" />
+        </Single>
+      </List2>
+    </Single>
+  </StructuredView>
+  <StructuredView Guid="{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}">
+    <Single>
+      <List2 Name="EntryList">
+        <Single>
+          <Single Name="MetaObject">
+            <Single Name="Guid" Type="System.Guid">44444444-4444-4444-4444-444444444444</Single>
+            <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+            <Single Name="Name" Type="System.String">FB_ALIAS</Single>
+            <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
+          </Single>
+          <Array Name="Path"><Single>Device</Single><Single>PLC Logic</Single><Single>Application</Single><Single>FBs</Single></Array>
+          <Single Name="Object" />
+        </Single>
+      </List2>
+    </Single>
+  </StructuredView>
+</Project>
+""")
+        sys.path.insert(0, os.path.join(ROOT_DIR, "src", "external_engine"))
+        try:
+            from snapshot_reader import SnapshotReader
+            alias_view_model = SnapshotReader(alias_view_snapshot, project_name="VKO-Beumer").read()
+        finally:
+            if sys.path[0] == os.path.join(ROOT_DIR, "src", "external_engine"):
+                del sys.path[0]
+        _assert_equal(len(alias_view_model.nodes), 1, "structured view path aliases deduplicate nodes")
+        alias_node = list(alias_view_model.nodes.values())[0]
+        _assert_equal(
+            alias_node.display_path,
+            ["Device", "PLC Logic", "Application", "FBs"],
+            "structured view path alias keeps concrete path",
+        )
+
         resources_report_path = os.path.join(dump_path, "resources_report.json")
         resources_log_path = os.path.join(dump_path, "resources_top.log")
         _run([
@@ -1142,7 +1194,9 @@ def main():
         )
 
         deleted_patch_path = os.path.join(deleted_dump_path, "IMPORT_deleted.xml")
-        _run(["import", "--project-root", deleted_project_root, "--snapshot", deleted_snapshot_path, "--views", deleted_views_path, "--patch", deleted_patch_path], expect_code=1)
+        _run(["import", "--project-root", deleted_project_root, "--snapshot", deleted_snapshot_path, "--views", deleted_views_path, "--patch", deleted_patch_path])
+        if _guid_texts(deleted_patch_path):
+            raise RegressionFailure("deleted-only import patch unexpectedly contained object guids")
 
         print("offline_regression: PASS")
         print("workspace: {0}".format(work_dir))
