@@ -4,7 +4,6 @@ snapshot_reader.py - Reads and normalizes the native IDE.xml snapshot.
 """
 import xml.etree.ElementTree as ET
 import ntpath
-import hashlib
 
 from _project_model import ProjectModel, ProjectNode
 from xml_helpers import (
@@ -128,8 +127,7 @@ class SnapshotReader:
         node_type = (node.type or "").strip().lower()
         if node_type not in ALIAS_DEDUP_TYPE_GUIDS:
             return None
-        code_hash = hashlib.sha1((node.code or "").encode("utf-8")).hexdigest()
-        return (node_type, (node.output_name or node.name or "").strip().lower(), code_hash)
+        return (node_type, (node.output_name or node.name or "").strip().lower())
 
     def _preferred_alias_node(self, existing, candidate):
         existing_parts = self._output_key_parts(existing)

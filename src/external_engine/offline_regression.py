@@ -1014,7 +1014,11 @@ def main():
             <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
           </Single>
           <Array Name="Path"><Single>FBs</Single></Array>
-          <Single Name="Object" />
+          <Single Name="Object">
+            <Single Name="Implementation">
+              <Single Name="TextBlobForSerialisation">FUNCTION_BLOCK FB_ALIAS_SHORT</Single>
+            </Single>
+          </Single>
         </Single>
       </List2>
     </Single>
@@ -1030,7 +1034,11 @@ def main():
             <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
           </Single>
           <Array Name="Path"><Single>Device</Single><Single>PLC Logic</Single><Single>Application</Single><Single>FBs</Single></Array>
-          <Single Name="Object" />
+          <Single Name="Object">
+            <Single Name="Implementation">
+              <Single Name="TextBlobForSerialisation">FUNCTION_BLOCK FB_ALIAS_CONCRETE</Single>
+            </Single>
+          </Single>
         </Single>
       </List2>
     </Single>
