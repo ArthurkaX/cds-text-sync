@@ -625,6 +625,39 @@ def main():
             if "TYPE DUT_SAMPLE" not in handle.read():
                 raise RegressionFailure("DUT ST projection content was not written")
 
+        sys.path.insert(0, os.path.join(ROOT_DIR, "src", "external_engine"))
+        try:
+            from _project_model import ProjectModel, ProjectNode
+            from _project_profiles import load_profile
+            from folder_writer import FolderWriter
+            persistent_projection_root = os.path.join(work_dir, "persistent_projection")
+            persistent_projection_view = os.path.join(persistent_projection_root, "project-view")
+            persistent_projection_dump = os.path.join(persistent_projection_root, ".dump")
+            persistent_model = ProjectModel()
+            persistent_node = ProjectNode(
+                "56565656-5656-5656-5656-565656565656",
+                "PersistentVars",
+                "3183921b-cc91-4712-9781-c3b6555122b5",
+            )
+            persistent_node.code = "VAR_GLOBAL PERSISTENT RETAIN\n    value : INT;\nEND_VAR"
+            persistent_node.entry_element = ET.fromstring("<Single />")
+            persistent_model.add_node(persistent_node)
+            FolderWriter(
+                persistent_projection_view,
+                persistent_projection_dump,
+                profile=load_profile("default"),
+                projections={"gvl_st": {"enabled": True}},
+            ).write(persistent_model)
+        finally:
+            if sys.path[0] == os.path.join(ROOT_DIR, "src", "external_engine"):
+                del sys.path[0]
+        persistent_projection_path = os.path.join(persistent_projection_view, "PersistentVars.st")
+        if not os.path.exists(persistent_projection_path):
+            raise RegressionFailure("persistent variable list ST projection was not written")
+        with open(persistent_projection_path, "r") as handle:
+            if "VAR_GLOBAL PERSISTENT" not in handle.read():
+                raise RegressionFailure("persistent variable list ST projection content was not written")
+
         textlist_projection_root = os.path.join(work_dir, "textlist_projection")
         textlist_projection_view = os.path.join(textlist_projection_root, "project-view")
         textlist_projection_dump = os.path.join(textlist_projection_root, ".dump")

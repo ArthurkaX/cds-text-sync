@@ -120,11 +120,12 @@
       "id": "gvl_st",
       "label": "GVL Structured Text (.st)",
       "kind": "gvl",
+      "kinds": ["gvl", "persistent_gvl", "task_local_gvl"],
       "format": "st",
       "default_enabled": false,
       "import_safe": false,
       "sections": ["declaration"],
-      "description": "Optional derived ST view for global variable lists."
+      "description": "Optional derived ST view for global, persistent, and task-local variable lists."
     },
     {
       "id": "dut_st",
