@@ -62,9 +62,18 @@ def _rename_case_only(source_path, target_path):
         return False
     temp_name = ".cds-casefix-{0}-{1}".format(os.getpid(), int(time.time() * 1000000))
     temp_path = os.path.join(parent_dir, temp_name)
-    os.rename(source_path, temp_path)
-    os.rename(temp_path, target_path)
-    return True
+    try:
+        os.rename(source_path, temp_path)
+        os.rename(temp_path, target_path)
+        return True
+    except OSError as error:
+        try:
+            if os.path.exists(temp_path) and not os.path.exists(source_path):
+                os.rename(temp_path, source_path)
+        except OSError:
+            pass
+        _log("Warning: Could not normalize path casing {0} -> {1}: {2}".format(source_path, target_path, error))
+        return False
 
 class FolderWriter:
     def __init__(self, views_path, dump_path, profile=None, projections=None, selected_guids=None):
@@ -143,8 +152,8 @@ class FolderWriter:
             actual_child = os.path.join(current_actual, match)
             desired_child = os.path.join(current_actual, part)
             if actual_child != desired_child and _normalize_fs_path(actual_child) == _normalize_fs_path(desired_child):
-                _rename_case_only(actual_child, desired_child)
-                actual_child = desired_child
+                if _rename_case_only(actual_child, desired_child):
+                    actual_child = desired_child
 
             current_actual = actual_child
 
