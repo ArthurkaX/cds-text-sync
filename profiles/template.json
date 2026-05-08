@@ -63,7 +63,8 @@
   },
   "sync_direction_overrides": {
     "device": "export_only",
-    "device_module": "export_only"
+    "device_module": "export_only",
+    "symbol_config": "export_only"
   },
   "projections": [
     {

@@ -2,26 +2,27 @@
 """
 engine_cli.py - Command Line Interface for the Python 3 External Engine.
 """
+
 import argparse
-import sys
 import os
+import sys
 import time
 
-from snapshot_reader import SnapshotReader
-from folder_writer import FolderWriter
-from folder_reader import FolderReader
-from diff_engine import DiffEngine
 from _patch_builder import PatchBuilder, UnsupportedPatchError
-from report_writer import ReportWriter
-from resources_report import build_resources_report
 from _project_layout import (
     LAYOUT_LEGACY_DUMP_VIEWS,
     LAYOUT_PROJECT_VIEW,
     LAYOUT_ROOT_VIEW,
     resolve_layout,
 )
-from _project_settings import load_project_settings
 from _project_profiles import load_profile
+from _project_settings import load_project_settings
+from diff_engine import DiffEngine
+from folder_reader import FolderReader
+from folder_writer import FolderWriter
+from report_writer import ReportWriter
+from resources_report import build_resources_report
+from snapshot_reader import SnapshotReader
 from xml_helpers import ProjectionValidationError, normalize_guid
 
 
@@ -47,7 +48,9 @@ def _filter_diff_result(diff_result, selected_guids):
         if isinstance(value, list):
             filtered[key] = [guid for guid in value if guid in selected]
         elif isinstance(value, dict):
-            filtered[key] = dict((guid, data) for guid, data in value.items() if guid in selected)
+            filtered[key] = dict(
+                (guid, data) for guid, data in value.items() if guid in selected
+            )
         else:
             filtered[key] = value
     return filtered
@@ -76,7 +79,9 @@ def _layout(args):
 
 
 def _load_models(args, context):
-    ide_reader = SnapshotReader(args.snapshot, project_name=os.path.basename(args.project_root))
+    ide_reader = SnapshotReader(
+        args.snapshot, project_name=os.path.basename(args.project_root)
+    )
     ide_model = ide_reader.read()
 
     project_layout = _layout(args)
@@ -100,7 +105,9 @@ def _load_models(args, context):
 
 def _load_diff(args, context):
     ide_model, folder_model, dump_path = _load_models(args, context)
-    differ = DiffEngine(ide_model, folder_model)
+    settings = _settings(args)
+    profile = load_profile(settings.get("profile"))
+    differ = DiffEngine(ide_model, folder_model, profile=profile)
     return differ.compare(), ide_model, folder_model, dump_path
 
 
@@ -164,7 +171,9 @@ def _log_compare_details(diff_result, ide_model, folder_model):
         for guid in diff_result.get(category, []):
             _log_diff_node(category, guid, ide_model, folder_model)
 
-    for guid, paths in sorted((diff_result.get("unsupported_projection_changes") or {}).items()):
+    for guid, paths in sorted(
+        (diff_result.get("unsupported_projection_changes") or {}).items()
+    ):
         _log_diff_node("unsupported_projection_changes", guid, ide_model, folder_model)
         for path in paths:
             _log("unsupported_projection_path: {0} -> {1}".format(guid, path))
@@ -175,15 +184,21 @@ def run_export(args):
     project_layout = _layout(args)
     selected_guids = _filter_guids(args)
     if selected_guids:
-        _log(f"Exporting selected objects from snapshot {args.snapshot} to view root {project_layout.view_root}")
+        _log(
+            f"Exporting selected objects from snapshot {args.snapshot} to view root {project_layout.view_root}"
+        )
     else:
-        _log(f"Exporting from snapshot {args.snapshot} to view root {project_layout.view_root}")
-    reader = SnapshotReader(args.snapshot, project_name=os.path.basename(args.project_root))
+        _log(
+            f"Exporting from snapshot {args.snapshot} to view root {project_layout.view_root}"
+        )
+    reader = SnapshotReader(
+        args.snapshot, project_name=os.path.basename(args.project_root)
+    )
     model = reader.read()
     if not model:
         print("Failed to read snapshot.")
         sys.exit(1)
-        
+
     dump_path = project_layout.dump_root
     writer = FolderWriter(
         project_layout.view_root,
@@ -198,12 +213,15 @@ def run_export(args):
         print("Error:", error)
         sys.exit(1)
 
+
 def run_compare(args):
     project_layout = _layout(args)
-    _log(f"Comparing snapshot {args.snapshot} with view root {project_layout.view_root}")
+    _log(
+        f"Comparing snapshot {args.snapshot} with view root {project_layout.view_root}"
+    )
     diff_result, ide_model, folder_model, _ = _load_diff(args, "comparison")
     _log_compare_details(diff_result, ide_model, folder_model)
-    
+
     reporter = ReportWriter(args.report)
     reporter.write_diff_report(
         diff_result,
@@ -212,17 +230,22 @@ def run_compare(args):
         include_objects=bool(getattr(args, "include_objects", False)),
     )
 
+
 def run_import(args):
     project_layout = _layout(args)
     selected_guids = _filter_guids(args)
     if selected_guids:
-        _log(f"Importing selected objects from view root {project_layout.view_root} against snapshot {args.snapshot} to generate {args.patch}")
+        _log(
+            f"Importing selected objects from view root {project_layout.view_root} against snapshot {args.snapshot} to generate {args.patch}"
+        )
     else:
-        _log(f"Importing view root {project_layout.view_root} against snapshot {args.snapshot} to generate {args.patch}")
+        _log(
+            f"Importing view root {project_layout.view_root} against snapshot {args.snapshot} to generate {args.patch}"
+        )
     diff_result, ide_model, folder_model, _ = _load_diff(args, "import")
     diff_result = _filter_diff_result(diff_result, selected_guids)
     _log_compare_details(diff_result, ide_model, folder_model)
-    
+
     patcher = PatchBuilder(diff_result, ide_model, folder_model)
     try:
         patcher.build_patch(args.patch)
@@ -230,11 +253,14 @@ def run_import(args):
         print("Failed to build import patch:", error)
         sys.exit(1)
 
+
 def run_validate(args):
     project_layout = _layout(args)
-    _log(f"Validating snapshot {args.snapshot} against view root {project_layout.view_root}")
+    _log(
+        f"Validating snapshot {args.snapshot} against view root {project_layout.view_root}"
+    )
     diff_result, _, _, _ = _load_diff(args, "validation")
-    
+
     has_diffs = any(len(v) > 0 for k, v in diff_result.items() if k != "unchanged")
     if has_diffs:
         print("Validation failed. Snapshot and folder state differ.")
@@ -260,8 +286,12 @@ def main():
 
     # common arguments
     parent_parser = argparse.ArgumentParser(add_help=False)
-    parent_parser.add_argument("--project-root", required=True, help="Path to project root")
-    parent_parser.add_argument("--snapshot", required=True, help="Path to IDE.xml snapshot")
+    parent_parser.add_argument(
+        "--project-root", required=True, help="Path to project root"
+    )
+    parent_parser.add_argument(
+        "--snapshot", required=True, help="Path to IDE.xml snapshot"
+    )
     parent_parser.add_argument(
         "--view-root",
         "--views",
@@ -284,7 +314,7 @@ def main():
 
     # export
     parser_export = subparsers.add_parser("export", parents=[parent_parser])
-    
+
     # compare
     parser_compare = subparsers.add_parser("compare", parents=[parent_parser])
     parser_compare.add_argument("--report", required=True, help="Path to report JSON")
@@ -296,16 +326,27 @@ def main():
 
     # import
     parser_import = subparsers.add_parser("import", parents=[parent_parser])
-    parser_import.add_argument("--patch", required=True, help="Path to IMPORT.xml output")
+    parser_import.add_argument(
+        "--patch", required=True, help="Path to IMPORT.xml output"
+    )
 
     # validate
     parser_validate = subparsers.add_parser("validate", parents=[parent_parser])
 
     # resources
     parser_resources = subparsers.add_parser("resources", parents=[parent_parser])
-    parser_resources.add_argument("--report", required=True, help="Path to resources report JSON")
-    parser_resources.add_argument("--log", default=None, help="Path to human-readable top resources log")
-    parser_resources.add_argument("--limit", type=int, default=50, help="Number of largest objects to include in the top list")
+    parser_resources.add_argument(
+        "--report", required=True, help="Path to resources report JSON"
+    )
+    parser_resources.add_argument(
+        "--log", default=None, help="Path to human-readable top resources log"
+    )
+    parser_resources.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Number of largest objects to include in the top list",
+    )
 
     args = parser.parse_args()
 
@@ -319,6 +360,7 @@ def main():
         run_validate(args)
     elif args.command == "resources":
         run_resources(args)
+
 
 if __name__ == "__main__":
     main()
