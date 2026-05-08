@@ -91,7 +91,8 @@
   "sync_direction_overrides": {
     "library_manager": "export_only",
     "device": "export_only",
-    "device_module": "export_only"
+    "device_module": "export_only",
+    "symbol_config": "export_only"
   },
   "projections": [
     {
