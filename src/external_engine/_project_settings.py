@@ -23,6 +23,7 @@ def default_project_settings():
         "profile": "default",
         "projections": {},
         "verbose_logging": False,
+        "show_completion_popup": True,
         "pre_import_backup_enabled": True,
         "backup_retention_count": 10,
     }
@@ -98,6 +99,10 @@ def load_project_settings(project_root):
         data.get("verbose_logging"),
         settings["verbose_logging"],
     )
+    settings["show_completion_popup"] = _safe_bool(
+        data.get("show_completion_popup"),
+        settings["show_completion_popup"],
+    )
     settings["pre_import_backup_enabled"] = _safe_bool(
         data.get("pre_import_backup_enabled"),
         settings["pre_import_backup_enabled"],
@@ -127,6 +132,10 @@ def save_project_settings(project_root, settings):
     current["verbose_logging"] = _safe_bool(
         data.get("verbose_logging"),
         current["verbose_logging"],
+    )
+    current["show_completion_popup"] = _safe_bool(
+        data.get("show_completion_popup"),
+        current["show_completion_popup"],
     )
     current["pre_import_backup_enabled"] = _safe_bool(
         data.get("pre_import_backup_enabled"),

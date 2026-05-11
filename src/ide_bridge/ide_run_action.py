@@ -12,6 +12,7 @@ import ide_runtime_common
 import ide_export_snapshot
 import ide_apply_patch
 import ide_backup
+from _project_settings import load_project_settings
 
 def _selected_guid_args(selected_guids):
     guids = []
@@ -40,6 +41,46 @@ def _show_warning(system, message):
     except Exception:
         pass
     ide_runtime_common.log_error(message)
+
+
+def _show_info(system, message):
+    try:
+        if system and hasattr(system, "ui") and hasattr(system.ui, "info"):
+            system.ui.info(message)
+            return
+    except Exception:
+        pass
+    ide_runtime_common.log_info(message)
+
+
+def _completion_popup_enabled(project_root):
+    try:
+        settings = load_project_settings(project_root)
+        return bool(settings.get("show_completion_popup", True))
+    except Exception:
+        return True
+
+
+def _completion_message(action, views_path, dump_root, ide_xml_path, patch_path=None, apply_result=None):
+    if action == "export":
+        return (
+            "Export completed successfully.\n\n"
+            "View root:\n{0}\n\n"
+            "Snapshot:\n{1}\n\n"
+            "Manifest:\n{2}"
+        ).format(
+            views_path,
+            ide_xml_path,
+            os.path.join(dump_root, "manifest.json"),
+        )
+    if action == "import":
+        summary = apply_result.summary() if hasattr(apply_result, "summary") else "success"
+        return (
+            "Import completed successfully.\n\n"
+            "Patch:\n{0}\n\n"
+            "Result:\n{1}"
+        ).format(patch_path or os.path.join(dump_root, "IMPORT.xml"), summary)
+    return "Action " + action + " completed successfully."
 
 
 def run_action(
@@ -110,4 +151,16 @@ def run_action(
             return False
 
     ide_runtime_common.log_info("Action " + action + " completed successfully.")
+    if action in ("export", "import") and _completion_popup_enabled(project_root):
+        _show_info(
+            system,
+            _completion_message(
+                action,
+                views_path,
+                dump_root,
+                ide_xml_path,
+                patch_path=os.path.join(dump_root, "IMPORT.xml") if action == "import" else None,
+                apply_result=apply_result if action == "import" else None,
+            ),
+        )
     return True
