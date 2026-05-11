@@ -50,12 +50,13 @@ def _ensure_gitignore_entries(project_root):
 def _compact_settings(settings):
     projections = settings.get("projections") or {}
     return (
-        "layout={0}, view_root={1}, profile={2}, projections={3}, verbose_logging={4}, pre_import_backup={5}, backup_retention={6}".format(
+        "layout={0}, view_root={1}, profile={2}, projections={3}, verbose_logging={4}, completion_popup={5}, pre_import_backup={6}, backup_retention={7}".format(
             settings.get("layout"),
             settings.get("view_root") or "<default>",
             settings.get("profile"),
             len(projections),
             settings.get("verbose_logging"),
+            settings.get("show_completion_popup"),
             settings.get("pre_import_backup_enabled"),
             settings.get("backup_retention_count"),
         )
@@ -127,6 +128,7 @@ def main(params=None, runtime=None):
             "profile",
             "projections",
             "verbose_logging",
+            "show_completion_popup",
             "ensure_gitignore",
             "pre_import_backup_enabled",
             "backup_retention_count",
@@ -157,6 +159,9 @@ def main(params=None, runtime=None):
             changed = True
         if "verbose_logging" in params:
             settings["verbose_logging"] = params.get("verbose_logging")
+            changed = True
+        if "show_completion_popup" in params:
+            settings["show_completion_popup"] = params.get("show_completion_popup")
             changed = True
         if "pre_import_backup_enabled" in params:
             settings["pre_import_backup_enabled"] = params.get("pre_import_backup_enabled")

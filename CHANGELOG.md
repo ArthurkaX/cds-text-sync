@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - **Textual Create TypeGuid**: `CreateTextObject` patch entries can now carry an explicit `TypeGuid`, preferred by the IDE bridge before built-in fallback GUID candidates.
 - **Persistent Variables Safety Guard**: Creating a second Persistent Variables object in the same application is rejected before IDE apply because CODESYS supports only one such object per application.
 - **IDE Bridge Cleanup**: Removed noisy create fallback diagnostics and the native XML template create fallback; existing textual objects are updated through available text documents even when CODESYS does not expose reliable `has_textual_*` flags.
+- **Completion Summary Option**: Export and import now show a final success popup by default, with a project option to disable these completion summaries.
 
 ### Version 2.0.0 (2026-04-29)
 

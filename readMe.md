@@ -23,6 +23,7 @@ Custom object behavior and optional text projections are profile-driven; see [pr
 - **Compare Reports**: `Project_compare.py` captures `.dump/IDE.current.xml` and writes `.dump/compare_report.json` without changing the open project.
 - **Interactive Review**: `Project_compare_ui.py` shows object-level changes in CODESYS, supports diff viewing, and can apply checked import/export actions.
 - **Patch Import**: `Project_import.py` builds `.dump/IMPORT.xml` from disk edits and applies textual objects through CODESYS text APIs before native XML import handles the rest.
+- **Completion Summaries**: Export and import show a final success popup by default, with an option to disable it in `Project_options.py`.
 - **Pre-Import Backups**: Optional timestamped `.project` backups are written to `.backup/` before IDE-changing imports, with a configurable retention count.
 - **Optional `.st` Projections**: POU, POU child, GVL, persistent variable list, task-local GVL, and DUT text can be emitted as readable `.st` files while duplicated text is removed from the XML sidecar for cleaner PR diffs.
 - **Optional `.csv` Projections**: Text lists and alarm items can be exported as CSV and imported back for existing-row edits such as translation updates.
@@ -193,6 +194,7 @@ Use this after selecting the sync root.
 - **Profile**: Select the active CODESYS profile for object type handling.
 - **Projections**: Enable optional readable files such as `.st` and `.csv` based on the active profile.
 - **Safety Backup**: Enable or disable timestamped binary backup before import and set how many generated backups to keep.
+- **Completion Summary**: Show or hide the final import/export success popup.
 - **Git Ignore Helper**: Append recommended generated-state ignore rules without rewriting existing user rules.
 
 ### 4. `Project_export.py` (CODESYS -> Disk)
