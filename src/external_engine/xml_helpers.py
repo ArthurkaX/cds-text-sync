@@ -2,11 +2,13 @@
 """
 xml_helpers.py - Shared XML and hashing helpers for the external engine.
 """
-import hashlib
-import os
+
 import copy
 import csv
+import hashlib
 import io
+import os
+import re
 import xml.etree.ElementTree as ET
 
 TEXT_PROJECTION_SEPARATOR = "\n\n// === SECTION ===\n\n"
@@ -20,14 +22,45 @@ POU_END_KEYWORDS = {
     "PROPERTY": "END_PROPERTY",
 }
 
+CDS_TEXT_SYNC_PRAGMA_RE = re.compile(
+    r"\(\*\s*cds-text-sync\s*:\s*TypeGuid\s*=\s*\"\{?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\}?\"\s*\*\)",
+    re.IGNORECASE,
+)
 
-VOLATILE_XML_NAMES = set([
-    "Timestamp",
-    "UniqueIdGenerator",
-    "GuidInit",
-    "GuidReInit",
-    "GuidExitX",
-])
+CDS_TEXT_SYNC_ANY_PRAGMA_RE = re.compile(
+    r"\(\*\s*cds-text-sync\s*:.*?\*\)",
+    re.IGNORECASE,
+)
+
+
+def extract_cds_text_sync_type_guid(content):
+    """Extract TypeGuid from a cds-text-sync block-comment pragma if present.
+
+    Returns the normalized lowercase GUID string (without braces), or None.
+    """
+    match = CDS_TEXT_SYNC_PRAGMA_RE.search(content or "")
+    if match:
+        return match.group(1).strip().lower()
+    return None
+
+
+def strip_cds_text_sync_pragmas(content):
+    """Remove all cds-text-sync block-comment pragmas from content.
+
+    Preserves all other user comments.
+    """
+    return CDS_TEXT_SYNC_ANY_PRAGMA_RE.sub("", content or "")
+
+
+VOLATILE_XML_NAMES = set(
+    [
+        "Timestamp",
+        "UniqueIdGenerator",
+        "GuidInit",
+        "GuidReInit",
+        "GuidExitX",
+    ]
+)
 
 
 class ProjectionValidationError(ValueError):
@@ -84,9 +117,8 @@ def _named_text_child(element):
     if element is None:
         return None
     for child in list(element):
-        if (
-            child.attrib.get("Name") == "Text"
-            and (child.tag == "Single" or str(child.tag).endswith("}Single"))
+        if child.attrib.get("Name") == "Text" and (
+            child.tag == "Single" or str(child.tag).endswith("}Single")
         ):
             return child
     return None
@@ -182,8 +214,12 @@ def st_projection_content(entry_element):
     sections = _text_blob_sections(entry_element)
     if not sections:
         return None
-    declarations = [section["text"] for section in sections if section["role"] == "declaration"]
-    implementations = [section["text"] for section in sections if section["role"] == "implementation"]
+    declarations = [
+        section["text"] for section in sections if section["role"] == "declaration"
+    ]
+    implementations = [
+        section["text"] for section in sections if section["role"] == "implementation"
+    ]
     if len(declarations) == 1 and len(implementations) == 1:
         declaration = declarations[0]
         implementation = implementations[0]
@@ -191,7 +227,12 @@ def st_projection_content(entry_element):
         if POU_END_KEYWORDS.get(keyword):
             content = _normalize_trailing_newline(declaration)
             if implementation.strip():
-                content += "\n" + ST_IMPLEMENTATION_MARKER + "\n\n" + _normalize_trailing_newline(implementation)
+                content += (
+                    "\n"
+                    + ST_IMPLEMENTATION_MARKER
+                    + "\n\n"
+                    + _normalize_trailing_newline(implementation)
+                )
             return content
         if declaration.strip() and implementation.strip():
             return (
@@ -221,7 +262,9 @@ def split_text_projection(value, expected_count):
     if len(parts) < expected_count:
         parts.extend([""] * (expected_count - len(parts)))
     if len(parts) > expected_count:
-        parts = parts[:expected_count - 1] + [TEXT_PROJECTION_SEPARATOR.join(parts[expected_count - 1:])]
+        parts = parts[: expected_count - 1] + [
+            TEXT_PROJECTION_SEPARATOR.join(parts[expected_count - 1 :])
+        ]
     return parts
 
 
@@ -244,17 +287,21 @@ def _split_full_pou_projection(value):
     if declaration_end is None:
         return None
 
-    declaration_lines = lines[:declaration_end + 1]
-    implementation_lines = lines[declaration_end + 1:]
+    declaration_lines = lines[: declaration_end + 1]
+    implementation_lines = lines[declaration_end + 1 :]
     while implementation_lines and not implementation_lines[0].strip():
         implementation_lines.pop(0)
-    if implementation_lines and implementation_lines[0].strip() == ST_IMPLEMENTATION_MARKER:
+    if (
+        implementation_lines
+        and implementation_lines[0].strip() == ST_IMPLEMENTATION_MARKER
+    ):
         implementation_lines.pop(0)
         while implementation_lines and not implementation_lines[0].strip():
             implementation_lines.pop(0)
     return (
         "\n".join(declaration_lines).rstrip() + "\n",
-        "\n".join(implementation_lines).rstrip() + ("\n" if implementation_lines else ""),
+        "\n".join(implementation_lines).rstrip()
+        + ("\n" if implementation_lines else ""),
     )
 
 
@@ -341,7 +388,9 @@ def _named_child(element, tag_name, name):
     if element is None:
         return None
     for child in list(element):
-        if (child.tag == tag_name or str(child.tag).endswith("}" + tag_name)) and child.attrib.get("Name") == name:
+        if (
+            child.tag == tag_name or str(child.tag).endswith("}" + tag_name)
+        ) and child.attrib.get("Name") == name:
             return child
     return None
 
@@ -368,7 +417,9 @@ def _named_descendant(element, tag_name, name):
     if element is None:
         return None
     for child in element.iter():
-        if (child.tag == tag_name or str(child.tag).endswith("}" + tag_name)) and child.attrib.get("Name") == name:
+        if (
+            child.tag == tag_name or str(child.tag).endswith("}" + tag_name)
+        ) and child.attrib.get("Name") == name:
             return child
     return None
 
@@ -425,7 +476,9 @@ def textlist_csv(entry_element):
         text_default = _named_child(item, "Single", "TextDefault")
         row = [
             text_id.text if text_id is not None and text_id.text is not None else "",
-            text_default.text if text_default is not None and text_default.text is not None else "",
+            text_default.text
+            if text_default is not None and text_default.text is not None
+            else "",
         ]
         language_texts = _named_child(item, "List", "LanguageTexts")
         texts = list(language_texts) if language_texts is not None else []
@@ -449,7 +502,8 @@ def apply_textlist_csv(entry_element, csv_content):
         return False
 
     languages = [
-        name for name in reader.fieldnames
+        name
+        for name in reader.fieldnames
         if name not in ("TextID", "TextDefault") and name
     ]
     rows_by_id = {}
@@ -458,7 +512,9 @@ def apply_textlist_csv(entry_element, csv_content):
         if text_id is None and not any(row.values()):
             continue
         if text_id in rows_by_id:
-            raise ProjectionValidationError("Duplicate TextID in TextList CSV: {0}".format(text_id))
+            raise ProjectionValidationError(
+                "Duplicate TextID in TextList CSV: {0}".format(text_id)
+            )
         rows_by_id[text_id] = row
 
     existing_ids = []
@@ -480,7 +536,9 @@ def apply_textlist_csv(entry_element, csv_content):
         if removed_ids:
             parts.append("removed TextID: {0}".format(", ".join(removed_ids)))
         raise ProjectionValidationError(
-            "TextList CSV supports editing existing rows only; {0}".format("; ".join(parts))
+            "TextList CSV supports editing existing rows only; {0}".format(
+                "; ".join(parts)
+            )
         )
 
     changed = False
@@ -619,7 +677,9 @@ def apply_alarm_items_csv(entry_element, csv_content):
         if alarm_id is None and not any(row.values()):
             continue
         if alarm_id in rows_by_id:
-            raise ProjectionValidationError("Duplicate AlarmID in alarm CSV: {0}".format(alarm_id))
+            raise ProjectionValidationError(
+                "Duplicate AlarmID in alarm CSV: {0}".format(alarm_id)
+            )
         rows_by_id[alarm_id] = row
 
     alarms = _alarm_items(entry_element)
@@ -635,7 +695,9 @@ def apply_alarm_items_csv(entry_element, csv_content):
         if removed_ids:
             parts.append("removed AlarmID: {0}".format(", ".join(removed_ids)))
         raise ProjectionValidationError(
-            "Alarm CSV supports editing existing rows only; {0}".format("; ".join(parts))
+            "Alarm CSV supports editing existing rows only; {0}".format(
+                "; ".join(parts)
+            )
         )
 
     changed = False
@@ -646,27 +708,45 @@ def apply_alarm_items_csv(entry_element, csv_content):
 
         row = rows_by_id[alarm_id]
         additional_message_ids = row.get("AdditionalMessageIDs")
-        if additional_message_ids is not None and additional_message_ids != _additional_message_ids(alarm):
+        if (
+            additional_message_ids is not None
+            and additional_message_ids != _additional_message_ids(alarm)
+        ):
             raise ProjectionValidationError(
                 "Alarm CSV field AdditionalMessageIDs is read-only until message list import is implemented "
                 "for AlarmID: {0}".format(alarm_id)
             )
         observation = _named_child(alarm, "Single", "ObservationType")
         if observation is not None:
-            changed = _set_named_single_text(observation, "Expression", row.get("Expression")) or changed
-            changed = _set_named_single_text(observation, "Comparison", row.get("Comparison")) or changed
-            changed = _set_named_single_text(
-                observation,
-                "ExpressionToCompare",
-                row.get("ExpressionToCompare"),
-            ) or changed
+            changed = (
+                _set_named_single_text(observation, "Expression", row.get("Expression"))
+                or changed
+            )
+            changed = (
+                _set_named_single_text(observation, "Comparison", row.get("Comparison"))
+                or changed
+            )
+            changed = (
+                _set_named_single_text(
+                    observation,
+                    "ExpressionToCompare",
+                    row.get("ExpressionToCompare"),
+                )
+                or changed
+            )
 
         alarm_class = row.get("AlarmClass")
         alarm_class_element = _named_child(alarm, "Single", "AlarmClass")
         if alarm_class_element is not None:
-            changed = _set_named_single_text(alarm_class_element, "Name", alarm_class) or changed
+            changed = (
+                _set_named_single_text(alarm_class_element, "Name", alarm_class)
+                or changed
+            )
         if _named_child_any(alarm, "FullAlarmClassName") is not None:
-            changed = _set_named_single_text(alarm, "FullAlarmClassName", alarm_class) or changed
+            changed = (
+                _set_named_single_text(alarm, "FullAlarmClassName", alarm_class)
+                or changed
+            )
 
         for field_name in [
             "LatchVariable1",
@@ -676,7 +756,10 @@ def apply_alarm_items_csv(entry_element, csv_content):
             "OffDelayTime",
             "HigherPrioAlarm",
         ]:
-            changed = _set_named_single_text(alarm, field_name, row.get(field_name)) or changed
+            changed = (
+                _set_named_single_text(alarm, field_name, row.get(field_name))
+                or changed
+            )
 
     return changed
 
@@ -709,8 +792,11 @@ def alarm_items_csv(entry_element):
             "AlarmID": _named_child_text(alarm, "ID"),
             "Expression": _named_child_text(observation, "Expression"),
             "Comparison": _named_child_text(observation, "Comparison"),
-            "ExpressionToCompare": _named_child_text(observation, "ExpressionToCompare"),
-            "AlarmClass": _named_child_text(alarm_class, "Name") or _named_child_text(alarm, "FullAlarmClassName"),
+            "ExpressionToCompare": _named_child_text(
+                observation, "ExpressionToCompare"
+            ),
+            "AlarmClass": _named_child_text(alarm_class, "Name")
+            or _named_child_text(alarm, "FullAlarmClassName"),
             "LatchVariable1": _named_child_text(alarm, "LatchVariable1"),
             "LatchVariable2": _named_child_text(alarm, "LatchVariable2"),
             "Deactivation": _named_child_text(alarm, "Deactivation"),

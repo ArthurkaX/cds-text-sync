@@ -6,12 +6,20 @@ _patch_builder.py - Generates an IMPORT.xml patch based on diff results.
 import os
 import xml.etree.ElementTree as ET
 
+from xml_helpers import normalize_guid
+
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 DEFAULT_STRUCTURED_VIEW_SINGLE_ATTRS = {
     XML_SPACE: "preserve",
     "Type": "{3daac5e4-660e-42e4-9cea-3711b98bfb63}",
     "Method": "IArchivable",
 }
+PERSISTENT_GVL_TYPE_GUIDS = set(
+    [
+        "261bd6e6-249c-4232-bb6f-84c2fbeef430",
+        "3183921b-cc91-4712-9781-c3b6555122b5",
+    ]
+)
 
 
 class UnsupportedPatchError(Exception):
@@ -24,7 +32,7 @@ class PatchBuilder:
         self.ide_model = ide_model
         self.folder_model = folder_model
         self.ns = ide_model.ns
-        
+
     def _structured_view_guid(self, guid):
         folder_node = self.folder_model.get_node(guid)
         ide_node = self.ide_model.get_node(guid)
@@ -34,11 +42,15 @@ class PatchBuilder:
         if folder_node and folder_node.parent_guid:
             parent_guid = folder_node.parent_guid
             while parent_guid:
-                parent = self.folder_model.get_node(parent_guid) or self.ide_model.get_node(parent_guid)
+                parent = self.folder_model.get_node(
+                    parent_guid
+                ) or self.ide_model.get_node(parent_guid)
                 if parent and parent.metadata.get("structured_view_guid"):
                     return parent.metadata.get("structured_view_guid")
                 parent_guid = parent.parent_guid if parent else None
-        raise UnsupportedPatchError("Cannot resolve StructuredView Guid for object: {0}".format(guid))
+        raise UnsupportedPatchError(
+            "Cannot resolve StructuredView Guid for object: {0}".format(guid)
+        )
 
     def _structured_view_single_attrs(self, guid):
         folder_node = self.folder_model.get_node(guid)
@@ -62,25 +74,103 @@ class PatchBuilder:
             if blobs and new_code is not None:
                 blobs[0].text = new_code
             return entry
-        raise UnsupportedPatchError("Cannot build patch entry for guid: {0}".format(guid))
+        raise UnsupportedPatchError(
+            "Cannot build patch entry for guid: {0}".format(guid)
+        )
 
     def _is_pending_create(self, guid):
         folder_node = self.folder_model.get_node(guid)
         return bool(folder_node and folder_node.metadata.get("pending_create"))
 
+    def _application_scope(self, display_path):
+        parts = [
+            str(part or "").strip()
+            for part in (display_path or [])
+            if str(part or "").strip()
+        ]
+        for index, part in enumerate(parts):
+            lowered = part.lower()
+            if (
+                lowered == "application"
+                or lowered.endswith("_application")
+                or lowered.endswith(" application")
+            ):
+                return tuple(value.lower() for value in parts[: index + 1])
+        return tuple(value.lower() for value in parts)
+
+    def _existing_persistent_gvl_in_scope(self, type_guid, display_path):
+        normalized_type_guid = normalize_guid(type_guid)
+        if (
+            normalized_type_guid
+            and normalized_type_guid not in PERSISTENT_GVL_TYPE_GUIDS
+        ):
+            return None
+        scope = self._application_scope(display_path)
+        for node in self.ide_model.nodes.values():
+            if normalize_guid(node.type) not in PERSISTENT_GVL_TYPE_GUIDS:
+                continue
+            if self._application_scope(node.display_path) == scope:
+                return node
+        return None
+
+    def _validate_text_create(self, guid):
+        folder_node = self.folder_model.get_node(guid)
+        if folder_node is None:
+            return
+        kind = (
+            folder_node.metadata.get("create_kind") or folder_node.type or ""
+        ).lower()
+        if kind != "persistent_gvl":
+            return
+        existing = self._existing_persistent_gvl_in_scope(
+            folder_node.metadata.get("create_type_guid") or folder_node.type,
+            folder_node.display_path,
+        )
+        if existing is None:
+            return
+
+        create_path = (
+            folder_node.metadata.get("create_path")
+            or folder_node.metadata.get("view_path")
+            or ""
+        )
+        existing_path_parts = [part for part in (existing.display_path or []) if part]
+        existing_path_parts.append(existing.output_name or existing.name or "")
+        existing_path = "/".join(existing_path_parts)
+        raise UnsupportedPatchError(
+            "Cannot create persistent variable list '{0}' at {1}: a persistent variable list already exists in the same application scope ({2}). CODESYS accepts only one Persistent Variables object per application; edit the existing object instead of creating a second one.".format(
+                folder_node.metadata.get("create_name") or folder_node.name or guid,
+                create_path,
+                existing_path,
+            )
+        )
+
     def _append_text_create(self, parent, guid):
         folder_node = self.folder_model.get_node(guid)
         if folder_node is None:
-            raise UnsupportedPatchError("Cannot build create entry for guid: {0}".format(guid))
+            raise UnsupportedPatchError(
+                "Cannot build create entry for guid: {0}".format(guid)
+            )
 
         attrs = {
-            "Path": folder_node.metadata.get("create_path") or folder_node.metadata.get("view_path") or "",
+            "Path": folder_node.metadata.get("create_path")
+            or folder_node.metadata.get("view_path")
+            or "",
             "Name": folder_node.metadata.get("create_name") or folder_node.name or "",
             "Kind": folder_node.metadata.get("create_kind") or folder_node.type or "",
         }
         parent_name = folder_node.metadata.get("create_parent_name")
         if parent_name:
             attrs["ParentName"] = parent_name
+
+        type_guid = folder_node.metadata.get("create_type_guid")
+        if type_guid:
+            tg = type_guid.strip().lower()
+            if not tg.startswith("{"):
+                tg = "{" + tg
+            if not tg.endswith("}"):
+                tg = tg + "}"
+            attrs["TypeGuid"] = tg
 
         create_elem = ET.SubElement(parent, "CreateTextObject", attrs)
         declaration = folder_node.metadata.get("create_declaration")
@@ -100,7 +190,9 @@ class PatchBuilder:
                     ", ".join(projection_conflicts)
                 )
             )
-        unsupported_projection_changes = self.diff_result.get("unsupported_projection_changes", {})
+        unsupported_projection_changes = self.diff_result.get(
+            "unsupported_projection_changes", {}
+        )
         if unsupported_projection_changes:
             changed = []
             for guid, paths in unsupported_projection_changes.items():
@@ -115,7 +207,9 @@ class PatchBuilder:
         added_guids = self.diff_result.get("added", [])
         deleted_guids = self.diff_result.get("deleted", [])
         create_guids = [guid for guid in added_guids if self._is_pending_create(guid)]
-        patch_guids = modified_guids + [guid for guid in added_guids if guid not in create_guids]
+        patch_guids = modified_guids + [
+            guid for guid in added_guids if guid not in create_guids
+        ]
 
         if deleted_guids:
             print(
@@ -134,8 +228,15 @@ class PatchBuilder:
             print("Empty patch generated at", output_path)
             return False
 
-        print("Building patch for {0} objects...".format(len(patch_guids) + len(create_guids)))
-        
+        for guid in create_guids:
+            self._validate_text_create(guid)
+
+        print(
+            "Building patch for {0} objects...".format(
+                len(patch_guids) + len(create_guids)
+            )
+        )
+
         sv_tag = "{0}StructuredView".format(self.ns) if self.ns else "StructuredView"
         single_tag = "{0}Single".format(self.ns) if self.ns else "Single"
         null_tag = "{0}Null".format(self.ns) if self.ns else "Null"
@@ -153,7 +254,9 @@ class PatchBuilder:
 
         for sv_guid, guids in grouped_guids:
             sv = ET.SubElement(patch_root, sv_tag, {"Guid": sv_guid})
-            wrapper = ET.SubElement(sv, single_tag, self._structured_view_single_attrs(guids[0]))
+            wrapper = ET.SubElement(
+                sv, single_tag, self._structured_view_single_attrs(guids[0])
+            )
             ET.SubElement(wrapper, null_tag, {"Name": "Profile"})
             el = ET.SubElement(wrapper, el_tag, {"Name": "EntryList"})
             for guid in guids:
@@ -163,8 +266,16 @@ class PatchBuilder:
             creates_root = ET.SubElement(patch_root, "CreateTextObjects")
             create_guids.sort(
                 key=lambda guid: (
-                    os.path.splitext(os.path.basename(self.folder_model.get_node(guid).metadata.get("create_path", "")))[0].count("."),
-                    self.folder_model.get_node(guid).metadata.get("create_path", "").lower(),
+                    os.path.splitext(
+                        os.path.basename(
+                            self.folder_model.get_node(guid).metadata.get(
+                                "create_path", ""
+                            )
+                        )
+                    )[0].count("."),
+                    self.folder_model.get_node(guid)
+                    .metadata.get("create_path", "")
+                    .lower(),
                 )
             )
             for guid in create_guids:

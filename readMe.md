@@ -1,6 +1,6 @@
 # cds-text-sync: Professional CODESYS Git Sync
 
-**Version**: `2.0.0`
+**Version**: `2.0.1`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -24,7 +24,7 @@ Custom object behavior and optional text projections are profile-driven; see [pr
 - **Interactive Review**: `Project_compare_ui.py` shows object-level changes in CODESYS, supports diff viewing, and can apply checked import/export actions.
 - **Patch Import**: `Project_import.py` builds `.dump/IMPORT.xml` from disk edits and applies textual objects through CODESYS text APIs before native XML import handles the rest.
 - **Pre-Import Backups**: Optional timestamped `.project` backups are written to `.backup/` before IDE-changing imports, with a configurable retention count.
-- **Optional `.st` Projections**: POU, POU child, GVL, and DUT text can be emitted as readable `.st` files while duplicated text is removed from the XML sidecar for cleaner PR diffs.
+- **Optional `.st` Projections**: POU, POU child, GVL, persistent variable list, task-local GVL, and DUT text can be emitted as readable `.st` files while duplicated text is removed from the XML sidecar for cleaner PR diffs.
 - **Optional `.csv` Projections**: Text lists and alarm items can be exported as CSV and imported back for existing-row edits such as translation updates.
 - **Profile-Aware Behavior**: JSON profiles describe vendor/fork-specific object kinds, projection availability, and safety rules.
 - **Diagnostics**: `Project_build.py`, `Project_discover.py`, and `Project_resources.py` provide build, environment, profile, and snapshot-size diagnostics.
@@ -130,8 +130,8 @@ If you encounter bugs in a newer version:
 # Check available stable tags
 git tag
 
-# Rollback to specific stable version (e.g., v2.0.0)
-git checkout v2.0.0
+# Rollback to specific stable version (e.g., v2.0.1)
+git checkout v2.0.1
 
 # Update your CODESYS scripts with the stable version
 # Follow the installation steps to copy the files
@@ -146,7 +146,7 @@ git checkout v2.0.0
 > You can also use the **Quick PowerShell Setup** script (Method 2 above) which automatically downloads stable releases as clean zip archives without requiring Git installation.
 
 ### Version Policy
-- **Tags starting with `v`**: Official stable releases (e.g., `v2.0.0`, `v1.7.5`)
+- **Tags starting with `v`**: Official stable releases (e.g., `v2.0.1`, `v1.7.5`)
 - **Main branch**: Latest development code (may be unstable)
 - **Testing**: All stable releases are manually tested before tagging
 
@@ -239,12 +239,13 @@ Projections are editable views generated from XML-backed CODESYS objects. They a
 
 - **POU `.st`**: Declaration/interface first, then `// --- implementation ---`, then implementation.
 - **POU children `.st`**: Methods, actions, properties, and accessors are emitted as flat sibling files such as `ST_FB.ST_METHOD.st`.
-- **GVL and DUT `.st`**: Global variables and DUT declarations can be edited as text files.
+- **GVL, persistent variables, and DUT `.st`**: Global variables, persistent variable lists, task-local GVLs, and DUT declarations can be edited as text files.
+- **TypeGuid metadata pragmas**: Ambiguous `.st` projections may start with `(* cds-text-sync: TypeGuid="{...}" *)`; this is a sync hint only and is stripped before XML rehydration or IDE text updates.
 - **Text list `.csv`**: Existing `TextID` rows and language values can be edited for translation workflows.
 - **Alarm item `.csv`**: Existing alarm rows can be edited by stable `AlarmID`.
 - **Conflict Handling**: If both the redacted XML and its projection changed, compare/import fails explicitly instead of choosing a source silently.
 
-CSV projections are update-only in this release. Inserted, removed, renamed, or duplicate rows fail explicitly. Graphical implementations are skipped by profile safety rules unless a safe textual representation is available.
+CSV projections are update-only in this release. Inserted, removed, renamed, or duplicate rows fail explicitly. CODESYS supports only one Persistent Variables object per application, so creating a second one from a new `.st` file is rejected before IDE apply. Graphical implementations are skipped by profile safety rules unless a safe textual representation is available.
 
 ### 9. Diagnostics
 
@@ -301,7 +302,7 @@ Example user-project `.gitignore` for the default `project-view/` layout:
 .diff/
 ```
 
-If `.st` projections are enabled, the exported `.xml` keeps CODESYS object metadata while `TextBlobForSerialisation` text is externalized into the `.st` file. This keeps normal Git and PR diffs focused on the readable text file instead of showing the same code change twice in XML and ST. During compare/import/validate, the engine rehydrates canonical XML from `.xml + .st`. Text-list and alarm-item `.csv` projections are import-safe for editing existing rows only; inserted, removed, renamed, or duplicate rows fail explicitly.
+If `.st` projections are enabled, the exported `.xml` keeps CODESYS object metadata while `TextBlobForSerialisation` text is externalized into the `.st` file. This keeps normal Git and PR diffs focused on the readable text file instead of showing the same code change twice in XML and ST. During compare/import/validate, the engine rehydrates canonical XML from `.xml + .st`. For ambiguous textual object types such as persistent variable lists, the `.st` file may include a `(* cds-text-sync: TypeGuid="{...}" *)` pragma; the pragma is metadata for sync only and is never written back into CODESYS declarations. Text-list and alarm-item `.csv` projections are import-safe for editing existing rows only; inserted, removed, renamed, or duplicate rows fail explicitly.
 
 ---
 

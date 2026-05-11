@@ -3,11 +3,13 @@
 folder_writer.py - Writes the in-memory ProjectModel to a Git-friendly folder structure.
 """
 
-import os
 import codecs
 import json
+import os
 import time
 
+from _project_layout import is_reserved_root_child
+from _project_profiles import enabled_projection_options, kind_for_type_guid
 from xml_helpers import (
     csv_projection_content,
     ensure_dir,
@@ -17,8 +19,6 @@ from xml_helpers import (
     sha1_hex,
     st_projection_content,
 )
-from _project_layout import is_reserved_root_child
-from _project_profiles import enabled_projection_options, kind_for_type_guid
 
 
 def _timestamp():
@@ -72,18 +72,31 @@ def _rename_case_only(source_path, target_path):
                 os.rename(temp_path, source_path)
         except OSError:
             pass
-        _log("Warning: Could not normalize path casing {0} -> {1}: {2}".format(source_path, target_path, error))
+        _log(
+            "Warning: Could not normalize path casing {0} -> {1}: {2}".format(
+                source_path, target_path, error
+            )
+        )
         return False
 
+
 class FolderWriter:
-    def __init__(self, views_path, dump_path, profile=None, projections=None, selected_guids=None):
+    def __init__(
+        self, views_path, dump_path, profile=None, projections=None, selected_guids=None
+    ):
         self.views_path = views_path
         self.dump_path = dump_path
-        self.project_root = os.path.dirname(os.path.abspath(os.path.normpath(dump_path or "")))
+        self.project_root = os.path.dirname(
+            os.path.abspath(os.path.normpath(dump_path or ""))
+        )
         self.manifest_path = os.path.join(dump_path, "manifest.json")
         self.profile = profile or {}
         self.projections = projections or {}
-        self.selected_guids = set(normalize_guid(guid) for guid in (selected_guids or []) if normalize_guid(guid))
+        self.selected_guids = set(
+            normalize_guid(guid)
+            for guid in (selected_guids or [])
+            if normalize_guid(guid)
+        )
 
     def _safe_path_in_root(self, relative_path, root_path):
         if not relative_path:
@@ -96,8 +109,14 @@ class FolderWriter:
         view_root = _normalize_fs_path(root_path)
         if _normalize_fs_path(full_path) == view_root:
             return None
-        if _normalize_fs_path(full_path) and not _normalize_fs_path(full_path).startswith(view_root + os.sep):
-            _log("Notice: Ignoring managed path outside view root: {0}".format(relative_path))
+        if _normalize_fs_path(full_path) and not _normalize_fs_path(
+            full_path
+        ).startswith(view_root + os.sep):
+            _log(
+                "Notice: Ignoring managed path outside view root: {0}".format(
+                    relative_path
+                )
+            )
             return None
         return full_path
 
@@ -151,7 +170,9 @@ class FolderWriter:
 
             actual_child = os.path.join(current_actual, match)
             desired_child = os.path.join(current_actual, part)
-            if actual_child != desired_child and _normalize_fs_path(actual_child) == _normalize_fs_path(desired_child):
+            if actual_child != desired_child and _normalize_fs_path(
+                actual_child
+            ) == _normalize_fs_path(desired_child):
                 if _rename_case_only(actual_child, desired_child):
                     actual_child = desired_child
 
@@ -186,7 +207,9 @@ class FolderWriter:
             relative_paths.append(projection_path)
         return relative_paths
 
-    def _remove_previous_managed_files_from_root(self, manifest, root_path, selected_guids=None):
+    def _remove_previous_managed_files_from_root(
+        self, manifest, root_path, selected_guids=None
+    ):
         if not manifest or not root_path:
             return 0
 
@@ -209,7 +232,11 @@ class FolderWriter:
                         removed += 1
                         self._remove_empty_parent_dirs(full_path, root_path=root_path)
                     except Exception as e:
-                        _log("Warning: Could not remove managed view file: {0} {1}".format(full_path, e))
+                        _log(
+                            "Warning: Could not remove managed view file: {0} {1}".format(
+                                full_path, e
+                            )
+                        )
         return removed
 
     def _ensure_view_root_not_changed(self, previous_root):
@@ -251,7 +278,9 @@ class FolderWriter:
         previous_root = self._manifest_view_root(manifest)
         self._ensure_view_root_not_changed(previous_root)
         self._ensure_no_legacy_root_view_duplicates(manifest)
-        if previous_root and _normalize_fs_path(previous_root) != _normalize_fs_path(self.views_path):
+        if previous_root and _normalize_fs_path(previous_root) != _normalize_fs_path(
+            self.views_path
+        ):
             return
 
         removed = self._remove_previous_managed_files_from_root(
@@ -275,8 +304,7 @@ class FolderWriter:
 
         result = []
         selected_entry_by_guid = dict(
-            (normalize_guid(entry.get("guid")), entry)
-            for entry in selected_entries
+            (normalize_guid(entry.get("guid")), entry) for entry in selected_entries
         )
         emitted = set()
         for entry in self._existing_manifest_entries():
@@ -312,13 +340,19 @@ class FolderWriter:
             for part in (node.display_path or [])
             if part
         ]
-        tail_parts = node_path[len(parent_parts):] if node_path[:len(parent_parts)] == parent_parts else []
+        tail_parts = (
+            node_path[len(parent_parts) :]
+            if node_path[: len(parent_parts)] == parent_parts
+            else []
+        )
         name = project_model.safe_component(node.output_name or node.name)
         flat_name = ".".join(parent_parts[-1:] + tail_parts + [name])
         return os.path.join(*(parent_parts[:-1] + [flat_name])) + extension
 
     def _xml_path_for_node(self, project_model, node):
-        return self._flat_nested_path(project_model, node, ".xml") or node.get_view_path(project_model, extension=".xml")
+        return self._flat_nested_path(
+            project_model, node, ".xml"
+        ) or node.get_view_path(project_model, extension=".xml")
 
     def _node_projection_options(self, node):
         kind = kind_for_type_guid(self.profile, node.type)
@@ -330,10 +364,21 @@ class FolderWriter:
             if kind not in kinds:
                 continue
             if node.name in (projection.get("exclude_names") or []):
-                _log("Projection skipped: {0} excluded by {1}".format(node.name, projection.get("id") or projection.get("kind")))
+                _log(
+                    "Projection skipped: {0} excluded by {1}".format(
+                        node.name, projection.get("id") or projection.get("kind")
+                    )
+                )
                 continue
-            if projection.get("requires_textual_implementation") and node.metadata.get("implementation_kind") != "textual":
-                _log("Projection skipped: {0} -> {1} requires textual implementation".format(node.name, projection.get("id") or projection.get("kind")))
+            if (
+                projection.get("requires_textual_implementation")
+                and node.metadata.get("implementation_kind") != "textual"
+            ):
+                _log(
+                    "Projection skipped: {0} -> {1} requires textual implementation".format(
+                        node.name, projection.get("id") or projection.get("kind")
+                    )
+                )
                 continue
             result.append(projection)
         return result
@@ -344,12 +389,26 @@ class FolderWriter:
             if blob_text is not None:
                 return blob_text
         if projection.get("format") == "csv":
-            return csv_projection_content(node.entry_element, projection.get("extractor") or projection.get("id"))
+            return csv_projection_content(
+                node.entry_element, projection.get("extractor") or projection.get("id")
+            )
         return node.code
 
-    def _write_projection_files(self, project_model, node, xml_path, projection_options):
+    def _write_projection_files(
+        self, project_model, node, xml_path, projection_options
+    ):
         if not xml_path:
             return [], {}, {}, {}
+
+        node_kind = kind_for_type_guid(self.profile, node.type)
+        ambiguous_guids = self.profile.get("ambiguous_text_type_guids") or {}
+        kind_ambiguous_guids = ambiguous_guids.get(node_kind) or []
+        needs_type_guid_pragma = bool(
+            node_kind
+            and node.type
+            and node.type.strip("{}").lower()
+            in [str(g).strip("{}").lower() for g in kind_ambiguous_guids]
+        )
 
         projection_paths = []
         projection_hashes = {}
@@ -361,26 +420,53 @@ class FolderWriter:
                 continue
             content = self._projection_content(node, projection)
             if content is None:
-                _log("Projection skipped: {0} -> {1} produced no content".format(node.name, projection.get("id") or extension))
+                _log(
+                    "Projection skipped: {0} -> {1} produced no content".format(
+                        node.name, projection.get("id") or extension
+                    )
+                )
                 continue
-            projection_path = self._flat_nested_path(project_model, node, extension) or self._replace_extension(xml_path, extension)
+            projection_path = self._flat_nested_path(
+                project_model, node, extension
+            ) or self._replace_extension(xml_path, extension)
             full_path = self._safe_view_path(projection_path)
             if not full_path:
-                _log("Projection skipped: {0} -> {1} invalid path {2}".format(node.name, projection.get("id") or extension, projection_path))
+                _log(
+                    "Projection skipped: {0} -> {1} invalid path {2}".format(
+                        node.name, projection.get("id") or extension, projection_path
+                    )
+                )
                 continue
             ensure_dir(os.path.dirname(full_path))
             self._canonicalize_existing_path(full_path)
+            if extension == ".st" and needs_type_guid_pragma:
+                type_guid = node.type.strip().lower()
+                if not type_guid.startswith("{"):
+                    type_guid = "{" + type_guid
+                if not type_guid.endswith("}"):
+                    type_guid = type_guid + "}"
+                pragma_line = '(* cds-text-sync: TypeGuid="{0}" *)'.format(type_guid)
+                write_content = pragma_line + "\n" + content
+            else:
+                write_content = content
             with codecs.open(full_path, "w", "utf-8") as f:
-                f.write(content)
+                f.write(write_content)
             _log("Projection emitted: {0} -> {1}".format(node.name, projection_path))
             projection_paths.append(projection_path)
-            projection_hashes[projection_path] = sha1_hex(content)
+            projection_hashes[projection_path] = sha1_hex(write_content)
             if projection.get("extractor"):
                 projection_extractors[projection_path] = projection.get("extractor")
             elif projection.get("format") == "csv":
                 projection_extractors[projection_path] = projection.get("id")
-            projection_import_safe[projection_path] = bool(projection.get("import_safe", False))
-        return projection_paths, projection_hashes, projection_extractors, projection_import_safe
+            projection_import_safe[projection_path] = bool(
+                projection.get("import_safe", False)
+            )
+        return (
+            projection_paths,
+            projection_hashes,
+            projection_extractors,
+            projection_import_safe,
+        )
 
     def _has_st_projection(self, projection_options):
         for projection in projection_options:
@@ -419,11 +505,15 @@ class FolderWriter:
                     removed += 1
                     self._remove_empty_parent_dirs(full_path)
                 except Exception as e:
-                    print("Warning: Could not remove orphan projection file:", full_path, e)
+                    print(
+                        "Warning: Could not remove orphan projection file:",
+                        full_path,
+                        e,
+                    )
 
         if removed:
             print("Removed {0} orphan projection files.".format(removed))
-        
+
     def write(self, project_model):
         selected_guids = self.selected_guids or None
         self._remove_previous_managed_files(selected_guids=selected_guids)
@@ -435,22 +525,34 @@ class FolderWriter:
             if selected_guids is not None and guid not in selected_guids:
                 continue
             projection_options = self._node_projection_options(node)
-            if project_model.is_nested_under_collapsed_object(node) and not projection_options:
+            if (
+                project_model.is_nested_under_collapsed_object(node)
+                and not projection_options
+            ):
                 continue
 
             metadata = {
                 "guid": guid,
                 "name": node.name,
                 "type_guid": node.type,
-                "parent_guid": node.parent_guid
+                "parent_guid": node.parent_guid,
             }
             if node.metadata.get("structured_view_guid"):
-                metadata["structured_view_guid"] = node.metadata.get("structured_view_guid")
+                metadata["structured_view_guid"] = node.metadata.get(
+                    "structured_view_guid"
+                )
             if node.metadata.get("structured_view_single_attrs"):
-                metadata["structured_view_single_attrs"] = node.metadata.get("structured_view_single_attrs")
+                metadata["structured_view_single_attrs"] = node.metadata.get(
+                    "structured_view_single_attrs"
+                )
 
             xml_path = self._xml_path_for_node(project_model, node)
-            projection_paths, projection_hashes, projection_extractors, projection_import_safe = self._write_projection_files(
+            (
+                projection_paths,
+                projection_hashes,
+                projection_extractors,
+                projection_import_safe,
+            ) = self._write_projection_files(
                 project_model,
                 node,
                 xml_path,
@@ -475,7 +577,7 @@ class FolderWriter:
                 emitted_paths.add(full_path)
                 if projection_paths and self._has_st_projection(projection_options):
                     _log("XML externalized for projection: {0}".format(xml_path))
-                
+
                 metadata["xml_path"] = xml_path
                 metadata["hash"] = sha1_hex(xml_text)
                 if projection_paths:
@@ -485,24 +587,26 @@ class FolderWriter:
                         metadata["projection_extractors"] = projection_extractors
                     if projection_import_safe:
                         metadata["projection_import_safe"] = projection_import_safe
-            
+
             manifest_entries.append(metadata)
 
         if selected_guids is None:
             self._remove_orphan_projection_files(emitted_paths)
 
-        manifest_entries = self._merge_manifest_entries(selected_guids, manifest_entries)
+        manifest_entries = self._merge_manifest_entries(
+            selected_guids, manifest_entries
+        )
 
         manifest = {
             "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "view_root": self._relative_or_absolute_view_root(self.views_path),
             "ns": project_model.ns,
-            "entries": manifest_entries
+            "entries": manifest_entries,
         }
-        
+
         ensure_dir(self.dump_path)
         with open(self.manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
-            
+
         _log("Export to XML folder complete.")
         return True

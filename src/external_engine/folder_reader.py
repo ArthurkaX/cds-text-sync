@@ -3,29 +3,53 @@
 folder_reader.py - Reads the Git-friendly folder structure into a ProjectModel.
 """
 
-import os
-import json
 import codecs
+import json
+import os
 import re
 import xml.etree.ElementTree as ET
+
 from _project_model import ProjectModel, ProjectNode
+from _project_profiles import kind_for_type_guid
 from xml_helpers import (
+    IMPORT_SAFE_CSV_EXTRACTORS,
+    ST_IMPLEMENTATION_MARKER,
+    ProjectionValidationError,
     apply_alarm_items_csv,
     apply_textlist_csv,
     entry_to_xml,
     extract_bool_property,
-    IMPORT_SAFE_CSV_EXTRACTORS,
-    ProjectionValidationError,
+    extract_cds_text_sync_type_guid,
     replace_text_blob_values,
     sha1_hex,
     split_st_projection_values,
-    ST_IMPLEMENTATION_MARKER,
+    strip_cds_text_sync_pragmas,
     text_blob_elements,
 )
 
 
 def _detect_st_kind(content):
-    text = re.sub(r"\(\*[\s\S]*?\*\)", "", content or "")
+    # Check for explicit kind pragma before stripping comments.
+    # Prefer new block-comment format:
+    #   (* cds-text-sync: TypeGuid="{...}" *)
+    # Falls back to old line-comment format for existing files:
+    #   //% cds-text-sync.kind: persistent_gvl
+    type_guid = extract_cds_text_sync_type_guid(content)
+    if type_guid:
+        # Presence of TypeGuid pragma signals an ambiguous type.
+        # We won't resolve the kind here; caller handles it via profile.
+        return None
+
+    kind_pragma_re = re.compile(
+        r"//%\s*cds-text-sync\.kind\s*:\s*(\S+)",
+        re.IGNORECASE,
+    )
+    kind_match = kind_pragma_re.search(content or "")
+    if kind_match:
+        return kind_match.group(1).lower()
+
+    stripped = strip_cds_text_sync_pragmas(content)
+    text = re.sub(r"\(\*[\s\S]*?\*\)", "", stripped or "")
     text = re.sub(r"\{[\s\S]*?\}", "", text)
     text = re.sub(r"//.*", "", text)
     for raw_line in text.splitlines():
@@ -61,11 +85,14 @@ def _split_st_create_content(content):
 
 
 class FolderReader:
-    def __init__(self, views_path, dump_path):
+    def __init__(self, views_path, dump_path, profile=None):
         self.views_path = views_path
         self.dump_path = dump_path
-        self.project_root = os.path.dirname(os.path.abspath(os.path.normpath(dump_path or "")))
+        self.project_root = os.path.dirname(
+            os.path.abspath(os.path.normpath(dump_path or ""))
+        )
         self.manifest_path = os.path.join(dump_path, "manifest.json")
+        self.profile = profile or {}
 
     def _normalize_fs_path(self, path):
         return os.path.normcase(os.path.abspath(os.path.normpath(path or "")))
@@ -87,7 +114,9 @@ class FolderReader:
         parts = relative_path.replace("\\", os.sep).split(os.sep)
         if parts and parts[0].startswith("."):
             return None
-        full_path = os.path.abspath(os.path.normpath(os.path.join(root_path, relative_path)))
+        full_path = os.path.abspath(
+            os.path.normpath(os.path.join(root_path, relative_path))
+        )
         normalized_root = self._normalize_fs_path(root_path)
         normalized_full = self._normalize_fs_path(full_path)
         if normalized_full == normalized_root:
@@ -106,7 +135,9 @@ class FolderReader:
 
     def _ensure_view_root_is_current(self, manifest):
         previous_root = self._manifest_view_root(manifest)
-        if previous_root and self._normalize_fs_path(previous_root) != self._normalize_fs_path(self.views_path):
+        if previous_root and self._normalize_fs_path(
+            previous_root
+        ) != self._normalize_fs_path(self.views_path):
             raise RuntimeError(
                 "Manifest view root is {0}, but current settings point to {1}. "
                 "Changing the export directory after data has been exported is blocked.".format(
@@ -115,7 +146,9 @@ class FolderReader:
                 )
             )
 
-        if previous_root or self._normalize_fs_path(self.views_path) == self._normalize_fs_path(self.project_root):
+        if previous_root or self._normalize_fs_path(
+            self.views_path
+        ) == self._normalize_fs_path(self.project_root):
             return
 
         for entry in manifest.get("entries", []):
@@ -181,25 +214,58 @@ class FolderReader:
 
                 with codecs.open(full_path, "r", "utf-8") as f:
                     content = f.read()
-                semantic_kind = _detect_st_kind(content)
+
+                type_guid = extract_cds_text_sync_type_guid(content)
+                semantic_kind = None
+                if type_guid:
+                    semantic_kind = kind_for_type_guid(self.profile, type_guid)
+                if not semantic_kind:
+                    semantic_kind = _detect_st_kind(content)
+
+                if not semantic_kind:
+                    # If TypeGuid was present but couldn't resolve a kind,
+                    # treat plain VAR_GLOBAL as gvl as a fallback.
+                    stripped = strip_cds_text_sync_pragmas(content)
+                    text = re.sub(r"\(\*[\s\S]*?\*\)", "", stripped or "")
+                    text = re.sub(r"\{[\s\S]*?\}", "", text)
+                    text = re.sub(r"//.*", "", text)
+                    for raw_line in text.splitlines():
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        if line.split()[0].upper() == "VAR_GLOBAL":
+                            semantic_kind = "gvl"
+                            break
+
                 if not semantic_kind:
                     continue
 
                 base_name = os.path.splitext(filename)[0]
                 object_name = base_name
                 parent_name = None
-                if "." in base_name and semantic_kind in ("method", "action", "property"):
+                if "." in base_name and semantic_kind in (
+                    "method",
+                    "action",
+                    "property",
+                ):
                     parent_name, object_name = base_name.rsplit(".", 1)
 
-                declaration, implementation = _split_st_create_content(content)
+                stripped_content = strip_cds_text_sync_pragmas(content)
+                declaration, implementation = _split_st_create_content(stripped_content)
                 guid = "create:" + sha1_hex(rel_path)
-                node = ProjectNode(guid, object_name, semantic_kind, None)
+                node = ProjectNode(guid, object_name, type_guid or semantic_kind, None)
                 node.code = content
-                node.display_path = os.path.dirname(rel_path).replace("\\", "/").split("/")
-                node.display_path = [part for part in node.display_path if part and part != "."]
+                node.display_path = (
+                    os.path.dirname(rel_path).replace("\\", "/").split("/")
+                )
+                node.display_path = [
+                    part for part in node.display_path if part and part != "."
+                ]
                 node.metadata["view_path"] = rel_path
                 node.metadata["pending_create"] = True
                 node.metadata["create_kind"] = semantic_kind
+                if type_guid:
+                    node.metadata["create_type_guid"] = type_guid
                 node.metadata["create_path"] = rel_path
                 node.metadata["create_name"] = object_name
                 node.metadata["create_parent_name"] = parent_name
@@ -234,10 +300,15 @@ class FolderReader:
 
         with codecs.open(full_projection_path, "r", "utf-8") as f:
             projection_text = f.read()
-        replace_text_blob_values(root, split_st_projection_values(projection_text, root))
+        projection_text = strip_cds_text_sync_pragmas(projection_text)
+        replace_text_blob_values(
+            root, split_st_projection_values(projection_text, root)
+        )
         return entry_to_xml(root)
 
-    def _rehydrate_import_safe_csv(self, xml_text, projection_paths, projection_extractors, projection_import_safe):
+    def _rehydrate_import_safe_csv(
+        self, xml_text, projection_paths, projection_extractors, projection_import_safe
+    ):
         if not xml_text:
             return xml_text
 
@@ -259,36 +330,42 @@ class FolderReader:
             with codecs.open(full_projection_path, "r", "utf-8") as f:
                 csv_content = f.read()
             try:
-                if extractor == "textlist_csv" and apply_textlist_csv(root, csv_content):
+                if extractor == "textlist_csv" and apply_textlist_csv(
+                    root, csv_content
+                ):
                     changed = True
-                if extractor == "alarm_items_csv" and apply_alarm_items_csv(root, csv_content):
+                if extractor == "alarm_items_csv" and apply_alarm_items_csv(
+                    root, csv_content
+                ):
                     changed = True
             except ProjectionValidationError as error:
-                raise ProjectionValidationError("{0}: {1}".format(projection_path, error))
+                raise ProjectionValidationError(
+                    "{0}: {1}".format(projection_path, error)
+                )
 
         if changed:
             return entry_to_xml(root)
         return xml_text
-        
+
     def read(self):
         if not os.path.exists(self.manifest_path):
             print("Manifest not found at:", self.manifest_path)
             return None
-            
+
         with open(self.manifest_path, "r") as f:
             manifest = json.load(f)
         self._ensure_view_root_is_current(manifest)
-            
+
         ns = manifest.get("ns", "")
         model = ProjectModel(namespace=ns)
         managed_paths = set()
-        
+
         for entry in manifest.get("entries", []):
             guid = entry.get("guid")
             name = entry.get("name")
             node_type = entry.get("type_guid")
             parent_guid = entry.get("parent_guid")
-            
+
             node = ProjectNode(guid, name, node_type, parent_guid)
 
             xml_path = entry.get("xml_path")
@@ -302,21 +379,35 @@ class FolderReader:
                     with codecs.open(full_path, "r", "utf-8") as f:
                         node.xml_text = f.read()
                     raw_xml_hash = sha1_hex(node.xml_text)
-                    node.metadata["xml_changed"] = bool(entry.get("hash") and entry.get("hash") != raw_xml_hash)
-                    projection_changed_paths, current_projection_hashes, current_projection_contents = self._projection_change_info(
+                    node.metadata["xml_changed"] = bool(
+                        entry.get("hash") and entry.get("hash") != raw_xml_hash
+                    )
+                    (
+                        projection_changed_paths,
+                        current_projection_hashes,
+                        current_projection_contents,
+                    ) = self._projection_change_info(
                         entry.get("projection_paths") or [],
                         entry.get("projection_hashes") or {},
                     )
                     if projection_changed_paths:
-                        node.metadata["projection_changed_paths"] = projection_changed_paths
+                        node.metadata["projection_changed_paths"] = (
+                            projection_changed_paths
+                        )
                     if current_projection_hashes:
                         node.metadata["projection_hashes"] = current_projection_hashes
                     if current_projection_contents:
-                        node.metadata["projection_contents"] = current_projection_contents
+                        node.metadata["projection_contents"] = (
+                            current_projection_contents
+                        )
                     if entry.get("projection_extractors"):
-                        node.metadata["projection_extractors"] = entry.get("projection_extractors")
+                        node.metadata["projection_extractors"] = entry.get(
+                            "projection_extractors"
+                        )
                     if entry.get("projection_import_safe"):
-                        node.metadata["projection_import_safe"] = entry.get("projection_import_safe")
+                        node.metadata["projection_import_safe"] = entry.get(
+                            "projection_import_safe"
+                        )
                     if node.metadata.get("xml_changed") and projection_changed_paths:
                         node.metadata["projection_conflict"] = True
                     node.xml_text = self._rehydrate_externalized_text(
@@ -329,7 +420,9 @@ class FolderReader:
                         entry.get("projection_extractors") or {},
                         entry.get("projection_import_safe") or {},
                     )
-                    exclude_from_build = self._extract_bool_property(node.xml_text, "ExcludeFromBuild")
+                    exclude_from_build = self._extract_bool_property(
+                        node.xml_text, "ExcludeFromBuild"
+                    )
                     if exclude_from_build is not None:
                         node.metadata["exclude_from_build"] = exclude_from_build
             else:
@@ -341,16 +434,20 @@ class FolderReader:
                     if os.path.exists(full_path):
                         with codecs.open(full_path, "r", "utf-8") as f:
                             node.code = f.read()
-                        
+
             # Store original hash for diffing
             node.metadata["original_hash"] = entry.get("hash")
             if entry.get("structured_view_guid"):
-                node.metadata["structured_view_guid"] = entry.get("structured_view_guid")
+                node.metadata["structured_view_guid"] = entry.get(
+                    "structured_view_guid"
+                )
             if entry.get("structured_view_single_attrs"):
-                node.metadata["structured_view_single_attrs"] = entry.get("structured_view_single_attrs")
-            
+                node.metadata["structured_view_single_attrs"] = entry.get(
+                    "structured_view_single_attrs"
+                )
+
             model.add_node(node)
 
         self._discover_pending_st_creates(model, managed_paths)
-            
+
         return model
