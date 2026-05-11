@@ -3,7 +3,9 @@
 ide_apply_patch.pyw - Apply a prepared IMPORT.xml patch to the IDE.
 Must be compatible with IronPython 2.7.
 """
+
 from __future__ import print_function
+
 import copy
 import os
 import tempfile
@@ -49,10 +51,12 @@ class ApplyPatchResult(object):
         normalized_guid = normalize_guid(guid)
         if normalized_guid and normalized_guid not in self.failed_guids:
             self.failed_guids.append(normalized_guid)
-        self.failures.append({
-            "guid": normalized_guid,
-            "error": self.error,
-        })
+        self.failures.append(
+            {
+                "guid": normalized_guid,
+                "error": self.error,
+            }
+        )
         return self
 
     def summary(self):
@@ -167,14 +171,17 @@ def _text_create_entries(root):
                 declaration = child.text or ""
             elif child_name == "Implementation":
                 implementation = child.text or ""
-        result.append({
-            "path": elem.attrib.get("Path", ""),
-            "name": elem.attrib.get("Name", ""),
-            "kind": elem.attrib.get("Kind", ""),
-            "parent_name": elem.attrib.get("ParentName", ""),
-            "declaration": declaration,
-            "implementation": implementation,
-        })
+        result.append(
+            {
+                "path": elem.attrib.get("Path", ""),
+                "name": elem.attrib.get("Name", ""),
+                "kind": elem.attrib.get("Kind", ""),
+                "type_guid": elem.attrib.get("TypeGuid", ""),
+                "parent_name": elem.attrib.get("ParentName", ""),
+                "declaration": declaration,
+                "implementation": implementation,
+            }
+        )
     return result
 
 
@@ -244,7 +251,9 @@ def _write_filtered_patch(source_root, target_guids):
 
     handle, filtered_path = tempfile.mkstemp(suffix=".xml")
     os.close(handle)
-    ET.ElementTree(filtered_root).write(filtered_path, encoding="utf-8", xml_declaration=True)
+    ET.ElementTree(filtered_root).write(
+        filtered_path, encoding="utf-8", xml_declaration=True
+    )
     return filtered_path
 
 
@@ -255,7 +264,9 @@ def _write_patch_without_text_creates(source_root):
             filtered_root.remove(child)
     handle, filtered_path = tempfile.mkstemp(suffix=".xml")
     os.close(handle)
-    ET.ElementTree(filtered_root).write(filtered_path, encoding="utf-8", xml_declaration=True)
+    ET.ElementTree(filtered_root).write(
+        filtered_path, encoding="utf-8", xml_declaration=True
+    )
     return filtered_path
 
 
@@ -301,21 +312,23 @@ def _find_child_transparent(parent, name):
 def _create_folder(parent, name):
     if hasattr(parent, "create_folder"):
         return parent.create_folder(name)
+    folder_guid = "{738bea1e-99bb-4f04-90bb-a7a567e74e3a}"
     if hasattr(parent, "create_child"):
-        return parent.create_child(name, "{738bea1e-99bb-4f04-90bb-a7a567e74e3a}")
+        return parent.create_child(name, _to_system_guid(folder_guid))
     return None
 
 
-def _ensure_container_path(project, rel_path):
+def _ensure_container_path_with_chain(project, rel_path):
     path = str(rel_path or "").replace("\\", "/")
     if "/" in path:
         path = path.rsplit("/", 1)[0]
     else:
         path = ""
     if not path or path == ".":
-        return project
+        return project, [project]
 
     current = project
+    chain = [project]
     for part in path.split("/"):
         if not part or part.startswith("."):
             continue
@@ -329,9 +342,10 @@ def _ensure_container_path(project, rel_path):
             if found is None:
                 found = _find_child_transparent(current, part)
         if found is None:
-            return None
+            return None, chain
         current = found
-    return current
+        chain.append(current)
+    return current, chain
 
 
 def _find_pou_type_enum():
@@ -342,12 +356,14 @@ def _find_pou_type_enum():
         pass
     try:
         import __main__
+
         if hasattr(__main__, "PouType"):
             candidates.append(__main__.PouType)
     except Exception:
         pass
     try:
         from ScriptEngine import PouType as script_engine_pou_type
+
         candidates.append(script_engine_pou_type)
     except Exception:
         pass
@@ -380,19 +396,171 @@ def _create_pou(container, name, declaration):
     return container.create_pou(name, pou_type)
 
 
-def _create_text_object(container, entry):
+# Multiple GUID candidates per kind, tried in order.
+# Different CODESYS versions may use different type GUIDs for the same
+# logical object type.  The first GUID that successfully creates an object
+# wins.  A patch may provide an explicit TypeGuid (preferred), followed by
+# built-in fallback candidates below.
+KIND_TYPE_GUIDS = {
+    "persistent_gvl": [
+        "{3183921b-cc91-4712-9781-c3b6555122b5}",
+        "{261bd6e6-249c-4232-bb6f-84c2fbeef430}",
+    ],
+    "task_local_gvl": [
+        "{c2cda7a9-0ba4-4146-b563-22a42fa0eb72}",
+    ],
+}
+
+
+def _find_create_container(container, create_method_name):
+    """Walk up the parent chain to find a container that has the given create_* method."""
+    visited = set()
+    current = container
+    while current is not None:
+        if hasattr(current, create_method_name):
+            return current
+        obj_id = id(current)
+        if obj_id in visited:
+            break
+        visited.add(obj_id)
+        try:
+            current = current.parent
+        except Exception:
+            break
+    return None
+
+
+def _create_container_candidates(container, container_chain=None, method_name=None):
+    """Return likely create targets, deepest path container first.
+
+    CODESYS IronPython objects may not report scripting methods reliably via
+    hasattr/getattr.  Callers should still attempt the method and catch errors.
+    """
+    result = []
+    seen = set()
+
+    def add(candidate):
+        if candidate is None:
+            return
+        obj_id = id(candidate)
+        if obj_id in seen:
+            return
+        seen.add(obj_id)
+        result.append(candidate)
+
+    for candidate in reversed(list(container_chain or [])):
+        add(candidate)
+
+    current = container
+    while current is not None:
+        add(current)
+        try:
+            current = current.parent
+        except Exception:
+            break
+
+    if method_name:
+        target = _find_create_container(container, method_name)
+        add(target)
+
+    return result
+
+
+def _to_system_guid(guid_string):
+    """Convert a GUID string to System.Guid for CODESYS IronPython compatibility.
+
+    In IronPython, create_child(name, type_guid) expects a System.Guid object
+    rather than a plain Python string.  This helper tries the conversion and
+    falls back to the raw string if System is unavailable (e.g. CPython).
+    """
+    try:
+        import System
+    except ImportError:
+        return guid_string
+    try:
+        return System.Guid(guid_string.strip("{}"))
+    except Exception:
+        # System.Guid might reject the format; fall back to raw string.
+        return guid_string
+
+
+def _create_child_with_guid(target, name, guid_candidates):
+    """Try create_child(name, type_guid) with each GUID candidate.
+
+    The CODESYS IronPython API requires System.Guid for the type_guid
+    parameter.  This helper attempts the call with each GUID (converting
+    to System.Guid when necessary) and returns the first successful result.
+    """
+    if not isinstance(guid_candidates, (list, tuple)):
+        guid_candidates = [guid_candidates]
+    for guid_string in guid_candidates:
+        guid_value = _to_system_guid(guid_string)
+        try:
+            obj = target.create_child(name, guid_value)
+            if obj is not None:
+                return obj
+        except Exception:
+            pass
+    return None
+
+
+def _create_text_object(container, entry, container_chain=None):
     kind = str(entry.get("kind") or "").lower()
     name = entry.get("name") or ""
     declaration = entry.get("declaration")
+    type_guid = entry.get("type_guid") or ""
 
     if kind == "pou":
         obj = _create_pou(container, name, declaration)
         if obj is not None:
             return obj
-    if kind == "gvl" and hasattr(container, "create_gvl"):
-        return container.create_gvl(name)
-    if kind == "dut" and hasattr(container, "create_dut"):
-        return container.create_dut(name)
+    if kind == "gvl":
+        target = _find_create_container(container, "create_gvl")
+        if target is not None:
+            return target.create_gvl(name)
+    if kind in ("persistent_gvl", "task_local_gvl"):
+        # CODESYS Scripting API has no create_persistent / create_task_local_gvl method.
+        # Use create_child(name, type_guid) with the appropriate type GUID,
+        # walking up the parent chain to find a container that supports create_child.
+
+        # Build candidate list: explicit TypeGuid first, then profile/create_type_guids,
+        # then built-in fallbacks.
+        candidates = []
+        if type_guid:
+            candidates.append(type_guid)
+        for fallback in KIND_TYPE_GUIDS.get(kind) or []:
+            if fallback not in candidates:
+                candidates.append(fallback)
+
+        for target in _create_container_candidates(
+            container, container_chain, "create_child"
+        ):
+            obj = _create_child_with_guid(target, name, candidates)
+            if obj is not None:
+                return obj
+
+        # Fallback for persistent_gvl: try known method name variants.
+        if kind == "persistent_gvl":
+            for method_name in (
+                "create_persistentvars",
+                "create_persistent",
+                "create_persistent_variable_list",
+            ):
+                for target in _create_container_candidates(
+                    container, container_chain, method_name
+                ):
+                    try:
+                        method = getattr(target, method_name)
+                        obj = method(name)
+                        if obj is not None:
+                            return obj
+                    except Exception:
+                        pass
+
+    if kind == "dut":
+        target = _find_create_container(container, "create_dut")
+        if target is not None:
+            return target.create_dut(name)
     if kind == "method" and hasattr(container, "create_method"):
         return container.create_method(name)
     if kind == "action" and hasattr(container, "create_action"):
@@ -403,7 +571,9 @@ def _create_text_object(container, entry):
 
 
 def _apply_text_create(project, entry, created_by_name):
-    container = _ensure_container_path(project, entry.get("path"))
+    container, container_chain = _ensure_container_path_with_chain(
+        project, entry.get("path")
+    )
     if container is None:
         raise Exception("Could not resolve container for {0}".format(entry.get("path")))
 
@@ -413,21 +583,46 @@ def _apply_text_create(project, entry, created_by_name):
         if parent is None:
             parent = _find_child_transparent(container, parent_name)
         if parent is None:
-            raise Exception("Could not resolve parent POU '{0}' for {1}".format(parent_name, entry.get("path")))
+            raise Exception(
+                "Could not resolve parent POU '{0}' for {1}".format(
+                    parent_name, entry.get("path")
+                )
+            )
         container = parent
 
     existing = _find_child_transparent(container, entry.get("name"))
     if existing is not None:
         obj = existing
     else:
-        obj = _create_text_object(container, entry)
+        obj = _create_text_object(
+            container,
+            entry,
+            container_chain=container_chain,
+        )
     if obj is None:
-        raise Exception("CODESYS did not return created object for {0}".format(entry.get("path")))
+        raise Exception(
+            "CODESYS did not return created object for {0}".format(entry.get("path"))
+        )
 
     _apply_textual_patch(obj, entry)
     created_by_name[object_name(obj).lower()] = obj
     print("Created textual object from: " + str(entry.get("path")))
     return True
+
+
+def _apply_text_creates(project, text_creates, created_by_name, result):
+    for entry in text_creates:
+        try:
+            _apply_text_create(project, entry, created_by_name)
+            result.add_created(entry.get("path"))
+        except Exception as error:
+            print(
+                "Error creating textual object {0}: {1}".format(
+                    entry.get("path"), error
+                )
+            )
+            return result.fail(error)
+    return None
 
 
 def _replace_text_document(doc, value):
@@ -440,16 +635,28 @@ def _replace_text_document(doc, value):
     return True
 
 
+def _text_document(obj, attr_name, flag_name):
+    if obj is None or not hasattr(obj, attr_name):
+        return None
+    return getattr(obj, attr_name)
+
+
 def _apply_textual_patch(obj, texts):
     updated = False
     declaration = texts.get("declaration")
     implementation = texts.get("implementation")
 
-    if declaration is not None and hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
-        updated = _replace_text_document(obj.textual_declaration, declaration) or updated
+    declaration_doc = _text_document(
+        obj, "textual_declaration", "has_textual_declaration"
+    )
+    if declaration is not None and declaration_doc is not None:
+        updated = _replace_text_document(declaration_doc, declaration) or updated
 
-    if implementation is not None and hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
-        updated = _replace_text_document(obj.textual_implementation, implementation) or updated
+    implementation_doc = _text_document(
+        obj, "textual_implementation", "has_textual_implementation"
+    )
+    if implementation is not None and implementation_doc is not None:
+        updated = _replace_text_document(implementation_doc, implementation) or updated
 
     return updated
 
@@ -479,7 +686,9 @@ def _apply_build_attrs_patch(obj, attrs):
             if result is None:
                 result = _set_bool_property(obj, prop_name, value)
         except Exception as e:
-            print("Warning: could not apply build property {0}: {1}".format(prop_name, e))
+            print(
+                "Warning: could not apply build property {0}: {1}".format(prop_name, e)
+            )
             result = False
 
         if result is True:
@@ -491,9 +700,17 @@ def _can_apply_textual_patch(obj, texts):
     declaration = texts.get("declaration")
     implementation = texts.get("implementation")
 
-    if declaration is not None and hasattr(obj, "has_textual_declaration") and obj.has_textual_declaration:
+    if (
+        declaration is not None
+        and _text_document(obj, "textual_declaration", "has_textual_declaration")
+        is not None
+    ):
         return True
-    if implementation is not None and hasattr(obj, "has_textual_implementation") and obj.has_textual_implementation:
+    if (
+        implementation is not None
+        and _text_document(obj, "textual_implementation", "has_textual_implementation")
+        is not None
+    ):
         return True
     return False
 
@@ -532,6 +749,7 @@ def _apply_native_patches(project, guid_map, patch_root, native_guids, result):
                 except Exception:
                     pass
 
+
 def apply_patch(system, project, patch_path):
     """
     Applies the pre-computed IMPORT.xml to the current project.
@@ -541,7 +759,7 @@ def apply_patch(system, project, patch_path):
     if not os.path.exists(patch_path):
         print("Patch file not found.")
         return result.fail("Patch file not found.")
-    
+
     try:
         patch_data = _parse_patch(patch_path)
         patch_root = patch_data["root"]
@@ -564,9 +782,15 @@ def apply_patch(system, project, patch_path):
                     continue
                 try:
                     text_updated = _apply_textual_patch(obj, texts)
-                    attrs_updated = _apply_build_attrs_patch(obj, patch_build_attrs.get(guid, {}))
+                    attrs_updated = _apply_build_attrs_patch(
+                        obj, patch_build_attrs.get(guid, {})
+                    )
                 except Exception as error:
-                    print("Error applying textual patch for object {0}: {1}".format(guid, error))
+                    print(
+                        "Error applying textual patch for object {0}: {1}".format(
+                            guid, error
+                        )
+                    )
                     return result.fail(error, guid)
                 if text_updated or attrs_updated:
                     print("Applied textual patch for object: " + str(guid))
@@ -576,13 +800,11 @@ def apply_patch(system, project, patch_path):
                 result.add_applied(guid, "textual")
 
             if len(textual_handled) == len(existing_objects):
-                for entry in text_creates:
-                    try:
-                        _apply_text_create(project, entry, created_by_name)
-                        result.add_created(entry.get("path"))
-                    except Exception as error:
-                        print("Error creating textual object {0}: {1}".format(entry.get("path"), error))
-                        return result.fail(error)
+                create_error = _apply_text_creates(
+                    project, text_creates, created_by_name, result
+                )
+                if create_error is not None:
+                    return create_error
                 return result
 
             native_guids = []
@@ -591,14 +813,14 @@ def apply_patch(system, project, patch_path):
                     native_guids.append(guid)
 
             if native_guids:
-                _apply_native_patches(project, guid_map, patch_root, native_guids, result)
-            for entry in text_creates:
-                try:
-                    _apply_text_create(project, entry, created_by_name)
-                    result.add_created(entry.get("path"))
-                except Exception as error:
-                    print("Error creating textual object {0}: {1}".format(entry.get("path"), error))
-                    return result.fail(error)
+                _apply_native_patches(
+                    project, guid_map, patch_root, native_guids, result
+                )
+            create_error = _apply_text_creates(
+                project, text_creates, created_by_name, result
+            )
+            if create_error is not None:
+                return create_error
             return result
 
         if patch_guids:
@@ -614,13 +836,11 @@ def apply_patch(system, project, patch_path):
                         os.remove(native_patch_path)
                     except Exception:
                         pass
-        for entry in text_creates:
-            try:
-                _apply_text_create(project, entry, created_by_name)
-                result.add_created(entry.get("path"))
-            except Exception as error:
-                print("Error creating textual object {0}: {1}".format(entry.get("path"), error))
-                return result.fail(error)
+        create_error = _apply_text_creates(
+            project, text_creates, created_by_name, result
+        )
+        if create_error is not None:
+            return create_error
         return result
     except Exception as e:
         print("Error applying patch: " + str(e))

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.0.1 (2026-05-11)
+
+**Ambiguous Textual Object Projections:**
+
+- **TypeGuid ST Pragmas**: Added `(* cds-text-sync: TypeGuid="{...}" *)` metadata pragmas for textual projections whose CODESYS object type cannot be reconstructed from ST syntax alone.
+- **Persistent Variables Projection**: Persistent variable lists can now be exported and edited as `.st` projections while the sync pragma is stripped before XML rehydration and IDE text updates.
+- **Profile-Driven GUID Policy**: Added `create_type_guids` and `ambiguous_text_type_guids` profile sections so special textual object handling is configured outside hardcoded syntax detection.
+- **Textual Create TypeGuid**: `CreateTextObject` patch entries can now carry an explicit `TypeGuid`, preferred by the IDE bridge before built-in fallback GUID candidates.
+- **Persistent Variables Safety Guard**: Creating a second Persistent Variables object in the same application is rejected before IDE apply because CODESYS supports only one such object per application.
+- **IDE Bridge Cleanup**: Removed noisy create fallback diagnostics and the native XML template create fallback; existing textual objects are updated through available text documents even when CODESYS does not expose reliable `has_textual_*` flags.
+
 ### Version 2.0.0 (2026-04-29)
 
 **XML-First Synchronization Core:**

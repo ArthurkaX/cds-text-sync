@@ -2,10 +2,11 @@
 """
 _project_profiles.py - Helpers for loading CODESYS fork/profile metadata.
 """
+
 from __future__ import print_function
+
 import json
 import os
-
 
 ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PROFILES_DIR = os.path.join(ROOT_DIR, "profiles")
@@ -45,6 +46,15 @@ def _merge_profiles(base, override):
             for kind, values in _safe_dict(value).items():
                 aliases[kind] = _merge_unique_list(aliases.get(kind), values)
             result[key] = aliases
+        elif key == "ambiguous_text_type_guids":
+            ambig = {}
+            for kind, values in _safe_dict(
+                base.get("ambiguous_text_type_guids")
+            ).items():
+                ambig[kind] = list(values or [])
+            for kind, values in _safe_dict(value).items():
+                ambig[kind] = _merge_unique_list(ambig.get(kind), values)
+            result[key] = ambig
         elif key == "context_rules":
             result[key] = list(base.get("context_rules") or []) + list(value or [])
         elif key in ("sync_profile_overrides", "sync_direction_overrides"):
@@ -100,12 +110,14 @@ def list_profiles(profiles_dir=None):
         if not isinstance(data, dict):
             continue
         profile_id = os.path.splitext(filename)[0]
-        result.append({
-            "id": profile_id,
-            "name": data.get("name") or profile_id,
-            "label": data.get("label") or data.get("name") or profile_id,
-            "path": path,
-        })
+        result.append(
+            {
+                "id": profile_id,
+                "name": data.get("name") or profile_id,
+                "label": data.get("label") or data.get("name") or profile_id,
+                "path": path,
+            }
+        )
     return result
 
 
@@ -132,14 +144,14 @@ def projection_options(profile):
 
 def kind_for_type_guid(profile, type_guid):
     profile = _safe_dict(profile)
-    guid = (type_guid or "").strip().lower()
+    guid = (type_guid or "").strip().strip("{}").lower()
     if not guid:
         return None
     for kind, aliases in _safe_dict(profile.get("guid_aliases")).items():
         if not isinstance(aliases, list):
             continue
         for alias in aliases:
-            if guid == str(alias).strip().lower():
+            if guid == str(alias).strip().strip("{}").lower():
                 return kind
     return None
 

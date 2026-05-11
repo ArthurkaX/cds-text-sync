@@ -2,6 +2,17 @@
   "name": "codesys_sp17",
   "label": "CODESYS SP17-SP19",
   "description": "Template for creating custom profiles. Copy this file, rename it, and add your GUID aliases.",
+  "create_type_guids": {
+    "persistent_gvl": "{3183921b-cc91-4712-9781-c3b6555122b5}",
+    "task_local_gvl": "{c2cda7a9-0ba4-4146-b563-22a42fa0eb72}"
+  },
+  "ambiguous_text_type_guids": {
+    "persistent_gvl": [
+      "{3183921b-cc91-4712-9781-c3b6555122b5}",
+      "{261bd6e6-249c-4232-bb6f-84c2fbeef430}"
+    ],
+    "task_local_gvl": ["{c2cda7a9-0ba4-4146-b563-22a42fa0eb72}"]
+  },
   "guid_aliases": {
     "pou": ["6f9dac99-8de1-4efc-8465-68ac443b7d08"],
     "gvl": ["ffbfa93a-b94d-45fc-a329-229860183b1d"],

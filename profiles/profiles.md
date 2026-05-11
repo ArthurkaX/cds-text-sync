@@ -66,6 +66,8 @@ The profile appears automatically — no code changes needed.
 | `description` | no | What this profile is for |
 | `extends` | no | Inherit all aliases from another profile |
 | `guid_aliases` | yes | `{semantic_kind: [guid, ...]}` mapping. Multiple GUIDs can point to the same kind to merge vendor-specific variants into one handling rule |
+| `create_type_guids` | no | `{semantic_kind: "guid"}` preferred GUIDs for new object creation when source XML is absent (e.g. persistent_gvl, task_local_gvl) |
+| `ambiguous_text_type_guids` | no | `{semantic_kind: [guid, ...]}` controls which textual projections receive a `(* cds-text-sync: TypeGuid="{...}" *)` pragma because they cannot be uniquely identified from syntax alone |
 | `sync_profile_overrides` | no | `{semantic_kind: "textual"\|"native_xml"\|"skip"}` for new or remapped kinds |
 | `sync_direction_overrides` | no | `{semantic_kind: "bidirectional"\|"export_only"\|"import_only"\|"disabled"}` to control sync direction per kind |
 | `context_rules` | no | Reclassify ambiguous GUIDs by parent or name when the same raw type should be treated differently in different contexts |
@@ -110,7 +112,9 @@ When `extends` is set, the profile inherits all `guid_aliases`, `context_rules`,
 base profile.
 Your own entries are merged on top:
 
-- `guid_aliases`: new kinds are added, existing kinds get additional GUIDs appended
+`guid_aliases`: new kinds are added, existing kinds get additional GUIDs appended
+- `create_type_guids`: new kind entries are added; existing kinds use the override value
+- `ambiguous_text_type_guids`: new kinds are added; existing kinds get additional GUIDs appended
 - `context_rules`: your rules run after the base rules
 - `sync_profile_overrides`: your overrides take precedence
 - `sync_direction_overrides`: your direction overrides take precedence

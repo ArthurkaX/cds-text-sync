@@ -86,7 +86,9 @@ def _load_models(args, context):
 
     project_layout = _layout(args)
     dump_path = project_layout.dump_root
-    folder_reader = FolderReader(project_layout.view_root, dump_path)
+    settings = _settings(args)
+    profile = load_profile(settings.get("profile"))
+    folder_reader = FolderReader(project_layout.view_root, dump_path, profile=profile)
     try:
         folder_model = folder_reader.read()
     except ProjectionValidationError as error:
