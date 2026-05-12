@@ -32,6 +32,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install test dependencies
+        shell: pwsh
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        shell: pwsh
+        run: python -m pytest tests\unit
+
       - name: Compile Python sources
         shell: pwsh
         run: |
