@@ -19,16 +19,16 @@ jobs:
 
     steps:
       - name: Checkout cds-text-sync
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout reference project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ArthurkaX/cds-text-sync-reference-project
           path: reference-project
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
