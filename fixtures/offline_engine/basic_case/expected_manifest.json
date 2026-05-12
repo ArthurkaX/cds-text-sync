@@ -1,0 +1,14 @@
+{
+  "ns": "",
+  "entries": [
+    {
+      "guid": "11111111-1111-1111-1111-111111111111",
+      "name": "PLC_PRG",
+      "type_guid": "6f9dac99-8de1-4efc-8465-68ac443b7d08",
+      "parent_guid": null,
+      "structured_view_guid": "{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}",
+      "xml_path": "Device\\Application\\PLC_PRG.xml",
+      "hash": "6ece11f4f5a73809182031bf52b2e74c4e1f713e"
+    }
+  ]
+}
