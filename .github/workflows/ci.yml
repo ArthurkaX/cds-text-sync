@@ -52,13 +52,6 @@ jobs:
         shell: pwsh
         run: python src\regression_suite.py
 
-      - name: Validate reference project
-        shell: pwsh
-        run: |
-          python src\external_engine\engine_cli.py validate `
-            --project-root reference-project `
-            --snapshot reference-project\.dump\IDE.xml
-
       - name: Compare reference project
         shell: pwsh
         run: |
@@ -66,3 +59,10 @@ jobs:
             --project-root reference-project `
             --snapshot reference-project\.dump\IDE.xml `
             --report reference-project\.dump\ci_compare_report.json
+
+      - name: Validate reference project
+        shell: pwsh
+        run: |
+          python src\external_engine\engine_cli.py validate `
+            --project-root reference-project `
+            --snapshot reference-project\.dump\IDE.xml
