@@ -12,7 +12,5 @@ __pycache__
 /old_scripts/
 /old_scripts/*
 
-/fixtures/
-/fixtures/*
 
 /profiles/astra.json

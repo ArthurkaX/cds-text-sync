@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Project><StructuredView Guid="{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}"><Single xml:space="preserve" Type="{3daac5e4-660e-42e4-9cea-3711b98bfb63}" Method="IArchivable"><Null Name="Profile" /><List2 Name="EntryList"><Single>
+          <Single Name="MetaObject">
+            <Single Name="Guid" Type="System.Guid">11111111-1111-1111-1111-111111111111</Single>
+            <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+            <Single Name="Name" Type="string">PLC_PRG</Single>
+            <Single Name="TypeGuid" Type="System.Guid">6f9dac99-8de1-4efc-8465-68ac443b7d08</Single>
+          </Single>
+          <Array Name="Path"><Single Type="string">Device</Single><Single Type="string">Application</Single></Array>
+          <Single Name="Object">
+            <Single Name="Implementation">
+              <Single Name="TextDocument">
+                <Single Name="TextBlobForSerialisation">x := 2;</Single>
+              </Single>
+            </Single>
+            <Single Name="Interface">
+              <Single Name="TextDocument">
+                <Single Name="TextBlobForSerialisation">PROGRAM PLC_PRG
+VAR
+    x : INT;
+END_VAR</Single>
+              </Single>
+            </Single>
+          </Single>
+        </Single></List2></Single></StructuredView></Project>
