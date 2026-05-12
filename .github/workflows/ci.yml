@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-regression:
+    name: Offline regression
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout cds-text-sync
+        uses: actions/checkout@v4
+
+      - name: Checkout reference project
+        uses: actions/checkout@v4
+        with:
+          repository: ArthurkaX/cds-text-sync-reference-project
+          path: reference-project
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall `
+            cds_bootstrap.py `
+            Project_build.py `
+            Project_compare.py `
+            Project_compare_ui.py `
+            Project_directory.py `
+            Project_discover.py `
+            Project_export.py `
+            Project_import.py `
+            Project_options.py `
+            Project_resources.py `
+            src
+
+      - name: Run local regression suite
+        shell: pwsh
+        run: python src\regression_suite.py
+
+      - name: Validate reference project
+        shell: pwsh
+        run: |
+          python src\external_engine\engine_cli.py validate `
+            --project-root reference-project `
+            --snapshot reference-project\.dump\IDE.xml
+
+      - name: Compare reference project
+        shell: pwsh
+        run: |
+          python src\external_engine\engine_cli.py compare `
+            --project-root reference-project `
+            --snapshot reference-project\.dump\IDE.xml `
+            --report reference-project\.dump\ci_compare_report.json
