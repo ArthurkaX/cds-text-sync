@@ -15,6 +15,8 @@ Custom object behavior and optional text projections are profile-driven; see [pr
 - **Method**: `Project_export.py` writes generated snapshots to `.dump/` and editable files to the configured view root, usually `project-view/`.
 - **Benefit**: XML remains the canonical round-trip format, while optional `.st` and `.csv` projections make code and translations readable in normal PR diffs.
 
+For Zed users, [`PLC Structured Text`](https://github.com/ArthurkaX/zed-plc-structured-text) provides IEC 61131-3 Structured Text syntax highlighting for the generated `.st` / `.iecst` projections, focused on CODESYS-style PLC projects.
+
 ---
 
 ## 🚀 Key Features
