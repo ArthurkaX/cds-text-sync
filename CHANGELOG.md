@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.0.2 (2026-05-23)
+
+**Infrastructure & Quality:**
+
+- **GitHub Actions CI**: Added continuous integration workflow running tests on pushes and pull requests.
+- **Node 24 Update**: CI actions updated to target Node 24 runtime.
+- **Unit Test Tier**: Introduced structured unit test suite for external engine components.
+- **Test Fixtures**: Unignored fixtures directory to include test data in version control.
+
+**User Experience:**
+
+- **Reference Compare Preview**: Validation now shows a reference comparison before applying changes.
+
+**Documentation:**
+
+- **Zed Extension**: Mentioned the Zed Structured Text extension for users who prefer the Zed editor.
+
 ### Version 2.0.1 (2026-05-11)
 
 **Ambiguous Textual Object Projections:**
