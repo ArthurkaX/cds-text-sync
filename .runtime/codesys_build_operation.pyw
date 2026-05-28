@@ -22,7 +22,9 @@ def _utility_root():
 
 def _ensure_engine_path():
     import sys
-    engine_dir = os.path.join(_utility_root(), "src", "external_engine")
+    engine_dir = os.path.join(_utility_root(), "cli", "external_engine")
+    if not os.path.isdir(engine_dir):
+        engine_dir = os.path.join(_utility_root(), "src", "external_engine")
     if engine_dir not in sys.path:
         sys.path.insert(0, engine_dir)
     return engine_dir

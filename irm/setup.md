@@ -18,6 +18,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 - **Path Selection**: Choose between standard CODESYS paths or custom paths for forks (KeStudio, DIA Designer, etc.).
 - **Version Control**: Interactive menu with the latest `main` branch, the last 5 stable releases, and the last 5 test / pre-release builds.
 - **Auto-Update**: Detects existing versions, creates backups, and replaces files safely.
+- **CLI Install**: Offers to run `python -m pip install -e <install-path>` so `cds-text-sync` is available from any shell.
 - **Clean Install**: No `.git` history, minimal disk footprint (~5MB).
 
 ## Requirements
@@ -25,7 +26,22 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 - **OS**: Windows 10/11
 - **PowerShell**: 5.1 or higher
 - **Internet**: Required for download
-- **Python 3**: The installer checks for the `python` command and can offer either a manual download page or a `winget` install if Python is missing
+- **Python 3**: The installer checks that `python --version` works and reports Python 3. If Python is missing or not reachable from PowerShell/CMD, it can offer `winget` installation, open the manual download page, or show PATH / Windows App Execution Alias configuration hints. Python is required for the system CLI command.
+
+## CLI Command
+
+After files are installed into `ScriptDir\cds-text-sync`, the installer asks whether to install the system CLI command. This is a separate required step for CLI usage; copying files into `ScriptDir` only makes the CODESYS scripts available.
+
+```powershell
+python -m pip install -e "<ScriptDir>\cds-text-sync"
+```
+
+Choose **Y** to make this work from any shell:
+
+```powershell
+cds-text-sync --help
+cds-text-sync rp ping --timeout 10
+```
 
 ## Alternative Installations (Forks)
 

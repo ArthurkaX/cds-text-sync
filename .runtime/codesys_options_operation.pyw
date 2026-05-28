@@ -15,11 +15,20 @@ from codesys_utils import load_base_dir, init_logging
 
 
 RECOMMENDED_GITIGNORE_ENTRIES = [
-    ".dump/",
+    ".dump/*",
+    "!.dump/",
+    "!.dump/IDE.xml",
+    "!.dump/manifest.json",
     ".backup/",
     ".diff/",
     "sync_debug.log",
+    "compare.log",
     "build.log",
+    "build-report*.json",
+]
+
+LEGACY_GITIGNORE_ENTRIES = [
+    ".dump/",
 ]
 
 
@@ -32,11 +41,29 @@ def _ensure_gitignore_entries(project_root):
             existing_text = handle.read()
         existing_lines = [line.strip() for line in existing_text.splitlines()]
 
-    missing = [entry for entry in RECOMMENDED_GITIGNORE_ENTRIES if entry not in existing_lines]
-    if not missing:
-        return {"path": path, "added": []}
+    migrated = []
+    if existing_lines:
+        kept_lines = []
+        changed = False
+        for line in existing_text.splitlines():
+            stripped = line.strip()
+            if stripped in LEGACY_GITIGNORE_ENTRIES:
+                migrated.append(stripped)
+                changed = True
+                continue
+            kept_lines.append(line)
+        if changed:
+            existing_text = "\n".join(kept_lines)
+            if existing_text:
+                existing_text += "\n"
+            existing_lines = [line.strip() for line in kept_lines]
 
-    with open(path, "a") as handle:
+    missing = [entry for entry in RECOMMENDED_GITIGNORE_ENTRIES if entry not in existing_lines]
+    if not missing and not migrated:
+        return {"path": path, "added": [], "migrated": []}
+
+    with open(path, "w") as handle:
+        handle.write(existing_text)
         if existing_text and not existing_text.endswith(("\n", "\r")):
             handle.write("\n")
         if existing_text and existing_text.strip():
@@ -44,7 +71,7 @@ def _ensure_gitignore_entries(project_root):
         handle.write("# cds-text-sync generated state\n")
         for entry in missing:
             handle.write(entry + "\n")
-    return {"path": path, "added": missing}
+    return {"path": path, "added": missing, "migrated": migrated}
 
 
 def _compact_settings(settings):
@@ -105,7 +132,9 @@ def main(params=None, runtime=None):
     init_logging(base_dir)
 
     utility_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    engine_dir = os.path.join(utility_root, "src", "external_engine")
+    engine_dir = os.path.join(utility_root, "cli", "external_engine")
+    if not os.path.isdir(engine_dir):
+        engine_dir = os.path.join(utility_root, "src", "external_engine")
     if engine_dir not in sys.path:
         sys.path.insert(0, engine_dir)
 
@@ -189,8 +218,10 @@ def main(params=None, runtime=None):
             settings = save_project_settings(base_dir, settings)
             message = "Project sync settings saved:\n" + settings_path(base_dir) + "\n" + _compact_settings(settings)
             if gitignore_result:
-                if gitignore_result.get("added"):
+                if gitignore_result.get("added") or gitignore_result.get("migrated"):
                     message += "\n.gitignore updated:\n" + gitignore_result.get("path")
+                    if gitignore_result.get("migrated"):
+                        message += "\nMigrated legacy entries: " + ", ".join(gitignore_result.get("migrated"))
                 else:
                     message += "\n.gitignore already contains recommended entries."
             runtime.ui.info(message)

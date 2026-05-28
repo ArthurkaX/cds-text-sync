@@ -1,17 +1,17 @@
 # cds-text-sync: Professional CODESYS Git Sync
 
-**Version**: `2.0.1`
+**Version**: `2.5.1`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
 
-Professional synchronization tooling for **CODESYS**. Version 2.0 is an XML-first rewrite: CODESYS exports a fresh Native XML snapshot, the external Python 3 engine builds the editable project view, and imports are applied back through targeted CODESYS text APIs plus native XML patches.
+Professional synchronization tooling for **CODESYS**. The core workflow is XML-first: CODESYS exports a fresh Native XML snapshot, the external Python 3 engine builds the editable project view, and imports are applied back through targeted CODESYS text APIs plus native XML patches.
 
 Custom object behavior and optional text projections are profile-driven; see [profiles/profiles.md](profiles/profiles.md).
 
 ### ⚡ External Editing & Sync (The "Developer" Workflow)
 
-- **Goal**: Review and edit CODESYS projects with normal Git tools, external editors, and AI assistants.
+- **Goal**: Review and edit CODESYS projects with normal Git tools, external editors, and automation tools.
 - **Method**: `Project_export.py` writes generated snapshots to `.dump/` and editable files to the configured view root, usually `project-view/`.
 - **Benefit**: XML remains the canonical round-trip format, while optional `.st` and `.csv` projections make code and translations readable in normal PR diffs.
 
@@ -31,7 +31,7 @@ For Zed users, [`PLC Structured Text`](https://github.com/ArthurkaX/zed-plc-stru
 - **Optional `.csv` Projections**: Text lists and alarm items can be exported as CSV and imported back for existing-row edits such as translation updates.
 - **Profile-Aware Behavior**: JSON profiles describe vendor/fork-specific object kinds, projection availability, and safety rules.
 - **Diagnostics**: `Project_build.py`, `Project_discover.py`, and `Project_resources.py` provide build, environment, profile, and snapshot-size diagnostics.
-- **Legacy Isolation**: Older commands and the previous ST-oriented workflow are preserved under `old_scripts/` instead of being mixed into the active root command set.
+- **CLI + Reverse-Pipe Daemon**: `cds-text-sync` can control a running CODESYS IDE through `Project_daemon.py` for build, online diagnostics, PLC file access, CRC checks, and JSON-based test plans.
 
 ---
 
@@ -39,7 +39,7 @@ For Zed users, [`PLC Structured Text`](https://github.com/ArthurkaX/zed-plc-stru
 
 - **Minimum Tested Target**: CODESYS V3.5 SP10+ (earlier versions might support scripting but lack essential API features for reliable text syncing).
 - **Recommended Target**: CODESYS V3.5 SP13 and newer.
-- **Python 3 Required**: Version 2.0 uses CODESYS/IronPython only as a thin IDE bridge. Export, compare, import, options, and diagnostics run the external Python 3 engine, so `python` must be available from the Windows command line.
+- **Python 3 Required**: CODESYS/IronPython is used only as a thin IDE bridge. Export, compare, import, options, diagnostics, and the CLI use the external Python 3 engine, so `python` must be available from the Windows command line.
 
 Check before running the scripts:
 
@@ -51,15 +51,57 @@ If this command is not found, install Python 3 or configure your environment so 
 
 The quick PowerShell installer also checks for `python` up front and can offer a manual download page or a `winget` installation path if it is missing.
 
+
+---
+
+## CLI + Reverse-Pipe Daemon
+
+Version 2.5.1 adds an optional command-line interface for workflows that need fast, repeatable interaction with an open CODESYS IDE.
+
+The daemon runs inside CODESYS through `Project_daemon.py`. The `cds-text-sync` CLI talks to it over a per-user Windows named pipe, so shell scripts and CI helpers can request CODESYS actions without opening additional script dialogs for every operation.
+
+![CLI daemon demo](img/cli_demo.gif)
+
+Typical commands:
+
+```powershell
+cds-text-sync --help
+cds-text-sync rp ping --timeout 10      # minimal liveness check
+cds-text-sync rp status --timeout 10    # detailed daemon/project status
+cds-text-sync rp build --timeout 120
+cds-text-sync rp app_crc --timeout 30
+cds-text-sync rp cicd --file arithmetic.json --timeout 120
+```
+
+Common daemon capabilities include:
+
+- IDE connectivity checks and status reporting.
+- Project build execution.
+- PLC connect, start, stop, reset, log, and variable read/write operations.
+- PLC file listing, upload, and download commands.
+- Application CRC checks for deployment verification.
+- JSON-based test plans for repeatable validation.
+- Access to the same XML-first project sync engine used by the classic `Project_*.py` scripts.
+
+The CLI is installed with Python packaging:
+
+```powershell
+python -m pip install -e .
+cds-text-sync --help
+```
+
+The classic `Project_*.py` workflow remains the primary Git synchronization workflow and is still documented below. Full CLI details are available in [cli/MANUAL.md](cli/MANUAL.md).
+
 ---
 
 ## 🛠️ Installation
 
 ### Method 1: Manual Copy
 
-1. **Copy Files**: Copy the root command scripts, `cds_bootstrap.py`, the entire `.runtime/` folder, and the entire `profiles/` folder to the CODESYS scripts directory.
-   - **Note on `.pyw`**: Files inside `.runtime/` are internal runtime modules. They are hidden from the CODESYS "Scripts" menu by design.
+1. **Copy Files**: Copy the full tool folder to the CODESYS scripts directory, including root `Project_*.py` scripts, `cds_bootstrap.py`, `.runtime/`, `cli/`, `src/`, and `profiles/`.
+   - **Note on `.pyw`**: Files inside `.runtime/` and `src/` are internal runtime modules. They are hidden from the CODESYS "Scripts" menu by design.
    - **Note on `cds_bootstrap.py`**: This is a support loader used by the public `Project_*.py` entrypoints. Do not run it directly.
+   - **CLI note**: To use the `cds-text-sync` command from a shell, also run `python -m pip install -e <cds-text-sync-folder>` after copying the files.
 
    Depending on your software and setup preference, use one of the following paths:
    - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
@@ -103,12 +145,12 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 When upgrading to a new version of `cds-text-sync`:
 
 1. **Check Stable Releases**: First check if there's a newer stable release at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
-2. **Replace All Files**: Copy the full script payload again: root scripts, `cds_bootstrap.py`, `.runtime/`, and `profiles/`.
-   - **Important Note**: If a major refactor (like shifting to shared libraries) occurs, active scripts held in CODESYS memory may become **stale**. After copying new files, it is best to restart CODESYS or reload your project to ensure the Script Engine picks up latest version of all modules.
+2. **Replace All Files**: Copy the full tool payload again: root scripts, `cds_bootstrap.py`, `.runtime/`, `cli/`, `src/`, and `profiles/`.
+   - **Important Note**: Active scripts held in CODESYS memory may become **stale** after replacing files. Restart CODESYS or reload your project so the Script Engine picks up the latest modules.
 3. **Clean Extract**: Run `Project_export.py` to refresh `.dump/IDE.xml`, the configured view root, and manifest data with the latest script logic.
 4. **Commit Changes**: Review and commit the changes in Git.
 
-> **Important for v2.0**: Version 2.0 uses the XML-first layout and requires Python 3. Run `Project_options.py` after upgrading, choose your layout/profile/projections, then run a clean `Project_export.py` before reviewing Git changes.
+> **Important when upgrading from pre-2.0 versions**: The current workflow uses the XML-first layout and requires Python 3. Run `Project_options.py` after upgrading, choose your layout/profile/projections, then run a clean `Project_export.py` before reviewing Git changes.
 >
 > **Tip**: A clean extract after upgrading ensures the exported XML views, projection files, and manifest data match the current engine behavior.
 > 
@@ -185,7 +227,7 @@ git checkout v2.0.1
 
 ### 2. Active Sync Commands
 
-The active root entry points are `Project_directory.py`, `Project_options.py`, `Project_export.py`, `Project_import.py`, `Project_compare.py`, `Project_compare_ui.py`, `Project_build.py`, `Project_discover.py`, and `Project_resources.py`. Legacy commands referenced in older releases now live under `old_scripts/` and are not part of the primary workflow.
+The active root entry points are `Project_directory.py`, `Project_options.py`, `Project_export.py`, `Project_import.py`, `Project_compare.py`, `Project_compare_ui.py`, `Project_build.py`, `Project_discover.py`, and `Project_resources.py`.
 
 ### 3. `Project_options.py` (Layout, Profile, Projections)
 
@@ -257,10 +299,6 @@ CSV projections are update-only in this release. Inserted, removed, renamed, or 
 - **`Project_discover.py`**: Captures the live IDE tree and profile/type resolution into `.dump/discover_tree.log` and `.dump/discover_report.json`.
 - **`Project_resources.py`**: Analyzes snapshot object sizes and categories, writing `.dump/resources_report.json` and `.dump/resources_top.log`.
 
-### 10. Legacy Utilities
-
-Older commands such as `Project_parameters.py` and the previous ST-oriented sync runtime are preserved in `old_scripts/` for historical reference only. They are not part of the active root-level command set.
-
 ---
 
 ## 🤝 Team Collaboration
@@ -283,7 +321,7 @@ The tool organizes your repository into a clean structure:
 ├── .dump/                   # Generated operation workspace
 │   ├── IDE.xml              # Latest full snapshot exported from CODESYS
 │   ├── IDE.current.xml      # Compare-only live snapshot
-│   ├── IMPORT.xml           # Generated patch for inject/import
+│   ├── IMPORT.xml           # Generated patch for import/apply
 │   ├── compare_report.json  # Machine-readable compare report
 │   ├── build_<Application>.log # Build diagnostics for the selected/active app
 │   ├── build_report.json    # Machine-readable build diagnostics
@@ -306,7 +344,7 @@ Example user-project `.gitignore` for the default `project-view/` layout:
 .diff/
 ```
 
-If `.st` projections are enabled, the exported `.xml` keeps CODESYS object metadata while `TextBlobForSerialisation` text is externalized into the `.st` file. This keeps normal Git and PR diffs focused on the readable text file instead of showing the same code change twice in XML and ST. During compare/import/validate, the engine rehydrates canonical XML from `.xml + .st`. For ambiguous textual object types such as persistent variable lists, the `.st` file may include a `(* cds-text-sync: TypeGuid="{...}" *)` pragma; the pragma is metadata for sync only and is never written back into CODESYS declarations. Text-list and alarm-item `.csv` projections are import-safe for editing existing rows only; inserted, removed, renamed, or duplicate rows fail explicitly.
+If `.st` projections are enabled, the exported `.xml` keeps CODESYS object metadata while `TextBlobForSerialisation` text is externalized into the `.st` file. This keeps normal Git and PR diffs focused on the readable text file instead of showing the same code change twice in XML and ST. During compare and import, the engine rehydrates canonical XML from `.xml + .st`. For ambiguous textual object types such as persistent variable lists, the `.st` file may include a `(* cds-text-sync: TypeGuid="{...}" *)` pragma; the pragma is metadata for sync only and is never written back into CODESYS declarations. Text-list and alarm-item `.csv` projections are import-safe for editing existing rows only; inserted, removed, renamed, or duplicate rows fail explicitly.
 
 ---
 

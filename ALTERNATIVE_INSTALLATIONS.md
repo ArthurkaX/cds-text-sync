@@ -39,14 +39,18 @@ Example: `...DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir\`
   1. Ensure files are in `ScriptDir\cds-text-sync`.
   2. Restart CODESYS completely.
   3. Verify `.py` and `.pyw` files are both present (don't copy only `.py`).
-- **Python errors:** `cds-text-sync` uses the internal CODESYS Python environment. Don't worry about your system's global Python version unless the vendor fork uses a vastly different API.
+- **CLI command missing:** manual ScriptDir installation does not install the system CLI. Run `python -m pip install -e "<ScriptDir>\cds-text-sync"` so `cds-text-sync --help` works from CMD, PowerShell, Git Bash, or WSL.
+- **Python errors inside CODESYS scripts:** CODESYS uses its own internal Python/IronPython environment for `Project_*.py` scripts.
+- **Python errors from `cds-text-sync` CLI:** the system CLI uses your Windows Python 3 installation.
 
 ## Validation Checklist
 
 1. Restart the engineering tool.
 2. Confirm scripts appear under `Tools -> Scripting`.
-3. Run `Project_directory.py` to set a sync folder.
-4. Run `Project_export.py` on a test project.
+3. Run `python -m pip install -e "<ScriptDir>\cds-text-sync"` if the installer did not install the CLI.
+4. Confirm `cds-text-sync --help` works in a new shell.
+5. Run `Project_directory.py` to set a sync folder.
+6. Run `Project_export.py` on a test project.
 
 ## How to Report a New Environment
 
@@ -60,4 +64,5 @@ If you successfully install on a new fork, please open an issue with:
 - Use the [Quick Installer](irm/setup.md) if possible.
 - Choose **Option 2** for alternative paths.
 - Point to the specific product's `CODESYS\ScriptDir`.
+- Install the system CLI separately with `python -m pip install -e "<ScriptDir>\cds-text-sync"` if needed.
 - Restart and test with a small export.
