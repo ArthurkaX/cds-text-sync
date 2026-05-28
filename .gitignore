@@ -12,5 +12,13 @@ __pycache__
 /old_scripts/
 /old_scripts/*
 
-
+pf
 /profiles/astra.json
+nul
+.playwright-mcp/
+_get_codesys_args.ps1
+plan.md
+*.egg-info/
+build/
+dist/
+offline-regression-*/

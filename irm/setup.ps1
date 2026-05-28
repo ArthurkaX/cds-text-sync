@@ -8,30 +8,70 @@ $fullPath = Join-Path $targetBaseDir $repoName
 
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
 
-function Test-PythonCommand {
+function Test-PythonCommandName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandName
+    )
+
     try {
-        $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-        if ($pythonCmd) {
-            return $true
+        $cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
+        if (-not $cmd) {
+            return $false
         }
-        $pythonExeCmd = Get-Command python.exe -ErrorAction SilentlyContinue
-        if ($pythonExeCmd) {
-            return $true
+
+        $versionOutput = & $CommandName --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            return $false
         }
+
+        $versionText = [string]($versionOutput -join " ")
+        if ($versionText -notmatch "Python\s+3\.") {
+            return $false
+        }
+
+        return $true
     } catch {
+        return $false
     }
-    return $false
+}
+
+function Test-PythonCommand {
+    return ((Test-PythonCommandName -CommandName "python") -or (Test-PythonCommandName -CommandName "python.exe"))
+}
+
+function Get-PythonCommandName {
+    if (Test-PythonCommandName -CommandName "python") {
+        return "python"
+    }
+    if (Test-PythonCommandName -CommandName "python.exe") {
+        return "python.exe"
+    }
+    return $null
+}
+
+function Show-PythonConfigurationHelp {
+    Write-Host "`nPython was found only partially, or it is not reachable as a working Python 3 command." -ForegroundColor Yellow
+    Write-Host "cds-text-sync expects this command to work from a new PowerShell/CMD window:" -ForegroundColor Yellow
+    Write-Host "    python --version" -ForegroundColor Cyan
+    Write-Host "`nRecommended fixes:" -ForegroundColor Cyan
+    Write-Host "  1. Re-run the Python installer and enable 'Add python.exe to PATH'."
+    Write-Host "  2. Restart PowerShell/CMD after installation."
+    Write-Host "  3. Disable broken Windows App Execution Aliases for python.exe if they shadow a real install."
+    Write-Host "     Settings -> Apps -> Advanced app settings -> App execution aliases."
+    Write-Host "  4. Verify manually: python --version"
 }
 
 function Offer-PythonInstall {
-    Write-Host "`n[!] Python 3 was not found on this system." -ForegroundColor Yellow
-    Write-Host '    cds-text-sync needs the `python` command available from PowerShell/CMD.' -ForegroundColor Yellow
-    Write-Host "`nChoose an installation path:" -ForegroundColor Cyan
+    Write-Host "`n[!] A working Python 3 command was not found." -ForegroundColor Yellow
+    Write-Host '    cds-text-sync needs `python --version` to work from PowerShell/CMD.' -ForegroundColor Yellow
+    Write-Host "`nChoose an option:" -ForegroundColor Cyan
     Write-Host "[W] Install with winget" -ForegroundColor Green
     Write-Host "[M] Open manual download page" -ForegroundColor Green
+    Write-Host "[C] Show PATH / App Execution Alias configuration help" -ForegroundColor Green
     Write-Host "[S] Skip for now and continue anyway" -ForegroundColor Green
 
-    $pythonChoice = Read-Host "`nSelect option [W, M, S] (default: W)"
+    $pythonChoice = Read-Host "`nSelect option [W, M, C, S] (default: W)"
     if ([string]::IsNullOrWhiteSpace($pythonChoice)) {
         $pythonChoice = "W"
     }
@@ -67,19 +107,79 @@ function Offer-PythonInstall {
                 return $true
             }
 
-            Write-Host '[!] winget finished, but `python` is still not available in this shell.' -ForegroundColor Yellow
-            Write-Host "[*] Restart the terminal or install Python manually from: https://www.python.org/downloads/windows/" -ForegroundColor Yellow
+            Write-Host '[!] winget finished, but `python --version` is still not working in this shell.' -ForegroundColor Yellow
+            Show-PythonConfigurationHelp
             return $false
         }
         "M" {
             Write-Host "[*] Opening the Python download page..." -ForegroundColor Cyan
             Start-Process "https://www.python.org/downloads/windows/"
+            Show-PythonConfigurationHelp
+            return $false
+        }
+        "C" {
+            Show-PythonConfigurationHelp
             return $false
         }
         default {
             Write-Host "[*] Skipping Python installation step." -ForegroundColor Yellow
+            Show-PythonConfigurationHelp
             return $false
         }
+    }
+}
+
+function Install-CliCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallPath
+    )
+
+    $pythonName = Get-PythonCommandName
+    if (-not $pythonName) {
+        Write-Host "[!] Python is not available; skipping CLI command installation." -ForegroundColor Yellow
+        Write-Host "    After installing Python, run:" -ForegroundColor Yellow
+        Write-Host "    python -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        return $false
+    }
+
+    Write-Host "`n--- CLI Installation ---" -ForegroundColor Cyan
+    Write-Host "Install the system CLI command `cds-text-sync` with pip editable mode?"
+    Write-Host "This lets agents and humans run: cds-text-sync --help" -ForegroundColor Green
+    $cliChoice = Read-Host "`nInstall CLI command [Y, N] (default: Y)"
+    if ([string]::IsNullOrWhiteSpace($cliChoice)) {
+        $cliChoice = "Y"
+    }
+    if ($cliChoice.ToUpperInvariant() -ne "Y") {
+        Write-Host "[*] Skipping CLI installation." -ForegroundColor Yellow
+        Write-Host "    You can install later with:" -ForegroundColor Yellow
+        Write-Host "    $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        return $false
+    }
+
+    try {
+        Write-Host "[*] Installing CLI command from: $InstallPath" -ForegroundColor Cyan
+        $pipArgs = @("-m", "pip", "install", "-e", $InstallPath)
+        $proc = Start-Process -FilePath $pythonName -ArgumentList $pipArgs -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "[!] CLI installation failed with exit code $($proc.ExitCode)." -ForegroundColor Red
+            Write-Host "    Try manually: $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+            return $false
+        }
+
+        $cliCmd = Get-Command cds-text-sync -ErrorAction SilentlyContinue
+        if ($cliCmd) {
+            Write-Host "[+] CLI installed: cds-text-sync" -ForegroundColor Green
+            return $true
+        }
+
+        Write-Host "[!] pip completed, but cds-text-sync is not visible in this shell." -ForegroundColor Yellow
+        Write-Host "    Restart PowerShell/CMD or make sure Python Scripts is in PATH." -ForegroundColor Yellow
+        return $true
+    } catch {
+        Write-Host "[!] CLI installation error: $_" -ForegroundColor Red
+        Write-Host "    Try manually: $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        return $false
     }
 }
 
@@ -323,6 +423,10 @@ try {
     if (Test-Path "$fullPath.backup") {
         Remove-Item -Path "$fullPath.backup" -Recurse -Force
     }
+}
+
+if (Test-Path $fullPath) {
+    Install-CliCommand -InstallPath $fullPath | Out-Null
 }
 
 Write-Host "`n--- Setup Finished! ---" -ForegroundColor Cyan

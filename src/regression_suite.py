@@ -22,7 +22,7 @@ def _run(relative_path):
 
 def main():
     checks = [
-        os.path.join("src", "external_engine", "offline_regression.py"),
+        os.path.join("cli", "external_engine", "offline_regression.py"),
         os.path.join("src", "ide_bridge", "ide_apply_patch_regression.py"),
         os.path.join("src", "ide_bridge", "ide_backup_regression.py"),
     ]

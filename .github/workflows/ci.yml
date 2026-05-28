@@ -63,7 +63,7 @@ jobs:
       - name: Compare reference project
         shell: pwsh
         run: |
-          python src\external_engine\engine_cli.py compare `
+          python cli\external_engine\engine_cli.py compare `
             --project-root reference-project `
             --snapshot reference-project\.dump\IDE.xml `
             --report reference-project\.dump\ci_compare_report.json
@@ -71,6 +71,6 @@ jobs:
       - name: Validate reference project
         shell: pwsh
         run: |
-          python src\external_engine\engine_cli.py validate `
+          python cli\external_engine\engine_cli.py validate `
             --project-root reference-project `
             --snapshot reference-project\.dump\IDE.xml

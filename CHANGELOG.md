@@ -4,7 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Version 2.0.2 (2026-05-23)
+### Version 2.5.1 (2026-05-28)
+
+**CLI & Daemon:**
+
+- Added the `cds-text-sync` CLI and reverse-pipe daemon workflow through `Project_daemon.py`.
+- Added concise dashboard output for `rp cicd`: file-level PASS/FAIL plus suite summary.
+- Changed the default CI/CD test folder from `test/` to `.test/`, with legacy `test/` fallback for existing projects.
+- CI/CD plans now require an explicit `application` field so tests cannot silently run against the wrong application.
+- Fixed `Project_options.py` runtime imports after moving the Python 3 engine to `cli/external_engine/`.
+- Updated the recommended `.gitignore` entries for `.dump/`, reports, logs, backups, and temporary diff files.
+
+**Installation & Documentation:**
+
+- IRM installer now validates that `python --version` works and reports Python 3 before installing the CLI.
+- IRM installer now offers to install the system CLI with `python -m pip install -e <install-path>`.
+- Documentation now states that copying files into CODESYS `ScriptDir` does not install the `cds-text-sync` shell command.
+- README and manuals refreshed for the CLI workflow, daemon demo, and test runner behavior.
 
 **Infrastructure & Quality:**
 
@@ -12,6 +28,22 @@ All notable changes to this project will be documented in this file.
 - **Node 24 Update**: CI actions updated to target Node 24 runtime.
 - **Unit Test Tier**: Introduced structured unit test suite for external engine components.
 - **Test Fixtures**: Unignored fixtures directory to include test data in version control.
+
+**Security & Settings Window:**
+
+- WinForms Settings window (poll frequency slider + permissions checkboxes)
+- `rp permissions` — read-only config via CLI
+- Storage in `cds-daemon-config` project property (JSON)
+- Default deny list: reset_plc, create_boot_app, plc_upload, source_download
+- Only the Settings window (not CLI) can change permissions
+- Startup messages in dashboard (version + sync folder status)
+
+**Fixes:**
+
+- Stop Daemon no longer freezes CODESYS (Application.Exit, early loop break)
+- Settings/Stop buttons swapped for ergonomics
+- Sync folder warning on daemon start
+- `run_external_engine()` path fixed to `cli/external_engine/`
 
 **User Experience:**
 
@@ -331,7 +363,7 @@ All notable changes to this project will be documented in this file.
 - **Enhanced Property Support**: Properties with combined GET/SET accessors are now correctly handled. The export script now accurately combines both the `VAR` declaration and implementation code for each accessor into a single `.st` file.
 - **Bi-directional Accessor Sync**: The import script now correctly parses combined accessor content and updates both the declaration and implementation in CODESYS.
 - **Object Restoration**: Fixed an issue where objects deleted from CODESYS but remaining on disk would not be recreated. They are now automatically detected and restored during import.
-- **Bug Fix (#4)**: Resolved an issue where properties created manually in external editors (or by AI) were incorrectly identified or failed to import.
+- **Bug Fix (#4)**: Resolved an issue where properties created manually in external editors were incorrectly identified or failed to import.
 
 ### Version 1.5.1 (2026-02-15)
 

@@ -16,7 +16,10 @@ import codecs
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
-_ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "external_engine"))
+# Try new path first (cli/external_engine/), fall back to old (src/external_engine/)
+_ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "..", "cli", "external_engine"))
+if not os.path.isdir(_ENGINE_DIR):
+    _ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "external_engine"))
 if _ENGINE_DIR not in sys.path:
     sys.path.insert(0, _ENGINE_DIR)
 
@@ -49,7 +52,7 @@ def get_workspace_dir(script_file=None):
     path = os.path.abspath(script_file or __file__)
     current = os.path.dirname(path)
     while True:
-        if os.path.isdir(os.path.join(current, "src", "external_engine")) or os.path.isdir(os.path.join(current, ".runtime")):
+        if os.path.isdir(os.path.join(current, "cli", "external_engine")) or os.path.isdir(os.path.join(current, ".runtime")):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:
@@ -129,15 +132,17 @@ def _external_notice_lines(stdout_text, stderr_text):
 
 def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None):
     root_dir = get_workspace_dir(script_file)
-    engine_cli = os.path.join(root_dir, "src", "external_engine", "engine_cli.py")
-    command_name = command_args[0] if command_args else "engine"
-    verbose_logging, log_path = project_logging_config(project_root, dump_root)
-    
+    # Try new path first (cli/external_engine/), fall back to old path
+    engine_cli = os.path.join(root_dir, "cli", "external_engine", "engine_cli.py")
     if not os.path.exists(engine_cli):
-        log_error("External engine CLI not found: " + engine_cli)
+        engine_cli = os.path.join(root_dir, "src", "external_engine", "engine_cli.py")
+    if not os.path.exists(engine_cli):
+        log_error("External engine CLI not found (tried cli/ and src/ paths): " + str(engine_cli))
         return False
         
     cmd = ["python", engine_cli] + command_args
+    _, log_path = project_logging_config(project_root, dump_root)
+    command_name = command_args[0] if command_args else "unknown"
     try:
         if log_path:
             _write_detailed_log(
@@ -158,7 +163,7 @@ def run_external_engine(command_args, script_file=None, project_root=None, dump_
         if os.name == 'nt':
             kwargs["creationflags"] = 0x08000000 # CREATE_NO_WINDOW
 
-        p = subprocess.Popen(cmd, **kwargs)
+        p = subprocess.Popen(cmd, cwd=root_dir, **kwargs)
         out, err = p.communicate()
 
         out_text = out.decode('utf-8', 'replace') if out else ""

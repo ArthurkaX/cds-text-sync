@@ -110,7 +110,9 @@ def _get_root_dir(script_file=None):
 
 def _ensure_sys_path(root_dir):
     runtime_dir = os.path.join(root_dir, ".runtime")
-    for path in (runtime_dir, root_dir):
+    engine_dir = os.path.join(root_dir, "cli", "external_engine")
+    old_engine_dir = os.path.join(root_dir, "src", "external_engine")
+    for path in (runtime_dir, engine_dir, old_engine_dir, root_dir):
         if path and path not in sys.path:
             sys.path.insert(0, path)
 
