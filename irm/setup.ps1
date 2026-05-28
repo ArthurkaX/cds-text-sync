@@ -204,10 +204,12 @@ try {
     if ($releases) {
         foreach ($release in $releases) {
             $tag = [string]$release.tag_name
-            if ($tag -match "^v\d+\.\d+\.\d+$") {
-                $stableTags += $tag
-            } elseif ($tag -match "^v\d+\.\d+\.\d+-test\.\d+$" -or [bool]$release.prerelease) {
+            $isPrerelease = [bool]$release.prerelease
+
+            if ($isPrerelease -or $tag -match "^v\d+\.\d+\.\d+-test\.\d+$") {
                 $testTags += $tag
+            } elseif ($tag -match "^v\d+\.\d+\.\d+$") {
+                $stableTags += $tag
             }
         }
 
@@ -262,13 +264,13 @@ try {
 
 # 3. Show version selection menu
 Write-Host "`n--- Version Selection ---" -ForegroundColor Cyan
-Write-Host "[L] Latest (main branch) [DEFAULT]" -ForegroundColor Green
+Write-Host "[L] Latest development snapshot (main branch) [DEFAULT]" -ForegroundColor Green
 
 if ($stableTags.Count -gt 0) {
     Write-Host "Stable Releases (last $($stableTags.Count)):" -ForegroundColor Cyan
     for ($i = 0; $i -lt $stableTags.Count; $i++) {
         $tag = $stableTags[$i]
-        $isLatest = ($i -eq ($stableTags.Count - 1))
+        $isLatest = ($i -eq 0)
         $label = if ($isLatest) { " (recommended stable)" } else { "" }
         Write-Host "[$($i+1)] $tag$label" -ForegroundColor Yellow
     }
