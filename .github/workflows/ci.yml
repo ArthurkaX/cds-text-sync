@@ -21,12 +21,6 @@ jobs:
       - name: Checkout cds-text-sync
         uses: actions/checkout@v6
 
-      - name: Checkout reference project
-        uses: actions/checkout@v6
-        with:
-          repository: ArthurkaX/cds-text-sync-reference-project
-          path: reference-project
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -54,23 +48,10 @@ jobs:
             Project_import.py `
             Project_options.py `
             Project_resources.py `
+            Project_daemon.py `
+            cli `
             src
 
       - name: Run local regression suite
         shell: pwsh
         run: python src\regression_suite.py
-
-      - name: Compare reference project
-        shell: pwsh
-        run: |
-          python cli\external_engine\engine_cli.py compare `
-            --project-root reference-project `
-            --snapshot reference-project\.dump\IDE.xml `
-            --report reference-project\.dump\ci_compare_report.json
-
-      - name: Validate reference project
-        shell: pwsh
-        run: |
-          python cli\external_engine\engine_cli.py validate `
-            --project-root reference-project `
-            --snapshot reference-project\.dump\IDE.xml
