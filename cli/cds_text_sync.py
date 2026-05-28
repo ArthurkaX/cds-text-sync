@@ -303,6 +303,52 @@ def cmd_exec(args: list[str]):
         sys.exit(1)
 
 
+def _load_project_config():
+    """Load cds-text-sync.json and resolved profile from cwd.
+
+    Returns (config, profile) or ({}, None).
+    """
+    config = {}
+    profile = None
+    config_path = os.path.join(os.getcwd(), "cds-text-sync.json")
+    if not os.path.exists(config_path):
+        return config, profile
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    profile_name = config.get("profile")
+    if profile_name:
+        from _project_profiles import load_profile, PROFILES_DIR
+        profile = load_profile(profile_name, PROFILES_DIR)
+
+    return config, profile
+
+
+def _print_rp_error(resp, command):
+    """Print reverse-pipe error details."""
+    err = resp.get("error")
+    if err is not None and err != "":
+        _print_error(err)
+    else:
+        messages = resp.get("data", {}).get("messages")
+        if isinstance(messages, list) and messages:
+            errors = [m for m in messages if m.get("severity") in ("Error", "error")]
+            if errors:
+                for m in errors:
+                    code = m.get("code", "")
+                    text = m.get("text", "")
+                    obj = m.get("object", "")
+                    _print_error("[{0}] {1} (in {2})".format(code, text, obj))
+            else:
+                _print_error("{0} failed with {1} warnings".format(command, len(messages)))
+        else:
+            _print_error("unknown error")
+    diag = resp.get("diagnostics")
+    if diag:
+        _print_info("Diagnostics: {0}".format(json.dumps(diag, ensure_ascii=False)))
+
+
 def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json"):
     """Send a command via reverse-pipe daemon.
     
@@ -319,21 +365,14 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
     params = _parse_key_value_args(args[1:])
     # Apply profile defaults for app/app_dir
     try:
-        from _project_profiles import load_profile, PROFILES_DIR
-        config_path = os.path.join(os.getcwd(), 'cds-text-sync.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            profile_name = config.get('profile')
-            if profile_name:
-                profile = load_profile(profile_name, PROFILES_DIR)
-                if profile:
-                    if 'default_app_name' in profile and 'app' not in params:
-                        params['app'] = profile['default_app_name']
-                    if 'plc_app_path' in profile and 'app_dir' not in params:
-                        params['app_dir'] = profile['plc_app_path']
-    except Exception:
-        pass
+        _config, profile = _load_project_config()
+        if profile:
+            if 'default_app_name' in profile and 'app' not in params:
+                params['app'] = profile['default_app_name']
+            if 'plc_app_path' in profile and 'app_dir' not in params:
+                params['app_dir'] = profile['plc_app_path']
+    except Exception as e:
+        _print_info("Warning: could not load profile: {0}".format(e))
     if "timeout" in params:
         timeout = float(params.pop("timeout"))
 
@@ -347,26 +386,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         data = resp.get("data", {})
         print(_format_output(data, fmt=output_fmt, title=command))
     else:
-        err = resp.get("error")
-        if err is not None and err != "":
-            _print_error(err)
-        else:
-            messages = resp.get("data", {}).get("messages")
-            if isinstance(messages, list) and messages:
-                errors = [m for m in messages if m.get("severity") in ("Error", "error")]
-                if errors:
-                    for m in errors:
-                        code = m.get("code", "")
-                        text = m.get("text", "")
-                        obj = m.get("object", "")
-                        _print_error("[{0}] {1} (in {2})".format(code, text, obj))
-                else:
-                    _print_error("Build failed with {0} warnings".format(len(messages)))
-            else:
-                _print_error("unknown error")
-        diag = resp.get("diagnostics")
-        if diag:
-            _print_info("Diagnostics: {0}".format(json.dumps(diag, ensure_ascii=False)))
+        _print_rp_error(resp, command)
 
 
 def _parse_key_value_args(args: list[str]) -> dict:
@@ -521,6 +541,17 @@ def cmd_compare(against="", use_reverse=False):
     _project_command("compare", {"against": against}, timeout=120, use_reverse=use_reverse)
 
 
+# -- POU commands -----------------------------------------------------------
+
+def cmd_pou_delete(name="", app="CI_CD_Application", use_reverse=False):
+    """Delete a POU from the project."""
+    if not name:
+        _print_error("POU name is required")
+        return
+    params = {"name": name, "app": app}
+    _project_command("delete_pou", params, use_reverse=use_reverse)
+
+
 # -- Direct engine_cli invocation -------------------------------------------
 
 def cmd_direct(args: list[str]) -> NoReturn:
@@ -663,6 +694,22 @@ Examples:
                            help="Username (for set-credentials)")
     p_project.add_argument("--password", default="",
                            help="Password (for set-credentials)")
+
+    # -- pou subcommand (Object deletion) ----------------------------------------
+    p_pou = subparsers.add_parser(
+        "pou",
+        help="Delete objects (POU, Function, FunctionBlock)",
+        description="Delete Program Organization Units, Functions, and Function Blocks from the project.",
+    )
+    p_pou.add_argument(
+        "pou_action",
+        choices=["delete"],
+        help="delete - delete an object",
+    )
+    p_pou.add_argument("name", help="Object name (e.g. MAIN, MyFunction, Globals, MyDataType)")
+    p_pou.add_argument("--app", default="CI_CD_Application",
+                       help="Application name (default: CI_CD_Application)")
+
     p_exec = subparsers.add_parser(
         "exec",
         help="Execute command through daemon",
@@ -733,18 +780,11 @@ def main():
     # If reverse flag is not set, check if the active profile has daemon_mode == 'reverse_pipe'
     if not use_reverse:
         try:
-            from _project_profiles import load_profile, PROFILES_DIR
-            config_path = os.path.join(os.getcwd(), 'cds-text-sync.json')
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                profile_name = config.get('profile')
-                if profile_name:
-                    profile = load_profile(profile_name, PROFILES_DIR)
-                    if profile and profile.get('daemon_mode') == 'reverse_pipe':
-                        use_reverse = True
-        except Exception:
-            pass
+            _config, profile = _load_project_config()
+            if profile and profile.get('daemon_mode') == 'reverse_pipe':
+                use_reverse = True
+        except Exception as e:
+            _print_info("Warning: could not load profile: {0}".format(e))
 
     # Determine output format
     output_fmt = getattr(args, 'output', 'json')
@@ -815,6 +855,10 @@ def main():
             cmd_application_state(use_reverse=use_reverse)
         elif args.project_action == "diagnose-online":
             cmd_diagnose_online(use_reverse=use_reverse)
+
+    elif args.command == "pou":
+        if args.pou_action == "delete":
+            cmd_pou_delete(name=args.name, app=args.app, use_reverse=use_reverse)
 
     elif args.command == "discover":
         cmd_discover(use_reverse=use_reverse)
