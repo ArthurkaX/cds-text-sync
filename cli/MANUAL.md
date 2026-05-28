@@ -72,9 +72,9 @@ Not all commands need the daemon or PLC connection:
 | Level | Requires | Commands |
 |-------|----------|----------|
 | 🟢 **CLI only** | nothing | `--help`, `--manual` |
-| 🔵 **Daemon** | running daemon in CODESYS | `ping`, `status`, `stop`, `help`, `permissions`, `project_info`, `project_tree`, `explore`, `sync`, `sync_export`, `sync_import`, `sync_compare`, `sync_export_text`, `sync_import_text`, `sync_compare_text`, `build`, `export`, `read_log` |
+| 🔵 **Daemon** | running daemon in CODESYS | `ping`, `status`, `stop`, `help`, `permissions`, `project_info`, `project_tree`, `explore`, `sync`, `sync_export`, `sync_import`, `sync_compare`, `sync_export_text`, `sync_import_text`, `sync_compare_text`, `build`, `export`, `read_log`, `update_pou` |
 | 🟡 **Online** | daemon + `connect_to_device` | `read_variable`, `write_variable`, `variable_tree`, `app_crc`, `app_info`, `compare`, `start_plc`, `stop_plc`, `reset_plc`, `create_boot_app`, `source_download`, `plc_files`, `plc_download`, `plc_upload`, `plc_log`, `application_state`, `device_status`, `probe` |
-| 🔴 **Permissions** | daemon + allowed in Settings | `reset_plc`, `create_boot_app`, `plc_upload`, `source_download`, `write_variable`, `build`, `sync_import` (configurable) |
+| 🔴 **Permissions** | daemon + allowed in Settings | `reset_plc`, `create_boot_app`, `plc_upload`, `source_download`, `write_variable`, `build`, `sync_import`, `delete_pou` (configurable) |
 
 ### 5. Some operations need PLC in specific state
 | Operation | Required PLC state |
@@ -325,6 +325,9 @@ daemon now returns:
 | **Build** | | |
 | `build [--output PATH]` | Build application | 120s |
 | `export [--output PATH]` | Export project snapshot | 30s |
+| **Project objects** | | |
+| `pou delete <name> [--app APP]` | Delete POU/Function/FunctionBlock | 10s |
+| `update_pou --name NAME --app APP --st_path PATH` | Update POU from .st file | 25s |
 | **PLC lifecycle** | | |
 | `start_plc` | Start PLC | 25s |
 | `stop_plc` | Stop PLC | 25s |
@@ -654,6 +657,37 @@ cds-text-sync rp connect_to_device --timeout 60
 ```
 
 Internally, it writes `textual_declaration.text` / `textual_implementation.text` through `.replace()` as a fallback when `.text = value` is read-only.
+
+### delete_pou
+
+Delete a Program, Function, or Function Block from the project via the CODESYS API.
+
+```bash
+# Delete a POU in a specific application
+cds-text-sync pou delete MAIN --app CI_CD_Application
+
+# Delete a function from the default application
+cds-text-sync pou delete MyFunction
+```
+
+**Supported object types:**
+- ✅ **Program** — deletable via CODESYS API
+- ✅ **Function** — deletable via CODESYS API
+- ✅ **FunctionBlock** — deletable via CODESYS API
+
+**Unsupported object types:**
+- ❌ **GVL** (Global Variable List) — CODESYS API does not support deletion
+- ❌ **DUT** (Data Unit Type) — CODESYS API does not support deletion
+
+**After deletion:**
+The project structure is updated immediately. Run `build` to recompile:
+```bash
+cds-text-sync rp build --timeout 120
+cds-text-sync rp connect_to_device --timeout 60  # deploy to PLC
+```
+
+**Permissions:** `delete_pou` is in the **optional destructive commands** list.
+It is **blocked by default** — must be allowed in **Daemon Settings → Permissions**.
 
 ### Build Diagnostics
 

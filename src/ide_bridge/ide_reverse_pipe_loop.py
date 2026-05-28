@@ -21,6 +21,7 @@ import sys
 import os
 import json
 import time
+import tempfile
 import traceback
 
 # Add ide_bridge dir to path
@@ -29,6 +30,7 @@ if _LOOP_DIR not in sys.path:
     sys.path.insert(0, _LOOP_DIR)
 
 import ide_online_helpers as _helpers
+import ide_runtime_common as _common
 
 clr.AddReference("System.IO.Pipes")
 clr.AddReference("System.IO")
@@ -260,6 +262,7 @@ _DEFAULT_CONFIG = {
         "create_boot_app",
         "plc_upload",
         "source_download",
+        "delete_pou",
     ],
 }
 
@@ -497,6 +500,10 @@ def handle_command(method, params):
             return _cmd_sync_import_text(params)
         elif method == "update_pou":
             return _cmd_update_pou(params)
+
+        elif method == "delete_pou":
+            return _cmd_delete_pou(params)
+
         elif method == "cicd":
             return _cmd_cicd(params)
         elif method == "sync_compare_text":
@@ -915,7 +922,6 @@ def _cmd_build(params):
         if output_path:
             try:
                 with open(output_path, "w") as f:
-                    import json
                     json.dump(result, f, indent=2, ensure_ascii=False)
                 result["data"]["output_file"] = output_path
             except Exception as e:
@@ -945,6 +951,47 @@ def _get_device_objects(project):
 def _invalidate_device_cache():
     """Force invalidate the device cache."""
     sys._codesys_daemon_loop["device_cache_ts"] = 0
+
+
+def _find_object_in_project(project, obj_name, app_name=None):
+    """Find a named object in the project tree.
+
+    Returns (target, obj_type) or (None, None) if not found.
+    If app_name is given, only matches objects under that application.
+    """
+    for child in _get_device_objects(project):
+        try:
+            cname = str(_common.object_name(child))
+        except Exception as e:
+            _log("Object search: failed to read object name: {0}".format(e))
+            continue
+
+        if cname != obj_name:
+            continue
+
+        if app_name:
+            parent = child
+            found_in_app = False
+            while hasattr(parent, "parent"):
+                try:
+                    parent = parent.parent
+                    pname = str(_common.object_name(parent))
+                except Exception as e:
+                    _log("Object search: failed to inspect parent chain for '{0}': {1}".format(obj_name, e))
+                    break
+                if pname == app_name:
+                    found_in_app = True
+                    break
+            if not found_in_app:
+                continue
+
+        try:
+            obj_type = str(child.get_type())
+        except Exception:
+            obj_type = "Unknown"
+        return child, obj_type
+
+    return None, None
 
 
 def _cmd_device_status(params):
@@ -1098,6 +1145,7 @@ def _cmd_help():
         "create_boot_app": "Create boot application on PLC",
         "source_download": "Download source from PLC [--output DIR]",
         "update_pou": "Update a POU's text from .st file [--name NAME] [--app APP] --st_path PATH",
+        "delete_pou": "Delete POU/Function/FunctionBlock [--name NAME] [--app APP]",
         "probe": "Probe OnlineApplication for variable/symbol APIs",
         "variable_tree": "Walk PLC variables tree [--depth N] [--values] [--pattern FILTER] [--flat] [--output PATH] — non-exported vars show value_error",
         "plc_files": "List files on PLC [--path /]",
@@ -1297,8 +1345,6 @@ def _cmd_source_download(params):
             return {"ok": False, "error": "Not connected. Call connect_to_device first."}
         if not hasattr(oa, "source_download"):
             return {"ok": False, "error": "OnlineApplication has no source_download() method"}
-        import tempfile
-        import os
         # SP22: source_download() takes no arguments, saves to project dir
         # We'll just call it and report success
         oa.source_download()
@@ -1776,7 +1822,6 @@ def _cmd_plc_download(params):
         
         dest = params.get("dest", "")
         if not dest:
-            import tempfile
             dest = tempfile.mktemp(prefix="plc_", suffix=os.path.splitext(src)[1] or ".bin")
         
         overwrite = str(params.get("overwrite", "1")).lower() in ("1", "true", "yes")
@@ -2114,7 +2159,6 @@ def _cmd_plc_log(params):
         if not hasattr(online_dev, 'upload_file'):
             return {"ok": False, "error": "Online device has no upload_file method"}
 
-        import tempfile
         tmp = tempfile.mktemp(suffix=".log")
         try:
             online_dev.upload_file(log_file, tmp, True)
@@ -2251,7 +2295,6 @@ def _cmd_app_crc(params):
         if not hasattr(online_dev, 'upload_file'):
             result["crc_note"] = "upload_file not available"
         else:
-            import tempfile
             tmp = tempfile.mktemp(suffix=".crc")
             try:
                 # Find the .crc file name
@@ -2490,7 +2533,6 @@ def _cmd_compare_crc(params):
         app_dir = params.get('app_dir', "PlcLogic/Application")
         
         # 1. Download PLC CRC
-        import tempfile
         tmp_plc = tempfile.mktemp(suffix=".crc")
         try:
             online_dev.upload_file(app_dir + "/Application.crc", tmp_plc, True)
@@ -2827,7 +2869,6 @@ def _cmd_sync_compare(params):
 
 
 def _cmd_sync_export_text(params):
-    import ide_runtime_common as _common
     # Step 1: Export XML
     export_result = _cmd_sync_export(params)
     if not export_result.get("ok"):
@@ -2846,9 +2887,6 @@ def _cmd_sync_export_text(params):
     return export_result
 
 def _cmd_sync_import_text(params):
-    import ide_runtime_common as _common
-    import os
-    import tempfile
     import xml.etree.ElementTree as ET
     
     # Step 1: Export current IDE state to use as baseline
@@ -3026,9 +3064,6 @@ def _apply_text_create_entry(project, entry, created_by_name):
     _log("Created textual object: {0}".format(rel_path))
 
 def _cmd_sync_compare_text(params):
-    import ide_runtime_common as _common
-    import os, json
-    
     # Step 1: Export current IDE state
     export_result = _cmd_sync_export(params)
     if not export_result.get("ok"):
@@ -3075,10 +3110,6 @@ def _cmd_update_pou(params):
     if not pou_name or not st_path:
         return {"ok": False, "error": "name and st_path are required"}
     
-    # Try to find the POU in the project
-    import ide_runtime_common as _common
-    import os
-    
     # Resolve st_path
     if not os.path.isabs(st_path):
         sf, sf_err = _get_sync_folder()
@@ -3103,28 +3134,8 @@ def _cmd_update_pou(params):
         impl = parts[1].strip()
     
     # Find the POU object in the project tree
-    all_children = list(project.get_children(recursive=True))
-    target = None
-    for child in all_children:
-        try:
-            cname = str(_common.object_name(child))
-            if cname == pou_name:
-                # Check if it's in the right app
-                parent = child
-                while hasattr(parent, "parent"):
-                    parent = parent.parent
-                    try:
-                        pname = str(_common.object_name(parent))
-                        if pname == app_name:
-                            target = child
-                            break
-                    except Exception:
-                        pass
-                if target:
-                    break
-        except Exception:
-            pass
-    
+    target, _target_type = _find_object_in_project(project, pou_name, app_name)
+
     if target is None:
         return {"ok": False, "error": "POU '{0}' not found in application '{1}'".format(pou_name, app_name)}
     
@@ -3172,6 +3183,51 @@ def _cmd_update_pou(params):
     
     _log("Updated POU: {0} (app={1}, decl={2}, impl={3})".format(pou_name, app_name, decl_ok, impl_ok))
     return {"ok": True, "data": {"name": pou_name, "app": app_name, "decl_ok": decl_ok, "impl_ok": impl_ok, "decl_len": len(decl), "impl_len": len(impl)}}
+
+
+def _cmd_delete_pou(params):
+    """Delete an object from the project (POU, GVL, DUT, etc).
+
+    Args:
+        name: Object name (e.g. "MAIN", "Globals", "MyDataType")
+        app: Application name (e.g. "CI_CD_Application")
+    """
+    project, err = _get_active_project()
+    if err:
+        return err
+
+    obj_name = params.get("name", "")
+    app_name = params.get("app", "CI_CD_Application")
+
+    if not obj_name:
+        return {"ok": False, "error": "name is required"}
+
+    # Find the object in the project tree
+    target, target_type = _find_object_in_project(project, obj_name, app_name)
+
+    if target is None:
+        return {"ok": False, "error": "Object '{0}' not found in application '{1}'".format(obj_name, app_name)}
+
+    # Try to delete the object using remove() method
+    try:
+        if hasattr(target, 'remove'):
+            target.remove()
+            _invalidate_device_cache()
+            _log("Deleted object: {0} (type={1}, app={2})".format(obj_name, target_type, app_name))
+            return {"ok": True, "data": {
+                "name": obj_name,
+                "type": target_type,
+                "deleted": True,
+                "note": "Object deleted successfully"
+            }}
+        else:
+            msg = "Object type '{0}' does not support remove() method".format(target_type)
+            _log("Error: {0}".format(msg))
+            return {"ok": False, "error": msg}
+    except Exception as e:
+        msg = "Failed to delete '{0}': {1}".format(obj_name, str(e))
+        _log("Error deleting object: {0}".format(e))
+        return {"ok": False, "error": msg}
 
 
 def _parse_codesys_value(raw):
@@ -3259,9 +3315,7 @@ def _cmd_cicd(params):
     Args:
         file: path to test JSON file (relative to sync_folder/.test/ or absolute)
     """
-    import json
     import time as _time
-    import os
     import ide_online_helpers as _helpers
     
     project, err = _get_active_project()
@@ -3465,8 +3519,7 @@ def _summarize_cicd_results(results):
 
 def _run_test_plan(project, plan):
     """Execute a single test plan and return results."""
-    import json, time as _time
-    import os
+    import time as _time
     import ide_online_helpers as _helpers
     
     plan_name = plan.get("name", "unnamed")

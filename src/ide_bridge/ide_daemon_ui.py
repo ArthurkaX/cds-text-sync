@@ -193,6 +193,7 @@ class SettingsForm(Form):
             ("stop_plc", "stop_plc — Stop PLC runtime"),
             ("plc_upload", "plc_upload — Upload file to PLC filesystem"),
             ("source_download", "source_download — Write source files to disk"),
+            ("delete_pou", "delete_pou — Delete POU/Function/FunctionBlock"),
         ]
 
         deny_list = self._config.get("deny", [])
