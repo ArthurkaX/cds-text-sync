@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/ArthurkaX/cds-text-sync?include_prereleases&sort=semver)](https://github.com/ArthurkaX/cds-text-sync/releases)
 [![Downloads](https://img.shields.io/github/downloads/ArthurkaX/cds-text-sync/total)](https://github.com/ArthurkaX/cds-text-sync/releases)
 [![Stars](https://img.shields.io/github/stars/ArthurkaX/cds-text-sync?style=flat)](https://github.com/ArthurkaX/cds-text-sync/stargazers)
-[![Forks](https://img.shields.io/github/forks/ArthurkaX/cds-text-sync?style=flat)](https://github.com/ArthurkaX/cds-text-sync/forks)
+[![Forks](https://badgen.net/github/forks/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/forks)
 [![Issues](https://img.shields.io/github/issues/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/issues)
 [![Last commit](https://img.shields.io/github/last-commit/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/commits/main)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
