@@ -304,7 +304,7 @@ if ($choice -eq "L") {
     $testIndex = [int]$matches[1] - 1
     if ($testIndex -ge 0 -and $testIndex -lt $testTags.Count) {
         $selectedTag = $testTags[$testIndex]
-        $zipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
+        $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
         $versionName = $selectedTag
     } else {
         Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
@@ -315,7 +315,7 @@ if ($choice -eq "L") {
     $tagIndex = [int]$choice - 1
     if ($tagIndex -ge 0 -and $tagIndex -lt $stableTags.Count) {
         $selectedTag = $stableTags[$tagIndex]
-        $zipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
+        $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
         $versionName = $selectedTag
     } else {
         Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
