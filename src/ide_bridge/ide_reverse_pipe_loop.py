@@ -19,6 +19,7 @@ from __future__ import print_function
 import clr
 import sys
 import os
+import io
 import json
 import time
 import tempfile
@@ -63,6 +64,12 @@ def _log(msg):
             f.write(line + "\n")
     except Exception:
         pass
+
+
+def _read_text_utf8(path):
+    """Read UTF-8 text as unicode for IronPython/.NET text APIs."""
+    with io.open(path, "r", encoding="utf-8-sig") as handle:
+        return handle.read()
 
 
 # ── UI Dashboard (WinForms) ────────────────────────────────────────────────
@@ -921,8 +928,8 @@ def _cmd_build(params):
         output_path = params.get("output") if isinstance(params, dict) else None
         if output_path:
             try:
-                with open(output_path, "w") as f:
-                    json.dump(result, f, indent=2, ensure_ascii=False)
+                with open(output_path, "wb") as f:
+                    f.write(json.dumps(result, indent=2, ensure_ascii=False).encode("utf-8"))
                 result["data"]["output_file"] = output_path
             except Exception as e:
                 result["data"]["output_error"] = str(e)
@@ -2935,8 +2942,7 @@ def _cmd_sync_import_text(params):
                         decl = ""
                         impl = ""
                         if st_path and os.path.exists(st_path):
-                            with open(st_path, "r") as f:
-                                content = f.read()
+                            content = _read_text_utf8(st_path)
                             decl, impl = _split_st_content(content)
                         
                         text_creates.append({
@@ -3084,8 +3090,7 @@ def _cmd_sync_compare_text(params):
         
     # Step 3: Read and return report
     try:
-        with open(report_path, "r", encoding="utf-8") as f:
-            report_data = json.load(f)
+        report_data = json.loads(_read_text_utf8(report_path))
         return {"ok": True, "data": report_data}
     except Exception as e:
          return {"ok": False, "error": "failed to read report: " + str(e)}
@@ -3121,8 +3126,7 @@ def _cmd_update_pou(params):
         return {"ok": False, "error": "File not found: {0}".format(st_path)}
     
     # Read .st file
-    with open(st_path, "r") as f:
-        content = f.read()
+    content = _read_text_utf8(st_path)
     
     # Split into declaration and implementation
     marker = "// --- implementation ---"
@@ -3348,8 +3352,7 @@ def _cmd_cicd(params):
             fp = os.path.join(test_dir, jf)
             plan = {}
             try:
-                with open(fp, "r") as fh:
-                    plan = json.load(fh)
+                plan = json.loads(_read_text_utf8(fp))
             except Exception as e:
                 results.append({"file": jf, "status": "FAIL", "error": str(e)})
                 continue
@@ -3372,8 +3375,7 @@ def _cmd_cicd(params):
     
     # Read and execute
     try:
-        with open(file_path, "r") as fh:
-            plan = json.load(fh)
+        plan = json.loads(_read_text_utf8(file_path))
     except Exception as e:
         return {"ok": False, "error": "Failed to parse test file: {0}".format(e)}
     
