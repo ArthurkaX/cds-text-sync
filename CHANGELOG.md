@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**Fixes:**
+
+- Fixed UTF-8 handling in the IronPython reverse-pipe daemon for `.st` and JSON text reads, including `sync_compare_text` failing on IronPython 2.7 because builtin `open()` does not accept `encoding=`. Thanks to `kevin00156` for highlighting the bug.
+
+---
+
 ### Version 2.5.1 (2026-05-28)
 
 **CLI & Daemon:**
