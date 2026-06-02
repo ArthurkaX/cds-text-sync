@@ -10,6 +10,7 @@ from __future__ import print_function
 import clr
 import sys
 import os
+import io
 import json
 import time
 import traceback
@@ -458,7 +459,9 @@ class DaemonPipeServer(object):
             tmp = tempfile.mktemp(suffix=".xml")
             try:
                 project.export_native([target], tmp, recursive=False)
-                with open(tmp, "r") as f:
+                # Decode as UTF-8 so non-ASCII (e.g. CJK) content is not corrupted
+                # by IronPython's byte-string text-mode read. See ide_reverse_pipe_loop.
+                with io.open(tmp, "r", encoding="utf-8-sig") as f:
                     content = f.read()
                 info = {
                     "name": self._obj_name(target),

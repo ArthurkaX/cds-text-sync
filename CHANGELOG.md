@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**Fixes:**
+
+- Fixed non-ASCII text (e.g. CJK comments) turning into mojibake (`製程` → `è£½ç¨`) when `.st` files are round-tripped through the reverse-pipe daemon. The IronPython 2.7 daemon read `.st` files in byte-string text mode and fed the raw UTF-8 bytes straight into CODESYS text properties, where .NET reinterprets each byte as Latin-1; the corruption then surfaced as double-encoded UTF-8 on the next export. Daemon file reads (`update_pou`, `sync_import_text`, `sync_compare_text`, `cicd`) and the build-result output file now decode/encode UTF-8 explicitly. The Python 3 external engine was already UTF-8-safe and is unaffected.
+
+---
+
 ### Version 2.5.1 (2026-05-28)
 
 **CLI & Daemon:**
