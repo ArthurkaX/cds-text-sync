@@ -657,8 +657,7 @@ class DaemonPipeServer(object):
                     try:
                         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                              stderr=subprocess.PIPE,
-                                             creationflags=0x08000000,
-                                             shell=True)
+                                             creationflags=0x08000000)
                         out_bytes, err_bytes = p.communicate()
                         out = (out_bytes.decode('utf-8', errors='replace') if out_bytes else '')
                         err = (err_bytes.decode('utf-8', errors='replace') if err_bytes else '')
