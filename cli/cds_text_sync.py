@@ -660,17 +660,6 @@ Examples:
              "simulate on|off - toggle simulation mode\n"
              "set-credentials - set PLC credentials\n"
              "application-state - get online application state\n"
-             "build - compile project\n"
-             "list-devices - enumerate devices\n"
-             "device-status - check device online/connection status\n"
-             "connect --ip IP --gateway NAME - connect to PLC\n"
-             "disconnect - disconnect from PLC\n"
-             "read-var --name VAR - read PLC variable\n"
-             "write-var --name VAR --value VAL - write PLC variable\n"
-             "simulate on|off - toggle simulation mode\n"
-             "set-credentials --username USER --password PASS - set PLC login\n"
-             "application-state - get online application state\n"
-             "compare --against FILE - diff live project vs snapshot",
     )
     p_project.add_argument("--path", default="",
                            help="Object path (for read) or project path (for open) or output (for snapshot)")
@@ -790,11 +779,6 @@ def main():
     output_fmt = getattr(args, 'output', 'json')
     if getattr(args, 'pretty', False):
         output_fmt = 'text'
-
-    # Print manual if requested
-    if getattr(args, 'manual', False):
-        _print_manual()
-        return
 
     # For proxy commands, pass through to engine_cli
     if args.command in ("export", "import", "compare", "validate", "resources"):

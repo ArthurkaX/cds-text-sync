@@ -36,6 +36,7 @@ NMPWAIT_WAIT_FOREVER     = 0xFFFFFFFF
 
 ERROR_PIPE_BUSY      = 231
 ERROR_FILE_NOT_FOUND = 2
+ERROR_PIPE_CONNECTED = 535
 ERROR_PIPE_NOT_CONNECTED = 233
 ERROR_NO_DATA        = 232
 ERROR_MORE_DATA      = 234
@@ -402,7 +403,7 @@ def send_command(method: str, params: dict | None = None,
 
     This is the main entry point for CLI commands.
     """
-    with PipeClient(user=user, timeout=5) as client:
+    with PipeClient(user=user, timeout=timeout) as client:
         return client.send_message({
             "method": method,
             "params": params or {},
