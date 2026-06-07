@@ -1007,34 +1007,28 @@ def _cmd_device_status(params):
         return err
     try:
         device_filter = (params.get("device") or "").lower()
-        all_objs = _get_device_objects(project)
         status_list = []
-        status_props = [
-            'IsOnline', 'IsConnected', 'State', 'Online', 'Connected',
-            'Status', 'IsActive', 'IsRunning', 'DeviceState',
-        ]
-        for obj in all_objs:
+
+        app = _helpers.get_active_application(project)
+        if app is not None:
             try:
-                name = _obj_name(obj)
-                if not name:
-                    continue
-                path = _build_path(obj)
-                entry = {"name": name, "path": path}
-                for prop in status_props:
-                    try:
-                        val = getattr(obj, prop)
-                        if val is not None:
-                            if callable(val):
-                                entry[prop] = str(val())
-                            else:
-                                entry[prop] = str(val)
-                    except Exception:
-                        pass
-                if len(entry) > 2:
-                    if not device_filter or device_filter in name.lower():
-                        status_list.append(entry)
+                name = _obj_name(app)
             except Exception:
-                pass
+                name = "Application"
+            entry = {
+                "name": name,
+                "path": _build_path(app),
+                "connected": "false",
+            }
+            online_app = sys._codesys_daemon_loop.get("online_app")
+            if online_app is not None:
+                entry["connected"] = "true"
+                try:
+                    entry["application_state"] = str(online_app.application_state)
+                except Exception as e:
+                    entry["application_state_error"] = str(e)
+            if not device_filter or device_filter in name.lower():
+                status_list.append(entry)
         return {"ok": True, "data": {"devices": status_list}}
     except Exception as e:
         return {"ok": False, "error": "Device status error: {0}".format(e)}

@@ -340,8 +340,32 @@ class ReversePipeClient:
             cmd = {"method": method, "params": params}
             _write_msg(pipe_handle, cmd)
 
-            # Read response
-            response = _read_msg(pipe_handle)
+            # Read response with the same deadline. CODESYS API calls can
+            # block after the IDE has already accepted the pipe request.
+            box: dict[str, Any] = {}
+
+            def _reader():
+                try:
+                    box["response"] = _read_msg(pipe_handle)
+                except Exception as exc:
+                    box["error"] = exc
+
+            reader = threading.Thread(target=_reader, daemon=True)
+            reader.start()
+            reader.join(self._timeout)
+            if reader.is_alive():
+                CancelIo(pipe_handle)
+                CloseHandle(pipe_handle)
+                pipe_handle = -1
+                raise RuntimeError(
+                    f"Timeout ({self._timeout}s) waiting for IDE response to "
+                    f"'{method}'. The daemon accepted the command but did not "
+                    f"return a response. Check the CODESYS window for modal "
+                    f"dialogs or restart Project_daemon.py."
+                )
+            if "error" in box:
+                raise box["error"]
+            response = box.get("response", {})
 
             # Cache PID from responses that include it
             if isinstance(response, dict):

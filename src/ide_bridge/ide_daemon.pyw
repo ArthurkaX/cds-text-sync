@@ -813,36 +813,29 @@ class DaemonPipeServer(object):
             return err
         try:
             device_filter = (params.get("device") or "").lower()
-            all_objs = list(project.get_children(recursive=True))
             status_list = []
-            # Properties to try for each object
-            status_props = [
-                'IsOnline', 'IsConnected', 'State', 'Online', 'Connected',
-                'Status', 'IsActive', 'IsRunning', 'DeviceState',
-                'get_IsOnline', 'get_IsConnected', 'get_State',
-            ]
-            for obj in all_objs:
+
+            app = _ide_online_helpers.get_active_application(project)
+            if app is not None:
                 try:
-                    name = self._obj_name(obj)
-                    if not name:
-                        continue
-                    path = self._build_path(obj)
-                    entry = {"name": name, "path": path}
-                    for prop in status_props:
-                        try:
-                            val = getattr(obj, prop)
-                            if val is not None:
-                                if callable(val):
-                                    entry[prop] = str(val())
-                                else:
-                                    entry[prop] = str(val)
-                        except Exception:
-                            pass
-                    if len(entry) > 2:  # has at least one status prop
-                        if not device_filter or device_filter in name.lower():
-                            status_list.append(entry)
+                    name = self._obj_name(app)
                 except Exception:
-                    pass
+                    name = "Application"
+                entry = {
+                    "name": name,
+                    "path": self._build_path(app),
+                    "connected": "false",
+                }
+                state = getattr(sys, "_codesys_daemon_loop", {})
+                online_app = state.get("online_app") if isinstance(state, dict) else None
+                if online_app is not None:
+                    entry["connected"] = "true"
+                    try:
+                        entry["application_state"] = str(online_app.application_state)
+                    except Exception as e:
+                        entry["application_state_error"] = str(e)
+                if not device_filter or device_filter in name.lower():
+                    status_list.append(entry)
             return {"ok": True, "data": {"devices": status_list}}
         except Exception as e:
             return {"ok": False, "error": "Device status error: {0}".format(e)}
