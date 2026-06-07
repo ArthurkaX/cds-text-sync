@@ -586,6 +586,47 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
     if path_filter:
         snap_rows = vm.filter_rows_by_path(snap_rows, path_filter)
 
+    # Determine the project-view base for enum registry
+    _pd, _pb = _resolve_project_view(sync_folder)
+    enum_base = sync_folder
+    if not enum_base:
+        enum_base = _pb
+
+    # Build an enum registry from the project-view so we can translate
+    # 'TYPE.member' (snapshot) into a numeric value acceptable to
+    # set_prepared_value (CODESYS double-prefixes qualified enumerators).
+    enum_registry = {}
+    if enum_base and os.path.isdir(enum_base):
+        try:
+            enum_registry = vm.build_enum_registry(enum_base)
+        except Exception:
+            pass
+
+    def _coerce_enum_value(path, value):
+        """If the value is a qualified enumerator 'TYPE.member', try to
+        return a numeric literal that set_prepared_value accepts. If the type
+        or member is unknown, return value unchanged.
+        """
+        if not value or not isinstance(value, str):
+            return value
+        s = value.strip()
+        if "." not in s or " " in s or "#" in s:
+            return s
+        parts = s.split(".", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            return s
+        type_name, mem = parts
+        # Look up by exact name or case-insensitive
+        enum = enum_registry.get(type_name)
+        if enum is None:
+            for k, v in enum_registry.items():
+                if k.upper() == type_name.upper():
+                    enum = v
+                    break
+        if enum is None or mem not in enum:
+            return s
+        return str(enum[mem])
+
     eligible = []
     skipped = []
     for r in snap_rows:
@@ -600,6 +641,12 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
             r["restore_status"] = "skipped: read_ok!=true or empty value"
             skipped.append(r)
             continue
+        # Translate qualified enumerators to numeric so CODESYS accepts them.
+        original_value = value
+        value = _coerce_enum_value(path, value)
+        if value != original_value:
+            r["_coerced_value"] = value
+        r["value"] = value
         eligible.append(r)
 
     base = sync_folder

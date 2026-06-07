@@ -806,7 +806,10 @@ def _cmd_read_variables(params):
 
 
 def _cmd_write_variables(params):
-    """Batch-write a list of {name, value}. params: {"items": [...]}"""
+    """Batch-write a list of {name, value}. params: {"items": [...], "raw_value": bool}.
+    raw_value: when True, skip normalize_write_value (bare enum members for
+    qualified-only types where TYPE#member is double-prefixed by CODESYS).
+    """
     project, err = _get_active_project()
     if err:
         return err
@@ -814,7 +817,8 @@ def _cmd_write_variables(params):
         items = params.get("items", [])
         if not isinstance(items, list):
             return {"ok": False, "error": "'items' must be a list"}
-        result = _helpers.write_variables_impl(project, items)
+        raw_value = bool(params.get("raw_value", False))
+        result = _helpers.write_variables_impl(project, items, raw_value=raw_value)
         return {"ok": True, "data": result}
     except Exception as e:
         return {"ok": False, "error": "Write variables error: {0}".format(e)}
