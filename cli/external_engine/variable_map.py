@@ -360,9 +360,73 @@ def parse_dut(decl):
     if paren.startswith("("):
         close = paren.rfind(")")
         base = ""
+        inside = ""
         if close >= 0:
+            inside = paren[1:close]
             base = paren[close + 1:].strip().rstrip(";").strip()
-        return {"name": name, "kind": "enum", "fields": [],
+        # Parse member list: NAME [ := <int-expr> ] [, NAME [...]]
+        # Split on top-level commas (respecting parens/strings).
+        items = []
+        depth = 0
+        cur = []
+        i = 0
+        n = len(inside)
+        in_str = None
+        while i < n:
+            c = inside[i]
+            if in_str:
+                cur.append(c)
+                if c == in_str and (i + 1 >= n or inside[i + 1] != in_str):
+                    in_str = None
+                i += 1
+                continue
+            if c in ("'", '"'):
+                in_str = c
+                cur.append(c)
+                i += 1
+                continue
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                depth = max(0, depth - 1)
+            if c == "," and depth == 0:
+                items.append("".join(cur).strip())
+                cur = []
+            else:
+                cur.append(c)
+            i += 1
+        if cur:
+            items.append("".join(cur).strip())
+
+        fields = []
+        last_value = -1
+        for raw_item in items:
+            if not raw_item:
+                continue
+            # Strip attribute blocks and inline comments
+            stmt_clean = re.sub(r"\{[^}]*\}", " ", raw_item)
+            stmt_clean = re.sub(r"//.*?$", "", stmt_clean, flags=re.M)
+            stmt_clean = stmt_clean.strip().rstrip(",").strip()
+            if not stmt_clean:
+                continue
+            m_em = re.match(r"^([A-Za-z_]\w*)\s*(?::=\s*([^,]+))?$",
+                            stmt_clean)
+            if not m_em:
+                continue
+            mem_name = m_em.group(1)
+            mem_val_expr = m_em.group(2)
+            if mem_val_expr is not None:
+                expr = mem_val_expr.strip()
+                try:
+                    val = int(expr, 0)  # supports 0x.., decimal
+                except ValueError:
+                    val = last_value + 1
+            else:
+                val = last_value + 1
+            last_value = val
+            fields.append({"name": mem_name, "type": "INT",
+                           "initial": str(val), "value": val})
+        return {"name": name, "kind": "enum", "fields": fields,
                 "base": base or "INT"}
     # Alias: TYPE x : SOMETYPE;
     alias = paren.rstrip(";").strip()
@@ -724,6 +788,28 @@ def build_map_from_dir(root, include_programs=True, bound_resolver=None):
                         "note": lf["note"],
                     })
     return rows, stats
+
+
+def build_enum_registry(root):
+    """Walk a project-view directory and return {DUT_name: {member: int_value}}
+    for every enum found. Used by restore to translate 'TYPE.member' snapshot
+    values into numeric literals acceptable to CODESYS set_prepared_value
+    (which double-prefixes qualified enumerators).
+    """
+    registry = TypeRegistry()
+    for path in iter_st_files(root):
+        decl, _impl = split_decl_impl(_read_text(path))
+        if detect_owner_kind(decl) == "dut":
+            registry.add_dut(decl)
+    result = {}
+    for name, entry in registry.types.items():
+        if entry.get("kind") == "enum":
+            result[name] = {
+                f["name"]: f.get("value")
+                for f in entry.get("fields", [])
+                if f.get("value") is not None
+            }
+    return result
 
 
 def _make_owner_resolver(owner, bound_resolver):

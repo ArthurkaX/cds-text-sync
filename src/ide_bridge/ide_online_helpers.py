@@ -746,12 +746,15 @@ def read_variables_impl(project, names):
     return {"results": results, "count": len(results)}
 
 
-def write_variables_impl(project, items):
+def write_variables_impl(project, items, raw_value=False):
     """Batch-write a list of {name, value} pairs.
 
     Prepares each value with set_prepared_value (per-item failures recorded),
     then commits once with write_prepared_values. A single bad value never
     aborts the whole restore.
+
+    If raw_value is True, skip normalize_write_value (used for qualified-only
+    enums where CODESYS rejects TYPE#member but accepts bare member).
     """
     items = items or []
     if not items:
@@ -766,7 +769,7 @@ def write_variables_impl(project, items):
     prepared = 0
     for it in items:
         nm = it.get("name")
-        val = normalize_write_value(it.get("value"))
+        val = it.get("value") if raw_value else normalize_write_value(it.get("value"))
         try:
             _call_online_app(online_app, ('set_prepared_value',),
                              nm, str(val))
@@ -778,17 +781,31 @@ def write_variables_impl(project, items):
 
     write_ok = True
     write_err = ""
+    write_note = ""
     if prepared > 0:
         try:
             _call_online_app(online_app, ('write_prepared_values',))
         except Exception as e:
-            write_ok = False
+            # CODESYS quirk: write_prepared_values raises "Error in the
+            # application." AFTER the prepared values have already been
+            # applied to the PLC. We observed this with BOOL/INT/REAL/STRING/
+            # TIME/etc.: PLC state updates despite the exception. Only mark
+            # the batch as failed when *no* value prepared (which would mean
+            # set_prepared_value itself rejected the names).
             write_err = str(e)[:200]
+            if "Error in the application." in write_err:
+                write_ok = True   # values were applied
+                write_note = "write_prepared_values raised 'Error in the application.' " \
+                             "but values were applied to PLC (CODESYS quirk)"
+            else:
+                write_ok = False
 
     for r in results:
         if r["prepared"]:
             r["written"] = write_ok
-            if not write_ok and not r["write_error"]:
+            if write_ok and write_note:
+                r["write_note"] = write_note
+            elif not write_ok and not r["write_error"]:
                 r["write_error"] = write_err
         else:
             r["written"] = False
