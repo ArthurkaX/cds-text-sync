@@ -4,12 +4,10 @@ cds_text_sync.py - CLI for cds-text-sync.
 
 Universal entry point for CODESYS project sync.
 Communicates with daemon inside CODESYS via Named Pipe.
-Can auto-launch CODESYS if daemon is not running.
 
 Usage:
     cds-text-sync --help
-    cds-text-sync daemon status|stop
-    cds-text-sync exec export [--project-root ...]
+    cds-text-sync rp status
     cds-text-sync project info|tree|read
     cds-text-sync export --project-root ...  (direct, no daemon)
 """
@@ -36,8 +34,7 @@ _ENGINE_DIR = _SCRIPT_DIR / "external_engine"
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
 
-from daemon_pipe import send_command, pipe_name
-from reverse_pipe_client import send_command_reverse, reverse_pipe_name
+from reverse_pipe_client import send_command_reverse
 
 
 # -- Config ------------------------------------------------------------------
@@ -180,129 +177,6 @@ def _launch_codesys(project_path: str | None = None,
         return False
 
 
-def _ensure_daemon(project_path: str | None = None,
-                   codesys_path: str | None = None) -> bool:
-    """Check if daemon is running; if not, try to launch CODESYS."""
-    try:
-        resp = send_command("ping", timeout=3)
-        if resp.get("ok"):
-            return True
-    except ConnectionError:
-        pass
-
-    # Daemon not running — ask user
-    print()
-    _print_info("CODESYS daemon is not running.")
-    if project_path:
-        print("  Project: {0}".format(project_path))
-    else:
-        print()
-    print("  Options:")
-    if project_path:
-        print("    1. Launch CODESYS + project + daemon (auto)")
-    else:
-        print("    1. Launch CODESYS + daemon (no project) (auto)")
-    print("    2. Manual: open CODESYS and run Project_daemon.py")
-    print("    3. Cancel")
-    print()
-    choice = input("  Choose [1/2/3] (default 1): ").strip() or "1"
-
-    if choice == "1":
-        if not _launch_codesys(project_path=project_path,
-                               codesys_path=codesys_path,
-                               script_path=str(DAEMON_SCRIPT)):
-            return False
-        _print_info("Waiting for daemon to start...")
-        # Wait up to 30 seconds for daemon
-        for i in range(60):
-            time.sleep(0.5)
-            try:
-                resp = send_command("ping", timeout=2)
-                if resp.get("ok"):
-                    _print_ok("Daemon is ready.")
-                    return True
-            except ConnectionError:
-                pass
-        _print_error("Daemon did not start within 30 seconds.")
-        return False
-    elif choice == "2":
-        _print_info("Go to CODESYS -> Tools -> Scripting -> Execute Script")
-        _print_info("  -> Project_daemon.py")
-        _print_info("Then run this command again.")
-        return False
-    else:
-        _print_info("Cancelled.")
-        return False
-
-
-# -- Daemon commands ---------------------------------------------------------
-
-def cmd_daemon_status(project_path: str | None = None,
-                      codesys_path: str | None = None):
-    """Check daemon status, auto-launch if needed."""
-    try:
-        resp = send_command("status", timeout=5)
-        if resp.get("ok"):
-            data = resp.get("data", {})
-            _print_ok("Daemon is RUNNING (pid={0})".format(data.get("pid", "?")))
-            print("  Started at: {0}".format(data.get("started_at", "?")))
-            print("  Projects captured: {0}".format(data.get("projects_captured", False)))
-            print("  System captured:   {0}".format(data.get("system_captured", False)))
-            print("  Named pipe: {0}".format(pipe_name()))
-        else:
-            _print_error("Daemon error: {0}".format(resp.get("error")))
-    except ConnectionError:
-        _print_info("Daemon is NOT running.")
-        if project_path:
-            _ensure_daemon(project_path=project_path, codesys_path=codesys_path)
-
-
-def cmd_daemon_stop():
-    """Stop daemon."""
-    try:
-        resp = send_command("stop", timeout=5)
-        if resp.get("ok"):
-            _print_ok("Daemon stopping...")
-        else:
-            _print_error("Daemon stop failed: {0}".format(resp.get("error")))
-    except ConnectionError as e:
-        _print_error("Cannot connect to daemon: {0}".format(e))
-
-
-# -- Exec command (through daemon) -------------------------------------------
-
-def cmd_exec(args: list[str]):
-    """Execute command through daemon."""
-    if not args:
-        _print_error("Specify a command: export, import, compare, validate, resources.")
-        sys.exit(1)
-
-    command = args[0]
-    params = _parse_key_value_args(args[1:])
-
-    _print_info("Sending to daemon: {0}".format(command))
-
-    try:
-        resp = send_command(command, params, timeout=600)
-    except ConnectionError as e:
-        _print_error("Cannot connect to daemon: {0}".format(e))
-        sys.exit(1)
-
-    if resp.get("ok"):
-        data = resp.get("data", {})
-        stdout = data.get("stdout", "") or resp.get("stdout", "")
-        stderr = data.get("stderr", "") or resp.get("stderr", "")
-        if stdout:
-            print(stdout.rstrip())
-        if stderr:
-            print(stderr.rstrip(), file=sys.stderr)
-        rc = data.get("returncode", 0) or resp.get("returncode", 0)
-        sys.exit(rc)
-    else:
-        _print_error("Command '{0}' failed: {1}".format(command, resp.get("error", "unknown")))
-        sys.exit(1)
-
-
 def _load_project_config():
     """Load cds-text-sync.json and resolved profile from cwd.
 
@@ -411,13 +285,10 @@ def _parse_key_value_args(args: list[str]) -> dict:
 
 
 
-def _project_command(method, params=None, timeout=30, use_reverse=False):
-    """Send a project command to daemon and print result."""
+def _project_command(method, params=None, timeout=30, use_reverse=True):
+    """Send a project command to the reverse-pipe daemon and print result."""
     try:
-        if use_reverse:
-            resp = send_command_reverse(method, params or {}, timeout=timeout)
-        else:
-            resp = send_command(method, params or {}, timeout=timeout)
+        resp = send_command_reverse(method, params or {}, timeout=timeout)
         if resp.get("ok"):
             data = resp.get("data", {})
             print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -552,6 +423,229 @@ def cmd_pou_delete(name="", app="CI_CD_Application", use_reverse=False):
     _project_command("delete_pou", params, use_reverse=use_reverse)
 
 
+# -- Variable map / snapshot / restore --------------------------------------
+
+import csv as _csv
+
+_BATCH_SIZE = 500
+
+
+def _resolve_project_view(sync_folder):
+    """Return (project_view_dir, sync_folder_base).
+
+    Uses --sync-folder when given, else asks the daemon for sync_folder.
+    """
+    base = sync_folder
+    if not base:
+        try:
+            resp = send_command_reverse("status", {}, timeout=10)
+            if resp.get("ok"):
+                base = resp.get("data", {}).get("sync_folder")
+        except Exception as e:
+            _print_error("Could not get sync folder from daemon: {0}".format(e))
+            sys.exit(1)
+    if not base:
+        _print_error("No sync folder. Pass --sync-folder or start the daemon.")
+        sys.exit(1)
+    base = str(base)
+    if os.path.basename(os.path.normpath(base)) == "project-view" \
+            and os.path.isdir(base):
+        return base, os.path.dirname(os.path.normpath(base))
+    pv = os.path.join(base, "project-view")
+    if not os.path.isdir(pv):
+        _print_error("project-view not found under: {0}".format(base))
+        sys.exit(1)
+    return pv, base
+
+
+def _build_map_rows(path_filter, sync_folder, include_programs):
+    import variable_map as vm
+    pv, base = _resolve_project_view(sync_folder)
+    rows, stats = vm.build_map_from_dir(pv, include_programs=include_programs)
+    if path_filter:
+        rows = vm.filter_rows_by_path(rows, path_filter)
+        if not rows:
+            _print_error("Path filter matched nothing: {0}".format(path_filter))
+            sys.exit(1)
+    return rows, stats, base, vm
+
+
+def _write_csv(path, columns, rows):
+    out_dir = os.path.dirname(os.path.abspath(path))
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = _csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow(r)
+
+
+def _batch_read(expressions, timeout):
+    """Read expressions through the daemon in chunks. Returns {expr: result}."""
+    out = {}
+    for i in range(0, len(expressions), _BATCH_SIZE):
+        part = expressions[i:i + _BATCH_SIZE]
+        resp = send_command_reverse("read_variables", {"names": part},
+                                    timeout=timeout)
+        if not resp.get("ok"):
+            raise RuntimeError(resp.get("error", "read_variables failed"))
+        for r in resp.get("data", {}).get("results", []):
+            out[r["name"]] = r
+    return out
+
+
+def _batch_write(items, timeout):
+    """Write {name,value} items through the daemon in chunks. Returns {name: result}."""
+    out = {}
+    for i in range(0, len(items), _BATCH_SIZE):
+        part = items[i:i + _BATCH_SIZE]
+        resp = send_command_reverse("write_variables", {"items": part},
+                                    timeout=timeout)
+        if not resp.get("ok"):
+            raise RuntimeError(resp.get("error", "write_variables failed"))
+        for r in resp.get("data", {}).get("results", []):
+            out[r["name"]] = r
+    return out
+
+
+def cmd_variable_map(path_filter="", out="", sync_folder="",
+                     include_programs=True, output_fmt="json"):
+    """Build an offline variable map (CSV) from project-view declarations."""
+    rows, stats, base, vm = _build_map_rows(path_filter, sync_folder,
+                                            include_programs)
+    if not out:
+        out = os.path.join(base, "variable-map.csv")
+    _write_csv(out, vm.MAP_COLUMNS, rows)
+    summary = {
+        "output": out,
+        "rows": len(rows),
+        "readable_leaves": sum(1 for r in rows if r.get("leaf")),
+        "owners": stats.get("owners"),
+    }
+    print(_format_output(summary, fmt=output_fmt, title="variable_map"))
+
+
+def cmd_variable_snapshot(path_filter="", out="", sync_folder="",
+                          include_programs=True, timeout=120,
+                          output_fmt="json"):
+    """Snapshot current online values for mapped leaves (CSV)."""
+    rows, stats, base, vm = _build_map_rows(path_filter, sync_folder,
+                                            include_programs)
+    readable = [r for r in rows if r.get("leaf")]
+    try:
+        read_map = _batch_read([r["path"] for r in readable], timeout)
+    except RuntimeError as e:
+        _print_error("Snapshot read failed: {0}".format(e))
+        sys.exit(1)
+
+    ok = 0
+    fail = 0
+    for r in rows:
+        if r.get("leaf"):
+            rr = read_map.get(r["path"])
+            if rr is not None and rr.get("read_ok"):
+                r["value"] = rr.get("value", "")
+                r["read_ok"] = "true"
+                r["read_error"] = ""
+                ok += 1
+            else:
+                r["value"] = ""
+                r["read_ok"] = "false"
+                r["read_error"] = (rr or {}).get("read_error", "no result")
+                fail += 1
+        else:
+            r["value"] = ""
+            r["read_ok"] = "false"
+            r["read_error"] = "not a readable leaf: {0}".format(r.get("note"))
+            fail += 1
+
+    if not out:
+        out = os.path.join(base, "variable-snapshot.csv")
+    cols = vm.MAP_COLUMNS + ["value", "read_ok", "read_error"]
+    _write_csv(out, cols, rows)
+    summary = {"output": out, "rows": len(rows),
+               "read_ok": ok, "read_failed": fail}
+    print(_format_output(summary, fmt=output_fmt, title="variable_snapshot"))
+
+
+def cmd_variable_restore(input_path="", report="", path_filter="",
+                         apply=False, force=False, sync_folder="",
+                         timeout=120, output_fmt="json"):
+    """Restore PLC values from a snapshot CSV. Dry-run unless --apply."""
+    if not input_path:
+        _print_error("Specify --input <snapshot.csv>")
+        sys.exit(1)
+    if not os.path.exists(input_path):
+        _print_error("Snapshot not found: {0}".format(input_path))
+        sys.exit(1)
+
+    import variable_map as vm
+    with open(input_path, "r", newline="", encoding="utf-8") as f:
+        snap_rows = list(_csv.DictReader(f))
+    if path_filter:
+        snap_rows = vm.filter_rows_by_path(snap_rows, path_filter)
+
+    eligible = []
+    skipped = []
+    for r in snap_rows:
+        path = (r.get("path") or "").strip()
+        value = r.get("value", "")
+        read_ok = (r.get("read_ok") or "").strip().lower() == "true"
+        if not path:
+            r["restore_status"] = "skipped: no path"
+            skipped.append(r)
+            continue
+        if not force and (not read_ok or value == ""):
+            r["restore_status"] = "skipped: read_ok!=true or empty value"
+            skipped.append(r)
+            continue
+        eligible.append(r)
+
+    base = sync_folder
+    if not base:
+        _, base = _resolve_project_view(sync_folder)
+    if not report:
+        report = os.path.join(base, "variable-restore-report.csv")
+
+    if not apply:
+        for r in eligible:
+            r["restore_status"] = "dry-run: would write"
+        report_rows = eligible + skipped
+        _write_csv(report, ["path", "value", "read_ok", "restore_status"],
+                   report_rows)
+        summary = {"mode": "dry-run", "report": report,
+                   "would_write": len(eligible), "skipped": len(skipped),
+                   "hint": "re-run with --apply to write"}
+        print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
+        return
+
+    items = [{"name": r["path"], "value": r["value"]} for r in eligible]
+    try:
+        wmap = _batch_write(items, timeout)
+    except RuntimeError as e:
+        _print_error("Restore write failed: {0}".format(e))
+        sys.exit(1)
+
+    written = 0
+    failed = 0
+    for r in eligible:
+        wr = wmap.get(r["path"])
+        if wr is not None and wr.get("written"):
+            r["restore_status"] = "written"
+            written += 1
+        else:
+            r["restore_status"] = "failed: {0}".format(
+                (wr or {}).get("write_error", "no result"))
+            failed += 1
+    report_rows = eligible + skipped
+    _write_csv(report, ["path", "value", "read_ok", "restore_status"],
+               report_rows)
+    summary = {"mode": "apply", "report": report,
+               "written": written, "failed": failed, "skipped": len(skipped)}
+    print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
+
+
 # -- Direct engine_cli invocation -------------------------------------------
 
 def cmd_direct(args: list[str]) -> NoReturn:
@@ -577,22 +671,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cds-text-sync",
         description="CODESYS project synchronization tool.\n"
-                    "Communicates with daemon inside CODESYS IDE via Named Pipe.",
+                    "Communicates with Project_daemon.py inside CODESYS using reverse-pipe mode.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   cds-text-sync --help
-  cds-text-sync daemon status
-  cds-text-sync daemon status --project ./MyProject.project
-  cds-text-sync exec export
+  cds-text-sync rp status
+  cds-text-sync rp ping
+  cds-text-sync variable-map --path GVL_HMI
+  cds-text-sync variable-snapshot --path GVL_HMI --out snap.csv
+  cds-text-sync variable-restore --input snap.csv --apply
+  cds-text-sync rp application_tree --depth 100 --values --output C:\\Temp\\vars.json
   cds-text-sync project info
-  cds-text-sync project tree --depth 3
   cds-text-sync export --project-root ./MyProject --snapshot ./IDE.xml
         """,
-    )
-    parser.add_argument(
-        "--reverse", action="store_true",
-        help="Use reverse-pipe mode (IDE polls as client, CLI creates pipe server)",
     )
     parser.add_argument(
         "--project", default=None,
@@ -617,20 +709,11 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # -- daemon subcommand ---------------------------------------------------
-    p_daemon = subparsers.add_parser("daemon", help="Manage daemon")
-    p_daemon.add_argument(
-        "daemon_action",
-        choices=["status", "stop"],
-        help="status - check daemon status (auto-launch if not running)\n"
-             "stop   - ask daemon to shut down",
-    )
-
     # -- project subcommand --------------------------------------------------
     p_project = subparsers.add_parser(
         "project",
-        help="Legacy daemon commands - project info, tree, read objects, online PLC operations",
-        description="Legacy project command interface via the CODESYS daemon.",
+        help="Project commands through the reverse-pipe daemon",
+        description="Project command interface via Project_daemon.py reverse-pipe mode.",
     )
     p_project.add_argument(
         "project_action",
@@ -699,17 +782,6 @@ Examples:
     p_pou.add_argument("--app", default="CI_CD_Application",
                        help="Application name (default: CI_CD_Application)")
 
-    p_exec = subparsers.add_parser(
-        "exec",
-        help="Execute command through daemon",
-        description="Send command to daemon inside CODESYS.",
-    )
-    p_exec.add_argument(
-        "cmd_args",
-        nargs=argparse.REMAINDER,
-        metavar="<command> [--key value ...]",
-    )
-
     # -- rp subcommand (reverse pipe) --------------------------------------
     p_rp = subparsers.add_parser(
         "rp",
@@ -732,6 +804,55 @@ Examples:
         help="Discover CODESYS installations and open projects",
         add_help=False,
     )
+
+    # -- variable map / snapshot / restore -----------------------------------
+    p_vmap = subparsers.add_parser(
+        "variable-map",
+        help="Build an offline variable map (CSV) from project-view",
+        description="Parse project-view/*.st declarations and expand to "
+                    "readable scalar leaves. No PLC connection required.",
+    )
+    p_vmap.add_argument("--path", default="",
+                        help="Subtree filter, e.g. GVL_HMI or Application.GVL_HMI")
+    p_vmap.add_argument("--out", default="",
+                        help="Output CSV path (default: <sync>/variable-map.csv)")
+    p_vmap.add_argument("--sync-folder", default="",
+                        help="Sync folder or project-view dir (default: from daemon)")
+    p_vmap.add_argument("--globals-only", action="store_true",
+                        help="Only GVL globals; exclude Program-local variables")
+
+    p_vsnap = subparsers.add_parser(
+        "variable-snapshot",
+        help="Snapshot current online values for mapped leaves (CSV)",
+        description="Read live PLC values for every mapped scalar leaf. "
+                    "Requires an online/logged-in daemon.",
+    )
+    p_vsnap.add_argument("--path", default="", help="Subtree filter")
+    p_vsnap.add_argument("--out", default="",
+                         help="Output CSV (default: <sync>/variable-snapshot.csv)")
+    p_vsnap.add_argument("--sync-folder", default="", help="Sync/project-view dir")
+    p_vsnap.add_argument("--globals-only", action="store_true",
+                         help="Only GVL globals; exclude Program-local")
+    p_vsnap.add_argument("--timeout", type=float, default=120,
+                         help="Per-batch daemon timeout (default: 120)")
+
+    p_vrest = subparsers.add_parser(
+        "variable-restore",
+        help="Restore PLC values from a snapshot CSV (dry-run unless --apply)",
+        description="Write values from a variable-snapshot CSV back to the PLC.",
+    )
+    p_vrest.add_argument("--input", default="", required=True,
+                         help="Snapshot CSV produced by variable-snapshot")
+    p_vrest.add_argument("--report", default="",
+                         help="Report CSV (default: <sync>/variable-restore-report.csv)")
+    p_vrest.add_argument("--path", default="", help="Subtree filter")
+    p_vrest.add_argument("--apply", action="store_true",
+                         help="Actually write values (default: dry-run)")
+    p_vrest.add_argument("--force", action="store_true",
+                         help="Restore even rows with read_ok!=true or empty value")
+    p_vrest.add_argument("--sync-folder", default="", help="Sync/project-view dir")
+    p_vrest.add_argument("--timeout", type=float, default=120,
+                         help="Per-batch daemon timeout (default: 120)")
 
     # -- proxy subcommands for engine_cli ------------------------------------
     for cmd_name in ("export", "import", "compare", "validate", "resources"):
@@ -763,17 +884,7 @@ def main():
 
     args, unknown = parser.parse_known_args()
 
-    # Set reverse-pipe mode globally
-    use_reverse = getattr(args, 'reverse', False)
-
-    # If reverse flag is not set, check if the active profile has daemon_mode == 'reverse_pipe'
-    if not use_reverse:
-        try:
-            _config, profile = _load_project_config()
-            if profile and profile.get('daemon_mode') == 'reverse_pipe':
-                use_reverse = True
-        except Exception as e:
-            _print_info("Warning: could not load profile: {0}".format(e))
+    use_reverse = True
 
     # Determine output format
     output_fmt = getattr(args, 'output', 'json')
@@ -786,17 +897,7 @@ def main():
         cmd_direct(full_args)
         return
 
-    if args.command == "daemon":
-        if args.daemon_action == "status":
-            cmd_daemon_status(project_path=args.project,
-                              codesys_path=args.codesys_path)
-        elif args.daemon_action == "stop":
-            cmd_daemon_stop()
-
-    elif args.command == "exec":
-        cmd_exec(args.cmd_args)
-
-    elif args.command == "rp":
+    if args.command == "rp":
         cmd_rp_command(args.cmd_args, timeout=getattr(args, 'timeout', 15),
                        output_fmt=output_fmt)
 
@@ -846,6 +947,24 @@ def main():
 
     elif args.command == "discover":
         cmd_discover(use_reverse=use_reverse)
+
+    elif args.command == "variable-map":
+        cmd_variable_map(path_filter=args.path, out=args.out,
+                         sync_folder=args.sync_folder,
+                         include_programs=not args.globals_only,
+                         output_fmt=output_fmt)
+
+    elif args.command == "variable-snapshot":
+        cmd_variable_snapshot(path_filter=args.path, out=args.out,
+                              sync_folder=args.sync_folder,
+                              include_programs=not args.globals_only,
+                              timeout=args.timeout, output_fmt=output_fmt)
+
+    elif args.command == "variable-restore":
+        cmd_variable_restore(input_path=args.input, report=args.report,
+                             path_filter=args.path, apply=args.apply,
+                             force=args.force, sync_folder=args.sync_folder,
+                             timeout=args.timeout, output_fmt=output_fmt)
 
     else:
         parser.print_help()

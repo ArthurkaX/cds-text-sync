@@ -467,11 +467,20 @@ def handle_command(method, params):
         elif method == "disconnect_from_device":
             return _cmd_disconnect_from_device()
 
+        elif method == "download":
+            return _cmd_download(params)
+
         elif method == "read_variable":
             return _cmd_read_variable(params)
 
         elif method == "write_variable":
             return _cmd_write_variable(params)
+
+        elif method == "read_variables":
+            return _cmd_read_variables(params)
+
+        elif method == "write_variables":
+            return _cmd_write_variables(params)
 
         elif method == "export":
             return _cmd_export(params)
@@ -540,8 +549,8 @@ def handle_command(method, params):
         elif method == "probe":
             return _cmd_probe_oa(params)
 
-        elif method == "variable_tree":
-            return _cmd_variable_tree(params)
+        elif method == "application_tree":
+            return _cmd_application_tree(params)
 
         elif method == "plc_files":
             return _cmd_plc_files(params)
@@ -733,6 +742,25 @@ def _cmd_disconnect_from_device():
         return {"ok": True, "data": {"state": "disconnected", "warning": str(e)}}
 
 
+def _cmd_download(params):
+    """Force a full download of the active application to the PLC.
+
+    Needed after adding new objects (GVL/DUT/POU): connect_to_device only does
+    an online-change login and never pushes a full download, so the PLC keeps
+    running the old code. params: {"start": true|false} (default true).
+    """
+    _invalidate_device_cache()
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        start = params.get("start", True)
+        result = _helpers.download_impl(project, start=start)
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": "Download error: {0}".format(e)}
+
+
 def _cmd_read_variable(params):
     project, err = _get_active_project()
     if err:
@@ -760,6 +788,36 @@ def _cmd_write_variable(params):
         return {"ok": False, "error": str(e)}
     except Exception as e:
         return {"ok": False, "error": "Write variable error: {0}".format(e)}
+
+
+def _cmd_read_variables(params):
+    """Batch-read a list of expressions. params: {"names": [...]}"""
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        names = params.get("names", [])
+        if not isinstance(names, list):
+            return {"ok": False, "error": "'names' must be a list"}
+        result = _helpers.read_variables_impl(project, names)
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": "Read variables error: {0}".format(e)}
+
+
+def _cmd_write_variables(params):
+    """Batch-write a list of {name, value}. params: {"items": [...]}"""
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        items = params.get("items", [])
+        if not isinstance(items, list):
+            return {"ok": False, "error": "'items' must be a list"}
+        result = _helpers.write_variables_impl(project, items)
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": "Write variables error: {0}".format(e)}
 
 
 def _cmd_export(params):
@@ -1131,6 +1189,7 @@ def _cmd_help():
         "project_tree": "Get project object tree [--depth N]",
         "connect_to_device": "Connect to PLC [--ip IP] [--gatewayName NAME] — best practice: connect in CODESYS UI before starting daemon. If not, user must approve the connection dialog in CODESYS within ~2 minutes or the command times out.",
         "disconnect_from_device": "Disconnect from PLC",
+        "download": "Force a FULL download of the active app to the PLC (login with force-download; needed after adding new GVL/DUT/POU). [--start 0|1, default 1]",
         "read_variable": "Read a PLC variable --name VAR",
         "write_variable": "Write a PLC variable --name VAR --value VAL",
         "device_status": "Get device status",
@@ -1148,7 +1207,9 @@ def _cmd_help():
         "update_pou": "Update a POU's text from .st file [--name NAME] [--app APP] --st_path PATH",
         "delete_pou": "Delete POU/Function/FunctionBlock [--name NAME] [--app APP]",
         "probe": "Probe OnlineApplication for variable/symbol APIs",
-        "variable_tree": "Walk PLC variables tree [--depth N] [--values] [--pattern FILTER] [--flat] [--output PATH] — non-exported vars show value_error",
+        "read_variables": "Batch-read expressions {\"names\": [...]} -> per-item value/read_ok/read_error",
+        "write_variables": "Batch-write {\"items\": [{name,value}]} -> per-item written/write_error",
+        "application_tree": "Walk the application OBJECT tree [--depth N] [--values] [--pattern FILTER] [--flat] [--output PATH]",
         "plc_files": "List files on PLC [--path /]",
         "plc_download": "Download file from PLC --src PATH [--dest PATH]",
         "plc_upload": "Upload file to PLC --src PATH --dest PLC_PATH [--overwrite 0|1]",
@@ -1509,11 +1570,12 @@ def _cmd_probe_oa(params):
     return {"ok": True, "data": result}
 
 
-def _cmd_variable_tree(params):
-    """Build a tree of PLC variables by walking Application children.
-    
-    Walks oa.application.get_children(), builds variable paths,
-    and optionally reads current values.
+def _cmd_application_tree(params):
+    """Build the application OBJECT tree by walking Application children.
+
+    Walks oa.application.get_children(), builds object paths, and optionally
+    reads current values. For declared PLC variables use the variable-map /
+    variable-snapshot tools instead.
     
     Args:
         params:

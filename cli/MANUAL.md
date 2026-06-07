@@ -73,7 +73,7 @@ Not all commands need the daemon or PLC connection:
 |-------|----------|----------|
 | 🟢 **CLI only** | nothing | `--help`, `--manual` |
 | 🔵 **Daemon** | running daemon in CODESYS | `ping`, `status`, `stop`, `help`, `permissions`, `project_info`, `project_tree`, `explore`, `sync`, `sync_export`, `sync_import`, `sync_compare`, `sync_export_text`, `sync_import_text`, `sync_compare_text`, `build`, `export`, `read_log`, `update_pou` |
-| 🟡 **Online** | daemon + `connect_to_device` | `read_variable`, `write_variable`, `variable_tree`, `app_crc`, `app_info`, `compare`, `start_plc`, `stop_plc`, `reset_plc`, `create_boot_app`, `source_download`, `plc_files`, `plc_download`, `plc_upload`, `plc_log`, `application_state`, `device_status`, `probe` |
+| 🟡 **Online** | daemon + `connect_to_device` | `read_variable`, `write_variable`, `read_variables`, `write_variables`, `download`, `application_tree`, `app_crc`, `app_info`, `compare`, `start_plc`, `stop_plc`, `reset_plc`, `create_boot_app`, `source_download`, `plc_files`, `plc_download`, `plc_upload`, `plc_log`, `application_state`, `device_status`, `probe` |
 | 🔴 **Permissions** | daemon + allowed in Settings | `reset_plc`, `create_boot_app`, `plc_upload`, `source_download`, `write_variable`, `build`, `sync_import`, `delete_pou` (configurable) |
 
 ### 5. Some operations need PLC in specific state
@@ -81,7 +81,7 @@ Not all commands need the daemon or PLC connection:
 |-----------|-------------------|
 | `read_variable` | logged in (run or stop) |
 | `write_variable` | logged in (run or stop) |
-| `variable_tree` | connected (run or stop) |
+| `application_tree` | connected (run or stop) |
 | `app_crc`, `app_info` | connected |
 | `compare` | connected (reads PLC CRC, checks local) |
 | `start_plc` | stopped |
@@ -177,6 +177,60 @@ If `compare` returns `match: false`, the code on the PLC does not match
 the build — reconnect (`disconnect_from_device` then `connect_to_device`)
 and try again.
 
+> **⚠️ Adding NEW objects requires the offline project (log out first).**
+> Editing the body of an *existing* object works while logged in (it goes
+> through Online Change). But **creating a new GVL / DUT / POU** is an
+> *offline-project* change, and CODESYS refuses it while you are logged into
+> the device:
+>
+> ```
+> Failed to create GVL_Types: Cannot add an object because it affects
+> a device you are currently logged into.
+> ```
+>
+> `sync_import_text` swallows these per-object failures into the daemon log
+> and still returns `ok: true` — so a "successful" import can silently create
+> **nothing** (you may see only an empty parent folder). Always confirm with
+> `read_log` (look for `Created textual object` vs `Failed to create`) or
+> `sync_compare_text` (objects still listed as `added` ⇒ not imported).
+>
+> **Correct order for new objects — separate the offline project from online:**
+>
+> ```bash
+> cds-text-sync rp disconnect_from_device   # 1. log out → offline project
+> cds-text-sync rp sync_import_text         # 2. import: objects now created
+> cds-text-sync rp build                    # 3. build offline (errors == 0)
+> cds-text-sync rp connect_to_device        # 4. log in
+> cds-text-sync rp start_plc                # 5. start if it was stopped
+> ```
+>
+> Mnemonic: **logout (offline) → import → build → reconnect/login → download.**
+>
+> **⚠️ `connect_to_device` does NOT force a full download for newly-added
+> objects.** It logs in with `OnlineChangeOption.TryOnlineChange`, which only
+> *attaches* to the running app when the change isn't online-changeable —
+> and **adding a new GVL/DUT (new symbols) is not online-changeable**. So after
+> a reconnect the PLC can still be running the OLD code with the new variables
+> absent. Verify by reading a brand-new symbol (e.g. an anchor variable):
+>
+> ```bash
+> cds-text-sync rp read_variable --name MAIN.xNewAnchor
+> # "not exported ... not compiled into the PLC"  ⇒ new build is NOT on the PLC
+> ```
+>
+> When that happens, force a **full download** (logout + login with
+> `bForceDownload=True`, which stops the PLC, downloads, and restarts it):
+>
+> ```bash
+> cds-text-sync rp download            # full download + start (default)
+> cds-text-sync rp download --start 0  # download only, leave stopped
+> ```
+>
+> So the new-object deploy becomes: `disconnect_from_device` → `sync_import_text`
+> → `build` → `download`. (`connect_to_device` is for attaching/online-change to
+> an unchanged or online-changeable app; `download` is for pushing added
+> objects.) Equivalent in the CODESYS IDE: Online → Login → accept **Download**.
+
 ### 9. Sync folder and .dump
 The CLI revolves around the **sync folder** (`cds-sync-folder` property in project).
 By default exports go into `.dump/` subfolder.
@@ -259,19 +313,19 @@ cds-text-sync rp plc_log --tail 50 --timeout 20
 cds-text-sync rp plc_log --output 'C:/Logs/' --timeout 30
 ```
 
-### 14. Variable tree
+### 14. Application object tree
 ```bash
 # Full flat list
-cds-text-sync rp variable_tree --flat --timeout 60
+cds-text-sync rp application_tree --flat --timeout 60
 
 # With values (may show value_error for non-exported symbols)
-cds-text-sync rp variable_tree --flat --values --timeout 120
+cds-text-sync rp application_tree --flat --values --timeout 120
 
 # Filter by pattern
-cds-text-sync rp variable_tree --pattern GVL --timeout 60
+cds-text-sync rp application_tree --pattern GVL --timeout 60
 
 # Write to file (recommended for large projects)
-cds-text-sync rp variable_tree --flat --output C:/Temp/vars.json --timeout 120
+cds-text-sync rp application_tree --flat --output C:/Temp/vars.json --timeout 120
 ```
 
 ### 15. Dashboard UI (inside CODESYS)
@@ -287,12 +341,63 @@ Layout of the bottom bar:
 ```
 
 ## Invalid Expression Handling
-When `read_variable` or `variable_tree --values` encounters a symbol that is not
+When `read_variable` or `application_tree --values` encounters a symbol that is not
 exported to the online application (arrays, structs, unexported POU members), the
 daemon now returns:
 - `read_variable`: error message explaining the symbol is not exported
-- `variable_tree --values`: `"value_error": "Invalid expression (not exported to online)"`
+- `application_tree --values`: `"value_error": "Invalid expression (not exported to online)"`
   instead of a bogus value
+
+## Variable Map / Snapshot / Restore
+
+Top-level CLI commands (not `rp` methods) for declared PLC variables. They parse
+the synced `project-view/*.st` declarations and expand structs, unions and arrays
+down to **scalar leaves** — the only expressions the runtime can read online
+(whole structs/arrays return "Invalid expression"). Output is compact CSV.
+
+The sync folder is taken from the running daemon's `status` unless you pass
+`--sync-folder`. Files default to the sync folder root.
+
+### variable-map — offline declaration inventory (no PLC needed)
+```bash
+# Whole project (declares path/name/type/scope/owner/file/line/initial)
+cds-text-sync variable-map
+
+# Only a subtree, custom output
+cds-text-sync variable-map --path GVL_HMI --out C:/Temp/map.csv
+
+# Only GVL globals (exclude Program-local variables)
+cds-text-sync variable-map --globals-only
+```
+Flags: `--path` (subtree filter, e.g. `GVL_HMI` or `Application.GVL_HMI`),
+`--out`, `--sync-folder`, `--globals-only`.
+
+### variable-snapshot — capture live values (online + login required)
+```bash
+# Snapshot a subtree to CSV (adds value/read_ok/read_error columns)
+cds-text-sync variable-snapshot --path GVL_HMI --out snap.csv
+
+# Whole project (large; reads in batches)
+cds-text-sync variable-snapshot --timeout 120
+```
+Flags: same as variable-map plus `--timeout` (per-batch). Failed reads are
+recorded per row (`read_ok=false`) and never abort the snapshot.
+
+### variable-restore — write values back from a snapshot (online + login)
+```bash
+# Dry-run (default): validate + report intended writes, no PLC change
+cds-text-sync variable-restore --input snap.csv
+
+# Apply: write values back to the PLC
+cds-text-sync variable-restore --input snap.csv --apply
+
+# Restore only a subtree
+cds-text-sync variable-restore --input snap.csv --path GVL_HMI --apply
+```
+Flags: `--input` (required snapshot CSV), `--apply` (write; default is dry-run),
+`--force` (restore rows with `read_ok!=true`/empty value), `--path`, `--report`,
+`--sync-folder`, `--timeout`. Only rows with `read_ok=true` and a non-empty value
+are restored unless `--force`. Failed writes are recorded per row in the report.
 
 ## Available Commands
 
@@ -313,7 +418,9 @@ daemon now returns:
 | **Variables** | | |
 | `read_variable --name VAR` | Read PLC variable | 25s |
 | `write_variable --name VAR --value VAL` | Write PLC variable | 25s |
-| `variable_tree [--flat] [--pattern] [--values] [--output]` | Full variable tree | 120s |
+| `read_variables {"names":[...]}` | Batch-read expressions (used by variable-snapshot) | 120s |
+| `write_variables {"items":[{name,value}]}` | Batch-write values (used by variable-restore) | 120s |
+| `application_tree [--flat] [--pattern] [--values] [--output]` | Full object tree | 120s |
 | **Sync folder** | | |
 | `sync` | Show sync folder and .dump state | 10s |
 | `sync_export [--output PATH]` | Export Native XML to .dump/ | 60s |

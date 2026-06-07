@@ -8,6 +8,7 @@ Reusable by ide_daemon.pyw.
 from __future__ import print_function
 import traceback
 import os
+import re
 import sys
 
 
@@ -417,6 +418,92 @@ def disconnect_from_device_impl(project):
         return {"state": "disconnected", "note": str(e)}
 
 
+def download_impl(project, start=True):
+    """Force a FULL download of the active application to the PLC.
+
+    connect_to_device logs in with an online-change option and force_download
+    disabled, so newly-added objects (new GVL/DUT/POU and their symbols) never
+    reach the controller. This logs out, then logs in with the second login
+    argument (bForceDownload) set to True and a "no online change" option, which
+    stops the running app and downloads the freshly built code. Optionally
+    starts the app again afterwards (a full download leaves it stopped).
+
+    Returns a dict describing the result.
+    """
+    import scriptengine as se
+
+    online_app, target_app = ensure_online_connection(project)
+    if online_app is None:
+        raise RuntimeError("Not connected. Call connect_to_device first.")
+    if not hasattr(online_app, 'login'):
+        raise TypeError("Online application does not support login().")
+
+    # Log out of the (old) running app first so login performs a fresh download.
+    try:
+        online_app.logout()
+    except Exception:
+        pass
+
+    # Prefer options that do NOT online-change, so login does a real download.
+    options = []
+    if hasattr(se, 'OnlineChangeOption'):
+        et = se.OnlineChangeOption
+        for nm in ('Never', 'NoOnlineChange', 'ForceDownload', 'Force',
+                   'Try', 'TryOnlineChange'):
+            if hasattr(et, nm):
+                options.append((nm, getattr(et, nm)))
+
+    errors = []
+    used = None
+    for nm, opt in options:
+        try:
+            # Second arg = bForceDownload -> True forces a full download.
+            online_app.login(opt, True)
+            used = nm
+            break
+        except Exception as e:
+            errors.append("{0}: {1}".format(nm, str(e)[:160]))
+    if used is None:
+        # Last resort: raw positional force-download attempts.
+        for args in ((0, True), (None, True)):
+            try:
+                online_app.login(*args)
+                used = "raw{0}".format(args)
+                break
+            except Exception as e:
+                errors.append("raw{0}: {1}".format(args, str(e)[:160]))
+    if used is None:
+        raise RuntimeError("Force download failed: " + "; ".join(errors[-4:]))
+
+    started = False
+    if start:
+        try:
+            _call_online_app(online_app, ('start',))
+            started = True
+        except Exception as e:
+            errors.append("start: {0}".format(str(e)[:160]))
+
+    state = "unknown"
+    if hasattr(online_app, 'application_state'):
+        try:
+            state = str(online_app.application_state)
+        except Exception:
+            pass
+
+    # Refresh the cached online_app so later reads/writes reuse this session.
+    try:
+        daemon_state = _get_daemon_state()
+        if daemon_state is not None:
+            daemon_state['online_app'] = online_app
+            daemon_state['online_target_app'] = target_app
+    except Exception:
+        pass
+
+    app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
+    return {"downloaded": True, "option": used, "started": started,
+            "state": state, "application": app_name}
+
+
 def _call_online_app(io_obj, names, *args):
     last_error = None
     for name in names:
@@ -572,6 +659,7 @@ def write_variable_impl(project, variable_name, value):
     # Auto-login if needed
     _ensure_logged_in(online_app)
     
+    value = normalize_write_value(value)
     candidates = [variable_name]
     if not variable_name.startswith("Application."):
         candidates.append("Application." + variable_name)
@@ -584,6 +672,127 @@ def write_variable_impl(project, variable_name, value):
         except Exception as e:
             last_error = e
     raise last_error if last_error is not None else RuntimeError("Write failed")
+
+
+# Qualified enumerator as returned by read_value, e.g. "COLOR.green".
+# Both sides must be identifiers (so a REAL like "13.0" is excluded: "13" is
+# not an identifier).
+_ENUM_QUALIFIED = re.compile(r"^[A-Za-z_]\w*\.[A-Za-z_]\w*$")
+
+
+def normalize_write_value(value):
+    """Make a snapshot value safe for set_prepared_value.
+
+    Enums read back as a qualified enumerator 'TYPE.member' (no '#'), but
+    set_prepared_value auto-prefixes the enum type for unprefixed values,
+    producing the invalid literal 'TYPE#TYPE.member'. Rewrite 'TYPE.member' to
+    the typed-literal form 'TYPE#member' (consistent with how 'INT#5' round-
+    trips). Values that already contain '#' (INT#5, COLOR#green) and non-enum
+    values (REAL '13.0', strings, bare members) are returned unchanged.
+    """
+    if value is None:
+        return value
+    s = str(value)
+    stripped = s.strip()
+    if "#" not in stripped and _ENUM_QUALIFIED.match(stripped):
+        return stripped.replace(".", "#", 1)
+    return s
+
+
+def _mk_read_result(name, val):
+    """Classify a raw read result string into a snapshot row."""
+    low = val.lower()
+    if "invalid expression" in low:
+        return {"name": name, "value": "", "read_ok": False,
+                "read_error": "Invalid expression (not readable online)"}
+    return {"name": name, "value": val, "read_ok": True, "read_error": ""}
+
+
+def read_variables_impl(project, names):
+    """Batch-read a list of fully-qualified leaf expressions.
+
+    Tries OnlineApplication.read_values() once; falls back to per-item
+    read_value() if the batch call raises, so a single bad expression never
+    aborts the whole snapshot. Each result carries read_ok / read_error.
+    """
+    names = [str(n) for n in (names or [])]
+    if not names:
+        return {"results": [], "count": 0}
+
+    online_app, _ = ensure_online_connection(project)
+    if online_app is None:
+        raise RuntimeError("Not connected. Call connect_to_device first.")
+    _ensure_logged_in(online_app)
+
+    results = []
+    values = None
+    try:
+        raw = _call_online_app(online_app, ('read_values',), list(names))
+        values = [str(v) for v in raw]
+    except Exception:
+        values = None
+
+    if values is not None and len(values) == len(names):
+        for i in range(len(names)):
+            results.append(_mk_read_result(names[i], values[i]))
+    else:
+        for nm in names:
+            try:
+                val = _call_online_app(online_app, ('read_value',), nm)
+                results.append(_mk_read_result(nm, str(val)))
+            except Exception as e:
+                results.append({"name": nm, "value": "", "read_ok": False,
+                                "read_error": str(e)[:200]})
+    return {"results": results, "count": len(results)}
+
+
+def write_variables_impl(project, items):
+    """Batch-write a list of {name, value} pairs.
+
+    Prepares each value with set_prepared_value (per-item failures recorded),
+    then commits once with write_prepared_values. A single bad value never
+    aborts the whole restore.
+    """
+    items = items or []
+    if not items:
+        return {"results": [], "written": 0}
+
+    online_app, _ = ensure_online_connection(project)
+    if online_app is None:
+        raise RuntimeError("Not connected. Call connect_to_device first.")
+    _ensure_logged_in(online_app)
+
+    results = []
+    prepared = 0
+    for it in items:
+        nm = it.get("name")
+        val = normalize_write_value(it.get("value"))
+        try:
+            _call_online_app(online_app, ('set_prepared_value',),
+                             nm, str(val))
+            results.append({"name": nm, "prepared": True, "write_error": ""})
+            prepared += 1
+        except Exception as e:
+            results.append({"name": nm, "prepared": False,
+                            "write_error": str(e)[:200]})
+
+    write_ok = True
+    write_err = ""
+    if prepared > 0:
+        try:
+            _call_online_app(online_app, ('write_prepared_values',))
+        except Exception as e:
+            write_ok = False
+            write_err = str(e)[:200]
+
+    for r in results:
+        if r["prepared"]:
+            r["written"] = write_ok
+            if not write_ok and not r["write_error"]:
+                r["write_error"] = write_err
+        else:
+            r["written"] = False
+    return {"results": results, "written": (prepared if write_ok else 0)}
 
 
 def set_simulation_mode_impl(project, enable=True):
