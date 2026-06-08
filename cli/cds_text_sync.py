@@ -481,29 +481,14 @@ def _write_csv(path, columns, rows):
             w.writerow(r)
 
 
-def _batch_read(expressions, timeout):
-    """Read expressions through the daemon in chunks. Returns {expr: result}."""
-    out = {}
-    for i in range(0, len(expressions), _BATCH_SIZE):
-        part = expressions[i:i + _BATCH_SIZE]
-        resp = send_command_reverse("read_variables", {"names": part},
-                                    timeout=timeout)
-        if not resp.get("ok"):
-            raise RuntimeError(resp.get("error", "read_variables failed"))
-        for r in resp.get("data", {}).get("results", []):
-            out[r["name"]] = r
-    return out
-
-
-def _batch_write(items, timeout):
-    """Write {name,value} items through the daemon in chunks. Returns {name: result}."""
+def _batch(method, key, items, timeout):
+    """Send items to a daemon batch method in chunks. Returns {name: result}."""
     out = {}
     for i in range(0, len(items), _BATCH_SIZE):
         part = items[i:i + _BATCH_SIZE]
-        resp = send_command_reverse("write_variables", {"items": part},
-                                    timeout=timeout)
+        resp = send_command_reverse(method, {key: part}, timeout=timeout)
         if not resp.get("ok"):
-            raise RuntimeError(resp.get("error", "write_variables failed"))
+            raise RuntimeError(resp.get("error", method + " failed"))
         for r in resp.get("data", {}).get("results", []):
             out[r["name"]] = r
     return out
@@ -530,49 +515,30 @@ def cmd_variable_snapshot(path_filter="", out="", sync_folder="",
                           include_programs=True, timeout=120,
                           output_fmt="json"):
     """Snapshot current online values for mapped leaves (CSV)."""
+    import snapshot_engine as se
     rows, stats, base, vm = _build_map_rows(path_filter, sync_folder,
                                             include_programs)
-    readable = [r for r in rows if r.get("leaf")]
+    read_fn = lambda exprs: _batch("read_variables", "names", exprs, timeout)
     try:
-        read_map = _batch_read([r["path"] for r in readable], timeout)
+        rows, rstats = se.run_snapshot(rows, read_fn)
     except RuntimeError as e:
         _print_error("Snapshot read failed: {0}".format(e))
         sys.exit(1)
 
-    ok = 0
-    fail = 0
-    for r in rows:
-        if r.get("leaf"):
-            rr = read_map.get(r["path"])
-            if rr is not None and rr.get("read_ok"):
-                r["value"] = rr.get("value", "")
-                r["read_ok"] = "true"
-                r["read_error"] = ""
-                ok += 1
-            else:
-                r["value"] = ""
-                r["read_ok"] = "false"
-                r["read_error"] = (rr or {}).get("read_error", "no result")
-                fail += 1
-        else:
-            r["value"] = ""
-            r["read_ok"] = "false"
-            r["read_error"] = "not a readable leaf: {0}".format(r.get("note"))
-            fail += 1
-
     if not out:
         out = os.path.join(base, "variable-snapshot.csv")
-    cols = vm.MAP_COLUMNS + ["value", "read_ok", "read_error"]
+    cols = vm.MAP_COLUMNS + se.SNAPSHOT_COLUMNS
     _write_csv(out, cols, rows)
     summary = {"output": out, "rows": len(rows),
-               "read_ok": ok, "read_failed": fail}
+               "read_ok": rstats["read_ok"], "read_failed": rstats["read_failed"]}
     print(_format_output(summary, fmt=output_fmt, title="variable_snapshot"))
 
 
 def cmd_variable_restore(input_path="", report="", path_filter="",
-                         apply=False, force=False, sync_folder="",
+                         do_apply=False, force=False, sync_folder="",
                          timeout=120, output_fmt="json"):
     """Restore PLC values from a snapshot CSV. Dry-run unless --apply."""
+    import snapshot_engine as se
     if not input_path:
         _print_error("Specify --input <snapshot.csv>")
         sys.exit(1)
@@ -602,52 +568,8 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
         except Exception:
             pass
 
-    def _coerce_enum_value(path, value):
-        """If the value is a qualified enumerator 'TYPE.member', try to
-        return a numeric literal that set_prepared_value accepts. If the type
-        or member is unknown, return value unchanged.
-        """
-        if not value or not isinstance(value, str):
-            return value
-        s = value.strip()
-        if "." not in s or " " in s or "#" in s:
-            return s
-        parts = s.split(".", 1)
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            return s
-        type_name, mem = parts
-        # Look up by exact name or case-insensitive
-        enum = enum_registry.get(type_name)
-        if enum is None:
-            for k, v in enum_registry.items():
-                if k.upper() == type_name.upper():
-                    enum = v
-                    break
-        if enum is None or mem not in enum:
-            return s
-        return str(enum[mem])
-
-    eligible = []
-    skipped = []
-    for r in snap_rows:
-        path = (r.get("path") or "").strip()
-        value = r.get("value", "")
-        read_ok = (r.get("read_ok") or "").strip().lower() == "true"
-        if not path:
-            r["restore_status"] = "skipped: no path"
-            skipped.append(r)
-            continue
-        if not force and (not read_ok or value == ""):
-            r["restore_status"] = "skipped: read_ok!=true or empty value"
-            skipped.append(r)
-            continue
-        # Translate qualified enumerators to numeric so CODESYS accepts them.
-        original_value = value
-        value = _coerce_enum_value(path, value)
-        if value != original_value:
-            r["_coerced_value"] = value
-        r["value"] = value
-        eligible.append(r)
+    eligible, skipped = se.plan_restore(snap_rows, force=force,
+                                        enum_registry=enum_registry)
 
     base = sync_folder
     if not base:
@@ -655,41 +577,28 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
     if not report:
         report = os.path.join(base, "variable-restore-report.csv")
 
-    if not apply:
-        for r in eligible:
-            r["restore_status"] = "dry-run: would write"
+    if not do_apply:
+        se.mark_dry_run(eligible)
         report_rows = eligible + skipped
-        _write_csv(report, ["path", "value", "read_ok", "restore_status"],
-                   report_rows)
+        _write_csv(report, se.RESTORE_REPORT_COLUMNS, report_rows)
         summary = {"mode": "dry-run", "report": report,
                    "would_write": len(eligible), "skipped": len(skipped),
                    "hint": "re-run with --apply to write"}
         print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
         return
 
-    items = [{"name": r["path"], "value": r["value"]} for r in eligible]
+    write_fn = lambda items: _batch("write_variables", "items", items, timeout)
     try:
-        wmap = _batch_write(items, timeout)
+        eligible, wstats = se.apply_restore(eligible, write_fn)
     except RuntimeError as e:
         _print_error("Restore write failed: {0}".format(e))
         sys.exit(1)
 
-    written = 0
-    failed = 0
-    for r in eligible:
-        wr = wmap.get(r["path"])
-        if wr is not None and wr.get("written"):
-            r["restore_status"] = "written"
-            written += 1
-        else:
-            r["restore_status"] = "failed: {0}".format(
-                (wr or {}).get("write_error", "no result"))
-            failed += 1
     report_rows = eligible + skipped
-    _write_csv(report, ["path", "value", "read_ok", "restore_status"],
-               report_rows)
+    _write_csv(report, se.RESTORE_REPORT_COLUMNS, report_rows)
     summary = {"mode": "apply", "report": report,
-               "written": written, "failed": failed, "skipped": len(skipped)}
+               "written": wstats["written"], "failed": wstats["failed"],
+               "skipped": len(skipped)}
     print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
 
 
@@ -1009,7 +918,7 @@ def main():
 
     elif args.command == "variable-restore":
         cmd_variable_restore(input_path=args.input, report=args.report,
-                             path_filter=args.path, apply=args.apply,
+                             path_filter=args.path, do_apply=args.apply,
                              force=args.force, sync_folder=args.sync_folder,
                              timeout=args.timeout, output_fmt=output_fmt)
 
