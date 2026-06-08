@@ -542,12 +542,30 @@ def main():
             ["11111111-1111-1111-1111-111111111111"],
             "projection conflict report",
         )
+        # Import policy: disk wins and .st is the canonical source of truth.
+        # A projection conflict (both XML and .st edited on disk) must NOT abort
+        # the import -- it warns and lets the .st text win.
+        conflict_patch_path = os.path.join(
+            config_layout_root, ".dump", "IMPORT_projection_conflict.xml"
+        )
         _run([
             "import",
             "--project-root", config_layout_root,
             "--snapshot", config_layout_snapshot,
-            "--patch", os.path.join(config_layout_root, ".dump", "IMPORT_projection_conflict.xml"),
-        ], expect_code=1)
+            "--patch", conflict_patch_path,
+        ], expect_code=0)
+        with open(conflict_patch_path, "r") as handle:
+            conflict_patch_text = handle.read()
+        if "x := 2;" not in conflict_patch_text:
+            raise RegressionFailure(
+                "projection-conflict patch did not take .st as source of truth "
+                "(expected 'x := 2;')"
+            )
+        if "PLC_PRG_XML_EDIT" in conflict_patch_text:
+            raise RegressionFailure(
+                "projection-conflict patch leaked the conflicting XML projection "
+                "edit (PLC_PRG_XML_EDIT) instead of letting .st win"
+            )
 
         sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
         try:

@@ -143,9 +143,9 @@ project-view/*.st  →  CODESYS IDE  →  compiled  →  PLC controller
 #    (FB_Scale.st, MAIN.st, etc.)
 
 # 2. Push changes into the CODESYS IDE project
-#    Option A: full text-sync import
+#    Option A (preferred): full text-sync import — applies ALL disk changes
  cds-text-sync rp sync_import_text --timeout 120
-#    Option B: single POU update (faster, avoids import_native issues)
+#    Option B (edge case): single POU update — one object, avoids import_native
  cds-text-sync rp update_pou --name FB_Scale --app CI_CD_Application \
    --st_path "CODESYS_Linux_SL/PLC Logic/CI_CD_Application/FB_Scale.st" --timeout 25
 
@@ -188,11 +188,13 @@ and try again.
 > a device you are currently logged into.
 > ```
 >
-> `sync_import_text` swallows these per-object failures into the daemon log
-> and still returns `ok: true` — so a "successful" import can silently create
-> **nothing** (you may see only an empty parent folder). Always confirm with
-> `read_log` (look for `Created textual object` vs `Failed to create`) or
-> `sync_compare_text` (objects still listed as `added` ⇒ not imported).
+> `sync_import_text` now **fails early** when the application has a
+> live online session: instead of silently creating nothing it returns
+> `ok: false` with an error telling you to `disconnect_from_device` first.
+> (Override with `--force_online 1` only if you know the create path is safe.)
+> After a successful offline import, still confirm with `read_log` (look for
+> `Created textual object` vs `Failed to create`) or `sync_compare_text`
+> (objects still listed as `added` ⇒ not imported).
 >
 > **Correct order for new objects — separate the offline project from online:**
 >
@@ -261,6 +263,30 @@ cds-text-sync rp sync_compare_text --timeout 60
 # CRC compare: PLC vs project build output
 cds-text-sync rp compare --timeout 30
 ```
+
+**Sync direction — pick the right way or you overwrite work:**
+
+| Method | Direction | Use when |
+| --- | --- | --- |
+| `sync_export_text` | **IDE → disk** | Edited in CODESYS; refresh `.st`. **Overwrites** `project-view/`. |
+| `sync_import_text` | **disk → IDE** (preferred) | Edited/created `.st` on disk; apply all at once. |
+| `sync_import` | disk → IDE (low-level) | Apply a raw `.dump/` Native-XML snapshot, not text edits. |
+| `update_pou` | disk → IDE (one object) | **Edge case only.** Prefer `sync_import_text`. |
+
+- There is **no** standalone `import` method — use `sync_import_text` (text edits)
+  or `sync_import` (raw XML snapshot).
+- **Editing flow:** edit/create files on disk → run one `sync_import_text` →
+  use `update_pou` only for a single object or when a full import is impractical.
+
+**Conflict policy on `sync_import_text` (disk wins):**
+
+- An object that differs between disk and IDE: the **disk** version is applied.
+- If both an object's raw XML projection *and* its `.st` were edited on disk
+  (*projection conflict*), the **`.st` text wins** and the import continues with
+  a warning instead of aborting the whole batch.
+- Export-only projections (some CSV/XML) with no importer back into the IDE are
+  **skipped with a warning**, not a hard failure.
+
 
 ### 10. CRC-based version control
 `rp app_crc` reads `Application.crc` from PLC (20 bytes: 8-byte CRC + "Application\0").
@@ -417,8 +443,9 @@ are restored unless `--force`. Failed writes are recorded per row in the report.
 | `device_status` | Device info (slow on large projects) | 60s |
 | **Variables** | | |
 | `read_variable --name VAR` | Read PLC variable | 25s |
+| `read-vars EXPR ... [--file F]` | Batch-read many vars (top-level CLI command) | 30s |
 | `write_variable --name VAR --value VAL` | Write PLC variable | 25s |
-| `read_variables {"names":[...]}` | Batch-read expressions (used by variable-snapshot) | 120s |
+| `read_variables {"names":[...]}` | Batch-read expressions (daemon method; used by variable-snapshot) | 120s |
 | `write_variables {"items":[{name,value}]}` | Batch-write values (used by variable-restore) | 120s |
 | `application_tree [--flat] [--pattern] [--values] [--output]` | Full object tree | 120s |
 | **Sync folder** | | |
@@ -508,6 +535,17 @@ cds-text-sync rp read_variable --name GVL_HMI.HMI_start --timeout 25
 
 # 3. Write
 cds-text-sync rp write_variable --name GVL_HMI.HMI_start --value TRUE --timeout 25
+```
+
+### Batch read multiple variables
+```bash
+# Top-level command (sends a proper JSON list to the daemon):
+cds-text-sync read-vars GVL_HMI.HMI_start MAIN.fbArith.rResult GVL.iCount
+cds-text-sync read-vars --file vars.txt        # one expression per line
+
+# ⚠ Do NOT use `rp read_variables --names '[...]'` — the rp arg parser passes
+# every value as a raw string, so the daemon rejects it with
+# "'names' must be a list". Use the `read-vars` command instead.
 ```
 
 ### Full Sync Workflow (Export → Compare → Import)

@@ -77,10 +77,19 @@ class FakeObject(object):
             )
         )
 
-    def create_pou(self, name, pou_type):
-        self.project.events.append(
-            "create_pou:{0}:{1}:{2}".format(self.name, name, pou_type)
-        )
+    def create_pou(self, name, pou_type, return_type=None):
+        # Mirror the real CODESYS API: FUNCTION requires a return_type. Record
+        # it in the event when present so tests can assert it was passed.
+        if return_type is None:
+            self.project.events.append(
+                "create_pou:{0}:{1}:{2}".format(self.name, name, pou_type)
+            )
+        else:
+            self.project.events.append(
+                "create_pou:{0}:{1}:{2}:{3}".format(
+                    self.name, name, pou_type, return_type
+                )
+            )
         return self._add_child(FakeObject(self.project, name, self))
 
     def create_gvl(self, name):
@@ -256,6 +265,10 @@ def main():
         "<Declaration>METHOD Init : BOOL\nVAR_INPUT\nEND_VAR</Declaration>"
         "<Implementation>Init := TRUE;</Implementation>"
         "</CreateTextObject>"
+        '<CreateTextObject Path="Device/Application/NewFunc.st" Name="NewFunc" Kind="pou">'
+        "<Declaration>FUNCTION NewFunc : BOOL\nVAR_INPUT\nEND_VAR</Declaration>"
+        "<Implementation>NewFunc := TRUE;</Implementation>"
+        "</CreateTextObject>"
         "</CreateTextObjects>"
         "</Project>"
     )
@@ -278,6 +291,10 @@ def main():
         )
         _assert("create_dut:Application:NewDut" in events, "DUT was not created")
         _assert("create_gvl:Application:NewGlobals" in events, "GVL was not created")
+        _assert(
+            "create_pou:Application:NewFunc:Function:BOOL" in events,
+            "FUNCTION POU was not created with its parsed return type",
+        )
         _assert(
             "create_child:Application:NewPersistent:{3183921b-cc91-4712-9781-c3b6555122b5}"
             in events,

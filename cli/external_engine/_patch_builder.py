@@ -6,7 +6,14 @@ _patch_builder.py - Generates an IMPORT.xml patch based on diff results.
 import os
 import xml.etree.ElementTree as ET
 
-from xml_helpers import normalize_guid
+from xml_helpers import (
+    entry_to_xml,
+    normalize_guid,
+    replace_text_blob_values,
+    split_st_projection_values,
+    strip_cds_text_sync_pragmas,
+    text_blob_elements,
+)
 
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 DEFAULT_STRUCTURED_VIEW_SINGLE_ATTRS = {
@@ -60,9 +67,43 @@ class PatchBuilder:
                 return dict(node.metadata.get("structured_view_single_attrs"))
         return dict(DEFAULT_STRUCTURED_VIEW_SINGLE_ATTRS)
 
+    def _conflict_st_text(self, folder_node):
+        """Return the on-disk .st projection text for a conflicting node.
+
+        folder_reader stores changed projection contents under
+        metadata['projection_contents'], keyed by projection path. Pick the
+        .st projection so the caller can overlay it on the IDE baseline.
+        """
+        contents = (folder_node.metadata or {}).get("projection_contents") or {}
+        for path, text in contents.items():
+            if str(path).lower().endswith(".st"):
+                return text
+        return None
+
     def _patch_entry(self, guid):
         ide_node = self.ide_model.get_node(guid)
         folder_node = self.folder_model.get_node(guid)
+
+        # Projection conflict: both the raw XML projection and the .st text were
+        # edited on disk. Policy is .st wins -> rebuild from the IDE baseline
+        # structure with the .st text blobs overlaid, ignoring the conflicting
+        # raw-XML edit. (folder_node.xml_text would leak that XML edit.)
+        if guid in (self.diff_result.get("projection_conflicts") or []):
+            st_text = self._conflict_st_text(folder_node) if folder_node else None
+            ide_xml = getattr(ide_node, "xml_text", None) if ide_node else None
+            if st_text is not None and ide_xml:
+                try:
+                    root = ET.fromstring(ide_xml)
+                    if text_blob_elements(root):
+                        replace_text_blob_values(
+                            root,
+                            split_st_projection_values(
+                                strip_cds_text_sync_pragmas(st_text), root
+                            ),
+                        )
+                        return ET.fromstring(entry_to_xml(root))
+                except Exception:
+                    pass  # fall through to the default paths below
 
         if folder_node and getattr(folder_node, "xml_text", None):
             return ET.fromstring(folder_node.xml_text)
@@ -183,13 +224,23 @@ class PatchBuilder:
             impl_elem.text = implementation
 
     def build_patch(self, output_path):
+        # Import policy: disk wins, and the .st text is the canonical source of
+        # truth. The .st content is already rehydrated into folder_node.xml_text
+        # at read time (folder_reader._rehydrate_externalized_text), so the
+        # patch built below already reflects .st. A "projection conflict" (both
+        # the XML projection and the .st/CSV projection edited on disk) is no
+        # longer a hard stop -- we warn and let .st win.
         projection_conflicts = self.diff_result.get("projection_conflicts", [])
         if projection_conflicts:
-            raise UnsupportedPatchError(
-                "Projection conflicts detected. Edit either XML or projection text for each object, not both: {0}".format(
-                    ", ".join(projection_conflicts)
-                )
+            print(
+                "Warning: projection conflict for {0} -- taking .st text as the "
+                "source of truth (XML projection edits to the same object are "
+                "ignored).".format(", ".join(projection_conflicts))
             )
+
+        # Non-.st projections (CSV/XML) that were edited on disk but have no
+        # importer back into the IDE: we cannot apply these, so warn and skip
+        # rather than aborting the whole import batch.
         unsupported_projection_changes = self.diff_result.get(
             "unsupported_projection_changes", {}
         )
@@ -197,8 +248,9 @@ class PatchBuilder:
             changed = []
             for guid, paths in unsupported_projection_changes.items():
                 changed.append("{0}: {1}".format(guid, ", ".join(paths or [])))
-            raise UnsupportedPatchError(
-                "Unsupported projection edits detected. These projection files are export-only for now: {0}".format(
+            print(
+                "Warning: unsupported (export-only) projection edits skipped -- "
+                "no importer back into the IDE for: {0}".format(
                     "; ".join(changed)
                 )
             )

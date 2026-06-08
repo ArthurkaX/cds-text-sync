@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 
 **Fixes:**
 
+- Fixed creating `FUNCTION` POUs via `sync_import_text`: the return type is now parsed from the `FUNCTION name : <TYPE>` header and passed to the CODESYS `create_pou` API (handles `STRING(80)`, `ARRAY[..] OF X`, qualified user types, case-insensitive). Previously this crashed with `Specified argument was out of the range of valid values. Parameter name: return_type`. A clear error is raised if a FUNCTION has no return type.
+- `sync_import_text` no longer aborts the whole import on a projection conflict. Policy is now **disk wins, `.st` is canonical**: when an object's raw XML projection and its `.st` text were both edited on disk, the `.st` text wins (overlaid on the IDE baseline) and the import continues with a warning. Export-only CSV/XML projection edits with no importer are skipped with a warning instead of failing.
+- `sync_import_text` now fails early with a clear "disconnect first" error when the application has a live online session, instead of silently creating no objects. Override with `force_online`.
+- `update_pou` now reports `impl_ok: true` with an `impl_skipped` note for objects that have no implementation section (GVL/DUT/interface), instead of a misleading `impl_ok: false`.
+
+**CLI:**
+
+- Added the top-level `read-vars EXPR ... [--file F]` command for batch-reading multiple variables/expressions. It sends a proper JSON list to the daemon, avoiding the `rp read_variables --names` pitfall where every value is passed as a raw string (`'names' must be a list`).
+
+**Documentation:**
+
+- `cli/MANUAL.md` now documents sync direction (IDE↔disk), the difference between `sync_import` (raw XML snapshot) and `sync_import_text` (text edits, preferred), that there is no standalone `import` method, the disk-wins conflict policy, and that `update_pou` is for single-object edge cases.
+
 - Fixed UTF-8 handling in the IronPython reverse-pipe daemon for `.st` and JSON text reads, including `sync_compare_text` failing on IronPython 2.7 because builtin `open()` does not accept `encoding=`. Thanks to `kevin00156` for highlighting the bug.
 
 ---
