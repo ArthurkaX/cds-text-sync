@@ -8,6 +8,7 @@ from __future__ import print_function
 
 import copy
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 
@@ -379,6 +380,61 @@ def _pou_type_name(declaration):
     return "Program"
 
 
+# Matches the return type in a 'FUNCTION <name> : <TYPE>' header line.
+# <TYPE> is captured greedily so it covers STRING(80), qualified names
+# (NS.TYPE), and arrays (ARRAY[..] OF X); trailing comments are stripped
+# separately.  FUNCTION_BLOCK headers do not match (no ' : ' after name).
+_FUNCTION_RETURN_RE = re.compile(
+    r"^\s*FUNCTION\s+\w+\s*:\s*(.+?)\s*$", re.IGNORECASE
+)
+
+
+def _pou_return_type(declaration):
+    """Extract the return type from a FUNCTION declaration header.
+
+    Returns the type string (e.g. 'BOOL', 'STRING(80)', 'My.UserType') or
+    None when the declaration has no scalar return type (a FUNCTION without
+    a return type, or a non-FUNCTION POU).
+    """
+    text = str(declaration or "")
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Skip leading pragmas / attributes / comments before the header.
+        if line.startswith("{") or line.startswith("//") or line.startswith("(*"):
+            continue
+        match = _FUNCTION_RETURN_RE.match(line)
+        if match is None:
+            # First meaningful line is the header; if it has no ' : <type>'
+            # (plain FUNCTION, FUNCTION_BLOCK, PROGRAM) there is no return type.
+            return None
+        return_type = match.group(1)
+        # Drop any trailing line comment that follows the type.
+        for marker in ("//", "(*"):
+            idx = return_type.find(marker)
+            if idx != -1:
+                return_type = return_type[:idx]
+        return_type = return_type.strip()
+        return return_type or None
+    return None
+
+
+def _call_create_pou(container, name, pou_type, return_type=None):
+    """Call container.create_pou, passing return_type only when given.
+
+    The CODESYS signature is create_pou(name, type, return_type, ...); the
+    parameter is required for FUNCTION POUs and rejected/ignored otherwise.
+    Tries positional first, then keyword, for cross-version compatibility.
+    """
+    if return_type is None:
+        return container.create_pou(name, pou_type)
+    try:
+        return container.create_pou(name, pou_type, return_type)
+    except TypeError:
+        return container.create_pou(name, pou_type, return_type=return_type)
+
+
 def _create_pou(container, name, declaration):
     if not hasattr(container, "create_pou"):
         return None
@@ -393,7 +449,17 @@ def _create_pou(container, name, declaration):
         pou_type = getattr(pou_type_enum, "Program", None)
     if pou_type is None:
         return None
-    return container.create_pou(name, pou_type)
+    if pou_type_name == "Function":
+        return_type = _pou_return_type(declaration)
+        if not return_type:
+            raise Exception(
+                "Cannot create FUNCTION '{0}': no return type found in its "
+                "declaration. Expected a header line 'FUNCTION {0} : <TYPE>'.".format(
+                    name
+                )
+            )
+        return _call_create_pou(container, name, pou_type, return_type)
+    return _call_create_pou(container, name, pou_type)
 
 
 # Multiple GUID candidates per kind, tried in order.

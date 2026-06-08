@@ -1208,7 +1208,7 @@ def _cmd_help():
         "reset_plc": "Reset PLC [--kind warm|cold|origin]",
         "create_boot_app": "Create boot application on PLC",
         "source_download": "Download source from PLC [--output DIR]",
-        "update_pou": "Update a POU's text from .st file [--name NAME] [--app APP] --st_path PATH",
+        "update_pou": "Edge case: update ONE object's text from .st [--name NAME] [--app APP] --st_path PATH. Prefer sync_import_text for the normal disk->IDE flow",
         "delete_pou": "Delete POU/Function/FunctionBlock [--name NAME] [--app APP]",
         "probe": "Probe OnlineApplication for variable/symbol APIs",
         "read_variables": "Batch-read expressions {\"names\": [...]} -> per-item value/read_ok/read_error",
@@ -1223,10 +1223,10 @@ def _cmd_help():
         "app_history": "Log CRC to .dump/app_history.json [--read to just view history]",
         "sync": "Show sync folder info and .dump state",
         "sync_export": "Export Native XML snapshot to .dump/ [--output PATH]",
-        "sync_import": "Import .dump/ XML snapshot back into project [--input PATH]",
+        "sync_import": "Low-level: import a raw .dump/ XML snapshot back into project [--input PATH]. For text edits use sync_import_text instead",
         "sync_compare": "Compare project tree against .dump/ snapshot [--against PATH]",
-        "sync_export_text": "Export Native XML and update project-view/",
-        "sync_import_text": "Build IMPORT.xml from project-view/ and apply to project",
+        "sync_export_text": "IDE->disk: export Native XML and OVERWRITE project-view/ .st files with the IDE state",
+        "sync_import_text": "disk->IDE (preferred): build IMPORT.xml from project-view/ and apply to project. Disk wins on conflicts; requires offline (disconnect first)",
         "sync_compare_text": "Compare project against project-view/ (diff report)",
         "cicd": "Run CI/CD test plan --file path [--timeout N]",
         "permissions": "Show daemon security config (read-only)",
@@ -2953,9 +2953,65 @@ def _cmd_sync_export_text(params):
     export_result["data"]["text_sync"] = "success"
     return export_result
 
+def _active_app_online_state():
+    """Best-effort detection of whether the active application has a live
+    online session. Returns (is_online, state_str). Never raises -- on any
+    failure returns (False, "") so callers can proceed.
+    """
+    try:
+        import scriptengine as se
+        projects = sys._codesys_daemon_loop.get("projects")
+        if projects is None:
+            return (False, "")
+        app = projects.primary.active_application
+        if app is None:
+            return (False, "")
+        oa = se.online.create_online_application(app)
+        if oa is None:
+            return (False, "disconnected")
+        state = ""
+        if hasattr(oa, "application_state"):
+            try:
+                state = str(oa.application_state)
+            except Exception:
+                state = ""
+        online = False
+        for attr in ("is_connected", "is_online"):
+            if hasattr(oa, attr):
+                try:
+                    val = getattr(oa, attr)
+                    if callable(val):
+                        val = val()
+                    if val:
+                        online = True
+                except Exception:
+                    pass
+        # Fall back to the state string when the booleans are unavailable.
+        if not online and state and state.lower() not in ("none", "disconnected", ""):
+            online = True
+        return (online, state)
+    except Exception:
+        return (False, "")
+
+
 def _cmd_sync_import_text(params):
     import xml.etree.ElementTree as ET
-    
+
+    # Preflight: creating/adding POU/GVL/DUT is an offline operation. If a live
+    # online session is active the new objects silently won't be created, so
+    # fail early with a clear instruction to disconnect first.
+    online, state = _active_app_online_state()
+    if online and not params.get("force_online"):
+        return {
+            "ok": False,
+            "error": (
+                "Active application is online (state: {0}). Adding/creating "
+                "objects is an offline operation. Run disconnect_from_device "
+                "first, then retry sync_import_text. "
+                "(Pass force_online=true to override.)"
+            ).format(state or "connected"),
+        }
+
     # Step 1: Export current IDE state to use as baseline
     export_result = _cmd_sync_export(params)
     if not export_result.get("ok"):
@@ -3206,6 +3262,8 @@ def _cmd_update_pou(params):
     # Update declaration
     decl_ok = False
     impl_ok = False
+    decl_skipped = None
+    impl_skipped = None
     if decl:
         try:
             dd = target.textual_declaration
@@ -3224,7 +3282,11 @@ def _cmd_update_pou(params):
                 _log("Warning: textual_declaration not available")
         except Exception as e:
             _log("Warning: could not set declaration: {0}".format(e))
-    
+    else:
+        # Nothing to apply is success, not a failure.
+        decl_ok = True
+        decl_skipped = "no declaration text in .st"
+
     # Update implementation
     if impl:
         try:
@@ -3241,12 +3303,25 @@ def _cmd_update_pou(params):
                     di.replace(impl)
                     impl_ok = True
             else:
+                # Object has no implementation member (GVL/DUT/interface). The
+                # .st carries implementation text but it cannot be applied.
+                impl_skipped = "object has no implementation section"
                 _log("Warning: textual_implementation not available")
         except Exception as e:
             _log("Warning: could not set implementation: {0}".format(e))
-    
+    else:
+        # No implementation in the .st (e.g. GVL/DUT/interface). Nothing to
+        # apply -> success with a note, instead of a scary impl_ok:false.
+        impl_ok = True
+        impl_skipped = "no implementation section in .st"
+
     _log("Updated POU: {0} (app={1}, decl={2}, impl={3})".format(pou_name, app_name, decl_ok, impl_ok))
-    return {"ok": True, "data": {"name": pou_name, "app": app_name, "decl_ok": decl_ok, "impl_ok": impl_ok, "decl_len": len(decl), "impl_len": len(impl)}}
+    result = {"ok": True, "data": {"name": pou_name, "app": app_name, "decl_ok": decl_ok, "impl_ok": impl_ok, "decl_len": len(decl), "impl_len": len(impl)}}
+    if decl_skipped:
+        result["data"]["decl_skipped"] = decl_skipped
+    if impl_skipped:
+        result["data"]["impl_skipped"] = impl_skipped
+    return result
 
 
 def _cmd_delete_pou(params):

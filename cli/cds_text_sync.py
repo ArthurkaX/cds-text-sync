@@ -378,6 +378,42 @@ def cmd_write_var(name, value, use_reverse=False):
     _project_command("write_variable", {"name": name, "value": value}, use_reverse=use_reverse)
 
 
+def cmd_read_vars(names, file_path="", timeout=30, output_fmt="json"):
+    """Batch-read multiple PLC variables/expressions.
+
+    Names come from positional args and/or a --file (one expression per line,
+    blank lines and #-comments ignored). Sends a proper JSON list to the
+    daemon's read_variables, so this avoids the `rp read_variables` string
+    pitfall where --names is passed as a raw string.
+    """
+    exprs = list(names or [])
+    if file_path:
+        if not os.path.exists(file_path):
+            _print_error("File not found: {0}".format(file_path))
+            sys.exit(1)
+        with open(file_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    exprs.append(line)
+    if not exprs:
+        _print_error("No variable names given. Pass names as arguments or via --file.")
+        sys.exit(1)
+
+    try:
+        results = _batch("read_variables", "names", exprs, timeout)
+    except RuntimeError as e:
+        _print_error("read-vars failed: {0}".format(e))
+        sys.exit(1)
+
+    # Preserve the requested order in the output.
+    ordered = [results.get(name, {"name": name, "read_ok": False,
+                                   "read_error": "no result returned"})
+               for name in exprs]
+    print(_format_output({"results": ordered, "count": len(ordered)},
+                         fmt=output_fmt, title="read_variables"))
+
+
 def cmd_simulate(enable="on", use_reverse=False):
     """Enable/disable simulation mode."""
     _project_command("set_simulation_mode", {"enable": enable}, use_reverse=use_reverse)
@@ -761,6 +797,21 @@ Examples:
         add_help=False,
     )
 
+    # -- read-vars subcommand (batch read) -----------------------------------
+    p_rv = subparsers.add_parser(
+        "read-vars",
+        help="Batch-read multiple PLC variables/expressions",
+        description="Read several variables/expressions in one call. Sends a "
+                    "proper JSON list to the daemon (unlike `rp read_variables "
+                    "--names`, which passes a raw string).",
+    )
+    p_rv.add_argument("names", nargs="*", metavar="EXPR",
+                      help="Variable/expression names, e.g. GVL.a App.PRG.b")
+    p_rv.add_argument("--file", dest="file", default="",
+                      help="Read names from a file (one expression per line)")
+    p_rv.add_argument("--timeout", type=float, default=30,
+                      help="Timeout in seconds (default: 30)")
+
     # -- variable map / snapshot / restore -----------------------------------
     p_vmap = subparsers.add_parser(
         "variable-map",
@@ -903,6 +954,10 @@ def main():
 
     elif args.command == "discover":
         cmd_discover(use_reverse=use_reverse)
+
+    elif args.command == "read-vars":
+        cmd_read_vars(names=args.names, file_path=args.file,
+                      timeout=args.timeout, output_fmt=output_fmt)
 
     elif args.command == "variable-map":
         cmd_variable_map(path_filter=args.path, out=args.out,
