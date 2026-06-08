@@ -620,7 +620,8 @@ def read_variable_impl(project, variable_name):
                 candidate,
             )
             str_val = str(val)
-            if "Invalid expression" in str_val or "invalid expression" in str_val.lower():
+            res = _mk_read_result(candidate, str_val)
+            if not res["read_ok"]:
                 raise RuntimeError(
                     "Invalid expression: '{0}' is not exported to the online application. "
                     "It may be a struct/array, not declared as a symbol, or not compiled into the PLC."
@@ -708,12 +709,54 @@ def _mk_read_result(name, val):
     return {"name": name, "value": val, "read_ok": True, "read_error": ""}
 
 
+def _bisect_read_variable(names, online_app):
+    """Try read_values(names); bisect on failure.
+
+    A single bad expression in a large batch previously caused a full per-item
+    fallback (O(n)). Bisection limits the overhead to O(k log n) where k is the
+    number of genuinely unreadable expressions.
+    """
+    try:
+        raw = _call_online_app(online_app, ('read_values',), list(names))
+        values = [str(v) for v in raw]
+        if len(values) == len(names):
+            return [_mk_read_result(names[i], values[i]) for i in range(len(names))]
+    except Exception:
+        pass
+
+    if len(names) == 1:
+        nm = names[0]
+        candidates = [nm]
+        if not nm.startswith("Application."):
+            candidates.append("Application." + nm)
+        for candidate in candidates:
+            try:
+                val = _call_online_app(online_app, ('read_value',), candidate)
+                res = _mk_read_result(nm, str(val))
+                if res["read_ok"]:
+                    return [res]
+            except Exception:
+                pass
+        # All candidates failed — return last known error
+        try:
+            val = _call_online_app(online_app, ('read_value',), nm)
+            _mk_read_result(nm, str(val))
+        except Exception as e:
+            return [{"name": nm, "value": "", "read_ok": False,
+                     "read_error": str(e)[:200]}]
+
+    mid = len(names) // 2
+    left = _bisect_read_variable(names[:mid], online_app)
+    right = _bisect_read_variable(names[mid:], online_app)
+    return left + right
+
+
 def read_variables_impl(project, names):
     """Batch-read a list of fully-qualified leaf expressions.
 
-    Tries OnlineApplication.read_values() once; falls back to per-item
-    read_value() if the batch call raises, so a single bad expression never
-    aborts the whole snapshot. Each result carries read_ok / read_error.
+    Tries read_values on the full list; bisects on failure so a single bad
+    expression never degrades the whole chunk to O(n) individual reads.
+    Each result carries read_ok / read_error.
     """
     names = [str(n) for n in (names or [])]
     if not names:
@@ -724,25 +767,7 @@ def read_variables_impl(project, names):
         raise RuntimeError("Not connected. Call connect_to_device first.")
     _ensure_logged_in(online_app)
 
-    results = []
-    values = None
-    try:
-        raw = _call_online_app(online_app, ('read_values',), list(names))
-        values = [str(v) for v in raw]
-    except Exception:
-        values = None
-
-    if values is not None and len(values) == len(names):
-        for i in range(len(names)):
-            results.append(_mk_read_result(names[i], values[i]))
-    else:
-        for nm in names:
-            try:
-                val = _call_online_app(online_app, ('read_value',), nm)
-                results.append(_mk_read_result(nm, str(val)))
-            except Exception as e:
-                results.append({"name": nm, "value": "", "read_ok": False,
-                                "read_error": str(e)[:200]})
+    results = _bisect_read_variable(names, online_app)
     return {"results": results, "count": len(results)}
 
 
@@ -770,14 +795,24 @@ def write_variables_impl(project, items, raw_value=False):
     for it in items:
         nm = it.get("name")
         val = it.get("value") if raw_value else normalize_write_value(it.get("value"))
-        try:
-            _call_online_app(online_app, ('set_prepared_value',),
-                             nm, str(val))
-            results.append({"name": nm, "prepared": True, "write_error": ""})
-            prepared += 1
-        except Exception as e:
+        candidates = [nm]
+        if nm and not nm.startswith("Application."):
+            candidates.append("Application." + nm)
+        wrote = False
+        last_write_err = None
+        for candidate in candidates:
+            try:
+                _call_online_app(online_app, ('set_prepared_value',),
+                                 candidate, str(val))
+                results.append({"name": nm, "prepared": True, "write_error": ""})
+                prepared += 1
+                wrote = True
+                break
+            except Exception as e:
+                last_write_err = e
+        if not wrote:
             results.append({"name": nm, "prepared": False,
-                            "write_error": str(e)[:200]})
+                            "write_error": str(last_write_err)[:200]})
 
     write_ok = True
     write_err = ""

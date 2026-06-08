@@ -617,6 +617,8 @@ def expand_leaves(path, typestr, registry,
     info = classify_type(typestr)
 
     if info["kind"] == "scalar":
+        if info["base"] in ("POINTER", "REFERENCE"):
+            return _emit(path, info["base"], False, "pointer-or-reference")
         return _emit(path, info["base"], True, "")
 
     if info["kind"] == "array":
@@ -642,9 +644,9 @@ def expand_leaves(path, typestr, registry,
     name = info["name"]
     entry = registry.lookup(name) if registry is not None else None
     if entry is None:
-        # Unknown type. Could still be a directly readable scalar-ish symbol
-        # (rare), so mark as a non-confident leaf for the snapshot to attempt.
-        return _emit(path, name, True, "unknown-type")
+        # Unknown type — not reliably readable as a scalar leaf.
+        # leaf=false keeps the snapshot clean and prevents failed reads.
+        return _emit(path, name, False, "unknown-type")
     if entry["kind"] == "enum":
         return _emit(path, name, True, "enum")
     if entry["kind"] == "alias":
