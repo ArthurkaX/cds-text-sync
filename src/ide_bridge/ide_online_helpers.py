@@ -194,6 +194,13 @@ def ensure_online_connection(project, prefer_device=False):
                     if hasattr(online_dev, 'application'):
                         online_app = online_dev.application
                         if online_app is not None:
+                            try:
+                                state = _get_daemon_state()
+                                if state is not None:
+                                    state["online_app"] = online_app
+                                    state["online_target_app"] = device
+                            except Exception:
+                                pass
                             return online_app, device
                     # Or try to get application recursively
                     for child in device.get_children(True):
@@ -202,6 +209,13 @@ def ensure_online_connection(project, prefer_device=False):
                                 if child.is_application:
                                     online_app = se.online.create_online_application(child)
                                     if online_app is not None:
+                                        try:
+                                            state = _get_daemon_state()
+                                            if state is not None:
+                                                state["online_app"] = online_app
+                                                state["online_target_app"] = child
+                                        except Exception:
+                                            pass
                                         return online_app, child
                             except Exception:
                                 pass
@@ -227,6 +241,13 @@ def ensure_online_connection(project, prefer_device=False):
                 _ensure_logged_in(online_app)
             except Exception:
                 pass  # Login might fail if gateway not set — read/write will give clear error
+            try:
+                state = _get_daemon_state()
+                if state is not None:
+                    state["online_app"] = online_app
+                    state["online_target_app"] = target_app
+            except Exception:
+                pass
             return online_app, target_app
     except Exception as e:
         msg = (
