@@ -6,6 +6,7 @@ Uses synthetic ProjectModel instances with small helper functions.
 """
 
 import pytest
+import xml.etree.ElementTree as ET
 from _project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
 from diff_engine import DiffEngine
 
@@ -28,6 +29,21 @@ def model_with(*nodes):
     for node in nodes:
         model.add_node(node)
     return model
+
+
+def _pou_xml(declaration, implementation):
+    root = ET.Element("Single", {"Name": "Object"})
+    decl_parent = ET.SubElement(root, "Single", {"Name": "Declaration"})
+    decl = ET.SubElement(
+        decl_parent, "Single", {"Name": "TextBlobForSerialisation"}
+    )
+    decl.text = declaration
+    impl_parent = ET.SubElement(root, "Single", {"Name": "Implementation"})
+    impl = ET.SubElement(
+        impl_parent, "Single", {"Name": "TextBlobForSerialisation"}
+    )
+    impl.text = implementation
+    return ET.tostring(root, encoding="unicode")
 
 
 # A sample profile with a collapsed-object type and export_only override.
@@ -125,12 +141,32 @@ class TestDiffEngineCollapsed:
 
 
 class TestDiffEngineProjection:
-    def test_projection_changed_paths_marks_object_modified(self):
-        """Even if ide_content == folder_content, projection_changed_paths
-        should cause the object to appear in modified."""
-        node_ide = _make_node("g1", code="same")
+    def test_matching_st_projection_demotes_to_unchanged(self):
+        """After a daemon-side POU update, the projection hash can still look
+        stale until the next export, but compare should trust equal .st text.
+        """
+        node_ide = _make_node("g1", xml_text=_pou_xml("PROGRAM MAIN", "x := 1;"))
         node_folder = _make_node(
-            "g1", code="same", projection_changed_paths=["MyObj.st"]
+            "g1",
+            xml_text="<Single><DifferentFormatting /></Single>",
+            projection_changed_paths=["MyObj.st"],
+            projection_contents={
+                "MyObj.st": "PROGRAM MAIN\n\n// --- implementation ---\n\nx := 1;"
+            },
+        )
+        result = DiffEngine(model_with(node_ide), model_with(node_folder)).compare()
+        assert "g1" in result["unchanged"]
+        assert "g1" not in result["modified"]
+
+    def test_changed_st_projection_marks_object_modified(self):
+        node_ide = _make_node("g1", xml_text=_pou_xml("PROGRAM MAIN", "x := 1;"))
+        node_folder = _make_node(
+            "g1",
+            xml_text="<Single><DifferentFormatting /></Single>",
+            projection_changed_paths=["MyObj.st"],
+            projection_contents={
+                "MyObj.st": "PROGRAM MAIN\n// --- implementation ---\nx := 2;"
+            },
         )
         result = DiffEngine(model_with(node_ide), model_with(node_folder)).compare()
         assert "g1" in result["modified"]

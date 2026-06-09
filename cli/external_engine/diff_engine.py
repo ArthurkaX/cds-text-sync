@@ -3,8 +3,15 @@
 diff_engine.py - Compares an IDE snapshot model with a Folder model.
 """
 
+import xml.etree.ElementTree as ET
+
 from _project_profiles import kind_for_type_guid
-from xml_helpers import IMPORT_SAFE_CSV_EXTRACTORS, normalized_xml_text
+from xml_helpers import (
+    IMPORT_SAFE_CSV_EXTRACTORS,
+    csv_projection_content,
+    normalized_xml_text,
+    st_projection_content,
+)
 
 
 def _sync_direction(profile, kind):
@@ -25,6 +32,27 @@ def _kind_for_node(profile, node):
     return None
 
 
+def _entry_element(node):
+    if node is None:
+        return None
+    entry = getattr(node, "entry_element", None)
+    if entry is not None:
+        return entry
+    xml_text = getattr(node, "xml_text", None)
+    if not xml_text:
+        return None
+    try:
+        return ET.fromstring(xml_text)
+    except Exception:
+        return None
+
+
+def _same_projection_text(left, right):
+    return (left or "").replace("\r\n", "\n").replace("\r", "\n").rstrip() == (
+        right or ""
+    ).replace("\r\n", "\n").replace("\r", "\n").rstrip()
+
+
 class DiffEngine:
     def __init__(self, ide_model, folder_model, profile=None):
         self.ide_model = ide_model
@@ -40,6 +68,28 @@ class DiffEngine:
         if kind is None:
             return False
         return _sync_direction(self.profile, kind) == "export_only"
+
+    def _ide_projection_content(self, path, ide_node, extractor_name=None):
+        entry = _entry_element(ide_node)
+        if str(path).lower().endswith(".st"):
+            return st_projection_content(entry) or (ide_node.code if ide_node else "") or ""
+        if str(path).lower().endswith(".csv"):
+            return csv_projection_content(entry, extractor_name) or ""
+        return (ide_node.code if ide_node else "") or ""
+
+    def _projection_differs(self, ide_node, folder_node, changed_paths):
+        projection_contents = folder_node.metadata.get("projection_contents") or {}
+        projection_extractors = folder_node.metadata.get("projection_extractors") or {}
+        for path in changed_paths:
+            if path not in projection_contents:
+                return True
+            disk_content = projection_contents.get(path) or ""
+            ide_content = self._ide_projection_content(
+                path, ide_node, projection_extractors.get(path)
+            )
+            if not _same_projection_text(disk_content, ide_content):
+                return True
+        return False
 
     def compare(self):
         diff_result = {"modified": [], "added": [], "deleted": [], "unchanged": []}
@@ -85,6 +135,16 @@ class DiffEngine:
             projection_extractors = (
                 folder_node.metadata.get("projection_extractors") or {}
             )
+            projection_content_differs = self._projection_differs(
+                ide_node, folder_node, projection_changed_paths
+            ) if projection_changed_paths else False
+            xml_differs = ide_content != folder_content
+            if (
+                projection_changed_paths
+                and not projection_content_differs
+                and not folder_node.metadata.get("xml_changed")
+            ):
+                xml_differs = False
             unsupported_paths = [
                 path
                 for path in projection_changed_paths
@@ -96,7 +156,11 @@ class DiffEngine:
                 )
             ]
 
-            if ide_content != folder_content or projection_changed_paths:
+            if (
+                xml_differs
+                or projection_content_differs
+                or folder_node.metadata.get("projection_conflict")
+            ):
                 diff_result["modified"].append(guid)
             else:
                 diff_result["unchanged"].append(guid)
