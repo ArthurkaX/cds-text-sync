@@ -17,13 +17,13 @@ clr.AddReference("System.Drawing")
 from System.Windows.Forms import (
     Form, Button, ListBox, DockStyle, Padding, FlatStyle,
     Application, FormStartPosition, FormBorderStyle,
-    Label, TrackBar, CheckedListBox, GroupBox, Panel,
-    BorderStyle, CheckState, MessageBox, MessageBoxButtons,
+    Label, TrackBar, CheckedListBox, Panel,
+    BorderStyle, MessageBox, MessageBoxButtons,
     MessageBoxIcon, DialogResult, TabControl, TabPage,
-    NumericUpDown, AnchorStyles, HorizontalAlignment, Clipboard, ToolTip,
+    AnchorStyles, Clipboard, ToolTip,
 )
 from System.Drawing import (
-    Point, Size, Font, FontStyle, Color, SystemColors, ContentAlignment
+    Point, Size, Font, FontStyle, Color, ContentAlignment
 )
 
 
