@@ -466,12 +466,14 @@ def cmd_compare(against="", use_reverse=False):
 
 # -- POU commands -----------------------------------------------------------
 
-def cmd_pou_delete(name="", app="CI_CD_Application", use_reverse=False):
+def cmd_pou_delete(name="", app="", use_reverse=False):
     """Delete a POU from the project."""
     if not name:
         _print_error("POU name is required")
         return
-    params = {"name": name, "app": app}
+    params = {"name": name}
+    if app:
+        params["app"] = app
     _project_command("delete_pou", params, use_reverse=use_reverse)
 
 
@@ -778,12 +780,12 @@ Examples:
     p_upou.add_argument("--name", required=True, help="Object name")
     p_upou.add_argument("--st-path", dest="st_path", required=True,
                         help="Path to .st file")
-    p_upou.add_argument("--app", default="CI_CD_Application",
-                        help="Application name")
+    p_upou.add_argument("--app", default="",
+                        help="Application name (default: active application)")
     p_dpou = add_daemon_parser("delete-pou", "Delete a POU/Function/FunctionBlock", 10)
     p_dpou.add_argument("name", help="Object name")
-    p_dpou.add_argument("--app", default="CI_CD_Application",
-                        help="Application name")
+    p_dpou.add_argument("--app", default="",
+                        help="Application name (default: active application)")
     p_log = add_daemon_parser("read-log", "Read CODESYS IDE messages", 10)
     p_log.add_argument("--last", default="", help="Maximum messages to read")
     p_log.add_argument("--clear", action="store_true", help="Clear log after read")
@@ -878,8 +880,8 @@ Examples:
         help="delete - delete an object",
     )
     p_pou.add_argument("name", help="Object name (e.g. MAIN, MyFunction, Globals, MyDataType)")
-    p_pou.add_argument("--app", default="CI_CD_Application",
-                       help="Application name (default: CI_CD_Application)")
+    p_pou.add_argument("--app", default="",
+                       help="Application name (default: active application)")
 
     # -- rp subcommand (reverse pipe) --------------------------------------
     p_rp = subparsers.add_parser(
@@ -1090,16 +1092,22 @@ def main():
         return
 
     if args.command == "update-pou":
-        cmd_daemon("update_pou", {
+        params = {
             "name": args.name,
-            "app": args.app,
             "st_path": args.st_path,
-        }, timeout=args.timeout, output_fmt=output_fmt)
+        }
+        if args.app:
+            params["app"] = args.app
+        cmd_daemon("update_pou", params, timeout=args.timeout,
+                   output_fmt=output_fmt)
         return
 
     if args.command == "delete-pou":
-        cmd_daemon("delete_pou", {"name": args.name, "app": args.app},
-                   timeout=args.timeout, output_fmt=output_fmt)
+        params = {"name": args.name}
+        if args.app:
+            params["app"] = args.app
+        cmd_daemon("delete_pou", params, timeout=args.timeout,
+                   output_fmt=output_fmt)
         return
 
     if args.command == "read-log":

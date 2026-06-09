@@ -556,7 +556,7 @@ def handle_command(method, params):
     method = _ALIASES.get(method, method)
 
     # Commands that never require permission check (system/read-only)
-    if method not in ("ping", "status", "help", "stop", "permissions", "sync", "project_info", "project_tree", "explore"):
+    if method not in ("ping", "status", "help", "stop", "permissions", "sync", "project_info", "project_tree", "read_object", "explore"):
         allowed, reason = _check_permission(method)
         if not allowed:
             return {"ok": False, "error": reason}
@@ -584,6 +584,9 @@ def handle_command(method, params):
 
         elif method == "project_tree":
             return _cmd_project_tree(params)
+
+        elif method == "read_object":
+            return _cmd_read_object(params)
 
         elif method == "application_state":
             return _cmd_application_state()
@@ -1184,6 +1187,110 @@ def _find_object_in_project(project, obj_name, app_name=None):
     return None, None
 
 
+def _active_application_name(project):
+    try:
+        app = _helpers.get_active_application(project)
+        if app is not None:
+            return str(_common.object_name(app))
+    except Exception:
+        pass
+    return ""
+
+
+def _read_text_member(obj, attr_name):
+    try:
+        member = getattr(obj, attr_name, None)
+        if member is None:
+            return None
+        if hasattr(member, "text"):
+            text = member.text
+            if callable(text):
+                text = text()
+            return _json_safe(text)
+        return _json_safe(str(member))
+    except Exception:
+        return None
+
+
+def _find_object_by_selector(project, params):
+    guid = str(params.get("guid", "") or "").lower()
+    path = str(params.get("path", "") or "").replace("\\", "/").strip("/")
+    name = str(params.get("name", "") or "")
+
+    for child in _get_device_objects(project):
+        try:
+            child_name = str(_common.object_name(child))
+        except Exception:
+            child_name = ""
+        try:
+            child_guid = str(getattr(child, "Guid", "")).lower()
+        except Exception:
+            child_guid = ""
+        try:
+            child_path = _build_path(child).replace("\\", "/").strip("/")
+        except Exception:
+            child_path = ""
+
+        if guid and child_guid == guid:
+            return child
+        if path and child_path == path:
+            return child
+        if name and child_name == name:
+            return child
+
+    return None
+
+
+def _cmd_read_object(params):
+    project, err = _get_active_project()
+    if err:
+        return err
+    if not (params.get("path") or params.get("name") or params.get("guid")):
+        return {"ok": False, "error": "read_object requires path, name, or guid"}
+
+    try:
+        target = _find_object_by_selector(project, params)
+        if target is None:
+            return {"ok": False, "error": "Object not found"}
+
+        try:
+            obj_type = str(target.get_type())
+        except Exception:
+            obj_type = "Unknown"
+
+        data = {
+            "name": _obj_name(target),
+            "path": _build_path(target),
+            "type": obj_type,
+        }
+        try:
+            data["guid"] = str(target.Guid)
+        except Exception:
+            pass
+
+        decl = _read_text_member(target, "textual_declaration")
+        impl = _read_text_member(target, "textual_implementation")
+        if decl is not None:
+            data["declaration"] = decl
+        if impl is not None:
+            data["implementation"] = impl
+
+        return {"ok": True, "data": data}
+    except Exception as e:
+        return {"ok": False, "error": "Read object error: {0}".format(e)}
+
+
+def _ensure_online_app(project):
+    try:
+        online_app, target_app = _helpers.ensure_online_connection(project)
+        if online_app is not None:
+            sys._codesys_daemon_loop["online_app"] = online_app
+            sys._codesys_daemon_loop["online_target_app"] = target_app
+        return online_app, target_app, None
+    except Exception as e:
+        return None, None, str(e)
+
+
 def _cmd_device_status(params):
     project, err = _get_active_project()
     if err:
@@ -1203,13 +1310,15 @@ def _cmd_device_status(params):
                 "path": _build_path(app),
                 "connected": "false",
             }
-            online_app = sys._codesys_daemon_loop.get("online_app")
+            online_app, _target_app, online_err = _ensure_online_app(project)
             if online_app is not None:
                 entry["connected"] = "true"
                 try:
                     entry["application_state"] = str(online_app.application_state)
                 except Exception as e:
                     entry["application_state_error"] = str(e)
+            elif online_err:
+                entry["connection_error"] = online_err
             if not device_filter or device_filter in name.lower():
                 status_list.append(entry)
         return {"ok": True, "data": {"devices": status_list}}
@@ -1312,6 +1421,7 @@ def _cmd_help():
         "application_state": "Get PLC application state (run/stop)",
         "project_info": "Get project information",
         "project_tree": "Get project object tree [--depth N]",
+        "read_object": "Read one project object [--path PATH | --name NAME | --guid GUID]",
         "connect_to_device": "Connect to PLC [--ip IP] [--gatewayName NAME] — best practice: connect in CODESYS UI before starting daemon. If not, user must approve the connection dialog in CODESYS within ~2 minutes or the command times out.",
         "disconnect_from_device": "Disconnect from PLC",
         "download": "Force a FULL download of the active app to the PLC (login with force-download; needed after adding new GVL/DUT/POU). [--start 0|1, default 1]",
@@ -1401,10 +1511,13 @@ def _cmd_read_log(params):
 
 def _cmd_start_plc():
     """Start the PLC application."""
+    project, err = _get_active_project()
+    if err:
+        return err
     try:
-        oa = sys._codesys_daemon_loop.get("online_app")
+        oa, _target_app, online_err = _ensure_online_app(project)
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first or ensure online_app is cached"}
+            return {"ok": False, "error": "Not connected. Call connect_to_device first. {0}".format(online_err or "")}
         if not hasattr(oa, "start"):
             return {"ok": False, "error": "OnlineApplication has no start() method"}
         oa.start()
@@ -1415,10 +1528,13 @@ def _cmd_start_plc():
 
 def _cmd_stop_plc():
     """Stop the PLC application."""
+    project, err = _get_active_project()
+    if err:
+        return err
     try:
-        oa = sys._codesys_daemon_loop.get("online_app")
+        oa, _target_app, online_err = _ensure_online_app(project)
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first or ensure online_app is cached"}
+            return {"ok": False, "error": "Not connected. Call connect_to_device first. {0}".format(online_err or "")}
         if not hasattr(oa, "stop"):
             return {"ok": False, "error": "OnlineApplication has no stop() method"}
         oa.stop()
@@ -2708,9 +2824,12 @@ def _cmd_compare_crc(params):
     Args:
         --local PATH: path to local .crc file (default: auto-detect)
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
+    project, err = _get_active_project()
+    if err:
+        return err
+    oa, _target_app, online_err = _ensure_online_app(project)
     if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+        return {"ok": False, "error": "Not connected. Call connect_to_device first. {0}".format(online_err or "")}
     
     try:
         online_dev = oa.get_online_device()
@@ -3346,7 +3465,7 @@ def _cmd_update_pou(params):
         return err
     
     pou_name = params.get("name", "")
-    app_name = params.get("app", "CI_CD_Application")
+    app_name = params.get("app") or _active_application_name(project)
     st_path = params.get("st_path", "")
     
     if not pou_name or not st_path:
@@ -3378,7 +3497,8 @@ def _cmd_update_pou(params):
     target, _target_type = _find_object_in_project(project, pou_name, app_name)
 
     if target is None:
-        return {"ok": False, "error": "POU '{0}' not found in application '{1}'".format(pou_name, app_name)}
+        scope = app_name or "project"
+        return {"ok": False, "error": "POU '{0}' not found in application '{1}'".format(pou_name, scope)}
     
     # Update declaration
     decl_ok = False
@@ -3450,14 +3570,14 @@ def _cmd_delete_pou(params):
 
     Args:
         name: Object name (e.g. "MAIN", "Globals", "MyDataType")
-        app: Application name (e.g. "CI_CD_Application")
+        app: Optional application name. Defaults to the active application.
     """
     project, err = _get_active_project()
     if err:
         return err
 
     obj_name = params.get("name", "")
-    app_name = params.get("app", "CI_CD_Application")
+    app_name = params.get("app") or _active_application_name(project)
 
     if not obj_name:
         return {"ok": False, "error": "name is required"}
@@ -3466,7 +3586,8 @@ def _cmd_delete_pou(params):
     target, target_type = _find_object_in_project(project, obj_name, app_name)
 
     if target is None:
-        return {"ok": False, "error": "Object '{0}' not found in application '{1}'".format(obj_name, app_name)}
+        scope = app_name or "project"
+        return {"ok": False, "error": "Object '{0}' not found in application '{1}'".format(obj_name, scope)}
 
     # Try to delete the object using remove() method
     try:
