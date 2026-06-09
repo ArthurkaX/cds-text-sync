@@ -4,7 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
+### Version 2.6.0 (2026-06-09)
+
+**CLI Contract:**
+
+- Added the short `cts` console alias alongside `cds-text-sync`.
+- Simplified the primary CLI surface around the main user workflows: `ping`, `status`, `export`, `compare`, `import`, `build`, PLC lifecycle commands, variable commands, project/object tools, `raw`, and `engine`.
+- Removed the separate `--manual` mode in favor of one short but explicit `cts --help` output.
+- Renamed CLI documentation from `cli/MANUAL.md` to `cli/CLI.md` and the CI/CD test-format document to `cli/TEST_FORMAT.md`.
+- Updated `cts --help` to document the operational model: folder, CODESYS IDE, and PLC are independent states; deployment moves data `folder -> IDE -> PLC`; folder-to-IDE import must be done while disconnected from the PLC.
+
+**Daemon & PLC State:**
+
+- `project-info` now returns CODESYS Project Information `summary` fields (`Company`, `Title`, `Version`, `Author`, `Description`, `DefaultNamespace`, `URL`) and all custom `properties`, including `cds-sync-folder`, `cds-daemon-config`, and `cds-sync-pc`.
+- `ping` and `status` now include cached PLC state: `connected`, `online`, `running`, `application_state`, active application name, and application path. These commands do not auto-connect to the PLC.
+- Fixed stale `online_app` cache handling so `connect -> plc-crc`, `device_status`, `start`, and `stop` work without first calling `app-state`.
+- Closing the daemon window with the `X` button now requests daemon shutdown instead of leaving the script operation running and blocking the CODESYS UI.
+
+**Import / Compare / Object Tools:**
+
+- `sync_import_text` now updates existing `.st` text objects through the CODESYS text API when native XML import does not apply the changed POU body.
+- `compare` now ignores XML serialization noise for externalized `.st`/`.csv` projections when the effective projection content matches the IDE content, including the `TextBlobForSerialisation` empty-container case.
+- Added daemon support for `read_object`; `cts read-object --name MAIN` returns declaration, implementation, and object path.
+- `update-pou` and `delete-pou` now default to the active CODESYS application instead of the previous hardcoded `CI_CD_Application`.
+
+**Cleanup:**
+
+- Removed legacy daemon/dead-code paths replaced by the reverse-pipe daemon flow.
+- Removed unused daemon imports left after the reverse-pipe simplification.
+
+**Release Verification:**
+
+- Verified on a live CODESYS daemon test bench with a clean project state (`36/36 unchanged`) and daemon permissions open (`deny: []`).
+- The daemon-driven `cts` workflow was exercised end to end across the main user-facing functions: `ping`, `status`, `permissions`, `raw`, `project-info`, `project-tree`, `export`, `compare`, `import`, `build`, `connect`, `disconnect`, `start`, `stop`, `app-state`, `plc-crc`, variable `read`/`write`, `variable-map`, `variable-snapshot`, `variable-restore`, `read-object`, `update-pou`, `delete-pou`, `read-log`, `sync`, `app_history`, `app_crc`, `app_info`, `create_boot_app`, `plc_upload`, JSON output, text output, and `--pretty`.
 
 **Fixes:**
 
