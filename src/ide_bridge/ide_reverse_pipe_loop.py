@@ -540,6 +540,81 @@ def _get_status_info():
     return result
 
 
+def _read_online_attr(online_app, attr):
+    try:
+        if hasattr(online_app, attr):
+            value = getattr(online_app, attr)
+            if callable(value):
+                value = value()
+            return _json_safe(value)
+    except Exception as e:
+        return {"error": str(e)}
+    return None
+
+
+def _bool_or_none(value):
+    if value is None or isinstance(value, dict):
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes", "run", "running", "online"):
+        return True
+    if text in ("false", "0", "no", "stop", "stopped", "offline", "disconnected"):
+        return False
+    return None
+
+
+def _get_plc_status_snapshot():
+    """Return cached PLC/online state without initiating a new login."""
+    state = sys._codesys_daemon_loop
+    online_app = state.get("online_app")
+    target_app = state.get("online_target_app")
+    result = {
+        "known": online_app is not None,
+        "connected": False,
+        "online": None,
+        "running": None,
+        "application_state": "",
+        "application": "",
+        "path": "",
+    }
+    if target_app is not None:
+        result["application"] = _obj_name(target_app)
+        result["path"] = _build_path(target_app)
+    if online_app is None:
+        return result
+
+    is_connected = _read_online_attr(online_app, "is_connected")
+    is_online = _read_online_attr(online_app, "is_online")
+    is_running = _read_online_attr(online_app, "is_running")
+    app_state = _read_online_attr(online_app, "application_state")
+
+    if isinstance(is_connected, dict):
+        result["connection_error"] = is_connected.get("error", "")
+        state["online_app"] = None
+        state["online_target_app"] = None
+        result["known"] = False
+        return result
+
+    connected = _bool_or_none(is_connected)
+    result["online"] = _bool_or_none(is_online)
+    result["running"] = _bool_or_none(is_running)
+    if app_state is not None and not isinstance(app_state, dict):
+        result["application_state"] = str(app_state)
+        state_running = _bool_or_none(app_state)
+        if result["running"] is None and state_running is not None:
+            result["running"] = state_running
+        if connected is None:
+            connected = True
+    elif isinstance(app_state, dict):
+        result["application_state_error"] = app_state.get("error", "")
+    result["connected"] = bool(connected)
+    if result["online"] is None:
+        result["online"] = result["connected"]
+    return result
+
+
 def handle_command(method, params):
     """Dispatch a command. All CODESYS API calls happen here, in the main loop."""
     _log("Command: {0}".format(method))
@@ -571,12 +646,14 @@ def handle_command(method, params):
                 "status": "pong",
                 "mode": "reverse_pipe",
                 "pid": os.getpid(),
+                "plc": _get_plc_status_snapshot(),
             }}
 
         elif method == "status":
             result = _get_status_info()
             result["running"] = sys._codesys_daemon_loop.get("running", False)
             result["mode"] = "reverse_pipe"
+            result["plc"] = _get_plc_status_snapshot()
             return {"ok": True, "data": result}
 
         elif method == "project_info":
@@ -1415,8 +1492,8 @@ def _cmd_explore_api():
 def _cmd_help():
     """List all available commands."""
     help_text = {
-        "ping": "Check if daemon is alive",
-        "status": "Get daemon status",
+        "ping": "Check daemon liveness and cached PLC state",
+        "status": "Get daemon, project, sync-folder, and cached PLC state",
         "stop": "Stop the daemon",
         "application_state": "Get PLC application state (run/stop)",
         "project_info": "Get project information",

@@ -698,6 +698,12 @@ State model:
   with the PLC. Before folder -> IDE import, run:
     cts disconnect --timeout 15
 
+Connection state:
+  cts ping and cts status include cached PLC state:
+    connected, online, running, application_state, application
+  They do not auto-connect to the PLC. If the daemon has not seen an online
+  session yet, plc.known is false.
+
 Examples:
   cts ping --timeout 10
   cts status --timeout 10
@@ -735,8 +741,8 @@ Examples:
         return add_timeout(subparsers.add_parser(name, help=help_text), timeout)
 
     # -- primary sync --------------------------------------------------------
-    add_daemon_parser("ping", "Daemon liveness check", 10)
-    add_daemon_parser("status", "Show daemon, project, and sync-folder state", 10)
+    add_daemon_parser("ping", "Daemon liveness check with cached PLC state", 10)
+    add_daemon_parser("status", "Show daemon, project, sync-folder, and PLC state", 10)
     add_daemon_parser("export", "IDE -> disk: refresh project-view/", 60)
     add_daemon_parser("compare", "IDE vs disk: compare against project-view/", 60)
     add_daemon_parser("import", "disk -> IDE: apply project-view/ changes", 120)
