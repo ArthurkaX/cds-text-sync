@@ -2,7 +2,7 @@
 """
 ide_online_helpers.py — Online connection helpers for CODESYS IronPython daemon.
 Provides connect, disconnect, read/write variable, simulation, and credentials.
-Reusable by ide_daemon.pyw.
+Reusable by ide_reverse_pipe_loop.py.
 """
 
 from __future__ import print_function

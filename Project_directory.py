@@ -6,7 +6,6 @@ import os
 from cds_bootstrap import preload_runtime_modules
 
 preload_runtime_modules([
-    "codesys_constants",
     "codesys_utils",
     "codesys_ui",
 ], script_file=__file__)

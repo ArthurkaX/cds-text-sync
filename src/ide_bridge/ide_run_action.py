@@ -6,7 +6,6 @@ Must be compatible with IronPython 2.7.
 """
 from __future__ import print_function
 import os
-import sys
 
 import ide_runtime_common
 import ide_export_snapshot
