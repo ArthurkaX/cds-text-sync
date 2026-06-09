@@ -71,12 +71,15 @@ The daemon runs inside CODESYS through `Project_daemon.py`. The `cds-text-sync` 
 Typical commands:
 
 ```powershell
-cds-text-sync --help
-cds-text-sync rp ping --timeout 10      # minimal liveness check
-cds-text-sync rp status --timeout 10    # detailed daemon/project status
-cds-text-sync rp build --timeout 120
-cds-text-sync rp app_crc --timeout 30
-cds-text-sync rp cicd --file arithmetic.json --timeout 120
+cts --help
+cts ping --timeout 10         # minimal liveness check
+cts status --timeout 10       # detailed daemon/project status
+cts export --timeout 60       # IDE -> project-view/
+cts compare --timeout 60      # IDE vs project-view/
+cts import --timeout 120      # project-view/ -> IDE
+cts build --timeout 120
+cts plc-crc --timeout 30
+cts test --file arithmetic.json --timeout 120
 ```
 
 Common daemon capabilities include:
@@ -93,10 +96,10 @@ The CLI is installed with Python packaging:
 
 ```powershell
 python -m pip install -e .
-cds-text-sync --help
+cts --help
 ```
 
-The classic `Project_*.py` workflow remains the primary Git synchronization workflow and is still documented below. Full CLI details are available in [cli/MANUAL.md](cli/MANUAL.md).
+The classic `Project_*.py` workflow remains supported and is still documented below. Full CLI details are available in [cli/CLI.md](cli/CLI.md).
 
 ---
 

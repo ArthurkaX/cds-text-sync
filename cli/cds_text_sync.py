@@ -7,9 +7,9 @@ Communicates with daemon inside CODESYS via Named Pipe.
 
 Usage:
     cds-text-sync --help
-    cds-text-sync rp status
-    cds-text-sync project info|tree|read
-    cds-text-sync export --project-root ...  (direct, no daemon)
+    cds-text-sync status
+    cds-text-sync export|import|compare
+    cds-text-sync raw <daemon-method> [--key value ...]
 """
 
 from __future__ import annotations
@@ -61,17 +61,6 @@ def _print_ok(msg):
 
 def _print_error(msg):
     print(f"[ERROR] {msg}", file=sys.stderr)
-
-
-def _print_manual():
-    """Print the user manual (MANUAL.md) and exit."""
-    manual_path = os.path.join(os.path.dirname(__file__), "MANUAL.md")
-    if os.path.exists(manual_path):
-        with open(manual_path, "r", encoding="utf-8") as f:
-            print(f.read())
-    else:
-        print("Manual not found at: " + manual_path)
-    sys.exit(0)
 
 
 def _format_output(data, fmt="json", title=None):
@@ -260,6 +249,34 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         print(_format_output(data, fmt=output_fmt, title=command))
     else:
         _print_rp_error(resp, command)
+        sys.exit(1)
+
+
+def cmd_daemon(method: str, params: dict | None = None, timeout: float = 15,
+               output_fmt: str = "json"):
+    """Send one structured command to the CODESYS daemon."""
+    params = params or {}
+    try:
+        _config, profile = _load_project_config()
+        if profile:
+            if 'default_app_name' in profile and 'app' not in params:
+                params['app'] = profile['default_app_name']
+            if 'plc_app_path' in profile and 'app_dir' not in params:
+                params['app_dir'] = profile['plc_app_path']
+    except Exception as e:
+        _print_info("Warning: could not load profile: {0}".format(e))
+
+    try:
+        resp = send_command_reverse(method, params, timeout=timeout)
+    except RuntimeError as e:
+        _print_error("Reverse pipe error: {0}".format(e))
+        sys.exit(1)
+
+    if resp.get("ok"):
+        print(_format_output(resp.get("data", {}), fmt=output_fmt, title=method))
+    else:
+        _print_rp_error(resp, method)
+        sys.exit(1)
 
 
 def _parse_key_value_args(args: list[str]) -> dict:
@@ -659,31 +676,39 @@ def cmd_direct(args: list[str]) -> NoReturn:
 # -- Parser ------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
+    prog = Path(sys.argv[0]).stem or "cts"
+    if prog == "cds_text_sync":
+        prog = "cts"
     parser = argparse.ArgumentParser(
-        prog="cds-text-sync",
-        description="CODESYS project synchronization tool.\n"
-                    "Communicates with Project_daemon.py inside CODESYS using reverse-pipe mode.",
+        prog=prog,
+        description="CODESYS text sync CLI. Talks to Project_daemon.py running inside CODESYS.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+How to use:
+  cts can run from any folder, but works best from the exported project folder.
+  If project-view/ is available, treat the folder as the single source of truth.
+  Prefer full imports: edit folder -> cts import -> cts build -> cts download/connect.
+
+State model:
+  There are three independent states: folder, CODESYS IDE, and PLC.
+  Data moves in one direction during deployment: folder -> IDE -> PLC.
+  CODESYS cannot safely edit/import project structure while the IDE is online
+  with the PLC. Before folder -> IDE import, run:
+    cts disconnect --timeout 15
+
 Examples:
-  cds-text-sync --help
-  cds-text-sync rp status
-  cds-text-sync rp ping
-  cds-text-sync variable-map --path GVL_HMI
-  cds-text-sync variable-snapshot --path GVL_HMI --out snap.csv
-  cds-text-sync variable-restore --input snap.csv --apply
-  cds-text-sync rp application_tree --depth 100 --values --output C:\\Temp\\vars.json
-  cds-text-sync project info
-  cds-text-sync export --project-root ./MyProject --snapshot ./IDE.xml
+  cts ping --timeout 10
+  cts status --timeout 10
+  cts export --timeout 60
+  cts compare --timeout 60
+  cts import --timeout 120
+  cts build --timeout 120
+  cts connect --ip 192.0.2.10 --timeout 60
+  cts plc-crc --timeout 30
+  cts test --file arithmetic.json --timeout 120
+  cts raw application_tree --flat --output C:\\Temp\\vars.json --timeout 120
+  cts engine validate --project-root ./MyProject
         """,
-    )
-    parser.add_argument(
-        "--project", default=None,
-        help="Path to CODESYS project (.project or .projectxml)",
-    )
-    parser.add_argument(
-        "--codesys-path", default=None,
-        help="Path to CODESYS.exe (auto-detected if not specified)",
     )
     parser.add_argument(
         "--output", choices=["json", "text"], default="json",
@@ -693,17 +718,100 @@ Examples:
         "--pretty", "-p", action="store_true",
         help="Shortcut for --output text",
     )
-    parser.add_argument(
-        "--manual", action="store_true",
-        help="Print the user manual (MANUAL.md) and exit",
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        metavar="command",
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    def add_timeout(p, default):
+        p.add_argument("--timeout", type=float, default=default,
+                       help="Timeout in seconds (default: {0})".format(default))
+        return p
+
+    def add_daemon_parser(name, help_text, timeout):
+        return add_timeout(subparsers.add_parser(name, help=help_text), timeout)
+
+    # -- primary sync --------------------------------------------------------
+    add_daemon_parser("ping", "Daemon liveness check", 10)
+    add_daemon_parser("status", "Show daemon, project, and sync-folder state", 10)
+    add_daemon_parser("export", "IDE -> disk: refresh project-view/", 60)
+    add_daemon_parser("compare", "IDE vs disk: compare against project-view/", 60)
+    add_daemon_parser("import", "disk -> IDE: apply project-view/ changes", 120)
+
+    # -- build / PLC lifecycle ---------------------------------------------
+    add_daemon_parser("build", "Compile the active CODESYS application", 120)
+    p_connect = add_daemon_parser("connect", "Login/connect to PLC", 60)
+    p_connect.add_argument("--ip", default="", help="PLC IP address")
+    p_connect.add_argument("--gateway", default="Gateway-1",
+                           help="Gateway name (default: Gateway-1)")
+    add_daemon_parser("disconnect", "Logout from PLC", 15)
+    p_download = add_daemon_parser("download", "Force full download to PLC", 120)
+    p_download.add_argument("--start", choices=["0", "1"], default=None,
+                            help="Start after download: 1 yes, 0 no")
+    add_daemon_parser("start", "Start PLC application", 25)
+    add_daemon_parser("stop", "Stop PLC application", 25)
+    add_daemon_parser("app-state", "Show application online state", 10)
+    add_daemon_parser("plc-crc", "Compare PLC CRC with local build output", 30)
+
+    # -- variables ----------------------------------------------------------
+    p_read = add_daemon_parser("read", "Read one PLC variable/expression", 25)
+    p_read.add_argument("name", help="Variable/expression name")
+    p_write = add_daemon_parser("write", "Write one PLC variable/expression", 25)
+    p_write.add_argument("name", help="Variable/expression name")
+    p_write.add_argument("value", help="Value to write")
+
+    # -- tests --------------------------------------------------------------
+    p_test = add_daemon_parser("test", "Run JSON test plans from .test/", 120)
+    p_test.add_argument("--file", default="", help="Test plan file")
+
+    # -- project/object tools ----------------------------------------------
+    add_daemon_parser("project-info", "Show open project metadata", 10)
+    p_ptree = add_daemon_parser("project-tree", "Show CODESYS project tree", 30)
+    p_ptree.add_argument("--depth", type=int, default=0,
+                         help="Tree depth, 0 = unlimited")
+    p_robj = add_daemon_parser("read-object", "Read one project object", 30)
+    p_robj.add_argument("--path", default="", help="Object path")
+    p_robj.add_argument("--name", default="", help="Object name")
+    p_robj.add_argument("--guid", default="", help="Object GUID")
+    p_upou = add_daemon_parser("update-pou", "Update one POU from an .st file", 25)
+    p_upou.add_argument("--name", required=True, help="Object name")
+    p_upou.add_argument("--st-path", dest="st_path", required=True,
+                        help="Path to .st file")
+    p_upou.add_argument("--app", default="CI_CD_Application",
+                        help="Application name")
+    p_dpou = add_daemon_parser("delete-pou", "Delete a POU/Function/FunctionBlock", 10)
+    p_dpou.add_argument("name", help="Object name")
+    p_dpou.add_argument("--app", default="CI_CD_Application",
+                        help="Application name")
+    p_log = add_daemon_parser("read-log", "Read CODESYS IDE messages", 10)
+    p_log.add_argument("--last", default="", help="Maximum messages to read")
+    p_log.add_argument("--clear", action="store_true", help="Clear log after read")
+    add_daemon_parser("permissions", "Show daemon permissions", 5)
+
+    # -- raw / engine escape hatches ---------------------------------------
+    p_raw = subparsers.add_parser(
+        "raw",
+        help="Send a daemon method directly",
+        description="Compatibility/debug escape hatch for daemon methods.",
+    )
+    p_raw.add_argument("cmd_args", nargs=argparse.REMAINDER,
+                       metavar="<method> [--key value ...]")
+    p_raw.add_argument("--timeout", type=float, default=15,
+                       help="Timeout in seconds waiting for IDE response (default: 15)")
+
+    p_engine = subparsers.add_parser(
+        "engine",
+        help="Run engine_cli.py directly without CODESYS",
+        description="Direct offline engine access. Does not talk to the daemon.",
+    )
+    p_engine.add_argument("engine_args", nargs=argparse.REMAINDER,
+                          metavar="<export|import|compare|validate|resources> ...")
 
     # -- project subcommand --------------------------------------------------
     p_project = subparsers.add_parser(
         "project",
-        help="Project commands through the reverse-pipe daemon",
+        help=argparse.SUPPRESS,
         description="Project command interface via Project_daemon.py reverse-pipe mode.",
     )
     p_project.add_argument(
@@ -761,7 +869,7 @@ Examples:
     # -- pou subcommand (Object deletion) ----------------------------------------
     p_pou = subparsers.add_parser(
         "pou",
-        help="Delete objects (POU, Function, FunctionBlock)",
+        help=argparse.SUPPRESS,
         description="Delete Program Organization Units, Functions, and Function Blocks from the project.",
     )
     p_pou.add_argument(
@@ -776,8 +884,8 @@ Examples:
     # -- rp subcommand (reverse pipe) --------------------------------------
     p_rp = subparsers.add_parser(
         "rp",
-        help="Send command via reverse-pipe daemon (IDE polls as client)",
-        description="Send command to CODESYS using reverse-pipe protocol.",
+        help=argparse.SUPPRESS,
+        description="Deprecated alias for raw.",
     )
     p_rp.add_argument(
         "cmd_args",
@@ -792,7 +900,7 @@ Examples:
     # -- discover subcommand -------------------------------------------------
     subparsers.add_parser(
         "discover",
-        help="Discover CODESYS installations and open projects",
+        help=argparse.SUPPRESS,
         add_help=False,
     )
 
@@ -860,13 +968,18 @@ Examples:
     p_vrest.add_argument("--timeout", type=float, default=120,
                          help="Per-batch daemon timeout (default: 120)")
 
-    # -- proxy subcommands for engine_cli ------------------------------------
-    for cmd_name in ("export", "import", "compare", "validate", "resources"):
+    # -- deprecated proxy subcommands for engine_cli -------------------------
+    for cmd_name in ("validate", "resources"):
         subparsers.add_parser(
             cmd_name,
-            help="Run {0} directly (calls engine_cli)".format(cmd_name),
+            help=argparse.SUPPRESS,
             add_help=False,
         )
+
+    subparsers._choices_actions = [
+        action for action in subparsers._choices_actions
+        if action.help is not argparse.SUPPRESS
+    ]
 
     return parser
 
@@ -879,10 +992,6 @@ def main():
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
-
-    if "--manual" in sys.argv:
-        _print_manual()
-        return
 
     if len(sys.argv) == 2 and ("--help" in sys.argv or "-h" in sys.argv):
         parser.print_help()
@@ -897,13 +1006,113 @@ def main():
     if getattr(args, 'pretty', False):
         output_fmt = 'text'
 
-    # For proxy commands, pass through to engine_cli
-    if args.command in ("export", "import", "compare", "validate", "resources"):
+    # Deprecated direct engine aliases retained for compatibility.
+    if args.command in ("validate", "resources"):
         full_args = [args.command] + unknown
         cmd_direct(full_args)
         return
 
-    if args.command == "rp":
+    if args.command == "engine":
+        if not args.engine_args:
+            _print_error("Specify an engine command: export, import, compare, validate, resources")
+            sys.exit(1)
+        cmd_direct(args.engine_args)
+        return
+
+    daemon_methods = {
+        "ping": "ping",
+        "status": "status",
+        "export": "sync_export_text",
+        "import": "sync_import_text",
+        "compare": "sync_compare_text",
+        "build": "build",
+        "disconnect": "disconnect_from_device",
+        "download": "download",
+        "start": "start_plc",
+        "stop": "stop_plc",
+        "app-state": "application_state",
+        "plc-crc": "compare",
+        "project-info": "project_info",
+        "permissions": "permissions",
+    }
+
+    if args.command in daemon_methods:
+        params = {}
+        if args.command == "download" and getattr(args, "start", None) is not None:
+            params["start"] = args.start
+        cmd_daemon(daemon_methods[args.command], params,
+                   timeout=getattr(args, "timeout", 15),
+                   output_fmt=output_fmt)
+        return
+
+    if args.command == "connect":
+        params = {}
+        if args.ip:
+            params["ipAddress"] = args.ip
+        if args.gateway:
+            params["gatewayName"] = args.gateway
+        cmd_daemon("connect_to_device", params, timeout=args.timeout,
+                   output_fmt=output_fmt)
+        return
+
+    if args.command == "read":
+        cmd_daemon("read_variable", {"name": args.name}, timeout=args.timeout,
+                   output_fmt=output_fmt)
+        return
+
+    if args.command == "write":
+        cmd_daemon("write_variable", {"name": args.name, "value": args.value},
+                   timeout=args.timeout, output_fmt=output_fmt)
+        return
+
+    if args.command == "test":
+        params = {}
+        if args.file:
+            params["file"] = args.file
+        cmd_daemon("cicd", params, timeout=args.timeout, output_fmt=output_fmt)
+        return
+
+    if args.command == "project-tree":
+        cmd_daemon("project_tree", {"depth": args.depth}, timeout=args.timeout,
+                   output_fmt=output_fmt)
+        return
+
+    if args.command == "read-object":
+        params = {}
+        if args.path:
+            params["path"] = args.path
+        if args.name:
+            params["name"] = args.name
+        if args.guid:
+            params["guid"] = args.guid
+        cmd_daemon("read_object", params, timeout=args.timeout,
+                   output_fmt=output_fmt)
+        return
+
+    if args.command == "update-pou":
+        cmd_daemon("update_pou", {
+            "name": args.name,
+            "app": args.app,
+            "st_path": args.st_path,
+        }, timeout=args.timeout, output_fmt=output_fmt)
+        return
+
+    if args.command == "delete-pou":
+        cmd_daemon("delete_pou", {"name": args.name, "app": args.app},
+                   timeout=args.timeout, output_fmt=output_fmt)
+        return
+
+    if args.command == "read-log":
+        params = {}
+        if args.last:
+            params["last"] = args.last
+        if args.clear:
+            params["clear"] = True
+        cmd_daemon("read_log", params, timeout=args.timeout,
+                   output_fmt=output_fmt)
+        return
+
+    if args.command in ("raw", "rp"):
         cmd_rp_command(args.cmd_args, timeout=getattr(args, 'timeout', 15),
                        output_fmt=output_fmt)
 

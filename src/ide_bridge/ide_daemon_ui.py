@@ -285,6 +285,8 @@ class DaemonForm(Form):
         self.Left = 20
         self.Top = 20
         self.ControlBox = True
+        self._stopping = False
+        self.FormClosing += self._on_form_closing
 
         # Command log listbox
         self.log_list = ListBox()
@@ -413,11 +415,26 @@ class DaemonForm(Form):
         """Clear the dashboard command log."""
         self.log_list.Items.Clear()
 
-    def _on_stop_click(self, sender, args):
-        """Handle Stop button click."""
-        self.log_command("STOP requested via UI")
+    def _request_stop(self, source):
+        """Request daemon loop shutdown. Safe to call more than once."""
+        if self._stopping:
+            return
+        self._stopping = True
+        self.log_command("STOP requested via {0}".format(source))
+        try:
+            self.status_label.Text = "Stopping..."
+        except Exception:
+            pass
         if hasattr(sys, "_codesys_daemon_loop"):
             sys._codesys_daemon_loop["running"] = False
+
+    def _on_stop_click(self, sender, args):
+        """Handle Stop button click."""
+        self._request_stop("UI")
+
+    def _on_form_closing(self, sender, args):
+        """Treat the window close button as Stop Daemon."""
+        self._request_stop("window close")
 
     def _on_run_tests_click(self, sender, args):
         """Handle Run Tests button click — execute all tests from .test/."""
