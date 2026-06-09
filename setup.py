@@ -6,7 +6,7 @@ Usage:
     pip install -e .           # development mode (creates cds-text-sync.exe)
     pip install .              # regular install
 
-After install, `cds-text-sync` works in any shell (CMD, PowerShell, Git Bash).
+After install, `cts` and `cds-text-sync` work in any shell (CMD, PowerShell, Git Bash).
 """
 
 from setuptools import setup, find_packages
@@ -19,12 +19,13 @@ setup(
     url="https://github.com/ArthurkaX/cds-text-sync",
     packages=find_packages(include=["cli", "cli.*"]),
     package_data={
-        "cli": ["MANUAL.md", "cicd-format.md"],
+        "cli": ["CLI.md", "TEST_FORMAT.md"],
     },
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
             "cds-text-sync=cli.cds_text_sync:main",
+            "cts=cli.cds_text_sync:main",
         ],
     },
     include_package_data=True,

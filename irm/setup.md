@@ -39,8 +39,8 @@ python -m pip install -e "<ScriptDir>\cds-text-sync"
 Choose **Y** to make this work from any shell:
 
 ```powershell
-cds-text-sync --help
-cds-text-sync rp ping --timeout 10
+cts --help
+cts ping --timeout 10
 ```
 
 ## Alternative Installations (Forks)

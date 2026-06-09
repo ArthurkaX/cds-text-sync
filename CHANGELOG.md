@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 **Documentation:**
 
-- `cli/MANUAL.md` now documents sync direction (IDE↔disk), the difference between `sync_import` (raw XML snapshot) and `sync_import_text` (text edits, preferred), that there is no standalone `import` method, the disk-wins conflict policy, and that `update_pou` is for single-object edge cases.
+- `cli/CLI.md` documents sync direction (IDE/disk), the difference between raw XML snapshot import and text edits, the disk-wins conflict policy, and that `update_pou` is for single-object edge cases.
 
 - Fixed UTF-8 handling in the IronPython reverse-pipe daemon for `.st` and JSON text reads, including `sync_compare_text` failing on IronPython 2.7 because builtin `open()` does not accept `encoding=`. Thanks to `kevin00156` for highlighting the bug.
 

@@ -222,6 +222,135 @@ def _obj_name(obj):
     return ""
 
 
+def _json_safe(value):
+    try:
+        string_types = (basestring,)
+        text_type = unicode
+    except NameError:
+        string_types = (str,)
+        text_type = str
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, string_types):
+        return text_type(value)
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            result[text_type(key)] = _json_safe(item)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return text_type(value)
+
+
+def _get_project_info_object(project):
+    try:
+        if hasattr(project, "get_project_info"):
+            return project.get_project_info()
+    except Exception:
+        pass
+    try:
+        if hasattr(project, "project_info"):
+            return project.project_info
+    except Exception:
+        pass
+    return None
+
+
+def _read_project_info_attr(proj_info, names):
+    for name in names:
+        try:
+            if hasattr(proj_info, name):
+                value = getattr(proj_info, name)
+                if callable(value):
+                    value = value()
+                if value is not None:
+                    return _json_safe(value)
+        except Exception:
+            pass
+    return None
+
+
+def _project_info_summary(proj_info):
+    fields = [
+        ("Company", ["Company", "company", "get_company"]),
+        ("Title", ["Title", "title", "get_title"]),
+        ("Version", ["Version", "version", "get_version"]),
+        ("Author", ["Author", "author", "get_author"]),
+        ("Description", ["Description", "description", "get_description"]),
+        ("DefaultNamespace", [
+            "DefaultNamespace", "DefaultNameSpace", "defaultNamespace",
+            "default_namespace", "defaultnamespace", "get_default_namespace",
+        ]),
+        ("URL", ["URL", "Url", "url", "get_url"]),
+    ]
+    summary = {}
+    for key, names in fields:
+        value = _read_project_info_attr(proj_info, names)
+        if value is not None:
+            summary[key] = value
+    return summary
+
+
+def _mapping_to_dict(values):
+    result = {}
+    if values is None:
+        return result
+
+    try:
+        for key, value in values.items():
+            result[_json_safe(key)] = _json_safe(value)
+        return result
+    except Exception:
+        pass
+
+    keys = None
+    for attr in ("keys", "Keys"):
+        try:
+            keys = getattr(values, attr)
+            if callable(keys):
+                keys = keys()
+            if keys is not None:
+                break
+        except Exception:
+            keys = None
+    if keys is not None:
+        try:
+            for key in keys:
+                try:
+                    result[_json_safe(key)] = _json_safe(values[key])
+                except Exception:
+                    pass
+            return result
+        except Exception:
+            pass
+
+    try:
+        for item in values:
+            try:
+                if hasattr(item, "Key") and hasattr(item, "Value"):
+                    result[_json_safe(item.Key)] = _json_safe(item.Value)
+                elif isinstance(item, (list, tuple)) and len(item) == 2:
+                    result[_json_safe(item[0])] = _json_safe(item[1])
+                else:
+                    result[_json_safe(item)] = _json_safe(values[item])
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return result
+
+
+def _project_info_properties(proj_info):
+    try:
+        values = getattr(proj_info, "values", None)
+    except Exception:
+        values = None
+    if values is None:
+        values = proj_info
+    return _mapping_to_dict(values)
+
+
 _path_cache = {}
 _MAX_PATH_CACHE = 5000
 
@@ -617,23 +746,17 @@ def _cmd_project_info():
             info["object_count"] = len(list(children))
         except Exception:
             info["object_count"] = -1
-        # Read sync folder from project properties
+        # Read Project Information dialog data: Summary tab + Properties tab.
         try:
-            proj_info = None
-            if hasattr(project, "get_project_info"):
-                proj_info = project.get_project_info()
-            elif hasattr(project, "project_info"):
-                proj_info = project.project_info
+            proj_info = _get_project_info_object(project)
             if proj_info is not None:
-                props = getattr(proj_info, "values", proj_info)
-                if hasattr(props, "__getitem__"):
-                    sf = ""
-                    if hasattr(props, '__contains__') and 'cds-sync-folder' in props:
-                        sf = props['cds-sync-folder']
-                    elif hasattr(props, 'get'):
-                        sf = props.get('cds-sync-folder', '')
-                    if sf:
-                        info["sync_folder"] = str(sf)
+                summary = _project_info_summary(proj_info)
+                properties = _project_info_properties(proj_info)
+                info["summary"] = summary
+                info["properties"] = properties
+                sf = properties.get("cds-sync-folder", "")
+                if sf:
+                    info["sync_folder"] = str(sf)
         except Exception:
             pass
         return {"ok": True, "data": info}
