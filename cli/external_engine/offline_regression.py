@@ -759,7 +759,7 @@ def main():
             raise RegressionFailure("TextList CSV language columns were unexpected")
         sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
         try:
-            from _patch_builder import PatchBuilder, UnsupportedPatchError
+            from _patch_builder import PatchBuilder
             from diff_engine import DiffEngine
             from folder_reader import FolderReader
             from xml_helpers import ProjectionValidationError

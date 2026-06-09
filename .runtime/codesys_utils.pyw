@@ -23,10 +23,6 @@ def log_info(message):
     print("[INFO] " + safe_str(message))
 
 
-def log_warning(message):
-    print("[WARNING] " + safe_str(message))
-
-
 def log_error(message, critical=False):
     print("[ERROR] " + safe_str(message))
 
@@ -95,14 +91,6 @@ def get_project_prop(key, default=None):
     except Exception:
         pass
     return default
-
-
-def set_project_prop(key, value):
-    props = _project_info_values()
-    if props is None:
-        return False
-    props[key] = value
-    return True
 
 
 def init_logging(base_dir):

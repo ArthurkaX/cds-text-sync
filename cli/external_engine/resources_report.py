@@ -4,7 +4,6 @@ resources_report.py - Snapshot-based project resource diagnostics.
 """
 from __future__ import print_function
 import json
-import os
 
 from _project_profiles import kind_for_type_guid, load_profile
 from _project_settings import load_project_settings

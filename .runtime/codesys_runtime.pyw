@@ -24,7 +24,6 @@ except ImportError:
 
 
 CORE_MODULES = [
-    "codesys_constants",
     "codesys_utils",
     "codesys_ui"
 ]
@@ -145,14 +144,6 @@ def load_hidden_module(name, script_file=None):
     return _load_python_module(name, runtime_path) or _load_python_module(name, root_path)
 
 
-def load_script_module(name, script_file=None):
-    root_dir = _get_root_dir(script_file)
-    _ensure_sys_path(root_dir)
-    runtime_path = os.path.join(root_dir, ".runtime", name + ".py")
-    root_path = os.path.join(root_dir, name + ".py")
-    return _load_python_module(name, runtime_path) or _load_python_module(name, root_path)
-
-
 def clear_hidden_modules(exclude=None):
     excluded = set(exclude or [])
     for mod_name in list(sys.modules.keys()):
@@ -178,24 +169,6 @@ def load_operation_module(command, script_file=None, clear=False):
         module_names.append(module_name)
     loaded = ensure_modules(module_names, script_file=script_file, clear=clear)
     return loaded.get(module_name)
-
-
-def _should_use_xml_first(command, caller_globals=None, params=None):
-    if command not in ("export", "import"):
-        return False
-
-    params = params or {}
-    if "xml_first" in params:
-        return bool(params.get("xml_first"))
-
-    utils_mod = sys.modules.get("codesys_utils")
-    if utils_mod and hasattr(utils_mod, "get_project_prop"):
-        try:
-            return bool(utils_mod.get_project_prop("cds-sync-xml-first", False))
-        except Exception:
-            return False
-
-    return False
 
 
 def _build_compare_selection(different, new_in_ide, new_on_disk, moved=None):
@@ -399,17 +372,6 @@ def resolve_runtime(runtime=None, caller_globals=None, params=None, headless=Fal
         mode=mode,
         params=params or {},
         caller_globals=caller_globals
-    )
-
-
-def create_headless_runtime(system_obj=None, projects_obj=None, params=None, caller_globals=None):
-    return resolve_runtime(
-        runtime=None,
-        caller_globals=caller_globals,
-        params=params,
-        headless=True,
-        system_obj=system_obj,
-        projects_obj=projects_obj
     )
 
 

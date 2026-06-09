@@ -9,7 +9,7 @@ Architecture (reverse pipe):
   4. IDE reads command, executes in main loop, writes response JSON
   5. CLI reads response and returns it
 
-This is the reverse of the original daemon_pipe.py architecture.
+This is the reverse of the older IDE-hosted pipe architecture.
 """
 
 from __future__ import annotations

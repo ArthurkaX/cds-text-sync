@@ -618,7 +618,7 @@ def expand_leaves(path, typestr, registry,
 
     if info["kind"] == "scalar":
         if info["base"] in ("POINTER", "REFERENCE"):
-            return _emit(path, info["base"], False, "pointer-or-reference")
+            return _emit(path, info["base"], True, "pointer-or-reference")
         return _emit(path, info["base"], True, "")
 
     if info["kind"] == "array":
