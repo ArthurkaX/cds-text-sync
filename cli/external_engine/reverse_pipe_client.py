@@ -18,7 +18,6 @@ import ctypes
 import json
 import os
 import struct
-import sys
 import time
 import threading
 from ctypes import wintypes

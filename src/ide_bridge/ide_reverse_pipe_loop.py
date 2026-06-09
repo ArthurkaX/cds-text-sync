@@ -35,10 +35,8 @@ import ide_runtime_common as _common
 
 clr.AddReference("System.IO.Pipes")
 clr.AddReference("System.IO")
-clr.AddReference("System.Threading")
 
-from System.IO.Pipes import NamedPipeServerStream, NamedPipeClientStream, PipeDirection
-from System.Threading import Thread, ThreadStart
+from System.IO.Pipes import NamedPipeClientStream, PipeDirection
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
