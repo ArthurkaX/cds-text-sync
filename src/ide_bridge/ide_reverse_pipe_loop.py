@@ -3269,6 +3269,13 @@ def _cmd_sync_import_text(params):
         
     if not os.path.exists(patch_path):
          return {"ok": False, "error": "IMPORT.xml was not generated"}
+
+    compare_report_path = os.path.join(sync_folder, ".dump", "import_compare_report.json")
+    compare_args = [
+        "compare", "--project-root", sync_folder, "--snapshot", out_path,
+        "--report", compare_report_path, "--include-objects",
+    ]
+    _common.run_external_engine(compare_args)
     
     # Step 3: Parse IMPORT.xml and process CreateTextObjects
     project, p_err = _get_active_project()
@@ -3321,6 +3328,12 @@ def _cmd_sync_import_text(params):
                 except Exception as e:
                     _log("Failed to create {0}: {1}".format(entry["name"], str(e)))
             _log("Created text objects: {0}".format(", ".join(e["name"] for e in text_creates)))
+
+        updated_text = []
+        if os.path.exists(compare_report_path):
+            updated_text = _apply_modified_st_objects(project, compare_report_path)
+            if updated_text:
+                _log("Updated text objects: {0}".format(", ".join(updated_text)))
         
         # Step 4: Apply StructuredView (MAIN update) — skip if fails, objects are already created
         try:
@@ -3339,9 +3352,90 @@ def _cmd_sync_import_text(params):
             import traceback
             _log("StructuredView import skipped: {0}\n{1}".format(e, traceback.format_exc()))
         
-        return {"ok": True, "data": {"path": patch_path, "size": os.path.getsize(patch_path)}}
+        return {"ok": True, "data": {
+            "path": patch_path,
+            "size": os.path.getsize(patch_path),
+            "created_text_objects": [e["name"] for e in text_creates],
+            "updated_text_objects": updated_text,
+        }}
     except Exception as e:
         return {"ok": False, "error": "Sync import error: {0}".format(e)}
+
+
+def _split_st_update_content(content):
+    marker = "// --- implementation ---"
+    normalized = (content or "").replace("\r\n", "\n").replace("\r", "\n")
+    if marker in normalized:
+        parts = normalized.split(marker, 1)
+        return parts[0].strip(), parts[1].strip()
+    return normalized.strip(), ""
+
+
+def _replace_text_document(doc, text):
+    if doc is None:
+        return False
+    if hasattr(doc, "text"):
+        try:
+            doc.text = text
+            return True
+        except Exception:
+            pass
+    if hasattr(doc, "replace"):
+        doc.replace(text)
+        return True
+    return False
+
+
+def _apply_text_to_object(target, decl, impl):
+    decl_ok = True
+    impl_ok = True
+    if decl:
+        decl_ok = False
+        try:
+            decl_ok = _replace_text_document(target.textual_declaration, decl)
+        except Exception as e:
+            _log("Warning: could not set declaration: {0}".format(e))
+    if impl:
+        impl_ok = False
+        try:
+            impl_ok = _replace_text_document(target.textual_implementation, impl)
+        except Exception as e:
+            _log("Warning: could not set implementation: {0}".format(e))
+    return decl_ok, impl_ok
+
+
+def _apply_modified_st_objects(project, report_path):
+    try:
+        report = json.loads(_read_text_utf8(report_path))
+    except Exception as e:
+        _log("Could not read import compare report: {0}".format(e))
+        return []
+
+    updated = []
+    for obj in ((report.get("objects") or {}).get("modified") or []):
+        projection_diff = obj.get("projection_diff") or {}
+        if str(projection_diff.get("format", "")).lower() != "st":
+            continue
+        disk_content = projection_diff.get("disk_content")
+        if disk_content is None:
+            continue
+        target = _find_object_by_selector(project, {
+            "guid": obj.get("guid", ""),
+            "path": obj.get("path", ""),
+            "name": obj.get("name", ""),
+        })
+        if target is None:
+            _log("Could not find modified text object: {0}".format(obj.get("name") or obj.get("guid")))
+            continue
+        decl, impl = _split_st_update_content(disk_content)
+        decl_ok, impl_ok = _apply_text_to_object(target, decl, impl)
+        if decl_ok and impl_ok:
+            updated.append(obj.get("name") or obj.get("guid") or "?")
+        else:
+            _log("Text update incomplete for {0}: decl={1}, impl={2}".format(
+                obj.get("name") or obj.get("guid"), decl_ok, impl_ok
+            ))
+    return updated
 
 
 def _find_st_file(sync_folder, rel_path):
