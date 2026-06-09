@@ -6,7 +6,7 @@
 [![Issues](https://img.shields.io/github/issues/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/issues)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
 
-**Version**: `2.5.1`
+**Version**: `2.6.0`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -62,7 +62,7 @@ The quick PowerShell installer also checks for `python` up front and can offer a
 
 ## CLI + Reverse-Pipe Daemon
 
-Version 2.5.1 adds an optional command-line interface for workflows that need fast, repeatable interaction with an open CODESYS IDE.
+Version 2.6.0 focuses on the `cts` command-line workflow and the reverse-pipe daemon for fast, repeatable interaction with an open CODESYS IDE.
 
 The daemon runs inside CODESYS through `Project_daemon.py`. The `cds-text-sync` CLI talks to it over a per-user Windows named pipe, so shell scripts and CI helpers can request CODESYS actions without opening additional script dialogs for every operation.
 
@@ -72,8 +72,8 @@ Typical commands:
 
 ```powershell
 cts --help
-cts ping --timeout 10         # minimal liveness check
-cts status --timeout 10       # detailed daemon/project status
+cts ping --timeout 10         # daemon liveness + cached PLC state
+cts status --timeout 10       # daemon/project/sync-folder/PLC state
 cts export --timeout 60       # IDE -> project-view/
 cts compare --timeout 60      # IDE vs project-view/
 cts import --timeout 120      # project-view/ -> IDE
@@ -85,12 +85,15 @@ cts test --file arithmetic.json --timeout 120
 Common daemon capabilities include:
 
 - IDE connectivity checks and status reporting.
+- Cached PLC state reporting from `ping` and `status`: `connected`, `online`, `running`, `application_state`, and active application name.
 - Project build execution.
 - PLC connect, start, stop, reset, log, and variable read/write operations.
 - PLC file listing, upload, and download commands.
 - Application CRC checks for deployment verification.
 - JSON-based test plans for repeatable validation.
 - Access to the same XML-first project sync engine used by the classic `Project_*.py` scripts.
+
+The 2.6.0 daemon workflow was verified on a live CODESYS project by running the main user-facing command set through `cts`: `ping`, `status`, permissions, raw calls, `project-info`, `project-tree`, export, compare, import, build, connect/disconnect, start/stop, `app-state`, PLC CRC, variable read/write, variable map/snapshot/restore, object read/update/delete, log reading, sync commands, application history/CRC/info, boot application creation, PLC upload, and JSON/text output modes.
 
 The CLI is installed with Python packaging:
 

@@ -42,7 +42,7 @@ from System.IO.Pipes import NamedPipeClientStream, PipeDirection
 
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
-VERSION = "2.5.1"
+VERSION = "2.6.0"
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
 CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)

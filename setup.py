@@ -13,7 +13,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="cds-text-sync",
-    version="2.5.1",
+    version="2.6.0",
     description="CODESYS CLI + reverse-pipe daemon",
     author="cds-text-sync contributors",
     url="https://github.com/ArthurkaX/cds-text-sync",
