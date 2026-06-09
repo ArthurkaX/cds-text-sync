@@ -91,6 +91,17 @@ class DiffEngine:
                 return True
         return False
 
+    def _all_projection_content_matches(self, ide_node, folder_node):
+        projection_contents = folder_node.metadata.get("projection_contents") or {}
+        projection_paths = [
+            path
+            for path in projection_contents.keys()
+            if str(path).lower().endswith((".st", ".csv"))
+        ]
+        if not projection_paths:
+            return False
+        return not self._projection_differs(ide_node, folder_node, projection_paths)
+
     def compare(self):
         diff_result = {"modified": [], "added": [], "deleted": [], "unchanged": []}
         projection_conflicts = []
@@ -138,10 +149,12 @@ class DiffEngine:
             projection_content_differs = self._projection_differs(
                 ide_node, folder_node, projection_changed_paths
             ) if projection_changed_paths else False
+            projection_content_matches = self._all_projection_content_matches(
+                ide_node, folder_node
+            )
             xml_differs = ide_content != folder_content
             if (
-                projection_changed_paths
-                and not projection_content_differs
+                projection_content_matches
                 and not folder_node.metadata.get("xml_changed")
             ):
                 xml_differs = False

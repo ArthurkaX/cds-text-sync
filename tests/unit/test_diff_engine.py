@@ -158,6 +158,28 @@ class TestDiffEngineProjection:
         assert "g1" in result["unchanged"]
         assert "g1" not in result["modified"]
 
+    def test_matching_st_projection_ignores_externalized_xml_difference(self):
+        """A clean externalized ST file can make folder XML differ from IDE XML
+        even though the effective ST text is identical.
+        """
+        node_ide = _make_node("g1", xml_text=_pou_xml("PROGRAM MAIN", "x := 1;"))
+        node_folder = _make_node(
+            "g1",
+            xml_text=(
+                "<Single Name='Object'>"
+                "<Single Name='Implementation'>"
+                "<Single Name='TextBlobForSerialisation' />"
+                "</Single>"
+                "</Single>"
+            ),
+            projection_contents={
+                "MyObj.st": "PROGRAM MAIN\n\n// --- implementation ---\n\nx := 1;"
+            },
+        )
+        result = DiffEngine(model_with(node_ide), model_with(node_folder)).compare()
+        assert "g1" in result["unchanged"]
+        assert "g1" not in result["modified"]
+
     def test_changed_st_projection_marks_object_modified(self):
         node_ide = _make_node("g1", xml_text=_pou_xml("PROGRAM MAIN", "x := 1;"))
         node_folder = _make_node(
