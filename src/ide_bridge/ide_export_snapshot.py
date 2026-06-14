@@ -6,6 +6,7 @@ Must be compatible with IronPython 2.7.
 from __future__ import print_function
 import os
 import tempfile
+import time
 
 import ide_runtime_common
 
@@ -112,19 +113,72 @@ def export_snapshot(system, project, output_path, log_fn=None):
         pass
 
     try:
+        _t0 = time.time()
         objects, skipped, use_recursive = _exportable_snapshot_objects(project)
+        _log = log_fn or (lambda m: None)
+        _log("[export_snapshot] collected {0} objects, {1} skipped in {2:.2f}s".format(
+            len(objects), len(skipped), time.time() - _t0))
         _print_skipped_external_resources(skipped, log_fn=log_fn)
+        _t1 = time.time()
         if use_recursive:
+            _log("[export_snapshot] calling export_native(recursive=True)...")
             project.export_native(objects, tmp_path, recursive=True)
         else:
+            _log("[export_snapshot] calling export_native(recursive=False) with {0} objects...".format(len(objects)))
             project.export_native(objects, tmp_path, recursive=False)
+        _log("[export_snapshot] export_native done in {0:.2f}s".format(time.time() - _t1))
         _replace_file(tmp_path, output_path)
+        _log("[export_snapshot] file renamed to {0}".format(output_path))
         return True
     except Exception as e:
         if log_fn:
             log_fn("Error exporting snapshot: " + str(e))
         else:
             print("Error exporting snapshot: " + str(e))
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+        return False
+
+
+def export_selected_snapshot(project, objects, output_path, log_fn=None):
+    """
+    Export a caller-provided object list into a native XML snapshot.
+
+    This is used by tools that need a narrow snapshot, e.g. textual declaration
+    analysis, and must not export resources or the full project tree.
+    """
+    if log_fn:
+        log_fn("Exporting selected snapshot to: " + output_path)
+    else:
+        print("Exporting selected snapshot to: " + output_path)
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    fd, tmp_path = tempfile.mkstemp(prefix="cds_ide_snapshot_", suffix=".xml", dir=output_dir or None)
+    os.close(fd)
+    try:
+        os.remove(tmp_path)
+    except Exception:
+        pass
+
+    try:
+        _log = log_fn or (lambda m: None)
+        _t0 = time.time()
+        _log("[export_selected_snapshot] calling export_native(recursive=False) with {0} objects...".format(len(objects or [])))
+        project.export_native(list(objects or []), tmp_path, recursive=False)
+        _log("[export_selected_snapshot] export_native returned in {0:.2f}s".format(time.time() - _t0))
+        _replace_file(tmp_path, output_path)
+        _log("[export_selected_snapshot] file renamed to {0}".format(output_path))
+        return True
+    except Exception as e:
+        if log_fn:
+            log_fn("Error exporting selected snapshot: " + str(e))
+        else:
+            print("Error exporting selected snapshot: " + str(e))
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
