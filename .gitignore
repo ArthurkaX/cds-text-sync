@@ -22,3 +22,4 @@ plan.md
 build/
 dist/
 offline-regression-*/
+*.log
