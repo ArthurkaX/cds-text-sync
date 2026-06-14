@@ -24,6 +24,26 @@ def _node_owner_name(node, decl):
     return variable_map.pou_name(decl, node.name) or node.name
 
 
+def _is_excluded_from_build(node, model, _seen=None):
+    """Return True if node or any ancestor is marked ExcludeFromBuild.
+
+    Walks parent_guid links, guarding against cycles / missing parents.
+    """
+    if _seen is None:
+        _seen = set()
+    if node is None or node.guid in _seen:
+        return False
+    _seen.add(node.guid)
+    exclude = node.metadata.get("exclude_from_build")
+    if exclude is True:
+        return True
+    if node.parent_guid:
+        parent = model.get_node(node.parent_guid)
+        if parent is not None:
+            return _is_excluded_from_build(parent, model, _seen)
+    return False
+
+
 def build_snapshooter_map(snapshot_path, project_name=""):
     model = SnapshotReader(snapshot_path, project_name=project_name).read()
     registry = variable_map.TypeRegistry()
@@ -43,7 +63,7 @@ def build_snapshooter_map(snapshot_path, project_name=""):
         owners.append((owner, kind, decl, node))
 
     rows = []
-    stats = {"owners": 0, "members": 0, "leaves": 0, "readable": 0}
+    stats = {"owners": 0, "members": 0, "leaves": 0, "readable": 0, "excluded": 0}
     owner_scopes = {
         "gvl": ("VAR_GLOBAL",),
         "program": ("VAR", "VAR_GLOBAL"),
@@ -52,6 +72,7 @@ def build_snapshooter_map(snapshot_path, project_name=""):
     for owner, kind, decl, node in owners:
         if kind not in ("gvl", "program"):
             continue
+        owner_excluded = _is_excluded_from_build(node, model)
         stats["owners"] += 1
         for block in variable_map.parse_var_blocks(decl):
             if block["scope"] not in owner_scopes.get(kind, ()):
@@ -66,7 +87,7 @@ def build_snapshooter_map(snapshot_path, project_name=""):
                         stats["readable"] += 1
                     leaf_name = lf["path"].rsplit(".", 1)[-1]
                     is_root = lf["path"] == root_path
-                    rows.append({
+                    row = {
                         "path": lf["path"],
                         "name": leaf_name,
                         "type": lf["type"],
@@ -77,7 +98,12 @@ def build_snapshooter_map(snapshot_path, project_name=""):
                         "initial": mem["initial"] if is_root else "",
                         "leaf": lf["leaf"],
                         "note": lf["note"],
-                    })
+                    }
+                    if owner_excluded:
+                        row["excluded_from_build"] = True
+                        if lf["leaf"]:
+                            stats["excluded"] += 1
+                    rows.append(row)
 
     rows.sort(key=lambda r: r.get("path", "").lower())
     return {
