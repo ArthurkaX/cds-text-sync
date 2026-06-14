@@ -23,6 +23,7 @@ from folder_writer import FolderWriter
 from report_writer import ReportWriter
 from resources_report import build_resources_report
 from snapshot_reader import SnapshotReader
+from snapshooter_map import write_snapshooter_map
 from xml_helpers import ProjectionValidationError, normalize_guid
 
 
@@ -282,6 +283,25 @@ def run_resources(args):
     )
 
 
+def run_snapshooter_map(args):
+    _log(f"Building Snapshooter variable tree from {args.snapshot}")
+    data = write_snapshooter_map(
+        args.snapshot,
+        args.output,
+        project_name=os.path.basename(os.path.abspath(args.project_root)),
+    )
+    stats = data.get("stats", {})
+    _log(
+        "Snapshooter map written to {0}: owners={1}, leaves={2}, readable={3}"
+        .format(
+            args.output,
+            stats.get("owners", 0),
+            stats.get("leaves", 0),
+            stats.get("readable", 0),
+        )
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="CODESYS Offline Sync Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -350,6 +370,11 @@ def main():
         help="Number of largest objects to include in the top list",
     )
 
+    parser_snapshooter = subparsers.add_parser("snapshooter-map", parents=[parent_parser])
+    parser_snapshooter.add_argument(
+        "--output", required=True, help="Path to Snapshooter variable tree JSON"
+    )
+
     args = parser.parse_args()
 
     if args.command == "export":
@@ -362,6 +387,8 @@ def main():
         run_validate(args)
     elif args.command == "resources":
         run_resources(args)
+    elif args.command == "snapshooter-map":
+        run_snapshooter_map(args)
 
 
 if __name__ == "__main__":

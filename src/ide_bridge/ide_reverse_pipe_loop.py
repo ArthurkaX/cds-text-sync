@@ -78,6 +78,7 @@ try:
     clr.AddReference("System.Windows.Forms")
     clr.AddReference("System.Drawing")
     import ide_daemon_ui as _ui
+
     _DASHBOARD = "winforms"
 except Exception:
     _ui = None
@@ -100,6 +101,7 @@ if not hasattr(sys, "_codesys_daemon_loop"):
 
 # ── Capture globals ───────────────────────────────────────────────────────
 
+
 def capture_codesys_globals():
     g = globals()
     projects_obj = g.get("projects")
@@ -110,6 +112,7 @@ def capture_codesys_globals():
     else:
         try:
             import __main__
+
             if hasattr(__main__, "projects"):
                 proj = __main__.projects
                 if hasattr(proj, "primary"):
@@ -130,10 +133,17 @@ def capture_codesys_globals():
 
 # ── Pipe protocol helpers ──────────────────────────────────────────────────
 
+# Maximum single message size the daemon will accept from the CLI.
+# Raised to 32 MiB so large application_tree / sync_export_text responses
+# no longer trip the 1 MiB hard cap.
+MAX_MESSAGE_SIZE = 32 * 1024 * 1024
+
+
 def _read_json_from_pipe(pipe):
     """Read a length-prefixed JSON message from pipe (byte-mode)."""
     try:
         import System
+
         # Read 4-byte length header as one chunk
         hdr = System.Array.CreateInstance(System.Byte, 4)
         total = 0
@@ -143,7 +153,7 @@ def _read_json_from_pipe(pipe):
                 return None
             total += n
         msg_len = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | (hdr[3] << 24)
-        if msg_len <= 0 or msg_len > 1048576:
+        if msg_len <= 0 or msg_len > MAX_MESSAGE_SIZE:
             _log("Invalid message length: {0}".format(msg_len))
             return None
         # Read body in chunks
@@ -156,7 +166,7 @@ def _read_json_from_pipe(pipe):
             total += n
         # Convert .NET byte[] to Python str via bytearray
         raw_bytes = bytes(bytearray(buf))
-        return json.loads(raw_bytes.decode('utf-8'))
+        return json.loads(raw_bytes.decode("utf-8"))
     except Exception as e:
         _log("Read error: {0}".format(e))
         return None
@@ -166,7 +176,8 @@ def _write_json_to_pipe(pipe, data):
     """Write a length-prefixed JSON message to pipe (byte-mode)."""
     try:
         import System
-        msg_bytes = json.dumps(data, ensure_ascii=False).encode('utf-8')
+
+        msg_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
         n = len(msg_bytes)
         # Write header (4 bytes, little-endian) — 4 single-byte calls are fine
         pipe.WriteByte(n & 0xFF)
@@ -184,6 +195,7 @@ def _write_json_to_pipe(pipe, data):
 
 
 # ── Command handler ────────────────────────────────────────────────────────
+
 
 def _require_param(params, key, type_=str):
     """Validate and return a required parameter."""
@@ -210,7 +222,7 @@ def _get_active_project():
 
 
 def _obj_name(obj):
-    for attr in ('get_name', 'Name', 'Title'):
+    for attr in ("get_name", "Name", "Title"):
         try:
             n = getattr(obj, attr)
             if callable(n):
@@ -278,10 +290,17 @@ def _project_info_summary(proj_info):
         ("Version", ["Version", "version", "get_version"]),
         ("Author", ["Author", "author", "get_author"]),
         ("Description", ["Description", "description", "get_description"]),
-        ("DefaultNamespace", [
-            "DefaultNamespace", "DefaultNameSpace", "defaultNamespace",
-            "default_namespace", "defaultnamespace", "get_default_namespace",
-        ]),
+        (
+            "DefaultNamespace",
+            [
+                "DefaultNamespace",
+                "DefaultNameSpace",
+                "defaultNamespace",
+                "default_namespace",
+                "defaultnamespace",
+                "get_default_namespace",
+            ],
+        ),
         ("URL", ["URL", "Url", "url", "get_url"]),
     ]
     summary = {}
@@ -367,7 +386,7 @@ def _build_path(obj):
             name = _obj_name(current)
             if name:
                 parts.insert(0, name)
-            parent = getattr(current, 'parent', None)
+            parent = getattr(current, "parent", None)
             if parent is None:
                 break
             current = parent
@@ -380,6 +399,7 @@ def _build_path(obj):
 
 
 # ── Cache invalidation ─────────────────────────────────────────────────────
+
 
 def _clear_path_cache():
     """Clear the _build_path cache (call when project structure changes)."""
@@ -403,7 +423,7 @@ _DEFAULT_CONFIG = {
 
 def _load_daemon_config():
     """Load daemon config from project property 'cds-daemon-config'.
-    
+
     Returns a dict with poll_ms and deny list.
     Merges with defaults so missing keys are filled in.
     """
@@ -435,6 +455,7 @@ def _load_daemon_config():
                     pass
             if raw:
                 import json as _json
+
                 try:
                     loaded = _json.loads(raw)
                     if isinstance(loaded, dict):
@@ -450,11 +471,12 @@ def _load_daemon_config():
 
 def _save_daemon_config(config):
     """Save daemon config to project property 'cds-daemon-config'.
-    
+
     Args:
         config: dict with poll_ms, deny keys
     """
     import json as _json
+
     raw = _json.dumps(config, ensure_ascii=False)
     try:
         projects = sys._codesys_daemon_loop.get("projects")
@@ -481,18 +503,25 @@ def _save_daemon_config(config):
 
 def _check_permission(method):
     """Check if a command is allowed by daemon config.
-    
+
     Returns:
         (allowed, reason) tuple. allowed=True means OK.
     """
     config = _load_daemon_config()
     deny_list = config.get("deny", [])
     if method in deny_list:
-        return False, "Forbidden by daemon settings (deny list includes '{0}')".format(method)
+        return False, "Forbidden by daemon settings (deny list includes '{0}')".format(
+            method
+        )
     # Also check if any pattern matches (e.g. "reset_plc" matches "reset_plc --kind origin")
     for denied in deny_list:
         if method.startswith(denied):
-            return False, "Forbidden by daemon settings (pattern '{0}' matches '{1}')".format(denied, method)
+            return (
+                False,
+                "Forbidden by daemon settings (pattern '{0}' matches '{1}')".format(
+                    denied, method
+                ),
+            )
     return True, ""
 
 
@@ -520,14 +549,17 @@ def _get_status_info():
                     props = getattr(proj_info, "values", proj_info)
                     if hasattr(props, "__getitem__"):
                         sf = ""
-                        if hasattr(props, '__contains__') and 'cds-sync-folder' in props:
-                            sf = props['cds-sync-folder']
-                        elif hasattr(props, 'get'):
-                            sf = props.get('cds-sync-folder', '')
+                        if (
+                            hasattr(props, "__contains__")
+                            and "cds-sync-folder" in props
+                        ):
+                            sf = props["cds-sync-folder"]
+                        elif hasattr(props, "get"):
+                            sf = props.get("cds-sync-folder", "")
                         if sf:
                             result["sync_folder"] = str(sf)
                 # Project filename
-                for attr in ['filename', 'FileName', 'FullName', 'Path']:
+                for attr in ["filename", "FileName", "FullName", "Path"]:
                     try:
                         val = getattr(prj, attr)
                         if val:
@@ -631,7 +663,18 @@ def handle_command(method, params):
     method = _ALIASES.get(method, method)
 
     # Commands that never require permission check (system/read-only)
-    if method not in ("ping", "status", "help", "stop", "permissions", "sync", "project_info", "project_tree", "read_object", "explore"):
+    if method not in (
+        "ping",
+        "status",
+        "help",
+        "stop",
+        "permissions",
+        "sync",
+        "project_info",
+        "project_tree",
+        "read_object",
+        "explore",
+    ):
         allowed, reason = _check_permission(method)
         if not allowed:
             return {"ok": False, "error": reason}
@@ -642,12 +685,15 @@ def handle_command(method, params):
             return {"ok": True, "data": {"message": "Daemon stopping..."}}
 
         elif method == "ping":
-            return {"ok": True, "data": {
-                "status": "pong",
-                "mode": "reverse_pipe",
-                "pid": os.getpid(),
-                "plc": _get_plc_status_snapshot(),
-            }}
+            return {
+                "ok": True,
+                "data": {
+                    "status": "pong",
+                    "mode": "reverse_pipe",
+                    "pid": os.getpid(),
+                    "plc": _get_plc_status_snapshot(),
+                },
+            }
 
         elif method == "status":
             result = _get_status_info()
@@ -802,6 +848,7 @@ def handle_command(method, params):
 
 # ── Command implementations ───────────────────────────────────────────────
 
+
 def _cmd_project_info():
     project, err = _get_active_project()
     if err:
@@ -813,7 +860,7 @@ def _cmd_project_info():
             "daemon_pid": os.getpid(),
             "mode": "reverse_pipe",
         }
-        for attr in ['filename', 'FileName', 'FullName', 'Path']:
+        for attr in ["filename", "FileName", "FullName", "Path"]:
             try:
                 val = getattr(project, attr)
                 if val:
@@ -875,7 +922,9 @@ def _build_tree(obj, depth=0, current_depth=0):
         children = obj.get_children()
         child_list = []
         for child in children:
-            child_list.append(_build_tree(child, depth=depth, current_depth=current_depth + 1))
+            child_list.append(
+                _build_tree(child, depth=depth, current_depth=current_depth + 1)
+            )
         if child_list:
             node["children"] = child_list
     except Exception:
@@ -886,13 +935,20 @@ def _build_tree(obj, depth=0, current_depth=0):
 def _cmd_application_state():
     try:
         import scriptengine as se
+
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is None:
             return {"ok": False, "error": "projects not captured"}
         prj = projects.primary
         app = prj.active_application
         if app is None:
-            return {"ok": True, "data": {"application_state": "unknown", "note": "No active application"}}
+            return {
+                "ok": True,
+                "data": {
+                    "application_state": "unknown",
+                    "note": "No active application",
+                },
+            }
         oa = se.online.create_online_application(app)
         if oa is None:
             return {"ok": True, "data": {"application_state": "disconnected"}}
@@ -927,7 +983,10 @@ def _cmd_connect_to_device(params):
         result = _helpers.connect_to_device_impl(project, ip_address, gateway_name)
         return {"ok": True, "data": result}
     except Exception as e:
-        return {"ok": False, "error": "Connect error: {0}\n{1}".format(e, traceback.format_exc())}
+        return {
+            "ok": False,
+            "error": "Connect error: {0}\n{1}".format(e, traceback.format_exc()),
+        }
 
 
 def _cmd_disconnect_from_device():
@@ -1033,14 +1092,18 @@ def _cmd_export(params):
     if not out_path:
         out_path = os.path.join(
             os.environ.get("TEMP", "C:\\Temp"),
-            "cds-snapshot-{0}.xml".format(time.strftime("%Y%m%d_%H%M%S")))
+            "cds-snapshot-{0}.xml".format(time.strftime("%Y%m%d_%H%M%S")),
+        )
     try:
         output_dir = os.path.dirname(out_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         objects = list(project.get_children(recursive=True))
         import tempfile as _tf
-        fd, tmp_path = _tf.mkstemp(prefix="cds_export_", suffix=".xml", dir=output_dir or None)
+
+        fd, tmp_path = _tf.mkstemp(
+            prefix="cds_export_", suffix=".xml", dir=output_dir or None
+        )
         os.close(fd)
         try:
             os.remove(tmp_path)
@@ -1049,7 +1112,8 @@ def _cmd_export(params):
         try:
             project.export_native(objects, tmp_path, recursive=False)
             from ide_online_helpers import atomic_write
-            with open(tmp_path, 'rb') as f:
+
+            with open(tmp_path, "rb") as f:
                 content = f.read()
             atomic_write(out_path, content)
             os.remove(tmp_path)
@@ -1079,17 +1143,21 @@ def _cmd_build(params):
     try:
         import time
         import traceback
-        
+
         # Get system from daemon state
         daemon_state = getattr(sys, "_codesys_daemon_loop", {})
         system_obj = daemon_state.get("system")
         if system_obj is None:
-            return {"ok": False, "error": "System object not available in daemon state."}
-        
+            return {
+                "ok": False,
+                "error": "System object not available in daemon state.",
+            }
+
         # Find the active application (not the project)
         from System import Guid
+
         BUILD_CATEGORY_GUID = "97F48D64-A2A3-4856-B640-75C046E37EA9"
-        
+
         app = None
         try:
             app = project.active_application
@@ -1097,7 +1165,7 @@ def _cmd_build(params):
             pass
         if app is None:
             for child in project.get_children(True):
-                if hasattr(child, 'is_application'):
+                if hasattr(child, "is_application"):
                     try:
                         if child.is_application:
                             app = child
@@ -1106,13 +1174,13 @@ def _cmd_build(params):
                         pass
         if app is None:
             return {"ok": False, "error": "No active application found to build."}
-        
+
         app_name = "?"
         try:
             app_name = app.get_name()
         except Exception:
             pass
-        
+
         # Clear build messages before build
         try:
             category_guid = Guid(BUILD_CATEGORY_GUID)
@@ -1122,7 +1190,7 @@ def _cmd_build(params):
                 system_obj.clear_messages(BUILD_CATEGORY_GUID)
             except Exception:
                 pass
-        
+
         # Build
         start = time.time()
         try:
@@ -1130,7 +1198,7 @@ def _cmd_build(params):
         except Exception as e:
             return {"ok": False, "error": "Build exception: {0}".format(e)}
         elapsed = time.time() - start
-        
+
         # Collect messages
         messages = []
         error_count = 0
@@ -1165,17 +1233,19 @@ def _cmd_build(params):
                             msg_id = prefix
                     except Exception:
                         pass
-                    messages.append({
-                        "severity": severity,
-                        "code": msg_id,
-                        "text": msg_text,
-                        "object": obj_name,
-                    })
+                    messages.append(
+                        {
+                            "severity": severity,
+                            "code": msg_id,
+                            "text": msg_text,
+                            "object": obj_name,
+                        }
+                    )
                 except Exception:
                     pass
         except Exception:
             pass
-        
+
         result = {
             "ok": error_count == 0,
             "data": {
@@ -1184,19 +1254,21 @@ def _cmd_build(params):
                 "warnings": warning_count,
                 "elapsed_seconds": round(elapsed, 3),
                 "messages": messages,
-            }
+            },
         }
-        
+
         # Write output file if requested
         output_path = params.get("output") if isinstance(params, dict) else None
         if output_path:
             try:
                 with open(output_path, "wb") as f:
-                    f.write(json.dumps(result, indent=2, ensure_ascii=False).encode("utf-8"))
+                    f.write(
+                        json.dumps(result, indent=2, ensure_ascii=False).encode("utf-8")
+                    )
                 result["data"]["output_file"] = output_path
             except Exception as e:
                 result["data"]["output_error"] = str(e)
-        
+
         return result
     except Exception as e:
         _log("Build error: {0}\n{1}".format(e, traceback.format_exc()))
@@ -1204,6 +1276,7 @@ def _cmd_build(params):
 
 
 _DEVICE_CACHE_TTL = 30  # seconds
+
 
 def _get_device_objects(project):
     """Get project children with TTL cache."""
@@ -1247,7 +1320,11 @@ def _find_object_in_project(project, obj_name, app_name=None):
                     parent = parent.parent
                     pname = str(_common.object_name(parent))
                 except Exception as e:
-                    _log("Object search: failed to inspect parent chain for '{0}': {1}".format(obj_name, e))
+                    _log(
+                        "Object search: failed to inspect parent chain for '{0}': {1}".format(
+                            obj_name, e
+                        )
+                    )
                     break
                 if pname == app_name:
                     found_in_app = True
@@ -1405,6 +1482,7 @@ def _cmd_device_status(params):
 
 def _cmd_test_online(params):
     import scriptengine as se
+
     projects = sys._codesys_daemon_loop.get("projects")
     if projects is None:
         return {"ok": False, "error": "projects not captured"}
@@ -1433,6 +1511,7 @@ def _cmd_test_online(params):
 def _cmd_explore_api():
     """Explore available APIs for log/event/diagnostic access."""
     import scriptengine as se
+
     result = {}
     try:
         prj = sys._codesys_daemon_loop.get("projects")
@@ -1446,10 +1525,21 @@ def _cmd_explore_api():
         result["oa_methods"] = [m for m in dir(oa) if not m.startswith("_")]
 
         # 2. se.online module
-        result["se_online_methods"] = [m for m in dir(se.online) if not m.startswith("_")]
+        result["se_online_methods"] = [
+            m for m in dir(se.online) if not m.startswith("_")
+        ]
 
         # 3. Device objects with log/event/message/diagnostic methods
-        log_keywords = ["log", "event", "message", "diagnos", "error", "status", "trace", "info"]
+        log_keywords = [
+            "log",
+            "event",
+            "message",
+            "diagnos",
+            "error",
+            "status",
+            "trace",
+            "info",
+        ]
         devices = []
         for child in prj.get_children(True):
             name = ""
@@ -1457,7 +1547,9 @@ def _cmd_explore_api():
                 name = str(child.get_name())
             except Exception:
                 pass
-            methods = [m for m in dir(child) if any(k in m.lower() for k in log_keywords)]
+            methods = [
+                m for m in dir(child) if any(k in m.lower() for k in log_keywords)
+            ]
             if methods:
                 devices.append({"name": name, "log_methods": methods})
         result["devices_with_log_api"] = devices[:20]
@@ -1465,9 +1557,12 @@ def _cmd_explore_api():
         # 4. System log methods
         try:
             import __main__
+
             system = getattr(__main__, "system", None)
             if system:
-                sys_methods = [m for m in dir(system) if any(k in m.lower() for k in log_keywords)]
+                sys_methods = [
+                    m for m in dir(system) if any(k in m.lower() for k in log_keywords)
+                ]
                 if sys_methods:
                     result["system_log_methods"] = sys_methods
         except Exception:
@@ -1519,8 +1614,8 @@ def _cmd_help():
         "update_pou": "Edge case: update ONE object's text from .st [--name NAME] [--app APP] --st_path PATH. Prefer sync_import_text for the normal disk->IDE flow",
         "delete_pou": "Delete POU/Function/FunctionBlock [--name NAME] [--app APP]",
         "probe": "Probe OnlineApplication for variable/symbol APIs",
-        "read_variables": "Batch-read expressions {\"names\": [...]} -> per-item value/read_ok/read_error",
-        "write_variables": "Batch-write {\"items\": [{name,value}]} -> per-item written/write_error",
+        "read_variables": 'Batch-read expressions {"names": [...]} -> per-item value/read_ok/read_error',
+        "write_variables": 'Batch-write {"items": [{name,value}]} -> per-item written/write_error',
         "application_tree": "Walk the application OBJECT tree [--depth N] [--values] [--pattern FILTER] [--flat] [--output PATH]",
         "plc_files": "List files on PLC [--path /]",
         "plc_download": "Download file from PLC --src PATH [--dest PATH]",
@@ -1551,15 +1646,15 @@ def _cmd_read_log(params):
         system = sys._codesys_daemon_loop.get("system")
         if system is None:
             return {"ok": False, "error": "system not captured"}
-        
+
         last_n = None
         try:
             last_n = int(params.get("last", 0))
         except (ValueError, TypeError):
             last_n = None
-        
+
         do_clear = str(params.get("clear", "")).lower() in ("1", "true", "yes")
-        
+
         messages = []
         if hasattr(system, "get_messages"):
             raw = system.get_messages()
@@ -1571,16 +1666,16 @@ def _cmd_read_log(params):
             if raw is not None:
                 for msg_obj in raw:
                     messages.append(str(msg_obj))
-        
+
         if last_n is not None and last_n > 0 and len(messages) > last_n:
             messages = messages[-last_n:]
-        
+
         if do_clear and hasattr(system, "clear_messages"):
             try:
                 system.clear_messages()
             except Exception:
                 pass
-        
+
         return {"ok": True, "data": {"count": len(messages), "messages": messages}}
     except Exception as e:
         return {"ok": False, "error": "Read log error: {0}".format(e)}
@@ -1594,7 +1689,12 @@ def _cmd_start_plc():
     try:
         oa, _target_app, online_err = _ensure_online_app(project)
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first. {0}".format(online_err or "")}
+            return {
+                "ok": False,
+                "error": "Not connected. Call connect_to_device first. {0}".format(
+                    online_err or ""
+                ),
+            }
         if not hasattr(oa, "start"):
             return {"ok": False, "error": "OnlineApplication has no start() method"}
         oa.start()
@@ -1611,7 +1711,12 @@ def _cmd_stop_plc():
     try:
         oa, _target_app, online_err = _ensure_online_app(project)
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first. {0}".format(online_err or "")}
+            return {
+                "ok": False,
+                "error": "Not connected. Call connect_to_device first. {0}".format(
+                    online_err or ""
+                ),
+            }
         if not hasattr(oa, "stop"):
             return {"ok": False, "error": "OnlineApplication has no stop() method"}
         oa.stop()
@@ -1629,27 +1734,40 @@ def _cmd_reset_plc(params):
     try:
         oa = sys._codesys_daemon_loop.get("online_app")
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+            return {
+                "ok": False,
+                "error": "Not connected. Call connect_to_device first.",
+            }
         if not hasattr(oa, "reset"):
             return {"ok": False, "error": "OnlineApplication has no reset() method"}
         kind = (params.get("kind") or "warm").lower()
         if kind not in ("warm", "cold", "origin"):
-            return {"ok": False, "error": "Invalid reset kind: {0}. Use warm, cold, or origin.".format(kind)}
+            return {
+                "ok": False,
+                "error": "Invalid reset kind: {0}. Use warm, cold, or origin.".format(
+                    kind
+                ),
+            }
         # Safety guard: origin reset erases the application from PLC
         if kind == "origin" and not params.get("force"):
             return {
                 "ok": False,
-                "error": ("DANGEROUS: reset_plc --kind origin erases the application from the PLC, "
-                          "restoring it to factory state. Use --force to confirm."),
+                "error": (
+                    "DANGEROUS: reset_plc --kind origin erases the application from the PLC, "
+                    "restoring it to factory state. Use --force to confirm."
+                ),
             }
         # Resolve the reset type enum — use the parameter type from the oa's method
         import System
         import System.Reflection
+
         reset_type = None
         try:
             method_info = oa.GetType().GetMethod(
                 "reset",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.IgnoreCase
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.IgnoreCase,
             )
             if method_info is not None:
                 params_info = method_info.GetParameters()
@@ -1683,10 +1801,14 @@ def _cmd_reset_plc(params):
                 if reset_type is not None:
                     break
         if reset_type is None:
-            return {"ok": False, "error": "Cannot resolve reset enum type for kind={0}".format(kind)}
+            return {
+                "ok": False,
+                "error": "Cannot resolve reset enum type for kind={0}".format(kind),
+            }
         # Call with forceKill=True (second parameter)
         # Use Enum.ToObject to avoid IronPython boxing issues
         import System
+
         enum_type = reset_type.GetType()
         int_val = int(reset_type)
         typed_reset = System.Enum.ToObject(enum_type, int_val)
@@ -1701,9 +1823,15 @@ def _cmd_create_boot_app():
     try:
         oa = sys._codesys_daemon_loop.get("online_app")
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+            return {
+                "ok": False,
+                "error": "Not connected. Call connect_to_device first.",
+            }
         if not hasattr(oa, "create_boot_application"):
-            return {"ok": False, "error": "OnlineApplication has no create_boot_application() method"}
+            return {
+                "ok": False,
+                "error": "OnlineApplication has no create_boot_application() method",
+            }
         oa.create_boot_application()
         return {"ok": True, "data": {"status": "boot_application_created"}}
     except Exception as e:
@@ -1722,14 +1850,26 @@ def _cmd_source_download(params):
     try:
         oa = sys._codesys_daemon_loop.get("online_app")
         if oa is None:
-            return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+            return {
+                "ok": False,
+                "error": "Not connected. Call connect_to_device first.",
+            }
         if not hasattr(oa, "source_download"):
-            return {"ok": False, "error": "OnlineApplication has no source_download() method"}
+            return {
+                "ok": False,
+                "error": "OnlineApplication has no source_download() method",
+            }
         # SP22: source_download() takes no arguments, saves to project dir
         # We'll just call it and report success
         oa.source_download()
         output_dir = params.get("output") or "<default project location>"
-        return {"ok": True, "data": {"output_directory": output_dir, "note": "source_download() saved to default project location"}}
+        return {
+            "ok": True,
+            "data": {
+                "output_directory": output_dir,
+                "note": "source_download() saved to default project location",
+            },
+        }
     except Exception as e:
         return {"ok": False, "error": "Source download error: {0}".format(e)}
 
@@ -1739,13 +1879,13 @@ def _cmd_probe_oa(params):
     import scriptengine as se
     import System
     import System.Reflection
-    
+
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     result = {}
-    
+
     # 1. All public methods of oa
     all_methods = []
     for m in dir(oa):
@@ -1757,26 +1897,29 @@ def _cmd_probe_oa(params):
             except Exception as e:
                 all_methods.append({"name": m, "error": str(e)[:80]})
     result["all_methods"] = all_methods
-    
+
     # 2. .NET reflection: get methods by signature
     try:
         net_methods = []
         for m in oa.GetType().GetMethods(
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
         ):
             try:
                 p = [str(p.ParameterType.Name) for p in m.GetParameters()]
-                net_methods.append({
-                    "name": m.Name,
-                    "params": p,
-                    "return": str(m.ReturnType.Name),
-                })
+                net_methods.append(
+                    {
+                        "name": m.Name,
+                        "params": p,
+                        "return": str(m.ReturnType.Name),
+                    }
+                )
             except Exception:
                 pass
         result["net_methods"] = net_methods
     except Exception as e:
         result["net_reflection_error"] = str(e)
-    
+
     # 3. Explore get_online_device() return value
     online_dev = None
     if hasattr(oa, "get_online_device"):
@@ -1789,7 +1932,9 @@ def _cmd_probe_oa(params):
                         try:
                             thing = getattr(online_dev, m)
                             kind = "method" if callable(thing) else "property"
-                            dev_methods.append({"name": m, "type": kind, "str": str(thing)[:120]})
+                            dev_methods.append(
+                                {"name": m, "type": kind, "str": str(thing)[:120]}
+                            )
                         except Exception:
                             pass
                 result["online_device_methods"] = dev_methods
@@ -1797,11 +1942,18 @@ def _cmd_probe_oa(params):
                 try:
                     dev_net_methods = []
                     for m in online_dev.GetType().GetMethods(
-                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public
+                        System.Reflection.BindingFlags.Instance
+                        | System.Reflection.BindingFlags.Public
                     ):
                         try:
                             p = [str(p.ParameterType.Name) for p in m.GetParameters()]
-                            dev_net_methods.append({"name": m.Name, "params": p, "return": str(m.ReturnType.Name)})
+                            dev_net_methods.append(
+                                {
+                                    "name": m.Name,
+                                    "params": p,
+                                    "return": str(m.ReturnType.Name),
+                                }
+                            )
                         except Exception:
                             pass
                     result["online_device_net_methods"] = dev_net_methods
@@ -1809,7 +1961,7 @@ def _cmd_probe_oa(params):
                     result["online_device_net_error"] = str(e)
         except Exception as e:
             result["get_online_device_error"] = str(e)
-    
+
     # 4. Explore oa.application (the Application object inside CODESYS)
     app_obj = None
     if hasattr(oa, "application"):
@@ -1822,7 +1974,9 @@ def _cmd_probe_oa(params):
                         try:
                             thing = getattr(app_obj, m)
                             kind = "method" if callable(thing) else "property"
-                            app_methods.append({"name": m, "type": kind, "str": str(thing)[:180]})
+                            app_methods.append(
+                                {"name": m, "type": kind, "str": str(thing)[:180]}
+                            )
                         except Exception:
                             pass
                 result["oa_application_methods"] = app_methods
@@ -1841,11 +1995,22 @@ def _cmd_probe_oa(params):
                     result["oa_app_children_error"] = str(e)[:200]
         except Exception as e:
             result["oa_application_error"] = str(e)[:200]
-    
+
     # 5. Try to call candidate methods for symbol enumeration
-    candidates = ["all_variables", "variables", "symbols", "symbol", "plc_variables",
-                  "tags", "signals", "list_variables", "get_all_variables",
-                  "value_names", "variable_names", "symbol_names"]
+    candidates = [
+        "all_variables",
+        "variables",
+        "symbols",
+        "symbol",
+        "plc_variables",
+        "tags",
+        "signals",
+        "list_variables",
+        "get_all_variables",
+        "value_names",
+        "variable_names",
+        "symbol_names",
+    ]
     for name in candidates:
         if hasattr(oa, name):
             try:
@@ -1857,7 +2022,7 @@ def _cmd_probe_oa(params):
                 result["try_oa_" + name] = str(val)[:300]
             except Exception as e:
                 result["try_oa_" + name + "_error"] = str(e)[:200]
-    
+
     # Also try on online_device and application
     if online_dev is not None:
         for name in candidates:
@@ -1871,7 +2036,7 @@ def _cmd_probe_oa(params):
                     result["try_dev_" + name] = str(val)[:300]
                 except Exception as e:
                     result["try_dev_" + name + "_error"] = str(e)[:200]
-    
+
     if app_obj is not None:
         for name in candidates:
             if hasattr(app_obj, name):
@@ -1884,7 +2049,7 @@ def _cmd_probe_oa(params):
                     result["try_app_" + name] = str(val)[:300]
                 except Exception as e:
                     result["try_app_" + name + "_error"] = str(e)[:200]
-    
+
     return {"ok": True, "data": result}
 
 
@@ -1894,7 +2059,7 @@ def _cmd_application_tree(params):
     Walks oa.application.get_children(), builds object paths, and optionally
     reads current values. For declared PLC variables use the variable-map /
     variable-snapshot tools instead.
-    
+
     Args:
         params:
             --depth N: max recursion depth (default 10)
@@ -1906,7 +2071,7 @@ def _cmd_application_tree(params):
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     try:
         read_values = str(params.get("values", "")).lower() in ("1", "true", "yes")
         pattern = params.get("pattern", "").lower()
@@ -1917,33 +2082,33 @@ def _cmd_application_tree(params):
             max_depth = int(params.get("depth", 10))
         except (ValueError, TypeError):
             pass
-        
+
         app_obj = getattr(oa, "application", None)
         if app_obj is None:
             return {"ok": False, "error": "oa.application not available"}
-        
+
         _seen = set()
-        
+
         def _walk(obj, prefix="", depth=0):
             """Recursively walk application children, building path."""
             if depth > max_depth:
                 return None
-            
+
             name = _obj_name(obj)
             if not name:
                 return None
-            
+
             # Build full path
             full_path = prefix + "." + name if prefix else name
-            
+
             # Dedup
             obj_id = id(obj)
             if obj_id in _seen:
                 return None
             _seen.add(obj_id)
-            
+
             node = {"name": name, "path": full_path}
-            
+
             # Try to read value
             if read_values:
                 for candidate in [full_path, "Application." + full_path]:
@@ -1951,14 +2116,19 @@ def _cmd_application_tree(params):
                         val = oa.read_value(candidate)
                         if val is not None:
                             str_val = str(val)
-                            if "Invalid expression" in str_val or "invalid expression" in str_val.lower():
-                                node["value_error"] = "Invalid expression (not exported to online)"
+                            if (
+                                "Invalid expression" in str_val
+                                or "invalid expression" in str_val.lower()
+                            ):
+                                node["value_error"] = (
+                                    "Invalid expression (not exported to online)"
+                                )
                             else:
                                 node["value"] = str_val
                             break
                     except Exception:
                         pass
-            
+
             try:
                 children = list(obj.get_children())
                 if children:
@@ -1971,13 +2141,13 @@ def _cmd_application_tree(params):
                         node["children"] = child_list
             except Exception:
                 pass
-            
+
             return node
-        
+
         tree = _walk(app_obj)
         if tree is None:
             return {"ok": False, "error": "Empty variable tree"}
-        
+
         if is_flat:
             # Flatten tree to list
             def _flatten(node, result=None):
@@ -1987,19 +2157,23 @@ def _cmd_application_tree(params):
                 if "value" in node:
                     entry["value"] = node["value"]
                 if pattern:
-                    if pattern in node["path"].lower() or pattern in node["name"].lower():
+                    if (
+                        pattern in node["path"].lower()
+                        or pattern in node["name"].lower()
+                    ):
                         result.append(entry)
                 else:
                     result.append(entry)
                 for child in node.get("children", []):
                     _flatten(child, result)
                 return result
-            
+
             flat_list = _flatten(tree)
-            
+
             if output_path:
                 # Write full JSON to file, return summary via pipe
                 import json as _json
+
                 export = {
                     "count": len(flat_list),
                     "variables": flat_list,
@@ -2010,7 +2184,11 @@ def _cmd_application_tree(params):
                     if dir_name and not os.path.exists(dir_name):
                         os.makedirs(dir_name)
                     with open(output_path, "wb") as f:
-                        f.write(_json.dumps(export, indent=2, ensure_ascii=False).encode('utf-8'))
+                        f.write(
+                            _json.dumps(export, indent=2, ensure_ascii=False).encode(
+                                "utf-8"
+                            )
+                        )
                     return {
                         "ok": True,
                         "data": {
@@ -2018,20 +2196,23 @@ def _cmd_application_tree(params):
                             "output": output_path,
                             "mode": "flat",
                             "note": "Full list written to file. Use --pattern to search.",
-                        }
+                        },
                     }
                 except Exception as e:
-                    return {"ok": False, "error": "Write output file error: {0}".format(e)}
-            
+                    return {
+                        "ok": False,
+                        "error": "Write output file error: {0}".format(e),
+                    }
+
             return {
                 "ok": True,
                 "data": {
                     "count": len(flat_list),
                     "variables": flat_list,
                     "mode": "flat",
-                }
+                },
             }
-        
+
         else:
             # Tree mode: filter if pattern given
             def _filter_tree(node):
@@ -2042,7 +2223,11 @@ def _cmd_application_tree(params):
                     fc = _filter_tree(child)
                     if fc is not None:
                         filtered_children.append(fc)
-                name_match = not pattern or pattern in node["name"].lower() or pattern in node.get("path", "").lower()
+                name_match = (
+                    not pattern
+                    or pattern in node["name"].lower()
+                    or pattern in node.get("path", "").lower()
+                )
                 if name_match or filtered_children:
                     result = {"name": node["name"], "path": node["path"]}
                     if "value" in node:
@@ -2051,13 +2236,17 @@ def _cmd_application_tree(params):
                         result["children"] = filtered_children
                     return result
                 return None
-            
+
             filtered = _filter_tree(tree) if pattern else tree
             if filtered is None:
-                return {"ok": True, "data": {"mode": "tree", "note": "No matches for pattern"}}
-            
+                return {
+                    "ok": True,
+                    "data": {"mode": "tree", "note": "No matches for pattern"},
+                }
+
             if output_path:
                 import json as _json
+
                 export = filtered
                 export["mode"] = "tree"
                 try:
@@ -2065,20 +2254,27 @@ def _cmd_application_tree(params):
                     if dir_name and not os.path.exists(dir_name):
                         os.makedirs(dir_name)
                     with open(output_path, "wb") as f:
-                        f.write(_json.dumps(export, indent=2, ensure_ascii=False).encode('utf-8'))
+                        f.write(
+                            _json.dumps(export, indent=2, ensure_ascii=False).encode(
+                                "utf-8"
+                            )
+                        )
                     return {
                         "ok": True,
                         "data": {
                             "output": output_path,
                             "mode": "tree",
                             "note": "Variable tree written to file.",
-                        }
+                        },
                     }
                 except Exception as e:
-                    return {"ok": False, "error": "Write output file error: {0}".format(e)}
-            
+                    return {
+                        "ok": False,
+                        "error": "Write output file error: {0}".format(e),
+                    }
+
             return {"ok": True, "data": filtered}
-            
+
     except Exception as e:
         return {"ok": False, "error": "Variable tree error: {0}".format(e)}
 
@@ -2088,29 +2284,37 @@ def _cmd_plc_files(params):
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     try:
         online_dev = oa.get_online_device()
         if online_dev is None:
             return {"ok": False, "error": "get_online_device() returned None"}
-        
+
         diag = {}
-        
+
         # Check connection status
         try:
-            is_conn = bool(online_dev.connected) if hasattr(online_dev, 'connected') else False
+            is_conn = (
+                bool(online_dev.connected)
+                if hasattr(online_dev, "connected")
+                else False
+            )
             diag["connected"] = str(is_conn)
         except Exception as e:
             diag["connected_error"] = str(e)[:100]
-        
+
         try:
-            is_shared = bool(online_dev.shared_connected) if hasattr(online_dev, 'shared_connected') else False
+            is_shared = (
+                bool(online_dev.shared_connected)
+                if hasattr(online_dev, "shared_connected")
+                else False
+            )
             diag["shared_connected"] = str(is_shared)
         except Exception as e:
             diag["shared_connected_error"] = str(e)[:100]
-        
+
         # Try to connect if not already connected
-        if hasattr(online_dev, 'connect') and not is_conn:
+        if hasattr(online_dev, "connect") and not is_conn:
             try:
                 _log("Calling online_dev.connect()...")
                 online_dev.connect()
@@ -2121,14 +2325,23 @@ def _cmd_plc_files(params):
                     pass
             except Exception as e:
                 diag["connect_error"] = str(e)[:200]
-        
+
         path = params.get("path", "/")
-        
+
         # Try common paths if the requested path fails
         paths_to_try = [path]
         if path == "/":
-            paths_to_try = ["/", "", "/usr/", "/home/", "/var/", "/tmp/", "/log/", "/logs/"]
-        
+            paths_to_try = [
+                "/",
+                "",
+                "/usr/",
+                "/home/",
+                "/var/",
+                "/tmp/",
+                "/log/",
+                "/logs/",
+            ]
+
         result_files = None
         last_error = None
         for p in paths_to_try:
@@ -2140,23 +2353,38 @@ def _cmd_plc_files(params):
             except Exception as e:
                 last_error = str(e)[:200]
                 continue
-        
+
         if result_files is None:
             # Show diagnostic info
             diag["paths_tried"] = paths_to_try
             diag["last_error"] = last_error or "unknown"
-            diag["note"] = "PLC file system may be disabled or device not fully connected"
-            return {"ok": False, "error": "Get directory entries failed", "diagnostics": diag}
-        
+            diag["note"] = (
+                "PLC file system may be disabled or device not fully connected"
+            )
+            return {
+                "ok": False,
+                "error": "Get directory entries failed",
+                "diagnostics": diag,
+            }
+
         files = []
         for f in result_files:
             try:
                 info = {}
-                for attr in ['name', 'Name', 'length', 'Length', 
-                             'size', 'Size', 'is_directory', 
-                             'IsDirectory', 'creation_time', 
-                             'CreationTime', 'last_write_time',
-                             'LastWriteTime']:
+                for attr in [
+                    "name",
+                    "Name",
+                    "length",
+                    "Length",
+                    "size",
+                    "Size",
+                    "is_directory",
+                    "IsDirectory",
+                    "creation_time",
+                    "CreationTime",
+                    "last_write_time",
+                    "LastWriteTime",
+                ]:
                     if hasattr(f, attr):
                         try:
                             val = getattr(f, attr)
@@ -2180,7 +2408,7 @@ def _cmd_plc_files(params):
                 files.append(info)
             except Exception:
                 pass
-        
+
         return {"ok": True, "data": {"path": path, "files": files, "count": len(files)}}
     except Exception as e:
         return {"ok": False, "error": "PLC files error: {0}".format(e)}
@@ -2191,35 +2419,40 @@ def _cmd_plc_download(params):
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     try:
         online_dev = oa.get_online_device()
         if online_dev is None:
             return {"ok": False, "error": "get_online_device() returned None"}
-        
+
         src = params.get("src", "")
         if not src:
             return {"ok": False, "error": "Parameter 'src' is required (PLC path)"}
-        
+
         dest = params.get("dest", "")
         if not dest:
-            dest = tempfile.mktemp(prefix="plc_", suffix=os.path.splitext(src)[1] or ".bin")
-        
+            dest = tempfile.mktemp(
+                prefix="plc_", suffix=os.path.splitext(src)[1] or ".bin"
+            )
+
         overwrite = str(params.get("overwrite", "1")).lower() in ("1", "true", "yes")
-        
+
         # Ensure dest directory exists
         dest_dir = os.path.dirname(dest)
         if dest_dir and not os.path.exists(dest_dir):
             os.makedirs(dest_dir)
-        
-        if hasattr(online_dev, 'upload_file'):
+
+        if hasattr(online_dev, "upload_file"):
             online_dev.upload_file(src, dest, overwrite)
-        elif hasattr(online_dev, 'download_file'):
+        elif hasattr(online_dev, "download_file"):
             # fallback: some CODESYS versions swap the direction
             online_dev.download_file(src, dest, overwrite)
         else:
-            return {"ok": False, "error": "Online device has no upload_file or download_file method"}
-        
+            return {
+                "ok": False,
+                "error": "Online device has no upload_file or download_file method",
+            }
+
         size = os.path.getsize(dest) if os.path.exists(dest) else -1
         return {
             "ok": True,
@@ -2227,7 +2460,7 @@ def _cmd_plc_download(params):
                 "source": src,
                 "destination": dest,
                 "size": size,
-            }
+            },
         }
     except Exception as e:
         return {"ok": False, "error": "PLC download error: {0}".format(e)}
@@ -2235,9 +2468,9 @@ def _cmd_plc_download(params):
 
 def _cmd_plc_upload(params):
     """Upload a file from local filesystem to PLC.
-    
+
     Uses download_file(local_src, plc_dest, overwrite) which copies PC→PLC.
-    
+
     Args:
         --src PATH: local file path
         --dest PATH: destination path on PLC (e.g. PlcLogic/Application/myfile.bin)
@@ -2246,39 +2479,42 @@ def _cmd_plc_upload(params):
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     try:
         online_dev = oa.get_online_device()
         if online_dev is None:
             return {"ok": False, "error": "get_online_device() returned None"}
-        
+
         src = params.get("src", "")
         if not src:
             return {"ok": False, "error": "Parameter 'src' is required (local path)"}
         if not os.path.exists(src):
             return {"ok": False, "error": "Local file not found: {0}".format(src)}
-        
+
         dest = params.get("dest", "")
         if not dest:
             dest = os.path.basename(src)
-        
+
         overwrite = str(params.get("overwrite", "1")).lower() in ("1", "true", "yes")
-        
-        if hasattr(online_dev, 'download_file'):
+
+        if hasattr(online_dev, "download_file"):
             online_dev.download_file(src, dest, overwrite)
-        elif hasattr(online_dev, 'upload_file'):
+        elif hasattr(online_dev, "upload_file"):
             # fallback: upload_file is PLC→PC, so this won't work, but try anyway
             online_dev.upload_file(src, dest, overwrite)
         else:
-            return {"ok": False, "error": "Online device has no download_file or upload_file method"}
-        
+            return {
+                "ok": False,
+                "error": "Online device has no download_file or upload_file method",
+            }
+
         return {
             "ok": True,
             "data": {
                 "source": src,
                 "destination": dest,
                 "overwrite": overwrite,
-            }
+            },
         }
     except Exception as e:
         return {"ok": False, "error": "PLC upload error: {0}".format(e)}
@@ -2286,7 +2522,7 @@ def _cmd_plc_upload(params):
 
 def _cmd_export_csv(params):
     """Export PLC variable tree as CSV.
-    
+
     Args:
         --output PATH: save CSV to file (default: return as text)
         --values: include current values (requires connection)
@@ -2295,19 +2531,19 @@ def _cmd_export_csv(params):
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     try:
         read_values = str(params.get("values", "")).lower() in ("1", "true", "yes")
         pattern = params.get("pattern", "").lower()
         output_path = params.get("output", "")
-        
+
         app_obj = getattr(oa, "application", None)
         if app_obj is None:
             return {"ok": False, "error": "oa.application not available"}
-        
+
         _seen = set()
         rows = []
-        
+
         def _walk(obj, prefix="", depth=0):
             if depth > 20:
                 return
@@ -2319,7 +2555,7 @@ def _cmd_export_csv(params):
             if obj_id in _seen:
                 return
             _seen.add(obj_id)
-            
+
             val_str = ""
             if read_values:
                 for candidate in [full_path, "Application." + full_path]:
@@ -2327,40 +2563,52 @@ def _cmd_export_csv(params):
                         val = oa.read_value(candidate)
                         if val is not None:
                             sv = str(val)
-                            if "Invalid expression" not in sv and "invalid expression" not in sv.lower():
+                            if (
+                                "Invalid expression" not in sv
+                                and "invalid expression" not in sv.lower()
+                            ):
                                 val_str = sv
                             break
                     except Exception:
                         pass
-            
+
             if not pattern or pattern in full_path.lower() or pattern in name.lower():
                 rows.append((full_path, val_str))
-            
+
             try:
                 for child in list(obj.get_children()):
                     _walk(child, full_path, depth + 1)
             except Exception:
                 pass
-        
+
         _walk(app_obj)
-        
+
         # Build CSV content
         # Build CSV content without StringIO
         lines = []
         lines.append("Path,Value")
         for path, val in rows:
-            path_esc = '"' + path.replace('"', '""') + '"' if ',' in path or '"' in path else path
-            val_esc = '"' + val.replace('"', '""') + '"' if ',' in val or '"' in val else val
+            path_esc = (
+                '"' + path.replace('"', '""') + '"'
+                if "," in path or '"' in path
+                else path
+            )
+            val_esc = (
+                '"' + val.replace('"', '""') + '"' if "," in val or '"' in val else val
+            )
             lines.append(path_esc + "," + val_esc)
         csv_text = "\r\n".join(lines) + "\r\n"
-        
+
         if output_path:
             out_dir = os.path.dirname(output_path)
             if out_dir and not os.path.exists(out_dir):
                 os.makedirs(out_dir)
             with open(output_path, "wb") as f:
-                f.write(csv_text.encode('utf-8'))
-            return {"ok": True, "data": {"path": output_path, "rows": len(rows), "saved": True}}
+                f.write(csv_text.encode("utf-8"))
+            return {
+                "ok": True,
+                "data": {"path": output_path, "rows": len(rows), "saved": True},
+            }
         else:
             return {"ok": True, "data": {"csv": csv_text, "rows": len(rows)}}
     except Exception as e:
@@ -2369,18 +2617,18 @@ def _cmd_export_csv(params):
 
 def _cmd_export_st(params):
     """Export project POUs as .st source files.
-    
+
     Walks the project tree looking for POU-like objects
     (Program, FunctionBlock, Function, GVL, DUT) and
     exports their source code to .st files.
-    
+
     Args:
         --output DIR: destination directory (default: .dump/st/)
     """
     project, err = _get_active_project()
     if err:
         return err
-    
+
     try:
         # Determine output directory
         out_dir = params.get("output", "")
@@ -2389,29 +2637,43 @@ def _cmd_export_st(params):
             if sync_dir:
                 out_dir = os.path.join(sync_dir, ".dump", "st")
             else:
-                out_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "cds-st-export")
+                out_dir = os.path.join(
+                    os.environ.get("TEMP", "C:\\Temp"), "cds-st-export"
+                )
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-        
+
         exported = []
         errors = []
-        
+
         def _walk_export(obj, folder=""):
             """Recursively walk project and export POU-like objects."""
             name = _obj_name(obj)
             if not name:
                 return
-            
+
             # Check if this is a POU-like object (has code to export)
             obj_type = str(type(obj).__name__)
             is_pou = False
-            for t in ['Program', 'FunctionBlock', 'Function', 'Gvl', 'Dut',
-                       'POU', 'IecTask', 'Action', 'Method', 'Property',
-                       'GlobalVariableList', 'IoConfig', 'Device']:
+            for t in [
+                "Program",
+                "FunctionBlock",
+                "Function",
+                "Gvl",
+                "Dut",
+                "POU",
+                "IecTask",
+                "Action",
+                "Method",
+                "Property",
+                "GlobalVariableList",
+                "IoConfig",
+                "Device",
+            ]:
                 if t.lower() in obj_type.lower():
                     is_pou = True
                     break
-            
+
             if is_pou:
                 # Try to export via export_native on just this object
                 safe_name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
@@ -2422,38 +2684,63 @@ def _cmd_export_st(params):
                     obj_dir = out_dir
                 if not os.path.exists(obj_dir):
                     os.makedirs(obj_dir)
-                
+
                 st_path = os.path.join(obj_dir, safe_name + ".st")
                 xml_path = os.path.join(obj_dir, safe_name + ".xml")
-                
+
                 try:
                     # Try save to file first (some objects support this)
-                    if hasattr(obj, 'save'):
+                    if hasattr(obj, "save"):
                         obj.save(st_path)
                         if os.path.exists(st_path):
                             size = os.path.getsize(st_path)
-                            exported.append({"name": name, "path": st_path, "size": size, "type": obj_type})
+                            exported.append(
+                                {
+                                    "name": name,
+                                    "path": st_path,
+                                    "size": size,
+                                    "type": obj_type,
+                                }
+                            )
                             return
-                    
-                    if hasattr(obj, 'export_native'):
+
+                    if hasattr(obj, "export_native"):
                         obj.export_native(st_path)
                         if os.path.exists(st_path):
                             size = os.path.getsize(st_path)
-                            exported.append({"name": name, "path": st_path, "size": size, "type": obj_type})
+                            exported.append(
+                                {
+                                    "name": name,
+                                    "path": st_path,
+                                    "size": size,
+                                    "type": obj_type,
+                                }
+                            )
                             return
-                    
+
                     # Fallback: use project.export_native with just this object
-                    if hasattr(project, 'export_native'):
+                    if hasattr(project, "export_native"):
                         project.export_native([obj], xml_path, recursive=False)
                         if os.path.exists(xml_path):
                             size = os.path.getsize(xml_path)
-                            exported.append({"name": name, "path": xml_path, "size": size, "type": obj_type + " (xml)"})
+                            exported.append(
+                                {
+                                    "name": name,
+                                    "path": xml_path,
+                                    "size": size,
+                                    "type": obj_type + " (xml)",
+                                }
+                            )
                             return
-                    
-                    errors.append("No export method for: {0} ({1})".format(name, obj_type))
+
+                    errors.append(
+                        "No export method for: {0} ({1})".format(name, obj_type)
+                    )
                 except Exception as e:
-                    errors.append("Export failed for {0}: {1}".format(name, str(e)[:100]))
-            
+                    errors.append(
+                        "Export failed for {0}: {1}".format(name, str(e)[:100])
+                    )
+
             # Recurse into children
             try:
                 for child in list(obj.get_children()):
@@ -2462,9 +2749,9 @@ def _cmd_export_st(params):
                     _walk_export(child, child_folder)
             except Exception:
                 pass
-        
+
         _walk_export(project)
-        
+
         return {
             "ok": True,
             "data": {
@@ -2473,7 +2760,7 @@ def _cmd_export_st(params):
                 "exported": exported[:50],  # first 50
                 "error_count": len(errors),
                 "errors": errors[:20],  # first 20 errors
-            }
+            },
         }
     except Exception as e:
         return {"ok": False, "error": "Export ST error: {0}".format(e)}
@@ -2514,12 +2801,19 @@ def _cmd_plc_log(params):
                 if files is not None:
                     for f in files:
                         try:
-                            name = str(getattr(f, 'name', '?'))
-                            if 'log' in name.lower() or '.log' in name.lower():
+                            name = str(getattr(f, "name", "?"))
+                            if "log" in name.lower() or ".log" in name.lower():
                                 info = {"name": name}
-                                for attr in ['length', 'Length', 'size', 'Size',
-                                             'creation_time', 'CreationTime',
-                                             'last_write_time', 'LastWriteTime']:
+                                for attr in [
+                                    "length",
+                                    "Length",
+                                    "size",
+                                    "Size",
+                                    "creation_time",
+                                    "CreationTime",
+                                    "last_write_time",
+                                    "LastWriteTime",
+                                ]:
                                     if hasattr(f, attr):
                                         try:
                                             val = getattr(f, attr)
@@ -2532,12 +2826,15 @@ def _cmd_plc_log(params):
                                 log_files.append(info)
                         except Exception:
                             pass
-                return {"ok": True, "data": {"log_files": log_files, "count": len(log_files)}}
+                return {
+                    "ok": True,
+                    "data": {"log_files": log_files, "count": len(log_files)},
+                }
             except Exception as e:
                 return {"ok": False, "error": "List log files error: {0}".format(e)}
 
         # Download the file from PLC
-        if not hasattr(online_dev, 'upload_file'):
+        if not hasattr(online_dev, "upload_file"):
             return {"ok": False, "error": "Online device has no upload_file method"}
 
         tmp = tempfile.mktemp(suffix=".log")
@@ -2556,7 +2853,11 @@ def _cmd_plc_log(params):
         if output_path:
             try:
                 dest = output_path
-                if os.path.isdir(output_path) or output_path.endswith(os.sep) or output_path.endswith("/"):
+                if (
+                    os.path.isdir(output_path)
+                    or output_path.endswith(os.sep)
+                    or output_path.endswith("/")
+                ):
                     dest = os.path.join(output_path, log_file)
                 dest_dir = os.path.dirname(dest)
                 if dest_dir and not os.path.exists(dest_dir):
@@ -2575,9 +2876,9 @@ def _cmd_plc_log(params):
                 with open(tmp, "rb") as f:
                     content = f.read()
                     try:
-                        text = content.decode('utf-8')
+                        text = content.decode("utf-8")
                     except UnicodeDecodeError:
-                        text = content.decode('latin-1')
+                        text = content.decode("latin-1")
                     lines = text.splitlines()
                     tail_lines = lines[-tail_n:] if tail_n < len(lines) else lines
                     result["tail"] = tail_lines
@@ -2609,8 +2910,8 @@ def _cmd_app_crc(params):
         result = {}
 
         # If params specifies app_dir explicitly, use it directly
-        if 'app_dir' in params:
-            app_dir = params['app_dir']
+        if "app_dir" in params:
+            app_dir = params["app_dir"]
         else:
             # Auto-detect application directory
             try:
@@ -2618,16 +2919,26 @@ def _cmd_app_crc(params):
                 if root_files is not None:
                     for f in root_files:
                         try:
-                            sub_name = str(getattr(f, 'name', '') or '')
-                            if sub_name in ('.', '..', '_cnc', 'ac_persistence', 'trend', 'alarms', 'visu'):
+                            sub_name = str(getattr(f, "name", "") or "")
+                            if sub_name in (
+                                ".",
+                                "..",
+                                "_cnc",
+                                "ac_persistence",
+                                "trend",
+                                "alarms",
+                                "visu",
+                            ):
                                 continue
                             # Check if this subdir has .crc files
                             try:
-                                sub_files = online_dev.get_file_list_of_directory("PlcLogic/" + sub_name)
+                                sub_files = online_dev.get_file_list_of_directory(
+                                    "PlcLogic/" + sub_name
+                                )
                                 if sub_files is not None:
                                     for sf in sub_files:
-                                        sf_name = str(getattr(sf, 'name', '') or '')
-                                        if sf_name.endswith('.crc'):
+                                        sf_name = str(getattr(sf, "name", "") or "")
+                                        if sf_name.endswith(".crc"):
                                             app_dir = "PlcLogic/" + sub_name
                                             result["app_name"] = sub_name
                                             break
@@ -2651,12 +2962,23 @@ def _cmd_app_crc(params):
             if files is not None:
                 for f in files:
                     try:
-                        name = str(getattr(f, 'name', '') or '')
-                        if name.endswith('.app') or name.endswith('.crc') or name.endswith('.ret'):
+                        name = str(getattr(f, "name", "") or "")
+                        if (
+                            name.endswith(".app")
+                            or name.endswith(".crc")
+                            or name.endswith(".ret")
+                        ):
                             info = {"name": name}
-                            for attr in ['length', 'Length', 'size', 'Size',
-                                         'creation_time', 'CreationTime',
-                                         'last_write_time', 'LastWriteTime']:
+                            for attr in [
+                                "length",
+                                "Length",
+                                "size",
+                                "Size",
+                                "creation_time",
+                                "CreationTime",
+                                "last_write_time",
+                                "LastWriteTime",
+                            ]:
                                 if hasattr(f, attr):
                                     try:
                                         val = getattr(f, attr)
@@ -2673,7 +2995,7 @@ def _cmd_app_crc(params):
             result["list_error"] = str(e)[:200]
 
         # 2. Download and parse Application.crc
-        if not hasattr(online_dev, 'upload_file'):
+        if not hasattr(online_dev, "upload_file"):
             result["crc_note"] = "upload_file not available"
         else:
             tmp = tempfile.mktemp(suffix=".crc")
@@ -2684,23 +3006,26 @@ def _cmd_app_crc(params):
                     files = online_dev.get_file_list_of_directory(app_dir)
                     if files is not None:
                         for f in files:
-                            fn = str(getattr(f, 'name', '') or '')
-                            if fn.endswith('.crc'):
+                            fn = str(getattr(f, "name", "") or "")
+                            if fn.endswith(".crc"):
                                 crc_filename = fn
                                 break
                 except Exception:
                     pass
-                
+
                 online_dev.upload_file(app_dir + "/" + crc_filename, tmp, True)
                 with open(tmp, "rb") as f:
                     data = f.read()
                 if len(data) >= 8:
                     crc_bytes = data[:8]
                     # hex in IronPython 2.7 (no .hex())
-                    result["crc_hex"] = "".join("{:02x}".format(ord(c)) for c in crc_bytes)
+                    result["crc_hex"] = "".join(
+                        "{:02x}".format(ord(c)) for c in crc_bytes
+                    )
                     # Try to interpret as two uint32 little-endian
                     try:
                         import struct
+
                         c1, c2 = struct.unpack("<II", data[:8])
                         result["crc_value"] = "{:08X}{:08X}".format(c1, c2)
                     except Exception:
@@ -2709,7 +3034,7 @@ def _cmd_app_crc(params):
                     name_part = data[8:].rstrip("\x00")
                     if name_part:
                         try:
-                            result["app_name"] = str(name_part.decode('ascii'))
+                            result["app_name"] = str(name_part.decode("ascii"))
                         except Exception:
                             result["app_name"] = name_part
                 result["crc_file_size"] = len(data)
@@ -2728,27 +3053,46 @@ def _cmd_app_crc(params):
 
 def _cmd_app_info():
     """Get detailed information about the application on the PLC.
-    
+
     Tries to extract: version, build date, checksum, signature, etc.
     """
     oa = sys._codesys_daemon_loop.get("online_app")
     if oa is None:
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-    
+
     try:
         import System
         import System.Reflection
-        
+
         info = {}
-        
+
         # 1. Try common properties/methods that might have version info
         for attr in [
-            'application_version', 'version', 'Version', 'build', 'Build',
-            'build_version', 'BuildVersion', 'application_build', 'ApplicationBuild',
-            'checksum', 'Checksum', 'signature', 'Signature', 'hash', 'Hash',
-            'application_checksum', 'ApplicationChecksum',
-            'compiled_date', 'CompiledDate', 'compile_date', 'CompileDate',
-            'create_time', 'CreateTime', 'creation_date', 'CreationDate',
+            "application_version",
+            "version",
+            "Version",
+            "build",
+            "Build",
+            "build_version",
+            "BuildVersion",
+            "application_build",
+            "ApplicationBuild",
+            "checksum",
+            "Checksum",
+            "signature",
+            "Signature",
+            "hash",
+            "Hash",
+            "application_checksum",
+            "ApplicationChecksum",
+            "compiled_date",
+            "CompiledDate",
+            "compile_date",
+            "CompileDate",
+            "create_time",
+            "CreateTime",
+            "creation_date",
+            "CreationDate",
         ]:
             if hasattr(oa, attr):
                 try:
@@ -2759,9 +3103,9 @@ def _cmd_app_info():
                         info[attr] = str(val)[:200]
                 except Exception:
                     pass
-        
+
         # 2. Try to get application info through the ScriptOnlineDevice
-        online_dev = getattr(oa, 'get_online_device', lambda: None)()
+        online_dev = getattr(oa, "get_online_device", lambda: None)()
         if online_dev is not None:
             dev_info = {}
             for attr in dir(online_dev):
@@ -2774,7 +3118,7 @@ def _cmd_app_info():
                         pass
             if dev_info:
                 info["device_properties"] = dev_info
-        
+
         # 3. Try reflection on oa type for version-related info
         try:
             oa_type = oa.GetType()
@@ -2790,10 +3134,16 @@ def _cmd_app_info():
                 pass
         except Exception:
             pass
-        
+
         # 4. Try to get application state / running info
-        for attr in ['application_state', 'operation_state', 'is_connected', 
-                     'is_running', 'is_logged_in', 'timeout']:
+        for attr in [
+            "application_state",
+            "operation_state",
+            "is_connected",
+            "is_running",
+            "is_logged_in",
+            "timeout",
+        ]:
             if hasattr(oa, attr):
                 try:
                     val = getattr(oa, attr)
@@ -2802,7 +3152,7 @@ def _cmd_app_info():
                     info[attr] = str(val)[:100]
                 except Exception:
                     pass
-        
+
         # 5. Try to get application name from target
         target = getattr(sys._codesys_daemon_loop, "online_target_app", None)
         if target is None:
@@ -2812,10 +3162,10 @@ def _cmd_app_info():
                 info["target_name"] = target.get_name()
             except Exception:
                 pass
-        
+
         if not info:
             info["note"] = "No detailed app info available via this API version"
-        
+
         return {"ok": True, "data": info}
     except Exception as e:
         return {"ok": False, "error": "App info error: {0}".format(e)}
@@ -2829,6 +3179,7 @@ def _append_app_history(crc_data, app_name=""):
             return
         history_path = os.path.join(sync_dir, ".dump", "app_history.json")
         import json as _json
+
         entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "crc_hex": crc_data,
@@ -2852,14 +3203,16 @@ def _append_app_history(crc_data, app_name=""):
 
 def _cmd_app_history(params):
     """Log current Application CRC to app_history.json in .dump/.
-    
+
     Also can read the history.
-    
+
     Args:
         --read: just read history without adding new entry
     """
-    just_read = str(params.get("read", "")).lower() in ("1", "true", "yes") if params else False
-    
+    just_read = (
+        str(params.get("read", "")).lower() in ("1", "true", "yes") if params else False
+    )
+
     if not just_read:
         # Get current CRC from PLC
         crc_result = _cmd_app_crc(params)
@@ -2870,34 +3223,41 @@ def _cmd_app_history(params):
         app_name = data.get("app_name", "")
         if crc_hex:
             _append_app_history(crc_hex, app_name)
-    
+
     # Read and return history
     try:
         sync_dir, _ = _get_sync_folder()
         if not sync_dir:
-            return {"ok": True, "data": {"note": "No sync folder configured", "history": []}}
+            return {
+                "ok": True,
+                "data": {"note": "No sync folder configured", "history": []},
+            }
         history_path = os.path.join(sync_dir, ".dump", "app_history.json")
         import json as _json
+
         try:
             with open(history_path, "r") as f:
                 history = _json.load(f)
         except Exception:
             history = []
-        return {"ok": True, "data": {
-            "history": history,
-            "count": len(history),
-            "last_entry": history[-1] if history else None
-        }}
+        return {
+            "ok": True,
+            "data": {
+                "history": history,
+                "count": len(history),
+                "last_entry": history[-1] if history else None,
+            },
+        }
     except Exception as e:
         return {"ok": False, "error": "App history error: {0}".format(e)}
 
 
 def _cmd_compare_crc(params):
     """Compare IDE project CRC with PLC Application.crc.
-    
+
     Downloads Application.crc from PLC and tries to find local
     CRC in build output or project directory.
-    
+
     Args:
         --local PATH: path to local .crc file (default: auto-detect)
     """
@@ -2906,16 +3266,21 @@ def _cmd_compare_crc(params):
         return err
     oa, _target_app, online_err = _ensure_online_app(project)
     if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first. {0}".format(online_err or "")}
-    
+        return {
+            "ok": False,
+            "error": "Not connected. Call connect_to_device first. {0}".format(
+                online_err or ""
+            ),
+        }
+
     try:
         online_dev = oa.get_online_device()
         if online_dev is None:
             return {"ok": False, "error": "get_online_device() returned None"}
-        
+
         result = {}
-        app_dir = params.get('app_dir', "PlcLogic/Application")
-        
+        app_dir = params.get("app_dir", "PlcLogic/Application")
+
         # 1. Download PLC CRC
         tmp_plc = tempfile.mktemp(suffix=".crc")
         try:
@@ -2934,7 +3299,7 @@ def _cmd_compare_crc(params):
                 os.remove(tmp_plc)
             except Exception:
                 pass
-        
+
         # 2. Try to find local CRC
         local_path = params.get("local", "")
         local_data = None
@@ -2944,7 +3309,7 @@ def _cmd_compare_crc(params):
             if projects is not None:
                 prj = projects.primary
                 if prj is not None:
-                    for attr in ['filename', 'FileName', 'FullName', 'Path']:
+                    for attr in ["filename", "FileName", "FullName", "Path"]:
                         try:
                             val = getattr(prj, attr)
                             if val:
@@ -2952,10 +3317,19 @@ def _cmd_compare_crc(params):
                                 # Common build output locations
                                 candidates = [
                                     os.path.join(project_dir, "Application.crc"),
-                                    os.path.join(project_dir, "PlcLogic", "Application", "Application.crc"),
+                                    os.path.join(
+                                        project_dir,
+                                        "PlcLogic",
+                                        "Application",
+                                        "Application.crc",
+                                    ),
                                     os.path.join(project_dir, "bin", "Application.crc"),
-                                    os.path.join(project_dir, "Debug", "Application.crc"),
-                                    os.path.join(project_dir, "Release", "Application.crc"),
+                                    os.path.join(
+                                        project_dir, "Debug", "Application.crc"
+                                    ),
+                                    os.path.join(
+                                        project_dir, "Release", "Application.crc"
+                                    ),
                                 ]
                                 for c in candidates:
                                     if os.path.exists(c):
@@ -2964,7 +3338,7 @@ def _cmd_compare_crc(params):
                                 break
                         except Exception:
                             pass
-        
+
         if local_path and os.path.exists(local_path):
             try:
                 with open(local_path, "rb") as f:
@@ -2983,7 +3357,7 @@ def _cmd_compare_crc(params):
                 result["local_error"] = str(e)[:200]
         else:
             result["local_note"] = "No local .crc file found. Build the project first."
-        
+
         return {"ok": True, "data": result}
     except Exception as e:
         return {"ok": False, "error": "Compare CRC error: {0}".format(e)}
@@ -2997,9 +3371,10 @@ def _cmd_permissions():
 
 # ── Sync folder helpers ────────────────────────────────────────────────────
 
+
 def _get_sync_folder():
     """Get the sync folder path from project properties.
-    
+
     Returns:
         (path, error) tuple. path is None if not configured.
     """
@@ -3029,13 +3404,18 @@ def _get_sync_folder():
                 except Exception:
                     pass
         if not base_dir:
-            return None, "Sync folder not configured. Set 'cds-sync-folder' project property (Tools → Project_directory.py)"
+            return (
+                None,
+                "Sync folder not configured. Set 'cds-sync-folder' project property (Tools → Project_directory.py)",
+            )
         base_dir = str(base_dir).strip()
         # Resolve relative paths
-        is_relative = base_dir == "." or base_dir.startswith("./") or base_dir.startswith(".\\")
+        is_relative = (
+            base_dir == "." or base_dir.startswith("./") or base_dir.startswith(".\\")
+        )
         if is_relative:
             project_path = ""
-            for attr in ['filename', 'FileName', 'FullName', 'Path']:
+            for attr in ["filename", "FileName", "FullName", "Path"]:
                 try:
                     val = getattr(prj, attr)
                     if val:
@@ -3045,7 +3425,11 @@ def _get_sync_folder():
                     pass
             if project_path:
                 project_dir = os.path.dirname(project_path)
-                base_dir = os.path.normpath(os.path.join(project_dir, base_dir.replace("/", os.sep).replace("\\", os.sep)))
+                base_dir = os.path.normpath(
+                    os.path.join(
+                        project_dir, base_dir.replace("/", os.sep).replace("\\", os.sep)
+                    )
+                )
         return base_dir, None
     except Exception as e:
         return None, str(e)
@@ -3080,18 +3464,18 @@ def _cmd_sync_info():
 
 def _cmd_sync_export(params):
     """Export snapshot to sync folder / .dump.
-    
+
     Args:
         --output PATH: custom output path (default: sync_folder/.dump/)
     """
     project, err = _get_active_project()
     if err:
         return err
-    
+
     sync_dir, sf_err = _get_sync_folder()
     if sf_err and not params.get("output"):
         return {"ok": False, "error": sf_err}
-    
+
     try:
         out_path = params.get("output", "")
         if not out_path:
@@ -3100,21 +3484,24 @@ def _cmd_sync_export(params):
                 if not os.path.exists(dump_dir):
                     os.makedirs(dump_dir)
                 out_path = os.path.join(
-                    dump_dir,
-                    "snapshot-{0}.xml".format(time.strftime("%Y%m%d_%H%M%S"))
+                    dump_dir, "snapshot-{0}.xml".format(time.strftime("%Y%m%d_%H%M%S"))
                 )
             else:
                 out_path = os.path.join(
                     os.environ.get("TEMP", "C:\\Temp"),
-                    "cds-snapshot-{0}.xml".format(time.strftime("%Y%m%d_%H%M%S")))
-        
+                    "cds-snapshot-{0}.xml".format(time.strftime("%Y%m%d_%H%M%S")),
+                )
+
         # Same logic as _cmd_export but with sync folder awareness
         output_dir = os.path.dirname(out_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         objects = list(project.get_children(recursive=True))
         import tempfile as _tf
-        fd, tmp_path = _tf.mkstemp(prefix="cds_export_", suffix=".xml", dir=output_dir or None)
+
+        fd, tmp_path = _tf.mkstemp(
+            prefix="cds_export_", suffix=".xml", dir=output_dir or None
+        )
         os.close(fd)
         try:
             os.remove(tmp_path)
@@ -3123,6 +3510,7 @@ def _cmd_sync_export(params):
         try:
             project.export_native(objects, tmp_path, recursive=False)
             import shutil
+
             shutil.copy2(tmp_path, out_path)
             os.remove(tmp_path)
         except Exception:
@@ -3134,14 +3522,21 @@ def _cmd_sync_export(params):
             raise
         size = os.path.getsize(out_path)
         _log("Exported snapshot: {0} ({1} bytes)".format(out_path, size))
-        return {"ok": True, "data": {"path": out_path, "size": size, "sync_folder": sync_dir or "not set"}}
+        return {
+            "ok": True,
+            "data": {
+                "path": out_path,
+                "size": size,
+                "sync_folder": sync_dir or "not set",
+            },
+        }
     except Exception as e:
         return {"ok": False, "error": "Sync export error: {0}".format(e)}
 
 
 def _cmd_sync_import(params):
     """Import XML snapshot from .dump/ back into project.
-    
+
     Args:
         --input PATH: specific XML file to import (default: latest from sync_folder/.dump/)
         --merge: merge instead of replace
@@ -3149,7 +3544,7 @@ def _cmd_sync_import(params):
     project, err = _get_active_project()
     if err:
         return err
-    
+
     in_path = params.get("input", "")
     if not in_path:
         sync_dir, sf_err = _get_sync_folder()
@@ -3158,22 +3553,29 @@ def _cmd_sync_import(params):
         dump_dir = os.path.join(sync_dir, ".dump")
         if not os.path.exists(dump_dir):
             return {"ok": False, "error": "No .dump directory at {0}".format(dump_dir)}
-        xml_files = [f for f in os.listdir(dump_dir) if f.endswith(".xml") and f.startswith("snapshot-")]
+        xml_files = [
+            f
+            for f in os.listdir(dump_dir)
+            if f.endswith(".xml") and f.startswith("snapshot-")
+        ]
         if not xml_files:
-            return {"ok": False, "error": "No snapshot XML files found in {0}".format(dump_dir)}
+            return {
+                "ok": False,
+                "error": "No snapshot XML files found in {0}".format(dump_dir),
+            }
         xml_files.sort(reverse=True)
         in_path = os.path.join(dump_dir, xml_files[0])
-    
+
     if not os.path.exists(in_path):
         return {"ok": False, "error": "File not found: {0}".format(in_path)}
-    
+
     try:
         size = os.path.getsize(in_path)
         _log("Importing snapshot: {0} ({1} bytes)".format(in_path, size))
-        
+
         # CODESYS API: project.import_native(path) — single arg only
         project.import_native(in_path)
-        
+
         return {"ok": True, "data": {"path": in_path, "size": size}}
     except Exception as e:
         return {"ok": False, "error": "Sync import error: {0}".format(e)}
@@ -3181,14 +3583,14 @@ def _cmd_sync_import(params):
 
 def _cmd_sync_compare(params):
     """Compare current project structure against .dump/ snapshot.
-    
+
     Args:
         --against PATH: specific snapshot to compare against (default: latest from .dump/)
     """
     project, err = _get_active_project()
     if err:
         return err
-    
+
     against = params.get("against", "")
     if not against:
         sync_dir, sf_err = _get_sync_folder()
@@ -3197,15 +3599,22 @@ def _cmd_sync_compare(params):
         dump_dir = os.path.join(sync_dir, ".dump")
         if not os.path.exists(dump_dir):
             return {"ok": False, "error": "No .dump directory at {0}".format(dump_dir)}
-        xml_files = [f for f in os.listdir(dump_dir) if f.endswith(".xml") and f.startswith("snapshot-")]
+        xml_files = [
+            f
+            for f in os.listdir(dump_dir)
+            if f.endswith(".xml") and f.startswith("snapshot-")
+        ]
         if not xml_files:
-            return {"ok": False, "error": "No snapshot XML files found in {0}".format(dump_dir)}
+            return {
+                "ok": False,
+                "error": "No snapshot XML files found in {0}".format(dump_dir),
+            }
         xml_files.sort(reverse=True)
         against = os.path.join(dump_dir, xml_files[0])
-    
+
     if not os.path.exists(against):
         return {"ok": False, "error": "Snapshot not found: {0}".format(against)}
-    
+
     try:
         # Compare by checking if import would cause changes:
         # 1. Get current project tree (list of tuples of object info)
@@ -3219,23 +3628,24 @@ def _cmd_sync_compare(params):
                 current_info[name] = {"name": name, "type": typ, "guid": guid}
             except Exception:
                 pass
-        
+
         # 2. Parse the XML and see what's different (basic check - just names)
         import xml.etree.ElementTree as ET
+
         tree = ET.parse(against)
         root = tree.getroot()
-        
+
         xml_names = set()
         for elem in root.iter():
             name = elem.get("name", elem.get("Name", ""))
             if name:
                 xml_names.add(name)
-        
+
         current_names = set(current_info.keys())
-        
+
         only_in_xml = xml_names - current_names
         only_in_project = current_names - xml_names
-        
+
         # Build diff report
         diff = {
             "snapshot": against,
@@ -3246,7 +3656,7 @@ def _cmd_sync_compare(params):
             "in_project_only": sorted(only_in_project)[:100],
             "common_count": len(xml_names & current_names),
         }
-        
+
         return {"ok": True, "data": diff}
     except Exception as e:
         return {"ok": False, "error": "Sync compare error: {0}".format(e)}
@@ -3257,18 +3667,19 @@ def _cmd_sync_export_text(params):
     export_result = _cmd_sync_export(params)
     if not export_result.get("ok"):
         return export_result
-    
+
     out_path = export_result["data"]["path"]
     sync_folder = export_result["data"]["sync_folder"]
-    
+
     # Step 2: Run engine_cli
     args = ["export", "--project-root", sync_folder, "--snapshot", out_path]
     success = _common.run_external_engine(args)
     if not success:
         return {"ok": False, "error": "external engine export failed"}
-    
+
     export_result["data"]["text_sync"] = "success"
     return export_result
+
 
 def _active_app_online_state():
     """Best-effort detection of whether the active application has a live
@@ -3277,6 +3688,7 @@ def _active_app_online_state():
     """
     try:
         import scriptengine as se
+
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is None:
             return (False, "")
@@ -3333,36 +3745,52 @@ def _cmd_sync_import_text(params):
     export_result = _cmd_sync_export(params)
     if not export_result.get("ok"):
         return export_result
-        
+
     out_path = export_result["data"]["path"]
     sync_folder = export_result["data"]["sync_folder"]
     patch_path = os.path.join(sync_folder, ".dump", "IMPORT.xml")
-    
+
     # Step 2: Run engine_cli import to generate IMPORT.xml
-    args = ["import", "--project-root", sync_folder, "--snapshot", out_path, "--patch", patch_path]
+    args = [
+        "import",
+        "--project-root",
+        sync_folder,
+        "--snapshot",
+        out_path,
+        "--patch",
+        patch_path,
+    ]
     success = _common.run_external_engine(args)
     if not success:
         return {"ok": False, "error": "external engine import failed"}
-        
-    if not os.path.exists(patch_path):
-         return {"ok": False, "error": "IMPORT.xml was not generated"}
 
-    compare_report_path = os.path.join(sync_folder, ".dump", "import_compare_report.json")
+    if not os.path.exists(patch_path):
+        return {"ok": False, "error": "IMPORT.xml was not generated"}
+
+    compare_report_path = os.path.join(
+        sync_folder, ".dump", "import_compare_report.json"
+    )
     compare_args = [
-        "compare", "--project-root", sync_folder, "--snapshot", out_path,
-        "--report", compare_report_path, "--include-objects",
+        "compare",
+        "--project-root",
+        sync_folder,
+        "--snapshot",
+        out_path,
+        "--report",
+        compare_report_path,
+        "--include-objects",
     ]
     _common.run_external_engine(compare_args)
-    
+
     # Step 3: Parse IMPORT.xml and process CreateTextObjects
     project, p_err = _get_active_project()
     if p_err:
         return p_err
-    
+
     try:
         tree = ET.parse(patch_path)
         root = tree.getroot()
-        
+
         # Find and process CreateTextObjects
         text_creates = []
         for creates_elem in root.iter():
@@ -3376,7 +3804,7 @@ def _cmd_sync_import_text(params):
                         kind = create_elem.attrib.get("Kind", "")
                         type_guid = create_elem.attrib.get("TypeGuid", "")
                         parent_name = create_elem.attrib.get("ParentName", "")
-                        
+
                         # Read declaration/implementation from .st file
                         st_path = _find_st_file(sync_folder, path)
                         decl = ""
@@ -3384,18 +3812,20 @@ def _cmd_sync_import_text(params):
                         if st_path and os.path.exists(st_path):
                             content = _read_text_utf8(st_path)
                             decl, impl = _split_st_content(content)
-                        
-                        text_creates.append({
-                            "path": path,
-                            "name": name,
-                            "kind": kind,
-                            "type_guid": type_guid,
-                            "parent_name": parent_name,
-                            "declaration": decl,
-                            "implementation": impl,
-                            "source_path": st_path,
-                        })
-        
+
+                        text_creates.append(
+                            {
+                                "path": path,
+                                "name": name,
+                                "kind": kind,
+                                "type_guid": type_guid,
+                                "parent_name": parent_name,
+                                "declaration": decl,
+                                "implementation": impl,
+                                "source_path": st_path,
+                            }
+                        )
+
         if text_creates:
             _log("Creating {0} new text objects...".format(len(text_creates)))
             created = {}
@@ -3404,14 +3834,18 @@ def _cmd_sync_import_text(params):
                     _apply_text_create_entry(project, entry, created)
                 except Exception as e:
                     _log("Failed to create {0}: {1}".format(entry["name"], str(e)))
-            _log("Created text objects: {0}".format(", ".join(e["name"] for e in text_creates)))
+            _log(
+                "Created text objects: {0}".format(
+                    ", ".join(e["name"] for e in text_creates)
+                )
+            )
 
         updated_text = []
         if os.path.exists(compare_report_path):
             updated_text = _apply_modified_st_objects(project, compare_report_path)
             if updated_text:
                 _log("Updated text objects: {0}".format(", ".join(updated_text)))
-        
+
         # Step 4: Apply StructuredView (MAIN update) — skip if fails, objects are already created
         try:
             filtered_root = _strip_text_creates(root)
@@ -3427,14 +3861,22 @@ def _cmd_sync_import_text(params):
                     pass
         except Exception as e:
             import traceback
-            _log("StructuredView import skipped: {0}\n{1}".format(e, traceback.format_exc()))
-        
-        return {"ok": True, "data": {
-            "path": patch_path,
-            "size": os.path.getsize(patch_path),
-            "created_text_objects": [e["name"] for e in text_creates],
-            "updated_text_objects": updated_text,
-        }}
+
+            _log(
+                "StructuredView import skipped: {0}\n{1}".format(
+                    e, traceback.format_exc()
+                )
+            )
+
+        return {
+            "ok": True,
+            "data": {
+                "path": patch_path,
+                "size": os.path.getsize(patch_path),
+                "created_text_objects": [e["name"] for e in text_creates],
+                "updated_text_objects": updated_text,
+            },
+        }
     except Exception as e:
         return {"ok": False, "error": "Sync import error: {0}".format(e)}
 
@@ -3489,29 +3931,38 @@ def _apply_modified_st_objects(project, report_path):
         return []
 
     updated = []
-    for obj in ((report.get("objects") or {}).get("modified") or []):
+    for obj in (report.get("objects") or {}).get("modified") or []:
         projection_diff = obj.get("projection_diff") or {}
         if str(projection_diff.get("format", "")).lower() != "st":
             continue
         disk_content = projection_diff.get("disk_content")
         if disk_content is None:
             continue
-        target = _find_object_by_selector(project, {
-            "guid": obj.get("guid", ""),
-            "path": obj.get("path", ""),
-            "name": obj.get("name", ""),
-        })
+        target = _find_object_by_selector(
+            project,
+            {
+                "guid": obj.get("guid", ""),
+                "path": obj.get("path", ""),
+                "name": obj.get("name", ""),
+            },
+        )
         if target is None:
-            _log("Could not find modified text object: {0}".format(obj.get("name") or obj.get("guid")))
+            _log(
+                "Could not find modified text object: {0}".format(
+                    obj.get("name") or obj.get("guid")
+                )
+            )
             continue
         decl, impl = _split_st_update_content(disk_content)
         decl_ok, impl_ok = _apply_text_to_object(target, decl, impl)
         if decl_ok and impl_ok:
             updated.append(obj.get("name") or obj.get("guid") or "?")
         else:
-            _log("Text update incomplete for {0}: decl={1}, impl={2}".format(
-                obj.get("name") or obj.get("guid"), decl_ok, impl_ok
-            ))
+            _log(
+                "Text update incomplete for {0}: decl={1}, impl={2}".format(
+                    obj.get("name") or obj.get("guid"), decl_ok, impl_ok
+                )
+            )
     return updated
 
 
@@ -3531,7 +3982,7 @@ def _find_st_file(sync_folder, rel_path):
 
 def _split_st_content(content):
     """Split .st content into declaration and implementation.
-    
+
     Strips END_FUNCTION_BLOCK / END_FUNCTION / END_PROGRAM from implementation
     as CODESYS API auto-adds these.
     """
@@ -3544,7 +3995,7 @@ def _split_st_content(content):
         # Strip trailing END_* keywords (CODESYS API auto-adds them)
         for end_kw in ["END_FUNCTION_BLOCK", "END_FUNCTION", "END_PROGRAM"]:
             if impl.rstrip().endswith(end_kw):
-                impl = impl.rstrip()[:-len(end_kw)].rstrip()
+                impl = impl.rstrip()[: -len(end_kw)].rstrip()
                 break
         return decl, impl
     return normalized.strip(), ""
@@ -3553,6 +4004,7 @@ def _split_st_content(content):
 def _strip_text_creates(root):
     """Remove CreateTextObjects elements from the XML root."""
     import copy
+
     filtered = copy.deepcopy(root)
     for child in list(filtered):
         local_tag = str(child.tag).rsplit("}", 1)[-1]
@@ -3566,66 +4018,86 @@ def _strip_text_creates(root):
 def _apply_text_create_entry(project, entry, created_by_name):
     """Create a single text object (POU, GVL, DUT) from a CreateTextObject entry."""
     import ide_apply_patch as _iap
-    
+
     # Add source_path to entry for ide_apply_patch compatibility
     rel_path = entry["path"]
-    container, container_chain = _iap._ensure_container_path_with_chain(project, rel_path)
+    container, container_chain = _iap._ensure_container_path_with_chain(
+        project, rel_path
+    )
     if container is None:
         raise Exception("Could not resolve container for {0}".format(rel_path))
-    
+
     parent_name = entry.get("parent_name", "")
     if parent_name:
         parent = created_by_name.get(str(parent_name).lower())
         if parent is None:
             parent = _iap._find_child_transparent(container, parent_name)
         if parent is None:
-            raise Exception("Could not resolve parent POU '{0}' for {1}".format(parent_name, rel_path))
+            raise Exception(
+                "Could not resolve parent POU '{0}' for {1}".format(
+                    parent_name, rel_path
+                )
+            )
         container = parent
-    
+
     obj_name = entry["name"]
     existing = _iap._find_child_transparent(container, obj_name)
     if existing is not None:
         obj = existing
     else:
-        obj = _iap._create_text_object(container, entry, container_chain=container_chain)
-    
+        obj = _iap._create_text_object(
+            container, entry, container_chain=container_chain
+        )
+
     if obj is None:
-        raise Exception("CODESYS did not return created object for {0}".format(rel_path))
-    
+        raise Exception(
+            "CODESYS did not return created object for {0}".format(rel_path)
+        )
+
     _iap._apply_textual_patch(obj, entry)
     created_by_name[_iap.object_name(obj).lower()] = obj
     _log("Created textual object: {0}".format(rel_path))
+
 
 def _cmd_sync_compare_text(params):
     # Step 1: Export current IDE state
     export_result = _cmd_sync_export(params)
     if not export_result.get("ok"):
         return export_result
-        
+
     out_path = export_result["data"]["path"]
     sync_folder = export_result["data"]["sync_folder"]
     report_path = os.path.join(sync_folder, ".dump", "compare_report.json")
-    
+
     # Step 2: Run engine_cli compare
-    args = ["compare", "--project-root", sync_folder, "--snapshot", out_path, "--report", report_path, "--include-objects"]
+    args = [
+        "compare",
+        "--project-root",
+        sync_folder,
+        "--snapshot",
+        out_path,
+        "--report",
+        report_path,
+        "--include-objects",
+    ]
     success = _common.run_external_engine(args)
     if not success:
         return {"ok": False, "error": "external engine compare failed"}
-        
+
     if not os.path.exists(report_path):
         return {"ok": False, "error": "compare_report.json was not generated"}
-        
+
     # Step 3: Read and return report
     try:
         report_data = json.loads(_read_text_utf8(report_path))
         return {"ok": True, "data": report_data}
     except Exception as e:
-         return {"ok": False, "error": "failed to read report: " + str(e)}
+        return {"ok": False, "error": "failed to read report: " + str(e)}
 
 
 def _cmd_update_pou(params):
     """Update a POU's textual declaration and implementation from a .st file.
-    
+
     Args:
         name: POU name (e.g. "MAIN")
         app: Application name (e.g. "Application (from profile)")
@@ -3634,27 +4106,30 @@ def _cmd_update_pou(params):
     project, err = _get_active_project()
     if err:
         return err
-    
+
     pou_name = params.get("name", "")
     app_name = params.get("app") or _active_application_name(project)
     st_path = params.get("st_path", "")
-    
+
     if not pou_name or not st_path:
         return {"ok": False, "error": "name and st_path are required"}
-    
+
     # Resolve st_path
     if not os.path.isabs(st_path):
         sf, sf_err = _get_sync_folder()
         if sf_err or not sf:
-            return {"ok": False, "error": "Cannot resolve sync folder: {0}".format(sf_err or "unknown")}
+            return {
+                "ok": False,
+                "error": "Cannot resolve sync folder: {0}".format(sf_err or "unknown"),
+            }
         st_path = os.path.join(sf, "project-view", st_path)
-    
+
     if not os.path.exists(st_path):
         return {"ok": False, "error": "File not found: {0}".format(st_path)}
-    
+
     # Read .st file
     content = _read_text_utf8(st_path)
-    
+
     # Split into declaration and implementation
     marker = "// --- implementation ---"
     decl = content
@@ -3663,14 +4138,17 @@ def _cmd_update_pou(params):
         parts = content.split(marker, 1)
         decl = parts[0].strip()
         impl = parts[1].strip()
-    
+
     # Find the POU object in the project tree
     target, _target_type = _find_object_in_project(project, pou_name, app_name)
 
     if target is None:
         scope = app_name or "project"
-        return {"ok": False, "error": "POU '{0}' not found in application '{1}'".format(pou_name, scope)}
-    
+        return {
+            "ok": False,
+            "error": "POU '{0}' not found in application '{1}'".format(pou_name, scope),
+        }
+
     # Update declaration
     decl_ok = False
     impl_ok = False
@@ -3680,14 +4158,14 @@ def _cmd_update_pou(params):
         try:
             dd = target.textual_declaration
             if dd is not None:
-                if hasattr(dd, 'text'):
+                if hasattr(dd, "text"):
                     try:
                         dd.text = decl
                         decl_ok = True
                     except Exception:
                         dd.replace(decl)
                         decl_ok = True
-                elif hasattr(dd, 'replace'):
+                elif hasattr(dd, "replace"):
                     dd.replace(decl)
                     decl_ok = True
             else:
@@ -3704,14 +4182,14 @@ def _cmd_update_pou(params):
         try:
             di = target.textual_implementation
             if di is not None:
-                if hasattr(di, 'text'):
+                if hasattr(di, "text"):
                     try:
                         di.text = impl
                         impl_ok = True
                     except Exception:
                         di.replace(impl)
                         impl_ok = True
-                elif hasattr(di, 'replace'):
+                elif hasattr(di, "replace"):
                     di.replace(impl)
                     impl_ok = True
             else:
@@ -3727,8 +4205,22 @@ def _cmd_update_pou(params):
         impl_ok = True
         impl_skipped = "no implementation section in .st"
 
-    _log("Updated POU: {0} (app={1}, decl={2}, impl={3})".format(pou_name, app_name, decl_ok, impl_ok))
-    result = {"ok": True, "data": {"name": pou_name, "app": app_name, "decl_ok": decl_ok, "impl_ok": impl_ok, "decl_len": len(decl), "impl_len": len(impl)}}
+    _log(
+        "Updated POU: {0} (app={1}, decl={2}, impl={3})".format(
+            pou_name, app_name, decl_ok, impl_ok
+        )
+    )
+    result = {
+        "ok": True,
+        "data": {
+            "name": pou_name,
+            "app": app_name,
+            "decl_ok": decl_ok,
+            "impl_ok": impl_ok,
+            "decl_len": len(decl),
+            "impl_len": len(impl),
+        },
+    }
     if decl_skipped:
         result["data"]["decl_skipped"] = decl_skipped
     if impl_skipped:
@@ -3758,22 +4250,36 @@ def _cmd_delete_pou(params):
 
     if target is None:
         scope = app_name or "project"
-        return {"ok": False, "error": "Object '{0}' not found in application '{1}'".format(obj_name, scope)}
+        return {
+            "ok": False,
+            "error": "Object '{0}' not found in application '{1}'".format(
+                obj_name, scope
+            ),
+        }
 
     # Try to delete the object using remove() method
     try:
-        if hasattr(target, 'remove'):
+        if hasattr(target, "remove"):
             target.remove()
             _invalidate_device_cache()
-            _log("Deleted object: {0} (type={1}, app={2})".format(obj_name, target_type, app_name))
-            return {"ok": True, "data": {
-                "name": obj_name,
-                "type": target_type,
-                "deleted": True,
-                "note": "Object deleted successfully"
-            }}
+            _log(
+                "Deleted object: {0} (type={1}, app={2})".format(
+                    obj_name, target_type, app_name
+                )
+            )
+            return {
+                "ok": True,
+                "data": {
+                    "name": obj_name,
+                    "type": target_type,
+                    "deleted": True,
+                    "note": "Object deleted successfully",
+                },
+            }
         else:
-            msg = "Object type '{0}' does not support remove() method".format(target_type)
+            msg = "Object type '{0}' does not support remove() method".format(
+                target_type
+            )
             _log("Error: {0}".format(msg))
             return {"ok": False, "error": msg}
     except Exception as e:
@@ -3790,7 +4296,19 @@ def _parse_codesys_value(raw):
     if "#" in s:
         prefix, val = s.split("#", 1)
         prefix = prefix.upper()
-        if prefix in ("REAL", "LREAL", "INT", "DINT", "UINT", "UDINT", "SINT", "USINT", "BYTE", "WORD", "DWORD"):
+        if prefix in (
+            "REAL",
+            "LREAL",
+            "INT",
+            "DINT",
+            "UINT",
+            "UDINT",
+            "SINT",
+            "USINT",
+            "BYTE",
+            "WORD",
+            "DWORD",
+        ):
             try:
                 return float(val) if "." in val else int(val)
             except ValueError:
@@ -3801,7 +4319,11 @@ def _parse_codesys_value(raw):
             return val
     # Try numeric
     try:
-        return int(s) if s.isdigit() or (s.startswith("-") and s[1:].isdigit()) else float(s)
+        return (
+            int(s)
+            if s.isdigit() or (s.startswith("-") and s[1:].isdigit())
+            else float(s)
+        )
     except ValueError:
         pass
     return s
@@ -3827,7 +4349,9 @@ def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
     _log("CICD: Performing cold reset")
     reset_result = _cmd_reset_plc({"kind": "cold"})
     if not reset_result.get("ok"):
-        raise RuntimeError("CICD cold reset failed: {0}".format(reset_result.get("error", "")))
+        raise RuntimeError(
+            "CICD cold reset failed: {0}".format(reset_result.get("error", ""))
+        )
 
     _time.sleep(0.5)
 
@@ -3839,6 +4363,7 @@ def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
     # 4. Re-connect (creates fresh online_app, logs in)
     _log("CICD: Reconnecting after cold reset")
     from ide_online_helpers import connect_to_device_impl
+
     connect_to_device_impl(project, ip_address, gateway_name)
 
     _time.sleep(0.3)
@@ -3863,23 +4388,23 @@ def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
 
 def _cmd_cicd(params):
     """Execute CI/CD test plan.
-    
+
     Args:
         file: path to test JSON file (relative to sync_folder/.test/ or absolute)
     """
     import time as _time
     import ide_online_helpers as _helpers
-    
+
     project, err = _get_active_project()
     if err:
         return err
-    
+
     # Resolve file path
     file_path = params.get("file", "")
     sf, sf_err = _get_sync_folder()
     if sf_err:
         return {"ok": False, "error": sf_err}
-    
+
     if not file_path:
         # No file specified: run all tests from .test/ by default.
         test_dir = os.path.join(sf, ".test")
@@ -3888,13 +4413,16 @@ def _cmd_cicd(params):
             if os.path.isdir(legacy_test_dir):
                 test_dir = legacy_test_dir
         if not os.path.isdir(test_dir):
-            return {"ok": False, "error": "No .test/ directory found at {0}".format(test_dir)}
+            return {
+                "ok": False,
+                "error": "No .test/ directory found at {0}".format(test_dir),
+            }
         json_files = sorted([f for f in os.listdir(test_dir) if f.endswith(".json")])
         if not json_files:
             return {"ok": False, "error": "No JSON files found in {0}".format(test_dir)}
         # Cold reset once before running all tests — handled by first plan via _prepare_cicd_plan
         sys._codesys_daemon_loop["cicd_reset_done"] = False
-        
+
         results = []
         for jf in json_files:
             fp = os.path.join(test_dir, jf)
@@ -3908,7 +4436,7 @@ def _cmd_cicd(params):
             result["file"] = jf
             results.append(result)
         return {"ok": True, "data": _summarize_cicd_results(results)}
-    
+
     if not os.path.isabs(file_path):
         test_dir = os.path.join(sf, ".test")
         candidate = os.path.join(test_dir, file_path)
@@ -3917,16 +4445,16 @@ def _cmd_cicd(params):
             if os.path.exists(legacy_candidate):
                 candidate = legacy_candidate
         file_path = candidate
-    
+
     if not os.path.exists(file_path):
         return {"ok": False, "error": "Test file not found: {0}".format(file_path)}
-    
+
     # Read and execute
     try:
         plan = json.loads(_read_text_utf8(file_path))
     except Exception as e:
         return {"ok": False, "error": "Failed to parse test file: {0}".format(e)}
-    
+
     result = _run_test_plan(project, plan)
     result["file"] = os.path.basename(file_path)
     return {"ok": True, "data": _summarize_cicd_results([result])}
@@ -3975,11 +4503,15 @@ def _prepare_cicd_plan(project, plan):
     """Validate the plan target and prepare the online application."""
     application = str(plan.get("application", "") or "").strip()
     if not application:
-        raise RuntimeError("Test plan must specify the target application: {\"application\": \"Application\"}")
+        raise RuntimeError(
+            'Test plan must specify the target application: {"application": "Application"}'
+        )
 
     target_app = _find_application_by_name(project, application)
     if target_app is None:
-        raise RuntimeError("Application '{0}' not found in the active project".format(application))
+        raise RuntimeError(
+            "Application '{0}' not found in the active project".format(application)
+        )
 
     active_name = ""
     try:
@@ -3995,16 +4527,19 @@ def _prepare_cicd_plan(project, plan):
         except Exception as e:
             raise RuntimeError(
                 "Test plan targets application '{0}', but active application is '{1}'. "
-                "Automatic switch failed: {2}"
-                .format(application, active_name, e)
+                "Automatic switch failed: {2}".format(application, active_name, e)
             )
 
     ip_address = str(plan.get("ip", "") or plan.get("device_ip", "") or "").strip()
-    gateway_name = str(plan.get("gateway", "") or plan.get("gateway_name", "Gateway-1") or "Gateway-1").strip()
+    gateway_name = str(
+        plan.get("gateway", "") or plan.get("gateway_name", "Gateway-1") or "Gateway-1"
+    ).strip()
     connect_result = _helpers.connect_to_device_impl(project, ip_address, gateway_name)
 
     # Cold reset if requested by plan (and not already done by bulk runner)
-    if plan.get("reset") == "cold" and not sys._codesys_daemon_loop.get("cicd_reset_done"):
+    if plan.get("reset") == "cold" and not sys._codesys_daemon_loop.get(
+        "cicd_reset_done"
+    ):
         _cicd_cold_reset(project, ip_address, gateway_name)
         sys._codesys_daemon_loop["cicd_reset_done"] = True
 
@@ -4012,7 +4547,10 @@ def _prepare_cicd_plan(project, plan):
         start_result = _cmd_start_plc()
         if not start_result.get("ok"):
             start_error = start_result.get("error", "Failed to start PLC application")
-            if "state is run" not in str(start_error).lower() and "already" not in str(start_error).lower():
+            if (
+                "state is run" not in str(start_error).lower()
+                and "already" not in str(start_error).lower()
+            ):
                 raise RuntimeError(start_error)
 
     return {
@@ -4043,16 +4581,18 @@ def _summarize_cicd_results(results):
                 passed += 1
             else:
                 failed += 1
-        files.append({
-            "file": result.get("file", ""),
-            "plan": result.get("plan", ""),
-            "status": "SUCCESS" if status == "PASS" else "FAIL",
-            "ok": status == "PASS",
-            "tests_ok": ok_tests,
-            "tests_failed": bad_tests,
-            "error": result.get("error", ""),
-            "total_ms": result.get("total_ms", 0),
-        })
+        files.append(
+            {
+                "file": result.get("file", ""),
+                "plan": result.get("plan", ""),
+                "status": "SUCCESS" if status == "PASS" else "FAIL",
+                "ok": status == "PASS",
+                "tests_ok": ok_tests,
+                "tests_failed": bad_tests,
+                "error": result.get("error", ""),
+                "total_ms": result.get("total_ms", 0),
+            }
+        )
     return {
         "status": "SUCCESS" if failed == 0 else "FAIL",
         "ok": failed == 0,
@@ -4071,13 +4611,13 @@ def _run_test_plan(project, plan):
     """Execute a single test plan and return results."""
     import time as _time
     import ide_online_helpers as _helpers
-    
+
     plan_name = plan.get("name", "unnamed")
     plan_timeout = plan.get("timeout", 30000) / 1000.0  # convert to seconds
     plan_continue_on_fail = plan.get("continue_on_fail", False)
     tests = plan.get("tests", [])
     prepare_info = None
-    
+
     start_all = _time.time()
     results = {
         "plan": plan_name,
@@ -4101,13 +4641,13 @@ def _run_test_plan(project, plan):
         results["error"] = str(e)
         results["total_ms"] = int((_time.time() - start_all) * 1000)
         return results
-    
+
     for test in tests:
         test_name = test.get("name", "unnamed")
         test_timeout = test.get("timeout", plan_timeout * 1000) / 1000.0
         steps = test.get("steps", [])
         continue_on_fail = test.get("continue_on_fail", False)
-        
+
         test_start = _time.time()
         test_result = {
             "name": test_name,
@@ -4115,21 +4655,26 @@ def _run_test_plan(project, plan):
             "ms": 0,
             "steps": [],
         }
-        
+
         test_failed = False
         for i, step in enumerate(steps):
             action = step.get("action", "")
             step_start = _time.time()
-            
+
             # Check overall timeout
             if _time.time() - start_all > plan_timeout:
-                step_result = {"action": action, "status": "FAIL", "ms": 0, "error": "Plan timeout exceeded"}
+                step_result = {
+                    "action": action,
+                    "status": "FAIL",
+                    "ms": 0,
+                    "error": "Plan timeout exceeded",
+                }
                 test_result["steps"].append(step_result)
                 test_failed = True
                 break
-            
+
             step_result = {"action": action}
-            
+
             try:
                 if action == "write":
                     var_name = step.get("variable", "")
@@ -4147,11 +4692,11 @@ def _run_test_plan(project, plan):
                         value_str = str(value)
                     _helpers.write_variable_impl(project, var_name, value_str)
                     _log("cicd write {0} = {1}".format(var_name, value_str))
-                    
+
                 elif action == "wait":
                     ms = int(step.get("ms", 100))
                     _time.sleep(ms / 1000.0)
-                    
+
                 elif action == "read":
                     var_name = step.get("variable", "")
                     if not var_name:
@@ -4159,55 +4704,93 @@ def _run_test_plan(project, plan):
                     result = _helpers.read_variable_impl(project, var_name)
                     step_result["value"] = result
                     _log("cicd read {0} = {1}".format(var_name, result))
-                    
+
                     # Extract actual value from read result
-                    raw_value = result.get("value", "") if isinstance(result, dict) else str(result)
+                    raw_value = (
+                        result.get("value", "")
+                        if isinstance(result, dict)
+                        else str(result)
+                    )
                     # Parse CODESYS format: "REAL#13.0", "INT#5", "BOOL#TRUE"
                     parsed = _parse_codesys_value(raw_value)
                     step_result["parsed"] = parsed
-                    
+
                     # Check expected value
                     expected = step.get("expected")
                     tolerance = float(step.get("tolerance", 0))
                     expected_min = step.get("expected_min")
                     expected_max = step.get("expected_max")
-                    
+
                     if expected is not None:
-                        if isinstance(parsed, (int, float)) and isinstance(expected, (int, float)):
+                        if isinstance(parsed, (int, float)) and isinstance(
+                            expected, (int, float)
+                        ):
                             if abs(float(parsed) - float(expected)) > tolerance:
-                                raise Exception("read {0}: expected {1}±{2}, got {3} (raw={4})".format(var_name, expected, tolerance, parsed, raw_value))
+                                raise Exception(
+                                    "read {0}: expected {1}±{2}, got {3} (raw={4})".format(
+                                        var_name, expected, tolerance, parsed, raw_value
+                                    )
+                                )
                         elif isinstance(parsed, bool) and isinstance(expected, bool):
                             if parsed != expected:
-                                raise Exception("read {0}: expected {1}, got {2}".format(var_name, expected, parsed))
+                                raise Exception(
+                                    "read {0}: expected {1}, got {2}".format(
+                                        var_name, expected, parsed
+                                    )
+                                )
                         elif str(parsed).lower() != str(expected).lower():
-                            raise Exception("read {0}: expected {1}, got {2}".format(var_name, expected, parsed))
-                    
+                            raise Exception(
+                                "read {0}: expected {1}, got {2}".format(
+                                    var_name, expected, parsed
+                                )
+                            )
+
                     if expected_min is not None and float(parsed) < float(expected_min):
-                        raise Exception("read {0}: min {1}, got {2}".format(var_name, expected_min, parsed))
+                        raise Exception(
+                            "read {0}: min {1}, got {2}".format(
+                                var_name, expected_min, parsed
+                            )
+                        )
                     if expected_max is not None and float(parsed) > float(expected_max):
-                        raise Exception("read {0}: max {1}, got {2}".format(var_name, expected_max, parsed))
-                    
+                        raise Exception(
+                            "read {0}: max {1}, got {2}".format(
+                                var_name, expected_max, parsed
+                            )
+                        )
+
                 elif action == "assert":
                     var_name = step.get("variable", "")
                     if not var_name:
                         raise Exception("assert: variable name is required")
                     result = _helpers.read_variable_impl(project, var_name)
-                    raw_value = result.get("value", "") if isinstance(result, dict) else str(result)
+                    raw_value = (
+                        result.get("value", "")
+                        if isinstance(result, dict)
+                        else str(result)
+                    )
                     parsed = _parse_codesys_value(raw_value)
                     expected = step.get("expected")
                     if expected is not None:
                         # Compare as native types
                         if isinstance(expected, bool) and isinstance(parsed, bool):
                             if parsed != expected:
-                                raise Exception("assert {0}: expected {1}, got {2}".format(var_name, expected, parsed))
+                                raise Exception(
+                                    "assert {0}: expected {1}, got {2}".format(
+                                        var_name, expected, parsed
+                                    )
+                                )
                         elif str(parsed).lower() != str(expected).lower():
-                            raise Exception("assert {0}: expected {1}, got {2}".format(var_name, expected, parsed))
-                    
+                            raise Exception(
+                                "assert {0}: expected {1}, got {2}".format(
+                                    var_name, expected, parsed
+                                )
+                            )
+
                 else:
                     raise Exception("Unknown action: {0}".format(action))
-                
+
                 step_result["status"] = "PASS"
-                
+
             except Exception as e:
                 step_result["status"] = "FAIL"
                 step_result["error"] = str(e)
@@ -4218,18 +4801,18 @@ def _run_test_plan(project, plan):
                     test_result["status"] = "FAIL"
                     test_result["error"] = str(e)
                     break
-            
+
             step_result["ms"] = int((_time.time() - step_start) * 1000)
             test_result["steps"].append(step_result)
-        
+
         test_result["ms"] = int((_time.time() - test_start) * 1000)
         if test_failed and "error" not in test_result:
             test_result["status"] = "FAIL"
         results["tests"].append(test_result)
-        
+
         if test_failed and not continue_on_fail and not plan_continue_on_fail:
             break
-    
+
     overall_fail = any(t["status"] == "FAIL" for t in results["tests"])
     results["status"] = "FAIL" if overall_fail else "PASS"
     results["total_ms"] = int((_time.time() - start_all) * 1000)
@@ -4237,6 +4820,7 @@ def _run_test_plan(project, plan):
 
 
 # ── Main polling loop ─────────────────────────────────────────────────────
+
 
 def _get_poll_interval():
     """Get current poll interval from config, default 0.2s."""
@@ -4263,7 +4847,9 @@ def _dashboard_log_response(dash, method, response):
         return
     try:
         if not response.get("ok"):
-            dash.log_command("FAIL tests: {0}".format(response.get("error", "unknown error")))
+            dash.log_command(
+                "FAIL tests: {0}".format(response.get("error", "unknown error"))
+            )
             return
         data = response.get("data", {})
         summary = data.get("summary", {})
@@ -4276,7 +4862,9 @@ def _dashboard_log_response(dash, method, response):
             item_total = int(item.get("tests_ok", 0)) + int(item.get("tests_failed", 0))
             item_passed = int(item.get("tests_ok", 0))
             if item_total > 0:
-                dash.log_command("{0} {1} ({2}/{3})".format(status, label, item_passed, item_total))
+                dash.log_command(
+                    "{0} {1} ({2}/{3})".format(status, label, item_passed, item_total)
+                )
             else:
                 dash.log_command("{0} {1}".format(status, label))
         if failed:
@@ -4294,13 +4882,19 @@ def run_loop():
     sys._codesys_daemon_loop["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     sys._codesys_daemon_loop["started"] = True
 
-    _log("cds-text-sync v{0} started  pipe={1}  pid={2}".format(VERSION, PIPE_NAME, os.getpid()))
+    _log(
+        "cds-text-sync v{0} started  pipe={1}  pid={2}".format(
+            VERSION, PIPE_NAME, os.getpid()
+        )
+    )
     _log("Waiting for CLI commands...  cds-text-sync --help")
 
     # Warn if sync folder not configured
     sf, sf_err = _get_sync_folder()
     if sf is None:
-        _log("[WARN] Sync folder not configured. Set \"cds-sync-folder\" project property via Project_directory.py")
+        _log(
+            '[WARN] Sync folder not configured. Set "cds-sync-folder" project property via Project_directory.py'
+        )
     else:
         _log("Sync folder: {0}".format(sf))
 
@@ -4318,7 +4912,7 @@ def run_loop():
                 else:
                     _dash.log_command("Sync folder: {0}".format(os.path.basename(sf)))
         except Exception as e:
-                _dash = None
+            _dash = None
 
     while sys._codesys_daemon_loop.get("running", False):
         pipe = None
@@ -4348,7 +4942,9 @@ def run_loop():
             method = cmd.get("method", "")
             params = cmd.get("params", {})
 
-            sys._codesys_daemon_loop["command_count"] = sys._codesys_daemon_loop.get("command_count", 0) + 1
+            sys._codesys_daemon_loop["command_count"] = (
+                sys._codesys_daemon_loop.get("command_count", 0) + 1
+            )
             sys._codesys_daemon_loop["last_command"] = method
 
             # Log to UI
@@ -4382,7 +4978,11 @@ def run_loop():
         except Exception as e:
             # Expected: pipe not found (no CLI waiting)
             err_str = str(e)
-            if "timed out" in err_str.lower() or "Could not connect" in err_str or "not found" in err_str.lower():
+            if (
+                "timed out" in err_str.lower()
+                or "Could not connect" in err_str
+                or "not found" in err_str.lower()
+            ):
                 # Normal - no CLI pipe available
                 pass
             else:

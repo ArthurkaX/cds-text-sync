@@ -14,6 +14,7 @@ This is the reverse of the older IDE-hosted pipe architecture.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import json
 import os
@@ -25,20 +26,20 @@ from typing import Any
 
 # ── Win32 constants ────────────────────────────────────────────────────────
 
-PIPE_ACCESS_DUPLEX    = 0x00000003
-FILE_FLAG_OVERLAPPED   = 0x40000000
-PIPE_TYPE_BYTE        = 0x00000000
-PIPE_READMODE_BYTE    = 0x00000000
-PIPE_WAIT             = 0x00000000
+PIPE_ACCESS_DUPLEX = 0x00000003
+FILE_FLAG_OVERLAPPED = 0x40000000
+PIPE_TYPE_BYTE = 0x00000000
+PIPE_READMODE_BYTE = 0x00000000
+PIPE_WAIT = 0x00000000
 PIPE_UNLIMITED_INSTANCES = 255
 
-INVALID_HANDLE_VALUE  = -1
+INVALID_HANDLE_VALUE = -1
 
-ERROR_PIPE_CONNECTED  = 535
-ERROR_FILE_NOT_FOUND  = 2
-ERROR_PIPE_BUSY       = 231
-ERROR_BROKEN_PIPE     = 109
-ERROR_IO_PENDING      = 997
+ERROR_PIPE_CONNECTED = 535
+ERROR_FILE_NOT_FOUND = 2
+ERROR_PIPE_BUSY = 231
+ERROR_BROKEN_PIPE = 109
+ERROR_IO_PENDING = 997
 
 # ── Win32 API ──────────────────────────────────────────────────────────────
 
@@ -46,9 +47,14 @@ kernel32 = ctypes.windll.kernel32
 
 CreateNamedPipeW = kernel32.CreateNamedPipeW
 CreateNamedPipeW.argtypes = [
-    wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
-    wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
-    wintypes.DWORD, wintypes.LPVOID,
+    wintypes.LPCWSTR,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.LPVOID,
 ]
 CreateNamedPipeW.restype = wintypes.HANDLE
 
@@ -66,15 +72,21 @@ CloseHandle.restype = wintypes.BOOL
 
 ReadFile = kernel32.ReadFile
 ReadFile.argtypes = [
-    wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    wintypes.HANDLE,
+    wintypes.LPVOID,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.DWORD),
+    wintypes.LPVOID,
 ]
 ReadFile.restype = wintypes.BOOL
 
 WriteFile = kernel32.WriteFile
 WriteFile.argtypes = [
-    wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    wintypes.HANDLE,
+    wintypes.LPVOID,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.DWORD),
+    wintypes.LPVOID,
 ]
 WriteFile.restype = wintypes.BOOL
 
@@ -86,7 +98,12 @@ GetLastError = kernel32.GetLastError
 GetLastError.restype = wintypes.DWORD
 
 CreateEventW = kernel32.CreateEventW
-CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+CreateEventW.argtypes = [
+    wintypes.LPVOID,
+    wintypes.BOOL,
+    wintypes.BOOL,
+    wintypes.LPCWSTR,
+]
 CreateEventW.restype = wintypes.HANDLE
 
 WaitForSingleObject = kernel32.WaitForSingleObject
@@ -95,7 +112,10 @@ WaitForSingleObject.restype = wintypes.DWORD
 
 GetOverlappedResult = kernel32.GetOverlappedResult
 GetOverlappedResult.argtypes = [
-    wintypes.HANDLE, wintypes.LPVOID, ctypes.POINTER(wintypes.DWORD), wintypes.BOOL,
+    wintypes.HANDLE,
+    wintypes.LPVOID,
+    ctypes.POINTER(wintypes.DWORD),
+    wintypes.BOOL,
 ]
 GetOverlappedResult.restype = wintypes.BOOL
 
@@ -116,6 +136,7 @@ class OVERLAPPED(ctypes.Structure):
 
 # ── Pipe name ──────────────────────────────────────────────────────────────
 
+
 def reverse_pipe_name(user: str | None = None) -> str:
     """Get the named pipe path for the reverse-pipe daemon."""
     if user is None:
@@ -125,19 +146,28 @@ def reverse_pipe_name(user: str | None = None) -> str:
 
 # ── Helper: read/write length-prefixed JSON via raw pipe handle ────────────
 
+
 def _write_msg(handle, data: dict) -> None:
     msg = json.dumps(data, ensure_ascii=False).encode("utf-8")
     header = struct.pack("<I", len(msg))
     written = wintypes.DWORD(0)
-    ok = WriteFile(handle, header + msg, len(header) + len(msg),
-                   ctypes.byref(written), None)
+    ok = WriteFile(
+        handle, header + msg, len(header) + len(msg), ctypes.byref(written), None
+    )
     if not ok:
         err = GetLastError()
         raise RuntimeError(f"WriteFile failed (error {err})")
-    FlushFileBuffers(handle)
+    # No FlushFileBuffers: local named pipe with FILE_FLAG_OVERLAPPED | PIPE_WAIT
+    # already provides reliable message framing, and a flush forces pointless
+    # kernel round-trips/filter-driver wake-ups on every command.
 
 
-def _read_msg(handle, max_size: int = 1048576) -> dict:
+# Default maximum single response size (bytes). Raised to 32 MiB to support
+# large application_tree / sync_export_text responses on big projects.
+DEFAULT_MAX_RESPONSE_SIZE = 32 * 1024 * 1024
+
+
+def _read_msg(handle, max_size: int = DEFAULT_MAX_RESPONSE_SIZE) -> dict:
     # Read 4-byte length
     raw_len = b""
     while len(raw_len) < 4:
@@ -147,7 +177,7 @@ def _read_msg(handle, max_size: int = 1048576) -> dict:
         if not ok:
             err = GetLastError()
             raise RuntimeError(f"ReadFile failed reading header (error {err})")
-        raw_len += buf.raw[:read.value]
+        raw_len += buf.raw[: read.value]
 
     msg_len = struct.unpack("<I", raw_len[:4])[0]
     if msg_len == 0:
@@ -165,7 +195,7 @@ def _read_msg(handle, max_size: int = 1048576) -> dict:
         if not ok:
             err = GetLastError()
             raise RuntimeError(f"ReadFile failed reading body (error {err})")
-        raw_msg += buf.raw[:read.value]
+        raw_msg += buf.raw[: read.value]
 
     return json.loads(raw_msg.decode("utf-8"))
 
@@ -201,10 +231,13 @@ class ReversePipeClient:
         pid = _last_ide_pid
         try:
             import subprocess
+
             # Check if PID exists via tasklist
             r = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if str(pid) not in r.stdout:
                 return f"IDE process (PID {pid}) has exited. Restart Project_daemon.py in CODESYS."
@@ -217,10 +250,14 @@ class ReversePipeClient:
                         name = parts[0]
                     break
             # Check CPU usage via powershell Get-Process
-            ps_cmd = f"Get-Process -Id {pid} | Format-List Id,ProcessName,CPU,Responding"
+            ps_cmd = (
+                f"Get-Process -Id {pid} | Format-List Id,ProcessName,CPU,Responding"
+            )
             r2 = subprocess.run(
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
-                capture_output=True, text=True, timeout=5
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             output = r2.stdout or ""
             # Parse output
@@ -255,8 +292,8 @@ class ReversePipeClient:
             )
         except Exception:
             return (
-                f"Make sure the reverse-pipe daemon "
-                f"(Project_daemon.py) is running inside CODESYS."
+                "Make sure the reverse-pipe daemon "
+                "(Project_daemon.py) is running inside CODESYS."
             )
 
     # Maximum retries for CreateNamedPipeW (to handle brief OS cleanup delay)
@@ -266,19 +303,20 @@ class ReversePipeClient:
     def send_command(self, method: str, params: dict | None = None) -> dict:
         global _last_ide_pid
         params = params or {}
+        deadline = time.monotonic() + self._timeout
 
         # Create the named pipe server with overlapped flag and unlimited instances
         pipe_handle = -1
-        for attempt in range(self.MAX_CREATE_RETRIES):
+        for _ in range(self.MAX_CREATE_RETRIES):
             pipe_handle = CreateNamedPipeW(
                 self._pipe_path,
                 PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
                 PIPE_UNLIMITED_INSTANCES,  # max instances (allow multiple)
-                65536,      # out buffer
-                65536,      # in buffer
-                0,          # default timeout
-                None,       # default security
+                65536,  # out buffer
+                65536,  # in buffer
+                0,  # default timeout
+                None,  # default security
             )
             if pipe_handle > 0 and pipe_handle != INVALID_HANDLE_VALUE:
                 break
@@ -305,8 +343,9 @@ class ReversePipeClient:
                     # Already connected (rare race condition)
                     pass
                 elif err == ERROR_IO_PENDING:
-                    # Waiting for connection — wait with timeout
-                    wait_result = WaitForSingleObject(event, int(self._timeout * 1000))
+                    # Waiting for connection — wait with remaining budget
+                    remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+                    wait_result = WaitForSingleObject(event, remaining_ms)
                     if wait_result != 0:  # 0 = WAIT_OBJECT_0
                         # Timeout — check IDE process status for a helpful hint
                         hint = self._diagnose_ide_timeout()
@@ -317,8 +356,12 @@ class ReversePipeClient:
                         )
                     # Verify connection result with GetOverlappedResult
                     bytes_xferd = wintypes.DWORD(0)
-                    ok = GetOverlappedResult(pipe_handle, ctypes.byref(overlapped),
-                                              ctypes.byref(bytes_xferd), True)
+                    ok = GetOverlappedResult(
+                        pipe_handle,
+                        ctypes.byref(overlapped),
+                        ctypes.byref(bytes_xferd),
+                        True,
+                    )
                     if not ok:
                         err = GetLastError()
                         CancelIo(pipe_handle)
@@ -329,11 +372,7 @@ class ReversePipeClient:
                     CancelIo(pipe_handle)
                     raise RuntimeError(f"ConnectNamedPipe failed (error {err})")
 
-            # Connected! Now switch to blocking mode for I/O
-            # (overlapped I/O for ReadFile/WriteFile is more complex,
-            #  and since we're already connected, blocking mode is fine)
-            mode = wintypes.DWORD(0)  # PIPE_READMODE_BYTE | PIPE_WAIT
-            # Actually, we can just use blocking I/O now
+            # Connected! Use blocking I/O for the rest of the exchange.
 
             # Write command
             cmd = {"method": method, "params": params}
@@ -351,7 +390,7 @@ class ReversePipeClient:
 
             reader = threading.Thread(target=_reader, daemon=True)
             reader.start()
-            reader.join(self._timeout)
+            reader.join(max(0, deadline - time.monotonic()))
             if reader.is_alive():
                 CancelIo(pipe_handle)
                 CloseHandle(pipe_handle)
@@ -378,28 +417,25 @@ class ReversePipeClient:
 
         finally:
             # Clean up
-            try:
+            with contextlib.suppress(Exception):
                 CancelIo(pipe_handle)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 DisconnectNamedPipe(pipe_handle)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 CloseHandle(pipe_handle)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 CloseHandle(event)
-            except Exception:
-                pass
 
 
 # ── Convenience ────────────────────────────────────────────────────────────
 
-def send_command_reverse(method: str, params: dict | None = None,
-                         user: str | None = None, timeout: float = 30) -> dict:
+
+def send_command_reverse(
+    method: str,
+    params: dict | None = None,
+    user: str | None = None,
+    timeout: float = 30,
+) -> dict:
     """Send a command using reverse-pipe protocol.
 
     Creates the pipe server and waits for the IDE loop to connect.
