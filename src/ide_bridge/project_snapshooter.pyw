@@ -121,6 +121,7 @@ class TuiNode(object):
     __slots__ = (
         "name", "path", "type", "value", "leaf", "parent", "children",
         "expanded", "source_kind", "leaf_count", "search_text",
+        "excluded_from_build",
     )
 
     def __init__(self, name, path="", typ="", value="", leaf=False, parent=None):
@@ -135,6 +136,7 @@ class TuiNode(object):
         self.source_kind = ""
         self.leaf_count = 1 if leaf else 0
         self.search_text = ""
+        self.excluded_from_build = False
 
     def add_child(self, child):
         self.children.append(child)
@@ -395,7 +397,8 @@ def _load_snapshooter_tree(path):
     raw_rows = data.get("rows", [])
     stats = data.get("stats", {})
     # Compact rows for faster pickle load in IronPython.
-    keep_keys = ("path", "name", "type", "scope", "owner", "leaf", "note")
+    keep_keys = ("path", "name", "type", "scope", "owner", "leaf", "note",
+                 "excluded_from_build")
     rows = []
     for r in raw_rows:
         slim = {}
@@ -605,11 +608,22 @@ def take(paths=None, app="Application", label="", description="", project=None):
     t0 = time.time()
     rows = _rows_for_paths(project, paths)
     _log("take: _rows_for_paths returned {0} rows in {1:.2f}s".format(len(rows), time.time() - t0))
-    reads = _read_rows(project, rows)
+    live_rows = [r for r in rows if not r.get("excluded_from_build")]
+    reads = _read_rows(project, live_rows)
 
     variables = []
     for row in rows:
         path = row.get("path", "")
+        if row.get("excluded_from_build"):
+            item = {
+                "path": path,
+                "type": row.get("type", ""),
+                "value": "",
+                "read_ok": False,
+                "read_error": "excluded from build",
+            }
+            variables.append(item)
+            continue
         rr = reads.get(path, {})
         item = {
             "path": path,
@@ -837,6 +851,7 @@ def build_tui_tree(rows, app="Application"):
                     row.get("value", "") if is_leaf else "",
                     leaf=is_leaf,
                 )
+                node.excluded_from_build = bool(row.get("excluded_from_build")) if is_leaf else False
                 if idx == 0:
                     scope = _text(row.get("scope", "")).upper()
                     node.source_kind = row.get("kind") or row.get("owner_kind") or (
@@ -849,6 +864,7 @@ def build_tui_tree(rows, app="Application"):
                 node.type = row.get("type", "")
                 node.value = row.get("value", "")
                 node.leaf_count = 1
+                node.excluded_from_build = bool(row.get("excluded_from_build"))
             parent = node
     _sort_children_recursive(root)
     _compute_search_text_recursive(root)
@@ -1122,6 +1138,7 @@ def _run_winforms_interactive(app="Application", save_to=""):
             self._leaf_count = 0
             self._selected_count = 0
             self._all_leaf_nodes = []
+            self._node_models = {}
             self.FormClosed += self._on_closed
             self._build_ui()
             self._populate_tree()
@@ -1232,13 +1249,16 @@ def _run_winforms_interactive(app="Application", save_to=""):
             if node.leaf:
                 name = _text(node.name).ljust(34)
                 typ = _text(node.type or "").ljust(12)
-                return "{0} {1} {2}".format(name, typ, node.value or "")
+                text = "{0} {1} {2}".format(name, typ, node.value or "")
+                if node.excluded_from_build:
+                    text = text + " [excluded from build]"
+                return text
             return "{0}    {1}".format(node.name, _branch_summary(node))
 
         def _add_node(self, parent_ui, model):
             ui = TreeNode(self._node_text(model))
             ui.Name = model.path
-            ui._model = model
+            self._node_models[ui] = model
             if model.leaf:
                 ui.Tag = 1
                 self._all_leaf_nodes.append(ui)
@@ -1252,13 +1272,14 @@ def _run_winforms_interactive(app="Application", save_to=""):
         def _populate_tree(self):
             self._leaf_count = 0
             self._all_leaf_nodes = []
+            self._node_models = {}
             self.tree.BeginUpdate()
             try:
                 self.tree.Nodes.Clear()
                 root_ui = TreeNode(self._node_text(root_model))
                 root_ui.Name = root_model.path
                 root_ui.Tag = 0
-                root_ui._model = root_model
+                self._node_models[root_ui] = root_model
                 for child in root_model.children:
                     self._add_node(root_ui, child)
                 self.tree.Nodes.Add(root_ui)
@@ -1268,6 +1289,13 @@ def _run_winforms_interactive(app="Application", save_to=""):
                 root_ui.EnsureVisible()
             finally:
                 self.tree.EndUpdate()
+
+        def _walk_nodes(self, nodes):
+            for i in range(nodes.Count):
+                node = nodes[i]
+                yield node
+                for child in self._walk_nodes(node.Nodes):
+                    yield child
 
         def _leaf_nodes(self):
             return [n for n in self._walk_nodes(self.tree.Nodes) if n.Tag == 1]
@@ -1299,7 +1327,7 @@ def _run_winforms_interactive(app="Application", save_to=""):
                 for i in range(parent.Nodes.Count):
                     if parent.Nodes[i].Checked:
                         checked_count += 1
-                model = getattr(parent, "_model", None)
+                model = self._node_models.get(parent)
                 total = model.leaf_count if model else len(self._leaf_nodes())
                 if checked_count == 0:
                     parent.Checked = False
@@ -1328,7 +1356,7 @@ def _run_winforms_interactive(app="Application", save_to=""):
         def _search_matches(self, query):
             matches = []
             for ui_node in self._all_leaf_nodes:
-                model = getattr(ui_node, "_model", None)
+                model = self._node_models.get(ui_node)
                 text = model.search_text if model else "{0} {1}".format(ui_node.Name, ui_node.Text).lower()
                 if query in text:
                     matches.append(ui_node)
@@ -1468,7 +1496,7 @@ def _run_winforms_interactive(app="Application", save_to=""):
             parents = list(seen)
             parents.sort(key=lambda n: str(n.Name).count("."), reverse=True)
             for parent in parents:
-                model = getattr(parent, "_model", None)
+                model = self._node_models.get(parent)
                 total = model.leaf_count if model else 0
                 if total == 0:
                     parent.Checked = False

@@ -246,3 +246,67 @@ def test_tui_toggle_branch_selects_all_leaf_paths():
 
     assert selected == {"GVL_Routing.speed", "GVL_Routing.partCount"}
     assert ps._checkbox(branch, selected) == "[x]"
+
+
+def test_take_skips_excluded_leaves(monkeypatch):
+    rows = [
+        {"path": "GVL_Live.a", "type": "INT", "leaf": True, "owner": "GVL_Live"},
+        {"path": "GVL_Diag.b", "type": "UINT", "leaf": True, "owner": "GVL_Diag", "excluded_from_build": True},
+        {"path": "GVL_Diag.c", "type": "BOOL", "leaf": True, "owner": "GVL_Diag", "excluded_from_build": True},
+    ]
+    monkeypatch.setattr(ps, "_rows_for_paths", lambda _project, paths: [dict(r) for r in rows])
+    read_names = []
+
+    def fake_read_variables_impl(_project, names):
+        read_names.extend(names)
+        return {
+            "results": [
+                {"name": name, "value": "INT#42", "read_ok": True}
+                for name in names
+            ]
+        }
+
+    monkeypatch.setattr(ps._helpers, "read_variables_impl", fake_read_variables_impl)
+
+    doc = ps.take(project=DummyProject())
+
+    assert sorted(read_names) == ["GVL_Live.a"]
+    variables = {v["path"]: v for v in doc["variables"]}
+    assert variables["GVL_Live.a"]["read_ok"] is True
+    assert variables["GVL_Live.a"]["value"] == "INT#42"
+    for path in ("GVL_Diag.b", "GVL_Diag.c"):
+        assert variables[path]["read_ok"] is False
+        assert variables[path]["value"] == ""
+        assert variables[path]["read_error"] == "excluded from build"
+
+
+def test_take_with_explicit_excluded_path_skips_read(monkeypatch):
+    rows = [
+        {"path": "GVL_Excluded.x", "type": "INT", "leaf": True, "excluded_from_build": True},
+    ]
+    ps._SNAPSHOOTER_ROWS_BY_PATH = {}
+    monkeypatch.setattr(ps, "_rows_for_paths", lambda _project, paths: [dict(r) for r in rows])
+    read_names = []
+
+    def fake_read(_project, names):
+        read_names.extend(names)
+        return {"results": []}
+
+    monkeypatch.setattr(ps._helpers, "read_variables_impl", fake_read)
+    doc = ps.take(paths=["GVL_Excluded.x"], project=DummyProject())
+
+    assert read_names == []
+    var = doc["variables"][0]
+    assert var["read_ok"] is False
+    assert var["read_error"] == "excluded from build"
+
+
+def test_build_tui_tree_marks_excluded_leaf():
+    rows = [
+        {"path": "GVL_Included.a", "type": "INT", "value": "7", "leaf": True, "scope": "VAR_GLOBAL"},
+        {"path": "GVL_Excluded.b", "type": "UINT", "value": "0", "leaf": True, "scope": "VAR_GLOBAL", "excluded_from_build": True},
+    ]
+    root = ps.build_tui_tree(rows, app="Application")
+    leaves = {leaf.path: leaf for leaf in root.leaves()}
+    assert leaves["GVL_Included.a"].excluded_from_build is False
+    assert leaves["GVL_Excluded.b"].excluded_from_build is True
