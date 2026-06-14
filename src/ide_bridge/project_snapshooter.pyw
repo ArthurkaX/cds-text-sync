@@ -23,19 +23,26 @@ import ide_online_helpers as _helpers
 import ide_runtime_common
 
 
-# --- Temporary diagnostic logger --------------------------------------------
-# Writes to <sync-folder>/.dump/snapshooter.log AND %TEMP%/snapshooter.log
-# with millisecond timestamps. Also echoes to the scripting console via print.
-# Remove when the freeze is diagnosed.
+# --- Diagnostic logger ------------------------------------------------------
+# Gated by the project option "Save detailed engine logs in .dump"
+# (verbose_logging). When enabled, writes millisecond-stamped lines to
+# <sync-folder>/.dump/snapshooter.log and echoes to the scripting console.
+# When disabled, _log() is a cheap no-op.
 _SNAPSHOOTER_LOG_PATHS = None
+_SNAPSHOOTER_SYNC = None
+_SNAPSHOOTER_VERBOSE = None
 
 
-def _log_resolve_paths():
-    global _SNAPSHOOTER_LOG_PATHS
-    if _SNAPSHOOTER_LOG_PATHS is not None:
-        return _SNAPSHOOTER_LOG_PATHS
-    paths = []
-    sync = None
+def _resolve_log_sync_folder():
+    """Best-effort cds-sync-folder lookup from the active CODESYS project.
+
+    Cached because it is consulted on every _log() call and on the verbose
+    check. Returns "" when no project/sync folder is available.
+    """
+    global _SNAPSHOOTER_SYNC
+    if _SNAPSHOOTER_SYNC:
+        return _SNAPSHOOTER_SYNC
+    sync = ""
     try:
         proj = None
         state = getattr(sys, "_codesys_daemon_loop", None)
@@ -70,24 +77,57 @@ def _log_resolve_paths():
                     try:
                         sync = values.get("cds-sync-folder", "")
                     except Exception:
-                        sync = None
+                        sync = ""
     except Exception:
-        pass
+        sync = ""
+    _SNAPSHOOTER_SYNC = sync or ""
+    return _SNAPSHOOTER_SYNC
+
+
+def _snapshooter_verbose():
+    """True when the project option verbose_logging is enabled.
+
+    Only the resolved result is cached; while the project/sync folder is not
+    yet available we keep returning False without memoizing, so logging can
+    still switch on once the project becomes reachable.
+    """
+    global _SNAPSHOOTER_VERBOSE
+    if _SNAPSHOOTER_VERBOSE is not None:
+        return _SNAPSHOOTER_VERBOSE
+    sync = _resolve_log_sync_folder()
+    if not sync:
+        return False
+    verbose = False
+    try:
+        verbose, _log_path = ide_runtime_common.project_logging_config(sync)
+        verbose = bool(verbose)
+    except Exception:
+        verbose = False
+    _SNAPSHOOTER_VERBOSE = verbose
+    return verbose
+
+
+def _log_resolve_paths():
+    global _SNAPSHOOTER_LOG_PATHS
+    if _SNAPSHOOTER_LOG_PATHS is not None:
+        return _SNAPSHOOTER_LOG_PATHS
+    paths = []
+    sync = _resolve_log_sync_folder()
     if sync:
         paths.append(os.path.join(sync, ".dump", "snapshooter.log"))
-    try:
-        paths.append(os.path.join(tempfile.gettempdir(), "snapshooter.log"))
-    except Exception:
-        pass
-    try:
-        paths.append(os.path.join(os.getcwd(), "snapshooter.log"))
-    except Exception:
-        pass
+    else:
+        # No sync folder resolved: fall back so verbose logs are not lost.
+        try:
+            paths.append(os.path.join(tempfile.gettempdir(), "snapshooter.log"))
+        except Exception:
+            pass
     _SNAPSHOOTER_LOG_PATHS = paths
     return paths
 
 
 def _log(msg):
+    if not _snapshooter_verbose():
+        return
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     ms = int((time.time() % 1) * 1000)
     line = "{0}.{1:03d} {2}".format(ts, ms, msg)
