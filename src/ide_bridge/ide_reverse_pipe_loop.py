@@ -16,14 +16,16 @@ This avoids calling CODESYS APIs from a background thread.
 """
 
 from __future__ import print_function
-import clr
-import sys
-import os
+
 import io
 import json
-import time
+import os
+import sys
 import tempfile
+import time
 import traceback
+
+import clr
 
 # Add ide_bridge dir to path
 _LOOP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,7 +44,7 @@ from System.IO.Pipes import NamedPipeClientStream, PipeDirection
 
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
-VERSION = "2.6.0"
+VERSION = "2.6.1"
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
 CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)
@@ -3689,6 +3691,32 @@ def _active_app_online_state():
     try:
         import scriptengine as se
 
+        # Prefer the cached online_app if it still reports connected.
+        try:
+            from ide_online_helpers import _get_cached_online_app
+
+            oa, _ = _get_cached_online_app()
+            if oa is not None:
+                state = ""
+                if hasattr(oa, "application_state"):
+                    try:
+                        state = str(oa.application_state)
+                    except Exception:
+                        pass
+                for attr in ("is_connected", "is_online"):
+                    if hasattr(oa, attr):
+                        try:
+                            val = getattr(oa, attr)
+                            if callable(val):
+                                val = val()
+                            if val:
+                                return (True, state or "connected")
+                        except Exception:
+                            pass
+                return (False, state or "disconnected")
+        except Exception:
+            pass
+
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is None:
             return (False, "")
@@ -3703,7 +3731,7 @@ def _active_app_online_state():
             try:
                 state = str(oa.application_state)
             except Exception:
-                state = ""
+                pass
         online = False
         for attr in ("is_connected", "is_online"):
             if hasattr(oa, attr):
@@ -3715,9 +3743,6 @@ def _active_app_online_state():
                         online = True
                 except Exception:
                     pass
-        # Fall back to the state string when the booleans are unavailable.
-        if not online and state and state.lower() not in ("none", "disconnected", ""):
-            online = True
         return (online, state)
     except Exception:
         return (False, "")
@@ -3841,10 +3866,37 @@ def _cmd_sync_import_text(params):
             )
 
         updated_text = []
+        skipped_projection_objects = []
         if os.path.exists(compare_report_path):
             updated_text = _apply_modified_st_objects(project, compare_report_path)
             if updated_text:
                 _log("Updated text objects: {0}".format(", ".join(updated_text)))
+            # Detect modified objects whose projection changes could not be
+            # applied automatically (e.g. non-ST projections).
+            try:
+                import json as _json
+
+                _report = _json.loads(_read_text_utf8(compare_report_path))
+                _updated_names = set(updated_text)
+                for obj in (_report.get("objects") or {}).get("modified") or []:
+                    _name = obj.get("name") or obj.get("guid") or "?"
+                    if _name in _updated_names:
+                        continue
+                    _pd = obj.get("projection_diff") or {}
+                    if _pd.get("format") and _pd.get("disk_content") is not None:
+                        skipped_projection_objects.append(
+                            {
+                                "name": _name,
+                                "path": obj.get("path", ""),
+                                "format": _pd.get("format", ""),
+                                "reason": (
+                                    "projection change not applied automatically; "
+                                    "use update-pou or edit in the IDE"
+                                ),
+                            }
+                        )
+            except Exception:
+                pass
 
         # Step 4: Apply StructuredView (MAIN update) — skip if fails, objects are already created
         try:
@@ -3868,14 +3920,24 @@ def _cmd_sync_import_text(params):
                 )
             )
 
+        return_data = {
+            "path": patch_path,
+            "size": os.path.getsize(patch_path),
+            "created_text_objects": [e["name"] for e in text_creates],
+            "updated_text_objects": updated_text,
+            "skipped_projection_objects": skipped_projection_objects,
+        }
+        if not text_creates and not updated_text and not skipped_projection_objects:
+            return_data["note"] = (
+                "No objects were created, updated, or skipped. "
+                "The compare report may show projection-only changes that "
+                "cannot be applied automatically; use update-pou or edit "
+                "the object in the IDE."
+            )
+
         return {
             "ok": True,
-            "data": {
-                "path": patch_path,
-                "size": os.path.getsize(patch_path),
-                "created_text_objects": [e["name"] for e in text_creates],
-                "updated_text_objects": updated_text,
-            },
+            "data": return_data,
         }
     except Exception as e:
         return {"ok": False, "error": "Sync import error: {0}".format(e)}
@@ -4393,6 +4455,7 @@ def _cmd_cicd(params):
         file: path to test JSON file (relative to sync_folder/.test/ or absolute)
     """
     import time as _time
+
     import ide_online_helpers as _helpers
 
     project, err = _get_active_project()
@@ -4415,7 +4478,12 @@ def _cmd_cicd(params):
         if not os.path.isdir(test_dir):
             return {
                 "ok": False,
-                "error": "No .test/ directory found at {0}".format(test_dir),
+                "error": (
+                    "No .test/ directory found at {0}. "
+                    "Create JSON test plans in <sync-folder>/.test/ "
+                    "and run 'cts test --file plan.json'. "
+                    "Format documentation: cli/TEST_FORMAT.md"
+                ).format(test_dir),
             }
         json_files = sorted([f for f in os.listdir(test_dir) if f.endswith(".json")])
         if not json_files:
@@ -4610,6 +4678,7 @@ def _summarize_cicd_results(results):
 def _run_test_plan(project, plan):
     """Execute a single test plan and return results."""
     import time as _time
+
     import ide_online_helpers as _helpers
 
     plan_name = plan.get("name", "unnamed")

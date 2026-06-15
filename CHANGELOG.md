@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.6.1 (2026-06-15)
+
+**CLI fixes from user feedback:**
+
+- `cts import` now accepts `--force-online` to bypass the offline preflight check when `disconnect` does not fully clear CODESYS' online state, and `--dry-run` to preview changes with the same report as `compare`.
+- `cts plc-crc` now accepts `--build` to compile the project before comparing CRCs.
+- `cts write` now reads the value back and returns it under `read_back`, so callers can verify the write actually took effect.
+- `cts engine` and the deprecated `validate`/`resources` aliases now accept `--timeout` for consistency with other commands; the value is ignored by the offline engine.
+- `cts read-object` help now explains path format and recommends `--name` as the most reliable selector.
+- `cts raw` help now mentions `force_online=true` and points to `cts raw help` for the method list.
+- `cts test` help now references `cli/TEST_FORMAT.md`, and the "No .test/" error message includes format documentation pointers.
+
+**Daemon fixes:**
+
+- `_active_app_online_state` now prefers the cached `online_app` and only reports online when `is_connected` or `is_online` is true. It no longer falls back to a stale `application_state` string (e.g. `run`) after disconnect, which caused the documented `disconnect -> import` workflow to fail.
+- `sync_import_text` now returns `skipped_projection_objects` in its output when modified objects have projection-only changes that cannot be applied automatically, making silent no-op imports visible.
+- `variable-snapshot` JSON summary now includes a `failures` list with each failing path and error message.
+
+**Documentation:**
+
+- `cli/CLI.md` updated with `--force-online`, `--dry-run`, `--build`, `read-object` selector guidance, `raw` override examples, and improved test onboarding.
+
+---
+
 ### Version 2.6.0 (2026-06-09)
 
 **CLI Contract:**

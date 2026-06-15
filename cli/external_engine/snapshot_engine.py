@@ -21,13 +21,14 @@ def run_snapshot(rows, read_fn):
     read_fn is called once with all leaf paths. Every row is annotated with
     value / read_ok / read_error in place.
 
-    Returns (rows, {"read_ok": n, "read_failed": n}).
+    Returns (rows, {"read_ok": n, "read_failed": n, "failures": [...]}).
     """
     readable = [r for r in rows if r.get("leaf")]
     read_map = read_fn([r["path"] for r in readable])
 
     ok = 0
     fail = 0
+    failures = []
     for r in rows:
         if r.get("leaf"):
             rr = read_map.get(r["path"])
@@ -41,14 +42,18 @@ def run_snapshot(rows, read_fn):
                 r["read_ok"] = "false"
                 r["read_error"] = (rr or {}).get("read_error", "no result")
                 fail += 1
+                failures.append({"path": r["path"], "error": r["read_error"]})
         else:
             r["value"] = ""
             r["read_ok"] = "false"
             note = r.get("note") or ""
-            r["read_error"] = "not a readable leaf: " + note if note else "not a readable leaf"
+            r["read_error"] = (
+                "not a readable leaf: " + note if note else "not a readable leaf"
+            )
             fail += 1
+            failures.append({"path": r.get("path", ""), "error": r["read_error"]})
 
-    return rows, {"read_ok": ok, "read_failed": fail}
+    return rows, {"read_ok": ok, "read_failed": fail, "failures": failures}
 
 
 def _coerce_enum_value(value, enum_registry):
@@ -133,7 +138,9 @@ def apply_restore(eligible, write_fn):
             r["restore_status"] = "written"
             written += 1
         else:
-            r["restore_status"] = "failed: " + ((wr or {}).get("write_error") or "no result")
+            r["restore_status"] = "failed: " + (
+                (wr or {}).get("write_error") or "no result"
+            )
             failed += 1
 
     return eligible, {"written": written, "failed": failed}

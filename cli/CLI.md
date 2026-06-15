@@ -64,6 +64,13 @@ cts import --timeout 120
 cts build --timeout 120
 ```
 
+`import` options:
+
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would change without applying (runs compare). |
+| `--force-online` | Skip the offline preflight check; use only when you are sure the IDE is offline. |
+
 Rules:
 
 - `export` is destructive for local text files: it refreshes `project-view/`
@@ -71,7 +78,8 @@ Rules:
 - `import` treats disk as the source of truth.
 - Adding new objects requires the IDE project to be offline. Run
   `disconnect` before `import` when new GVL, DUT, POU, or folder objects were
-  added on disk.
+  added on disk. If `disconnect` does not clear the online state, use
+  `cts import --force-online` or `cts raw sync_import_text force_online=true`.
 - `build` compiles in the IDE only. It does not guarantee that the PLC is
   running the new code.
 
@@ -107,6 +115,12 @@ cts download --timeout 120
 cts plc-crc --timeout 30
 ```
 
+`plc-crc --build` will build the project first, then compare CRCs.
+
+```bash
+cts plc-crc --build --timeout 120
+```
+
 `connect` uses the normal CODESYS login flow. If the change cannot be handled
 as an online change, use `download`.
 
@@ -115,7 +129,7 @@ as an online change, use `download`.
 | Command | Meaning | Requires |
 | --- | --- | --- |
 | `read NAME` | Read one online variable/expression. | online |
-| `write NAME VALUE` | Write one online variable/expression. | online + permission |
+| `write NAME VALUE` | Write one online variable/expression and read it back. | online + permission |
 | `read-vars EXPR... [--file FILE]` | Batch-read expressions. | online |
 | `variable-map` | Build an offline CSV map from `project-view/`. | exported project-view |
 | `variable-snapshot` | Read live values for mapped scalar leaves to CSV. | online |
@@ -142,9 +156,8 @@ cts test --timeout 120
 ```
 
 Plans live in `<sync-folder>/.test/`. If `--file` is omitted, all `*.json`
-plans are executed in sorted order.
-
-Format: [TEST_FORMAT.md](TEST_FORMAT.md).
+plans are executed in sorted order. See [TEST_FORMAT.md](TEST_FORMAT.md) for the
+JSON schema and examples.
 
 ## Project And Object Tools
 
@@ -155,7 +168,7 @@ are not part of the normal edit cycle.
 | --- | --- |
 | `project-info` | Show open project metadata, Summary fields, and all Project Information properties. |
 | `project-tree [--depth N]` | Show the CODESYS project object tree. |
-| `read-object [--path PATH] [--name NAME] [--guid GUID]` | Read one project object. |
+| `read-object [--path PATH] [--name NAME] [--guid GUID]` | Read one project object. `--name` is the most reliable selector. `--path` uses forward slashes, e.g. `Application/MAIN`. GUIDs from `project-tree` may not match IDE GUIDs. |
 | `update-pou --name NAME --st-path PATH [--app APP]` | Update one textual POU from an `.st` file. |
 | `delete-pou NAME [--app APP]` | Delete a Program, Function, or Function Block. Permission-gated. |
 | `read-log [--last N] [--clear]` | Read CODESYS IDE messages. |
@@ -171,7 +184,7 @@ and debugging.
 
 | Command | Meaning |
 | --- | --- |
-| `raw METHOD [--key value ...]` | Send a daemon method directly. |
+| `raw METHOD [--key value ...]` | Send a daemon method directly. Useful for overrides such as `force_online=true` or a custom `timeout`. |
 | `rp METHOD [--key value ...]` | Deprecated alias for `raw`. |
 | `engine export|import|compare|validate|resources ...` | Run `engine_cli.py` directly without CODESYS. |
 
@@ -180,6 +193,7 @@ Examples:
 ```bash
 cts raw help --timeout 10
 cts raw application_tree --flat --output C:/Temp/tree.json --timeout 120
+cts raw sync_import_text force_online=true --timeout 120
 cts engine validate --project-root C:/Work/Project
 ```
 
