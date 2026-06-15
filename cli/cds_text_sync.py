@@ -35,7 +35,6 @@ if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
 
 from reverse_pipe_client import send_command_reverse
 
-
 # -- Config ------------------------------------------------------------------
 
 ENGINE_CLI = _ENGINE_DIR / "engine_cli.py"
@@ -99,14 +98,18 @@ def _format_output(data, fmt="json", title=None):
 
 # -- CODESYS launcher --------------------------------------------------------
 
+
 def _find_codesys() -> str | None:
     """Find CODESYS executable on this system."""
     for candidate in _CODESYS_CANDIDATES:
         if os.path.exists(candidate):
             return candidate
     import glob
-    for pattern in [r"C:\Program Files\CODESYS*\CODESYS\Common\CODESYS.exe",
-                    r"C:\Program Files (x86)\CODESYS*\CODESYS\Common\CODESYS.exe"]:
+
+    for pattern in [
+        r"C:\Program Files\CODESYS*\CODESYS\Common\CODESYS.exe",
+        r"C:\Program Files (x86)\CODESYS*\CODESYS\Common\CODESYS.exe",
+    ]:
         matches = glob.glob(pattern)
         for m in matches:
             if os.path.exists(m):
@@ -114,10 +117,12 @@ def _find_codesys() -> str | None:
     return None
 
 
-def _launch_codesys(project_path: str | None = None,
-                    codesys_path: str | None = None,
-                    script_path: str | None = None,
-                    wait: bool = False) -> bool:
+def _launch_codesys(
+    project_path: str | None = None,
+    codesys_path: str | None = None,
+    script_path: str | None = None,
+    wait: bool = False,
+) -> bool:
     """Launch CODESYS IDE with optional project and startup script.
 
     Args:
@@ -181,7 +186,8 @@ def _load_project_config():
 
     profile_name = config.get("profile")
     if profile_name:
-        from _project_profiles import load_profile, PROFILES_DIR
+        from _project_profiles import PROFILES_DIR, load_profile
+
         profile = load_profile(profile_name, PROFILES_DIR)
 
     return config, profile
@@ -203,7 +209,9 @@ def _print_rp_error(resp, command):
                     obj = m.get("object", "")
                     _print_error("[{0}] {1} (in {2})".format(code, text, obj))
             else:
-                _print_error("{0} failed with {1} warnings".format(command, len(messages)))
+                _print_error(
+                    "{0} failed with {1} warnings".format(command, len(messages))
+                )
         else:
             _print_error("unknown error")
     diag = resp.get("diagnostics")
@@ -213,14 +221,16 @@ def _print_rp_error(resp, command):
 
 def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json"):
     """Send a command via reverse-pipe daemon.
-    
+
     Args:
         args: Command name followed by --key value pairs
         timeout: Timeout in seconds
         output_fmt: Output format ("json" or "text")
     """
     if not args:
-        _print_error("Specify a command: ping, status, project_info, application_state, etc.")
+        _print_error(
+            "Specify a command: ping, status, project_info, application_state, etc."
+        )
         sys.exit(1)
 
     command = args[0]
@@ -229,10 +239,10 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
     try:
         _config, profile = _load_project_config()
         if profile:
-            if 'default_app_name' in profile and 'app' not in params:
-                params['app'] = profile['default_app_name']
-            if 'plc_app_path' in profile and 'app_dir' not in params:
-                params['app_dir'] = profile['plc_app_path']
+            if "default_app_name" in profile and "app" not in params:
+                params["app"] = profile["default_app_name"]
+            if "plc_app_path" in profile and "app_dir" not in params:
+                params["app_dir"] = profile["plc_app_path"]
     except Exception as e:
         _print_info("Warning: could not load profile: {0}".format(e))
     if "timeout" in params:
@@ -252,17 +262,21 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         sys.exit(1)
 
 
-def cmd_daemon(method: str, params: dict | None = None, timeout: float = 15,
-               output_fmt: str = "json"):
+def cmd_daemon(
+    method: str,
+    params: dict | None = None,
+    timeout: float = 15,
+    output_fmt: str = "json",
+):
     """Send one structured command to the CODESYS daemon."""
     params = params or {}
     try:
         _config, profile = _load_project_config()
         if profile:
-            if 'default_app_name' in profile and 'app' not in params:
-                params['app'] = profile['default_app_name']
-            if 'plc_app_path' in profile and 'app_dir' not in params:
-                params['app_dir'] = profile['plc_app_path']
+            if "default_app_name" in profile and "app" not in params:
+                params["app"] = profile["default_app_name"]
+            if "plc_app_path" in profile and "app_dir" not in params:
+                params["app_dir"] = profile["plc_app_path"]
     except Exception as e:
         _print_info("Warning: could not load profile: {0}".format(e))
 
@@ -298,7 +312,6 @@ def _parse_key_value_args(args: list[str]) -> dict:
 
 
 # -- Legacy project commands ------------------------------------------------
-
 
 
 def _project_command(method, params=None, timeout=30, use_reverse=True):
@@ -352,7 +365,9 @@ def cmd_project_list(use_reverse=False):
 
 def cmd_project_snapshot(path="", use_reverse=False):
     """Export project snapshot (full XML) via daemon."""
-    _project_command("export", {"output": path} if path else {}, use_reverse=use_reverse)
+    _project_command(
+        "export", {"output": path} if path else {}, use_reverse=use_reverse
+    )
 
 
 def cmd_project_build(use_reverse=False):
@@ -391,7 +406,9 @@ def cmd_read_var(name, use_reverse=False):
 
 def cmd_write_var(name, value, use_reverse=False):
     """Write a value to a PLC variable."""
-    _project_command("write_variable", {"name": name, "value": value}, use_reverse=use_reverse)
+    _project_command(
+        "write_variable", {"name": name, "value": value}, use_reverse=use_reverse
+    )
 
 
 def cmd_read_vars(names, file_path="", timeout=30, output_fmt="json"):
@@ -423,11 +440,19 @@ def cmd_read_vars(names, file_path="", timeout=30, output_fmt="json"):
         sys.exit(1)
 
     # Preserve the requested order in the output.
-    ordered = [results.get(name, {"name": name, "read_ok": False,
-                                   "read_error": "no result returned"})
-               for name in exprs]
-    print(_format_output({"results": ordered, "count": len(ordered)},
-                         fmt=output_fmt, title="read_variables"))
+    ordered = [
+        results.get(
+            name, {"name": name, "read_ok": False, "read_error": "no result returned"}
+        )
+        for name in exprs
+    ]
+    print(
+        _format_output(
+            {"results": ordered, "count": len(ordered)},
+            fmt=output_fmt,
+            title="read_variables",
+        )
+    )
 
 
 def cmd_simulate(enable="on", use_reverse=False):
@@ -437,13 +462,16 @@ def cmd_simulate(enable="on", use_reverse=False):
 
 def cmd_set_credentials(username, password="", use_reverse=False):
     """Set PLC login credentials."""
-    _project_command("set_credentials", {"username": username, "password": password}, use_reverse=use_reverse)
+    _project_command(
+        "set_credentials",
+        {"username": username, "password": password},
+        use_reverse=use_reverse,
+    )
 
 
 def cmd_application_state(use_reverse=False):
     """Get application online state."""
     _project_command("application_state", use_reverse=use_reverse)
-
 
 
 def cmd_diagnose_online(use_reverse=False):
@@ -461,10 +489,13 @@ def cmd_compare(against="", use_reverse=False):
     if not against:
         _print_error("Specify --against <path> for compare")
         return
-    _project_command("compare", {"against": against}, timeout=120, use_reverse=use_reverse)
+    _project_command(
+        "compare", {"against": against}, timeout=120, use_reverse=use_reverse
+    )
 
 
 # -- POU commands -----------------------------------------------------------
+
 
 def cmd_pou_delete(name="", app="", use_reverse=False):
     """Delete a POU from the project."""
@@ -502,8 +533,9 @@ def _resolve_project_view(sync_folder):
         _print_error("No sync folder. Pass --sync-folder or start the daemon.")
         sys.exit(1)
     base = str(base)
-    if os.path.basename(os.path.normpath(base)) == "project-view" \
-            and os.path.isdir(base):
+    if os.path.basename(os.path.normpath(base)) == "project-view" and os.path.isdir(
+        base
+    ):
         return base, os.path.dirname(os.path.normpath(base))
     pv = os.path.join(base, "project-view")
     if not os.path.isdir(pv):
@@ -514,6 +546,7 @@ def _resolve_project_view(sync_folder):
 
 def _build_map_rows(path_filter, sync_folder, include_programs):
     import variable_map as vm
+
     pv, base = _resolve_project_view(sync_folder)
     rows, stats = vm.build_map_from_dir(pv, include_programs=include_programs)
     if path_filter:
@@ -539,7 +572,7 @@ def _batch(method, key, items, timeout):
     """Send items to a daemon batch method in chunks. Returns {name: result}."""
     out = {}
     for i in range(0, len(items), _BATCH_SIZE):
-        part = items[i:i + _BATCH_SIZE]
+        part = items[i : i + _BATCH_SIZE]
         resp = send_command_reverse(method, {key: part}, timeout=timeout)
         if not resp.get("ok"):
             raise RuntimeError(resp.get("error", method + " failed"))
@@ -548,11 +581,11 @@ def _batch(method, key, items, timeout):
     return out
 
 
-def cmd_variable_map(path_filter="", out="", sync_folder="",
-                     include_programs=True, output_fmt="json"):
+def cmd_variable_map(
+    path_filter="", out="", sync_folder="", include_programs=True, output_fmt="json"
+):
     """Build an offline variable map (CSV) from project-view declarations."""
-    rows, stats, base, vm = _build_map_rows(path_filter, sync_folder,
-                                            include_programs)
+    rows, stats, base, vm = _build_map_rows(path_filter, sync_folder, include_programs)
     if not out:
         out = os.path.join(base, "variable-map.csv")
     _write_csv(out, vm.MAP_COLUMNS, rows)
@@ -565,13 +598,18 @@ def cmd_variable_map(path_filter="", out="", sync_folder="",
     print(_format_output(summary, fmt=output_fmt, title="variable_map"))
 
 
-def cmd_variable_snapshot(path_filter="", out="", sync_folder="",
-                          include_programs=True, timeout=120,
-                          output_fmt="json"):
+def cmd_variable_snapshot(
+    path_filter="",
+    out="",
+    sync_folder="",
+    include_programs=True,
+    timeout=120,
+    output_fmt="json",
+):
     """Snapshot current online values for mapped leaves (CSV)."""
     import snapshot_engine as se
-    rows, stats, base, vm = _build_map_rows(path_filter, sync_folder,
-                                            include_programs)
+
+    rows, stats, base, vm = _build_map_rows(path_filter, sync_folder, include_programs)
     read_fn = lambda exprs: _batch("read_variables", "names", exprs, timeout)
     try:
         rows, rstats = se.run_snapshot(rows, read_fn)
@@ -583,16 +621,29 @@ def cmd_variable_snapshot(path_filter="", out="", sync_folder="",
         out = os.path.join(base, "variable-snapshot.csv")
     cols = vm.MAP_COLUMNS + se.SNAPSHOT_COLUMNS
     _write_csv(out, cols, rows)
-    summary = {"output": out, "rows": len(rows),
-               "read_ok": rstats["read_ok"], "read_failed": rstats["read_failed"]}
+    summary = {
+        "output": out,
+        "rows": len(rows),
+        "read_ok": rstats["read_ok"],
+        "read_failed": rstats["read_failed"],
+        "failures": rstats.get("failures", []),
+    }
     print(_format_output(summary, fmt=output_fmt, title="variable_snapshot"))
 
 
-def cmd_variable_restore(input_path="", report="", path_filter="",
-                         do_apply=False, force=False, sync_folder="",
-                         timeout=120, output_fmt="json"):
+def cmd_variable_restore(
+    input_path="",
+    report="",
+    path_filter="",
+    do_apply=False,
+    force=False,
+    sync_folder="",
+    timeout=120,
+    output_fmt="json",
+):
     """Restore PLC values from a snapshot CSV. Dry-run unless --apply."""
     import snapshot_engine as se
+
     if not input_path:
         _print_error("Specify --input <snapshot.csv>")
         sys.exit(1)
@@ -601,6 +652,7 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
         sys.exit(1)
 
     import variable_map as vm
+
     with open(input_path, "r", newline="", encoding="utf-8") as f:
         snap_rows = list(_csv.DictReader(f))
     if path_filter:
@@ -622,8 +674,9 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
         except Exception:
             pass
 
-    eligible, skipped = se.plan_restore(snap_rows, force=force,
-                                        enum_registry=enum_registry)
+    eligible, skipped = se.plan_restore(
+        snap_rows, force=force, enum_registry=enum_registry
+    )
 
     base = sync_folder
     if not base:
@@ -635,9 +688,13 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
         se.mark_dry_run(eligible)
         report_rows = eligible + skipped
         _write_csv(report, se.RESTORE_REPORT_COLUMNS, report_rows)
-        summary = {"mode": "dry-run", "report": report,
-                   "would_write": len(eligible), "skipped": len(skipped),
-                   "hint": "re-run with --apply to write"}
+        summary = {
+            "mode": "dry-run",
+            "report": report,
+            "would_write": len(eligible),
+            "skipped": len(skipped),
+            "hint": "re-run with --apply to write",
+        }
         print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
         return
 
@@ -650,20 +707,39 @@ def cmd_variable_restore(input_path="", report="", path_filter="",
 
     report_rows = eligible + skipped
     _write_csv(report, se.RESTORE_REPORT_COLUMNS, report_rows)
-    summary = {"mode": "apply", "report": report,
-               "written": wstats["written"], "failed": wstats["failed"],
-               "skipped": len(skipped)}
+    summary = {
+        "mode": "apply",
+        "report": report,
+        "written": wstats["written"],
+        "failed": wstats["failed"],
+        "skipped": len(skipped),
+    }
     print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
 
 
 # -- Direct engine_cli invocation -------------------------------------------
+
 
 def cmd_direct(args: list[str]) -> NoReturn:
     """Run engine_cli directly (blocking, no daemon)."""
     if not ENGINE_CLI.exists():
         _print_error("engine_cli.py not found: {0}".format(ENGINE_CLI))
         sys.exit(1)
-    cmd = [sys.executable, str(ENGINE_CLI)] + args
+    # Strip any --timeout that was accepted at the top-level parser for
+    # consistency; the offline engine has no daemon to time out.
+    filtered = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--timeout":
+            skip_next = True
+            continue
+        if arg.startswith("--timeout="):
+            continue
+        filtered.append(arg)
+    cmd = [sys.executable, str(ENGINE_CLI)] + filtered
     _print_info("Running: {0}".format(" ".join(cmd)))
     proc = subprocess.Popen(cmd)
     try:
@@ -676,6 +752,7 @@ def cmd_direct(args: list[str]) -> NoReturn:
 
 
 # -- Parser ------------------------------------------------------------------
+
 
 def build_parser() -> argparse.ArgumentParser:
     prog = Path(sys.argv[0]).stem or "cts"
@@ -697,6 +774,10 @@ State model:
   CODESYS cannot safely edit/import project structure while the IDE is online
   with the PLC. Before folder -> IDE import, run:
     cts disconnect --timeout 15
+  If the online preflight still fails after disconnect, use:
+    cts import --force-online --timeout 120
+  or:
+    cts raw sync_import_text force_online=true --timeout 120
 
 Connection state:
   cts ping and cts status include cached PLC state:
@@ -709,21 +790,26 @@ Examples:
   cts status --timeout 10
   cts export --timeout 60
   cts compare --timeout 60
-  cts import --timeout 120
+  cts import --dry-run --timeout 60
+  cts import --force-online --timeout 120
   cts build --timeout 120
   cts connect --ip 192.0.2.10 --timeout 60
-  cts plc-crc --timeout 30
+  cts plc-crc --build --timeout 120
   cts test --file arithmetic.json --timeout 120
   cts raw application_tree --flat --output C:\\Temp\\vars.json --timeout 120
   cts engine validate --project-root ./MyProject
         """,
     )
     parser.add_argument(
-        "--output", choices=["json", "text"], default="json",
+        "--output",
+        choices=["json", "text"],
+        default="json",
         help="Output format: json (default, LLM/script-friendly) or text (human-readable)",
     )
     parser.add_argument(
-        "--pretty", "-p", action="store_true",
+        "--pretty",
+        "-p",
+        action="store_true",
         help="Shortcut for --output text",
     )
     subparsers = parser.add_subparsers(
@@ -733,8 +819,12 @@ Examples:
     )
 
     def add_timeout(p, default):
-        p.add_argument("--timeout", type=float, default=default,
-                       help="Timeout in seconds (default: {0})".format(default))
+        p.add_argument(
+            "--timeout",
+            type=float,
+            default=default,
+            help="Timeout in seconds (default: {0})".format(default),
+        )
         return p
 
     def add_daemon_parser(name, help_text, timeout):
@@ -745,22 +835,44 @@ Examples:
     add_daemon_parser("status", "Show daemon, project, sync-folder, and PLC state", 10)
     add_daemon_parser("export", "IDE -> disk: refresh project-view/", 60)
     add_daemon_parser("compare", "IDE vs disk: compare against project-view/", 60)
-    add_daemon_parser("import", "disk -> IDE: apply project-view/ changes", 120)
+    p_import = add_daemon_parser(
+        "import", "disk -> IDE: apply project-view/ changes", 120
+    )
+    p_import.add_argument(
+        "--force-online",
+        action="store_true",
+        help="Skip the 'application must be offline' preflight check",
+    )
+    p_import.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what import would change without applying (runs compare)",
+    )
 
     # -- build / PLC lifecycle ---------------------------------------------
     add_daemon_parser("build", "Compile the active CODESYS application", 120)
     p_connect = add_daemon_parser("connect", "Login/connect to PLC", 60)
     p_connect.add_argument("--ip", default="", help="PLC IP address")
-    p_connect.add_argument("--gateway", default="Gateway-1",
-                           help="Gateway name (default: Gateway-1)")
+    p_connect.add_argument(
+        "--gateway", default="Gateway-1", help="Gateway name (default: Gateway-1)"
+    )
     add_daemon_parser("disconnect", "Logout from PLC", 15)
     p_download = add_daemon_parser("download", "Force full download to PLC", 120)
-    p_download.add_argument("--start", choices=["0", "1"], default=None,
-                            help="Start after download: 1 yes, 0 no")
+    p_download.add_argument(
+        "--start",
+        choices=["0", "1"],
+        default=None,
+        help="Start after download: 1 yes, 0 no",
+    )
     add_daemon_parser("start", "Start PLC application", 25)
     add_daemon_parser("stop", "Stop PLC application", 25)
     add_daemon_parser("app-state", "Show application online state", 10)
-    add_daemon_parser("plc-crc", "Compare PLC CRC with local build output", 30)
+    p_crc = add_daemon_parser("plc-crc", "Compare PLC CRC with local build output", 30)
+    p_crc.add_argument(
+        "--build",
+        action="store_true",
+        help="Build the project first, then compare CRCs",
+    )
 
     # -- variables ----------------------------------------------------------
     p_read = add_daemon_parser("read", "Read one PLC variable/expression", 25)
@@ -770,28 +882,51 @@ Examples:
     p_write.add_argument("value", help="Value to write")
 
     # -- tests --------------------------------------------------------------
-    p_test = add_daemon_parser("test", "Run JSON test plans from .test/", 120)
-    p_test.add_argument("--file", default="", help="Test plan file")
+    p_test = add_daemon_parser(
+        "test",
+        "Run JSON test plans from .test/ (see TEST_FORMAT.md)",
+        120,
+    )
+    p_test.add_argument(
+        "--file", default="", help="Test plan file (relative to .test/)"
+    )
 
     # -- project/object tools ----------------------------------------------
     add_daemon_parser("project-info", "Show open project metadata", 10)
     p_ptree = add_daemon_parser("project-tree", "Show CODESYS project tree", 30)
-    p_ptree.add_argument("--depth", type=int, default=0,
-                         help="Tree depth, 0 = unlimited")
-    p_robj = add_daemon_parser("read-object", "Read one project object", 30)
-    p_robj.add_argument("--path", default="", help="Object path")
-    p_robj.add_argument("--name", default="", help="Object name")
-    p_robj.add_argument("--guid", default="", help="Object GUID")
+    p_ptree.add_argument(
+        "--depth", type=int, default=0, help="Tree depth, 0 = unlimited"
+    )
+    p_robj = add_daemon_parser(
+        "read-object",
+        "Read one project object by name/path/GUID (prefer --name)",
+        30,
+    )
+    p_robj.add_argument(
+        "--path",
+        default="",
+        help=(
+            "Object path in IDE tree, e.g. 'Application/MAIN' or "
+            "'Application/Globals/GVL_HMI' (use forward slashes)"
+        ),
+    )
+    p_robj.add_argument("--name", default="", help="Object name, e.g. MAIN or GVL_HMI")
+    p_robj.add_argument(
+        "--guid", default="", help="Object GUID (rarely matches IDE GUID)"
+    )
     p_upou = add_daemon_parser("update-pou", "Update one POU from an .st file", 25)
     p_upou.add_argument("--name", required=True, help="Object name")
-    p_upou.add_argument("--st-path", dest="st_path", required=True,
-                        help="Path to .st file")
-    p_upou.add_argument("--app", default="",
-                        help="Application name (default: active application)")
+    p_upou.add_argument(
+        "--st-path", dest="st_path", required=True, help="Path to .st file"
+    )
+    p_upou.add_argument(
+        "--app", default="", help="Application name (default: active application)"
+    )
     p_dpou = add_daemon_parser("delete-pou", "Delete a POU/Function/FunctionBlock", 10)
     p_dpou.add_argument("name", help="Object name")
-    p_dpou.add_argument("--app", default="",
-                        help="Application name (default: active application)")
+    p_dpou.add_argument(
+        "--app", default="", help="Application name (default: active application)"
+    )
     p_log = add_daemon_parser("read-log", "Read CODESYS IDE messages", 10)
     p_log.add_argument("--last", default="", help="Maximum messages to read")
     p_log.add_argument("--clear", action="store_true", help="Clear log after read")
@@ -801,20 +936,38 @@ Examples:
     p_raw = subparsers.add_parser(
         "raw",
         help="Send a daemon method directly",
-        description="Compatibility/debug escape hatch for daemon methods.",
+        description=(
+            "Compatibility/debug escape hatch for daemon methods. "
+            "Useful overrides include force_online=true for sync_import_text "
+            "and timeout=SECONDS. Run 'cts raw help' for the method list."
+        ),
     )
-    p_raw.add_argument("cmd_args", nargs=argparse.REMAINDER,
-                       metavar="<method> [--key value ...]")
-    p_raw.add_argument("--timeout", type=float, default=15,
-                       help="Timeout in seconds waiting for IDE response (default: 15)")
+    p_raw.add_argument(
+        "cmd_args", nargs=argparse.REMAINDER, metavar="<method> [--key value ...]"
+    )
+    p_raw.add_argument(
+        "--timeout",
+        type=float,
+        default=15,
+        help="Timeout in seconds waiting for IDE response (default: 15)",
+    )
 
     p_engine = subparsers.add_parser(
         "engine",
         help="Run engine_cli.py directly without CODESYS",
         description="Direct offline engine access. Does not talk to the daemon.",
     )
-    p_engine.add_argument("engine_args", nargs=argparse.REMAINDER,
-                          metavar="<export|import|compare|validate|resources> ...")
+    p_engine.add_argument(
+        "engine_args",
+        nargs=argparse.REMAINDER,
+        metavar="<export|import|compare|validate|resources> ...",
+    )
+    p_engine.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Accepted for consistency; ignored by the offline engine",
+    )
 
     # -- project subcommand --------------------------------------------------
     p_project = subparsers.add_parser(
@@ -824,55 +977,84 @@ Examples:
     )
     p_project.add_argument(
         "project_action",
-        choices=["info", "tree", "read", "open", "close", "list",
-                 "snapshot", "build", "list-devices", "compare",
-                 "device-status",
-                 "connect", "disconnect",
-                 "read-var", "write-var",
-                 "simulate", "set-credentials",
-                 "application-state",
-                 "diagnose-online"],
+        choices=[
+            "info",
+            "tree",
+            "read",
+            "open",
+            "close",
+            "list",
+            "snapshot",
+            "build",
+            "list-devices",
+            "compare",
+            "device-status",
+            "connect",
+            "disconnect",
+            "read-var",
+            "write-var",
+            "simulate",
+            "set-credentials",
+            "application-state",
+            "diagnose-online",
+        ],
         help="info - project details\n"
-             "tree - object tree\n"
-             "read - read object source\n"
-             "open - open a project\n"
-             "close - close current project\n"
-             "list - list open projects\n"
-             "snapshot - export full XML snapshot\n"
-             "build - build project\n"
-             "list-devices - list devices\n"
-             "compare - compare with snapshot\n"
-             "device-status - get device status\n"
-             "connect - connect to PLC (best: connect in CODESYS before daemon; else approve dialog within 2min)\n"
-             "disconnect - disconnect from PLC\n"
-             "read-var - read PLC variable\n"
-             "write-var - write PLC variable\n"
-             "simulate on|off - toggle simulation mode\n"
-             "set-credentials - set PLC credentials\n"
-             "application-state - get online application state\n"
+        "tree - object tree\n"
+        "read - read object source\n"
+        "open - open a project\n"
+        "close - close current project\n"
+        "list - list open projects\n"
+        "snapshot - export full XML snapshot\n"
+        "build - build project\n"
+        "list-devices - list devices\n"
+        "compare - compare with snapshot\n"
+        "device-status - get device status\n"
+        "connect - connect to PLC (best: connect in CODESYS before daemon; else approve dialog within 2min)\n"
+        "disconnect - disconnect from PLC\n"
+        "read-var - read PLC variable\n"
+        "write-var - write PLC variable\n"
+        "simulate on|off - toggle simulation mode\n"
+        "set-credentials - set PLC credentials\n"
+        "application-state - get online application state\n",
     )
-    p_project.add_argument("--path", default="",
-                           help="Object path (for read) or project path (for open) or output (for snapshot)")
-    p_project.add_argument("--name", default="", help="Object name (for read) or variable name (for read-var, write-var)")
-    p_project.add_argument("--enable", default="on",
-                           help="Enable/disable simulation (on|off, for simulate)")
+    p_project.add_argument(
+        "--path",
+        default="",
+        help="Object path (for read) or project path (for open) or output (for snapshot)",
+    )
+    p_project.add_argument(
+        "--name",
+        default="",
+        help="Object name (for read) or variable name (for read-var, write-var)",
+    )
+    p_project.add_argument(
+        "--enable",
+        default="on",
+        help="Enable/disable simulation (on|off, for simulate)",
+    )
     p_project.add_argument("--guid", default="", help="Object GUID (for read)")
-    p_project.add_argument("--depth", type=int, default=0,
-                           help="Tree depth, 0 = unlimited")
-    p_project.add_argument("--against", default="",
-                           help="Path to snapshot for compare")
-    p_project.add_argument("--device", default="",
-                           help="Device name filter (for device-status)")
-    p_project.add_argument("--ip", default="",
-                           help="PLC IP address (for connect)")
-    p_project.add_argument("--gateway", default="Gateway-1",
-                           help="Gateway name (for connect, default: Gateway-1)")
-    p_project.add_argument("--value", default=None,
-                           help="Value to write (for write-var)")
-    p_project.add_argument("--username", default="",
-                           help="Username (for set-credentials)")
-    p_project.add_argument("--password", default="",
-                           help="Password (for set-credentials)")
+    p_project.add_argument(
+        "--depth", type=int, default=0, help="Tree depth, 0 = unlimited"
+    )
+    p_project.add_argument("--against", default="", help="Path to snapshot for compare")
+    p_project.add_argument(
+        "--device", default="", help="Device name filter (for device-status)"
+    )
+    p_project.add_argument("--ip", default="", help="PLC IP address (for connect)")
+    p_project.add_argument(
+        "--gateway",
+        default="Gateway-1",
+        help="Gateway name (for connect, default: Gateway-1)",
+    )
+    p_project.add_argument(
+        "--value", default=None, help="Value to write (for write-var)"
+    )
+    p_project.add_argument(
+        "--username", default="", help="Username (for set-credentials)"
+    )
+    p_project.add_argument(
+        "--password", default="", help="Password (for set-credentials)"
+    )
 
     # -- pou subcommand (Object deletion) ----------------------------------------
     p_pou = subparsers.add_parser(
@@ -885,9 +1067,12 @@ Examples:
         choices=["delete"],
         help="delete - delete an object",
     )
-    p_pou.add_argument("name", help="Object name (e.g. MAIN, MyFunction, Globals, MyDataType)")
-    p_pou.add_argument("--app", default="",
-                       help="Application name (default: active application)")
+    p_pou.add_argument(
+        "name", help="Object name (e.g. MAIN, MyFunction, Globals, MyDataType)"
+    )
+    p_pou.add_argument(
+        "--app", default="", help="Application name (default: active application)"
+    )
 
     # -- rp subcommand (reverse pipe) --------------------------------------
     p_rp = subparsers.add_parser(
@@ -901,7 +1086,9 @@ Examples:
         metavar="<command> [--key value ...]",
     )
     p_rp.add_argument(
-        "--timeout", type=float, default=15,
+        "--timeout",
+        type=float,
+        default=15,
         help="Timeout in seconds waiting for IDE response (default: 15)",
     )
 
@@ -917,75 +1104,122 @@ Examples:
         "read-vars",
         help="Batch-read multiple PLC variables/expressions",
         description="Read several variables/expressions in one call. Sends a "
-                    "proper JSON list to the daemon (unlike `rp read_variables "
-                    "--names`, which passes a raw string).",
+        "proper JSON list to the daemon (unlike `rp read_variables "
+        "--names`, which passes a raw string).",
     )
-    p_rv.add_argument("names", nargs="*", metavar="EXPR",
-                      help="Variable/expression names, e.g. GVL.a App.PRG.b")
-    p_rv.add_argument("--file", dest="file", default="",
-                      help="Read names from a file (one expression per line)")
-    p_rv.add_argument("--timeout", type=float, default=30,
-                      help="Timeout in seconds (default: 30)")
+    p_rv.add_argument(
+        "names",
+        nargs="*",
+        metavar="EXPR",
+        help="Variable/expression names, e.g. GVL.a App.PRG.b",
+    )
+    p_rv.add_argument(
+        "--file",
+        dest="file",
+        default="",
+        help="Read names from a file (one expression per line)",
+    )
+    p_rv.add_argument(
+        "--timeout", type=float, default=30, help="Timeout in seconds (default: 30)"
+    )
 
     # -- variable map / snapshot / restore -----------------------------------
     p_vmap = subparsers.add_parser(
         "variable-map",
         help="Build an offline variable map (CSV) from project-view",
         description="Parse project-view/*.st declarations and expand to "
-                    "readable scalar leaves. No PLC connection required.",
+        "readable scalar leaves. No PLC connection required.",
     )
-    p_vmap.add_argument("--path", default="",
-                        help="Subtree filter, e.g. GVL_HMI or Application.GVL_HMI")
-    p_vmap.add_argument("--out", default="",
-                        help="Output CSV path (default: <sync>/variable-map.csv)")
-    p_vmap.add_argument("--sync-folder", default="",
-                        help="Sync folder or project-view dir (default: from daemon)")
-    p_vmap.add_argument("--globals-only", action="store_true",
-                        help="Only GVL globals; exclude Program-local variables")
+    p_vmap.add_argument(
+        "--path", default="", help="Subtree filter, e.g. GVL_HMI or Application.GVL_HMI"
+    )
+    p_vmap.add_argument(
+        "--out", default="", help="Output CSV path (default: <sync>/variable-map.csv)"
+    )
+    p_vmap.add_argument(
+        "--sync-folder",
+        default="",
+        help="Sync folder or project-view dir (default: from daemon)",
+    )
+    p_vmap.add_argument(
+        "--globals-only",
+        action="store_true",
+        help="Only GVL globals; exclude Program-local variables",
+    )
 
     p_vsnap = subparsers.add_parser(
         "variable-snapshot",
         help="Snapshot current online values for mapped leaves (CSV)",
         description="Read live PLC values for every mapped scalar leaf. "
-                    "Requires an online/logged-in daemon.",
+        "Requires an online/logged-in daemon.",
     )
     p_vsnap.add_argument("--path", default="", help="Subtree filter")
-    p_vsnap.add_argument("--out", default="",
-                         help="Output CSV (default: <sync>/variable-snapshot.csv)")
+    p_vsnap.add_argument(
+        "--out", default="", help="Output CSV (default: <sync>/variable-snapshot.csv)"
+    )
     p_vsnap.add_argument("--sync-folder", default="", help="Sync/project-view dir")
-    p_vsnap.add_argument("--globals-only", action="store_true",
-                         help="Only GVL globals; exclude Program-local")
-    p_vsnap.add_argument("--timeout", type=float, default=120,
-                         help="Per-batch daemon timeout (default: 120)")
+    p_vsnap.add_argument(
+        "--globals-only",
+        action="store_true",
+        help="Only GVL globals; exclude Program-local",
+    )
+    p_vsnap.add_argument(
+        "--timeout",
+        type=float,
+        default=120,
+        help="Per-batch daemon timeout (default: 120)",
+    )
 
     p_vrest = subparsers.add_parser(
         "variable-restore",
         help="Restore PLC values from a snapshot CSV (dry-run unless --apply)",
         description="Write values from a variable-snapshot CSV back to the PLC.",
     )
-    p_vrest.add_argument("--input", default="", required=True,
-                         help="Snapshot CSV produced by variable-snapshot")
-    p_vrest.add_argument("--report", default="",
-                         help="Report CSV (default: <sync>/variable-restore-report.csv)")
+    p_vrest.add_argument(
+        "--input",
+        default="",
+        required=True,
+        help="Snapshot CSV produced by variable-snapshot",
+    )
+    p_vrest.add_argument(
+        "--report",
+        default="",
+        help="Report CSV (default: <sync>/variable-restore-report.csv)",
+    )
     p_vrest.add_argument("--path", default="", help="Subtree filter")
-    p_vrest.add_argument("--apply", action="store_true",
-                         help="Actually write values (default: dry-run)")
-    p_vrest.add_argument("--force", action="store_true",
-                         help="Restore even rows with read_ok!=true or empty value")
+    p_vrest.add_argument(
+        "--apply", action="store_true", help="Actually write values (default: dry-run)"
+    )
+    p_vrest.add_argument(
+        "--force",
+        action="store_true",
+        help="Restore even rows with read_ok!=true or empty value",
+    )
     p_vrest.add_argument("--sync-folder", default="", help="Sync/project-view dir")
-    p_vrest.add_argument("--timeout", type=float, default=120,
-                         help="Per-batch daemon timeout (default: 120)")
+    p_vrest.add_argument(
+        "--timeout",
+        type=float,
+        default=120,
+        help="Per-batch daemon timeout (default: 120)",
+    )
 
     # -- deprecated proxy subcommands for engine_cli -------------------------
     for cmd_name in ("validate", "resources"):
-        subparsers.add_parser(
+        _p = subparsers.add_parser(
             cmd_name,
             help=argparse.SUPPRESS,
             add_help=False,
         )
+        _p.add_argument(
+            "--timeout",
+            type=float,
+            default=None,
+            help="Accepted for consistency; ignored by the offline engine",
+        )
 
     subparsers._choices_actions = [
-        action for action in subparsers._choices_actions
+        action
+        for action in subparsers._choices_actions
         if action.help is not argparse.SUPPRESS
     ]
 
@@ -993,6 +1227,7 @@ Examples:
 
 
 # -- Entry point -------------------------------------------------------------
+
 
 def main():
     parser = build_parser()
@@ -1010,9 +1245,9 @@ def main():
     use_reverse = True
 
     # Determine output format
-    output_fmt = getattr(args, 'output', 'json')
-    if getattr(args, 'pretty', False):
-        output_fmt = 'text'
+    output_fmt = getattr(args, "output", "json")
+    if getattr(args, "pretty", False):
+        output_fmt = "text"
 
     # Deprecated direct engine aliases retained for compatibility.
     if args.command in ("validate", "resources"):
@@ -1022,7 +1257,9 @@ def main():
 
     if args.command == "engine":
         if not args.engine_args:
-            _print_error("Specify an engine command: export, import, compare, validate, resources")
+            _print_error(
+                "Specify an engine command: export, import, compare, validate, resources"
+            )
             sys.exit(1)
         cmd_direct(args.engine_args)
         return
@@ -1046,11 +1283,28 @@ def main():
 
     if args.command in daemon_methods:
         params = {}
+        if args.command == "import":
+            if getattr(args, "force_online", False):
+                params["force_online"] = True
+            if getattr(args, "dry_run", False):
+                # Dry-run shows the same preview as compare.
+                cmd_daemon(
+                    "sync_compare_text",
+                    {},
+                    timeout=getattr(args, "timeout", 60),
+                    output_fmt=output_fmt,
+                )
+                return
         if args.command == "download" and getattr(args, "start", None) is not None:
             params["start"] = args.start
-        cmd_daemon(daemon_methods[args.command], params,
-                   timeout=getattr(args, "timeout", 15),
-                   output_fmt=output_fmt)
+        if args.command == "plc-crc" and getattr(args, "build", False):
+            cmd_daemon("build", {}, timeout=args.timeout, output_fmt=output_fmt)
+        cmd_daemon(
+            daemon_methods[args.command],
+            params,
+            timeout=getattr(args, "timeout", 15),
+            output_fmt=output_fmt,
+        )
         return
 
     if args.command == "connect":
@@ -1059,18 +1313,46 @@ def main():
             params["ipAddress"] = args.ip
         if args.gateway:
             params["gatewayName"] = args.gateway
-        cmd_daemon("connect_to_device", params, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon(
+            "connect_to_device", params, timeout=args.timeout, output_fmt=output_fmt
+        )
         return
 
     if args.command == "read":
-        cmd_daemon("read_variable", {"name": args.name}, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon(
+            "read_variable",
+            {"name": args.name},
+            timeout=args.timeout,
+            output_fmt=output_fmt,
+        )
         return
 
     if args.command == "write":
-        cmd_daemon("write_variable", {"name": args.name, "value": args.value},
-                   timeout=args.timeout, output_fmt=output_fmt)
+        # Write and then read back so the caller can verify the value actually
+        # took effect, returned in a single response.
+        try:
+            wr = send_command_reverse(
+                "write_variable",
+                {"name": args.name, "value": args.value},
+                timeout=args.timeout,
+            )
+            if not wr.get("ok"):
+                _print_rp_error(wr, "write_variable")
+                sys.exit(1)
+            rb = send_command_reverse(
+                "read_variable", {"name": args.name}, timeout=args.timeout
+            )
+            read_back = rb.get("data", {}) if rb.get("ok") else {}
+            print(
+                _format_output(
+                    {"written": True, "read_back": read_back},
+                    fmt=output_fmt,
+                    title="write",
+                )
+            )
+        except RuntimeError as e:
+            _print_error("Write failed: {0}".format(e))
+            sys.exit(1)
         return
 
     if args.command == "test":
@@ -1081,8 +1363,12 @@ def main():
         return
 
     if args.command == "project-tree":
-        cmd_daemon("project_tree", {"depth": args.depth}, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon(
+            "project_tree",
+            {"depth": args.depth},
+            timeout=args.timeout,
+            output_fmt=output_fmt,
+        )
         return
 
     if args.command == "read-object":
@@ -1093,8 +1379,7 @@ def main():
             params["name"] = args.name
         if args.guid:
             params["guid"] = args.guid
-        cmd_daemon("read_object", params, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon("read_object", params, timeout=args.timeout, output_fmt=output_fmt)
         return
 
     if args.command == "update-pou":
@@ -1104,16 +1389,14 @@ def main():
         }
         if args.app:
             params["app"] = args.app
-        cmd_daemon("update_pou", params, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon("update_pou", params, timeout=args.timeout, output_fmt=output_fmt)
         return
 
     if args.command == "delete-pou":
         params = {"name": args.name}
         if args.app:
             params["app"] = args.app
-        cmd_daemon("delete_pou", params, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon("delete_pou", params, timeout=args.timeout, output_fmt=output_fmt)
         return
 
     if args.command == "read-log":
@@ -1122,13 +1405,13 @@ def main():
             params["last"] = args.last
         if args.clear:
             params["clear"] = True
-        cmd_daemon("read_log", params, timeout=args.timeout,
-                   output_fmt=output_fmt)
+        cmd_daemon("read_log", params, timeout=args.timeout, output_fmt=output_fmt)
         return
 
     if args.command in ("raw", "rp"):
-        cmd_rp_command(args.cmd_args, timeout=getattr(args, 'timeout', 15),
-                       output_fmt=output_fmt)
+        cmd_rp_command(
+            args.cmd_args, timeout=getattr(args, "timeout", 15), output_fmt=output_fmt
+        )
 
     elif args.command == "project":
         if args.project_action == "info":
@@ -1136,7 +1419,9 @@ def main():
         elif args.project_action == "tree":
             cmd_project_tree(depth=args.depth, use_reverse=use_reverse)
         elif args.project_action == "read":
-            cmd_project_read(path=args.path, name=args.name, guid=args.guid, use_reverse=use_reverse)
+            cmd_project_read(
+                path=args.path, name=args.name, guid=args.guid, use_reverse=use_reverse
+            )
         elif args.project_action == "open":
             cmd_project_open(path=args.path, use_reverse=use_reverse)
         elif args.project_action == "close":
@@ -1164,7 +1449,9 @@ def main():
         elif args.project_action == "simulate":
             cmd_simulate(enable=args.enable, use_reverse=use_reverse)
         elif args.project_action == "set-credentials":
-            cmd_set_credentials(username=args.username, password=args.password, use_reverse=use_reverse)
+            cmd_set_credentials(
+                username=args.username, password=args.password, use_reverse=use_reverse
+            )
         elif args.project_action == "application-state":
             cmd_application_state(use_reverse=use_reverse)
         elif args.project_action == "diagnose-online":
@@ -1178,26 +1465,43 @@ def main():
         cmd_discover(use_reverse=use_reverse)
 
     elif args.command == "read-vars":
-        cmd_read_vars(names=args.names, file_path=args.file,
-                      timeout=args.timeout, output_fmt=output_fmt)
+        cmd_read_vars(
+            names=args.names,
+            file_path=args.file,
+            timeout=args.timeout,
+            output_fmt=output_fmt,
+        )
 
     elif args.command == "variable-map":
-        cmd_variable_map(path_filter=args.path, out=args.out,
-                         sync_folder=args.sync_folder,
-                         include_programs=not args.globals_only,
-                         output_fmt=output_fmt)
+        cmd_variable_map(
+            path_filter=args.path,
+            out=args.out,
+            sync_folder=args.sync_folder,
+            include_programs=not args.globals_only,
+            output_fmt=output_fmt,
+        )
 
     elif args.command == "variable-snapshot":
-        cmd_variable_snapshot(path_filter=args.path, out=args.out,
-                              sync_folder=args.sync_folder,
-                              include_programs=not args.globals_only,
-                              timeout=args.timeout, output_fmt=output_fmt)
+        cmd_variable_snapshot(
+            path_filter=args.path,
+            out=args.out,
+            sync_folder=args.sync_folder,
+            include_programs=not args.globals_only,
+            timeout=args.timeout,
+            output_fmt=output_fmt,
+        )
 
     elif args.command == "variable-restore":
-        cmd_variable_restore(input_path=args.input, report=args.report,
-                             path_filter=args.path, do_apply=args.apply,
-                             force=args.force, sync_folder=args.sync_folder,
-                             timeout=args.timeout, output_fmt=output_fmt)
+        cmd_variable_restore(
+            input_path=args.input,
+            report=args.report,
+            path_filter=args.path,
+            do_apply=args.apply,
+            force=args.force,
+            sync_folder=args.sync_folder,
+            timeout=args.timeout,
+            output_fmt=output_fmt,
+        )
 
     else:
         parser.print_help()

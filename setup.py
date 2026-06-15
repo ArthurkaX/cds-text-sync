@@ -9,11 +9,11 @@ Usage:
 After install, `cts` and `cds-text-sync` work in any shell (CMD, PowerShell, Git Bash).
 """
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="cds-text-sync",
-    version="2.6.0",
+    version="2.6.1",
     description="CODESYS CLI + reverse-pipe daemon",
     author="cds-text-sync contributors",
     url="https://github.com/ArthurkaX/cds-text-sync",
