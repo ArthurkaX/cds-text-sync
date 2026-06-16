@@ -1,0 +1,21 @@
+{
+  "comment": "Standard IEC 61131-3 and CODESYS built-in functions and function blocks",
+  "functions": [
+    "ABS", "ACOS", "ASIN", "ATAN", "COS", "EXP", "LN", "LOG", "SIN", "SQRT", "TAN",
+    "SEL", "MAX", "MIN", "LIMIT", "MUX",
+    "GT", "GE", "EQ", "LE", "LT", "NE",
+    "SHL", "SHR", "ROL", "ROR",
+    "LEFT", "RIGHT", "MID", "LEN", "FIND", "REPLACE", "INSERT", "DELETE",
+    "CONCAT", "MOVE",
+    "DEREF",
+    "ADR", "REF", "SIZEOF", "TO_STRING", "TO_WSTRING",
+    "TRUNC", "INT", "REAL", "LREAL", "DINT", "UDINT", "WORD", "DWORD", "BYTE",
+    "BOOL_TO_", "INT_TO_", "REAL_TO_", "STRING_TO_", "WORD_TO_"
+  ],
+  "function_blocks": [
+    "TON", "TOF", "TP", "R_TRIG", "F_TRIG",
+    "SR", "RS",
+    "CTU", "CTD", "CTUD",
+    "PID", "INTEGRAL", "DERIVATIVE"
+  ]
+}

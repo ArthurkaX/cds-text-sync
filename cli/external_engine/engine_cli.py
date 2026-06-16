@@ -17,13 +17,14 @@ from _project_layout import (
 )
 from _project_profiles import load_profile
 from _project_settings import load_project_settings
+from call_tree import run_call_tree as _run_call_tree
 from diff_engine import DiffEngine
 from folder_reader import FolderReader
 from folder_writer import FolderWriter
 from report_writer import ReportWriter
 from resources_report import build_resources_report
-from snapshot_reader import SnapshotReader
 from snapshooter_map import write_snapshooter_map
+from snapshot_reader import SnapshotReader
 from xml_helpers import ProjectionValidationError, normalize_guid
 
 
@@ -292,8 +293,7 @@ def run_snapshooter_map(args):
     )
     stats = data.get("stats", {})
     _log(
-        "Snapshooter map written to {0}: owners={1}, leaves={2}, readable={3}"
-        .format(
+        "Snapshooter map written to {0}: owners={1}, leaves={2}, readable={3}".format(
             args.output,
             stats.get("owners", 0),
             stats.get("leaves", 0),
@@ -370,9 +370,28 @@ def main():
         help="Number of largest objects to include in the top list",
     )
 
-    parser_snapshooter = subparsers.add_parser("snapshooter-map", parents=[parent_parser])
+    parser_snapshooter = subparsers.add_parser(
+        "snapshooter-map", parents=[parent_parser]
+    )
     parser_snapshooter.add_argument(
         "--output", required=True, help="Path to Snapshooter variable tree JSON"
+    )
+
+    # call-tree
+    parser_calltree = subparsers.add_parser(
+        "call-tree", help="Build a static call graph from exported project data"
+    )
+    parser_calltree.add_argument(
+        "--project-root", "-r", required=True, help="Path to project root directory"
+    )
+    parser_calltree.add_argument(
+        "--snapshot", "-s", default=None, help="Path to IDE.xml snapshot (optional)"
+    )
+    parser_calltree.add_argument(
+        "--output", "-o", required=True, help="Path to output JSON file"
+    )
+    parser_calltree.add_argument(
+        "--catalog", default=None, help="Path to custom system functions catalog JSON"
     )
 
     args = parser.parse_args()
@@ -389,6 +408,14 @@ def main():
         run_resources(args)
     elif args.command == "snapshooter-map":
         run_snapshooter_map(args)
+    elif args.command == "call-tree":
+        _run_call_tree(
+            project_root=args.project_root,
+            snapshot_path=args.snapshot,
+            output_path=args.output,
+            system_catalog_path=args.catalog,
+        )
+        _log("Call tree written to {0}".format(args.output))
 
 
 if __name__ == "__main__":
