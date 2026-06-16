@@ -80,6 +80,7 @@ cts import --timeout 120      # project-view/ -> IDE
 cts build --timeout 120
 cts plc-crc --timeout 30
 cts test --file arithmetic.json --timeout 120
+cts engine call-tree -r . -s .dump/IDE.xml -o call-tree.json  # offline call graph
 ```
 
 Common daemon capabilities include:
@@ -310,6 +311,8 @@ CSV projections are update-only in this release. Inserted, removed, renamed, or 
 - **`Project_build.py`**: Builds the active or selected application and writes `.dump/build_<Application>.log` plus `.dump/build_report.json`.
 - **`Project_discover.py`**: Captures the live IDE tree and profile/type resolution into `.dump/discover_tree.log` and `.dump/discover_report.json`.
 - **`Project_resources.py`**: Analyzes snapshot object sizes and categories, writing `.dump/resources_report.json` and `.dump/resources_top.log`.
+
+- Offline static call graph via `cts engine call-tree`. See `--help` for options.
 
 ---
 

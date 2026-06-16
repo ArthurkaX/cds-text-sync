@@ -186,7 +186,7 @@ and debugging.
 | --- | --- |
 | `raw METHOD [--key value ...]` | Send a daemon method directly. Useful for overrides such as `force_online=true` or a custom `timeout`. |
 | `rp METHOD [--key value ...]` | Deprecated alias for `raw`. |
-| `engine export|import|compare|validate|resources ...` | Run `engine_cli.py` directly without CODESYS. |
+| `engine export|import|compare|validate|resources|call-tree ...` | Run `engine_cli.py` directly without CODESYS. |
 
 Examples:
 
@@ -195,6 +195,8 @@ cts raw help --timeout 10
 cts raw application_tree --flat --output C:/Temp/tree.json --timeout 120
 cts raw sync_import_text force_online=true --timeout 120
 cts engine validate --project-root C:/Work/Project
+cts engine call-tree --project-root ./MyProject --output call-tree.json
+cts engine call-tree --project-root ./MyProject --snapshot .dump/IDE.xml --output call-tree.json
 ```
 
 Raw daemon names are implementation details. Do not use them in new scripts
