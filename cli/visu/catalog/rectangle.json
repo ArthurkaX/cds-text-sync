@@ -1,0 +1,124 @@
+{
+  "type": "rectangle",
+  "visualElementTypeName": "VisuFbElemSimple",
+  "visualElementName": "Rectangle",
+  "visualElementIsRectangle": true,
+  "elementVersion": 1,
+  "description": "Basic geometric shape (rectangle / ellipse / rounded-rectangle / line). All four are the same VisuFbElemSimple element type distinguished by the shape member 564465120.",
+
+  "shape_member_id": 564465120,
+  "shape_variants": {
+    "rectangle": "VISU_ST_RECTANGLE",
+    "ellipse": "VISU_ST_CIRCLE",
+    "rounded": "VISU_ST_ROUNDED_RECTANGLE",
+    "line": "VISU_ST_LINE"
+  },
+  "default_shape": "rectangle",
+
+  "geometry": {
+    "x": 1649127785,
+    "y": 357335551,
+    "width": 2422045748,
+    "height": 2134141914,
+    "center_x": 550940142,
+    "center_y": 1473355128
+  },
+
+  "invariants": [
+    {
+      "id": "bounds",
+      "rule": "X >= 0 and Y >= 0 and X+Width <= SizeX and Y+Height <= SizeY",
+      "severity": "error"
+    },
+    {
+      "id": "center_auto",
+      "rule": "CenterX = X + Width/2 and CenterY = Y + Height/2 (auto-computed, integer division)",
+      "severity": "auto"
+    },
+    {
+      "id": "text_requires_textid",
+      "rule": "If member 390574330 (text) is non-empty, member 823443203 (Text ID, GlobalTextList ref) is REQUIRED or CODESYS rejects the import.",
+      "severity": "error",
+      "text_member_id": 390574330,
+      "textid_member_id": 823443203
+    },
+    {
+      "id": "canonical_name_nonempty",
+      "rule": "Every color struct's CanonicalName must be a non-empty string (empty crashes the build).",
+      "severity": "error"
+    }
+  ],
+
+  "params": {
+    "x": {"member_id": 1649127785, "kind": "int", "geometry": true, "doc": "X (left), px from top-left origin"},
+    "y": {"member_id": 357335551, "kind": "int", "geometry": true, "doc": "Y (top), px from top-left origin"},
+    "width": {"member_id": 2422045748, "kind": "int", "geometry": true, "doc": "Width, px"},
+    "height": {"member_id": 2134141914, "kind": "int", "geometry": true, "doc": "Height, px"},
+    "shape": {"member_id": 564465120, "kind": "shape", "doc": "Shape variant: rectangle|ellipse|rounded|line"},
+    "fill": {"member_id": 2812299069, "kind": "color", "canonical_name": "BasicElement-Fill-Color", "doc": "Fill color (NormalColors.dwFillColor)"},
+    "frame": {"member_id": 494569607, "kind": "color", "canonical_name": "BasicElement-Frame-Color", "doc": "Frame/border color (NormalColors.dwFrameColor)"},
+    "alarm_frame": {"member_id": 135947015, "kind": "color", "canonical_name": "BasicElement-Alarm-Frame-Color", "doc": "Alarm frame color"},
+    "alarm_fill": {"member_id": 493260384, "kind": "color", "canonical_name": "BasicElement-Alarm-Fill-Color", "doc": "Alarm fill color"},
+    "alarm_text": {"member_id": 663104332, "kind": "color", "canonical_name": "Font-Default-Color", "doc": "Alarm text color"},
+    "corner_radius": {"member_id": 1869484343, "kind": "short", "doc": "Corner radius (rounded rectangle)"},
+    "border_width": {"member_id": 2678395525, "kind": "uint", "doc": "Border/line width, usually 1"},
+    "angle": {"member_id": 3719097617, "kind": "int", "doc": "Rotation angle (degrees)"},
+    "tooltip": {"member_id": 571893170, "kind": "string", "doc": "Tooltip text"},
+    "text": {"member_id": 390574330, "kind": "string", "requires": "textid", "doc": "Static text (requires a GlobalTextList Text ID 823443203 when non-empty)"},
+    "font_name": {"member_id": 1603690730, "kind": "string", "doc": "Font name"},
+    "font_size": {"member_id": 4253639993, "kind": "short", "doc": "Font size"},
+    "h_align": {"member_id": 2340015797, "kind": "string", "doc": "Horizontal align: LEFT|HCENTER|RIGHT"},
+    "v_align": {"member_id": 2565699834, "kind": "string", "doc": "Vertical align: TOP|VCENTER|BOTTOM"}
+  },
+
+  "optional_bindings": {
+    "fill_var": {"member_id": 401380312, "kind": "string", "doc": "Fill-color variable binding"},
+    "border_var": {"member_id": 3450524324, "kind": "string", "doc": "Border-color variable binding"},
+    "text_var": {"member_id": 2477733581, "kind": "string", "doc": "Text variable binding"}
+  },
+
+  "base_members": [
+    {"id": 571893170, "form": "scalar", "value_type": "string", "value": ""},
+    {"id": 1225741287, "form": "scalar", "value_type": "string", "value": "VISU_ST_STYLE"},
+    {"id": 1869484343, "form": "scalar", "value_type": "short", "value": "5"},
+    {"id": 494569607, "form": "color", "color": "-16777216", "canonical_name": "BasicElement-Frame-Color"},
+    {"id": 2812299069, "form": "color", "color": "-1", "canonical_name": "BasicElement-Fill-Color"},
+    {"id": 135947015, "form": "color", "color": "-65536", "canonical_name": "BasicElement-Alarm-Frame-Color"},
+    {"id": 493260384, "form": "color", "color": "-12337", "canonical_name": "BasicElement-Alarm-Fill-Color"},
+    {"id": 2340015797, "form": "scalar", "value_type": "string", "value": "HCENTER"},
+    {"id": 2565699834, "form": "scalar", "value_type": "string", "value": "VCENTER"},
+    {"id": 4134387352, "form": "scalar", "value_type": "string", "value": "NONE"},
+    {"id": 1603690730, "form": "scalar", "value_type": "string", "value": "Arial"},
+    {"id": 4253639993, "form": "scalar", "value_type": "short", "value": "12"},
+    {"id": 2729990903, "form": "scalar", "value_type": "uint", "value": "0"},
+    {"id": 1213979116, "form": "scalar", "value_type": "uint", "value": "0"},
+    {"id": 3488306084, "form": "scalar", "value_type": "uint", "value": "4278190080"},
+    {"id": 663104332, "form": "color", "color": "-16777216", "canonical_name": "Font-Default-Color"},
+    {"id": 1999528970, "form": "scalar", "value_type": "string", "value": "<toggle/tap variable>"},
+    {"id": 3719097617, "form": "scalar", "value_type": "int", "value": "0"},
+    {"id": 1649127785, "form": "scalar", "value_type": "int", "value": "0", "role": "x"},
+    {"id": 357335551, "form": "scalar", "value_type": "int", "value": "0", "role": "y"},
+    {"id": 2422045748, "form": "scalar", "value_type": "int", "value": "100", "role": "width"},
+    {"id": 2134141914, "form": "scalar", "value_type": "int", "value": "100", "role": "height"},
+    {"id": 3729828405, "form": "font_descriptor"},
+    {"id": 550940142, "form": "scalar", "value_type": "int", "value": "50", "role": "center_x"},
+    {"id": 1473355128, "form": "scalar", "value_type": "int", "value": "50", "role": "center_y"},
+    {"id": 2678395525, "form": "scalar", "value_type": "uint", "value": "1"},
+    {"id": 564465120, "form": "scalar", "value_type": "string", "value": "VISU_ST_RECTANGLE", "role": "shape"},
+    {"id": 390574330, "form": "scalar", "value_type": "string", "value": "", "role": "text"},
+    {"id": 2597686782, "form": "scalar", "value_type": "bool", "value": "True"}
+  ],
+
+  "font_descriptor": {
+    "FontStyle": "0",
+    "AdditionalFontStyle": "0",
+    "ExplicitColor": "-16777216",
+    "CanonicalName": "Font-Standard",
+    "FontName": "Arial",
+    "DisplayName": "",
+    "FontSize": "12",
+    "ScriptIdentification": "0",
+    "DoubleFontSize": "0",
+    "NamedColor": {"Color": "-16777216", "CanonicalName": "Font-Default-Color"}
+  }
+}

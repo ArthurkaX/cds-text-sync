@@ -1,0 +1,99 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Anonymized from a real project. Simple rectangle / circle shape element.
+     Real PLC variables/GUIDs/tooltips have been replaced with placeholders. -->
+<List Name="VisualElementList">
+  <Single Type="{f86c2928-8614-4cca-824b-e819ac4d58c4}" Method="IArchivable">
+    <Array Name="ConfiguredComplexInputs" Type="{1de566f6-72a7-494c-9353-9a418172c96e}"/>
+    <List Name="Elements" Type="System.Collections.ArrayList"/>
+    <Null Name="VisualElementDescription"/>
+    <Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">
+      <List Name="VisualElemMemberList" Type="{a4b83bea-3742-489c-9fe8-d96d68dba7ab}">
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">1649127785</Single>
+          <Single Name="Value" Type="int">20</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">357335551</Single>
+          <Single Name="Value" Type="int">20</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">2422045748</Single>
+          <Single Name="Value" Type="int">30</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">2134141914</Single>
+          <Single Name="Value" Type="int">30</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">3729828405</Single>
+          <List Name="Value" Type="System.Collections.ArrayList">
+            <Single Type="{9e842eb2-1463-4af2-b605-4fbb17044f94}" Method="IArchivable">
+              <Single Name="FontStyle" Type="int">0</Single>
+              <Single Name="AdditionalFontStyle" Type="ushort">0</Single>
+              <Single Name="ExplicitColor" Type="int">-16777216</Single>
+              <Single Name="CanonicalName" Type="string">Font-Standard</Single>
+              <Single Name="FontName" Type="string">Arial</Single>
+              <Single Name="DisplayName" Type="string"/>
+              <Single Name="FontSize" Type="int">12</Single>
+              <Single Name="ScriptIdentification" Type="int">0</Single>
+              <Single Name="DoubleFontSize" Type="double">0</Single>
+              <Single Name="NamedColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-16777216</Single>
+                <Single Name="CanonicalName" Type="string">Font-Default-Color</Single>
+              </Single>
+            </Single>
+          </List>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">550940142</Single>
+          <Single Name="Value" Type="int">16</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">1473355128</Single>
+          <Single Name="Value" Type="int">15</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">2678395525</Single>
+          <Single Name="Value" Type="uint">1</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">564465120</Single>
+          <Single Name="Value" Type="string">VISU_ST_CIRCLE</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">390574330</Single>
+          <Single Name="Value" Type="string"/>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">2597686782</Single>
+          <Single Name="Value" Type="bool">False</Single>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">3450524324</Single>
+          <Single Name="Value" Type="string"/>
+        </Single>
+        <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+          <Single Name="Id" Type="long">401380312</Single>
+          <Single Name="Value" Type="string">Application.PLC_VAR</Single>
+        </Single>
+      </List>
+    </Single>
+    <Single Name="VisualElementName" Type="string">Rectangle</Single>
+    <Single Name="VisualElementTypeName" Type="string">VisuFbElemSimple</Single>
+    <Single Name="VisualElementIsRectangle" Type="bool">True</Single>
+    <Single Name="VisualElementIdentifier" Type="string">GenElemInst_1</Single>
+    <Null Name="VisualElementOfflinePaintCommands"/>
+    <Null Name="VisualElementFrameInformation"/>
+    <Dictionary Type="System.Collections.Hashtable" Name="VisualElementInputActions"/>
+    <Single Name="VisualElementIdentification" Type="System.Guid">00000000-0000-0000-0000-000000000001</Single>
+    <Single Name="VisualElementOwningObjectGuid" Type="System.Guid">00000000-0000-0000-0000-000000000002</Single>
+    <Array Name="LMGuids" Type="System.Guid"/>
+    <Dictionary Type="System.Collections.Hashtable" Name="SubElements"/>
+    <Single Name="VisualElementId" Type="int">0</Single>
+    <List Name="UserManagementAccessRights" Type="System.Collections.ArrayList"/>
+    <Single Name="AnimationDuration" Type="string">0</Single>
+    <Single Name="BringToForeground" Type="string"/>
+    <Single Name="ElementVersion" Type="byte">0</Single>
+    <Null Name="TabOrder"/>
+  </Single>
+</List>

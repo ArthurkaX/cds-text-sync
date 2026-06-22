@@ -6,6 +6,7 @@ ide_apply_patch_regression.py - Fast fake-IDE checks for ide_apply_patch.
 import os
 import tempfile
 import xml.etree.ElementTree as ET
+import xml.sax.saxutils as saxutils
 
 from ide_apply_patch import apply_patch
 
@@ -130,6 +131,9 @@ class FakeObject(object):
         self.project.events.append("create_method:{0}:{1}".format(self.name, name))
         return self._add_child(FakeObject(self.project, name, self))
 
+    def import_native(self, patch_path):
+        self.project._import_native_into(self, patch_path)
+
 
 class FakeProject(FakeObject):
     def __init__(self):
@@ -137,6 +141,9 @@ class FakeProject(FakeObject):
         FakeObject.__init__(self, self, "Project", None)
 
     def import_native(self, patch_path):
+        self._import_native_into(self, patch_path)
+
+    def _import_native_into(self, base, patch_path):
         self.events.append("import_native:{0}".format(os.path.basename(patch_path)))
         try:
             root = ET.parse(patch_path).getroot()
@@ -156,7 +163,7 @@ class FakeProject(FakeObject):
                             path_parts.append(child.text)
             if not name:
                 return
-            current = self
+            current = base
             for part in path_parts:
                 found = None
                 for child in current.children:
@@ -458,6 +465,56 @@ def main():
     finally:
         if os.path.exists(patch_path_nested):
             os.remove(patch_path_nested)
+
+    # --- Test CreateNativeObject import ---
+    native_xml_payload = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">'
+        '<Single Name="IsRoot" Type="bool">False</Single>'
+        '<Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">'
+        '<Single Name="Name" Type="string">NewVisu</Single>'
+        "</Single>"
+        "<Single Name=\"Object\">"
+        "<Single Name=\"Implementation\"><Single Name=\"TextDocument\">"
+        '<Single Name="TextBlobForSerialisation">x := 1;</Single>'
+        "</Single></Single>"
+        "</Single>"
+        "</Single>"
+    )
+    native_xml_escaped = saxutils.escape(native_xml_payload)
+    patch_path_native = _write_patch(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        "<Project>"
+        "<CreateNativeObjects>"
+        '<CreateNativeObject Path="Device/Application/NewVisu.xml" Name="NewVisu">'
+        "<NativeXml>" + native_xml_escaped + "</NativeXml>"
+        "</CreateNativeObject>"
+        "</CreateNativeObjects>"
+        "</Project>"
+    )
+    try:
+        project_native = FakeProject()
+        if not apply_patch(None, project_native, patch_path_native):
+            raise RegressionFailure("apply_patch for native create returned False")
+        native_events = project_native.events
+        import_native_calls = [e for e in native_events if e.startswith("import_native:")]
+        if len(import_native_calls) != 1:
+            raise RegressionFailure(
+                "import_native was called {0} times, expected exactly 1".format(
+                    len(import_native_calls)
+                )
+            )
+        _assert(
+            "create_folder:Project:Device" in native_events,
+            "Device folder was not created for native object",
+        )
+        _assert(
+            "create_folder:Device:Application" in native_events,
+            "Application folder was not created for native object",
+        )
+    finally:
+        if os.path.exists(patch_path_native):
+            os.remove(patch_path_native)
 
     print("ide_apply_patch_regression: PASS")
 

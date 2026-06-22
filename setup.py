@@ -20,6 +20,7 @@ setup(
     packages=find_packages(include=["cli", "cli.*"]),
     package_data={
         "cli": ["CLI.md", "TEST_FORMAT.md"],
+        "cli.visu": ["catalog/*.json", "templates/*.tmpl"],
     },
     python_requires=">=3.8",
     entry_points={

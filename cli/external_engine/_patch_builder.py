@@ -123,6 +123,40 @@ class PatchBuilder:
         folder_node = self.folder_model.get_node(guid)
         return bool(folder_node and folder_node.metadata.get("pending_create"))
 
+    def _is_native_create(self, guid):
+        folder_node = self.folder_model.get_node(guid)
+        return bool(
+            folder_node
+            and folder_node.metadata.get("pending_create")
+            and (folder_node.metadata.get("create_kind") or "").lower() == "native_xml"
+        )
+
+    def _is_native_recreate(self, guid):
+        """Check if a manifest-listed native object needs re-creation.
+
+        A native object that exists on disk (xml_text populated) but is absent
+        from the IDE was deleted from the IDE and must be re-created. Unlike
+        pending creates (objects never before synced), these have a real
+        manifest GUID and are found via their xml_text content.
+        """
+        folder_node = self.folder_model.get_node(guid)
+        if not folder_node:
+            return False
+        # Must have native XML content
+        has_native_xml = bool(
+            folder_node.metadata.get("create_native_xml")
+            or folder_node.xml_text
+        )
+        if not has_native_xml:
+            return False
+        # Must NOT be a pending create (those are already handled)
+        if folder_node.metadata.get("pending_create"):
+            return False
+        # Must be absent from the IDE (deleted there)
+        if self.ide_model.get_node(guid) is not None:
+            return False
+        return True
+
     def _application_scope(self, display_path):
         parts = [
             str(part or "").strip()
@@ -223,6 +257,31 @@ class PatchBuilder:
             impl_elem = ET.SubElement(create_elem, "Implementation")
             impl_elem.text = implementation
 
+    def _append_native_create(self, parent, guid):
+        folder_node = self.folder_model.get_node(guid)
+        if folder_node is None:
+            raise UnsupportedPatchError(
+                "Cannot build native create entry for guid: {0}".format(guid)
+            )
+
+        attrs = {
+            "Path": folder_node.metadata.get("create_path")
+            or folder_node.metadata.get("view_path")
+            or "",
+            "Name": folder_node.metadata.get("create_name") or folder_node.name or "",
+        }
+        type_guid = folder_node.metadata.get("create_type_guid") or folder_node.type
+        if type_guid:
+            attrs["TypeGuid"] = type_guid
+
+        native_xml = folder_node.metadata.get("create_native_xml")
+        if native_xml is None:
+            native_xml = folder_node.xml_text or ""
+
+        create_elem = ET.SubElement(parent, "CreateNativeObject", attrs)
+        native_elem = ET.SubElement(create_elem, "NativeXml")
+        native_elem.text = native_xml
+
     def build_patch(self, output_path):
         # Import policy: disk wins, and the .st text is the canonical source of
         # truth. The .st content is already rehydrated into folder_node.xml_text
@@ -259,8 +318,22 @@ class PatchBuilder:
         added_guids = self.diff_result.get("added", [])
         deleted_guids = self.diff_result.get("deleted", [])
         create_guids = [guid for guid in added_guids if self._is_pending_create(guid)]
+        native_create_guids = [
+            guid for guid in create_guids if self._is_native_create(guid)
+        ]
+        text_create_guids = [
+            guid for guid in create_guids if guid not in native_create_guids
+        ]
+        # Detect manifest-listed native objects that were deleted from the IDE
+        # and need to be re-created (they have a real guid + xml_text but no
+        # pending_create metadata)
+        native_recreate_guids = [
+            guid for guid in added_guids if self._is_native_recreate(guid)
+        ]
+        native_create_guids.extend(native_recreate_guids)
         patch_guids = modified_guids + [
-            guid for guid in added_guids if guid not in create_guids
+            guid for guid in added_guids
+            if guid not in create_guids and guid not in native_recreate_guids
         ]
 
         if deleted_guids:
@@ -273,19 +346,19 @@ class PatchBuilder:
         root_tag = "{0}Project".format(self.ns) if self.ns else "Project"
         patch_root = ET.Element(root_tag)
 
-        if not patch_guids and not create_guids:
+        if not patch_guids and not native_create_guids and not text_create_guids:
             patch_tree = ET.ElementTree(patch_root)
             patch_tree.write(output_path, encoding="utf-8", xml_declaration=True)
             print("No changes detected to patch.")
             print("Empty patch generated at", output_path)
             return False
 
-        for guid in create_guids:
+        for guid in text_create_guids:
             self._validate_text_create(guid)
 
         print(
             "Building patch for {0} objects...".format(
-                len(patch_guids) + len(create_guids)
+                len(patch_guids) + len(native_create_guids) + len(text_create_guids)
             )
         )
 
@@ -314,9 +387,9 @@ class PatchBuilder:
             for guid in guids:
                 el.append(self._patch_entry(guid))
 
-        if create_guids:
+        if text_create_guids:
             creates_root = ET.SubElement(patch_root, "CreateTextObjects")
-            create_guids.sort(
+            text_create_guids.sort(
                 key=lambda guid: (
                     os.path.splitext(
                         os.path.basename(
@@ -330,8 +403,22 @@ class PatchBuilder:
                     .lower(),
                 )
             )
-            for guid in create_guids:
+            for guid in text_create_guids:
                 self._append_text_create(creates_root, guid)
+
+        if native_create_guids:
+            native_root = ET.SubElement(patch_root, "CreateNativeObjects")
+            native_create_guids.sort(
+                key=lambda guid: (
+                    self.folder_model.get_node(guid)
+                    .metadata.get("create_path")
+                    or self.folder_model.get_node(guid)
+                    .metadata.get("view_path")
+                    or ""
+                ).lower()
+            )
+            for guid in native_create_guids:
+                self._append_native_create(native_root, guid)
 
         patch_tree = ET.ElementTree(patch_root)
         patch_tree.write(output_path, encoding="utf-8", xml_declaration=True)
