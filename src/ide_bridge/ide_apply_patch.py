@@ -6,6 +6,7 @@ Must be compatible with IronPython 2.7.
 
 from __future__ import print_function
 
+import codecs
 import copy
 import os
 import re
@@ -81,6 +82,7 @@ def _parse_patch(patch_path):
         "texts": _patch_text_by_guid(root),
         "build_attrs": _patch_build_attrs_by_guid(root),
         "text_creates": _text_create_entries(root),
+        "native_creates": _native_create_entries(root),
     }
 
 
@@ -181,6 +183,27 @@ def _text_create_entries(root):
                 "parent_name": elem.attrib.get("ParentName", ""),
                 "declaration": declaration,
                 "implementation": implementation,
+            }
+        )
+    return result
+
+
+def _native_create_entries(root):
+    result = []
+    for elem in root.iter():
+        if _local_name(elem.tag) != "CreateNativeObject":
+            continue
+        native_xml = None
+        for child in list(elem):
+            if _local_name(child.tag) == "NativeXml":
+                native_xml = child.text or ""
+                break
+        result.append(
+            {
+                "path": elem.attrib.get("Path", ""),
+                "name": elem.attrib.get("Name", ""),
+                "type_guid": elem.attrib.get("TypeGuid", ""),
+                "native_xml": native_xml,
             }
         )
     return result
@@ -691,6 +714,107 @@ def _apply_text_creates(project, text_creates, created_by_name, result):
     return None
 
 
+def _native_create_wrapper_guid(container):
+    """Best-effort '{guid}' for the StructuredView, mirroring the working MODIFY
+    path. Decorative for a create (placement comes from calling import_native on
+    the container + the entry's embedded ParentGuid); included for fidelity."""
+    try:
+        guid = getattr(container, "guid", None)
+    except Exception:
+        guid = None
+    if not guid:
+        return ""
+    text = normalize_guid(str(guid))
+    if not text:
+        return ""
+    return ' Guid="{{{0}}}"'.format(text)
+
+
+def _wrap_native_object_xml(native_xml, container):
+    """Wrap a bare <Single Type="{6198ad31-...}"> object export in the batch
+    envelope CODESYS export_native produces / import_native consumes:
+    <Project><StructuredView><Single Type="{3daac5e4-...}"><Null Name="Profile"/>
+    <List2 Name="EntryList">{entry}</List2></Single></StructuredView></Project>.
+
+    A bare <Single> is the single-object native form; import_native silently
+    no-ops on it, so the object never appears. The MODIFY path always feeds this
+    envelope (see _patch_builder.build_patch / _write_filtered_patch)."""
+    text = native_xml or ""
+    stripped = text.lstrip()
+    if stripped.startswith("<?xml"):
+        end = stripped.find("?>")
+        if end != -1:
+            text = stripped[end + 2:].lstrip()
+    return (
+        "<?xml version='1.0' encoding='utf-8'?>\n"
+        "<Project>\n"
+        "<StructuredView{0}>\n".format(_native_create_wrapper_guid(container))
+        + "<Single xml:space=\"preserve\" "
+        "Type=\"{3daac5e4-660e-42e4-9cea-3711b98bfb63}\" Method=\"IArchivable\">\n"
+        "<Null Name=\"Profile\" />\n"
+        "<List2 Name=\"EntryList\">\n"
+        + text
+        + "\n</List2>\n</Single>\n</StructuredView>\n</Project>\n"
+    )
+
+
+def _apply_native_create(project, entry):
+    container, _chain = _ensure_container_path_with_chain(
+        project, entry.get("path")
+    )
+    if container is None:
+        raise Exception("Could not resolve container for {0}".format(entry.get("path")))
+
+    name = entry.get("name")
+    existing = _find_child_transparent(container, name)
+    if existing is not None:
+        print("Native object already exists, skipping: " + str(entry.get("path")))
+        return False
+
+    wrapped = _wrap_native_object_xml(entry.get("native_xml"), container)
+
+    temp_path = None
+    try:
+        handle, temp_path = tempfile.mkstemp(suffix=".xml")
+        os.close(handle)
+        with codecs.open(temp_path, "w", "utf-8") as f:
+            f.write(wrapped)
+        container.import_native(temp_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+    # import_native silently no-ops on a payload it cannot place, so verify the
+    # object actually appeared and fail loudly otherwise -- the message is
+    # surfaced via apply_patch -> log_error into sync_debug.log.
+    created = _find_child_transparent(container, name)
+    if created is None:
+        raise Exception(
+            "import_native did not create '{0}' under {1} "
+            "(CODESYS rejected the native payload)".format(name, entry.get("path"))
+        )
+    print("Created native object from: " + str(entry.get("path")))
+    return True
+
+
+def _apply_native_creates(project, native_creates, result):
+    for entry in native_creates:
+        try:
+            _apply_native_create(project, entry)
+            result.add_created(entry.get("path"))
+        except Exception as error:
+            print(
+                "Error creating native object {0}: {1}".format(
+                    entry.get("path"), error
+                )
+            )
+            return result.fail(error)
+    return None
+
+
 def _replace_text_document(doc, value):
     if doc.text == value:
         return False
@@ -833,6 +957,7 @@ def apply_patch(system, project, patch_path):
         patch_texts = patch_data["texts"]
         patch_build_attrs = patch_data["build_attrs"]
         text_creates = patch_data["text_creates"]
+        native_creates = patch_data["native_creates"]
         guid_map = _build_guid_map(project)
         existing_objects = [guid_map[guid] for guid in patch_guids if guid in guid_map]
         created_by_name = {}
@@ -871,6 +996,9 @@ def apply_patch(system, project, patch_path):
                 )
                 if create_error is not None:
                     return create_error
+                native_error = _apply_native_creates(project, native_creates, result)
+                if native_error is not None:
+                    return native_error
                 return result
 
             native_guids = []
@@ -887,6 +1015,9 @@ def apply_patch(system, project, patch_path):
             )
             if create_error is not None:
                 return create_error
+            native_error = _apply_native_creates(project, native_creates, result)
+            if native_error is not None:
+                return native_error
             return result
 
         if patch_guids:
@@ -907,6 +1038,9 @@ def apply_patch(system, project, patch_path):
         )
         if create_error is not None:
             return create_error
+        native_error = _apply_native_creates(project, native_creates, result)
+        if native_error is not None:
+            return native_error
         return result
     except Exception as e:
         print("Error applying patch: " + str(e))

@@ -332,3 +332,130 @@ class TestFolderReaderPendingStCreates:
             found[0].metadata["create_type_guid"]
             == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         )
+
+
+# ===================================================================
+# Pending XML create discovery
+# ===================================================================
+
+
+class TestFolderReaderPendingXmlCreates:
+    """A .cds-object.xml file is always a container/object descriptor sidecar,
+    never a standalone importable native object. The pending-XML-create
+    discovery must skip it regardless of whether it is the dotfile form
+    (.cds-object.xml) or the named form (ObjectName.cds-object.xml)."""
+
+    def _setup_reader(self, tmp_path, profile=None):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        _write_manifest(dump, {"view_root": views, "ns": "", "entries": []})
+        return FolderReader(views, dump, profile=profile or {})
+
+    def test_skips_named_cds_object_xml_sidecar(self, tmp_path):
+        """A named .cds-object.xml sidecar (ObjectName.cds-object.xml) must NOT
+        be discovered as a pending native-XML create, while the genuine
+        ObjectName.xml next to it IS discovered."""
+        reader = self._setup_reader(tmp_path)
+
+        # A valid standalone native object export.
+        _write_file(
+            reader.views_path,
+            "HMI/Main_Screen.xml",
+            '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}"'
+            ' Method="IArchivable"><SomeChild/></Single>',
+        )
+        # Named descriptor sidecar -- MUST be skipped.
+        _write_file(
+            reader.views_path,
+            "HMI/Main_Screen.cds-object.xml",
+            '<Single Type="{00000000-0000-0000-0000-000000000000}">'
+            "<Guid>{placeholder}</Guid></Single>",
+        )
+
+        model = reader.read()
+        pending = [
+            n for n in model.nodes.values() if n.metadata.get("pending_create")
+        ]
+
+        assert len(pending) == 1, (
+            "Expected 1 pending create (Main_Screen.xml) but got {0}: {1}".format(
+                len(pending),
+                [(n.name, n.metadata.get("create_path")) for n in pending],
+            )
+        )
+        assert pending[0].name == "Main_Screen"
+        assert pending[0].metadata["create_path"] == "HMI/Main_Screen.xml"
+
+    def test_skips_dotfile_cds_object_xml_sidecar(self, tmp_path):
+        """A dotfile .cds-object.xml (.cds-object.xml) must also be skipped
+        (regression guard for form 1)."""
+        reader = self._setup_reader(tmp_path)
+
+        _write_file(
+            reader.views_path,
+            "HMI/Main_Screen.xml",
+            '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}"'
+            ' Method="IArchivable"><SomeChild/></Single>',
+        )
+        _write_file(
+            reader.views_path,
+            "HMI/.cds-object.xml",
+            '<Single Type="{00000000-0000-0000-0000-000000000000}">'
+            "<Guid>{dot}</Guid></Single>",
+        )
+
+        model = reader.read()
+        pending = [
+            n for n in model.nodes.values() if n.metadata.get("pending_create")
+        ]
+
+        assert len(pending) == 1
+        assert pending[0].name == "Main_Screen"
+
+    def test_skips_all_cds_object_xml_variants(self, tmp_path):
+        """With both named and dotfile .cds-object.xml present alongside a
+        genuine .xml, only the genuine object is discovered."""
+        reader = self._setup_reader(tmp_path)
+
+        _write_file(
+            reader.views_path,
+            "HMI/Main_Screen.xml",
+            '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}"'
+            ' Method="IArchivable"><SomeChild/></Single>',
+        )
+        # Named sidecar
+        _write_file(
+            reader.views_path,
+            "HMI/Main_Screen.cds-object.xml",
+            '<Single Type="{00000000-0000-0000-0000-000000000000}">'
+            "<Guid>{placeholder}</Guid></Single>",
+        )
+        # Dotfile sidecar
+        _write_file(
+            reader.views_path,
+            "HMI/.cds-object.xml",
+            '<Single Type="{00000000-0000-0000-0000-000000000000}">'
+            "<Guid>{dot}</Guid></Single>",
+        )
+
+        model = reader.read()
+        pending = [
+            n for n in model.nodes.values() if n.metadata.get("pending_create")
+        ]
+
+        assert len(pending) == 1, (
+            "Expected 1 pending create but got {0}: {1}".format(
+                len(pending),
+                [(n.name, n.metadata.get("create_path")) for n in pending],
+            )
+        )
+        assert pending[0].name == "Main_Screen"
+        assert pending[0].metadata["create_path"] == "HMI/Main_Screen.xml"
+
+        # Double-check: no pending create has a .cds-object name or path.
+        for node in pending:
+            assert not node.name.endswith(".cds-object")
+            create_path = node.metadata.get("create_path") or ""
+            assert not create_path.endswith(".cds-object.xml")

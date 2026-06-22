@@ -273,6 +273,187 @@ class FolderReader:
                 node.metadata["create_implementation"] = implementation
                 model.add_node(node)
 
+    def _discover_pending_xml_creates(self, model, managed_paths):
+        """Discover standalone native-XML objects dropped into project-view/.
+
+        Symmetric to _discover_pending_st_creates: any *.xml under views_path
+        that is not a managed object (its rel-path is absent from
+        managed_paths, which holds both the .xml native projection and the .st
+        projections of every manifest entry) is treated as a new native object
+        to import. The file is already a CODESYS native export, so it is fed
+        verbatim to import_native at apply time.
+
+        Skips:
+          - dotfiles such as .cds-object.xml (folder descriptors),
+          - anything already managed (managed_paths),
+          - an .xml that has a sibling .st of the same basename (that is an
+            externalized-text projection; the standalone .st is handled by the
+            ST discovery, which conversely skips when a sibling .xml exists --
+            keeping the two discoveries mutually exclusive).
+        """
+        if not os.path.exists(self.views_path):
+            return
+
+        for root, dirs, files in os.walk(self.views_path):
+            if os.path.abspath(root) == os.path.abspath(self.views_path):
+                dirs[:] = [name for name in dirs if not name.startswith(".")]
+            for filename in files:
+                if not filename.lower().endswith(".xml"):
+                    continue
+                if filename.startswith("."):
+                    continue
+                # A .cds-object.xml file is always a container/object descriptor
+                # sidecar, never a standalone importable native object -- skip it
+                # regardless of whether it is a dotfile (.cds-object.xml) or named
+                # (ObjectName.cds-object.xml).
+                if filename.lower().endswith(".cds-object.xml"):
+                    continue
+                full_path = os.path.join(root, filename)
+                rel_path = self._relative_path(full_path)
+                if rel_path in managed_paths:
+                    continue
+                sidecar_st_path = os.path.splitext(full_path)[0] + ".st"
+                if os.path.exists(sidecar_st_path):
+                    continue
+
+                with codecs.open(full_path, "r", "utf-8") as f:
+                    content = f.read()
+
+                type_guid = None
+                try:
+                    elem_root = ET.fromstring(content)
+                    # Skip snapshot files (root <Project>) which are not native
+                    # object exports.  In root-view layout the snapshot lives
+                    # inside the view root and would otherwise be mis-discovered.
+                    root_tag = elem_root.tag
+                    if "}" in root_tag:
+                        root_tag = root_tag.rsplit("}", 1)[1]
+                    if root_tag == "Project":
+                        continue
+                    type_guid = (elem_root.attrib.get("Type") or "").strip() or None
+                except Exception:
+                    type_guid = None
+                # A genuine standalone native-XML object export carries a
+                # Type attribute (the CODESYS type GUID) on its root element.
+                # Exported view files (plain <Single> without Type) and
+                # unparseable files are not native object drops -- skip them
+                # so the discovery does not pick up existing managed exports.
+                if not type_guid:
+                    continue
+
+                base_name = os.path.splitext(filename)[0]
+                self._validate_native_object_members(
+                    model, rel_path, base_name, elem_root, type_guid
+                )
+                guid = "create:" + sha1_hex(rel_path)
+                node = ProjectNode(guid, base_name, type_guid or "native_xml", None)
+                node.xml_text = content
+                node.display_path = (
+                    os.path.dirname(rel_path).replace("\\", "/").split("/")
+                )
+                node.display_path = [
+                    part for part in node.display_path if part and part != "."
+                ]
+                node.metadata["view_path"] = rel_path
+                node.metadata["pending_create"] = True
+                node.metadata["create_kind"] = "native_xml"
+                node.metadata["create_path"] = rel_path
+                node.metadata["create_name"] = base_name
+                node.metadata["create_native_xml"] = content
+                if type_guid:
+                    node.metadata["create_type_guid"] = type_guid
+                model.add_node(node)
+
+    def _xml_top_level_member_names(self, elem_root):
+        names = []
+        for child in list(elem_root):
+            name = child.attrib.get("Name")
+            if name:
+                names.append(name)
+        return names
+
+    def _native_member_whitelist(self, model, type_guid):
+        """Allowed top-level member names for an object whose root wrapper Type is
+        `type_guid`, derived from the genuine managed objects already in the
+        project (no hardcoded schema). All CODESYS objects share the same
+        wrapper type, so this is the canonical member set the IDE emits. Returns
+        (allowed_names_set, reference_rel_path_or_None)."""
+        cache = getattr(self, "_native_whitelist_cache", None)
+        if cache is None:
+            cache = {}
+            self._native_whitelist_cache = cache
+        key = (type_guid or "").strip().strip("{}").lower()
+        if key in cache:
+            return cache[key]
+
+        allowed = set()
+        reference = None
+        for node in model.nodes.values():
+            xml_text = getattr(node, "xml_text", None)
+            if not xml_text:
+                continue
+            try:
+                root = ET.fromstring(xml_text)
+            except Exception:
+                continue
+            node_type = (root.attrib.get("Type") or "").strip().strip("{}").lower()
+            if node_type != key:
+                continue
+            for name in self._xml_top_level_member_names(root):
+                allowed.add(name)
+            if reference is None:
+                reference = node.metadata.get("view_path")
+        result = (allowed, reference)
+        cache[key] = result
+        return result
+
+    def _validate_native_object_members(
+        self, model, rel_path, base_name, elem_root, type_guid
+    ):
+        """Print a precise, copyable diagnostic when a standalone native object
+        carries top-level members the IDE never emits for this object type. This
+        is the #1 cause of CODESYS rejecting an externally-prepared object with
+        the opaque 'One of the identified items was in an invalid format'. The
+        check is advisory (non-blocking): it tells whoever prepared the file what
+        to fix, it does not alter the file."""
+        allowed, reference = self._native_member_whitelist(model, type_guid)
+        if not allowed:
+            # No comparable managed object to learn the schema from -- can't
+            # validate, stay silent rather than emit false positives.
+            return
+
+        members = self._xml_top_level_member_names(elem_root)
+        foreign = [name for name in members if name not in allowed]
+        if not foreign:
+            return
+
+        lines = []
+        lines.append(
+            "NATIVE IMPORT VALIDATION: '{0}' ({1}) has top-level member(s) that "
+            "CODESYS does not emit for this object type and will reject on import "
+            "with 'One of the identified items was in an invalid format':".format(
+                base_name, rel_path
+            )
+        )
+        for name in foreign:
+            lines.append("  - unexpected top-level member: Name=\"{0}\"".format(name))
+        lines.append("  expected members: {0}".format(", ".join(sorted(allowed))))
+        if reference:
+            lines.append(
+                "  reference (a valid IDE export of the same type): {0}".format(
+                    reference
+                )
+            )
+        lines.append(
+            "  the real object content is under <Single Name=\"Object\">; remove the "
+            "foreign members above so the wrapper matches a genuine IDE export."
+        )
+        lines.append(
+            "  NOTE: this file was prepared outside CODESYS -- fix it in the tool "
+            "that generated it; cds-text-sync imports it verbatim."
+        )
+        print("\n".join(lines))
+
     def _rehydrate_externalized_text(self, xml_text, projection_paths):
         if not xml_text:
             return xml_text
@@ -449,5 +630,6 @@ class FolderReader:
             model.add_node(node)
 
         self._discover_pending_st_creates(model, managed_paths)
+        self._discover_pending_xml_creates(model, managed_paths)
 
         return model

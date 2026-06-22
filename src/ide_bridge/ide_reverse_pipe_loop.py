@@ -3865,6 +3865,35 @@ def _cmd_sync_import_text(params):
                 )
             )
 
+        # Step 3b: Process CreateNativeObject entries (visualizations, image
+        # pools, and other native objects). Unlike text objects, these carry a
+        # full IArchivable payload that must be imported into their container.
+        # The create+verify logic already exists in ide_apply_patch; reuse it so
+        # this handler and apply_patch stay consistent.
+        import ide_apply_patch as _iap
+
+        native_creates = _iap._native_create_entries(root)
+        created_native = []
+        if native_creates:
+            _log("Creating {0} new native objects...".format(len(native_creates)))
+            for entry in native_creates:
+                try:
+                    _iap._apply_native_create(project, entry)
+                    created_native.append(entry.get("name"))
+                except Exception as e:
+                    _log(
+                        "Failed to create native {0}: {1}".format(
+                            entry.get("name"), str(e)
+                        )
+                    )
+                    return {
+                        "ok": False,
+                        "error": "native object create failed for {0}: {1}".format(
+                            entry.get("name"), str(e)
+                        ),
+                    }
+            _log("Created native objects: {0}".format(", ".join(created_native)))
+
         updated_text = []
         skipped_projection_objects = []
         if os.path.exists(compare_report_path):
@@ -3924,10 +3953,16 @@ def _cmd_sync_import_text(params):
             "path": patch_path,
             "size": os.path.getsize(patch_path),
             "created_text_objects": [e["name"] for e in text_creates],
+            "created_native_objects": created_native,
             "updated_text_objects": updated_text,
             "skipped_projection_objects": skipped_projection_objects,
         }
-        if not text_creates and not updated_text and not skipped_projection_objects:
+        if (
+            not text_creates
+            and not created_native
+            and not updated_text
+            and not skipped_projection_objects
+        ):
             return_data["note"] = (
                 "No objects were created, updated, or skipped. "
                 "The compare report may show projection-only changes that "
@@ -4064,13 +4099,20 @@ def _split_st_content(content):
 
 
 def _strip_text_creates(root):
-    """Remove CreateTextObjects elements from the XML root."""
+    """Remove create-only wrappers (CreateTextObjects / CreateNativeObjects)
+    from the XML root.
+
+    These are applied separately (text via _apply_text_create_entry, native via
+    ide_apply_patch._apply_native_create) and must not be fed to the Step 4
+    project.import_native pass: import_native ignores the CreateNativeObjects
+    wrapper anyway, but stripping it keeps the StructuredView payload clean and
+    avoids any double processing."""
     import copy
 
     filtered = copy.deepcopy(root)
     for child in list(filtered):
         local_tag = str(child.tag).rsplit("}", 1)[-1]
-        if local_tag == "CreateTextObjects":
+        if local_tag in ("CreateTextObjects", "CreateNativeObjects"):
             filtered.remove(child)
     if len(list(filtered)) == 0:
         return None

@@ -1203,6 +1203,79 @@ Examples:
         help="Per-batch daemon timeout (default: 120)",
     )
 
+    # -- visu subcommand (offline) ------------------------------------------
+    p_visu = subparsers.add_parser(
+        "visu",
+        help="Generate and manage CODESYS visualization XML files",
+        description="Offline commands to create screens and add elements. "
+        "These write .xml files directly into project-view/ "
+        "for later import via ``cts import``.",
+    )
+    p_visu.add_argument(
+        "visu_action",
+        choices=[
+            "create-screen",
+            "add",
+            "list",
+            "check",
+            "types",
+            "describe",
+        ],
+        help="create-screen - create a new empty screen\n"
+        "add - add an element to a screen\n"
+        "list - list elements in a screen\n"
+        "check - validate a screen\n"
+        "types - list available element types\n"
+        "describe - describe a type or element",
+    )
+    p_visu.add_argument(
+        "--sync-folder", default="", help="Sync folder or project-view dir"
+    )
+    p_visu.add_argument(
+        "--name", default="", help="Screen name (for create-screen)"
+    )
+    p_visu.add_argument(
+        "--folder",
+        default="",
+        help="CODESYS folder path e.g. Runtime/PLC Logic/Application/HMI",
+    )
+    p_visu.add_argument(
+        "--width", type=int, default=800, help="Screen width (for create-screen)"
+    )
+    p_visu.add_argument(
+        "--height",
+        type=int,
+        default=480,
+        help="Screen height (for create-screen)",
+    )
+    p_visu.add_argument(
+        "--start-visu",
+        action="store_true",
+        help="Set as start visualization (for create-screen)",
+    )
+    p_visu.add_argument("--screen", default="", help="Screen name or path")
+    p_visu.add_argument("--type", default="", help="Element type (for add, describe)")
+    p_visu.add_argument("--x", type=int, help="X position")
+    p_visu.add_argument("--y", type=int, help="Y position")
+    p_visu.add_argument("--w", type=int, help="Width")
+    p_visu.add_argument("--h", type=int, help="Height")
+    p_visu.add_argument(
+        "--shape",
+        default="",
+        help="Shape variant: rectangle|ellipse|rounded|line (for add)",
+    )
+    p_visu.add_argument("--fill", default="", help="Fill color (0xAARRGGBB or name)")
+    p_visu.add_argument("--frame", default="", help="Frame color")
+    p_visu.add_argument(
+        "--corner-radius", type=int, help="Corner radius (for add)"
+    )
+    p_visu.add_argument("--border-width", type=int, help="Border width (for add)")
+    p_visu.add_argument("--angle", type=int, help="Rotation angle (for add)")
+    p_visu.add_argument("--tooltip", default="", help="Tooltip text (for add)")
+    p_visu.add_argument(
+        "--elem", type=int, help="Element index (for describe --screen --elem)"
+    )
+
     # -- deprecated proxy subcommands for engine_cli -------------------------
     for cmd_name in ("validate", "resources"):
         _p = subparsers.add_parser(
@@ -1502,6 +1575,94 @@ def main():
             timeout=args.timeout,
             output_fmt=output_fmt,
         )
+
+    elif args.command == "visu":
+        _root_dir = _SCRIPT_DIR.parent
+        if str(_root_dir) not in sys.path:
+            sys.path.insert(0, str(_root_dir))
+        from cli.visu import commands as visu_cmds
+
+        sync_folder = getattr(args, "sync_folder", "")
+
+        if args.visu_action == "types":
+            visu_cmds.list_types()
+            return
+
+        pv, _ = _resolve_project_view(sync_folder)
+
+        if args.visu_action == "create-screen":
+            if not args.name:
+                _print_error("--name is required")
+                sys.exit(1)
+            visu_cmds.create_screen(
+                project_view_dir=pv,
+                name=args.name,
+                folder=getattr(args, "folder", ""),
+                width=args.width,
+                height=args.height,
+                start_visu=getattr(args, "start_visu", False),
+            )
+        elif args.visu_action == "add":
+            if not args.screen:
+                _print_error("--screen is required")
+                sys.exit(1)
+            if not args.type:
+                _print_error("--type is required")
+                sys.exit(1)
+            params = {}
+            _visu_map = {
+                "x": "x",
+                "y": "y",
+                "w": "width",
+                "h": "height",
+                "shape": "shape",
+                "fill": "fill",
+                "frame": "frame",
+                "corner_radius": "corner_radius",
+                "border_width": "border_width",
+                "angle": "angle",
+                "tooltip": "tooltip",
+            }
+            for cli_key, params_key in _visu_map.items():
+                raw = getattr(args, cli_key, None)
+                if raw is not None and raw != "":
+                    params[params_key] = raw
+            visu_cmds.add_element(
+                project_view_dir=pv,
+                screen=args.screen,
+                folder=getattr(args, "folder", ""),
+                type_name=args.type,
+                params=params,
+            )
+        elif args.visu_action == "list":
+            if not args.screen:
+                _print_error("--screen is required")
+                sys.exit(1)
+            visu_cmds.list_screen(
+                project_view_dir=pv,
+                screen=args.screen,
+                folder=getattr(args, "folder", ""),
+            )
+        elif args.visu_action == "check":
+            if not args.screen:
+                _print_error("--screen is required")
+                sys.exit(1)
+            visu_cmds.check_screen(
+                project_view_dir=pv,
+                screen=args.screen,
+                folder=getattr(args, "folder", ""),
+            )
+        elif args.visu_action == "describe":
+            if not args.type:
+                _print_error("--type is required")
+                sys.exit(1)
+            visu_cmds.describe(
+                project_view_dir=pv,
+                type_name=args.type,
+                screen=getattr(args, "screen", ""),
+                folder=getattr(args, "folder", ""),
+                elem=getattr(args, "elem", None),
+            )
 
     else:
         parser.print_help()

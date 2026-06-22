@@ -327,6 +327,66 @@ def main():
         if init_entry.attrib.get("ParentName") != "NewParent":
             raise RegressionFailure("standalone ST child create did not record parent name")
 
+        create_native_root = os.path.join(work_dir, "create_native_xml")
+        os.makedirs(create_native_root)
+        create_native_snapshot = os.path.join(create_native_root, "IDE.xml")
+        shutil.copyfile(os.path.join(FIXTURE_DIR, "IDE.xml"), create_native_snapshot)
+        _run(["export", "--project-root", create_native_root, "--snapshot", create_native_snapshot, "--view-root", create_native_root])
+        native_xml_content = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">'
+            "<Single Name=\"Object\">"
+            "<Single Name=\"Implementation\"><Single Name=\"TextDocument\">"
+            '<Single Name="TextBlobForSerialisation">x := 1;</Single>'
+            "</Single></Single>"
+            "</Single>"
+            "</Single>"
+        )
+        native_xml_path = os.path.join(create_native_root, "Device", "Application", "NewVisu.xml")
+        _write_text(native_xml_path, native_xml_content)
+        create_native_report_path = os.path.join(create_native_root, ".dump", "compare_create_native.json")
+        _run([
+            "compare",
+            "--project-root", create_native_root,
+            "--snapshot", create_native_snapshot,
+            "--view-root", create_native_root,
+            "--report", create_native_report_path,
+            "--include-objects",
+        ])
+        create_native_report = _read_json(create_native_report_path)
+        if create_native_report.get("summary", {}).get("added") != 1:
+            raise RegressionFailure("standalone native XML file was not reported as the only added object")
+        create_native_objects = create_native_report.get("objects", {}).get("added", [])
+        create_native_names = sorted(obj.get("name") for obj in create_native_objects)
+        if create_native_names != ["NewVisu"]:
+            raise RegressionFailure("standalone native XML compare objects were unexpected: {0}".format(create_native_names))
+        create_native_patch_path = os.path.join(create_native_root, ".dump", "IMPORT_create_native.xml")
+        _run([
+            "import",
+            "--project-root", create_native_root,
+            "--snapshot", create_native_snapshot,
+            "--view-root", create_native_root,
+            "--patch", create_native_patch_path,
+        ])
+        create_native_patch = ET.parse(create_native_patch_path).getroot()
+        native_create_entries = [elem for elem in create_native_patch.iter() if elem.tag == "CreateNativeObject"]
+        if len(native_create_entries) != 1:
+            raise RegressionFailure("standalone native XML did not emit exactly one CreateNativeObject instruction")
+        native_entry = native_create_entries[0]
+        if native_entry.attrib.get("Path") != "Device/Application/NewVisu.xml":
+            raise RegressionFailure("CreateNativeObject Path was unexpected: {0}".format(native_entry.attrib.get("Path")))
+        if native_entry.attrib.get("Name") != "NewVisu":
+            raise RegressionFailure("CreateNativeObject Name was unexpected: {0}".format(native_entry.attrib.get("Name")))
+        native_xml_elem = None
+        for child in native_entry:
+            if child.tag == "NativeXml":
+                native_xml_elem = child
+                break
+        if native_xml_elem is None:
+            raise RegressionFailure("CreateNativeObject did not contain a NativeXml child element")
+        if not (native_xml_elem.text or "").strip():
+            raise RegressionFailure("CreateNativeObject NativeXml payload was empty")
+
         config_layout_root = os.path.join(work_dir, "config_layout")
         os.makedirs(config_layout_root)
         config_layout_snapshot = os.path.join(config_layout_root, "IDE.xml")
