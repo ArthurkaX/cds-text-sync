@@ -122,6 +122,25 @@ def _render_color_member(member_id, color_int, canonical_name):
     )
 
 
+def _render_color_uint(member_id, unsigned_int):
+    """Render a color member as short-form uint literal (no struct, no CanonicalName).
+
+    Per plan_1 \u00a74: uint form is used for primitives when a color override is
+    provided OR when the theme default is applied (never style-linked for primitives).
+    """
+    return (
+        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
+        '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
+        '{mb}  <Single Name="Value" Type="uint">{val}</Single>\n'
+        "{mb}</Single>\n"
+    ).format(
+        mb=_MB,
+        mt=_MEMBER_TYPE,
+        id=member_id,
+        val=str(unsigned_int),
+    )
+
+
 def _render_scalar_member(member_id, value_type, value):
     if value == "" or value is None:
         return (
@@ -319,7 +338,9 @@ def validate_bounds(geometry, size_x, size_y):
     return errors
 
 
-def render_element(catalog, params, identifier, owning_guid, identification_guid):
+def render_element(
+    catalog, params, identifier, owning_guid, identification_guid, visual_element_id=0
+):
     """Render a full <Single Type="{f86c2928...}"> element block as text."""
     resolved, geometry = _resolve_members(catalog, params)
 
@@ -356,7 +377,7 @@ def render_element(catalog, params, identifier, owning_guid, identification_guid
         '{el}  <Single Name="VisualElementOwningObjectGuid" Type="System.Guid">{owning}</Single>\n'
         '{el}  <Array Name="LMGuids" Type="System.Guid" />\n'
         '{el}  <Dictionary Type="System.Collections.Hashtable" Name="SubElements" />\n'
-        '{el}  <Single Name="VisualElementId" Type="int">0</Single>\n'
+        '{el}  <Single Name="VisualElementId" Type="int">{veid}</Single>\n'
         '{el}  <List Name="UserManagementAccessRights" Type="System.Collections.ArrayList" />\n'
         '{el}  <Single Name="AnimationDuration" Type="string">0</Single>\n'
         '{el}  <Single Name="BringToForeground" Type="string" />\n'
@@ -373,19 +394,27 @@ def render_element(catalog, params, identifier, owning_guid, identification_guid
         ident=_esc(identifier),
         idguid=identification_guid,
         owning=owning_guid,
+        veid=str(visual_element_id),
         ver=catalog.get("elementVersion", 1),
     )
     return block, geometry
 
 
-def _render_golden_element(template, catalog, params, identifier,
-                           owning_guid, identification_guid):
+def _render_golden_element(
+    template,
+    catalog,
+    params,
+    identifier,
+    owning_guid,
+    identification_guid,
+    visual_element_id=0,
+    theme_colors=None,
+):
     """Render an element by substituting placeholders in a golden (IDE-exported)
     template, instead of synthesizing members.
 
-    Colors are NOT customized in Step 1 -- the template keeps its IDE defaults.
-    Geometry and shape are substituted from ``params`` (falling back to catalog
-    defaults).  ``text`` is still rejected (Text ID not yet supported).
+    Handles color override (uint form for primitives), text/text-id, line-specific
+    geometry, and sequential VisualElementId.
     """
     geo = catalog.get("geometry", {})
     base = catalog.get("base_members", [])
@@ -399,16 +428,8 @@ def _render_golden_element(template, catalog, params, identifier,
                     return 0
         return 0
 
-    x = (
-        int(params["x"])
-        if params.get("x") is not None
-        else _geo_default(geo.get("x"))
-    )
-    y = (
-        int(params["y"])
-        if params.get("y") is not None
-        else _geo_default(geo.get("y"))
-    )
+    x = int(params["x"]) if params.get("x") is not None else _geo_default(geo.get("x"))
+    y = int(params["y"]) if params.get("y") is not None else _geo_default(geo.get("y"))
     w = (
         int(params["width"])
         if params.get("width") is not None
@@ -423,6 +444,7 @@ def _render_golden_element(template, catalog, params, identifier,
     center_y = y + h // 2
 
     # Shape resolution.
+    shape_val = None
     if params.get("shape"):
         sv = _catalog.shape_value(catalog, params["shape"])
         if sv is None:
@@ -433,31 +455,152 @@ def _render_golden_element(template, catalog, params, identifier,
                 )
             )
         shape_val = sv
-    else:
+    elif catalog.get("shape_variants"):
         default_shape = catalog.get("default_shape", "rectangle")
         shape_val = catalog.get("shape_variants", {}).get(
             default_shape, "VISU_ST_RECTANGLE"
         )
 
-    # Text / Text-ID invariant (same check as _resolve_members).
-    text_val = params.get("text")
-    if text_val:
-        raise BuilderError(
-            "Text on a {0} requires a GlobalTextList Text ID (member 823443203), "
-            "which is not yet supported. Omit --text for now.".format(catalog["type"])
-        )
+    # Line endpoint geometry.
+    x1 = params.get("x1")
+    y1 = params.get("y1")
+    x2 = params.get("x2")
+    y2 = params.get("y2")
+
+    # Text / Text-ID.
+    text_val = params.get("text", "")
+    text_id_val = params.get("text_id", "")
+    text_var_val = params.get("text_var", "")
+
+    # Color override: for primitives, emit themeable colors as uint literals.
+    # Controls (button) keep struct form -> no placeholder substitution.
+    catalog_tcolors = catalog.get("themeable_colors", {})
+    fill_uint = None
+    frame_uint = None
+
+    # Resolve font color (needed for any text-bearing element, not just primitives).
+    font_expr = params.get("font_color")
+    font_color_uint = None
+    if font_expr:
+        if theme_colors:
+            from . import themes as _themes
+
+            try:
+                font_color_uint = _themes.resolve_color_unsigned(
+                    font_expr, theme_colors
+                )
+            except _themes.ThemeError:
+                font_color_uint = None
+        if font_color_uint is None:
+            c = parse_color(font_expr)
+            if c is not None:
+                font_color_uint = str(int(c) & 0xFFFFFFFF)
+    if font_color_uint is None:
+        # Default: white text
+        font_color_uint = "4294967295"
+
+    if catalog_tcolors:
+        # Resolve fill color.
+        fill_expr = params.get("fill")
+        if fill_expr is None:
+            # Use theme default.
+            if theme_colors:
+                from . import themes as _themes
+
+                try:
+                    fill_uint = _themes.resolve_color_unsigned(
+                        "var(--" + catalog_tcolors["fill"]["role"] + ")", theme_colors
+                    )
+                except _themes.ThemeError:
+                    # Theme role not found -> use solid white
+                    fill_uint = "4294967295"
+        else:
+            if theme_colors:
+                from . import themes as _themes
+
+                try:
+                    fill_uint = _themes.resolve_color_unsigned(fill_expr, theme_colors)
+                except _themes.ThemeError:
+                    fill_uint = None
+            if fill_uint is None:
+                c = parse_color(fill_expr)
+                if c is not None:
+                    fill_uint = str(int(c) & 0xFFFFFFFF)
+
+        # Resolve frame color.
+        frame_expr = params.get("frame")
+        if frame_expr is None:
+            if theme_colors:
+                from . import themes as _themes
+
+                try:
+                    frame_uint = _themes.resolve_color_unsigned(
+                        "var(--" + catalog_tcolors["frame"]["role"] + ")", theme_colors
+                    )
+                except _themes.ThemeError:
+                    # Theme role not found -> use solid black
+                    frame_uint = "4278190080"
+        else:
+            if theme_colors:
+                from . import themes as _themes
+
+                try:
+                    frame_uint = _themes.resolve_color_unsigned(
+                        frame_expr, theme_colors
+                    )
+                except _themes.ThemeError:
+                    frame_uint = None
+            if frame_uint is None:
+                c = parse_color(frame_expr)
+                if c is not None:
+                    frame_uint = str(int(c) & 0xFFFFFFFF)
 
     block = template
     block = block.replace("@@IDENTIFIER@@", _esc(identifier))
     block = block.replace("@@IDENTIFICATION_GUID@@", identification_guid)
     block = block.replace("@@OWNING_GUID@@", owning_guid)
+    block = block.replace("@@VISUAL_ELEMENT_ID@@", str(visual_element_id))
     block = block.replace("@@X@@", str(x))
     block = block.replace("@@Y@@", str(y))
     block = block.replace("@@WIDTH@@", str(w))
     block = block.replace("@@HEIGHT@@", str(h))
     block = block.replace("@@CENTER_X@@", str(center_x))
     block = block.replace("@@CENTER_Y@@", str(center_y))
-    block = block.replace("@@SHAPE@@", _esc(shape_val))
+    if shape_val is not None:
+        block = block.replace("@@SHAPE@@", _esc(shape_val))
+
+    # Line endpoints (if template has them).
+    if x1 is not None:
+        block = block.replace("@@X1@@", str(x1))
+    if y1 is not None:
+        block = block.replace("@@Y1@@", str(y1))
+    if x2 is not None:
+        block = block.replace("@@X2@@", str(x2))
+    if y2 is not None:
+        block = block.replace("@@Y2@@", str(y2))
+
+    # Text / Text-ID (if template has them).
+    if "@@TEXT@@" in block:
+        block = block.replace("@@TEXT@@", _esc(text_val))
+    if "@@TEXT_ID@@" in block:
+        block = block.replace("@@TEXT_ID@@", _esc(text_id_val))
+    if "@@TEXT_VAR@@" in block:
+        block = block.replace("@@TEXT_VAR@@", _esc(text_var_val))
+
+    # Color override placeholders.
+    if "@@FILL_COLOR_UINT@@" in block and fill_uint is not None:
+        block = block.replace("@@FILL_COLOR_UINT@@", fill_uint)
+    if "@@FRAME_COLOR_UINT@@" in block and frame_uint is not None:
+        block = block.replace("@@FRAME_COLOR_UINT@@", frame_uint)
+    if "@@FONT_COLOR_UINT@@" in block:
+        block = block.replace("@@FONT_COLOR_UINT@@", font_color_uint)
+    if "@@FONT_COLOR_SIGNED@@" in block:
+        fc_int = int(font_color_uint) & 0xFFFFFFFF
+        if fc_int >= 0x80000000:
+            fc_signed = fc_int - 0x100000000
+        else:
+            fc_signed = fc_int
+        block = block.replace("@@FONT_COLOR_SIGNED@@", str(fc_signed))
 
     geometry = {
         "x": x,
@@ -572,8 +715,13 @@ def build_screen(
     path_segments,
     is_start_visu=False,
     visu_guid=None,
+    bg_color=None,
 ):
-    """Render a new (empty) screen XML file as text."""
+    """Render a new (empty) screen XML file as text.
+
+    If ``bg_color`` is provided (as an ARGB hex string like "#FF3FF0C1" or
+    "0xFF3FF0C1"), the screen background is set to that colour.
+    """
     template = _catalog.load_screen_template()
     path_xml = "".join(
         '{0}<Single Type="string">{1}</Single>\n'.format(" " * 8, _esc(seg))
@@ -591,6 +739,35 @@ def build_screen(
     text = text.replace("@@LAST_USED_ID@@", "1")
     text = text.replace("@@ELEMENTS@@", "")
     text = text.replace("@@PATH@@", path_xml)
+
+    # Background colour.
+    if bg_color:
+        raw = bg_color.strip()
+        if raw.startswith("#"):
+            raw = raw[1:]
+        elif raw.lower().startswith("0x"):
+            raw = raw[2:]
+        if raw:
+            argb = int(raw, 16)
+            if len(raw) <= 6:
+                argb |= 0xFF000000  # opaque
+            # Signed int for CODESYS.
+            if argb >= 0x80000000:
+                bg_signed = argb - 0x100000000
+            else:
+                bg_signed = argb
+            text = text.replace("@@BG_ACTIVE@@", "True")
+            text = text.replace("@@BG_COLOR@@", str(bg_signed))
+            text = text.replace("@@BG_COLOR_FALLBACK@@", str(bg_signed))
+        else:
+            text = text.replace("@@BG_ACTIVE@@", "False")
+            text = text.replace("@@BG_COLOR@@", "16777215")
+            text = text.replace("@@BG_COLOR_FALLBACK@@", "16777215")
+    else:
+        text = text.replace("@@BG_ACTIVE@@", "False")
+        text = text.replace("@@BG_COLOR@@", "16777215")
+        text = text.replace("@@BG_COLOR_FALLBACK@@", "16777215")
+
     return text
 
 
@@ -720,14 +897,19 @@ def _member_map(element):
     return out
 
 
-def append_element(xml_text, catalog, params):
+def append_element(xml_text, catalog, params, theme_colors=None):
     """Append a new element to a screen file's VisualElementList.
 
     Bumps UniqueIdGenerator and LastUsedIdForIdentifier, assigns a
-    GenElemInst_N identifier, enforces bounds. Returns (new_xml, geometry, info).
+    GenElemInst_N identifier, enforces bounds, and assigns a sequential
+    VisualElementId. Returns (new_xml, geometry, info).
     """
     size_x, size_y = read_screen_size(xml_text)
     owning_guid = read_owning_guid(xml_text)
+
+    # Count existing elements for sequential VisualElementId.
+    existing = list_elements(xml_text)
+    visual_element_id = len(existing)
 
     last_used = _read_int_member(xml_text, "LastUsedIdForIdentifier")
     unique_id = _read_int_member(xml_text, "UniqueIdGenerator")
@@ -741,12 +923,23 @@ def append_element(xml_text, catalog, params):
     if golden_tmpl_name:
         template = _catalog.load_element_template(golden_tmpl_name)
         block, geometry = _render_golden_element(
-            template, catalog, params, identifier,
-            owning_guid, identification_guid,
+            template,
+            catalog,
+            params,
+            identifier,
+            owning_guid,
+            identification_guid,
+            visual_element_id=visual_element_id,
+            theme_colors=theme_colors,
         )
     else:
         block, geometry = render_element(
-            catalog, params, identifier, owning_guid, identification_guid
+            catalog,
+            params,
+            identifier,
+            owning_guid,
+            identification_guid,
+            visual_element_id=visual_element_id,
         )
 
     bound_errors = validate_bounds(geometry, size_x, size_y)
