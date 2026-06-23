@@ -1,0 +1,251 @@
+{
+  "type": "line",
+  "visualElementTypeName": "VisuFbElemLine",
+  "visualElementName": "Line",
+  "visualElementIsRectangle": false,
+  "elementVersion": 1,
+  "golden_template": "element_line.xml.tmpl",
+  "description": "Line with point-list geometry (x1,y1 -> x2,y2). Uses the VisuFbElemLine element type with endpoint members for its two points.",
+
+  "geometry": {
+    "x": 1649127785,
+    "y": 357335551,
+    "width": 2422045748,
+    "height": 2134141914,
+    "center_x": 550940142,
+    "center_y": 1473355128
+  },
+
+  "invariants": [
+    {
+      "id": "bounds",
+      "rule": "X >= 0 and Y >= 0 and X+Width <= SizeX and Y+Height <= SizeY",
+      "severity": "error"
+    }
+  ],
+
+  "params": {
+    "x": {
+      "member_id": 1649127785,
+      "kind": "int",
+      "geometry": true,
+      "doc": "X (left of bbox), px"
+    },
+    "y": {
+      "member_id": 357335551,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Y (top of bbox), px"
+    },
+    "width": {
+      "member_id": 2422045748,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Width of bbox, px"
+    },
+    "height": {
+      "member_id": 2134141914,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Height of bbox, px"
+    },
+    "x1": { "member_id": 1357360684, "kind": "int", "doc": "Endpoint X1" },
+    "y1": { "member_id": 444643082, "kind": "int", "doc": "Endpoint Y1" },
+    "x2": { "member_id": 1837598620, "kind": "int", "doc": "Endpoint X2" },
+    "y2": { "member_id": 669032122, "kind": "int", "doc": "Endpoint Y2" },
+    "fill": {
+      "member_id": 2812299069,
+      "kind": "color",
+      "canonical_name": "BasicElement-Fill-Color",
+      "doc": "Fill color (uint literal on lines)"
+    },
+    "frame": {
+      "member_id": 494569607,
+      "kind": "color",
+      "canonical_name": "BasicElement-Frame-Color",
+      "doc": "Stroke/frame color (uint literal on lines)"
+    },
+    "line_end_style": {
+      "member_id": 3553112287,
+      "kind": "int",
+      "doc": "Line end style (0=none, 1=arrow, etc)"
+    }
+  },
+
+  "themeable_colors": {
+    "fill": {
+      "member_id": 2812299069,
+      "role": "primary",
+      "canonical_name": "BasicElement-Fill-Color",
+      "default_signed": -1
+    },
+    "frame": {
+      "member_id": 494569607,
+      "role": "frame",
+      "canonical_name": "BasicElement-Frame-Color",
+      "default_signed": -16777216
+    }
+  },
+
+  "base_members": [
+    { "id": 571893170, "form": "scalar", "value_type": "string", "value": "" },
+    {
+      "id": 1225741287,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VISU_ST_STYLE"
+    },
+    { "id": 1869484343, "form": "scalar", "value_type": "short", "value": "5" },
+    {
+      "id": 494569607,
+      "form": "color",
+      "color": "-16777216",
+      "canonical_name": "BasicElement-Frame-Color"
+    },
+    {
+      "id": 2812299069,
+      "form": "color",
+      "color": "-1",
+      "canonical_name": "BasicElement-Fill-Color"
+    },
+    {
+      "id": 2340015797,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "HCENTER"
+    },
+    {
+      "id": 2565699834,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VCENTER"
+    },
+    {
+      "id": 4134387352,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "NONE"
+    },
+    {
+      "id": 1603690730,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "Arial"
+    },
+    {
+      "id": 4253639993,
+      "form": "scalar",
+      "value_type": "short",
+      "value": "12"
+    },
+    {
+      "id": 1649127785,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "x"
+    },
+    {
+      "id": 357335551,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "y"
+    },
+    {
+      "id": 2422045748,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "width"
+    },
+    {
+      "id": 2134141914,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "height"
+    },
+    { "id": 3553112287, "form": "scalar", "value_type": "int", "value": "0" },
+    {
+      "id": 1357360684,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "x1"
+    },
+    {
+      "id": 444643082,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "y1"
+    },
+    {
+      "id": 1837598620,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "x2"
+    },
+    {
+      "id": 669032122,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "y2"
+    },
+    { "id": 3729828405, "form": "font_descriptor" },
+    {
+      "id": 550940142,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "50",
+      "role": "center_x"
+    },
+    {
+      "id": 1473355128,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "50",
+      "role": "center_y"
+    },
+    { "id": 2678395525, "form": "scalar", "value_type": "uint", "value": "1" },
+    {
+      "id": 564465120,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VISU_ST_STYLE",
+      "role": "shape"
+    },
+    {
+      "id": 390574330,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "text"
+    },
+    {
+      "id": 2597686782,
+      "form": "scalar",
+      "value_type": "bool",
+      "value": "True"
+    }
+  ],
+
+  "font_descriptor": {
+    "FontStyle": "0",
+    "AdditionalFontStyle": "0",
+    "ExplicitColor": "-16777216",
+    "CanonicalName": "Font-Standard",
+    "FontName": "Arial",
+    "DisplayName": "",
+    "FontSize": "12",
+    "ScriptIdentification": "0",
+    "DoubleFontSize": "0",
+    "NamedColor": {
+      "Color": "-16777216",
+      "CanonicalName": "Font-Default-Color"
+    }
+  }
+}

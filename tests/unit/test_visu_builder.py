@@ -14,15 +14,12 @@ import sys
 import pytest
 
 # -- Path setup: add project root so we can import ``cli.visu`` --------------
-_ROOT = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
+_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from cli.visu import builder
 from cli.visu import catalog as _catalog
-
 
 # ===================================================================
 # Fixtures
@@ -75,9 +72,15 @@ class TestCatalog:
     def test_list_types(self):
         types = _catalog.list_types()
         assert "rectangle" in types
+        assert "line" in types
+        assert "label" in types
+        assert "button" in types
+        assert "textfield" in types
 
     def test_shape_value(self, rectangle_catalog):
-        assert _catalog.shape_value(rectangle_catalog, "rectangle") == "VISU_ST_RECTANGLE"
+        assert (
+            _catalog.shape_value(rectangle_catalog, "rectangle") == "VISU_ST_RECTANGLE"
+        )
         assert _catalog.shape_value(rectangle_catalog, "ellipse") == "VISU_ST_CIRCLE"
         assert _catalog.shape_value(rectangle_catalog, "rounded") == "VISU_ST_ROUNDRECT"
         assert _catalog.shape_value(rectangle_catalog, "bogus") is None
@@ -106,8 +109,8 @@ class TestScreenEnvelope:
 
     def test_placement_filled(self, empty_screen):
         """ParentGuid and ParentSVNodeGuid are present and non-empty."""
-        assert '>aed6d2f4-6485-4017-982c-3b2fa7b0b4be<' in empty_screen
-        assert '>ddc05353-f826-4861-84cf-5fd88f7a319e<' in empty_screen
+        assert ">aed6d2f4-6485-4017-982c-3b2fa7b0b4be<" in empty_screen
+        assert ">ddc05353-f826-4861-84cf-5fd88f7a319e<" in empty_screen
 
     def test_path_present(self, empty_screen):
         """Path array contains the expected segments."""
@@ -176,7 +179,9 @@ class TestElement:
             if id_el is not None and (id_el.text or "").strip() == str(member_id):
                 val_el = None
                 for child in list(member):
-                    ct = child.tag.split("}")[-1] if "}" in str(child.tag) else child.tag
+                    ct = (
+                        child.tag.split("}")[-1] if "}" in str(child.tag) else child.tag
+                    )
                     if ct == "Single" and child.attrib.get("Name") == "Value":
                         val_el = child
                         break
@@ -213,9 +218,7 @@ class TestElement:
     def test_append_element_default_center(self, empty_screen, rectangle_catalog):
         """Center auto-computes even when not explicitly set."""
         params = {"x": "10", "y": "20", "width": "100", "height": "100"}
-        _, geometry, _ = builder.append_element(
-            empty_screen, rectangle_catalog, params
-        )
+        _, geometry, _ = builder.append_element(empty_screen, rectangle_catalog, params)
         assert geometry["center_x"] == 60  # 10 + 100/2
         assert geometry["center_y"] == 70  # 20 + 100/2
 
@@ -241,31 +244,53 @@ class TestElement:
 
     def test_shape_variant(self, empty_screen, rectangle_catalog):
         """Requesting a known shape variant sets the correct VISU_ST_* value."""
-        params = {"x": "0", "y": "0", "width": "100", "height": "100", "shape": "ellipse"}
-        new_xml, _, _ = builder.append_element(
-            empty_screen, rectangle_catalog, params
-        )
+        params = {
+            "x": "0",
+            "y": "0",
+            "width": "100",
+            "height": "100",
+            "shape": "ellipse",
+        }
+        new_xml, _, _ = builder.append_element(empty_screen, rectangle_catalog, params)
         shape_val = self._find_member(new_xml, 564465120)
         assert shape_val == "VISU_ST_CIRCLE"
 
     def test_unknown_shape_raises(self, empty_screen, rectangle_catalog):
         """Requesting an unknown shape raises BuilderError."""
-        params = {"x": "0", "y": "0", "width": "100", "height": "100", "shape": "hexagon"}
+        params = {
+            "x": "0",
+            "y": "0",
+            "width": "100",
+            "height": "100",
+            "shape": "hexagon",
+        }
         with pytest.raises(builder.BuilderError) as exc:
             builder.append_element(empty_screen, rectangle_catalog, params)
         assert "Unknown shape" in str(exc.value)
 
-    def test_default_colors_preserved(self, empty_screen, rectangle_catalog):
-        """Golden template preserves IDE-default colors (Step 1: colors deferred).
-        All five color struct canonical names must be present verbatim from the
-        template; fill param is accepted but does NOT override in Step 1."""
-        params = {"x": "0", "y": "0", "width": "100", "height": "100", "fill": "0xFFFF0000"}
-        new_xml, _, _ = builder.append_element(
-            empty_screen, rectangle_catalog, params
+    def test_default_colors_uint_form(self, empty_screen, rectangle_catalog):
+        """Primitives now emit fill/frame as uint literals (not struct).
+        Alarm colors and font color keep their struct defaults.
+        Fill param is resolved to uint form."""
+        params = {
+            "x": "0",
+            "y": "0",
+            "width": "100",
+            "height": "100",
+            "fill": "0xFFFF0000",
+        }
+        new_xml, _, _ = builder.append_element(empty_screen, rectangle_catalog, params)
+        # Fill and frame are uint form -> no struct CanonicalName.
+        # We check by scanning the member region for fill member 2812299069.
+        fill_idx = new_xml.find('"Id" Type="long">2812299069')
+        # After this, the next <Single Name="Value"> should be Type="uint"
+        after_fill = new_xml[fill_idx : fill_idx + 200]
+        assert 'Type="uint"' in after_fill, "Fill should be uint form"
+        assert "BasicElement-Fill-Color" not in after_fill, (
+            "Fill should NOT have struct CanonicalName"
         )
+        # Alarm and font colors still use struct form.
         for cn in (
-            "BasicElement-Fill-Color",
-            "BasicElement-Frame-Color",
             "BasicElement-Alarm-Frame-Color",
             "BasicElement-Alarm-Fill-Color",
             "Font-Default-Color",
@@ -277,8 +302,10 @@ class TestElement:
         with pytest.raises(builder.BuilderError):
             builder._render_color_member(2812299069, "-1", "")
 
-    def test_text_on_rectangle_raises(self, empty_screen, rectangle_catalog):
-        """Non-empty text on a rectangle raises because Text ID is not yet supported."""
+    def test_text_on_rectangle_supported(self, empty_screen, rectangle_catalog):
+        """Text on a rectangle is now supported (Text-ID still needed for import).
+        The builder accepts text params and passes them through to the template;
+        Text-ID allocation is handled by textlist.py at the command layer."""
         params = {
             "x": "0",
             "y": "0",
@@ -286,9 +313,13 @@ class TestElement:
             "height": "100",
             "text": "Hello",
         }
-        with pytest.raises(builder.BuilderError) as exc:
-            builder.append_element(empty_screen, rectangle_catalog, params)
-        assert "Text ID" in str(exc.value)
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, rectangle_catalog, params
+        )
+        assert geometry["x"] == 0
+        assert geometry["y"] == 0
+        assert geometry["width"] == 100
+        assert geometry["height"] == 100
 
     def test_invalid_color_raises(self):
         with pytest.raises(builder.BuilderError):
@@ -319,9 +350,7 @@ class TestElement:
         assert info1["identifier"] == "GenElemInst_2"
         # Add second element.
         params2 = {"x": "200", "y": "0", "width": "50", "height": "50"}
-        xml2, _, info2 = builder.append_element(
-            xml1, rectangle_catalog, params2
-        )
+        xml2, _, info2 = builder.append_element(xml1, rectangle_catalog, params2)
         assert info2["identifier"] == "GenElemInst_3"
         # Verify counters in XML.
         assert 'LastUsedIdForIdentifier" Type="int">3' in xml2
@@ -460,9 +489,7 @@ class TestStructuralFidelity:
         """A rectangle with defaults produces the same number of members as the
         catalog's base_members."""
         params = {"x": "0", "y": "0", "width": "100", "height": "100"}
-        new_xml, _, _ = builder.append_element(
-            empty_screen, rectangle_catalog, params
-        )
+        new_xml, _, _ = builder.append_element(empty_screen, rectangle_catalog, params)
         # Extract member count by counting the member block pattern.
         # Each member is: <Single Type="{c694e3a2...}" Method="IArchivable">
         member_count = new_xml.count(
@@ -476,9 +503,7 @@ class TestStructuralFidelity:
         import xml.etree.ElementTree as ET
 
         params = {"x": "0", "y": "0", "width": "100", "height": "100"}
-        new_xml, _, _ = builder.append_element(
-            empty_screen, rectangle_catalog, params
-        )
+        new_xml, _, _ = builder.append_element(empty_screen, rectangle_catalog, params)
         root = ET.fromstring(new_xml)
         # Find the member list.
         ids_in_order = []

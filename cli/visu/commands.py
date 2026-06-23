@@ -12,7 +12,7 @@ from __future__ import print_function
 import os
 import sys
 
-from . import builder
+from . import builder, svg_export, svg_import, textlist, themes
 from . import catalog as _catalog
 
 
@@ -59,9 +59,7 @@ def _resolve_screen_path(project_view_dir, screen, folder):
     if len(matches) > 1:
         _err(
             "Screen name '{0}' is ambiguous ({1} matches); pass --folder to "
-            "disambiguate:\n  {2}".format(
-                screen, len(matches), "\n  ".join(matches)
-            )
+            "disambiguate:\n  {2}".format(screen, len(matches), "\n  ".join(matches))
         )
         sys.exit(1)
     return candidate
@@ -226,11 +224,15 @@ def check_screen(project_view_dir, screen, folder):
         cy = members.get(1473355128, {}).get("value")
         if cx is not None and str(cx).strip() != str(x + w // 2):
             problems.append(
-                "{0}: CenterX {1} != X+W/2 ({2})".format(el["identifier"], cx, x + w // 2)
+                "{0}: CenterX {1} != X+W/2 ({2})".format(
+                    el["identifier"], cx, x + w // 2
+                )
             )
         if cy is not None and str(cy).strip() != str(y + h // 2):
             problems.append(
-                "{0}: CenterY {1} != Y+H/2 ({2})".format(el["identifier"], cy, y + h // 2)
+                "{0}: CenterY {1} != Y+H/2 ({2})".format(
+                    el["identifier"], cy, y + h // 2
+                )
             )
 
         # Color CanonicalName non-empty.
@@ -305,8 +307,11 @@ def describe(project_view_dir, type_name, screen=None, folder="", elem=None):
         _err(str(exc))
         sys.exit(1)
 
-    print("Type: {0}  (VisualElementTypeName={1})".format(
-        catalog["type"], catalog["visualElementTypeName"]))
+    print(
+        "Type: {0}  (VisualElementTypeName={1})".format(
+            catalog["type"], catalog["visualElementTypeName"]
+        )
+    )
     if catalog.get("description"):
         print(catalog["description"])
     print("")
@@ -342,8 +347,11 @@ def describe(project_view_dir, type_name, screen=None, folder="", elem=None):
     if bindings:
         print("Optional bindings (variable references):")
         for bname, spec in sorted(bindings.items()):
-            print("  {0:<14} member={1:<12} {2}".format(
-                bname, spec.get("member_id"), spec.get("doc", "")))
+            print(
+                "  {0:<14} member={1:<12} {2}".format(
+                    bname, spec.get("member_id"), spec.get("doc", "")
+                )
+            )
         print("")
 
     invariants = catalog.get("invariants")
@@ -364,16 +372,248 @@ def describe(project_view_dir, type_name, screen=None, folder="", elem=None):
         if elem is None:
             return
         if elem < 0 or elem >= len(elements):
-            _err("Element index {0} out of range (0..{1})".format(elem, len(elements) - 1))
+            _err(
+                "Element index {0} out of range (0..{1})".format(
+                    elem, len(elements) - 1
+                )
+            )
             sys.exit(1)
         target = elements[elem]
-        print("Element #{0}: {1} ({2})".format(elem, target["identifier"], target["type"]))
+        print(
+            "Element #{0}: {1} ({2})".format(elem, target["identifier"], target["type"])
+        )
         for mid, m in sorted(target.get("members", {}).items()):
             if m.get("kind") == "color":
-                print("  {0:<12} color={1} canonical={2}".format(
-                    mid, m.get("color"), m.get("canonical_name")))
+                print(
+                    "  {0:<12} color={1} canonical={2}".format(
+                        mid, m.get("color"), m.get("canonical_name")
+                    )
+                )
             else:
                 print("  {0:<12} {1!r}".format(mid, m.get("value")))
+
+
+# ---------------------------------------------------------------------------
+# from-svg
+# ---------------------------------------------------------------------------
+
+
+def from_svg(
+    project_view_dir,
+    svg_path,
+    screen,
+    folder,
+    theme_name,
+    out_path,
+    create_screen,
+    screen_name,
+):
+    """Compile an SVG file to a CODESYS screen XML."""
+    import os
+    import sys
+
+    from . import builder as _builder
+    from . import catalog as _catalog
+
+    # Read SVG.
+    if not os.path.isfile(svg_path):
+        _err("SVG file not found: {0}".format(svg_path))
+        sys.exit(1)
+    with open(svg_path, "r", encoding="utf-8") as handle:
+        svg_text = handle.read()
+
+    # Parse SVG (need result early for bg_color when creating screen).
+    theme_colors = None
+    if theme_name:
+        try:
+            theme_colors = themes.load_theme(theme_name)
+        except themes.ThemeError as exc:
+            _err(str(exc))
+            sys.exit(1)
+
+    try:
+        result = svg_import.parse_svg(svg_text, theme=theme_colors)
+    except (ValueError, themes.ThemeError) as exc:
+        _err(str(exc))
+        sys.exit(1)
+
+    canvas = result["canvas"]
+    elements = result["elements"]
+    parsed_theme = result.get("theme")
+    bg_color = result.get("bg_color")
+
+    # Merge parsed inline theme over CLI theme.
+    if parsed_theme:
+        if theme_colors:
+            theme_colors = dict(theme_colors, **parsed_theme)
+        else:
+            theme_colors = parsed_theme
+
+    # Resolve screen target.
+    if create_screen:
+        # Create a new screen first (inline to avoid shadowing the module function).
+        if not screen_name:
+            _err("--screen-name is required when --create-screen is used")
+            sys.exit(1)
+        target_dir = _folder_to_dir(project_view_dir, folder)
+        sibling = _builder.find_sibling_object(target_dir)
+        if sibling is None:
+            _err("Folder contains no existing object to copy placement from.")
+            sys.exit(1)
+        placement = _builder.read_placement_from_sibling(sibling)
+        out_path = os.path.join(target_dir, screen_name + ".xml")
+        if os.path.exists(out_path):
+            _err("Screen already exists: {0}".format(out_path))
+            sys.exit(1)
+        xml_text = _builder.build_screen(
+            name=screen_name,
+            size_x=800,
+            size_y=480,
+            parent_guid=placement["parent_guid"],
+            parent_svnode_guid=placement["parent_svnode_guid"],
+            path_segments=placement["path"],
+            is_start_visu=False,
+            bg_color=bg_color,
+        )
+        with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(xml_text)
+        _ok("Created screen {0} at {1}".format(screen_name, out_path))
+        screen = screen_name
+
+    path = _resolve_screen_path(project_view_dir, screen, folder)
+    if not os.path.isfile(path):
+        _err("Screen file not found: {0}".format(path))
+        sys.exit(1)
+
+    # Resize screen if canvas differs.
+    with open(path, "r", encoding="utf-8") as handle:
+        xml_text = handle.read()
+    size_x, size_y = _builder.read_screen_size(xml_text)
+    if (size_x, size_y) != (canvas["width"], canvas["height"]):
+        _ok(
+            "Screen size ({0}x{1}) differs from canvas ({2}x{3}); resizing".format(
+                size_x, size_y, canvas["width"], canvas["height"]
+            )
+        )
+        import re
+
+        xml_text = re.sub(
+            r'(<Single Name="SizeX" Type="int">)\d+(</Single>)',
+            r"\g<1>{0}\g<2>".format(canvas["width"]),
+            xml_text,
+        )
+        xml_text = re.sub(
+            r'(<Single Name="SizeY" Type="int">)\d+(</Single>)',
+            r"\g<1>{0}\g<2>".format(canvas["height"]),
+            xml_text,
+        )
+
+    # If screen already existed and has no custom bg, set from theme.
+    if bg_color and not create_screen:
+        # Check if BgColor is already True.
+        if '"BgColor" Type="bool">False' in xml_text:
+            xml_text = xml_text.replace(
+                '<Single Name="BgColor" Type="bool">False</Single>',
+                '<Single Name="BgColor" Type="bool">True</Single>',
+            )
+        # Update BgUseColor.
+        import re as _re
+
+        bg_match = _re.search(r'BgUseColor" Type="int">(-?\d+)', xml_text)
+        if bg_match:
+            # Parse the hex colour to signed int
+            raw = bg_color.strip()
+            if raw.startswith("#"):
+                raw = raw[1:]
+            elif raw.lower().startswith("0x"):
+                raw = raw[2:]
+            if raw:
+                argb = int(raw, 16)
+                if len(raw) <= 6:
+                    argb |= 0xFF000000
+                if argb >= 0x80000000:
+                    bg_signed = argb - 0x100000000
+                else:
+                    bg_signed = argb
+                xml_text = _re.sub(
+                    r'(BgUseColor" Type="int">)-?\d+(</Single>)',
+                    r"\g<1>{0}\g<2>".format(bg_signed),
+                    xml_text,
+                )
+
+    # Append each element.
+    textlist_module = None
+    for elem_spec in elements:
+        type_name = elem_spec["type"]
+        params = elem_spec["params"]
+        try:
+            catalog = _catalog.load_catalog(type_name)
+        except _catalog.CatalogError as exc:
+            _err(str(exc))
+            sys.exit(1)
+
+        # Allocate Text-ID if text is present.
+        if params.get("text") and not params.get("text_id"):
+            if textlist_module is None:
+                from . import textlist as _tl
+
+                textlist_module = _tl
+            try:
+                tid = textlist_module.allocate_text_id(project_view_dir, params["text"])
+                params["text_id"] = tid
+            except Exception as exc:
+                _err("Text-ID allocation failed: {0}".format(exc))
+                sys.exit(1)
+
+        try:
+            new_xml, geometry, info = _builder.append_element(
+                xml_text, catalog, params, theme_colors=theme_colors
+            )
+            xml_text = new_xml
+        except _builder.BuilderError as exc:
+            _err(str(exc))
+            sys.exit(1)
+
+    # Write output.
+    output_path = out_path or path
+    with open(output_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(xml_text)
+
+    count = len(elements)
+    _ok("Compiled {0} element(s) from SVG to {1}".format(count, output_path))
+    print(output_path)
+
+
+# ---------------------------------------------------------------------------
+# to-svg
+# ---------------------------------------------------------------------------
+
+
+def to_svg(project_view_dir, screen, folder, out_path):
+    """Decompile a CODESYS screen XML to SVG."""
+    import os
+    import sys
+
+    path = _resolve_screen_path(project_view_dir, screen, folder)
+    if not os.path.isfile(path):
+        _err("Screen file not found: {0}".format(path))
+        sys.exit(1)
+
+    with open(path, "r", encoding="utf-8") as handle:
+        xml_text = handle.read()
+
+    try:
+        svg_text = svg_export.screen_to_svg(xml_text)
+    except (ValueError, svg_export.SvgExportError) as exc:
+        _err(str(exc))
+        sys.exit(1)
+
+    output_path = out_path or (path.rsplit(".", 1)[0] + ".svg")
+    with open(output_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(svg_text)
+
+    _ok("Decompiled screen to SVG: {0}".format(output_path))
+    print(output_path)
 
 
 def _default_for_param(catalog, spec):

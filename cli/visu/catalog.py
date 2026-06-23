@@ -49,7 +49,7 @@ def load_catalog(type_name):
         raise CatalogError(
             "Unknown element type '{0}'. Available: {1}".format(type_name, available)
         )
-    with open(path, "r") as handle:
+    with open(path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
     _validate_catalog(data, type_name)
     return data
@@ -57,7 +57,7 @@ def load_catalog(type_name):
 
 def load_screen_template():
     """Return the screen envelope template text."""
-    with open(SCREEN_TEMPLATE_PATH, "r") as handle:
+    with open(SCREEN_TEMPLATE_PATH, "r", encoding="utf-8") as handle:
         return handle.read()
 
 
@@ -68,7 +68,7 @@ def load_element_template(template_name):
     e.g. ``"element_simple.xml.tmpl"``.
     """
     path = os.path.join(_TEMPLATE_DIR, template_name)
-    with open(path, "r") as handle:
+    with open(path, "r", encoding="utf-8") as handle:
         return handle.read()
 
 

@@ -1210,6 +1210,39 @@ Examples:
         description="Offline commands to create screens and add elements. "
         "These write .xml files directly into project-view/ "
         "for later import via ``cts import``.",
+        epilog="""
+from-svg SVG contract:
+  Supported elements: rect, circle, ellipse, line, text,
+    rect[data-cds-type=button], text[data-cds-type=textfield]
+
+  CSS variables (set in :root block):
+    --background  screen background
+    --surface     panel/background fill default
+    --panel       sub-panel fill
+    --border --frame  stroke default
+    --text        font colour
+    --text-muted  muted/secondary font colour
+    --primary     accent/highlight
+    --secondary   secondary accent
+    --success     green/ok
+    --warning     orange/caution
+    --error       red/alarm
+    --water       pipe/fluid
+    --metal       structural elements
+
+  Color rules for SVG attributes:
+    - <text fill="..."> controls font colour (compiles to uint literal)
+    - <rect fill="..."> controls background fill
+    - <rect stroke="..."> controls frame/border colour
+    - <button> and <textfield> colours: SVG fill/stroke controls
+      browser preview but is IGNORED by the transpiler. These
+      elements inherit the CODESYS project visual style.
+      For coloured button-like shapes use plain <rect> + <text>.
+
+  Unsupported in v1: polygon, polyline, image, transform,
+    gradients, filters, masks, animation, viewBox scaling,
+    Table, ComboBox, TabControl, GroupBox, Checkbox, etc.
+""",
     )
     p_visu.add_argument(
         "visu_action",
@@ -1220,20 +1253,22 @@ Examples:
             "check",
             "types",
             "describe",
+            "from-svg",
+            "to-svg",
         ],
         help="create-screen - create a new empty screen\n"
         "add - add an element to a screen\n"
         "list - list elements in a screen\n"
         "check - validate a screen\n"
         "types - list available element types\n"
-        "describe - describe a type or element",
+        "describe - describe a type or element\n"
+        "from-svg - compile SVG to CODESYS screen XML\n"
+        "to-svg - decompile CODESYS screen XML to SVG",
     )
     p_visu.add_argument(
         "--sync-folder", default="", help="Sync folder or project-view dir"
     )
-    p_visu.add_argument(
-        "--name", default="", help="Screen name (for create-screen)"
-    )
+    p_visu.add_argument("--name", default="", help="Screen name (for create-screen)")
     p_visu.add_argument(
         "--folder",
         default="",
@@ -1266,14 +1301,27 @@ Examples:
     )
     p_visu.add_argument("--fill", default="", help="Fill color (0xAARRGGBB or name)")
     p_visu.add_argument("--frame", default="", help="Frame color")
-    p_visu.add_argument(
-        "--corner-radius", type=int, help="Corner radius (for add)"
-    )
+    p_visu.add_argument("--corner-radius", type=int, help="Corner radius (for add)")
     p_visu.add_argument("--border-width", type=int, help="Border width (for add)")
     p_visu.add_argument("--angle", type=int, help="Rotation angle (for add)")
     p_visu.add_argument("--tooltip", default="", help="Tooltip text (for add)")
     p_visu.add_argument(
         "--elem", type=int, help="Element index (for describe --screen --elem)"
+    )
+    p_visu.add_argument("--svg", default="", help="SVG file path (for from-svg)")
+    p_visu.add_argument(
+        "--theme",
+        default="dark",
+        help="Theme name: dark|light|hi-contrast (for from-svg)",
+    )
+    p_visu.add_argument("--out", default="", help="Output path (for from-svg, to-svg)")
+    p_visu.add_argument(
+        "--create-screen",
+        action="store_true",
+        help="Create a new screen when compiling SVG (for from-svg)",
+    )
+    p_visu.add_argument(
+        "--screen-name", default="", help="Screen name when --create-screen is used"
     )
 
     # -- deprecated proxy subcommands for engine_cli -------------------------
@@ -1662,6 +1710,30 @@ def main():
                 screen=getattr(args, "screen", ""),
                 folder=getattr(args, "folder", ""),
                 elem=getattr(args, "elem", None),
+            )
+        elif args.visu_action == "from-svg":
+            if not args.svg:
+                _print_error("--svg is required")
+                sys.exit(1)
+            visu_cmds.from_svg(
+                project_view_dir=pv,
+                svg_path=args.svg,
+                screen=args.screen,
+                folder=getattr(args, "folder", ""),
+                theme_name=getattr(args, "theme", "dark"),
+                out_path=getattr(args, "out", ""),
+                create_screen=getattr(args, "create_screen", False),
+                screen_name=getattr(args, "screen_name", ""),
+            )
+        elif args.visu_action == "to-svg":
+            if not args.screen:
+                _print_error("--screen is required")
+                sys.exit(1)
+            visu_cmds.to_svg(
+                project_view_dir=pv,
+                screen=args.screen,
+                folder=getattr(args, "folder", ""),
+                out_path=getattr(args, "out", ""),
             )
 
     else:
