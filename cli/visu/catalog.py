@@ -61,6 +61,17 @@ def load_screen_template():
         return handle.read()
 
 
+def load_element_template(template_name):
+    """Return the element template text for a golden (IDE-exported) template.
+
+    ``template_name`` is a filename relative to the templates directory,
+    e.g. ``"element_simple.xml.tmpl"``.
+    """
+    path = os.path.join(_TEMPLATE_DIR, template_name)
+    with open(path, "r") as handle:
+        return handle.read()
+
+
 def _validate_catalog(data, type_name):
     required = ["type", "visualElementTypeName", "base_members", "params"]
     for key in required:

@@ -4,14 +4,14 @@
   "visualElementName": "Rectangle",
   "visualElementIsRectangle": true,
   "elementVersion": 1,
+  "golden_template": "element_simple.xml.tmpl",
   "description": "Basic geometric shape (rectangle / ellipse / rounded-rectangle / line). All four are the same VisuFbElemSimple element type distinguished by the shape member 564465120.",
 
   "shape_member_id": 564465120,
   "shape_variants": {
     "rectangle": "VISU_ST_RECTANGLE",
     "ellipse": "VISU_ST_CIRCLE",
-    "rounded": "VISU_ST_ROUNDED_RECTANGLE",
-    "line": "VISU_ST_LINE"
+    "rounded": "VISU_ST_ROUNDRECT"
   },
   "default_shape": "rectangle",
 

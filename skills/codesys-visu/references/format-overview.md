@@ -43,10 +43,22 @@ Every visual element is one `<Single>` block typed with the **element GUID**:
   <List Name="UserManagementAccessRights" Type="System.Collections.ArrayList" />
   <Single Name="AnimationDuration" Type="string">0</Single>
   <Single Name="BringToForeground" Type="string" />
-  <Single Name="ElementVersion" Type="byte">0</Single>
+  <Single Name="ElementVersion" Type="byte">1</Single>
   <Null Name="TabOrder" />
 </Single>
 ```
+
+> **Envelope field values (verified against `_Basic.xml`, 10 elements / 6 types).**
+> Every element in the real export carried the identical trailing-field values:
+> `ElementVersion` = **`1`** (a byte version number, not `0`); `BringToForeground`
+> = **`""`** (empty string, written `<Single Name="BringToForeground" Type="string" />`,
+> never `<Null>`); `AnimationDuration` = `"0"`; `TabOrder` = `<Null>`;
+> `VisualElementInputActions`, `SubElements`, `LMGuids`,
+> `UserManagementAccessRights`, `ConfiguredComplexInputs`, and `Elements` all
+> empty. `VisualElementFrameInformation` is `<Null>` on every type **except**
+> `VisuFbFrame`, which carries a populated frame-information block (see
+> [element-catalog.md](element-catalog.md)). All elements in one file share the
+> same `VisualElementOwningObjectGuid` (the visu's MetaObject Guid).
 
 > **Member-list wrapper (mandatory).** Real CODESYS IDE output wraps the
 > `VisualElemMemberList` `<List>` in an outer `<Single Name="VisualElemMemberList"

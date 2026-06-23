@@ -23,3 +23,4 @@ build/
 dist/
 offline-regression-*/
 *.log
+.handoff/
