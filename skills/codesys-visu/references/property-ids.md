@@ -37,17 +37,17 @@ CRC* below.
 | `357335551` | Y (Top) | int / short | `m_StaticPosition.iY` | |
 | `2422045748` | Width | int / short | `m_StaticPosition.iWidth` | |
 | `2134141914` | Height | int / short | `m_StaticPosition.iHeight` | |
-| `550940142` | Center X | int | `m_StaticCenter.iX` | rotation pivot X |
-| `1473355128` | Center Y | int | `m_StaticCenter.iY` | rotation pivot Y |
+| `550940142` | Center X | int | `m_StaticCenter.iX` | rotation pivot X; for simple rect/roundrect/pie/image == `X + Width//2` (verified `_Basic.xml`) |
+| `1473355128` | Center Y | int | `m_StaticCenter.iY` | rotation pivot Y; == `Y + Height//2` for those types; NOT valid for line / polygon-point / frame elements |
 | `2678395525` | Border width | uint / short | `m_StaticElementLook.iLineWidth` | usually `1` |
 | `2340015797` | Horizontal align | string | `m_pStaticTextProperties..HorizontalAlignment` | `LEFT` / `HCENTER` / `RIGHT` |
 | `2565699834` | Vertical align | string | `m_pStaticTextProperties..VerticalAlignment` | `TOP` / `VCENTER` / `BOTTOM` |
 | `571893170` | Tooltip | string | `m_StaticTexts.pstToolTip` | |
-| `2597686782` | Bool flag (element-specific) | bool | -- | `True` / `False` |
+| `2597686782` | Bool flag (likely visible) | bool | -- | `True` on every element in `_Basic.xml`; always the last member; meaning inferred as visible/enabled |
 | `3719097617` | Angle / animation index | int | `m_StaticPosition.m_iAngle` | |
 | `1337389588` | Shadow type | string | `m_ShadowType` | `NONE` / `FROM_STYLE` / ... |
 | `1869484343` | Corner radius | short | `m_Radius.m_iRadius` | |
-| `1651471674` | Show frame | bool | `m_bShowFrame` | |
+| `1651471674` | Show frame / Image keep-aspect | bool | `m_bShowFrame` | on `VisuFbElemImage` observed as a keep-aspect/transparent bool (`False` in `_Basic.xml`) |
 | `300685745` | Initial state / tap false | bool | `m_bTapFalse` | toggle initial state (PushSwitchLed/ImageSwitcher) |
 | `681815230` | Move complete | bool | `m_bMoveComplete` | |
 | `3352862552` | Show scale | bool | `m_Scale.ShowScale` | |
@@ -68,7 +68,7 @@ short-form vs full color struct / color list).
 | `3488306084` | Frame color (uint alt) | uint | -- | |
 | `2729990903` | Border color (uint) | uint | -- | |
 | `2175578022` | Toggle normal color (Button/Textfield) | color struct | `m_pColorVariables..ColorVars.dwNormalColor` | |
-| `1999528970` | Toggle color variable | string | `m_pColorVariables..ToggleColor` | |
+| `1999528970` | Toggle color variable | string | `m_pColorVariables..ToggleColor` | placeholder `<toggle/tap variable>` on Simple/Line/Image/Frame in `_Basic.xml` (unset binding) |
 | `4062784938` | Lamp / PushSwitchLed lamp image | string (`Element-Lamp-Lamp1-Red`) | `m_Background.m_stBitmapID` | |
 
 ## Fonts / text mode
@@ -79,7 +79,7 @@ short-form vs full color struct / color list).
 | `1603690730` | Font name | string | -- | |
 | `4253639993` | Font size | short | -- | |
 | `663104332` | Alarm text color | color struct | `m_pStaticTextProperties..AlarmColor` | |
-| `4134387352` | Text flag | string (`NONE`, ...) | `m_pStaticTextProperties..TextFlag` | |
+| `4134387352` | Text flag | string (`NONE`, ...) | `m_pStaticTextProperties..TextFlag` | verified `NONE` on all basic shapes in `_Basic.xml` |
 | `3669839856` | Banner/table text align | string (`HCENTER`) | -- | |
 
 ## Text & variable bindings (shared)
@@ -118,8 +118,16 @@ short-form vs full color struct / color list).
 | `1647042231` | Button | Button state variable | string | `m_pButtonStateVariable..DigitalVar` | |
 | `823443203` | Simple/Textfield/Button | **Text ID** (GlobalTextList ref) -- required whenever `390574330` is non-empty; see note above | string (numeric, e.g. `912`) | *override -- not CRC* (`const long IdIextId`) | |
 | `3438453433` | Button/Textfield | X / Y content offset / Tooltip Id | string | *override -- not CRC* (`const long IdTooltipId`) | |
-| `3332245745` | Image | Image id | string (`ImagePool.<name>`) | `m_stStaticID` | |
-| `3549563837` | Image | Scale mode | string (`ANISOTROPIC`/`ISOTROPIC`/`FIXED`) | `m_nIsotropicType` | |
+| `3332245745` | Image | Image id | string (`ImagePool.<name>`) | `m_stStaticID` | in `_Basic.xml`: `VisuElemsWinControls.IP_ElementImages.Checkbox` |
+| `3549563837` | Image | Scale mode | string (`ANISOTROPIC`/`ISOTROPIC`/`FIXED`) | `m_nIsotropicType` | verified `ANISOTROPIC` on Image |
+| `1892739093` | Pie | Start angle | short | -- | verified `_Basic.xml` (`0`) |
+| `3606942214` | Pie | Sweep / end angle | short | -- | verified `_Basic.xml` (`1`) |
+| `1831690182` | Image/Frame | Transparency / alpha | short | -- | verified `_Basic.xml` (`-1`) |
+| `2322377816` | Frame | Frame render mode | string (`NO_FRAME`) | -- | verified `_Basic.xml` |
+| `394923068` | Frame | Bool flag | bool | -- | verified `_Basic.xml` (`False`); exact meaning unconfirmed |
+| `1051212449` | Simple(circle)/Polygon/Line | Static-polygon type descriptor | `VisuStructPolygon` type tree | `m_StaticPositionPolygon` | structural node carrying the point sub-members; copy as a block |
+| `363316305` | Frame | Reference-list type descriptor | `VisuStructReferenceList` type tree | `m_References` | carries the referenced-visualization sub-members; copy as a block |
+| `3553112287` | Line/Simple(circle) | Line end style? | int | -- | verified present (`0`); meaning unconfirmed |
 | `564465120` | Simple/Polygon | Shape / point style | string (`VISU_ST_CIRCLE`, `VISU_PT_POLYLINE`) | `m_StaticType` | |
 | `1357360684` / `669032122` | Line | End-point X / Y | int | -- | |
 | `1697884386` `305436788` `1481867602` `794079684` `536083330` `1760873236` `580112946` `1435820708` | Polygon | Point coordinate pairs | int | -- | |
@@ -145,8 +153,10 @@ before relying on the value semantics.
 
 | Id | Seen on | Observed value | Likely field |
 |----|---------|---------------|--------------|
-| `1225741287` | Simple | `VISU_ST_STYLE` | Shape style name (*override -- not CRC*; ChecksumId attribute, not crc of `VISU_ST_STYLE`) |
-| `1213979116` | Textfield / Button | `0` (uint) | Element-specific uint flag |
+| `1225741287` | Simple | `VISU_ST_STYLE` | Shape style-mode name (*override -- not CRC*; ChecksumId attribute, not crc of `VISU_ST_STYLE`). Verified present on rect/roundrect Simple in `_Basic.xml`; absent from the circle Simple variant. |
+| `2729990903` | Simple / Line / Polygon / Pie | `0` (uint) | **Unconfirmed** -- uint flag, always `0` in `_Basic.xml`; meaning not determined |
+| `1213979116` | Simple / Textfield / Button | `0` (uint) | **Unconfirmed** -- uint flag, always `0`; meaning not determined |
+| `3488306084` | Simple / Line / Polygon | `4278190080` (uint = `0xFF000000`) | **Unconfirmed** -- likely a text/secondary color (black), but not verified as such |
 
 > Table-layout bool flags (`1981426263`, `3597700437`, `3479944212`,
 > `129931535`, `3829854167`, `4250787478`, ...) and table size strings

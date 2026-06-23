@@ -79,8 +79,7 @@ class TestCatalog:
     def test_shape_value(self, rectangle_catalog):
         assert _catalog.shape_value(rectangle_catalog, "rectangle") == "VISU_ST_RECTANGLE"
         assert _catalog.shape_value(rectangle_catalog, "ellipse") == "VISU_ST_CIRCLE"
-        assert _catalog.shape_value(rectangle_catalog, "rounded") == "VISU_ST_ROUNDED_RECTANGLE"
-        assert _catalog.shape_value(rectangle_catalog, "line") == "VISU_ST_LINE"
+        assert _catalog.shape_value(rectangle_catalog, "rounded") == "VISU_ST_ROUNDRECT"
         assert _catalog.shape_value(rectangle_catalog, "bogus") is None
 
     def test_unknown_type_raises(self):
@@ -256,15 +255,22 @@ class TestElement:
             builder.append_element(empty_screen, rectangle_catalog, params)
         assert "Unknown shape" in str(exc.value)
 
-    def test_fill_color(self, empty_screen, rectangle_catalog):
-        """Setting fill color produces correct member block."""
+    def test_default_colors_preserved(self, empty_screen, rectangle_catalog):
+        """Golden template preserves IDE-default colors (Step 1: colors deferred).
+        All five color struct canonical names must be present verbatim from the
+        template; fill param is accepted but does NOT override in Step 1."""
         params = {"x": "0", "y": "0", "width": "100", "height": "100", "fill": "0xFFFF0000"}
         new_xml, _, _ = builder.append_element(
             empty_screen, rectangle_catalog, params
         )
-        # Fill is member 2812299069, color value -65536 (0xFFFF0000 as signed int).
-        assert "-65536" in new_xml
-        assert "BasicElement-Fill-Color" in new_xml
+        for cn in (
+            "BasicElement-Fill-Color",
+            "BasicElement-Frame-Color",
+            "BasicElement-Alarm-Frame-Color",
+            "BasicElement-Alarm-Fill-Color",
+            "Font-Default-Color",
+        ):
+            assert cn in new_xml
 
     def test_color_canonical_name_nonempty(self):
         """_render_color_member rejects empty canonical_name."""

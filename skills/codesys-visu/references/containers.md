@@ -14,7 +14,9 @@ A frame element references another visualization object. Instead of the usual
 `VisualElementFrameInformation`:
 
 ```xml
-<Single Name="VisualElementFrameInformation" Type="{7fd6515d-...}">
+<Single Name="VisualElementFrameInformation" Type="{7fd6515d-f891-4717-b53f-b14197c6706c}" Method="IArchivable">
+  <List Name="ContainedGuids" Type="System.Collections.ArrayList" />
+  <List Name="ContainedVisualizations" Type="System.Collections.ArrayList" />
   <Array Name="ContainedVisualizations33" Type="string">
     <Single Type="string">FRAME_NAME</Single>
   </Array>
@@ -23,9 +25,15 @@ A frame element references another visualization object. Instead of the usual
 
 `FRAME_NAME` is the name of the referenced visualization. Multiple entries in the
 array stack several referenced visualizations (the IDE switches between them by
-index). Keep the `33` suffix on `ContainedVisualizations33`.
+index). Keep the `33` suffix on `ContainedVisualizations33`. The two preceding
+lists (`ContainedGuids`, `ContainedVisualizations`) are present but empty in real
+output.
 
-> The frame-info type GUID (`{7fd6515d-...}`) was truncated in the source capture.
+> The frame-info type GUID is `{7fd6515d-f891-4717-b53f-b14197c6706c}` (full GUID
+> verified against `_Basic.xml`). The referenced visu also appears as a
+> `2473092364` reference-value member inside the element's `VisualElemMemberList`
+> (with the `363316305` `VisuStructReferenceList` type descriptor) -- see
+> [element-catalog.md](element-catalog.md).
 
 ## VisuFbGroup / VisuFbGroupBox -- child elements
 

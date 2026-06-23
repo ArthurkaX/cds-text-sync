@@ -206,10 +206,26 @@ def _resolve_members(catalog, params):
                 return int(m.get("value", "0"))
         return 0
 
-    x = int(params.get("x")) if params.get("x") is not None else _geo_default(geo.get("x"))
-    y = int(params.get("y")) if params.get("y") is not None else _geo_default(geo.get("y"))
-    w = int(params.get("width")) if params.get("width") is not None else _geo_default(geo.get("width"))
-    h = int(params.get("height")) if params.get("height") is not None else _geo_default(geo.get("height"))
+    x = (
+        int(params.get("x"))
+        if params.get("x") is not None
+        else _geo_default(geo.get("x"))
+    )
+    y = (
+        int(params.get("y"))
+        if params.get("y") is not None
+        else _geo_default(geo.get("y"))
+    )
+    w = (
+        int(params.get("width"))
+        if params.get("width") is not None
+        else _geo_default(geo.get("width"))
+    )
+    h = (
+        int(params.get("height"))
+        if params.get("height") is not None
+        else _geo_default(geo.get("height"))
+    )
 
     overrides[geo["x"]] = str(x)
     overrides[geo["y"]] = str(y)
@@ -224,7 +240,8 @@ def _resolve_members(catalog, params):
         if sv is None:
             raise BuilderError(
                 "Unknown shape '{0}'. Variants: {1}".format(
-                    params["shape"], ", ".join(sorted(catalog.get("shape_variants", {})))
+                    params["shape"],
+                    ", ".join(sorted(catalog.get("shape_variants", {}))),
                 )
             )
         overrides[catalog["shape_member_id"]] = sv
@@ -296,13 +313,9 @@ def validate_bounds(geometry, size_x, size_y):
     if w <= 0 or h <= 0:
         errors.append("Width and Height must be > 0 (got W={0}, H={1})".format(w, h))
     if x + w > size_x:
-        errors.append(
-            "X+Width ({0}) exceeds screen SizeX ({1})".format(x + w, size_x)
-        )
+        errors.append("X+Width ({0}) exceeds screen SizeX ({1})".format(x + w, size_x))
     if y + h > size_y:
-        errors.append(
-            "Y+Height ({0}) exceeds screen SizeY ({1})".format(y + h, size_y)
-        )
+        errors.append("Y+Height ({0}) exceeds screen SizeY ({1})".format(y + h, size_y))
     return errors
 
 
@@ -362,6 +375,98 @@ def render_element(catalog, params, identifier, owning_guid, identification_guid
         owning=owning_guid,
         ver=catalog.get("elementVersion", 1),
     )
+    return block, geometry
+
+
+def _render_golden_element(template, catalog, params, identifier,
+                           owning_guid, identification_guid):
+    """Render an element by substituting placeholders in a golden (IDE-exported)
+    template, instead of synthesizing members.
+
+    Colors are NOT customized in Step 1 -- the template keeps its IDE defaults.
+    Geometry and shape are substituted from ``params`` (falling back to catalog
+    defaults).  ``text`` is still rejected (Text ID not yet supported).
+    """
+    geo = catalog.get("geometry", {})
+    base = catalog.get("base_members", [])
+
+    def _geo_default(role_id):
+        for m in base:
+            if m.get("id") == role_id:
+                try:
+                    return int(m.get("value", "0"))
+                except (ValueError, TypeError):
+                    return 0
+        return 0
+
+    x = (
+        int(params["x"])
+        if params.get("x") is not None
+        else _geo_default(geo.get("x"))
+    )
+    y = (
+        int(params["y"])
+        if params.get("y") is not None
+        else _geo_default(geo.get("y"))
+    )
+    w = (
+        int(params["width"])
+        if params.get("width") is not None
+        else _geo_default(geo.get("width"))
+    )
+    h = (
+        int(params["height"])
+        if params.get("height") is not None
+        else _geo_default(geo.get("height"))
+    )
+    center_x = x + w // 2
+    center_y = y + h // 2
+
+    # Shape resolution.
+    if params.get("shape"):
+        sv = _catalog.shape_value(catalog, params["shape"])
+        if sv is None:
+            raise BuilderError(
+                "Unknown shape '{0}'. Variants: {1}".format(
+                    params["shape"],
+                    ", ".join(sorted(catalog.get("shape_variants", {}))),
+                )
+            )
+        shape_val = sv
+    else:
+        default_shape = catalog.get("default_shape", "rectangle")
+        shape_val = catalog.get("shape_variants", {}).get(
+            default_shape, "VISU_ST_RECTANGLE"
+        )
+
+    # Text / Text-ID invariant (same check as _resolve_members).
+    text_val = params.get("text")
+    if text_val:
+        raise BuilderError(
+            "Text on a {0} requires a GlobalTextList Text ID (member 823443203), "
+            "which is not yet supported. Omit --text for now.".format(catalog["type"])
+        )
+
+    block = template
+    block = block.replace("@@IDENTIFIER@@", _esc(identifier))
+    block = block.replace("@@IDENTIFICATION_GUID@@", identification_guid)
+    block = block.replace("@@OWNING_GUID@@", owning_guid)
+    block = block.replace("@@X@@", str(x))
+    block = block.replace("@@Y@@", str(y))
+    block = block.replace("@@WIDTH@@", str(w))
+    block = block.replace("@@HEIGHT@@", str(h))
+    block = block.replace("@@CENTER_X@@", str(center_x))
+    block = block.replace("@@CENTER_Y@@", str(center_y))
+    block = block.replace("@@SHAPE@@", _esc(shape_val))
+
+    geometry = {
+        "x": x,
+        "y": y,
+        "width": w,
+        "height": h,
+        "center_x": center_x,
+        "center_y": center_y,
+    }
     return block, geometry
 
 
@@ -578,7 +683,10 @@ def _member_map(element):
     out = {}
     mlist = None
     for el in element.iter():
-        if _strip_ns(el.tag) == "List" and el.attrib.get("Name") == "VisualElemMemberList":
+        if (
+            _strip_ns(el.tag) == "List"
+            and el.attrib.get("Name") == "VisualElemMemberList"
+        ):
             mlist = el
             break
     if mlist is None:
@@ -602,7 +710,9 @@ def _member_map(element):
                 cn_el = _find_named(inner[0], "Single", "CanonicalName")
                 out[mid] = {
                     "kind": "color",
-                    "color": (color_el.text or "").strip() if color_el is not None else "",
+                    "color": (color_el.text or "").strip()
+                    if color_el is not None
+                    else "",
                     "canonical_name": (cn_el.text or "") if cn_el is not None else "",
                 }
             else:
@@ -623,29 +733,65 @@ def append_element(xml_text, catalog, params):
     unique_id = _read_int_member(xml_text, "UniqueIdGenerator")
     next_id = last_used + 1
     identifier = "GenElemInst_{0}".format(next_id)
-    identification_guid = "{0:08x}-0000-4000-8000-000000000000".format(next_id & 0xFFFFFFFF)
-
-    block, geometry = render_element(
-        catalog, params, identifier, owning_guid, identification_guid
+    identification_guid = "{0:08x}-0000-4000-8000-000000000000".format(
+        next_id & 0xFFFFFFFF
     )
+
+    golden_tmpl_name = catalog.get("golden_template")
+    if golden_tmpl_name:
+        template = _catalog.load_element_template(golden_tmpl_name)
+        block, geometry = _render_golden_element(
+            template, catalog, params, identifier,
+            owning_guid, identification_guid,
+        )
+    else:
+        block, geometry = render_element(
+            catalog, params, identifier, owning_guid, identification_guid
+        )
 
     bound_errors = validate_bounds(geometry, size_x, size_y)
     if bound_errors:
         raise BuilderError("; ".join(bound_errors))
 
     # Insert the block just before the closing </List> of VisualElementList.
-    marker = '<List Name="VisualElementList" Type="{ef9d0b20-c96e-48db-b361-2ded4063150e}">'
+    marker = (
+        '<List Name="VisualElementList" Type="{ef9d0b20-c96e-48db-b361-2ded4063150e}">'
+    )
     start = xml_text.find(marker)
     if start < 0:
         raise BuilderError("Screen file has no VisualElementList")
-    close = xml_text.find("</List>", start)
-    if close < 0:
-        raise BuilderError("Malformed VisualElementList (no closing tag)")
+    # Walk forward counting nesting depth to find the matching </List>.
+    # Self-closing <List ... /> tags (no </List>) are skipped.
+    pos = start + len(marker)
+    depth = 0
+    close = -1
+    while True:
+        next_open = xml_text.find("<List", pos)
+        next_close = xml_text.find("</List>", pos)
+        if next_close < 0:
+            raise BuilderError("Malformed VisualElementList (no closing tag)")
+        if next_open >= 0 and next_open < next_close:
+            # Check if this is a self-closing tag (ends with /> before any >).
+            tag_end = xml_text.find(">", next_open)
+            is_self_closing = (
+                tag_end >= 0 and xml_text[tag_end - 1 : tag_end + 1] == "/>"
+            )
+            if not is_self_closing:
+                depth += 1
+            pos = next_open + 5
+        else:
+            if depth == 0:
+                close = next_close
+                break
+            depth -= 1
+            pos = next_close + 6
     new_xml = xml_text[:close] + block + xml_text[close:]
 
     # Bump counters.
     new_xml = _replace_int_member(new_xml, "LastUsedIdForIdentifier", next_id)
-    new_xml = _replace_int_member(new_xml, "UniqueIdGenerator", unique_id + 1, as_string=True)
+    new_xml = _replace_int_member(
+        new_xml, "UniqueIdGenerator", unique_id + 1, as_string=True
+    )
 
     info = {
         "identifier": identifier,
@@ -657,8 +803,12 @@ def append_element(xml_text, catalog, params):
 
 def _replace_int_member(xml_text, name, value, as_string=False):
     if as_string:
-        pattern = r'(<Single Name="{0}" Type="string">)[^<]*(</Single>)'.format(re.escape(name))
+        pattern = r'(<Single Name="{0}" Type="string">)[^<]*(</Single>)'.format(
+            re.escape(name)
+        )
     else:
-        pattern = r'(<Single Name="{0}" Type="int">)[^<]*(</Single>)'.format(re.escape(name))
+        pattern = r'(<Single Name="{0}" Type="int">)[^<]*(</Single>)'.format(
+            re.escape(name)
+        )
     repl = r"\g<1>{0}\g<2>".format(value)
     return re.sub(pattern, repl, xml_text, count=1)
