@@ -20,6 +20,7 @@ if _ROOT not in sys.path:
 
 from cli.visu import builder
 from cli.visu import catalog as _catalog
+from cli.visu import svg_import
 
 # ===================================================================
 # Fixtures
@@ -29,6 +30,11 @@ from cli.visu import catalog as _catalog
 @pytest.fixture
 def rectangle_catalog():
     return _catalog.load_catalog("rectangle")
+
+
+@pytest.fixture
+def button_catalog():
+    return _catalog.load_catalog("button")
 
 
 @pytest.fixture
@@ -320,6 +326,90 @@ class TestElement:
         assert geometry["y"] == 0
         assert geometry["width"] == 100
         assert geometry["height"] == 100
+
+    def test_button_tap_variable_supported(self, empty_screen, button_catalog):
+        params = {
+            "x": "10",
+            "y": "20",
+            "width": "120",
+            "height": "40",
+            "tap_var": "HMI.PanelStart",
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, button_catalog, params
+        )
+        assert geometry["x"] == 10
+        assert "Visu_TapInput" in new_xml
+        assert self._find_member(new_xml, 1186196937) == "HMI.PanelStart"
+        assert self._find_member(new_xml, 1647042231) == "HMI.PanelStart"
+        assert self._find_member(new_xml, 1999528970) == "HMI.PanelStart"
+
+    def test_button_toggle_variable_supported(self, empty_screen, button_catalog):
+        params = {
+            "x": "10",
+            "y": "20",
+            "width": "120",
+            "height": "40",
+            "toggle_var": "HMI.PanelStart",
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, button_catalog, params
+        )
+        assert geometry["x"] == 10
+        assert "Visu_ToggleInput" in new_xml
+        assert self._find_member(new_xml, 1186196937) == "HMI.PanelStart"
+        assert self._find_member(new_xml, 2164770859) == "False"
+
+    def test_button_input_actions_supported(self, empty_screen, button_catalog):
+        params = {
+            "x": "10",
+            "y": "20",
+            "width": "120",
+            "height": "40",
+            "input_actions": [
+                {
+                    "event": "OnMouseClick",
+                    "type": "st_snippet",
+                    "values": {"snippet": "HMI.PanelStart := TRUE;"},
+                },
+                {
+                    "event": "OnMouseDown",
+                    "type": "toggle_variable",
+                    "values": {"variable": "HMI.PanelStart"},
+                },
+                {
+                    "event": "OnMouseUp",
+                    "type": "change_screen",
+                    "values": {"screen": "CoolingTower"},
+                },
+            ],
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, button_catalog, params
+        )
+        assert "OnMouseClick" in new_xml
+        assert "OnMouseDown" in new_xml
+        assert "OnMouseUp" in new_xml
+        assert "STSnippet" in new_xml
+        assert "HMI.PanelStart := TRUE;" in new_xml
+        assert "ToggleVariable" in new_xml
+        assert "Assign33" in new_xml
+        assert "CoolingTower" in new_xml
+
+    def test_svg_button_action_parser(self):
+        svg = """<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
+          <defs><style>:root{ --primary:#2277cc; }</style></defs>
+          <rect x="10" y="20" width="120" height="40" data-cds-type="button"
+                data-text="Action"
+                data-cds-action="TOGGLE HMI.PanelStart || OnMouseClick: ST HMI.PanelStart := TRUE;"/>
+        </svg>"""
+        parsed = svg_import.parse_svg(svg)
+        button = parsed["elements"][0]
+        assert button["type"] == "button"
+        assert button["params"]["configured_inputs"][0]["type"] == "toggle"
+        assert button["params"]["configured_inputs"][0]["values"]["variable"] == "HMI.PanelStart"
+        assert button["params"]["input_actions"][0]["event"] == "OnMouseClick"
+        assert button["params"]["input_actions"][0]["type"] == "st_snippet"
 
     def test_invalid_color_raises(self):
         with pytest.raises(builder.BuilderError):

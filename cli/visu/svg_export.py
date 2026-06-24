@@ -66,14 +66,12 @@ def _member_value(element, member_id):
 
     Returns ``None`` when the member id is not present in the element.
     """
-    mlist = None
-    for el in element.iter():
-        if (
-            _strip_ns(el.tag) == "List"
-            and el.attrib.get("Name") == "VisualElemMemberList"
-        ):
-            mlist = el
-            break
+    member_container = _find_named(element, "Single", "VisualElemMemberList")
+    mlist = (
+        _find_named(member_container, "List", "VisualElemMemberList")
+        if member_container is not None
+        else None
+    )
     if mlist is None:
         return None
     for member in list(mlist):
@@ -429,8 +427,8 @@ def _render_textfield(element):
 def _render_button(element):
     """Render a button as ``<rect data-cds-type="button">``.
 
-    Colors are left as-is (struct + CanonicalName) per §5 forward rule for
-    controls.  The caption goes into ``data-text``.
+    Caption goes into ``data-text``. Colors are resolved from uint literals
+    (set via themeable_colors) or struct + CanonicalName.
     """
     _x = _member_value(element, _MID_X)
     _y = _member_value(element, _MID_Y)

@@ -12,6 +12,7 @@ existing screen file).
 
 from __future__ import print_function
 
+import json
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -27,6 +28,7 @@ _ROOT_TYPE = "{6198ad31-4b98-445c-927f-3258a0e82fe3}"
 # Indentation matching the template / ground-truth file.
 _EL = " " * 12  # the <Single Type="{f86c2928...}"> element block indent
 _MB = " " * 16  # member block indent inside VisualElemMemberList
+_INPUT_ACTIONS = None
 
 
 class BuilderError(Exception):
@@ -138,6 +140,31 @@ def _render_color_uint(member_id, unsigned_int):
         mt=_MEMBER_TYPE,
         id=member_id,
         val=str(unsigned_int),
+    )
+
+
+def _render_font_color_struct(member_id, signed_int):
+    """Render a font colour member as struct form.
+
+    CODESYS labels/textfields apply font colour ONLY when the member is a
+    struct with CanonicalName; the short-form uint value is silently ignored.
+    """
+    return (
+        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
+        '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
+        '{mb}  <List Name="Value" Type="System.Collections.ArrayList">\n'
+        '{mb}    <Single Type="{ct}" Method="IArchivable">\n'
+        '{mb}      <Single Name="Color" Type="int">{color}</Single>\n'
+        '{mb}      <Single Name="CanonicalName" Type="string">Font-Default-Color</Single>\n'
+        "{mb}    </Single>\n"
+        "{mb}  </List>\n"
+        "{mb}</Single>\n"
+    ).format(
+        mb=_MB,
+        mt=_MEMBER_TYPE,
+        ct=_COLOR_TYPE,
+        id=member_id,
+        color=str(signed_int),
     )
 
 
@@ -471,6 +498,10 @@ def _render_golden_element(
     text_val = params.get("text", "")
     text_id_val = params.get("text_id", "")
     text_var_val = params.get("text_var", "")
+    tap_var_val = params.get("tap_var", "")
+    toggle_var_val = params.get("toggle_var", "")
+    font_name_val = params.get("font_name", "Arial")
+    font_size_val = params.get("font_size", "12")
 
     # Color override: for primitives, emit themeable colors as uint literals.
     # Controls (button) keep struct form -> no placeholder substitution.
@@ -586,6 +617,30 @@ def _render_golden_element(
         block = block.replace("@@TEXT_ID@@", _esc(text_id_val))
     if "@@TEXT_VAR@@" in block:
         block = block.replace("@@TEXT_VAR@@", _esc(text_var_val))
+    if "@@TAP_VAR@@" in block:
+        block = block.replace("@@TAP_VAR@@", _esc(tap_var_val))
+    if "@@CONFIGURED_COMPLEX_INPUTS@@" in block:
+        block = block.replace(
+            "@@CONFIGURED_COMPLEX_INPUTS@@",
+            _render_configured_complex_inputs(params, tap_var_val, toggle_var_val),
+        )
+    if "@@VISUAL_ELEMENT_INPUT_ACTIONS@@" in block:
+        block = block.replace(
+            "@@VISUAL_ELEMENT_INPUT_ACTIONS@@",
+            _render_visual_element_input_actions(params.get("input_actions", [])),
+        )
+    if "@@FONT_NAME@@" in block:
+        block = block.replace("@@FONT_NAME@@", _esc(font_name_val))
+    if "@@FONT_SIZE@@" in block:
+        block = block.replace("@@FONT_SIZE@@", str(int(float(font_size_val))))
+
+    # Alignment (label/textfield).
+    if "@@H_ALIGN@@" in block:
+        h_align = params.get("h_align", "HCENTER")
+        block = block.replace("@@H_ALIGN@@", _esc(h_align))
+    if "@@V_ALIGN@@" in block:
+        v_align = params.get("v_align", "VCENTER")
+        block = block.replace("@@V_ALIGN@@", _esc(v_align))
 
     # Color override placeholders.
     if "@@FILL_COLOR_UINT@@" in block and fill_uint is not None:
@@ -594,6 +649,14 @@ def _render_golden_element(
         block = block.replace("@@FRAME_COLOR_UINT@@", frame_uint)
     if "@@FONT_COLOR_UINT@@" in block:
         block = block.replace("@@FONT_COLOR_UINT@@", font_color_uint)
+    if "@@FONT_COLOR_STRUCT@@" in block:
+        fc_int = int(font_color_uint) & 0xFFFFFFFF
+        if fc_int >= 0x80000000:
+            fc_signed = fc_int - 0x100000000
+        else:
+            fc_signed = fc_int
+        fc_member = _render_font_color_struct(663104332, fc_signed)
+        block = block.replace("@@FONT_COLOR_STRUCT@@", fc_member)
     if "@@FONT_COLOR_SIGNED@@" in block:
         fc_int = int(font_color_uint) & 0xFFFFFFFF
         if fc_int >= 0x80000000:
@@ -611,6 +674,162 @@ def _render_golden_element(
         "center_y": center_y,
     }
     return block, geometry
+
+
+def _render_configured_complex_inputs(params, tap_var, toggle_var):
+    actions = list(params.get("configured_inputs", []))
+    if tap_var:
+        actions.append({"type": "tap", "values": {"variable": tap_var}})
+    if toggle_var:
+        actions.append(
+            {
+                "type": "toggle",
+                "values": {
+                    "variable": toggle_var,
+                    "toggle_on": params.get("toggle_on", "False"),
+                },
+            }
+        )
+    if not actions:
+        return (
+            '              <Array Name="ConfiguredComplexInputs" '
+            'Type="{1de566f6-72a7-494c-9353-9a418172c96e}" />'
+        )
+    rendered = []
+    for item in actions:
+        action = _configured_complex_input(item["type"])
+        members = _render_complex_input_members(action, item.get("values", {}))
+        rendered.append(_render_configured_complex_input(action, members))
+    return (
+        '              <Array Name="ConfiguredComplexInputs" Type="{1de566f6-72a7-494c-9353-9a418172c96e}">\n'
+        + "".join(rendered)
+        + "              </Array>"
+    )
+
+
+def _render_configured_complex_input(action, members):
+    block = (
+        '                <Single Type="{1de566f6-72a7-494c-9353-9a418172c96e}" Method="IArchivable">\n'
+        '                  <Null Name="DescriptionTree" />\n'
+        '                  <Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">\n'
+        '                    <List Name="VisualElemMemberList" Type="{a4b83bea-3742-489c-9fe8-d96d68dba7ab}">\n'
+        "{members}"
+        '                    </List>\n'
+        '                  </Single>\n'
+        '                  <Single Name="SignatureName" Type="string">@@SIGNATURE@@</Single>\n'
+        '                  <Single Name="Name" Type="string">@@NAME@@</Single>\n'
+        '                  <Single Name="Description" Type="string">@@DESCRIPTION@@</Single>\n'
+        '                </Single>\n'
+    )
+    block = block.replace("{members}", members)
+    block = block.replace("@@SIGNATURE@@", _esc(action["signature_name"]))
+    block = block.replace("@@NAME@@", _esc(action["name"]))
+    block = block.replace("@@DESCRIPTION@@", _esc(action["description"]))
+    return block
+
+
+def _configured_complex_input(name):
+    global _INPUT_ACTIONS
+    if _INPUT_ACTIONS is None:
+        path = os.path.join(os.path.dirname(__file__), "catalog", "input_actions.json")
+        with open(path, "r") as f:
+            _INPUT_ACTIONS = json.load(f)
+    try:
+        return _INPUT_ACTIONS["configured_complex_inputs"][name]
+    except KeyError:
+        raise BuilderError("Unknown configured complex input: {0}".format(name))
+
+
+def _render_complex_input_members(action, values):
+    rendered = []
+    for member in action.get("members", []):
+        value = values.get(member["name"], "")
+        rendered.append(
+            '                      <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">\n'
+            '                        <Single Name="Id" Type="long">@@MEMBER_ID@@</Single>\n'
+            '                        <Single Name="Value" Type="@@KIND@@">@@VALUE@@</Single>\n'
+            '                      </Single>\n'
+            .replace("@@MEMBER_ID@@", str(int(member["member_id"])))
+            .replace("@@KIND@@", _esc(member.get("kind", "string")))
+            .replace("@@VALUE@@", _esc(value))
+        )
+    return "".join(rendered)
+
+
+def _visual_input_action(name):
+    global _INPUT_ACTIONS
+    if _INPUT_ACTIONS is None:
+        _configured_complex_input("tap")
+    try:
+        return _INPUT_ACTIONS["visual_element_input_actions"][name]
+    except KeyError:
+        raise BuilderError("Unknown visual element input action: {0}".format(name))
+
+
+def _render_visual_element_input_actions(actions):
+    if not actions:
+        return (
+            '              <Dictionary Type="System.Collections.Hashtable" '
+            'Name="VisualElementInputActions" />'
+        )
+    by_event = {}
+    for action in actions:
+        by_event.setdefault(action["event"], []).append(action)
+    entries = []
+    for event in sorted(by_event):
+        entries.append(_render_input_action_entry(event, by_event[event]))
+    return (
+        '              <Dictionary Type="System.Collections.Hashtable" Name="VisualElementInputActions">\n'
+        + "".join(entries)
+        + "              </Dictionary>"
+    )
+
+
+def _render_input_action_entry(event, actions):
+    cfg = _visual_input_action("array_type")
+    rendered_actions = []
+    for action in actions:
+        spec = _visual_input_action(action["type"])
+        rendered_actions.append(_render_input_action(spec, action.get("values", {})))
+    block = (
+        "                <Entry>\n"
+        "                  <Key>\n"
+        '                    <Single Type="string">@@EVENT@@</Single>\n'
+        "                  </Key>\n"
+        "                  <Value>\n"
+        '                    <Array Type="@@ARRAY_TYPE@@">\n'
+        "@@ACTIONS@@"
+        "                    </Array>\n"
+        "                  </Value>\n"
+        "                </Entry>\n"
+    )
+    return (
+        block.replace("@@EVENT@@", _esc(event))
+        .replace("@@ARRAY_TYPE@@", _esc(cfg))
+        .replace("@@ACTIONS@@", "".join(rendered_actions))
+    )
+
+
+def _render_input_action(spec, values):
+    fields = []
+    for field in spec.get("fields", []):
+        kind = field["kind"]
+        xml_name = field["xml_name"]
+        if kind == "null":
+            fields.append('                        <Null Name="{0}" />\n'.format(_esc(xml_name)))
+            continue
+        value = values.get(field.get("name"), field.get("default", ""))
+        fields.append(
+            '                        <Single Name="@@NAME@@" Type="@@TYPE@@">@@VALUE@@</Single>\n'
+            .replace("@@NAME@@", _esc(xml_name))
+            .replace("@@TYPE@@", _esc(kind))
+            .replace("@@VALUE@@", _esc(value))
+        )
+    return (
+        '                      <Single Type="@@TYPE@@" Method="IArchivable">\n'
+        + "".join(fields)
+        + "                      </Single>\n"
+    ).replace("@@TYPE@@", _esc(spec["type"]))
 
 
 # --------------------------------------------------------------------------
@@ -858,14 +1077,12 @@ def _named_text(parent, name):
 def _member_map(element):
     """Map member id -> {value, kind, color, canonical_name} for one element."""
     out = {}
-    mlist = None
-    for el in element.iter():
-        if (
-            _strip_ns(el.tag) == "List"
-            and el.attrib.get("Name") == "VisualElemMemberList"
-        ):
-            mlist = el
-            break
+    member_container = _find_named(element, "Single", "VisualElemMemberList")
+    mlist = (
+        _find_named(member_container, "List", "VisualElemMemberList")
+        if member_container is not None
+        else None
+    )
     if mlist is None:
         return out
     for member in list(mlist):
