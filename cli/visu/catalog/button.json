@@ -5,8 +5,7 @@
   "visualElementIsRectangle": true,
   "elementVersion": 1,
   "golden_template": "element_button.xml.tmpl",
-  "description": "Push-button control. Geometry + caption only in v1; colors left style-linked (not overridden). Actions compiled in Phase 6.",
-
+  "description": "Push-button control. Geometry, caption, colors, and simple tap/toggle variable binding.",
   "geometry": {
     "x": 1649127785,
     "y": 357335551,
@@ -15,7 +14,6 @@
     "center_x": 550940142,
     "center_y": 1473355128
   },
-
   "invariants": [
     {
       "id": "bounds",
@@ -30,45 +28,234 @@
       "textid_member_id": 823443203
     }
   ],
-
   "params": {
-    "x": {"member_id": 1649127785, "kind": "int", "geometry": true, "doc": "X (left), px"},
-    "y": {"member_id": 357335551, "kind": "int", "geometry": true, "doc": "Y (top), px"},
-    "width": {"member_id": 2422045748, "kind": "int", "geometry": true, "doc": "Width, px"},
-    "height": {"member_id": 2134141914, "kind": "int", "geometry": true, "doc": "Height, px"},
-    "text": {"member_id": 390574330, "kind": "string", "requires": "textid", "doc": "Button caption (requires a GlobalTextList Text ID 823443203 when non-empty)"},
-    "text_id": {"member_id": 823443203, "kind": "string", "doc": "Text-ID reference into GlobalTextList"},
-    "fill": {"member_id": 2812299069, "kind": "color", "canonical_name": "BasicElement-Fill-Color", "doc": "Fill color (NOT overridden for buttons)"},
-    "frame": {"member_id": 494569607, "kind": "color", "canonical_name": "BasicElement-Frame-Color", "doc": "Frame color (NOT overridden for buttons)"},
-    "tooltip": {"member_id": 571893170, "kind": "string", "doc": "Tooltip text"},
-    "border_width": {"member_id": 2678395525, "kind": "uint", "doc": "Border/line width"}
+    "x": {
+      "member_id": 1649127785,
+      "kind": "int",
+      "geometry": true,
+      "doc": "X (left), px"
+    },
+    "y": {
+      "member_id": 357335551,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Y (top), px"
+    },
+    "width": {
+      "member_id": 2422045748,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Width, px"
+    },
+    "height": {
+      "member_id": 2134141914,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Height, px"
+    },
+    "text": {
+      "member_id": 390574330,
+      "kind": "string",
+      "requires": "textid",
+      "doc": "Button caption (requires a GlobalTextList Text ID 823443203 when non-empty)"
+    },
+    "text_id": {
+      "member_id": 823443203,
+      "kind": "string",
+      "doc": "Text-ID reference into GlobalTextList"
+    },
+    "fill": {
+      "member_id": 2812299069,
+      "kind": "color",
+      "canonical_name": "BasicElement-Fill-Color",
+      "doc": "Fill color (NOT overridden for buttons)"
+    },
+    "frame": {
+      "member_id": 494569607,
+      "kind": "color",
+      "canonical_name": "BasicElement-Frame-Color",
+      "doc": "Frame color (NOT overridden for buttons)"
+    },
+    "tooltip": {
+      "member_id": 571893170,
+      "kind": "string",
+      "doc": "Tooltip text"
+    },
+    "tap_var": {
+      "member_id": 1186196937,
+      "kind": "string",
+      "doc": "Tap/toggle variable set by the native CODESYS button via Visu_TapInput, e.g. HMI.PanelStart"
+    },
+    "toggle_var": {
+      "member_id": 1186196937,
+      "kind": "string",
+      "doc": "Toggle variable set by the native CODESYS button via Visu_ToggleInput, e.g. HMI.PanelStart"
+    },
+    "input_actions": {
+      "kind": "list",
+      "doc": "VisualElementInputActions entries such as OnMouseClick ST snippet, toggle variable, or change screen"
+    },
+    "border_width": {
+      "member_id": 2678395525,
+      "kind": "uint",
+      "doc": "Border/line width"
+    }
   },
-
   "base_members": [
-    {"id": 571893170, "form": "scalar", "value_type": "string", "value": ""},
-    {"id": 1225741287, "form": "scalar", "value_type": "string", "value": "VISU_ST_STYLE"},
-    {"id": 1869484343, "form": "scalar", "value_type": "short", "value": "5"},
-    {"id": 494569607, "form": "color", "color": "-16777216", "canonical_name": "BasicElement-Frame-Color"},
-    {"id": 2812299069, "form": "color", "color": "-1", "canonical_name": "BasicElement-Fill-Color"},
-    {"id": 2340015797, "form": "scalar", "value_type": "string", "value": "HCENTER"},
-    {"id": 2565699834, "form": "scalar", "value_type": "string", "value": "VCENTER"},
-    {"id": 1603690730, "form": "scalar", "value_type": "string", "value": "Arial"},
-    {"id": 4253639993, "form": "scalar", "value_type": "short", "value": "12"},
-    {"id": 1649127785, "form": "scalar", "value_type": "int", "value": "0", "role": "x"},
-    {"id": 357335551, "form": "scalar", "value_type": "int", "value": "0", "role": "y"},
-    {"id": 2422045748, "form": "scalar", "value_type": "int", "value": "100", "role": "width"},
-    {"id": 2134141914, "form": "scalar", "value_type": "int", "value": "100", "role": "height"},
-    {"id": 3729828405, "form": "font_descriptor"},
-    {"id": 550940142, "form": "scalar", "value_type": "int", "value": "50", "role": "center_x"},
-    {"id": 1473355128, "form": "scalar", "value_type": "int", "value": "50", "role": "center_y"},
-    {"id": 2678395525, "form": "scalar", "value_type": "uint", "value": "1"},
-    {"id": 564465120, "form": "scalar", "value_type": "string", "value": "VISU_ST_STYLE", "role": "shape"},
-    {"id": 823443203, "form": "scalar", "value_type": "string", "value": "", "role": "text_id"},
-    {"id": 390574330, "form": "scalar", "value_type": "string", "value": "", "role": "text"},
-    {"id": 2597686782, "form": "scalar", "value_type": "bool", "value": "True"},
-    {"id": 2010420073, "form": "scalar", "value_type": "string", "value": ""}
+    {
+      "id": 571893170,
+      "form": "scalar",
+      "value_type": "string",
+      "value": ""
+    },
+    {
+      "id": 1225741287,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VISU_ST_STYLE"
+    },
+    {
+      "id": 1869484343,
+      "form": "scalar",
+      "value_type": "short",
+      "value": "5"
+    },
+    {
+      "id": 494569607,
+      "form": "color",
+      "color": "-16777216",
+      "canonical_name": "BasicElement-Frame-Color"
+    },
+    {
+      "id": 2812299069,
+      "form": "color",
+      "color": "-1",
+      "canonical_name": "BasicElement-Fill-Color"
+    },
+    {
+      "id": 2340015797,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "HCENTER"
+    },
+    {
+      "id": 2565699834,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VCENTER"
+    },
+    {
+      "id": 1603690730,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "Arial"
+    },
+    {
+      "id": 4253639993,
+      "form": "scalar",
+      "value_type": "short",
+      "value": "12"
+    },
+    {
+      "id": 1649127785,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "x"
+    },
+    {
+      "id": 357335551,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "y"
+    },
+    {
+      "id": 2422045748,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "width"
+    },
+    {
+      "id": 2134141914,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "height"
+    },
+    {
+      "id": 3729828405,
+      "form": "font_descriptor"
+    },
+    {
+      "id": 550940142,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "50",
+      "role": "center_x"
+    },
+    {
+      "id": 1473355128,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "50",
+      "role": "center_y"
+    },
+    {
+      "id": 2678395525,
+      "form": "scalar",
+      "value_type": "uint",
+      "value": "1"
+    },
+    {
+      "id": 564465120,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VISU_ST_STYLE",
+      "role": "shape"
+    },
+    {
+      "id": 823443203,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "text_id"
+    },
+    {
+      "id": 390574330,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "text"
+    },
+    {
+      "id": 2597686782,
+      "form": "scalar",
+      "value_type": "bool",
+      "value": "True"
+    },
+    {
+      "id": 1647042231,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "tap_var"
+    },
+    {
+      "id": 1999528970,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "tap_var"
+    },
+    {
+      "id": 2010420073,
+      "form": "scalar",
+      "value_type": "string",
+      "value": ""
+    }
   ],
-
   "font_descriptor": {
     "FontStyle": "0",
     "AdditionalFontStyle": "0",
@@ -79,6 +266,23 @@
     "FontSize": "12",
     "ScriptIdentification": "0",
     "DoubleFontSize": "0",
-    "NamedColor": {"Color": "-16777216", "CanonicalName": "Font-Default-Color"}
+    "NamedColor": {
+      "Color": "-16777216",
+      "CanonicalName": "Font-Default-Color"
+    }
+  },
+  "themeable_colors": {
+    "fill": {
+      "member_id": 2812299069,
+      "role": "primary",
+      "canonical_name": "BasicElement-Fill-Color",
+      "default_signed": -1
+    },
+    "frame": {
+      "member_id": 494569607,
+      "role": "frame",
+      "canonical_name": "BasicElement-Frame-Color",
+      "default_signed": -16777216
+    }
   }
 }

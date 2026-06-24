@@ -253,13 +253,15 @@ def check_screen(project_view_dir, screen, folder):
                     "CODESYS will reject the import".format(el["identifier"])
                 )
 
-        boxes.append((el["identifier"], x, y, w, h))
+        boxes.append((el["identifier"], el.get("type") or "", x, y, w, h))
 
     # Basic overlap detection.
     for i in range(len(boxes)):
         for j in range(i + 1, len(boxes)):
             a, b = boxes[i], boxes[j]
-            if _overlap(a[1:], b[1:]):
+            if _skip_overlap_check(a, b):
+                continue
+            if _overlap(a[2:], b[2:]):
                 problems.append("overlap: {0} overlaps {1}".format(a[0], b[0]))
 
     if problems:
@@ -274,6 +276,21 @@ def _overlap(a, b):
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
     return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay)
+
+
+def _skip_overlap_check(a, b):
+    """Ignore decorative/nested overlaps that are normal in HMI compositions."""
+    if a[1] == "VisuFbElemLine" or b[1] == "VisuFbElemLine":
+        return True
+    if a[1] == "VisuFbElemSimple" or b[1] == "VisuFbElemSimple":
+        return True
+    return _contains(a[2:], b[2:]) or _contains(b[2:], a[2:])
+
+
+def _contains(outer, inner):
+    ox, oy, ow, oh = outer
+    ix, iy, iw, ih = inner
+    return ix >= ox and iy >= oy and ix + iw <= ox + ow and iy + ih <= oy + oh
 
 
 # ---------------------------------------------------------------------------

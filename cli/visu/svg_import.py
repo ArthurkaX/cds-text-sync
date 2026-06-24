@@ -229,30 +229,72 @@ def _parse_line(elem, theme):
     return {"type": "line", "params": params}
 
 
+def _estimate_text_width(text, font_size=12):
+    """Rough estimate of CSS text width in px."""
+    if not text:
+        return 20
+    avg = int(font_size) * 0.65
+    return max(20, int(len(text) * avg) + 8)
+
+
+def _estimate_text_height(font_size=12):
+    return max(16, int(font_size) * 1.4)
+
+
+_int_attrs = ("x", "y", "width", "height")
+
+
 def _parse_text(elem, theme):
-    """Parse a ``<text>`` -> label with caption text."""
+    """Parse a ``<text>`` -> label with caption text.
+
+    SVG ``x``/``y`` uses top-left origin for x and **baseline** for y.
+    CODESYS labels use a bounding box with alignment, so we convert:
+    - y = SVG_y - font_size  (baseline -> top of box)
+    - default alignment: LEFT / TOP (not HCENTER/VCENTER)
+    - ``text-anchor="middle"`` maps to HCENTER
+    """
     x = _float(elem.get("x"), 0)
     y = _float(elem.get("y"), 0)
-    w = _float(elem.get("data-width"), 200)
-    h = _float(elem.get("data-height"), 20)
+    fs = elem.get("font-size")
+    font_size = int(_float(fs, 12))
     text_content = (elem.text or "").strip()
+
+    # Default data-width / data-height from text content estimate.
+    def_w = _estimate_text_width(text_content, font_size)
+    def_h = _estimate_text_height(font_size)
+    w = _float(elem.get("data-width"), def_w)
+    h = _float(elem.get("data-height"), def_h)
+
+    # Convert SVG baseline-y to CODESYS top-y.
+    y_top = y - font_size
 
     font_color = _resolve(elem.get("fill"), theme)
 
     params = {
         "x": str(int(x)),
-        "y": str(int(y)),
+        "y": str(int(y_top)),
         "width": str(int(w)),
         "height": str(int(h)),
         "text": text_content,
     }
 
+    # SVG text-anchor="middle" -> HCENTER
+    anchor = elem.get("text-anchor")
+    if anchor == "middle":
+        params["h_align"] = "HCENTER"
+        params["v_align"] = "VCENTER"
+        # Restore y to baseline-centered for middle anchor.
+        params["y"] = str(int(y - h / 2))
+    else:
+        # CODESYS template defaults are HCENTER/VCENTER; override to LEFT/TOP.
+        params["h_align"] = "LEFT"
+        params["v_align"] = "TOP"
+
     if font_color is not None:
         params["font_color"] = font_color
 
-    fs = elem.get("font-size")
     if fs is not None:
-        params["font_size"] = str(int(_float(fs, 12)))
+        params["font_size"] = str(font_size)
 
     ff = elem.get("font-family")
     if ff is not None:
@@ -264,8 +306,8 @@ def _parse_text(elem, theme):
 def _parse_button(elem, theme):
     """Parse a ``<rect data-cds-type="button">`` -> button control.
 
-    Per plan section 5, buttons keep their colours style-linked (the golden
-    template is not overridden), so fill/frame are intentionally *not* emitted.
+    Emits fill/frame as overridable uint literals (themeable) so buttons
+    get visible colors, not just style-linked defaults.
     """
     x = _float(elem.get("x"), 0)
     y = _float(elem.get("y"), 0)
@@ -273,6 +315,11 @@ def _parse_button(elem, theme):
     h = _float(elem.get("height"), 100)
     text = elem.get("data-text", "")
     text_id = elem.get("data-text-id", "")
+    tap_var = _parse_tap_var(elem.get("data-cds-tap", ""))
+    actions = _parse_button_actions(elem.get("data-cds-action", ""))
+
+    fill = _resolve(elem.get("fill"), theme)
+    stroke = _resolve(elem.get("stroke"), theme)
 
     params = {
         "x": str(int(x)),
@@ -282,17 +329,126 @@ def _parse_button(elem, theme):
         "text": text,
     }
 
+    if fill is not None:
+        params["fill"] = fill
+    if stroke is not None:
+        params["frame"] = stroke
+    if tap_var:
+        params["tap_var"] = tap_var
+    if actions["configured_inputs"]:
+        params["configured_inputs"] = actions["configured_inputs"]
+    if actions["input_actions"]:
+        params["input_actions"] = actions["input_actions"]
     if text_id:
         params["text_id"] = text_id
 
     return {"type": "button", "params": params}
 
 
+def _parse_tap_var(raw):
+    """Return variable name from a simple tap/toggle data-cds-tap action."""
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    lower = text.lower()
+    for prefix in ("tap:", "tap ", "toggle:", "toggle "):
+        if lower.startswith(prefix):
+            return text[len(prefix) :].strip()
+    return text
+
+
+def _parse_button_actions(raw):
+    """Parse data-cds-action for native button actions.
+
+    Supported forms:
+    - TAP HMI.Var
+    - TOGGLE HMI.Var
+    - OnMouseClick: ST HMI.Var := TRUE;
+    - OnMouseClick: toggle HMI.Var
+    - OnMouseClick: screen CoolingTower
+    Multiple actions can be separated with ``||``.
+    """
+    result = {"configured_inputs": [], "input_actions": []}
+    text = (raw or "").strip()
+    if not text:
+        return result
+    for part in [p.strip() for p in text.split("||") if p.strip()]:
+        if ":" in part and part.split(":", 1)[0].strip().lower().startswith("on"):
+            event, body = part.split(":", 1)
+            result["input_actions"].append(_parse_event_action(event.strip(), body.strip()))
+        else:
+            result["configured_inputs"].append(_parse_complex_action(part))
+    return result
+
+
+def _parse_complex_action(text):
+    lower = text.lower()
+    for prefix in ("tap:", "tap "):
+        if lower.startswith(prefix):
+            return {
+                "type": "tap",
+                "values": {"variable": text[len(prefix) :].strip()},
+            }
+    for prefix in ("toggle:", "toggle "):
+        if lower.startswith(prefix):
+            return {
+                "type": "toggle",
+                "values": {
+                    "variable": text[len(prefix) :].strip(),
+                    "toggle_on": "False",
+                },
+            }
+    raise ValueError("Unsupported data-cds-action complex action: {0}".format(text))
+
+
+def _parse_event_action(event, body):
+    lower = body.lower()
+    if lower.startswith("st "):
+        return {
+            "event": event,
+            "type": "st_snippet",
+            "values": {"snippet": body[3:].strip()},
+        }
+    if lower.startswith("st:"):
+        return {
+            "event": event,
+            "type": "st_snippet",
+            "values": {"snippet": body[3:].strip()},
+        }
+    if lower.startswith("toggle "):
+        return {
+            "event": event,
+            "type": "toggle_variable",
+            "values": {"variable": body[7:].strip()},
+        }
+    if lower.startswith("toggle:"):
+        return {
+            "event": event,
+            "type": "toggle_variable",
+            "values": {"variable": body[7:].strip()},
+        }
+    if lower.startswith("screen "):
+        return {
+            "event": event,
+            "type": "change_screen",
+            "values": {"screen": body[7:].strip()},
+        }
+    if lower.startswith("screen:"):
+        return {
+            "event": event,
+            "type": "change_screen",
+            "values": {"screen": body[7:].strip()},
+        }
+    raise ValueError(
+        "Unsupported data-cds-action event action: {0}: {1}".format(event, body)
+    )
+
+
 def _parse_textfield(elem, theme):
     """Parse a ``<text data-cds-type="textfield">`` -> textfield control.
 
     Textfield is like Label but can show runtime variable values.
-    ``fill`` controls the font colour (emitted as uint literal).
+    ``fill`` controls the font colour. Alignment same as SVG ``<text>``.
     """
     x = _float(elem.get("x"), 0)
     y = _float(elem.get("y"), 0)
@@ -301,21 +457,33 @@ def _parse_textfield(elem, theme):
     text = elem.text or ""
     text = text.strip() if text else ""
     text_var = elem.get("data-text-var", "")
-    font_size = elem.get("font-size", "12")
+    fs = elem.get("font-size")
+    font_size = int(_float(fs, 12)) if fs else 12
     font_name = elem.get("font-family", "Arial")
+
+    y_top = y - font_size
 
     font_color = _resolve(elem.get("fill"), theme)
 
     params = {
         "x": str(int(x)),
-        "y": str(int(y)),
+        "y": str(int(y_top)),
         "width": str(int(w)),
         "height": str(int(h)),
         "text": text,
         "text_var": text_var,
-        "font_size": font_size,
+        "font_size": str(font_size),
         "font_name": font_name,
     }
+
+    anchor = elem.get("text-anchor")
+    if anchor == "middle":
+        params["h_align"] = "HCENTER"
+        params["v_align"] = "VCENTER"
+        params["y"] = str(int(y - h / 2))
+    else:
+        params["h_align"] = "LEFT"
+        params["v_align"] = "TOP"
 
     if font_color is not None:
         params["font_color"] = font_color

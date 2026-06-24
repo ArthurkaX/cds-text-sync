@@ -18,7 +18,11 @@ object using `cts visu from-svg`.
 1. **Generate the SVG** according to the rules below and write it to the project
    at the path the user requested (or a sensible default named after the screen,
    e.g. `<screen>.svg`).
-2. **Try to compile it.** If `cts` is available in the environment, run:
+2. **Generate or update the GVL `.st` file** (see "GVL variable declarations"
+   section below) with ALL variables referenced by controls in the SVG.
+   This is **mandatory** — every variable used in `data-text-var` or
+   `data-cds-tap` must have a corresponding declaration.
+3. **Try to compile it.** If `cts` is available in the environment, run:
    ```sh
    cts visu from-svg <path-to-svg> --help
    ```
@@ -26,9 +30,9 @@ object using `cts visu from-svg`.
    then execute the actual compile command.  Prefer output names that match the
    target visualization object in the CODESYS project (commonly
    `Visu_<ScreenName>.xml` or a path under `project-view/`).
-3. If `cts` is **not** available, report this clearly and provide the exact
+4. If `cts` is **not** available, report this clearly and provide the exact
    command the user can run manually.
-4. Always report the compile result (success / error / not run).
+5. Always report the compile result (success / error / not run).
 
 ## Canvas
 
@@ -82,12 +86,12 @@ Full role set you may use (all optional): `background`, `surface`, `border`,
   `var(--role)` to a literal ARGB uint so the element gets a real colour and
   does **not** depend on the visual style (no "white elements").
 - Use literal hex `#RRGGBB` / `#RRGGBBAA` when you want a specific colour.
-- `<text fill="...">` controls **font colour** (the transpiler writes it as a literal uint).
+- `<text fill="...">` controls **font colour**.
 - **Background colour** is controlled by `--surface` in `:root`.
   You do NOT need a separate rect for it.
-- **Buttons** and **textfields** keep their colours style-linked —
-  `fill`/`stroke` is used for browser preview but **ignored** by the transpiler,
-  so the element inherits the project visual style.
+- **Textfields** use `fill` as their font colour.
+- **Native buttons** may still be affected by the project visual style. For
+  predictable coloured button-like visuals, use a plain `<rect>` plus `<text>`.
 
 ## Data attributes for controls
 
@@ -98,6 +102,13 @@ Full role set you may use (all optional): `background`, `surface`, `border`,
 ```
 - `data-text` — button caption. The transpiler allocates a Text-ID in the
   GlobalTextList automatically.
+- `data-cds-tap="TAP HMI.StartPump"` — bind the native CODESYS button
+  tap/toggle variable.
+- `data-cds-action` — optional native action binding. Supported forms:
+  `TAP HMI.StartPump`, `TOGGLE HMI.StartPump`,
+  `OnMouseClick: ST HMI.StartPump := TRUE;`,
+  `OnMouseDown: toggle HMI.StartPump`, and
+  `OnMouseUp: screen CoolingTower`. Separate multiple actions with `||`.
 
 ### Textfield (runtime variable display)
 ```xml
@@ -111,22 +122,109 @@ Full role set you may use (all optional): `background`, `surface`, `border`,
 - Text content — the display format string.
 - `fill="..."` — textfield font colour (optional, otherwise inherits style).
 
+## GVL variable declarations (mandatory)
+
+Every variable referenced by a control element **must** have a corresponding
+declaration in a GVL (Global Variable List) `.st` file. The transpiler only
+writes the visualization XML — it does **not** create GVL declarations
+automatically. You must create or update the GVL file manually.
+
+### Convention
+
+- Use `GVL_HMI.st` as the default GVL name for HMI-scope variables.
+  Place it under the application folder:
+  ```
+  project-view/Runtime/PLC Logic/Application/GVL_HMI.st
+  ```
+- If a GVL with a specific name already exists in the project (e.g.
+  `GVL_Routing`, `GVL_Sensors`), reuse it and add your HMI variables there
+  rather than creating a duplicate.
+
+### Format
+
+```iecst
+{attribute 'qualified_only'}
+VAR_GLOBAL
+	// HMI visualization variables
+	MyVariable : BOOL := FALSE;
+	MyCounter  : INT  := 0;
+	MyValue    : REAL := 0.0;
+END_VAR
+```
+
+- Begin with `{attribute 'qualified_only'}` to prevent name collisions.
+- Use `VAR_GLOBAL` / `END_VAR` block.
+- Declare each HMI variable with its correct type and an initial value.
+- Add a brief comment describing the variable's purpose.
+
+### What must be declared
+
+| Source | Attribute | Variable path example | Required GVL declaration |
+|--------|-----------|----------------------|--------------------------|
+| Textfield `data-text-var` | `data-text-var="HMI.Temperature"` | `HMI.Temperature` | `Temperature : REAL;` inside GVL named `HMI` or directly in `GVL_HMI` |
+| Button `data-cds-tap` action | `data-cds-tap="TAP HMI.StartPump"` | `HMI.StartPump` | `StartPump : BOOL;` inside GVL named `HMI` or directly in `GVL_HMI` |
+| Textfield `data-text-var` (structured) | `data-text-var="GVL_Sensors.Scale.Q"` | `GVL_Sensors.Scale.Q` | Already declared in `GVL_Sensors` — no new declaration needed (reference existing) |
+
+### Rules
+
+1. **Collect all unique variable paths** from every control in the SVG.
+2. **Normalise** the paths: if a path starts with a known GVL name (e.g.
+   `GVL_Sensors.`), verify that GVL already contains the declaration. If it
+   does not, add it to that GVL.
+3. **For flat `HMI.*` paths**, create or update the `GVL_HMI.st` file with
+   all variables as members of a single `VAR_GLOBAL` block.
+4. **Do not duplicate** existing declarations. Check the project's existing
+   GVL files first before creating new ones.
+5. **Report** which GVL file was created/updated in your workflow summary.
+
+### Example — GVL_HMI.st for the Pump Station sketch
+
+```iecst
+{attribute 'qualified_only'}
+VAR_GLOBAL
+	// HMI visualization variables for Pump Station screen
+	StartPump    : BOOL := FALSE;
+	StopPump     : BOOL := FALSE;
+	Temperature  : REAL := 0.0;
+	MotorRunning : BOOL := FALSE;
+	MotorSpeed   : INT  := 0;
+END_VAR
+```
+
 ## Text & Text-IDs
 
 The transpiler **automatically** allocates Text-IDs for any element with
 non-empty text and writes the entry to the project's `GlobalTextList`. You
 do **not** need to specify a Text-ID yourself.
 
-## Actions (Phase 6 — not yet compiled)
+## Actions
 
-You may add `data-cds-tap` for documentation / design purposes, but the
-transpiler does **not** compile it into CODESYS InputActions yet:
+You may add `data-cds-tap` for simple native button tap bindings:
 
 ```xml
-<rect data-cds-type="button" data-text="Stop" data-cds-tap="st: fbMotor.Stop();" .../>
+<rect data-cds-type="button" data-text="Stop" data-cds-tap="TAP HMI.StopPump" .../>
 ```
 
-Grammar: `st: <ST code>` or `toggle: <variable>`.
+Use `data-cds-action` for broader button actions:
+
+```xml
+<rect data-cds-type="button" data-text="Toggle"
+      data-cds-action="TOGGLE HMI.StartPump" .../>
+<rect data-cds-type="button" data-text="Start"
+      data-cds-action="OnMouseClick: ST HMI.StartPump := TRUE;" .../>
+<rect data-cds-type="button" data-text="Next"
+      data-cds-action="OnMouseClick: screen CoolingTower" .../>
+```
+
+Compiled forms:
+- `TAP <variable>` -> CODESYS `Visu_TapInput`
+- `TOGGLE <variable>` -> CODESYS `Visu_ToggleInput`
+- `OnMouseClick/OnMouseDown/OnMouseUp: ST <snippet>` -> `STSnippet`
+- `OnMouseClick/OnMouseDown/OnMouseUp: toggle <variable>` -> `ToggleVariable`
+- `OnMouseClick/OnMouseDown/OnMouseUp: screen <screen>` -> change screen assignment
+
+Hotkeys are not generated yet; the observed CODESYS XML stores them at screen
+level under `Hotkeys`, not inside the button element.
 
 ## Unsupported (will raise a clear error)
 
