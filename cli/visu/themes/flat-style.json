@@ -1,0 +1,41 @@
+{
+  "name": "flat-style",
+  "source": {
+    "kind": "screenshot",
+    "path": "temp/FlatStyle.png",
+    "note": "Approximate CODESYS style preview palette sampled from screenshot."
+  },
+  "themes": [
+    {
+      "name": "Flat style",
+      "version": "4.9.0.0",
+      "vendor": "CODESYS",
+      "appearance": "light",
+      "style": {
+        "colors": {
+          "background": "#FFFFE1",
+          "surface": "#FFFFE1",
+          "panel": "#E6E6E6",
+          "border": "#969696",
+          "frame": "#505050",
+          "text": "#000000",
+          "text.muted": "#505050",
+          "on-surface": "#000000",
+          "element.active": "#ADE204",
+          "primary": "#505050",
+          "secondary": "#BEBEBE",
+          "accent": "#00F3FF",
+          "success": "#ADE204",
+          "warning": "#C47A00",
+          "error": "#D64040",
+          "muted": "#969696",
+          "hover": "#E6E6E6",
+          "disabled": "#BEBEBE",
+          "water": "#00F3FF",
+          "water-dim": "#00AFC0",
+          "metal": "#969696"
+        }
+      }
+    }
+  ]
+}

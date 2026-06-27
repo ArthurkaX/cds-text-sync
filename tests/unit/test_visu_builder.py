@@ -21,6 +21,7 @@ if _ROOT not in sys.path:
 from cli.visu import builder
 from cli.visu import catalog as _catalog
 from cli.visu import svg_import
+from cli.visu import themes
 
 # ===================================================================
 # Fixtures
@@ -303,6 +304,33 @@ class TestElement:
         ):
             assert cn in new_xml
 
+    def test_custom_primitive_uses_custom_theme_roles(
+        self, empty_screen, rectangle_catalog
+    ):
+        colors = themes.load_theme("flat-style")
+        params = {"x": "0", "y": "0", "width": "100", "height": "100"}
+        new_xml, _, _ = builder.append_element(
+            empty_screen, rectangle_catalog, params, theme_colors=colors
+        )
+        assert self._find_member(new_xml, 2812299069) == themes.resolve_color_unsigned(
+            "var(--custom-fill)", colors
+        )
+        assert self._find_member(new_xml, 494569607) == themes.resolve_color_unsigned(
+            "var(--custom-frame)", colors
+        )
+
+    def test_native_button_without_explicit_colors_keeps_style_defaults(
+        self, empty_screen, button_catalog
+    ):
+        colors = themes.load_theme("flat-style")
+        params = {"x": "10", "y": "20", "width": "120", "height": "40"}
+        new_xml, _, _ = builder.append_element(
+            empty_screen, button_catalog, params, theme_colors=colors
+        )
+        assert "@@FILL_COLOR_UINT@@" not in new_xml
+        assert "@@FRAME_COLOR_UINT@@" not in new_xml
+        assert themes.resolve_color_unsigned("var(--custom-fill)", colors) not in new_xml
+
     def test_color_canonical_name_nonempty(self):
         """_render_color_member rejects empty canonical_name."""
         with pytest.raises(builder.BuilderError):
@@ -464,6 +492,35 @@ class TestColorParsing:
 
     def test_empty_returns_none(self):
         assert builder.parse_color("") is None
+
+
+class TestCodesysStyleThemes:
+    def test_flat_style_loads_codesys_roles(self):
+        colors = themes.load_theme("flat-style")
+        assert colors["surface"] == "#FFFFE1"
+        assert colors["primary"] == "#505050"
+
+    def test_full_codesys_style_display_name_loads(self):
+        colors = themes.load_theme(
+            "Style 7, Gradient double linear 1, 3.5.12.0 "
+            "(3S-Smart Software Solutions GmbH)"
+        )
+        assert colors["primary"] == "#5F5FA8"
+
+    def test_legacy_dark_alias_maps_to_codesys_style(self):
+        colors = themes.load_theme("dark")
+        assert colors == themes.load_theme("flat-style")
+
+    def test_screenshot_json_has_priority_over_builtin_fallback(self):
+        colors = themes.load_theme("style-6")
+        assert colors["primary"] == "#43A7D9"
+
+    def test_layout_and_custom_roles_are_derived(self):
+        colors = themes.load_theme("basic-style")
+        assert colors["screen.background"] == "#FFFFE1"
+        assert colors["custom.fill"] == colors["panel"]
+        assert colors["custom.frame"] == colors["frame"]
+        assert colors["divider"] == colors["border"]
 
 
 # ===================================================================

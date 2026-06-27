@@ -1,0 +1,41 @@
+{
+  "name": "style-6-gradient-axial-2",
+  "source": {
+    "kind": "screenshot",
+    "path": "temp/Style6.png",
+    "note": "Approximate CODESYS style preview palette sampled from screenshot."
+  },
+  "themes": [
+    {
+      "name": "Style 6, Gradient axial 2",
+      "version": "3.5.12.0",
+      "vendor": "3S-Smart Software Solutions GmbH",
+      "appearance": "light",
+      "style": {
+        "colors": {
+          "background": "#FFFFE1",
+          "surface": "#FFFFFF",
+          "panel": "#A5E0FF",
+          "border": "#003F5F",
+          "frame": "#003F5F",
+          "text": "#000000",
+          "text.muted": "#003F5F",
+          "on-surface": "#000000",
+          "element.active": "#43A7D9",
+          "primary": "#43A7D9",
+          "secondary": "#75C4ED",
+          "accent": "#007FBF",
+          "success": "#ADE204",
+          "warning": "#C47A00",
+          "error": "#6D0014",
+          "muted": "#64BAE6",
+          "hover": "#A5E0FF",
+          "disabled": "#A8A8A8",
+          "water": "#62C9FF",
+          "water-dim": "#007FBF",
+          "metal": "#999999"
+        }
+      }
+    }
+  ]
+}

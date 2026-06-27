@@ -1,0 +1,41 @@
+{
+  "name": "basic-style",
+  "source": {
+    "kind": "screenshot",
+    "path": "temp/BasicStyle.png",
+    "note": "Approximate CODESYS style preview palette sampled from screenshot."
+  },
+  "themes": [
+    {
+      "name": "Basic style",
+      "version": "4.9.0.0",
+      "vendor": "CODESYS",
+      "appearance": "light",
+      "style": {
+        "colors": {
+          "background": "#FFFFE1",
+          "surface": "#FFFFFF",
+          "panel": "#E6E6E6",
+          "border": "#A8A8A8",
+          "frame": "#999999",
+          "text": "#000000",
+          "text.muted": "#666666",
+          "on-surface": "#000000",
+          "element.active": "#ADE204",
+          "primary": "#E6E6E6",
+          "secondary": "#C0C0C0",
+          "accent": "#999999",
+          "success": "#ADE204",
+          "warning": "#C47A00",
+          "error": "#6D0014",
+          "muted": "#A8A8A8",
+          "hover": "#FDFDFD",
+          "disabled": "#B8B8B8",
+          "water": "#A5E0FF",
+          "water-dim": "#75C4ED",
+          "metal": "#999999"
+        }
+      }
+    }
+  ]
+}
