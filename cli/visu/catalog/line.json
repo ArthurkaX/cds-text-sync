@@ -75,13 +75,13 @@
   "themeable_colors": {
     "fill": {
       "member_id": 2812299069,
-      "role": "primary",
+      "role": "custom-fill",
       "canonical_name": "BasicElement-Fill-Color",
       "default_signed": -1
     },
     "frame": {
       "member_id": 494569607,
-      "role": "frame",
+      "role": "divider",
       "canonical_name": "BasicElement-Frame-Color",
       "default_signed": -16777216
     }

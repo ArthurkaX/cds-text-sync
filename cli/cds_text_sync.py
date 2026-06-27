@@ -1311,8 +1311,11 @@ from-svg SVG contract:
     p_visu.add_argument("--svg", default="", help="SVG file path (for from-svg)")
     p_visu.add_argument(
         "--theme",
-        default="dark",
-        help="Theme name: dark|light|hi-contrast (for from-svg)",
+        default="flat-style",
+        help=(
+            "CODESYS style preset for from-svg "
+            "(flat-style|basic-style|default|white-style|style-2...)"
+        ),
     )
     p_visu.add_argument("--out", default="", help="Output path (for from-svg, to-svg)")
     p_visu.add_argument(
@@ -1322,6 +1325,16 @@ from-svg SVG contract:
     )
     p_visu.add_argument(
         "--screen-name", default="", help="Screen name when --create-screen is used"
+    )
+    p_visu.add_argument(
+        "--gvl",
+        default="",
+        help="GVL name for auto-generated declarations (e.g. VisuVars)",
+    )
+    p_visu.add_argument(
+        "--gvl-file",
+        default="",
+        help="Explicit GVL .st file path",
     )
 
     # -- deprecated proxy subcommands for engine_cli -------------------------
@@ -1720,10 +1733,12 @@ def main():
                 svg_path=args.svg,
                 screen=args.screen,
                 folder=getattr(args, "folder", ""),
-                theme_name=getattr(args, "theme", "dark"),
+                theme_name=getattr(args, "theme", "flat-style"),
                 out_path=getattr(args, "out", ""),
                 create_screen=getattr(args, "create_screen", False),
                 screen_name=getattr(args, "screen_name", ""),
+                gvl_name=getattr(args, "gvl", None) or None,
+                gvl_file=getattr(args, "gvl_file", None) or None,
             )
         elif args.visu_action == "to-svg":
             if not args.screen:

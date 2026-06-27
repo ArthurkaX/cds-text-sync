@@ -18,6 +18,8 @@ import re
 import xml.etree.ElementTree as ET
 
 from . import catalog as _catalog
+from . import screen_xml as _screen_xml
+from .xml_helpers import find_named, named_text, strip_ns
 
 # Member block element type guid (every VisualElemMemberList entry).
 _MEMBER_TYPE = "{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}"
@@ -94,6 +96,47 @@ def parse_color(value):
         raise BuilderError("Invalid color value: {0}".format(value))
 
 
+def _resolve_uint_color(expr, theme_colors, fallback_uint):
+    """Resolve a color expression to an unsigned ARGB uint string.
+
+    1. If *expr* is None or empty, return *fallback_uint*.
+    2. Try theme-based resolution (``var(--role)`` or hex).
+    3. Fall back to raw ``parse_color``.
+    4. If all else fails, return *fallback_uint*.
+    """
+    if not expr:
+        return fallback_uint
+    if theme_colors:
+        from . import themes as _themes
+
+        try:
+            result = _themes.resolve_color_unsigned(expr, theme_colors)
+            if result is not None:
+                return result
+        except _themes.ThemeError:
+            pass
+    c = parse_color(expr)
+    if c is not None:
+        return str(int(c) & 0xFFFFFFFF)
+    return fallback_uint
+
+
+def _resolve_theme_role_uint(role, theme_colors, fallback_uint):
+    """Resolve a theme role name to an unsigned ARGB uint string.
+
+    Builds ``var(--<role>)`` and resolves against *theme_colors*.
+    Returns *fallback_uint* if the role is not found or no theme is active.
+    """
+    if not theme_colors:
+        return fallback_uint
+    from . import themes as _themes
+
+    try:
+        return _themes.resolve_color_unsigned("var(--" + role + ")", theme_colors)
+    except _themes.ThemeError:
+        return fallback_uint
+
+
 # --------------------------------------------------------------------------
 # Member rendering
 # --------------------------------------------------------------------------
@@ -141,6 +184,22 @@ def _render_color_uint(member_id, unsigned_int):
         id=member_id,
         val=str(unsigned_int),
     )
+
+
+def _remove_color_uint_placeholder(block, member_id):
+    """Remove an unresolved short-form color override from a template block."""
+    pattern = re.compile(
+        r"\n[ \t]*<Single Type=\"\{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02\}\" "
+        r"Method=\"IArchivable\">\n"
+        r"[ \t]*<Single Name=\"Id\" Type=\"long\">"
+        + re.escape(str(member_id))
+        + r"</Single>\n"
+        r"[ \t]*<Single Name=\"Value\" Type=\"uint\">@@(?:FILL|FRAME)_COLOR_UINT@@"
+        r"</Single>\n"
+        r"[ \t]*</Single>",
+        re.MULTILINE,
+    )
+    return pattern.sub("", block)
 
 
 def _render_font_color_struct(member_id, signed_int):
@@ -503,88 +562,58 @@ def _render_golden_element(
     font_name_val = params.get("font_name", "Arial")
     font_size_val = params.get("font_size", "12")
 
-    # Color override: for primitives, emit themeable colors as uint literals.
-    # Controls (button) keep struct form -> no placeholder substitution.
+    # Color override: custom primitives get theme defaults as uint literals.
+    # Native controls keep CODESYS visual-style colors unless SVG explicitly
+    # supplies fill/stroke.
     catalog_tcolors = catalog.get("themeable_colors", {})
+    native_style_defaults = catalog.get("type") in ("button", "textfield")
     fill_uint = None
     frame_uint = None
 
     # Resolve font color (needed for any text-bearing element, not just primitives).
     font_expr = params.get("font_color")
-    font_color_uint = None
-    if font_expr:
-        if theme_colors:
-            from . import themes as _themes
-
-            try:
-                font_color_uint = _themes.resolve_color_unsigned(
-                    font_expr, theme_colors
-                )
-            except _themes.ThemeError:
-                font_color_uint = None
-        if font_color_uint is None:
-            c = parse_color(font_expr)
-            if c is not None:
-                font_color_uint = str(int(c) & 0xFFFFFFFF)
-    if font_color_uint is None:
-        # Default: white text
-        font_color_uint = "4294967295"
+    font_color_uint = _resolve_uint_color(font_expr, theme_colors, "4294967295")
 
     if catalog_tcolors:
         # Resolve fill color.
         fill_expr = params.get("fill")
+        fill_role = catalog_tcolors.get("fill", {})
         if fill_expr is None:
-            # Use theme default.
-            if theme_colors:
-                from . import themes as _themes
-
-                try:
-                    fill_uint = _themes.resolve_color_unsigned(
-                        "var(--" + catalog_tcolors["fill"]["role"] + ")", theme_colors
+            # Use theme default for custom primitives only.
+            if not native_style_defaults:
+                if theme_colors and fill_role.get("role"):
+                    fill_uint = _resolve_theme_role_uint(
+                        fill_role["role"],
+                        theme_colors,
+                        str(int(fill_role.get("default_signed", -1)) & 0xFFFFFFFF),
                     )
-                except _themes.ThemeError:
-                    # Theme role not found -> use solid white
-                    fill_uint = "4294967295"
+                else:
+                    fill_uint = str(
+                        int(fill_role.get("default_signed", -1)) & 0xFFFFFFFF
+                    )
         else:
-            if theme_colors:
-                from . import themes as _themes
-
-                try:
-                    fill_uint = _themes.resolve_color_unsigned(fill_expr, theme_colors)
-                except _themes.ThemeError:
-                    fill_uint = None
-            if fill_uint is None:
-                c = parse_color(fill_expr)
-                if c is not None:
-                    fill_uint = str(int(c) & 0xFFFFFFFF)
+            fill_uint = _resolve_uint_color(fill_expr, theme_colors, None)
 
         # Resolve frame color.
         frame_expr = params.get("frame")
+        frame_role = catalog_tcolors.get("frame", {})
         if frame_expr is None:
-            if theme_colors:
-                from . import themes as _themes
-
-                try:
-                    frame_uint = _themes.resolve_color_unsigned(
-                        "var(--" + catalog_tcolors["frame"]["role"] + ")", theme_colors
+            if not native_style_defaults:
+                if theme_colors and frame_role.get("role"):
+                    frame_uint = _resolve_theme_role_uint(
+                        frame_role["role"],
+                        theme_colors,
+                        str(
+                            int(frame_role.get("default_signed", -16777216))
+                            & 0xFFFFFFFF
+                        ),
                     )
-                except _themes.ThemeError:
-                    # Theme role not found -> use solid black
-                    frame_uint = "4278190080"
+                else:
+                    frame_uint = str(
+                        int(frame_role.get("default_signed", -16777216)) & 0xFFFFFFFF
+                    )
         else:
-            if theme_colors:
-                from . import themes as _themes
-
-                try:
-                    frame_uint = _themes.resolve_color_unsigned(
-                        frame_expr, theme_colors
-                    )
-                except _themes.ThemeError:
-                    frame_uint = None
-            if frame_uint is None:
-                c = parse_color(frame_expr)
-                if c is not None:
-                    frame_uint = str(int(c) & 0xFFFFFFFF)
+            frame_uint = _resolve_uint_color(frame_expr, theme_colors, None)
 
     block = template
     block = block.replace("@@IDENTIFIER@@", _esc(identifier))
@@ -645,8 +674,16 @@ def _render_golden_element(
     # Color override placeholders.
     if "@@FILL_COLOR_UINT@@" in block and fill_uint is not None:
         block = block.replace("@@FILL_COLOR_UINT@@", fill_uint)
+    elif "@@FILL_COLOR_UINT@@" in block and "fill" in catalog_tcolors:
+        block = _remove_color_uint_placeholder(
+            block, catalog_tcolors["fill"]["member_id"]
+        )
     if "@@FRAME_COLOR_UINT@@" in block and frame_uint is not None:
         block = block.replace("@@FRAME_COLOR_UINT@@", frame_uint)
+    elif "@@FRAME_COLOR_UINT@@" in block and "frame" in catalog_tcolors:
+        block = _remove_color_uint_placeholder(
+            block, catalog_tcolors["frame"]["member_id"]
+        )
     if "@@FONT_COLOR_UINT@@" in block:
         block = block.replace("@@FONT_COLOR_UINT@@", font_color_uint)
     if "@@FONT_COLOR_STRUCT@@" in block:
@@ -714,12 +751,12 @@ def _render_configured_complex_input(action, members):
         '                  <Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">\n'
         '                    <List Name="VisualElemMemberList" Type="{a4b83bea-3742-489c-9fe8-d96d68dba7ab}">\n'
         "{members}"
-        '                    </List>\n'
-        '                  </Single>\n'
+        "                    </List>\n"
+        "                  </Single>\n"
         '                  <Single Name="SignatureName" Type="string">@@SIGNATURE@@</Single>\n'
         '                  <Single Name="Name" Type="string">@@NAME@@</Single>\n'
         '                  <Single Name="Description" Type="string">@@DESCRIPTION@@</Single>\n'
-        '                </Single>\n'
+        "                </Single>\n"
     )
     block = block.replace("{members}", members)
     block = block.replace("@@SIGNATURE@@", _esc(action["signature_name"]))
@@ -748,8 +785,9 @@ def _render_complex_input_members(action, values):
             '                      <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">\n'
             '                        <Single Name="Id" Type="long">@@MEMBER_ID@@</Single>\n'
             '                        <Single Name="Value" Type="@@KIND@@">@@VALUE@@</Single>\n'
-            '                      </Single>\n'
-            .replace("@@MEMBER_ID@@", str(int(member["member_id"])))
+            "                      </Single>\n".replace(
+                "@@MEMBER_ID@@", str(int(member["member_id"]))
+            )
             .replace("@@KIND@@", _esc(member.get("kind", "string")))
             .replace("@@VALUE@@", _esc(value))
         )
@@ -816,12 +854,15 @@ def _render_input_action(spec, values):
         kind = field["kind"]
         xml_name = field["xml_name"]
         if kind == "null":
-            fields.append('                        <Null Name="{0}" />\n'.format(_esc(xml_name)))
+            fields.append(
+                '                        <Null Name="{0}" />\n'.format(_esc(xml_name))
+            )
             continue
         value = values.get(field.get("name"), field.get("default", ""))
         fields.append(
-            '                        <Single Name="@@NAME@@" Type="@@TYPE@@">@@VALUE@@</Single>\n'
-            .replace("@@NAME@@", _esc(xml_name))
+            '                        <Single Name="@@NAME@@" Type="@@TYPE@@">@@VALUE@@</Single>\n'.replace(
+                "@@NAME@@", _esc(xml_name)
+            )
             .replace("@@TYPE@@", _esc(kind))
             .replace("@@VALUE@@", _esc(value))
         )
@@ -837,17 +878,6 @@ def _render_input_action(spec, values):
 # --------------------------------------------------------------------------
 
 
-def _strip_ns(tag):
-    return tag.split("}")[-1] if "}" in str(tag) else tag
-
-
-def _find_named(parent, tag_name, name):
-    for child in list(parent):
-        if _strip_ns(child.tag) == tag_name and child.attrib.get("Name") == name:
-            return child
-    return None
-
-
 def read_placement_from_sibling(xml_path):
     """Read (parent_guid, parent_svnode_guid, path_segments) from a sibling .xml.
 
@@ -859,21 +889,21 @@ def read_placement_from_sibling(xml_path):
         raise BuilderError("Could not parse sibling XML {0}: {1}".format(xml_path, exc))
     root = tree.getroot()
 
-    meta = _find_named(root, "Single", "MetaObject")
+    meta = find_named(root, "Single", "MetaObject")
     parent_guid = None
     if meta is not None:
-        pg = _find_named(meta, "Single", "ParentGuid")
+        pg = find_named(meta, "Single", "ParentGuid")
         if pg is not None:
             parent_guid = (pg.text or "").strip()
 
-    svnode = _find_named(root, "Single", "ParentSVNodeGuid")
+    svnode = find_named(root, "Single", "ParentSVNodeGuid")
     svnode_guid = (svnode.text or "").strip() if svnode is not None else None
 
-    path_arr = _find_named(root, "Array", "Path")
+    path_arr = find_named(root, "Array", "Path")
     segments = []
     if path_arr is not None:
         for seg in list(path_arr):
-            if _strip_ns(seg.tag) == "Single":
+            if strip_ns(seg.tag) == "Single":
                 segments.append((seg.text or "").strip())
 
     if not parent_guid or not svnode_guid:
@@ -913,7 +943,7 @@ def find_sibling_object(folder, exclude=None):
         root_type = (root.attrib.get("Type") or "").strip()
         if root_type != _ROOT_TYPE:
             continue
-        if _find_named(root, "Single", "ParentSVNodeGuid") is not None:
+        if find_named(root, "Single", "ParentSVNodeGuid") is not None:
             return full
     return None
 
@@ -991,127 +1021,9 @@ def build_screen(
 
 
 # --------------------------------------------------------------------------
-# Screen file inspection / mutation (text-faithful)
+# Screen file inspection / mutation
+# (moved to screen_xml.py -- import via _screen_xml)
 # --------------------------------------------------------------------------
-
-
-def read_screen_size(xml_text):
-    """Return (size_x, size_y) parsed from a screen file's MetaObject."""
-    try:
-        root = ET.fromstring(xml_text)
-    except Exception as exc:
-        raise BuilderError("Could not parse screen XML: {0}".format(exc))
-    size_x = size_y = None
-    for el in root.iter():
-        if _strip_ns(el.tag) == "Single" and el.attrib.get("Name") == "SizeX":
-            size_x = int((el.text or "0").strip())
-        elif _strip_ns(el.tag) == "Single" and el.attrib.get("Name") == "SizeY":
-            size_y = int((el.text or "0").strip())
-    if size_x is None or size_y is None:
-        raise BuilderError("Screen file has no SizeX/SizeY")
-    return size_x, size_y
-
-
-def read_owning_guid(xml_text):
-    """Return the visu's own Guid (MetaObject.Guid)."""
-    root = ET.fromstring(xml_text)
-    meta = _find_named(root, "Single", "MetaObject")
-    if meta is not None:
-        guid = _find_named(meta, "Single", "Guid")
-        if guid is not None and guid.text:
-            return guid.text.strip()
-    return _FIXED_GUID
-
-
-def _read_int_member(xml_text, name):
-    root = ET.fromstring(xml_text)
-    for el in root.iter():
-        if _strip_ns(el.tag) == "Single" and el.attrib.get("Name") == name:
-            try:
-                return int((el.text or "0").strip())
-            except ValueError:
-                return 0
-    return 0
-
-
-def list_elements(xml_text):
-    """Return a list of dicts describing each element in the screen."""
-    root = ET.fromstring(xml_text)
-    velist = None
-    for el in root.iter():
-        if _strip_ns(el.tag) == "List" and el.attrib.get("Name") == "VisualElementList":
-            velist = el
-            break
-    results = []
-    if velist is None:
-        return results
-    for idx, el in enumerate(list(velist)):
-        if _strip_ns(el.tag) != "Single":
-            continue
-        info = {
-            "index": idx,
-            "type": _named_text(el, "VisualElementTypeName"),
-            "name": _named_text(el, "VisualElementName"),
-            "identifier": _named_text(el, "VisualElementIdentifier"),
-        }
-        members = _member_map(el)
-        info["members"] = members
-        for friendly, mid in (
-            ("x", 1649127785),
-            ("y", 357335551),
-            ("width", 2422045748),
-            ("height", 2134141914),
-            ("center_x", 550940142),
-            ("center_y", 1473355128),
-        ):
-            info[friendly] = members.get(mid, {}).get("value")
-        results.append(info)
-    return results
-
-
-def _named_text(parent, name):
-    child = _find_named(parent, "Single", name)
-    return (child.text or "").strip() if child is not None and child.text else ""
-
-
-def _member_map(element):
-    """Map member id -> {value, kind, color, canonical_name} for one element."""
-    out = {}
-    member_container = _find_named(element, "Single", "VisualElemMemberList")
-    mlist = (
-        _find_named(member_container, "List", "VisualElemMemberList")
-        if member_container is not None
-        else None
-    )
-    if mlist is None:
-        return out
-    for member in list(mlist):
-        if _strip_ns(member.tag) != "Single":
-            continue
-        idc = _find_named(member, "Single", "Id")
-        if idc is None or not idc.text:
-            continue
-        mid = int(idc.text.strip())
-        scalar = _find_named(member, "Single", "Value")
-        if scalar is not None:
-            out[mid] = {"kind": "scalar", "value": (scalar.text or "")}
-            continue
-        listval = _find_named(member, "List", "Value")
-        if listval is not None:
-            inner = list(listval)
-            if inner and _find_named(inner[0], "Single", "Color") is not None:
-                color_el = _find_named(inner[0], "Single", "Color")
-                cn_el = _find_named(inner[0], "Single", "CanonicalName")
-                out[mid] = {
-                    "kind": "color",
-                    "color": (color_el.text or "").strip()
-                    if color_el is not None
-                    else "",
-                    "canonical_name": (cn_el.text or "") if cn_el is not None else "",
-                }
-            else:
-                out[mid] = {"kind": "list", "value": None}
-    return out
 
 
 def append_element(xml_text, catalog, params, theme_colors=None):
@@ -1121,15 +1033,15 @@ def append_element(xml_text, catalog, params, theme_colors=None):
     GenElemInst_N identifier, enforces bounds, and assigns a sequential
     VisualElementId. Returns (new_xml, geometry, info).
     """
-    size_x, size_y = read_screen_size(xml_text)
-    owning_guid = read_owning_guid(xml_text)
+    size_x, size_y = _screen_xml.read_screen_size(xml_text)
+    owning_guid = _screen_xml.read_owning_guid(xml_text)
 
     # Count existing elements for sequential VisualElementId.
-    existing = list_elements(xml_text)
+    existing = _screen_xml.list_elements(xml_text)
     visual_element_id = len(existing)
 
-    last_used = _read_int_member(xml_text, "LastUsedIdForIdentifier")
-    unique_id = _read_int_member(xml_text, "UniqueIdGenerator")
+    last_used = _screen_xml.read_int_member(xml_text, "LastUsedIdForIdentifier")
+    unique_id = _screen_xml.read_int_member(xml_text, "UniqueIdGenerator")
     next_id = last_used + 1
     identifier = "GenElemInst_{0}".format(next_id)
     identification_guid = "{0:08x}-0000-4000-8000-000000000000".format(

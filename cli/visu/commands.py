@@ -424,6 +424,8 @@ def from_svg(
     out_path,
     create_screen,
     screen_name,
+    gvl_name=None,
+    gvl_file=None,
 ):
     """Compile an SVG file to a CODESYS screen XML."""
     import os
@@ -431,6 +433,8 @@ def from_svg(
 
     from . import builder as _builder
     from . import catalog as _catalog
+    from . import gvl as _gvl
+    from . import screen_xml as _screen_xml
 
     # Read SVG.
     if not os.path.isfile(svg_path):
@@ -505,58 +509,20 @@ def from_svg(
     # Resize screen if canvas differs.
     with open(path, "r", encoding="utf-8") as handle:
         xml_text = handle.read()
-    size_x, size_y = _builder.read_screen_size(xml_text)
+    size_x, size_y = _screen_xml.read_screen_size(xml_text)
     if (size_x, size_y) != (canvas["width"], canvas["height"]):
         _ok(
             "Screen size ({0}x{1}) differs from canvas ({2}x{3}); resizing".format(
                 size_x, size_y, canvas["width"], canvas["height"]
             )
         )
-        import re
-
-        xml_text = re.sub(
-            r'(<Single Name="SizeX" Type="int">)\d+(</Single>)',
-            r"\g<1>{0}\g<2>".format(canvas["width"]),
-            xml_text,
-        )
-        xml_text = re.sub(
-            r'(<Single Name="SizeY" Type="int">)\d+(</Single>)',
-            r"\g<1>{0}\g<2>".format(canvas["height"]),
-            xml_text,
+        xml_text = _screen_xml.resize_screen(
+            xml_text, canvas["width"], canvas["height"]
         )
 
     # If screen already existed and has no custom bg, set from theme.
     if bg_color and not create_screen:
-        # Check if BgColor is already True.
-        if '"BgColor" Type="bool">False' in xml_text:
-            xml_text = xml_text.replace(
-                '<Single Name="BgColor" Type="bool">False</Single>',
-                '<Single Name="BgColor" Type="bool">True</Single>',
-            )
-        # Update BgUseColor.
-        import re as _re
-
-        bg_match = _re.search(r'BgUseColor" Type="int">(-?\d+)', xml_text)
-        if bg_match:
-            # Parse the hex colour to signed int
-            raw = bg_color.strip()
-            if raw.startswith("#"):
-                raw = raw[1:]
-            elif raw.lower().startswith("0x"):
-                raw = raw[2:]
-            if raw:
-                argb = int(raw, 16)
-                if len(raw) <= 6:
-                    argb |= 0xFF000000
-                if argb >= 0x80000000:
-                    bg_signed = argb - 0x100000000
-                else:
-                    bg_signed = argb
-                xml_text = _re.sub(
-                    r'(BgUseColor" Type="int">)-?\d+(</Single>)',
-                    r"\g<1>{0}\g<2>".format(bg_signed),
-                    xml_text,
-                )
+        xml_text = _screen_xml.set_screen_background(xml_text, bg_color)
 
     # Append each element.
     textlist_module = None
@@ -595,6 +561,32 @@ def from_svg(
     output_path = out_path or path
     with open(output_path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(xml_text)
+
+    # GVL generation for runtime variables.
+    if gvl_name or gvl_file:
+        gvl_result = _gvl.ensure_gvl(
+            project_view_dir,
+            elements,
+            gvl_name=gvl_name or "VisuVars",
+            gvl_path=gvl_file,
+        )
+        if gvl_result:
+            _ok("Updated GVL: {0}".format(gvl_result))
+        else:
+            _ok("No runtime variables detected; GVL not generated")
+    elif any(
+        elem.get("params", {}).get("text_var")
+        or elem.get("params", {}).get("tap_var")
+        or elem.get("params", {}).get("toggle_var")
+        or elem.get("params", {}).get("configured_inputs")
+        or elem.get("params", {}).get("input_actions")
+        for elem in elements
+    ):
+        print(
+            "[HINT] SVG contains runtime variable references. "
+            "Use --gvl to auto-generate GVL declarations.",
+            file=sys.stderr,
+        )
 
     count = len(elements)
     _ok("Compiled {0} element(s) from SVG to {1}".format(count, output_path))

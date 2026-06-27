@@ -15,38 +15,16 @@ Usage::
 
 from __future__ import print_function
 
-import json
-import os
 import xml.etree.ElementTree as ET
 
-_THEME_DIR = os.path.join(os.path.dirname(__file__), "themes")
+from . import themes
+from .xml_helpers import find_named, named_text, strip_ns
 
 
 class SvgExportError(Exception):
     """Raised on unsupported element types or malformed data."""
 
     pass
-
-
-# ---------------------------------------------------------------------------
-# XML helpers  (mirroring builder.py conventions)
-# ---------------------------------------------------------------------------
-
-
-def _strip_ns(tag):
-    return tag.split("}")[-1] if "}" in str(tag) else tag
-
-
-def _find_named(parent, tag_name, name):
-    for child in list(parent):
-        if _strip_ns(child.tag) == tag_name and child.attrib.get("Name") == name:
-            return child
-    return None
-
-
-def _named_text(parent, name):
-    child = _find_named(parent, "Single", name)
-    return (child.text or "").strip() if child is not None and child.text else ""
 
 
 # ---------------------------------------------------------------------------
@@ -66,18 +44,18 @@ def _member_value(element, member_id):
 
     Returns ``None`` when the member id is not present in the element.
     """
-    member_container = _find_named(element, "Single", "VisualElemMemberList")
+    member_container = find_named(element, "Single", "VisualElemMemberList")
     mlist = (
-        _find_named(member_container, "List", "VisualElemMemberList")
+        find_named(member_container, "List", "VisualElemMemberList")
         if member_container is not None
         else None
     )
     if mlist is None:
         return None
     for member in list(mlist):
-        if _strip_ns(member.tag) != "Single":
+        if strip_ns(member.tag) != "Single":
             continue
-        idc = _find_named(member, "Single", "Id")
+        idc = find_named(member, "Single", "Id")
         if idc is None or not idc.text:
             continue
         mid = int(idc.text.strip())
@@ -85,17 +63,17 @@ def _member_value(element, member_id):
             continue
 
         # Scalar (short-form) value.
-        scalar = _find_named(member, "Single", "Value")
+        scalar = find_named(member, "Single", "Value")
         if scalar is not None:
             return (scalar.text or "").strip()
 
         # Struct (color) value.
-        listval = _find_named(member, "List", "Value")
+        listval = find_named(member, "List", "Value")
         if listval is not None:
             inner = list(listval)
-            if inner and _find_named(inner[0], "Single", "Color") is not None:
-                color_el = _find_named(inner[0], "Single", "Color")
-                cn_el = _find_named(inner[0], "Single", "CanonicalName")
+            if inner and find_named(inner[0], "Single", "Color") is not None:
+                color_el = find_named(inner[0], "Single", "Color")
+                cn_el = find_named(inner[0], "Single", "CanonicalName")
                 return {
                     "color": (
                         (color_el.text or "").strip() if color_el is not None else ""
@@ -501,7 +479,7 @@ def _simple_to_svg(element):
 
 def _element_to_svg(element):
     """Dispatch a CODESYS visual element to the appropriate SVG renderer."""
-    type_name = _named_text(element, "VisualElementTypeName")
+    type_name = named_text(element, "VisualElementTypeName")
     if not type_name:
         raise SvgExportError("Element has no VisualElementTypeName")
 
@@ -537,7 +515,7 @@ def _read_background(root):
     bg_color_el = None
     use_color_el = None
     for el in root.iter():
-        tag = _strip_ns(el.tag)
+        tag = strip_ns(el.tag)
         if tag == "Single" and el.attrib.get("Name") == "BgColor":
             bg_color_el = el
         elif tag == "Single" and el.attrib.get("Name") == "BgUseColor":
@@ -562,9 +540,9 @@ def _read_background(root):
 def _read_screen_size(root):
     size_x = size_y = None
     for el in root.iter():
-        if _strip_ns(el.tag) == "Single" and el.attrib.get("Name") == "SizeX":
+        if strip_ns(el.tag) == "Single" and el.attrib.get("Name") == "SizeX":
             size_x = int((el.text or "0").strip())
-        elif _strip_ns(el.tag) == "Single" and el.attrib.get("Name") == "SizeY":
+        elif strip_ns(el.tag) == "Single" and el.attrib.get("Name") == "SizeY":
             size_y = int((el.text or "0").strip())
     if size_x is None or size_y is None:
         raise SvgExportError("Screen XML has no SizeX/SizeY in MetaObject")
@@ -572,16 +550,11 @@ def _read_screen_size(root):
 
 
 def _load_default_theme():
-    """Load the built-in dark theme colors for inline ``:root`` CSS vars."""
-    theme_path = os.path.join(_THEME_DIR, "dark.json")
+    """Load the default CODESYS style colors for inline ``:root`` CSS vars."""
     try:
-        with open(theme_path, "r") as f:
-            data = json.load(f)
-        themes_list = data.get("themes", [])
-        if themes_list:
-            return themes_list[0].get("style", {}).get("colors", {})
-    except (IOError, ValueError, KeyError):
-        pass
+        return themes.load_theme("flat-style")
+    except themes.ThemeError:
+        return {}
     return {}
 
 
@@ -614,7 +587,8 @@ def screen_to_svg(xml_text, theme_colors=None):
         The raw CODESYS ``.xml`` screen content.
     theme_colors : dict or None
         Optional mapping of role → ``#hex`` for inline ``:root`` CSS
-        variables.  When ``None`` (the default) the built-in dark theme
+        variables.  When ``None`` (the default) the built-in CODESYS
+        ``flat-style`` preset
         is loaded.
 
     Returns
@@ -648,7 +622,7 @@ def screen_to_svg(xml_text, theme_colors=None):
     )
     velist = None
     for el in root.iter():
-        if _strip_ns(el.tag) == "List" and el.attrib.get("Name") == "VisualElementList":
+        if strip_ns(el.tag) == "List" and el.attrib.get("Name") == "VisualElementList":
             velist = el
             break
 
@@ -656,7 +630,7 @@ def screen_to_svg(xml_text, theme_colors=None):
     elements_svg = []
     if velist is not None:
         for child in list(velist):
-            if _strip_ns(child.tag) != "Single":
+            if strip_ns(child.tag) != "Single":
                 continue
             try:
                 svg = _element_to_svg(child)
@@ -664,7 +638,7 @@ def screen_to_svg(xml_text, theme_colors=None):
             except SvgExportError:
                 raise
             except Exception as exc:
-                tname = _named_text(child, "VisualElementTypeName") or "unknown"
+                tname = named_text(child, "VisualElementTypeName") or "unknown"
                 raise SvgExportError(
                     "Error converting element '{0}': {1}".format(tname, exc)
                 )
