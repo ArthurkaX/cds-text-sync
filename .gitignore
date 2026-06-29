@@ -25,3 +25,4 @@ offline-regression-*/
 *.log
 .handoff/
 temp/
+.claude/
