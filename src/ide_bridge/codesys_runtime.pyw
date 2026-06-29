@@ -94,26 +94,37 @@ def _normalize_params(params):
 def _get_root_dir(script_file=None):
     path = os.path.abspath(script_file or __file__)
     script_dir = os.path.dirname(path)
+    # Fast path: if this file lives inside src/ide_bridge, root is two levels up
+    if os.path.basename(script_dir).lower() == "ide_bridge":
+        parent = os.path.dirname(script_dir)
+        if os.path.basename(parent).lower() == "src":
+            return os.path.dirname(parent)
+    # Walk up looking for src/ide_bridge as the new stable sentinel
     current = script_dir
     while True:
-        if os.path.isdir(os.path.join(current, ".runtime")):
+        if os.path.isdir(os.path.join(current, "src", "ide_bridge")):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:
             break
         current = parent
+    # Legacy fallbacks
     if os.path.basename(script_dir).lower() in [".dev_tools", ".runtime"]:
         return os.path.dirname(script_dir)
     return script_dir
 
 
 def _ensure_sys_path(root_dir):
-    runtime_dir = os.path.join(root_dir, ".runtime")
+    ide_bridge_dir = os.path.join(root_dir, "src", "ide_bridge")
     engine_dir = os.path.join(root_dir, "cli", "external_engine")
     old_engine_dir = os.path.join(root_dir, "src", "external_engine")
-    for path in (runtime_dir, engine_dir, old_engine_dir, root_dir):
+    runtime_dir = os.path.join(root_dir, ".runtime")
+    for path in (ide_bridge_dir, engine_dir, old_engine_dir, root_dir):
         if path and path not in sys.path:
             sys.path.insert(0, path)
+    # Keep .runtime on sys.path for back-compat if it still exists
+    if os.path.isdir(runtime_dir) and runtime_dir not in sys.path:
+        sys.path.insert(0, runtime_dir)
 
 
 def _load_python_module(name, path):
@@ -139,9 +150,14 @@ def _load_python_module(name, path):
 def load_hidden_module(name, script_file=None):
     root_dir = _get_root_dir(script_file)
     _ensure_sys_path(root_dir)
+    ide_bridge_path = os.path.join(root_dir, "src", "ide_bridge", name + ".pyw")
     runtime_path = os.path.join(root_dir, ".runtime", name + ".pyw")
     root_path = os.path.join(root_dir, name + ".pyw")
-    return _load_python_module(name, runtime_path) or _load_python_module(name, root_path)
+    return (
+        _load_python_module(name, ide_bridge_path)
+        or _load_python_module(name, runtime_path)
+        or _load_python_module(name, root_path)
+    )
 
 
 def clear_hidden_modules(exclude=None):
