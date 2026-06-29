@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Deprecated
+
+The following CLI aliases are retained for backwards compatibility but are scheduled for removal in **3.0.0**:
+
+- `cts rp` — deprecated alias for `cts raw`.
+- `cts validate` — deprecated alias for `cts engine validate`.
+- `cts resources` — deprecated alias for `cts engine resources`.
+
+---
+
 ### Version 2.6.1 (2026-06-15)
 
 **CLI fixes from user feedback:**

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-xml_helpers.py - Shared XML helpers for the visu module.
+xml_ns.py - Shared XML helpers for the visu module.
 
 These are generic XML-format helpers used by multiple visu modules.
 They have no visualization-specific policy; they exist only to

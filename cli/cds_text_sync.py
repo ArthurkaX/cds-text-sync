@@ -1342,6 +1342,7 @@ from-svg SVG contract:
         _p = subparsers.add_parser(
             cmd_name,
             help=argparse.SUPPRESS,
+            description="Deprecated alias for `cts engine {0}` (deprecated; use `cts engine {0}`)".format(cmd_name),
             add_help=False,
         )
         _p.add_argument(
