@@ -3,15 +3,16 @@
 test_daemon_name_resolution.py — Static name-resolution guard for CODESYS daemon modules.
 
 Protects against missing-import NameErrors in IronPython 2.7 daemon modules when
-running under CPython 3.12.  Stubs out all CODESYS/.NET-only dependencies so the
+running under CPython 3.12. Stubs out all CODESYS/.NET-only dependencies so the
 imports succeed, then walks every function's bytecode to find LOAD_GLOBAL references
 to names that are not in the module's globals or builtins.
 
 Modules guarded:
-  - ide_reverse_pipe_loop.py   (MUST import — failure is a test failure)
-  - ide_daemon_state.py        (MUST import — failure is a test failure)
-  - all other ide_*.py under src/ide_bridge/ (skipped on import error)
-  - ide_daemon_ui* modules are always xfail/skipped (WinForms — no CPython support)
+ - ide_reverse_pipe_loop.py (MUST import — failure is a test failure)
+ - ide_daemon_state.py (MUST import — failure is a test failure)
+ - all other ide_*.py under src/ide_bridge/ (skipped on import error)
+ - ide_daemon_ui* modules are always xfail/skipped (WinForms — no CPython support)
+ - *.pyw files in src/ide_bridge/ and .runtime/ (skipped on import error — expected)
 """
 
 from __future__ import annotations
@@ -30,11 +31,14 @@ from types import ModuleType
 import pytest
 
 # ---------------------------------------------------------------------------
-# Locate ide_bridge directory
+# Locate ide_bridge directory and project root
 # ---------------------------------------------------------------------------
 
 _IDE_BRIDGE = Path(__file__).parent.parent.parent / "src" / "ide_bridge"
 assert _IDE_BRIDGE.is_dir(), f"ide_bridge not found at {_IDE_BRIDGE}"
+
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+_RUNTIME_DIR = _PROJECT_ROOT / ".runtime"
 
 # ---------------------------------------------------------------------------
 # Auto-stub infrastructure
@@ -94,6 +98,10 @@ def _install_stubs() -> dict[str, ModuleType]:
         "System.Collections.Generic",
         "System.Array",
         "System.Byte",
+        # CODESYS scripting engine — injected by the host in real runs;
+        # stub it so .pyw modules that do `import scriptengine` or
+        # `from scriptengine import ...` can be imported under CPython.
+        "scriptengine",
     ]
 
     saved: dict[str, ModuleType] = {}
@@ -119,9 +127,48 @@ def _restore_stubs(saved: dict[str, ModuleType]) -> None:
 MUST_IMPORT = {"ide_reverse_pipe_loop", "ide_daemon_state"}
 UI_MODULES = {"ide_daemon_ui"}
 
+# ---------------------------------------------------------------------------
+# Discovery: ide_*.py files in src/ide_bridge/
+# ---------------------------------------------------------------------------
+
 _all_ide_modules: list[str] = []
 for _p in sorted(_IDE_BRIDGE.glob("ide_*.py")):
     _all_ide_modules.append(_p.stem)
+
+# ---------------------------------------------------------------------------
+# Discovery: *.pyw files in src/ide_bridge/ and .runtime/
+# Prefer src/ide_bridge/ when the same stem appears in both dirs.
+# ---------------------------------------------------------------------------
+
+# stem -> Path mapping (src/ide_bridge takes priority)
+_pyw_stem_to_path: dict[str, Path] = {}
+
+# First collect from .runtime/ (lower priority)
+if _RUNTIME_DIR.is_dir():
+    for _p in sorted(_RUNTIME_DIR.glob("*.pyw")):
+        _pyw_stem_to_path[_p.stem] = _p
+
+# Then overlay with src/ide_bridge/ (higher priority)
+for _p in sorted(_IDE_BRIDGE.glob("*.pyw")):
+    _pyw_stem_to_path[_p.stem] = _p
+
+# Sorted list of (stem, filepath) pairs for parametrization
+_all_pyw_modules: list[tuple[str, Path]] = sorted(_pyw_stem_to_path.items())
+
+# ---------------------------------------------------------------------------
+# Combined parametrization: (stem, filepath_or_None)
+# For ide_*.py the filepath is derived from stem at test time; filepath=None signals that.
+# We pass an explicit Path for .pyw so the test body can do file-based loading.
+# ---------------------------------------------------------------------------
+
+# Build a flat list of (stem, filepath_or_none) pairs.
+# ide_*.py: filepath=None (resolved inside test from _IDE_BRIDGE / stem + ".py")
+# *.pyw:    filepath=actual Path
+_ALL_CASES: list[tuple[str, Path | None]] = [
+    (stem, None) for stem in _all_ide_modules
+] + [
+    (stem, fpath) for stem, fpath in _all_pyw_modules
+]
 
 
 # ---------------------------------------------------------------------------
@@ -197,15 +244,27 @@ _CODESYS_INJECTED = frozenset({"projects", "system", "__main__"})
 
 # Python 2 builtins that exist in IronPython 2.7 but not CPython 3.
 # Daemon code uses the canonical try/except NameError guard pattern, e.g.:
-#   try:
-#       string_types = (basestring,)  # IronPython 2
-#   except NameError:
-#       string_types = (str,)         # CPython 3
+# try:
+#     string_types = (basestring,) # IronPython 2
+# except NameError:
+#     string_types = (str,) # CPython 3
 # The NameError IS the intended fallback — these are not missing imports.
 _IRONPYTHON2_BUILTINS = frozenset({
     "basestring", "unicode", "xrange", "long", "execfile",
     "raw_input", "reduce", "reload", "StandardError",
 })
+
+# Removed-stdlib modules that are conditionally imported with a guard flag.
+# Example in codesys_runtime.pyw:
+#   try:
+#       import imp
+#       _HAS_IMP = True
+#   except ImportError:      # imp removed in CPython 3.12
+#       _HAS_IMP = False
+# All uses inside functions are guarded by `if _HAS_IMP:` so the name is
+# never actually loaded at runtime on CPython 3.12. This mirrors the
+# basestring/try-except-NameError pattern — not a forgotten import.
+_REMOVED_STDLIB_GUARDS = frozenset({"imp"})
 
 # Optional CODESYS API objects that modules probe for via try/except Exception,
 # e.g. `try: PouType; except Exception: pass` in _find_pou_type_enum.
@@ -213,7 +272,7 @@ _IRONPYTHON2_BUILTINS = frozenset({
 _CODESYS_OPTIONAL_PROBES = frozenset({"PouType", "ScriptEngine"})
 
 _ALL_ALLOWED_GLOBALS = (
-    _CODESYS_INJECTED | _IRONPYTHON2_BUILTINS | _CODESYS_OPTIONAL_PROBES
+    _CODESYS_INJECTED | _IRONPYTHON2_BUILTINS | _CODESYS_OPTIONAL_PROBES | _REMOVED_STDLIB_GUARDS
 )
 
 # ---------------------------------------------------------------------------
@@ -222,23 +281,37 @@ _ALL_ALLOWED_GLOBALS = (
 
 
 def _make_test_ids():
-    return _all_ide_modules
+    return [stem for stem, _ in _ALL_CASES]
 
 
-@pytest.mark.parametrize("module_stem", _make_test_ids())
-def test_daemon_name_resolution(module_stem: str, tmp_path):
+@pytest.mark.parametrize("module_stem,module_filepath", _ALL_CASES, ids=_make_test_ids())
+def test_daemon_name_resolution(module_stem: str, module_filepath: "Path | None", tmp_path):
     """Import one daemon module with .NET stubs and verify no unresolved global names."""
 
     # --- UI modules: always skip under CPython ---
     if module_stem in UI_MODULES:
         pytest.skip(f"{module_stem}: WinForms-only, not importable under CPython")
 
+    # --- Determine the actual file path ---
+    if module_filepath is None:
+        # Legacy ide_*.py: always in src/ide_bridge/
+        actual_path = _IDE_BRIDGE / f"{module_stem}.py"
+    else:
+        actual_path = module_filepath
+
     # --- Prepare sys.path so intra-package imports resolve ---
+    # Insert both src/ide_bridge and .runtime (if present) at the front
+    # so that .pyw files that import each other can resolve those imports.
+    paths_to_insert: list[str] = []
     bridge_str = str(_IDE_BRIDGE)
-    inserted = False
+    runtime_str = str(_RUNTIME_DIR) if _RUNTIME_DIR.is_dir() else None
+
     if bridge_str not in sys.path:
         sys.path.insert(0, bridge_str)
-        inserted = True
+        paths_to_insert.append(bridge_str)
+    if runtime_str and runtime_str not in sys.path:
+        sys.path.insert(0, runtime_str)
+        paths_to_insert.append(runtime_str)
 
     # Ensure sys._codesys_daemon_loop exists before importing
     had_loop = hasattr(sys, "_codesys_daemon_loop")
@@ -254,8 +327,7 @@ def test_daemon_name_resolution(module_stem: str, tmp_path):
     module = None
     try:
         # Build a spec from the file path so we control the import cleanly
-        module_path = str(_IDE_BRIDGE / f"{module_stem}.py")
-        spec = importlib.util.spec_from_file_location(module_stem, module_path)
+        spec = importlib.util.spec_from_file_location(module_stem, str(actual_path))
         assert spec is not None and spec.loader is not None
 
         module = importlib.util.module_from_spec(spec)
@@ -287,9 +359,10 @@ def test_daemon_name_resolution(module_stem: str, tmp_path):
             sys.modules[module_stem] = evicted
         else:
             sys.modules.pop(module_stem, None)
-        if inserted:
+        # Remove any paths we inserted
+        for p in paths_to_insert:
             try:
-                sys.path.remove(bridge_str)
+                sys.path.remove(p)
             except ValueError:
                 pass
         if not had_loop:
