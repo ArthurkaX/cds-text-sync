@@ -212,200 +212,127 @@ def capture_codesys_globals():
 # ── Command handler ────────────────────────────────────────────────────────
 
 
+def _noarg(fn):
+    def _call(params):
+        return fn()
+    return _call
+
+
+def _handle_stop(params):
+    sys._codesys_daemon_loop["running"] = False
+    return {"ok": True, "data": {"message": "Daemon stopping..."}}
+
+
+def _handle_ping(params):
+    return {
+        "ok": True,
+        "data": {
+            "status": "pong",
+            "mode": "reverse_pipe",
+            "pid": os.getpid(),
+            "plc": _get_plc_status_snapshot(),
+        },
+    }
+
+
+def _handle_status(params):
+    result = _get_status_info()
+    result["running"] = sys._codesys_daemon_loop.get("running", False)
+    result["mode"] = "reverse_pipe"
+    result["plc"] = _get_plc_status_snapshot()
+    return {"ok": True, "data": result}
+
+
+_ALIASES = {
+    "connect": "connect_to_device",
+    "disconnect": "disconnect_from_device",
+    "app": "application_state",
+    "proj": "project_info",
+    "tree": "project_tree",
+}
+
+_NO_PERMISSION = frozenset([
+    "ping",
+    "status",
+    "help",
+    "stop",
+    "permissions",
+    "sync",
+    "project_info",
+    "project_tree",
+    "read_object",
+    "explore",
+])
+
+_DISPATCH = {
+    # params-taking handlers
+    "project_tree": _cmd_project_tree,
+    "read_object": _cmd_read_object,
+    "connect_to_device": _cmd_connect_to_device,
+    "download": _cmd_download,
+    "read_variable": _cmd_read_variable,
+    "write_variable": _cmd_write_variable,
+    "read_variables": _cmd_read_variables,
+    "write_variables": _cmd_write_variables,
+    "export": _cmd_export,
+    "build": _cmd_build,
+    "device_status": _cmd_device_status,
+    "test_online": _cmd_test_online,
+    "sync_export": _cmd_sync_export,
+    "sync_import": _cmd_sync_import,
+    "sync_compare": _cmd_sync_compare,
+    "sync_export_text": _cmd_sync_export_text,
+    "sync_import_text": _cmd_sync_import_text,
+    "sync_compare_text": _cmd_sync_compare_text,
+    "update_pou": _cmd_update_pou,
+    "delete_pou": _cmd_delete_pou,
+    "cicd": _cmd_cicd,
+    "read_log": _cmd_read_log,
+    "reset_plc": _cmd_reset_plc,
+    "source_download": _cmd_source_download,
+    "probe": _cmd_probe_oa,
+    "application_tree": _cmd_application_tree,
+    "plc_files": _cmd_plc_files,
+    "plc_log": _cmd_plc_log,
+    "plc_download": _cmd_plc_download,
+    "plc_upload": _cmd_plc_upload,
+    "export_csv": _cmd_export_csv,
+    "export_st": _cmd_export_st,
+    "app_crc": _cmd_app_crc,
+    "app_history": _cmd_app_history,
+    "compare": _cmd_compare_crc,
+    # inline special cases (already accept params)
+    "stop": _handle_stop,
+    "ping": _handle_ping,
+    "status": _handle_status,
+    # no-arg handlers
+    "project_info": _noarg(_cmd_project_info),
+    "application_state": _noarg(_cmd_application_state),
+    "disconnect_from_device": _noarg(_cmd_disconnect_from_device),
+    "explore": _noarg(_cmd_explore_api),
+    "sync": _noarg(_cmd_sync_info),
+    "help": _noarg(_cmd_help),
+    "start_plc": _noarg(_cmd_start_plc),
+    "stop_plc": _noarg(_cmd_stop_plc),
+    "create_boot_app": _noarg(_cmd_create_boot_app),
+    "app_info": _noarg(_cmd_app_info),
+    "permissions": _noarg(_cmd_permissions),
+}
+
+
 def handle_command(method, params):
     """Dispatch a command. All CODESYS API calls happen here, in the main loop."""
     _log("Command: {0}".format(method))
-
-    # Command aliases (shorter CLI names -> full daemon method names)
-    _ALIASES = {
-        "connect": "connect_to_device",
-        "disconnect": "disconnect_from_device",
-        "app": "application_state",
-        "proj": "project_info",
-        "tree": "project_tree",
-    }
-    _original_method = method
     method = _ALIASES.get(method, method)
-
-    # Commands that never require permission check (system/read-only)
-    if method not in (
-        "ping",
-        "status",
-        "help",
-        "stop",
-        "permissions",
-        "sync",
-        "project_info",
-        "project_tree",
-        "read_object",
-        "explore",
-    ):
+    if method not in _NO_PERMISSION:
         allowed, reason = _check_permission(method)
         if not allowed:
             return {"ok": False, "error": reason}
-
+    handler = _DISPATCH.get(method)
+    if handler is None:
+        return {"ok": False, "error": "Unknown method: {0}".format(method)}
     try:
-        if method == "stop":
-            sys._codesys_daemon_loop["running"] = False
-            return {"ok": True, "data": {"message": "Daemon stopping..."}}
-
-        elif method == "ping":
-            return {
-                "ok": True,
-                "data": {
-                    "status": "pong",
-                    "mode": "reverse_pipe",
-                    "pid": os.getpid(),
-                    "plc": _get_plc_status_snapshot(),
-                },
-            }
-
-        elif method == "status":
-            result = _get_status_info()
-            result["running"] = sys._codesys_daemon_loop.get("running", False)
-            result["mode"] = "reverse_pipe"
-            result["plc"] = _get_plc_status_snapshot()
-            return {"ok": True, "data": result}
-
-        elif method == "project_info":
-            return _cmd_project_info()
-
-        elif method == "project_tree":
-            return _cmd_project_tree(params)
-
-        elif method == "read_object":
-            return _cmd_read_object(params)
-
-        elif method == "application_state":
-            return _cmd_application_state()
-
-        elif method == "connect_to_device":
-            return _cmd_connect_to_device(params)
-
-        elif method == "disconnect_from_device":
-            return _cmd_disconnect_from_device()
-
-        elif method == "download":
-            return _cmd_download(params)
-
-        elif method == "read_variable":
-            return _cmd_read_variable(params)
-
-        elif method == "write_variable":
-            return _cmd_write_variable(params)
-
-        elif method == "read_variables":
-            return _cmd_read_variables(params)
-
-        elif method == "write_variables":
-            return _cmd_write_variables(params)
-
-        elif method == "export":
-            return _cmd_export(params)
-
-        elif method == "build":
-            return _cmd_build(params)
-
-        elif method == "device_status":
-            return _cmd_device_status(params)
-
-        elif method == "test_online":
-            return _cmd_test_online(params)
-
-        elif method == "explore":
-            return _cmd_explore_api()
-
-        elif method == "sync":
-            return _cmd_sync_info()
-
-        elif method == "sync_export":
-            return _cmd_sync_export(params)
-
-        elif method == "sync_import":
-            return _cmd_sync_import(params)
-
-        elif method == "sync_compare":
-            return _cmd_sync_compare(params)
-
-        elif method == "sync_export_text":
-            return _cmd_sync_export_text(params)
-
-        elif method == "sync_import_text":
-            return _cmd_sync_import_text(params)
-        elif method == "update_pou":
-            return _cmd_update_pou(params)
-
-        elif method == "delete_pou":
-            return _cmd_delete_pou(params)
-
-        elif method == "cicd":
-            return _cmd_cicd(params)
-        elif method == "sync_compare_text":
-            return _cmd_sync_compare_text(params)
-
-        elif method == "help":
-            return _cmd_help()
-
-        elif method == "read_log":
-            return _cmd_read_log(params)
-
-        elif method == "start_plc":
-            return _cmd_start_plc()
-
-        elif method == "stop_plc":
-            return _cmd_stop_plc()
-
-        elif method == "reset_plc":
-            return _cmd_reset_plc(params)
-
-        elif method == "create_boot_app":
-            return _cmd_create_boot_app()
-
-        elif method == "source_download":
-            return _cmd_source_download(params)
-
-        elif method == "probe":
-            return _cmd_probe_oa(params)
-
-        elif method == "application_tree":
-            return _cmd_application_tree(params)
-
-        elif method == "plc_files":
-            return _cmd_plc_files(params)
-
-        elif method == "plc_log":
-            return _cmd_plc_log(params)
-
-        elif method == "plc_download":
-            return _cmd_plc_download(params)
-
-        elif method == "plc_upload":
-            return _cmd_plc_upload(params)
-
-        elif method == "export_csv":
-            return _cmd_export_csv(params)
-
-        elif method == "export_st":
-            return _cmd_export_st(params)
-
-        elif method == "app_crc":
-            return _cmd_app_crc(params)
-
-        elif method == "app_info":
-            return _cmd_app_info()
-
-        elif method == "app_history":
-            return _cmd_app_history(params)
-
-        elif method == "permissions":
-            return _cmd_permissions()
-
-        elif method == "compare":
-            return _cmd_compare_crc(params)
-
-        else:
-            return {"ok": False, "error": "Unknown method: {0}".format(method)}
-
+        return handler(params)
     except Exception as e:
         _log("Command error: {0}\n{1}".format(e, traceback.format_exc()))
         return {"ok": False, "error": "{0}: {1}".format(type(e).__name__, e)}
