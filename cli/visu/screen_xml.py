@@ -23,7 +23,7 @@ from __future__ import print_function
 import re
 import xml.etree.ElementTree as ET
 
-from .xml_helpers import find_named, named_text, strip_ns
+from .xml_ns import find_named, named_text, strip_ns
 
 # Screen root type guid (used for sibling discovery but defined here
 # only if/when needed; builder.py owns the _ROOT_TYPE constant).

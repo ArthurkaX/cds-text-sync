@@ -35,7 +35,7 @@ def set_base_directory():
         props = info.values if hasattr(info, "values") else info
         if "cds-sync-folder" in props: # Dictionary-like access
              initial_dir = props["cds-sync-folder"]
-    except:
+    except Exception:
         pass
 
     # Offer choice: Browse or Manual Input
@@ -143,7 +143,7 @@ def set_base_directory():
             try:
                 import socket
                 props["cds-sync-pc"] = socket.gethostname()
-            except:
+            except Exception:
                 pass
             
             if is_relative:
@@ -160,7 +160,7 @@ def set_base_directory():
         try:
             from codesys_utils import update_application_count_flag
             update_application_count_flag()
-        except:
+        except Exception:
             pass
         
         # Check _metadata.json for project path mismatch (only for absolute paths)
@@ -179,7 +179,7 @@ def set_base_directory():
                     try:
                         if "projects" in globals() and projects.primary:
                             current_path = projects.primary.path
-                    except:
+                    except Exception:
                         pass
                     
                     if current_path and json_path and json_path != current_path:
@@ -195,7 +195,7 @@ def set_base_directory():
                             data['project_path'] = current_path
                             try:
                                 data['project_name'] = str(projects.primary)
-                            except:
+                            except Exception:
                                 pass
                                 
                             with open(metadata_path, 'w') as f:

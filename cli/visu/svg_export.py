@@ -18,7 +18,7 @@ from __future__ import print_function
 import xml.etree.ElementTree as ET
 
 from . import themes
-from .xml_helpers import find_named, named_text, strip_ns
+from .xml_ns import find_named, named_text, strip_ns
 
 
 class SvgExportError(Exception):

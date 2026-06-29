@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 
 from . import catalog as _catalog
 from . import screen_xml as _screen_xml
-from .xml_helpers import find_named, named_text, strip_ns
+from .xml_ns import find_named, named_text, strip_ns
 
 # Member block element type guid (every VisualElemMemberList entry).
 _MEMBER_TYPE = "{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}"
