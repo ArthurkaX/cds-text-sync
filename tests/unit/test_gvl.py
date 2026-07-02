@@ -190,3 +190,107 @@ class TestEnsureGvl:
         )
         assert result == custom_path
         assert os.path.isfile(custom_path)
+
+
+class TestInferType:
+    def test_float(self):
+        assert gvl._infer_type("%3.1f C") == "REAL"
+
+    def test_float_variants(self):
+        for fmt in ("%f", "%.2F", "%e", "%g"):
+            assert gvl._infer_type(fmt) == "REAL", fmt
+
+    def test_int(self):
+        assert gvl._infer_type("%d") == "INT"
+        assert gvl._infer_type("count=%i") == "INT"
+
+    def test_string(self):
+        assert gvl._infer_type("%s") == "STRING"
+
+    def test_empty_and_none_default_bool(self):
+        assert gvl._infer_type("") == "BOOL"
+        assert gvl._infer_type(None) == "BOOL"
+
+    def test_no_conversion_is_bool(self):
+        assert gvl._infer_type("Level OK") == "BOOL"
+
+
+class TestCollectVariableTypes:
+    def test_textfield_format_gives_real(self):
+        elems = [{"params": {"text_var": "HMI.OutTemp", "text": "%3.1f C"}}]
+        assert gvl.collect_variable_types(elems) == {"HMI.OutTemp": "REAL"}
+
+    def test_button_var_is_bool(self):
+        elems = [{"params": {"tap_var": "HMI.Start"}}]
+        assert gvl.collect_variable_types(elems) == {"HMI.Start": "BOOL"}
+
+    def test_typed_wins_over_bool(self):
+        elems = [
+            {"params": {"tap_var": "HMI.V"}},
+            {"params": {"text_var": "HMI.V", "text": "%d"}},
+        ]
+        assert gvl.collect_variable_types(elems) == {"HMI.V": "INT"}
+
+
+class TestGenerateGvlTypes:
+    def test_types_map_overrides_default(self):
+        vars = {"HMI.OutTemp": "OutTemp"}
+        st = gvl.generate_gvl(vars, types={"HMI.OutTemp": "REAL"})
+        assert "OutTemp : REAL;" in st
+
+    def test_generated_gvl_uses_inferred_real(self, tmp_path):
+        pou_dir = os.path.join(str(tmp_path), "POUs")
+        os.makedirs(pou_dir)
+        elems = [{"params": {"text_var": "HMI.Foo", "text": "%3.1f"}}]
+        result = gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
+        with open(result) as f:
+            assert "Foo : REAL;" in f.read()
+
+
+class TestScanProjectGvls:
+    def test_finds_var_in_named_gvl(self, tmp_path):
+        hmi_dir = os.path.join(str(tmp_path), "Runtime", "HMI")
+        os.makedirs(hmi_dir)
+        with open(os.path.join(hmi_dir, "HMI.st"), "w") as f:
+            f.write("VAR_GLOBAL\n    OutTemp : REAL;\nEND_VAR\n")
+        gvls = gvl.scan_project_gvls(str(tmp_path))
+        assert "OutTemp" in gvls.get("HMI", set())
+
+    def test_ignores_non_gvl_st(self, tmp_path):
+        with open(os.path.join(str(tmp_path), "MAIN.st"), "w") as f:
+            f.write("PROGRAM MAIN\nVAR\n    x : INT;\nEND_VAR\n")
+        gvls = gvl.scan_project_gvls(str(tmp_path))
+        assert "MAIN" not in gvls
+
+
+class TestCrossGvlDedup:
+    def test_var_in_other_gvl_not_redeclared(self, tmp_path):
+        # HMI GVL already declares OutTemp -> VisuVars must not be written.
+        pou_dir = os.path.join(str(tmp_path), "POUs")
+        os.makedirs(pou_dir)
+        hmi_dir = os.path.join(str(tmp_path), "Runtime", "HMI")
+        os.makedirs(hmi_dir)
+        with open(os.path.join(hmi_dir, "HMI.st"), "w") as f:
+            f.write("VAR_GLOBAL\n    OutTemp : REAL;\nEND_VAR\n")
+        elems = [{"params": {"text_var": "HMI.OutTemp", "text": "%3.1f"}}]
+        result = gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
+        # Path is returned but the file is never created (nothing new to add).
+        assert not os.path.isfile(os.path.join(pou_dir, "VisuVars.st"))
+
+    def test_new_var_still_declared(self, tmp_path):
+        pou_dir = os.path.join(str(tmp_path), "POUs")
+        os.makedirs(pou_dir)
+        hmi_dir = os.path.join(str(tmp_path), "Runtime", "HMI")
+        os.makedirs(hmi_dir)
+        with open(os.path.join(hmi_dir, "HMI.st"), "w") as f:
+            f.write("VAR_GLOBAL\n    OutTemp : REAL;\nEND_VAR\n")
+        # OutTemp exists in HMI; NewOne does not -> only NewOne declared.
+        elems = [
+            {"params": {"text_var": "HMI.OutTemp", "text": "%3.1f"}},
+            {"params": {"tap_var": "HMI.NewOne"}},
+        ]
+        result = gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
+        with open(result) as f:
+            content = f.read()
+        assert "NewOne" in content
+        assert "OutTemp" not in content

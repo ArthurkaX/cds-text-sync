@@ -381,6 +381,18 @@ def main():
             visu_cmds.list_types()
             return
 
+        if args.visu_action == "new":
+            out = getattr(args, "out", "") or (
+                (args.name or "screen").strip().replace(" ", "_") + ".svg"
+            )
+            visu_cmds.new_svg(
+                out_path=out,
+                name=args.name,
+                width=getattr(args, "w", None) or args.width,
+                height=getattr(args, "h", None) or args.height,
+            )
+            return
+
         pv, _ = _resolve_project_view(sync_folder)
 
         if args.visu_action == "create-screen":

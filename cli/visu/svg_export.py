@@ -477,6 +477,126 @@ def _simple_to_svg(element):
         raise SvgExportError("Unsupported shape variant: '{0}'".format(shape))
 
 
+# Reverse of _LAMP_COLOR_ROLES in svg_import: role suffix -> friendly colour.
+_LAMP_ROLE_COLORS = {
+    "Red": "red",
+    "Green": "green",
+    "Yellow": "yellow",
+    "Blue": "blue",
+    "Gray": "gray",
+}
+
+
+def _render_lamp(element):
+    """Render a ``<rect data-cds-type="lamp">`` from a VisuFbElemLamp element."""
+    _x = _member_value(element, _MID_X)
+    _y = _member_value(element, _MID_Y)
+    _w = _member_value(element, _MID_W)
+    _h = _member_value(element, _MID_H)
+    _role = _member_value(element, 4062784938)
+    _var = _member_value(element, 743958181)
+
+    attrs = {"data-cds-type": "lamp"}
+    if isinstance(_x, str):
+        attrs["x"] = _x
+    if isinstance(_y, str):
+        attrs["y"] = _y
+    if isinstance(_w, str):
+        attrs["width"] = _w
+    if isinstance(_h, str):
+        attrs["height"] = _h
+
+    # Map the style role (e.g. 'Element-Lamp-Lamp1-Red') back to a colour.
+    if isinstance(_role, str) and _role:
+        suffix = _role.rsplit("-", 1)[-1]
+        color = _LAMP_ROLE_COLORS.get(suffix)
+        if color:
+            attrs["data-color"] = color
+    if isinstance(_var, str) and _var:
+        attrs["data-var"] = _var
+
+    return _svg_tag("rect", attrs)
+
+
+
+def _render_image_switcher(element):
+    """Render a <rect data-cds-type="image-switcher"> from a VisuFbImageSwitcher element."""
+    _x = _member_value(element, _MID_X)
+    _y = _member_value(element, _MID_Y)
+    _w = _member_value(element, _MID_W)
+    _h = _member_value(element, _MID_H)
+    _image_on = _member_value(element, 427565733)
+    _image_off = _member_value(element, 296037572)
+    _var = _member_value(element, 743958181)
+
+    attrs = {"data-cds-type": "image-switcher"}
+    if isinstance(_x, str):
+        attrs["x"] = _x
+    if isinstance(_y, str):
+        attrs["y"] = _y
+    if isinstance(_w, str):
+        attrs["width"] = _w
+    if isinstance(_h, str):
+        attrs["height"] = _h
+    if isinstance(_image_on, str) and _image_on:
+        attrs["data-image-on"] = _image_on
+    if isinstance(_image_off, str) and _image_off:
+        attrs["data-image-off"] = _image_off
+    if isinstance(_var, str) and _var:
+        attrs["data-var"] = _var
+
+    return _svg_tag("rect", attrs)
+
+
+def _render_combobox(element):
+    """Render a <rect data-cds-type="combobox"> from a VisuFbComboBoxInteger element."""
+    _x = _member_value(element, _MID_X)
+    _y = _member_value(element, _MID_Y)
+    _w = _member_value(element, _MID_W)
+    _h = _member_value(element, _MID_H)
+    _items = _member_value(element, 2114174855)
+    _var = _member_value(element, 397264524)
+
+    attrs = {"data-cds-type": "combobox"}
+    if isinstance(_x, str):
+        attrs["x"] = _x
+    if isinstance(_y, str):
+        attrs["y"] = _y
+    if isinstance(_w, str):
+        attrs["width"] = _w
+    if isinstance(_h, str):
+        attrs["height"] = _h
+    if isinstance(_items, str) and _items:
+        attrs["data-items"] = _items
+    if isinstance(_var, str) and _var:
+        attrs["data-var"] = _var
+
+    return _svg_tag("rect", attrs)
+
+
+def _render_alarm_banner(element):
+    """Render a ``<rect data-cds-type="alarm-banner">`` from a VisuFbElemAlarmBanner element.
+
+    Geometry only -- no bound variable, no extra params.
+    """
+    _x = _member_value(element, _MID_X)
+    _y = _member_value(element, _MID_Y)
+    _w = _member_value(element, _MID_W)
+    _h = _member_value(element, _MID_H)
+
+    attrs = {"data-cds-type": "alarm-banner"}
+    if isinstance(_x, str):
+        attrs["x"] = _x
+    if isinstance(_y, str):
+        attrs["y"] = _y
+    if isinstance(_w, str):
+        attrs["width"] = _w
+    if isinstance(_h, str):
+        attrs["height"] = _h
+
+    return _svg_tag("rect", attrs)
+
+
 def _element_to_svg(element):
     """Dispatch a CODESYS visual element to the appropriate SVG renderer."""
     type_name = named_text(element, "VisualElementTypeName")
@@ -493,11 +613,22 @@ def _element_to_svg(element):
         return _render_button(element)
     elif type_name == "VisuFbElemTextfield":
         return _render_textfield(element)
+    elif type_name == "VisuFbElemLamp":
+        return _render_lamp(element)
+    elif type_name == "VisuFbImageSwitcher":
+        return _render_image_switcher(element)
+    elif type_name == "VisuFbComboBoxInteger":
+        return _render_combobox(element)
+    elif type_name == "VisuFbElemAlarmBanner":
+        return _render_alarm_banner(element)
     else:
         raise SvgExportError(
             "Unsupported element type: '{0}' "
             "(v1 vocabulary: VisuFbElemSimple, VisuFbElemLine, "
-            "VisuFbLabel, VisuFbElemButton, VisuFbElemTextfield)".format(type_name)
+            "VisuFbLabel, VisuFbElemButton, VisuFbElemTextfield, "
+            "VisuFbElemLamp, VisuFbImageSwitcher, "
+            "VisuFbComboBoxInteger, "
+            "VisuFbElemAlarmBanner)".format(type_name)
         )
 
 

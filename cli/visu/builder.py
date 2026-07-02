@@ -21,6 +21,10 @@ from . import catalog as _catalog
 from . import screen_xml as _screen_xml
 from .xml_ns import find_named, named_text, strip_ns
 
+# Re-exported so commands.py can call them via the builder facade.
+read_screen_size = _screen_xml.read_screen_size
+list_elements = _screen_xml.list_elements
+
 # Member block element type guid (every VisualElemMemberList entry).
 _MEMBER_TYPE = "{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}"
 _COLOR_TYPE = "{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}"
@@ -701,6 +705,28 @@ def _render_golden_element(
         else:
             fc_signed = fc_int
         block = block.replace("@@FONT_COLOR_SIGNED@@", str(fc_signed))
+
+    # Generic catalog-driven placeholders. A catalog may declare a
+    # "template_params" map so new element types can bind arbitrary members
+    # (lamp style role, image reference, combobox variable, alarm filter, ...)
+    # to their template without a per-type branch here:
+    #
+    #   "template_params": {
+    #       "STYLE_ROLE": {"param": "style_role", "default": "..."},
+    #       "VAR":        {"param": "var",        "default": ""}
+    #   }
+    #
+    # Each entry maps placeholder "@@STYLE_ROLE@@" to params["style_role"],
+    # falling back to "default" (or "" if absent). Values are XML-escaped.
+    for placeholder, spec in catalog.get("template_params", {}).items():
+        token = "@@{0}@@".format(placeholder)
+        if token not in block:
+            continue
+        param_name = spec.get("param", placeholder.lower())
+        value = params.get(param_name)
+        if value is None:
+            value = spec.get("default", "")
+        block = block.replace(token, _esc(str(value)))
 
     geometry = {
         "x": x,

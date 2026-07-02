@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">
+
+ <!-- ============================================================
+ HMI status panel screen. Edit this file, then compile with
+ `cts visu from-svg`. Background is set at generation time.
+ Do NOT add a full-screen rect just to paint the background.
+
+ COLOURS: never write a colour. Add class="..." and the active
+ CODESYS style picks the colour. Available classes:
+ panel, card, title, value, divider, ok, warn, alarm,
+ pipe-water, metal.
+ Buttons and textfields take NO class: they inherit the native
+ CODESYS control style automatically.
+ ============================================================ -->
+
+ <!-- Main container panel -->
+ <rect class="panel" x="24" y="24" width="752" height="432" />
+
+ <!-- Screen heading -->
+ <text class="title" x="48" y="72">Status Panel</text>
+
+ <!-- Divider below heading -->
+ <line class="divider" x1="48" y1="88" x2="752" y2="88" />
+
+ <!-- Section: machine status -->
+ <text class="title" x="48" y="124">Machine Status</text>
+
+ <rect class="ok" x="48" y="140" width="16" height="16" />
+ <text class="title" x="72" y="154">Motor Running</text>
+
+ <rect class="alarm" x="48" y="172" width="16" height="16" />
+ <text class="title" x="72" y="186">Pressure Fault</text>
+
+ <!-- Divider -->
+ <line class="divider" x1="48" y1="212" x2="752" y2="212" />
+
+ <!-- Section: live values -->
+ <text class="title" x="48" y="248">Live Values</text>
+
+ <text data-cds-type="textfield" x="48" y="272"
+       data-width="160" data-height="32"
+       data-text-var="HMI.Temperature">show %3.1f C</text>
+
+ <text data-cds-type="textfield" x="240" y="272"
+       data-width="160" data-height="32"
+       data-text-var="HMI.Pressure">show %3.2f bar</text>
+
+ <!-- Divider -->
+ <line class="divider" x1="48" y1="328" x2="752" y2="328" />
+
+ <!-- Section: controls -->
+ <text class="title" x="48" y="364">Controls</text>
+
+ <rect data-cds-type="button" x="48" y="388" width="140" height="40"
+       data-text="Start" data-cds-tap="TAP HMI.StartPump" />
+
+ <rect data-cds-type="button" x="208" y="388" width="140" height="40"
+       data-text="Stop" data-cds-action="OnMouseClick: ST HMI.StopPump := TRUE;" />
+
+</svg>

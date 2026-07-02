@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">
+
+  <!-- ============================================================
+       HMI sketch. Edit this file, then compile with `cts visu from-svg`.
+       The screen BACKGROUND is set for you at generation time.
+       Do NOT add a full-screen <rect> just to paint the background.
+
+       COLOURS: never write a colour. Add class="..." and the active
+       CODESYS style picks the colour. Available classes:
+         panel    grouping / container backing
+         card     lighter inner surface
+         title    heading text
+         value    large read-out number / text
+         divider  separator line
+         ok       status: healthy / running
+         warn     status: caution
+         alarm    status: fault
+         pipe-water  P and ID fluid line / vessel
+         metal       P and ID structural / equipment
+       Buttons and textfields take NO class: they inherit the native
+       CODESYS control style automatically.
+       More element types (line, circle, ellipse) -> see other files
+       in this examples/ folder.
+       ============================================================ -->
+
+  <!-- EXAMPLE rectangle (panel). Required: x, y, width, height. -->
+  <rect class="panel" x="24" y="24" width="752" height="432" />
+
+  <!-- EXAMPLE heading text. Required: x, y, and the text content. -->
+  <text class="title" x="48" y="72">Screen title (EXAMPLE)</text>
+
+  <!-- EXAMPLE large value text (static). Required: x, y, text content. -->
+  <text class="value" x="48" y="140">123.4</text>
+
+  <!-- EXAMPLE textfield (shows a live PLC value).
+       Required: data-cds-type="textfield", x, y, data-width, data-height,
+                 and a format string as the text content (e.g. show %3.1f).
+       Optional: data-text-var (which variable to show). -->
+  <text data-cds-type="textfield" x="48" y="200"
+        data-width="160" data-height="32"
+        data-text-var="HMI.Temperature">show %3.1f</text>
+
+  <!-- EXAMPLE button (takes the native CODESYS style; no class).
+       Required: data-cds-type="button", x, y, width, height, data-text.
+       Optional (what it does): data-cds-tap="TAP HMI.Var"
+                 OR data-cds-action="..." (see the skill's Actions section). -->
+  <rect data-cds-type="button" x="48" y="256" width="160" height="48"
+        data-text="Start" data-cds-tap="TAP HMI.StartPump" />
+
+</svg>

@@ -1,0 +1,24 @@
+/* Semantic authoring classes for HMI SVG sketches.
+ *
+ * Each class expands into the plain SVG presentation attributes the element
+ * parsers already read (fill, stroke, font-size). Colours are written as
+ * var(--role); the role resolves through the active CODESYS style / theme,
+ * so an element follows the project's visual style automatically.
+ *
+ * This file is DATA, not code -- extend it here, or override/add classes in a
+ * project-level visu.css. Do not hard-code colours in SVG; use a class.
+ *
+ * Interactive controls (data-cds-type="button" / "textfield") intentionally
+ * ignore classes: they inherit the native CODESYS visual style.
+ */
+
+.panel      { fill: var(--panel); }              /* grouping / container backing */
+.card       { fill: var(--surface); }            /* lighter inner surface        */
+.title      { fill: var(--text); font-size: 20; }/* heading text                 */
+.value      { fill: var(--text); font-size: 28; }/* large read-out number/text   */
+.divider    { stroke: var(--divider); }          /* separator line               */
+.ok         { fill: var(--success); }            /* status: healthy / running    */
+.warn       { fill: var(--warning); }            /* status: caution              */
+.alarm      { fill: var(--alarm-fill); stroke: var(--alarm-frame); } /* status: fault */
+.pipe-water { fill: var(--water); stroke: var(--water-dim); }        /* P&ID fluid    */
+.metal      { fill: var(--metal); }              /* P&ID structural / equipment  */
