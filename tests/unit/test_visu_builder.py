@@ -1144,3 +1144,276 @@ class TestAlarmBanner:
         assert 'y="34"' in out
         assert 'width="400"' in out
         assert 'height="25"' in out
+
+
+class TestFrameDecompile:
+    """Frame element decompile tests (to-svg only, Stage A)."""
+
+    def _make_frame_xml(self, extra=""):
+        return (
+            '<Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbFrame</Single>'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single>'
+            '<Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">844</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">173</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">67</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">40</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2189774824</Single>'
+            '<Single Name="Value" Type="string">5</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">1355317294</Single>'
+            '<Single Name="Value" Type="string">1</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            '<Single Name="Wrapper">'
+            '<Single Name="VisNodeRefs33" Type="string">PUMP_ICON</Single>'
+            '<List Name="TypeNodeChildren">'
+            '<Single>'
+            '<Single Name="TypeNodeName" Type="string">pump_number</Single>'
+            '<Single Name="TypeNodeIdLong" Type="long">2189774824</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="TypeNodeName" Type="string">down</Single>'
+            '<Single Name="TypeNodeIdLong" Type="long">1355317294</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            + extra
+            + '</Single>'
+        )
+
+    def test_render_frame_basic(self):
+        """Full frame with geometry, visu ref, and params."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_frame_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._render_frame(node)
+        assert 'data-cds-type="frame"' in out
+        assert 'data-visu="PUMP_ICON"' in out
+        assert 'data-param-pump_number="5"' in out
+        assert 'data-param-down="1"' in out
+        assert 'x="844"' in out
+        assert 'width="67"' in out
+        assert 'y="173"' in out
+        assert 'height="40"' in out
+
+    def test_render_frame_no_decoy_params(self):
+        """Decoy internal TypeNodeChildren does not leak into output."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        decoy = (
+            '<Single Name="iX">'
+            '<List Name="TypeNodeChildren">'
+            '<Single>'
+            '<Single Name="TypeNodeName" Type="string">iX</Single>'
+            '<Single Name="TypeNodeIdLong" Type="long">999999999</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+        )
+        xml = self._make_frame_xml(decoy)
+        node = ET.fromstring(xml)
+        out = svg_export._render_frame(node)
+        assert 'data-cds-type="frame"' in out
+        assert 'data-visu="PUMP_ICON"' in out
+        assert 'data-param-pump_number="5"' in out
+        assert 'data-param-down="1"' in out
+        assert 'data-param-iX' not in out
+
+    def test_dispatch_frame(self):
+        """svg_export._element_to_svg routes VisuFbFrame to _render_frame."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_frame_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._element_to_svg(node)
+        assert 'data-cds-type="frame"' in out
+        assert 'data-visu="PUMP_ICON"' in out
+        assert 'data-param-pump_number="5"' in out
+        assert 'data-param-down="1"' in out
+
+    def test_frame_no_reference(self):
+        """Frame with only Null VisNodeRefs33 still renders geometry, no data-visu."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = (
+            '<Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbFrame</Single>'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single>'
+            '<Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">100</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">200</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">300</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">400</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            '<Null Name="VisNodeRefs33"/>'
+            '</Single>'
+        )
+        node = ET.fromstring(xml)
+        out = svg_export._render_frame(node)
+        assert 'data-cds-type="frame"' in out
+        assert 'data-visu' not in out
+        assert 'x="100"' in out
+        assert 'y="200"' in out
+        assert 'width="300"' in out
+        assert 'height="400"' in out
+
+
+class TestSliderDecompile:
+    """Slider element decompile tests (to-svg only)."""
+
+    def _make_slider_xml(self, extra=""):
+        return (
+            '<Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbElemSlider</Single>'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single>'
+            '<Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">100</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">200</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">300</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">400</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">397264524</Single>'
+            '<Single Name="Value" Type="string">DB_MATRIX.rProductivity</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2640826223</Single>'
+            '<Single Name="Value" Type="string">VERTICAL</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">1404881523</Single>'
+            '<Single Name="Value" Type="float">20</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">3837067714</Single>'
+            '<Single Name="Value" Type="float">100</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            + extra
+            + '</Single>'
+        )
+
+    def _make_minimal_slider_xml(self):
+        """Slider with only geometry members, no slider-specific attrs."""
+        return (
+            '<Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbElemSlider</Single>'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single>'
+            '<Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">50</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">60</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">200</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">30</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            '</Single>'
+        )
+
+    def test_render_slider_basic(self):
+        """Full slider with geometry, var, orientation, min, max."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_slider_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._render_slider(node)
+        assert 'data-cds-type="slider"' in out
+        assert 'data-var="DB_MATRIX.rProductivity"' in out
+        assert 'data-orientation="VERTICAL"' in out
+        assert 'data-min="20"' in out
+        assert 'data-max="100"' in out
+        assert 'x="100"' in out
+        assert 'y="200"' in out
+        assert 'width="300"' in out
+        assert 'height="400"' in out
+
+    def test_dispatch_slider(self):
+        """svg_export._element_to_svg routes VisuFbElemSlider to _render_slider."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_slider_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._element_to_svg(node)
+        assert 'data-cds-type="slider"' in out
+        assert 'data-var="DB_MATRIX.rProductivity"' in out
+        assert 'data-orientation="VERTICAL"' in out
+        assert 'data-min="20"' in out
+        assert 'data-max="100"' in out
+
+    def test_slider_minimal(self):
+        """Slider with only geometry renders data-cds-type, no optional attrs, no raise."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_minimal_slider_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._render_slider(node)
+        assert 'data-cds-type="slider"' in out
+        assert 'data-var' not in out
+        assert 'data-orientation' not in out
+        assert 'data-min' not in out
+        assert 'data-max' not in out
+        assert 'x="50"' in out
+        assert 'y="60"' in out
+        assert 'width="200"' in out
+        assert 'height="30"' in out

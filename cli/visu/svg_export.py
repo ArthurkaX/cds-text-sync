@@ -574,6 +574,99 @@ def _render_combobox(element):
     return _svg_tag("rect", attrs)
 
 
+def _render_frame(element):
+    """Render a ``<rect data-cds-type="frame">`` from a VisuFbFrame element."""
+    _x = _member_value(element, _MID_X)
+    _y = _member_value(element, _MID_Y)
+    _w = _member_value(element, _MID_W)
+    _h = _member_value(element, _MID_H)
+
+    attrs = {"data-cds-type": "frame"}
+
+    # Build parent map for navigating descendants.
+    parents = {c: p for p in element.iter() for c in p}
+
+    # Find first non-null VisNodeRefs33.
+    visu_name = None
+    holder = None
+    for child in element.iter():
+        if strip_ns(child.tag) == "Single" and child.attrib.get("Name") == "VisNodeRefs33":
+            text = (child.text or "").strip()
+            if text:
+                visu_name = text
+                holder = parents.get(child)
+                break
+
+    if visu_name:
+        attrs["data-visu"] = visu_name
+
+    # Extract params from the holder's direct-child TypeNodeChildren.
+    if holder is not None:
+        for direct_child in list(holder):
+            if strip_ns(direct_child.tag) == "List" and direct_child.attrib.get("Name") == "TypeNodeChildren":
+                for param_node in list(direct_child):
+                    if strip_ns(param_node.tag) != "Single":
+                        continue
+                    param_name_el = find_named(param_node, "Single", "TypeNodeName")
+                    param_id_el = find_named(param_node, "Single", "TypeNodeIdLong")
+                    if param_name_el is None or param_id_el is None:
+                        continue
+                    param_name = (param_name_el.text or "").strip()
+                    if not param_name:
+                        continue
+                    try:
+                        param_id = int(param_id_el.text.strip())
+                    except (ValueError, TypeError):
+                        continue
+                    param_value = _member_value(element, param_id)
+                    if param_value:
+                        attrs["data-param-" + param_name] = param_value
+
+    # Geometry attributes (mirror _render_combobox style).
+    if isinstance(_x, str):
+        attrs["x"] = _x
+    if isinstance(_y, str):
+        attrs["y"] = _y
+    if isinstance(_w, str):
+        attrs["width"] = _w
+    if isinstance(_h, str):
+        attrs["height"] = _h
+
+    return _svg_tag("rect", attrs)
+
+
+def _render_slider(element):
+ """Render a <rect data-cds-type="slider"> from a VisuFbElemSlider element."""
+ _x = _member_value(element, _MID_X)
+ _y = _member_value(element, _MID_Y)
+ _w = _member_value(element, _MID_W)
+ _h = _member_value(element, _MID_H)
+ _var = _member_value(element, 397264524)
+ _orientation = _member_value(element, 2640826223)
+ _min = _member_value(element, 1404881523)
+ _max = _member_value(element, 3837067714)
+
+ attrs = {"data-cds-type": "slider"}
+ if isinstance(_x, str):
+  attrs["x"] = _x
+ if isinstance(_y, str):
+  attrs["y"] = _y
+ if isinstance(_w, str):
+  attrs["width"] = _w
+ if isinstance(_h, str):
+  attrs["height"] = _h
+ if isinstance(_var, str) and _var:
+  attrs["data-var"] = _var
+ if isinstance(_orientation, str) and _orientation:
+  attrs["data-orientation"] = _orientation
+ if isinstance(_min, str) and _min:
+  attrs["data-min"] = _min
+ if isinstance(_max, str) and _max:
+  attrs["data-max"] = _max
+
+ return _svg_tag("rect", attrs)
+
+
 def _render_alarm_banner(element):
     """Render a ``<rect data-cds-type="alarm-banner">`` from a VisuFbElemAlarmBanner element.
 
@@ -621,6 +714,10 @@ def _element_to_svg(element):
         return _render_combobox(element)
     elif type_name == "VisuFbElemAlarmBanner":
         return _render_alarm_banner(element)
+    elif type_name == "VisuFbFrame":
+        return _render_frame(element)
+    elif type_name == "VisuFbElemSlider":
+        return _render_slider(element)
     else:
         raise SvgExportError(
             "Unsupported element type: '{0}' "
@@ -628,7 +725,9 @@ def _element_to_svg(element):
             "VisuFbLabel, VisuFbElemButton, VisuFbElemTextfield, "
             "VisuFbElemLamp, VisuFbImageSwitcher, "
             "VisuFbComboBoxInteger, "
-            "VisuFbElemAlarmBanner)".format(type_name)
+            "VisuFbElemAlarmBanner, "
+            "VisuFbElemSlider, "
+            "VisuFbFrame)".format(type_name)
         )
 
 
