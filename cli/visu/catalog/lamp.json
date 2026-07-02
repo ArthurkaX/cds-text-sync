@@ -1,0 +1,82 @@
+{
+  "type": "lamp",
+  "visualElementTypeName": "VisuFbElemLamp",
+  "visualElementName": "Lamp1",
+  "visualElementIsRectangle": true,
+  "elementVersion": 0,
+  "golden_template": "element_lamp.xml.tmpl",
+  "description": "Indicator lamp - a native status light bound to a BOOL variable. CODESYS swaps between the On/Off bitmap of the chosen colour role at runtime. Use for run/fault/ready indicators.",
+
+  "geometry": {
+    "x": 1649127785,
+    "y": 357335551,
+    "width": 2422045748,
+    "height": 2134141914,
+    "center_x": 550940142,
+    "center_y": 1473355128
+  },
+
+  "invariants": [
+    {
+      "id": "bounds",
+      "rule": "X >= 0 and Y >= 0 and X+Width <= SizeX and Y+Height <= SizeY",
+      "severity": "error"
+    },
+    {
+      "id": "style_role_required",
+      "rule": "Member 4062784938 (style role) must be a valid Element-Lamp-Lamp1-<Colour> role name from the active VisualizationStyle, or the lamp renders blank.",
+      "severity": "error",
+      "style_member_id": 4062784938
+    }
+  ],
+
+  "template_params": {
+    "STYLE_ROLE": {
+      "param": "style_role",
+      "default": "Element-Lamp-Lamp1-Green"
+    },
+    "VAR": {
+      "param": "var",
+      "default": ""
+    }
+  },
+
+  "params": {
+    "x": {
+      "member_id": 1649127785,
+      "kind": "int",
+      "geometry": true,
+      "doc": "X (left), px"
+    },
+    "y": {
+      "member_id": 357335551,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Y (top), px"
+    },
+    "width": {
+      "member_id": 2422045748,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Width, px"
+    },
+    "height": {
+      "member_id": 2134141914,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Height, px"
+    },
+    "style_role": {
+      "member_id": 4062784938,
+      "kind": "string",
+      "doc": "Lamp bitmap role, e.g. 'Element-Lamp-Lamp1-Red'. CODESYS appends -On/-Off from the bound variable at runtime. Derived from the friendly colour (red|green|yellow|blue|gray) in the SVG parser."
+    },
+    "var": {
+      "member_id": 743958181,
+      "kind": "string",
+      "doc": "Bound BOOL variable that drives the lamp On/Off state (e.g. 'HMI.PumpRunning')."
+    }
+  },
+
+  "base_members": []
+}

@@ -1,0 +1,85 @@
+{
+ "type": "image-switcher",
+ "visualElementTypeName": "VisuFbImageSwitcher",
+ "visualElementName": "ImageSwitcher",
+ "visualElementIsRectangle": true,
+ "elementVersion": 0,
+ "golden_template": "element_image_switcher.xml.tmpl",
+ "description": "Two-state image toggle bound to a BOOL variable. Shows one of two ImagePool images based on runtime state.",
+
+ "geometry": {
+ "x": 1649127785,
+ "y": 357335551,
+ "width": 2422045748,
+ "height": 2134141914,
+ "center_x": 550940142,
+ "center_y": 1473355128
+ },
+
+ "invariants": [
+ {
+ "id": "bounds",
+ "rule": "X >= 0 and Y >= 0 and X+Width <= SizeX and Y+Height <= SizeY",
+ "severity": "error"
+ }
+ ],
+
+ "template_params": {
+ "IMAGE_OFF": {
+ "param": "image_off",
+ "default": ""
+ },
+ "IMAGE_ON": {
+ "param": "image_on",
+ "default": ""
+ },
+ "VAR": {
+ "param": "var",
+ "default": ""
+ }
+ },
+
+ "params": {
+ "x": {
+ "member_id": 1649127785,
+ "kind": "int",
+ "geometry": true,
+ "doc": "X (left), px"
+ },
+ "y": {
+ "member_id": 357335551,
+ "kind": "int",
+ "geometry": true,
+ "doc": "Y (top), px"
+ },
+ "width": {
+ "member_id": 2422045748,
+ "kind": "int",
+ "geometry": true,
+ "doc": "Width, px"
+ },
+ "height": {
+ "member_id": 2134141914,
+ "kind": "int",
+ "geometry": true,
+ "doc": "Height, px"
+ },
+ "image_off": {
+ "member_id": 296037572,
+ "kind": "string",
+ "doc": "ImagePool path for the false/off state, e.g. 'ICONS.pump_stop'."
+ },
+ "image_on": {
+ "member_id": 427565733,
+ "kind": "string",
+ "doc": "ImagePool path for the true/on state, e.g. 'ICONS.pump_run'."
+ },
+ "var": {
+ "member_id": 743958181,
+ "kind": "string",
+ "doc": "Bound BOOL variable that toggles the displayed image (e.g. 'HMI.PumpRunning')."
+ }
+ },
+
+ "base_members": []
+}

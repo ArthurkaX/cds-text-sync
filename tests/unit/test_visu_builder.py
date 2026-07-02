@@ -674,3 +674,473 @@ class TestStructuralFidelity:
         assert ids_in_order[:5] == catalog_ids[:5]
         assert ids_in_order[-5:] == catalog_ids[-5:]
         assert len(ids_in_order) == len(catalog_ids)
+
+
+@pytest.fixture
+def lamp_catalog():
+    return _catalog.load_catalog("lamp")
+
+
+class TestLamp:
+    """Reference indicator-lamp element (golden-template + template_params)."""
+
+    def _find_member(self, xml_text, member_id):
+        return TestElement._find_member(self, xml_text, member_id)
+
+    def test_catalog_loads(self, lamp_catalog):
+        assert lamp_catalog["type"] == "lamp"
+        assert lamp_catalog["visualElementTypeName"] == "VisuFbElemLamp"
+        assert "template_params" in lamp_catalog
+
+    def test_append_lamp(self, empty_screen, lamp_catalog):
+        params = {
+            "x": "66",
+            "y": "55",
+            "width": "32",
+            "height": "32",
+            "style_role": "Element-Lamp-Lamp1-Red",
+            "var": "HMI.PumpFault",
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, lamp_catalog, params
+        )
+        assert geometry["x"] == 66
+        assert geometry["y"] == 55
+        assert "VisuFbElemLamp" in new_xml
+        # template_params substitution landed on the right members.
+        assert self._find_member(new_xml, 4062784938) == "Element-Lamp-Lamp1-Red"
+        assert self._find_member(new_xml, 743958181) == "HMI.PumpFault"
+        assert "@@" not in new_xml
+
+    def test_template_param_default_used_when_missing(self, empty_screen, lamp_catalog):
+        # No style_role/var supplied -> catalog defaults fill in.
+        params = {"x": "0", "y": "0", "width": "32", "height": "32"}
+        new_xml, _, _ = builder.append_element(empty_screen, lamp_catalog, params)
+        assert self._find_member(new_xml, 4062784938) == "Element-Lamp-Lamp1-Green"
+        assert self._find_member(new_xml, 743958181) == ""
+
+    def test_svg_parse_lamp(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="lamp" data-color="red" data-var="HMI.Fault" '
+            'x="66" y="55" width="32" height="32"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        lamp = parsed["elements"][0]
+        assert lamp["type"] == "lamp"
+        assert lamp["params"]["style_role"] == "Element-Lamp-Lamp1-Red"
+        assert lamp["params"]["var"] == "HMI.Fault"
+
+    def test_svg_parse_lamp_default_color(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="lamp" x="0" y="0" width="32" height="32"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        assert parsed["elements"][0]["params"]["style_role"] == (
+            "Element-Lamp-Lamp1-Green"
+        )
+
+    def test_export_round_trip(self, empty_screen, lamp_catalog):
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        params = {
+            "x": "66",
+            "y": "55",
+            "width": "32",
+            "height": "32",
+            "style_role": "Element-Lamp-Lamp1-Yellow",
+            "var": "HMI.Ready",
+        }
+        new_xml, _, _ = builder.append_element(empty_screen, lamp_catalog, params)
+        # Pull the appended lamp element node back out and decompile it.
+        root = ET.fromstring(new_xml)
+        lamp_node = None
+        for el in root.iter():
+            tag = el.tag.split("}")[-1] if "}" in str(el.tag) else el.tag
+            if tag == "Single":
+                for child in list(el):
+                    ct = (
+                        child.tag.split("}")[-1]
+                        if "}" in str(child.tag)
+                        else child.tag
+                    )
+                    if (
+                        ct == "Single"
+                        and child.attrib.get("Name") == "VisualElementTypeName"
+                        and (child.text or "") == "VisuFbElemLamp"
+                    ):
+                        lamp_node = el
+                        break
+            if lamp_node is not None:
+                break
+        assert lamp_node is not None
+        out = svg_export._element_to_svg(lamp_node)
+        assert 'data-cds-type="lamp"' in out
+        assert 'data-color="yellow"' in out
+        assert "HMI.Ready" in out
+
+
+class TestLampGvl:
+    def test_lamp_var_collected(self):
+        from cli.visu import gvl
+
+        elems = [{"type": "lamp", "params": {"var": "HMI.PumpFault"}}]
+        assert gvl.collect_variables(elems) == {"HMI.PumpFault": "PumpFault"}
+
+    def test_lamp_var_typed_bool(self):
+        from cli.visu import gvl
+
+        elems = [{"type": "lamp", "params": {"var": "HMI.PumpFault"}}]
+        assert gvl.collect_variable_types(elems) == {"HMI.PumpFault": "BOOL"}
+
+
+@pytest.fixture
+def image_switcher_catalog():
+    return _catalog.load_catalog("image-switcher")
+
+
+class TestImageSwitcher:
+    """Two-state image toggle element (golden-template + template_params)."""
+
+    def _find_member(self, xml_text, member_id):
+        return TestElement._find_member(self, xml_text, member_id)
+
+    def test_catalog_loads(self, image_switcher_catalog):
+        assert image_switcher_catalog["type"] == "image-switcher"
+        assert image_switcher_catalog["visualElementTypeName"] == "VisuFbImageSwitcher"
+        assert "template_params" in image_switcher_catalog
+
+    def test_append_image_switcher(self, empty_screen, image_switcher_catalog):
+        params = {
+            "x": "66",
+            "y": "55",
+            "width": "70",
+            "height": "70",
+            "image_on": "ICONS.pump_run",
+            "image_off": "ICONS.pump_stop",
+            "var": "HMI.PumpRunning",
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, image_switcher_catalog, params
+        )
+        assert geometry["x"] == 66
+        assert geometry["y"] == 55
+        assert "VisuFbImageSwitcher" in new_xml
+        # template_params substitution landed on the right members.
+        assert self._find_member(new_xml, 427565733) == "ICONS.pump_run"
+        assert self._find_member(new_xml, 296037572) == "ICONS.pump_stop"
+        assert self._find_member(new_xml, 743958181) == "HMI.PumpRunning"
+        assert "@@" not in new_xml
+
+    def test_template_param_default_used_when_missing(self, empty_screen, image_switcher_catalog):
+        # No image_on/image_off/var supplied -> catalog defaults fill in.
+        params = {"x": "0", "y": "0", "width": "70", "height": "70"}
+        new_xml, _, _ = builder.append_element(empty_screen, image_switcher_catalog, params)
+        assert self._find_member(new_xml, 427565733) == ""
+        assert self._find_member(new_xml, 296037572) == ""
+        assert self._find_member(new_xml, 743958181) == ""
+
+    def test_svg_parse_image_switcher(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="image-switcher" data-image-on="ICONS.pump_run" '
+            'data-image-off="ICONS.pump_stop" data-var="HMI.PumpRunning" '
+            'x="66" y="55" width="70" height="70"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        elem = parsed["elements"][0]
+        assert elem["type"] == "image-switcher"
+        assert elem["params"]["image_on"] == "ICONS.pump_run"
+        assert elem["params"]["image_off"] == "ICONS.pump_stop"
+        assert elem["params"]["var"] == "HMI.PumpRunning"
+
+    def test_svg_parse_image_switcher_defaults(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="image-switcher" x="0" y="0" width="70" height="70"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        elem = parsed["elements"][0]
+        assert elem["params"]["image_on"] == ""
+        assert elem["params"]["image_off"] == ""
+        assert elem["params"]["var"] == ""
+
+    def test_export_round_trip(self, empty_screen, image_switcher_catalog):
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        params = {
+            "x": "66",
+            "y": "55",
+            "width": "70",
+            "height": "70",
+            "image_on": "ICONS.pump_run",
+            "image_off": "ICONS.pump_stop",
+            "var": "HMI.PumpRunning",
+        }
+        new_xml, _, _ = builder.append_element(empty_screen, image_switcher_catalog, params)
+        # Pull the appended image-switcher element node back out and decompile it.
+        root = ET.fromstring(new_xml)
+        is_node = None
+        for el in root.iter():
+            tag = el.tag.split("}")[-1] if "}" in str(el.tag) else el.tag
+            if tag == "Single":
+                for child in list(el):
+                    ct = (
+                        child.tag.split("}")[-1]
+                        if "}" in str(child.tag)
+                        else child.tag
+                    )
+                    if (
+                        ct == "Single"
+                        and child.attrib.get("Name") == "VisualElementTypeName"
+                        and (child.text or "") == "VisuFbImageSwitcher"
+                    ):
+                        is_node = el
+                        break
+                if is_node is not None:
+                    break
+        assert is_node is not None
+        out = svg_export._element_to_svg(is_node)
+        assert 'data-cds-type="image-switcher"' in out
+        assert 'data-image-on="ICONS.pump_run"' in out
+        assert 'data-image-off="ICONS.pump_stop"' in out
+        assert 'data-var="HMI.PumpRunning"' in out
+
+
+class TestImageSwitcherGvl:
+    def test_image_switcher_var_collected(self):
+        from cli.visu import gvl
+
+        elems = [{"type": "image-switcher", "params": {"var": "HMI.PumpRunning"}}]
+        assert gvl.collect_variables(elems) == {"HMI.PumpRunning": "PumpRunning"}
+
+    def test_image_switcher_var_typed_bool(self):
+        from cli.visu import gvl
+
+        elems = [{"type": "image-switcher", "params": {"var": "HMI.PumpRunning"}}]
+        assert gvl.collect_variable_types(elems) == {"HMI.PumpRunning": "BOOL"}
+
+
+
+@pytest.fixture
+def combobox_catalog():
+    return _catalog.load_catalog("combobox")
+
+
+class TestComboBox:
+    """Combobox dropdown element (golden-template + template_params)."""
+
+    def _find_member(self, xml_text, member_id):
+        return TestElement._find_member(self, xml_text, member_id)
+
+    def test_catalog_loads(self, combobox_catalog):
+        assert combobox_catalog["type"] == "combobox"
+        assert combobox_catalog["visualElementTypeName"] == "VisuFbComboBoxInteger"
+        assert "template_params" in combobox_catalog
+
+    def test_append_combobox(self, empty_screen, combobox_catalog):
+        params = {
+            "x": "66",
+            "y": "55",
+            "width": "120",
+            "height": "25",
+            "items": "'RECIPES'",
+            "var": "HMI.Recipe",
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, combobox_catalog, params
+        )
+        assert geometry["x"] == 66
+        assert geometry["y"] == 55
+        assert "VisuFbComboBoxInteger" in new_xml
+        # template_params substitution landed on the right members.
+        assert self._find_member(new_xml, 2114174855) == "'RECIPES'"
+        assert self._find_member(new_xml, 397264524) == "HMI.Recipe"
+        assert "@@" not in new_xml
+
+    def test_template_param_default_used_when_missing(self, empty_screen, combobox_catalog):
+        # No items/var supplied -> catalog defaults fill in.
+        params = {"x": "0", "y": "0", "width": "120", "height": "25"}
+        new_xml, _, _ = builder.append_element(empty_screen, combobox_catalog, params)
+        assert self._find_member(new_xml, 2114174855) == "''"
+        assert self._find_member(new_xml, 397264524) == ""
+
+    def test_svg_parse_combobox(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="combobox" data-items="\'RECIPES\'" '
+            'data-var="HMI.Recipe" '
+            'x="66" y="55" width="120" height="25"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        elem = parsed["elements"][0]
+        assert elem["type"] == "combobox"
+        assert elem["params"]["items"] == "'RECIPES'"
+        assert elem["params"]["var"] == "HMI.Recipe"
+
+    def test_svg_parse_combobox_defaults(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="combobox" x="0" y="0" width="120" height="25"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        elem = parsed["elements"][0]
+        assert elem["params"]["items"] == ""
+        assert elem["params"]["var"] == ""
+
+    def test_export_round_trip(self, empty_screen, combobox_catalog):
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        params = {
+            "x": "66",
+            "y": "55",
+            "width": "120",
+            "height": "25",
+            "items": "'RECIPES'",
+            "var": "HMI.Recipe",
+        }
+        new_xml, _, _ = builder.append_element(empty_screen, combobox_catalog, params)
+        # Pull the appended combobox element node back out and decompile it.
+        root = ET.fromstring(new_xml)
+        combo_node = None
+        for el in root.iter():
+            tag = el.tag.split("}")[-1] if "}" in str(el.tag) else el.tag
+            if tag == "Single":
+                for child in list(el):
+                    ct = (
+                        child.tag.split("}")[-1]
+                        if "}" in str(child.tag)
+                        else child.tag
+                    )
+                    if (
+                        ct == "Single"
+                        and child.attrib.get("Name") == "VisualElementTypeName"
+                        and (child.text or "") == "VisuFbComboBoxInteger"
+                    ):
+                        combo_node = el
+                        break
+                if combo_node is not None:
+                    break
+        assert combo_node is not None
+        out = svg_export._element_to_svg(combo_node)
+        assert 'data-cds-type="combobox"' in out
+        assert "data-items" in out
+        assert "data-var" in out
+
+
+class TestComboBoxGvl:
+    def test_combobox_var_collected(self):
+        from cli.visu import gvl
+
+        elems = [{"type": "combobox", "params": {"var": "HMI.Recipe"}}]
+        assert gvl.collect_variables(elems) == {"HMI.Recipe": "Recipe"}
+
+    def test_combobox_var_typed_int(self):
+        from cli.visu import gvl
+
+        elems = [{"type": "combobox", "params": {"var": "HMI.Recipe"}}]
+        assert gvl.collect_variable_types(elems) == {"HMI.Recipe": "INT"}
+
+
+@pytest.fixture
+def alarm_banner_catalog():
+    return _catalog.load_catalog("alarm-banner")
+
+
+class TestAlarmBanner:
+    """AlarmBanner element (geometry-only, no bound variable)."""
+
+    def _find_member(self, xml_text, member_id):
+        return TestElement._find_member(self, xml_text, member_id)
+
+    def test_catalog_loads(self, alarm_banner_catalog):
+        assert alarm_banner_catalog["type"] == "alarm-banner"
+        assert alarm_banner_catalog["visualElementTypeName"] == "VisuFbElemAlarmBanner"
+        assert alarm_banner_catalog["template_params"] == {}
+
+    def test_append_alarm_banner(self, empty_screen, alarm_banner_catalog):
+        params = {
+            "x": "12",
+            "y": "34",
+            "width": "400",
+            "height": "25",
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, alarm_banner_catalog, params
+        )
+        assert geometry["x"] == 12
+        assert geometry["y"] == 34
+        assert geometry["width"] == 400
+        assert geometry["height"] == 25
+        assert "VisuFbElemAlarmBanner" in new_xml
+        assert "@@" not in new_xml
+
+    def test_svg_parse_alarm_banner(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="alarm-banner" '
+            'x="12" y="34" width="400" height="25"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        elem = parsed["elements"][0]
+        assert elem["type"] == "alarm-banner"
+        assert elem["params"]["x"] == "12"
+        assert elem["params"]["y"] == "34"
+        assert elem["params"]["width"] == "400"
+        assert elem["params"]["height"] == "25"
+
+    def test_svg_parse_alarm_banner_defaults(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="alarm-banner"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        elem = parsed["elements"][0]
+        assert elem["params"]["x"] == "0"
+        assert elem["params"]["y"] == "0"
+        assert elem["params"]["width"] == "400"
+        assert elem["params"]["height"] == "25"
+
+    def test_export_round_trip(self, empty_screen, alarm_banner_catalog):
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        params = {
+            "x": "12",
+            "y": "34",
+            "width": "400",
+            "height": "25",
+        }
+        new_xml, _, _ = builder.append_element(empty_screen, alarm_banner_catalog, params)
+        # Pull the appended alarm-banner element node back out and decompile it.
+        root = ET.fromstring(new_xml)
+        ab_node = None
+        for el in root.iter():
+            tag = el.tag.split("}")[-1] if "}" in str(el.tag) else el.tag
+            if tag == "Single":
+                for child in list(el):
+                    ct = (
+                        child.tag.split("}")[-1]
+                        if "}" in str(child.tag)
+                        else child.tag
+                    )
+                    if (
+                        ct == "Single"
+                        and child.attrib.get("Name") == "VisualElementTypeName"
+                        and (child.text or "") == "VisuFbElemAlarmBanner"
+                    ):
+                        ab_node = el
+                        break
+                if ab_node is not None:
+                    break
+        assert ab_node is not None
+        out = svg_export._element_to_svg(ab_node)
+        assert 'data-cds-type="alarm-banner"' in out
+        assert 'x="12"' in out
+        assert 'y="34"' in out
+        assert 'width="400"' in out
+        assert 'height="25"' in out

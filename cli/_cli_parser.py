@@ -505,6 +505,7 @@ from-svg SVG contract:
     p_visu.add_argument(
         "visu_action",
         choices=[
+            "new",
             "create-screen",
             "add",
             "list",
@@ -514,7 +515,8 @@ from-svg SVG contract:
             "from-svg",
             "to-svg",
         ],
-        help="create-screen - create a new empty screen\n"
+        help="new - scaffold an editable SVG sketch from the seed template\n"
+        "create-screen - create a new empty screen\n"
         "add - add an element to a screen\n"
         "list - list elements in a screen\n"
         "check - validate a screen\n"

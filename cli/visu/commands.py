@@ -10,6 +10,7 @@ They never touch the daemon or import.
 from __future__ import print_function
 
 import os
+import re
 import sys
 
 from . import builder, svg_export, svg_import, textlist, themes
@@ -411,6 +412,49 @@ def describe(project_view_dir, type_name, screen=None, folder="", elem=None):
 
 
 # ---------------------------------------------------------------------------
+# new (scaffold an editable SVG from the seed template)
+# ---------------------------------------------------------------------------
+
+_SEED_SVG = os.path.join(
+    os.path.dirname(__file__), "..", "..", "skills", "cds-visu-svg", "examples", "seed.svg"
+)
+
+
+def new_svg(out_path, name="", width=800, height=480):
+    """Write a ready-to-edit SVG sketch, copied from the seed template.
+
+    The seed already carries commented guidance and one EXAMPLE of every
+    near-universal element, so a model edits a valid file instead of authoring
+    from a blank canvas. We substitute canvas size and the title text with
+    plain string replacement (NOT an XML round-trip) so the comments survive.
+    """
+    seed_path = os.path.normpath(_SEED_SVG)
+    if not os.path.isfile(seed_path):
+        _err("Seed template not found: {0}".format(seed_path))
+        sys.exit(1)
+    with open(seed_path, "r", encoding="utf-8") as handle:
+        text = handle.read()
+
+    # Canvas size: rewrite the root <svg ... width=".." height=".."> only.
+    text = re.sub(
+        r'(<svg\b[^>]*?\bwidth=")\d+(")', r"\g<1>{0}\g<2>".format(int(width)), text, count=1
+    )
+    text = re.sub(
+        r'(<svg\b[^>]*?\bheight=")\d+(")', r"\g<1>{0}\g<2>".format(int(height)), text, count=1
+    )
+
+    # Title text: replace the placeholder heading with the requested name.
+    if name:
+        text = text.replace("Screen title (EXAMPLE)", name, 1)
+
+    with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+    _ok("Created SVG sketch: {0}".format(out_path))
+    print(out_path)
+
+
+# ---------------------------------------------------------------------------
 # from-svg
 # ---------------------------------------------------------------------------
 
@@ -453,7 +497,9 @@ def from_svg(
             sys.exit(1)
 
     try:
-        result = svg_import.parse_svg(svg_text, theme=theme_colors)
+        result = svg_import.parse_svg(
+            svg_text, theme=theme_colors, project_dir=project_view_dir
+        )
     except (ValueError, themes.ThemeError) as exc:
         _err(str(exc))
         sys.exit(1)
@@ -570,8 +616,12 @@ def from_svg(
             gvl_name=gvl_name or "VisuVars",
             gvl_path=gvl_file,
         )
-        if gvl_result:
+        if gvl_result and os.path.isfile(gvl_result):
             _ok("Updated GVL: {0}".format(gvl_result))
+        elif gvl_result:
+            # A path was resolved but nothing was written: every referenced
+            # variable is already declared (here or in another project GVL).
+            _ok("All runtime variables already declared; GVL not modified")
         else:
             _ok("No runtime variables detected; GVL not generated")
     elif any(

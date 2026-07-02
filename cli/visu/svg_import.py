@@ -12,6 +12,8 @@ from __future__ import print_function
 import re
 import xml.etree.ElementTree as ET
 
+from . import stylesheet as _stylesheet
+from . import style_roles as _style_roles
 from . import themes as _themes
 
 # ---------------------------------------------------------------------------
@@ -492,8 +494,121 @@ def _parse_textfield(elem, theme):
 
 
 # ---------------------------------------------------------------------------
-# Element dispatch table
+# Native indicator/control elements (golden-template backed)
 # ---------------------------------------------------------------------------
+
+# Friendly lamp colour -> VisualizationStyle role. CODESYS appends -On/-Off
+# from the bound variable at runtime, so the role name stops at the colour.
+_LAMP_COLOR_ROLES = {
+    "red": "Element-Lamp-Lamp1-Red",
+    "green": "Element-Lamp-Lamp1-Green",
+    "yellow": "Element-Lamp-Lamp1-Yellow",
+    "blue": "Element-Lamp-Lamp1-Blue",
+    "gray": "Element-Lamp-Lamp1-Gray",
+    "grey": "Element-Lamp-Lamp1-Gray",
+}
+
+
+def _parse_lamp(elem, theme):
+    """Parse a ``<rect data-cds-type="lamp">`` -> indicator lamp control.
+
+    A lamp is a native status light bound to a BOOL variable. The friendly
+    ``data-color`` (red|green|yellow|blue|gray) selects the bitmap role; the
+    On/Off state is driven at runtime by ``data-var``.
+    """
+    x = _float(elem.get("x"), 0)
+    y = _float(elem.get("y"), 0)
+    w = _float(elem.get("width"), 32)
+    h = _float(elem.get("height"), 32)
+
+    color = (elem.get("data-color") or "green").strip().lower()
+    style_role = _LAMP_COLOR_ROLES.get(color, _LAMP_COLOR_ROLES["green"])
+    var = elem.get("data-var", "") or elem.get("data-text-var", "")
+
+    params = {
+        "x": str(int(x)),
+        "y": str(int(y)),
+        "width": str(int(w)),
+        "height": str(int(h)),
+        "style_role": style_role,
+        "var": var,
+    }
+    return {"type": "lamp", "params": params}
+
+ 
+def _parse_image_switcher(elem, theme):
+    """Parse a <rect data-cds-type="image-switcher"> -> ImageSwitcher control.
+
+    An ImageSwitcher shows one of two ImagePool images based on a BOOL
+    variable. data-image-on / data-image-off specify the two image
+    references; data-var is the bound BOOL variable.
+    """
+    x = _float(elem.get("x"), 0)
+    y = _float(elem.get("y"), 0)
+    w = _float(elem.get("width"), 70)
+    h = _float(elem.get("height"), 70)
+
+    image_on = (elem.get("data-image-on") or "").strip()
+    image_off = (elem.get("data-image-off") or "").strip()
+    var = elem.get("data-var", "") or ""
+
+    params = {
+        "x": str(int(x)),
+        "y": str(int(y)),
+        "width": str(int(w)),
+        "height": str(int(h)),
+        "image_on": image_on,
+        "image_off": image_off,
+        "var": var,
+    }
+    return {"type": "image-switcher", "params": params}
+
+
+def _parse_combobox(elem, theme):
+    """Parse a <rect data-cds-type="combobox"> -> ComboBoxInteger control.
+
+    A combobox is a dropdown bound to an INT variable, using labels from
+    a GlobalTextList reference.
+    """
+    x = _float(elem.get("x"), 0)
+    y = _float(elem.get("y"), 0)
+    w = _float(elem.get("width"), 120)
+    h = _float(elem.get("height"), 25)
+
+    items = (elem.get("data-items") or "").strip()
+    var = elem.get("data-var", "") or ""
+
+    params = {
+        "x": str(int(x)),
+        "y": str(int(y)),
+        "width": str(int(w)),
+        "height": str(int(h)),
+        "items": items,
+        "var": var,
+    }
+    return {"type": "combobox", "params": params}
+
+
+def _parse_alarm_banner(elem, theme):
+    """Parse a ``<rect data-cds-type="alarm-banner">`` -> AlarmBanner control.
+
+    An AlarmBanner is a native scrolling alarm ticker. It has no bound
+    variable -- the alarm filtering is carried by literal members in the
+    golden template. Geometry only.
+    """
+    x = _float(elem.get("x"), 0)
+    y = _float(elem.get("y"), 0)
+    w = _float(elem.get("width"), 400)
+    h = _float(elem.get("height"), 25)
+
+    params = {
+        "x": str(int(x)),
+        "y": str(int(y)),
+        "width": str(int(w)),
+        "height": str(int(h)),
+    }
+    return {"type": "alarm-banner", "params": params}
+
 
 _ELEMENT_PARSERS = {
     "rect": _parse_rect,
@@ -511,7 +626,24 @@ _SUPPORTED = set(_ELEMENT_PARSERS.keys())
 # ---------------------------------------------------------------------------
 
 
-def parse_svg(svg_text, theme=None):
+def _apply_class_attributes(elem, sheet):
+    """Expand a ``class`` attribute into SVG presentation attributes.
+
+    Classes are the primary authoring mechanism: ``class="panel"`` becomes
+    ``fill="var(--panel)"`` etc. Values are applied only where the element does
+    not already carry an explicit attribute, so a hand-written ``fill``/
+    ``stroke`` always wins (escape hatch / back-compat). Colours stay as
+    ``var(--role)`` and resolve through the theme like any other value.
+    """
+    class_value = elem.get("class")
+    if not class_value:
+        return
+    for attr, value in _stylesheet.class_attributes(class_value, sheet).items():
+        if elem.get(attr) is None:
+            elem.set(attr, value)
+
+
+def parse_svg(svg_text, theme=None, project_dir=None):
     """Parse an SVG string and return a dict of ElementSpec entries.
 
     Args:
@@ -552,11 +684,18 @@ def parse_svg(svg_text, theme=None):
     # -- Inline theme ------------------------------------------------------
     inline_theme = _parse_inline_theme(root)
 
-    # Merge: caller-provided theme, then inline overrides on top.
-    merged_theme = {}
+    # Merge role -> hex layers, later wins:
+    #   1. built-in style_roles fallbacks (so any documented var(--role) always
+    #      resolves -- no "white element" from an unmapped role);
+    #   2. caller-provided theme;
+    #   3. inline :root overrides.
+    merged_theme = _style_roles.role_palette(None)
     if theme is not None:
         merged_theme.update(theme)
     merged_theme.update(inline_theme)
+
+    # Semantic class stylesheet (bundled defaults + optional project visu.css).
+    sheet = _stylesheet.load_stylesheet(project_dir)
 
     # -- SVG elements ------------------------------------------------------
     elements = []
@@ -566,6 +705,13 @@ def parse_svg(svg_text, theme=None):
         if tag == "defs":
             continue  # already handled by _parse_inline_theme
 
+        # Expand class="..." into fill/stroke/font-size before parsing, so the
+        # existing per-element parsers see plain attributes and need no change.
+        # Native controls (button/textfield) intentionally ignore classes: they
+        # inherit the CODESYS visual style, so we never inject colour into them.
+        if child.get("data-cds-type") is None:
+            _apply_class_attributes(child, sheet)
+
         # Promote <rect data-cds-type="button"> to button.
         if tag == "rect" and child.get("data-cds-type") == "button":
             elements.append(_parse_button(child, merged_theme))
@@ -574,6 +720,26 @@ def parse_svg(svg_text, theme=None):
         # Promote <text data-cds-type="textfield"> to textfield.
         if tag == "text" and child.get("data-cds-type") == "textfield":
             elements.append(_parse_textfield(child, merged_theme))
+            continue
+
+        # Promote <rect data-cds-type="lamp"> to indicator lamp.
+        if tag == "rect" and child.get("data-cds-type") == "lamp":
+            elements.append(_parse_lamp(child, merged_theme))
+            continue
+
+        # Promote <rect data-cds-type="image-switcher"> to ImageSwitcher.
+        if tag == "rect" and child.get("data-cds-type") == "image-switcher":
+            elements.append(_parse_image_switcher(child, merged_theme))
+            continue
+
+        # Promote <rect data-cds-type="combobox"> to ComboBoxInteger.
+        if tag == "rect" and child.get("data-cds-type") == "combobox":
+            elements.append(_parse_combobox(child, merged_theme))
+            continue
+
+        # Promote <rect data-cds-type="alarm-banner"> to AlarmBanner.
+        if tag == "rect" and child.get("data-cds-type") == "alarm-banner":
+            elements.append(_parse_alarm_banner(child, merged_theme))
             continue
 
         parser = _ELEMENT_PARSERS.get(tag)

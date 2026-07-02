@@ -26,6 +26,8 @@ import re
 
 _DOTTED_VAR_RE = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
 
+_FMT_RE = re.compile(r"%[-+ 0#]*[0-9]*(?:\.[0-9]+)?([diufFeEgGsxX])")
+
 
 def collect_variables(elements):
     """Scan a list of ElementSpec dicts for runtime variable references.
@@ -53,6 +55,11 @@ def collect_variables(elements):
         text_var = params.get("text_var")
         if text_var:
             _record_var(text_var, variables)
+
+        # Golden-template control binding (lamp, image-switcher, combobox, ...).
+        var = params.get("var")
+        if var:
+            _record_var(var, variables)
 
         # data-cds-tap / data-cds-action: tap_var
         tap_var = params.get("tap_var")
@@ -110,6 +117,105 @@ def _record_var(var_expr, variables):
 
 
 # ---------------------------------------------------------------------------
+# Type inference
+# ---------------------------------------------------------------------------
+
+# printf conversion letter -> ST type. Anything unmapped falls back to BOOL.
+_TYPE_BY_CONV = {
+    "f": "REAL",
+    "F": "REAL",
+    "e": "REAL",
+    "E": "REAL",
+    "g": "REAL",
+    "G": "REAL",
+    "d": "INT",
+    "i": "INT",
+    "u": "INT",
+    "x": "INT",
+    "X": "INT",
+    "s": "STRING",
+}
+
+
+def _infer_type(fmt):
+    """Infer an ST type from a textfield format string.
+
+    ``%3.1f`` -> ``REAL``, ``%d`` -> ``INT``, ``%s`` -> ``STRING``. When no
+    printf conversion is present (or *fmt* is empty/None) returns ``BOOL`` --
+    the sensible default for tap/toggle/action booleans.
+    """
+    if not fmt:
+        return "BOOL"
+    m = _FMT_RE.search(fmt)
+    if not m:
+        return "BOOL"
+    return _TYPE_BY_CONV.get(m.group(1), "BOOL")
+
+
+# ST type of a golden-template control's ``var`` binding, keyed by element
+# type. Anything not listed defaults to BOOL.
+_VAR_TYPE_BY_ELEMENT = {
+    "lamp": "BOOL",
+    "image-switcher": "BOOL",
+    "combobox": "INT",
+}
+
+
+def collect_variable_types(elements):
+    """Return ``{full_path: st_type}`` inferred from *elements*.
+
+    Only textfields carry a format string, so their bound ``text_var`` gets a
+    type inferred from ``params["text"]``. Every other variable source (tap,
+    toggle, actions, ST snippets) is boolean by nature and maps to ``BOOL``.
+    Golden-template controls bind through ``params["var"]``; their type comes
+    from ``_VAR_TYPE_BY_ELEMENT`` (lamp/image-switcher -> BOOL, combobox -> INT).
+
+    A variable that appears both as a typed textfield and elsewhere keeps the
+    inferred (non-BOOL) type -- the format string is the stronger signal.
+    """
+    types = {}  # full_path -> st_type
+
+    def _assign(path, st_type):
+        path = (path or "").strip()
+        if not path:
+            return
+        # Let a concrete type win over a previously recorded BOOL default.
+        if types.get(path, "BOOL") == "BOOL":
+            types[path] = st_type
+
+    for elem in elements:
+        params = elem.get("params", {})
+
+        text_var = params.get("text_var")
+        if text_var:
+            _assign(text_var, _infer_type(params.get("text")))
+
+        # Golden-template control binding. The ST type depends on the control:
+        # a lamp/image-switcher reads a BOOL, a combobox an INT.
+        var = params.get("var")
+        if var:
+            _assign(var, _VAR_TYPE_BY_ELEMENT.get(elem.get("type"), "BOOL"))
+
+        for key in ("tap_var", "toggle_var"):
+            v = params.get(key)
+            if v:
+                _assign(v, "BOOL")
+
+        for source in ("configured_inputs", "input_actions"):
+            for action in params.get(source, []):
+                vals = action.get("values", {})
+                v = vals.get("variable")
+                if v:
+                    _assign(v, "BOOL")
+                snippet = vals.get("snippet", "")
+                if snippet:
+                    for m in _DOTTED_VAR_RE.finditer(snippet):
+                        _assign(m.group(), "BOOL")
+
+    return types
+
+
+# ---------------------------------------------------------------------------
 # ST generation
 # ---------------------------------------------------------------------------
 
@@ -131,17 +237,21 @@ _HIDED_ATTR = """\
 """
 
 
-def generate_gvl(variables, gvl_name="VisuVars", default_type="BOOL"):
+def generate_gvl(variables, gvl_name="VisuVars", default_type="BOOL", types=None):
     """Generate a GVL ``.st`` file as a string.
 
     *variables*: dict of ``{full_path: short_name}`` (from ``collect_variables``).
     *gvl_name*: name of the GVL (used in file header, e.g. ``GVL_VisuVars``).
     *default_type*: ST type to use when none can be inferred (default ``BOOL``).
+    *types*: optional ``{full_path: st_type}`` (from ``collect_variable_types``)
+        overriding *default_type* per variable.
 
     Returns the full ``.st`` file text.
     """
     if not variables:
         return ""
+
+    types = types or {}
 
     lines = []
     lines.append(_HEADER)
@@ -151,15 +261,16 @@ def generate_gvl(variables, gvl_name="VisuVars", default_type="BOOL"):
     # Sort for deterministic output.
     for full_path in sorted(variables, key=lambda s: s.lower()):
         short_name = variables[full_path]
+        vtype = types.get(full_path, default_type)
         if "." in full_path:
             # For dotted paths like HMI.Temperature, we declare the short name.
             # The 'qualified_only' attribute ensures the GVL prefix is used.
             lines.append(
-                "    {name} : {type};\n".format(name=short_name, type=default_type)
+                "    {name} : {type};\n".format(name=short_name, type=vtype)
             )
         else:
             lines.append(
-                "    {name} : {type};\n".format(name=full_path, type=default_type)
+                "    {name} : {type};\n".format(name=full_path, type=vtype)
             )
 
     lines.append(_FOOTER)
@@ -199,6 +310,39 @@ def detect_existing_variables(gvl_path):
     return existing
 
 
+def scan_project_gvls(project_view_dir):
+    """Map every GVL in the project to the variable names it declares.
+
+    Returns ``{gvl_name: set(var_names)}`` where *gvl_name* is the ``.st``
+    file's basename without extension -- this matches the qualified prefix
+    CODESYS uses (e.g. ``HMI.st`` -> ``HMI``, referenced as ``HMI.MyVar``).
+
+    Only files containing a ``VAR_GLOBAL`` block are included, so ordinary
+    POUs/functions are ignored. Used to avoid re-declaring a variable that
+    already lives in another project GVL.
+    """
+    result = {}
+    if not project_view_dir or not os.path.isdir(project_view_dir):
+        return result
+    for root, _dirs, files in os.walk(project_view_dir):
+        for fname in files:
+            if not fname.endswith(".st"):
+                continue
+            full = os.path.join(root, fname)
+            try:
+                with open(full, "r", encoding="utf-8") as handle:
+                    text = handle.read()
+            except (IOError, OSError, UnicodeDecodeError):
+                continue
+            if "VAR_GLOBAL" not in text:
+                continue
+            name = fname[:-3]  # strip .st
+            names = set(m.group(1) for m in re.finditer(r"(?m)^\s+(\w+)\s*:", text))
+            # Merge in case two files share a basename in different folders.
+            result.setdefault(name, set()).update(names)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # High-level API
 # ---------------------------------------------------------------------------
@@ -220,19 +364,34 @@ def ensure_gvl(project_view_dir, elements, gvl_name="VisuVars", gvl_path=None):
     if not variables:
         return None
 
+    var_types = collect_variable_types(elements)
+
     if not gvl_path:
         gvl_dir = os.path.join(project_view_dir, "POUs")
         gvl_path = os.path.join(gvl_dir, gvl_name + ".st")
 
-    # Check for duplicates against existing file.
+    # Drop dotted vars already declared in ANOTHER project GVL. A path like
+    # "HMI.OutTemp" means variable OutTemp inside GVL HMI; if that GVL already
+    # declares it, we only reference it -- never re-declare it here.
+    project_gvls = scan_project_gvls(project_view_dir)
+    remaining = {}
+    for full_path, short_name in variables.items():
+        if "." in full_path:
+            prefix, _, leaf = full_path.rpartition(".")
+            if leaf in project_gvls.get(prefix, set()):
+                continue
+        remaining[full_path] = short_name
+
+    # Check for duplicates against the target file itself (flat HMI.* names
+    # that legitimately land in this GVL).
     existing = detect_existing_variables(gvl_path)
-    new_vars = {k: v for k, v in variables.items() if v not in existing}
+    new_vars = {k: v for k, v in remaining.items() if v not in existing}
 
     if not new_vars:
-        # All variables already declared.
+        # All variables already declared (here or in another project GVL).
         return gvl_path
 
-    content = generate_gvl(new_vars, gvl_name=gvl_name)
+    content = generate_gvl(new_vars, gvl_name=gvl_name, types=var_types)
 
     if os.path.isfile(gvl_path):
         # Append to existing GVL (insert new declarations before END_VAR).

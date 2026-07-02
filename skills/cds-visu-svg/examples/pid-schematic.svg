@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">
+
+ <!-- ============================================================
+ P and ID process schematic. Edit this file, then compile with
+ `cts visu from-svg`. Background is set at generation time.
+ Do NOT add a full-screen rect just to paint the background.
+
+ COLOURS: never write a colour. Add class="..." and the active
+ CODESYS style picks the colour. Available classes:
+ panel, card, title, value, divider, ok, warn, alarm,
+ pipe-water, metal.
+ Buttons and textfields take NO class: they inherit the native
+ CODESYS control style automatically.
+
+ Demonstrates line, circle, and ellipse elements with pipe-water
+ and metal classes for a simple process flow.
+ ============================================================ -->
+
+ <!-- Main container panel -->
+ <rect class="panel" x="24" y="24" width="752" height="432" />
+
+ <!-- Screen heading -->
+ <text class="title" x="48" y="72">Process Schematic</text>
+
+ <!-- Feed tank (equipment) -->
+ <ellipse class="metal" cx="140" cy="260" rx="70" ry="90" />
+
+ <!-- Fluid in tank -->
+ <ellipse class="pipe-water" cx="140" cy="290" rx="60" ry="60" />
+
+ <!-- Pipe from tank to pump -->
+ <line class="pipe-water" x1="210" y1="260" x2="300" y2="260" />
+
+ <!-- Pump -->
+ <circle class="metal" cx="350" cy="260" r="40" />
+
+ <!-- Pipe from pump to output -->
+ <line class="pipe-water" x1="390" y1="260" x2="480" y2="260" />
+
+ <!-- Output vessel -->
+ <rect class="metal" x="490" y="180" width="110" height="160" />
+ <rect class="pipe-water" x="500" y="220" width="90" height="110" />
+
+ <!-- Drain pipe -->
+ <line class="pipe-water" x1="545" y1="340" x2="545" y2="400" />
+
+ <!-- Level readout label -->
+ <text class="title" x="48" y="120">Tank Level</text>
+
+ <!-- Level textfield -->
+ <text data-cds-type="textfield" x="160" y="104"
+       data-width="120" data-height="32"
+       data-text-var="HMI.TankLevel">show %3.1f m</text>
+
+ <!-- Flow readout label -->
+ <text class="title" x="460" y="120">Flow</text>
+
+ <!-- Flow textfield -->
+ <text data-cds-type="textfield" x="520" y="104"
+       data-width="120" data-height="32"
+       data-text-var="HMI.ProcessFlow">show %3.1f m3/h</text>
+
+ <!-- Start pump button -->
+ <rect data-cds-type="button" x="640" y="380" width="120" height="40"
+       data-text="Start Pump" data-cds-tap="TAP HMI.StartPump" />
+
+</svg>

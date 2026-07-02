@@ -1,0 +1,76 @@
+{
+ "type": "combobox",
+ "visualElementTypeName": "VisuFbComboBoxInteger",
+ "visualElementName": "ComboBoxInteger",
+ "visualElementIsRectangle": true,
+ "elementVersion": 0,
+ "golden_template": "element_combobox.xml.tmpl",
+ "description": "Integer dropdown bound to an INT variable, labels from a text list.",
+
+ "geometry": {
+ "x": 1649127785,
+ "y": 357335551,
+ "width": 2422045748,
+ "height": 2134141914,
+ "center_x": 550940142,
+ "center_y": 1473355128
+ },
+
+ "invariants": [
+ {
+ "id": "bounds",
+ "rule": "X >= 0 and Y >= 0 and X+Width <= SizeX and Y+Height <= SizeY",
+ "severity": "error"
+ }
+ ],
+
+ "template_params": {
+ "ITEMS": {
+ "param": "items",
+ "default": "''"
+ },
+ "VAR": {
+ "param": "var",
+ "default": ""
+ }
+ },
+
+ "params": {
+ "x": {
+ "member_id": 1649127785,
+ "kind": "int",
+ "geometry": true,
+ "doc": "X (left), px"
+ },
+ "y": {
+ "member_id": 357335551,
+ "kind": "int",
+ "geometry": true,
+ "doc": "Y (top), px"
+ },
+ "width": {
+ "member_id": 2422045748,
+ "kind": "int",
+ "geometry": true,
+ "doc": "Width, px"
+ },
+ "height": {
+ "member_id": 2134141914,
+ "kind": "int",
+ "geometry": true,
+ "doc": "Height, px"
+ },
+ "items": {
+ "member_id": 2114174855,
+ "kind": "string",
+ "doc": "GlobalTextList reference for the dropdown item labels, e.g. 'RECIPES'."
+ },
+ "var": {
+ "member_id": 397264524,
+ "kind": "string",
+ "doc": "Bound INT variable (e.g. 'HMI.Recipe')."
+ }
+ },
+
+ "base_members": []
+}
