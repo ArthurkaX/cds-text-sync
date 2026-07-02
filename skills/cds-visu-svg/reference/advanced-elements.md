@@ -60,8 +60,23 @@ Geometry only — no variable binding.
 - Attributes: geometry only (`x`, `y`, `width`, `height`).
 - GVL: **none** (no variable declared).
 
+## Decompile-only
+
+`frame` (an embedded sub-visualization / faceplate instance) and `slider` are
+read by `cts visu to-svg` but cannot yet be authored with `cts visu from-svg`.
+Decompiling a real screen emits them as:
+
+```xml
+<rect data-cds-type="frame" data-visu="PUMP_ICON" data-param-pump_number="5" x=".." y=".." width=".." height=".."/>
+<rect data-cds-type="slider" data-var="HMI.Setpoint" data-orientation="VERTICAL" data-min="0" data-max="100" x=".." y=".." width=".." height=".."/>
+```
+
+`data-visu` names the referenced sub-visualization; each `data-param-<name>`
+passes one interface parameter to it. When round-tripping an existing screen,
+leave these elements as-is — compiling them back is not implemented yet.
+
 ## Not supported
 
-Frame, Dialog, AlarmTable, Group, and Polygon are intentionally not supported
-(too complex or rarely needed for sketch authoring) and will raise a clear error
-if attempted.
+Dialog, AlarmTable, Group, and Polygon are intentionally not supported (too
+complex or rarely needed for sketch authoring) and will raise a clear error if
+attempted.
