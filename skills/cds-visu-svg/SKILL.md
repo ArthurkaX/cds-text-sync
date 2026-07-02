@@ -286,8 +286,14 @@ level under `Hotkeys`, not inside the button element.
   animation
 - Inline `<style>` / `:root` theme blocks (colour comes from `class`, not CSS
   variables). Only the `class` names listed in "Colour classes" are recognised.
-- Table, TabControl, GroupBox, Checkbox, RadioButton, Slider,
+- Table, TabControl, GroupBox, Checkbox, RadioButton,
   Scrollbar, SpinControl, ProgressBar, InvisibleInput
+
+**Decompile-only** (read by `cts visu to-svg`, but cannot yet be authored with
+`cts visu from-svg`): `frame` (sub-visualization / faceplate instance) and
+`slider`. Decompiling a real screen emits `<rect data-cds-type="frame" ...>` /
+`<rect data-cds-type="slider" ...>`; compiling those back is not supported yet,
+so treat them as read-only when round-tripping an existing screen.
 
 ## Example — Pump Station sketch
 
