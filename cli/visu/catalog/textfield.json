@@ -5,7 +5,7 @@
   "visualElementIsRectangle": true,
   "elementVersion": 1,
   "golden_template": "element_textfield.xml.tmpl",
-  "description": "Text field - отображает runtime-значение переменной либо статический текст. Аналог Label с привязкой к переменной.",
+  "description": "Text field - displays a runtime variable value or static text. Like Label but bound to a variable.",
 
   "geometry": {
     "x": 1649127785,
