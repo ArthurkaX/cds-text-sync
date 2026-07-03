@@ -97,7 +97,7 @@
  "fields": [
  {"xml_name": "Dialog", "kind": "null"},
  {"name": "dialog", "xml_name": "Dialog33", "kind": "string"},
- {"xml_name": "Parameters", "kind": "dict"},
+ {"xml_name": "Parameters", "kind": "dict", "from": "params"},
  {"xml_name": "Selected", "kind": "dict"},
  {"name": "modal", "xml_name": "OpenModal", "kind": "bool", "default": "True"},
  {"name": "centered", "xml_name": "OpenCentered", "kind": "bool", "default": "True"},

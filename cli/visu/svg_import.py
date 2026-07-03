@@ -669,16 +669,24 @@ def _apply_dialog_attrs(child, element_dict):
     actions = element_dict.setdefault("params", {}).setdefault(
         "input_actions", []
     )
+    # Collect data-dialog-param-<name> attrs (mirrors _parse_frame).
+    params_map = {}
+    for attr_name, attr_val in child.attrib.items():
+        if attr_name.startswith("data-dialog-param-"):
+            params_map[attr_name[len("data-dialog-param-"):]] = attr_val
+    values = {
+        "dialog": dialog,
+        "modal": modal,
+        "centered": centered,
+        "position_x": "",
+        "position_y": "",
+    }
+    if params_map:
+        values["params"] = params_map
     actions.append({
         "event": "OnMouseClick",
         "type": "open_dialog",
-        "values": {
-            "dialog": dialog,
-            "modal": modal,
-            "centered": centered,
-            "position_x": "",
-            "position_y": "",
-        },
+        "values": values,
     })
 
     st = child.get("data-dialog-st")
