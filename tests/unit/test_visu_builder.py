@@ -1686,3 +1686,116 @@ class TestFrameCompile:
         with pytest.raises(_catalog.CatalogError) as exc:
             _catalog.load_frame_catalog(str(tmp_path), "nonexistent")
         assert "capture-frame" in str(exc.value)
+
+
+# ===================================================================
+# Dialog-open decompile tests (Stage C, read-only)
+# ===================================================================
+
+
+class TestDialogDecompile:
+    """Dialog-open input-action decompile tests (to-svg only)."""
+
+    def _make_opener_xml(self):
+        """VisuFbElemSimple with OnMouseClick dialog-open and ST snippet."""
+        return (
+            '<Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbElemSimple</Single>'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single><Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">100</Single></Single>'
+            '<Single><Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">200</Single></Single>'
+            '<Single><Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">300</Single></Single>'
+            '<Single><Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">400</Single></Single>'
+            '</List>'
+            '</Single>'
+            '<Dictionary Name="VisualElementInputActions">'
+            '<Entry>'
+            '<Key><Single Type="string">OnMouseClick</Single></Key>'
+            '<Value>'
+            '<Array Type="{69265815-6ecb-4b71-9d97-8ce14e84f3cb}">'
+            '<Single Type="{c01cd804-0a56-4714-ba1b-1040cfc48b6b}" Method="IArchivable">'
+            '<Null Name="Dialog" />'
+            '<Single Name="Dialog33" Type="string">pump_faceplate</Single>'
+            '<Dictionary Name="Parameters" />'
+            '<Dictionary Name="Selected" />'
+            '<Single Name="OpenModal" Type="bool">True</Single>'
+            '<Single Name="OpenCentered" Type="bool">True</Single>'
+            '<Single Name="PositionX" Type="string" />'
+            '<Single Name="PositionY" Type="string" />'
+            '</Single>'
+            '<Single Type="{6302d3fe-6ea5-4c42-819a-a9734a133b3d}" Method="IArchivable">'
+            '<Single Name="STSnippet" Type="string">DB_DRV.x:=1;</Single>'
+            '</Single>'
+            '</Array>'
+            '</Value>'
+            '</Entry>'
+            '</Dictionary>'
+            '</Single>'
+        )
+
+    def _make_plain_xml(self):
+        """VisuFbElemSimple with NO input-actions (geometry only)."""
+        return (
+            '<Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbElemSimple</Single>'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single><Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">100</Single></Single>'
+            '<Single><Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">200</Single></Single>'
+            '<Single><Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">300</Single></Single>'
+            '<Single><Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">400</Single></Single>'
+            '</List>'
+            '</Single>'
+            '</Single>'
+        )
+
+    def test_dialog_attrs_emitted(self):
+        """decompile emits data-open-dialog and related data attrs."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_opener_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._element_to_svg(node)
+        assert 'data-open-dialog="pump_faceplate"' in out
+        assert 'data-dialog-modal="true"' in out
+        assert 'data-dialog-centered="true"' in out
+        assert 'data-dialog-st="DB_DRV.x:=1;"' in out
+
+    def test_no_dialog_no_attrs(self):
+        """decompile of a plain element emits NO data-open-dialog."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        xml = self._make_plain_xml()
+        node = ET.fromstring(xml)
+        out = svg_export._element_to_svg(node)
+        assert 'data-open-dialog' not in out
+
+    def test_dialog_helper_none(self):
+        """_read_dialog_action returns None for plain, dict for opener."""
+        from cli.visu import svg_export
+        import xml.etree.ElementTree as ET
+
+        plain_xml = self._make_plain_xml()
+        plain_node = ET.fromstring(plain_xml)
+        assert svg_export._read_dialog_action(plain_node) is None
+
+        opener_xml = self._make_opener_xml()
+        opener_node = ET.fromstring(opener_xml)
+        info = svg_export._read_dialog_action(opener_node)
+        assert info is not None
+        assert info["dialog"] == "pump_faceplate"
+        assert info["modal"] == "true"
+        assert info["centered"] == "true"
+        assert info["st"] == "DB_DRV.x:=1;"
+

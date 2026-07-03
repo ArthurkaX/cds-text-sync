@@ -101,8 +101,24 @@ Frame parameters are treated as literals — they are NOT auto-declared in the G
 
 When round-tripping an existing screen, leave sliders as-is.
 
+## Dialog opener (decompile-only)
+
+A dialog is opened by an **input-action** on any element (an icon rect/circle),
+not by a dedicated element type. `cts visu to-svg` surfaces it as data-attributes
+on that element; `cts visu from-svg` cannot yet author it. Decompiling emits:
+
+```xml
+<rect ... data-open-dialog="pump_faceplate" data-dialog-modal="true" data-dialog-centered="true" data-dialog-st="DB_DRV.drv_number:=pump_number;"/>
+```
+
+- `data-open-dialog` — the opened dialog/faceplate name (its presence marks an opener).
+- `data-dialog-modal` / `data-dialog-centered` — the OpenModal / OpenCentered flags.
+- `data-dialog-st` — the ST snippet the click also runs, if any.
+
+When round-tripping, leave these attributes on the element as-is.
+
 ## Not supported
 
-Dialog, AlarmTable, Group, and Polygon are intentionally not supported (too
-complex or rarely needed for sketch authoring) and will raise a clear error if
-attempted.
+AlarmTable, Group, and Polygon are intentionally not supported (too complex or
+rarely needed for sketch authoring) and will raise a clear error if attempted.
+(Dialog openers are decompile-only — see above.)
