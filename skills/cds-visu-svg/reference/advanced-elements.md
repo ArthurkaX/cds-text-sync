@@ -117,17 +117,18 @@ element carries it (commonly an icon rect/circle):
 - `data-dialog-modal` / `data-dialog-centered` — the OpenModal / OpenCentered flags.
 - `data-dialog-st` — the ST snippet the click also runs, if any.
 
-**Compile** (`from-svg`) authors the opener from those same attributes, but only
-on a **button** element in this version (the button template is the only one that
-carries input actions):
+**Compile** (`from-svg`) authors the opener from those same attributes on a
+**button** or a **simple rectangle/circle/ellipse** element (the element types
+whose template carries input actions):
 
 ```xml
 <rect data-cds-type="button" data-open-dialog="pump_faceplate" data-dialog-modal="true" data-dialog-st="DB_DRV.drv_number:=1;" x=".." y=".." width=".." height=".."/>
+<rect data-open-dialog="pump_faceplate" data-dialog-st="DB_DRV.drv_number:=1;" x=".." y=".." width=".." height=".."/>
 ```
 
-Putting `data-open-dialog` on a non-button element raises a clear error. Dialog
-parameters (the interface values passed to the opened dialog) are not authored
-yet — the `Parameters` list is emitted empty.
+Putting `data-open-dialog` on any other element type (a line, label, textfield,
+etc.) raises a clear error. Dialog parameters (the interface values passed to the
+opened dialog) are not authored yet — the `Parameters` list is emitted empty.
 
 ## Not supported
 

@@ -1884,17 +1884,32 @@ class TestDialogCompile:
   assert actions[1]["type"] == "st_snippet"
   assert actions[1]["values"]["snippet"] == "X:=1;"
 
- def test_parse_dialog_wrong_element(self):
-  """data-open-dialog on a non-button raises ValueError."""
+ def test_parse_dialog_on_simple_rect(self):
+  """data-open-dialog is accepted on a plain rect (simple element)."""
   svg = (
    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
    '<rect x="10" y="20" width="120" height="40"'
    ' data-open-dialog="pump_faceplate"/>'
    '</svg>'
   )
+  res = svg_import.parse_svg(svg)
+  el = res["elements"][0]
+  assert el["type"] == "rectangle"
+  actions = el["params"]["input_actions"]
+  assert actions[0]["type"] == "open_dialog"
+  assert actions[0]["values"]["dialog"] == "pump_faceplate"
+
+ def test_parse_dialog_wrong_element(self):
+  """data-open-dialog on an unsupported element type raises ValueError."""
+  svg = (
+   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+   '<line x1="0" y1="0" x2="10" y2="10"'
+   ' data-open-dialog="pump_faceplate"/>'
+   '</svg>'
+  )
   with pytest.raises(ValueError) as exc:
    svg_import.parse_svg(svg)
-  assert "data-open-dialog is only supported on a button" in str(exc.value)
+  assert "data-open-dialog is only supported" in str(exc.value)
 
  def test_compile_round_trip(self, empty_screen, button_catalog):
   """Compile a button with dialog input_actions and verify XML output."""
