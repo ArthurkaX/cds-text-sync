@@ -1799,3 +1799,165 @@ class TestDialogDecompile:
         assert info["centered"] == "true"
         assert info["st"] == "DB_DRV.x:=1;"
 
+
+# ===================================================================
+# Dialog-open COMPILE tests (Stage C, button-only)
+# ===================================================================
+
+
+class TestDialogCompile:
+ """Dialog-open input-action compile tests (from-svg and builder)."""
+
+ def test_render_open_dialog_action(self):
+  """_render_input_action with open_dialog spec produces correct XML."""
+  spec = builder._visual_input_action("open_dialog")
+  values = {"dialog": "pump_faceplate", "modal": "True", "centered": "True"}
+  result = builder._render_input_action(spec, values)
+  # Type guid.
+  assert "{c01cd804-0a56-4714-ba1b-1040cfc48b6b}" in result
+  # Dialog null before Dialog33.
+  dialog_null_pos = result.find('<Null Name="Dialog"')
+  dialog33_pos = result.find("Dialog33")
+  assert dialog_null_pos >= 0, "Missing <Null Name='Dialog' />"
+  assert dialog33_pos >= 0, "Missing Dialog33"
+  assert dialog_null_pos < dialog33_pos, (
+   "Dialog null must appear before Dialog33"
+  )
+  # Empty Parameters and Selected dicts between Dialog33 and OpenModal.
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Parameters" />' in result
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Selected" />' in result
+  params_pos = result.find('Name="Parameters"')
+  selected_pos = result.find('Name="Selected"')
+  open_modal_pos = result.find("OpenModal")
+  assert params_pos < open_modal_pos, "Parameters dict before OpenModal"
+  assert selected_pos < open_modal_pos, "Selected dict before OpenModal"
+  # Boolean fields.
+  assert ">True<" in result
+  # Field order: Dialog null -> Dialog33 -> Parameters -> Selected -> OpenModal -> OpenCentered -> PositionX -> PositionY.
+  pos_dialog = result.find('<Null Name="Dialog"')
+  pos_dialog33 = result.find("Dialog33")
+  pos_params = result.find('Name="Parameters"')
+  pos_selected = result.find('Name="Selected"')
+  pos_modal = result.find("OpenModal")
+  pos_centered = result.find("OpenCentered")
+  pos_posx = result.find("PositionX")
+  pos_posy = result.find("PositionY")
+  order = [pos_dialog, pos_dialog33, pos_params, pos_selected,
+      pos_modal, pos_centered, pos_posx, pos_posy]
+  assert order == sorted(order), (
+   "Field order must match the golden template: "
+   "Dialog null, Dialog33, Parameters dict, Selected dict, "
+   "OpenModal, OpenCentered, PositionX, PositionY"
+  )
+
+ def test_dict_field_kind(self):
+  """A field with kind='dict' renders a self-closing Dictionary."""
+  spec = builder._visual_input_action("open_dialog")
+  values = {"dialog": "test", "modal": "True", "centered": "True"}
+  result = builder._render_input_action(spec, values)
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Parameters" />' in result
+
+ def test_parse_dialog_attrs(self):
+  """SVG parse of a button with data-open-dialog produces input_actions."""
+  svg = (
+   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+   '<rect x="10" y="20" width="120" height="40" data-cds-type="button"'
+   ' data-text="Open"'
+   ' data-open-dialog="pump_faceplate"'
+   ' data-dialog-modal="true"'
+   ' data-dialog-st="X:=1;"'
+   '/></svg>'
+  )
+  parsed = svg_import.parse_svg(svg)
+  button = parsed["elements"][0]
+  assert button["type"] == "button"
+  actions = button["params"].get("input_actions", [])
+  assert len(actions) == 2, "Expected open_dialog + st_snippet"
+  # First action: open_dialog
+  assert actions[0]["event"] == "OnMouseClick"
+  assert actions[0]["type"] == "open_dialog"
+  assert actions[0]["values"]["dialog"] == "pump_faceplate"
+  assert actions[0]["values"]["modal"] == "True"
+  assert actions[0]["values"]["centered"] == "True"
+  # Second action: st_snippet
+  assert actions[1]["event"] == "OnMouseClick"
+  assert actions[1]["type"] == "st_snippet"
+  assert actions[1]["values"]["snippet"] == "X:=1;"
+
+ def test_parse_dialog_wrong_element(self):
+  """data-open-dialog on a non-button raises ValueError."""
+  svg = (
+   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+   '<rect x="10" y="20" width="120" height="40"'
+   ' data-open-dialog="pump_faceplate"/>'
+   '</svg>'
+  )
+  with pytest.raises(ValueError) as exc:
+   svg_import.parse_svg(svg)
+  assert "data-open-dialog is only supported on a button" in str(exc.value)
+
+ def test_compile_round_trip(self, empty_screen, button_catalog):
+  """Compile a button with dialog input_actions and verify XML output."""
+  from cli.visu import svg_export
+  import xml.etree.ElementTree as ET
+
+  params = {
+   "x": "10",
+   "y": "20",
+   "width": "120",
+   "height": "40",
+   "text": "Open",
+   "input_actions": [
+    {
+     "event": "OnMouseClick",
+     "type": "open_dialog",
+     "values": {
+      "dialog": "pump_faceplate",
+      "modal": "True",
+      "centered": "True",
+      "position_x": "",
+      "position_y": "",
+     },
+    },
+    {
+     "event": "OnMouseClick",
+     "type": "st_snippet",
+     "values": {"snippet": "X:=1;"},
+    },
+   ],
+  }
+  new_xml, geometry, info = builder.append_element(
+   empty_screen, button_catalog, params
+  )
+  # Compile verification: Dialog33 and STSnippet in output.
+  assert "Dialog33" in new_xml
+  assert "pump_faceplate" in new_xml
+  assert "STSnippet" in new_xml
+  assert "X:=1;" in new_xml
+  # Decompile verification (round-trip): extract the button node back to SVG.
+  root = ET.fromstring(new_xml)
+  btn_node = None
+  for el in root.iter():
+   tag = el.tag.split("}")[-1] if "}" in str(el.tag) else el.tag
+   if tag == "Single":
+    for child in list(el):
+     ct = (
+      child.tag.split("}")[-1]
+      if "}" in str(child.tag)
+      else child.tag
+     )
+     if (
+      ct == "Single"
+      and child.attrib.get("Name") == "VisualElementTypeName"
+      and (child.text or "") == "VisuFbElemButton"
+     ):
+      btn_node = el
+      break
+   if btn_node is not None:
+    break
+  assert btn_node is not None, "Button node not found in compiled XML"
+  out = svg_export._element_to_svg(btn_node)
+  assert 'data-open-dialog="pump_faceplate"' in out
+  assert 'data-dialog-modal="true"' in out
+  assert 'data-dialog-st="X:=1;"' in out
+
