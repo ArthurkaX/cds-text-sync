@@ -15,6 +15,7 @@ import os
 _CATALOG_DIR = os.path.join(os.path.dirname(__file__), "catalog")
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 SCREEN_TEMPLATE_PATH = os.path.join(_TEMPLATE_DIR, "screen.xml.tmpl")
+_NON_ELEMENT_CATALOGS = {"input_actions"}
 
 
 class CatalogError(Exception):
@@ -32,6 +33,8 @@ def list_types():
         return types
     for name in os.listdir(_CATALOG_DIR):
         if name.endswith(".json"):
+            if name[: -len(".json")] in _NON_ELEMENT_CATALOGS:
+                continue
             types.append(name[: -len(".json")])
     return sorted(types)
 

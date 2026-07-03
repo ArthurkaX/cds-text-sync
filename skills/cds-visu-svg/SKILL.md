@@ -290,10 +290,14 @@ level under `Hotkeys`, not inside the button element.
   Scrollbar, SpinControl, ProgressBar, InvisibleInput
 
 **Decompile-only** (read by `cts visu to-svg`, but cannot yet be authored with
-`cts visu from-svg`): `frame` (sub-visualization / faceplate instance) and
-`slider`. Decompiling a real screen emits `<rect data-cds-type="frame" ...>` /
-`<rect data-cds-type="slider" ...>`; compiling those back is not supported yet,
-so treat them as read-only when round-tripping an existing screen.
+`cts visu from-svg`): `slider`. Decompiling a real screen emits
+`<rect data-cds-type="slider" ...>`; treat it as read-only when round-tripping.
+
+**Frame** (embedded sub-visualization / faceplate) and **Dialog openers**
+(open-dialog input-action with optional parameters) are fully supported for
+both compile and decompile — see `reference/advanced-elements.md` for the
+`capture-frame` workflow and the `data-open-dialog` / `data-dialog-param-*`
+authoring syntax.
 
 ## Example — Pump Station sketch
 
