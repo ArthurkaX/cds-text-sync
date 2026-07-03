@@ -610,6 +610,37 @@ def _parse_alarm_banner(elem, theme):
     return {"type": "alarm-banner", "params": params}
 
 
+def _parse_frame(elem, theme):
+    """Parse a ``<rect data-cds-type="frame">`` -> VisuFbFrame element.
+
+    A frame embeds a sub-visualisation (visu). Geometry only; all other
+    parameters are literals carried by data-param-* attributes.
+    """
+    x = _float(elem.get("x"), 0)
+    y = _float(elem.get("y"), 0)
+    w = _float(elem.get("width"), 100)
+    h = _float(elem.get("height"), 100)
+
+    visu = (elem.get("data-visu") or "").strip()
+
+    params_map = {}
+    for attr_name, attr_val in elem.attrib.items():
+        if attr_name.startswith("data-param-"):
+            params_map[attr_name[len("data-param-"):]] = attr_val
+
+    return {
+        "type": "frame",
+        "params": {
+            "x": str(int(x)),
+            "y": str(int(y)),
+            "width": str(int(w)),
+            "height": str(int(h)),
+            "visu": visu,
+            "params": params_map,
+        },
+    }
+
+
 _ELEMENT_PARSERS = {
     "rect": _parse_rect,
     "circle": _parse_circle,
@@ -740,6 +771,11 @@ def parse_svg(svg_text, theme=None, project_dir=None):
         # Promote <rect data-cds-type="alarm-banner"> to AlarmBanner.
         if tag == "rect" and child.get("data-cds-type") == "alarm-banner":
             elements.append(_parse_alarm_banner(child, merged_theme))
+            continue
+
+        # Promote <rect data-cds-type="frame"> to VisuFbFrame.
+        if tag == "rect" and child.get("data-cds-type") == "frame":
+            elements.append(_parse_frame(child, merged_theme))
             continue
 
         parser = _ELEMENT_PARSERS.get(tag)
