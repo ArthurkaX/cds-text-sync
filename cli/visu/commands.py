@@ -575,6 +575,34 @@ def from_svg(
     for elem_spec in elements:
         type_name = elem_spec["type"]
         params = elem_spec["params"]
+
+        # Frame elements use a project-local catalog + template.
+        if type_name == "frame":
+            visu = params.get("visu")
+            if not visu:
+                _err("frame element is missing data-visu attribute")
+                sys.exit(1)
+            try:
+                catalog = _catalog.load_frame_catalog(project_view_dir, visu)
+            except _catalog.CatalogError as exc:
+                _err(str(exc))
+                sys.exit(1)
+            try:
+                template = _catalog.load_frame_template(project_view_dir, visu)
+            except IOError as exc:
+                _err("frame template not found: {0}".format(exc))
+                sys.exit(1)
+            try:
+                new_xml, geometry, info = _builder.append_element(
+                    xml_text, catalog, params, theme_colors=theme_colors,
+                    golden_template_text=template,
+                )
+                xml_text = new_xml
+            except _builder.BuilderError as exc:
+                _err(str(exc))
+                sys.exit(1)
+            continue
+
         try:
             catalog = _catalog.load_catalog(type_name)
         except _catalog.CatalogError as exc:
@@ -673,6 +701,157 @@ def to_svg(project_view_dir, screen, folder, out_path):
 
     _ok("Decompiled screen to SVG: {0}".format(output_path))
     print(output_path)
+
+
+# ---------------------------------------------------------------------------
+# capture-frame
+# ---------------------------------------------------------------------------
+
+
+def _find_frames_in_xml(xml_text, visu_name):
+    """Find VisuFbFrame elements in an XML text whose first non-null
+    VisNodeRefs33 matches *visu_name*.
+
+    Returns a list of dicts: ``{element, value_count}``.
+    """
+    import xml.etree.ElementTree as ET
+
+    from .xml_ns import find_named, strip_ns
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+
+    results = []
+    for el in root.iter():
+        if strip_ns(el.tag) != "Single":
+            continue
+        type_name = find_named(el, "Single", "VisualElementTypeName")
+        if type_name is None or (type_name.text or "").strip() != "VisuFbFrame":
+            continue
+
+        # Find first non-null VisNodeRefs33.
+        matched = False
+        for child in el.iter():
+            if strip_ns(child.tag) == "Single" and child.attrib.get("Name") == "VisNodeRefs33":
+                t = (child.text or "").strip()
+                if t == visu_name:
+                    matched = True
+                break  # first non-null (or null) -- stop either way
+
+        if not matched:
+            continue
+
+        # Count how many param IDs have live values (to prefer value-free).
+        from . import builder as _builder
+
+        params, _ = _builder._extract_frame_params(el)
+        param_ids = set(p["member_id"] for p in params)
+        members = _builder._member_map(el)
+        value_count = sum(1 for mid in param_ids if mid in members)
+
+        results.append({"element": el, "value_count": value_count})
+
+    return results
+
+
+def _find_frame_instance(project_view_dir, visu_name, screen=None, folder=None):
+    """Locate a VisuFbFrame element in the project whose first non-null
+    VisNodeRefs33 matches *visu_name*.
+
+    Scans screen XML files under ``project_view_dir`` (or a single file if
+    *screen* is given). Prefers a **value-free** instance (fewest param
+    value members). Returns ``None`` if no match is found.
+
+    Returned dict: ``{element, xml_path, value_count}``.
+    """
+    import os
+
+    candidates = []
+
+    def _scan_xml(xml_path):
+        with open(xml_path, "r", encoding="utf-8") as _fh:
+            content = _fh.read()
+        found = _find_frames_in_xml(content, visu_name)
+        for f in found:
+            f["xml_path"] = xml_path
+        return found
+
+    if screen:
+        xml_path = _resolve_screen_path(project_view_dir, screen, folder)
+        if os.path.isfile(xml_path):
+            candidates.extend(_scan_xml(xml_path))
+    else:
+        for dirpath, _dirs, files in os.walk(project_view_dir):
+            for fn in files:
+                if not fn.endswith(".xml"):
+                    continue
+                xml_path = os.path.join(dirpath, fn)
+                candidates.extend(_scan_xml(xml_path))
+
+    if not candidates:
+        return None
+
+    # Prefer value-free (fewest synthesized value members).
+    candidates.sort(key=lambda c: c["value_count"])
+    return candidates[0]
+
+
+def capture_frame(project_view_dir, visu_name, screen=None, folder=None):
+    """Capture a VisuFbFrame instance into a golden template + catalog.
+
+    1. Locates a matching frame in the project.
+    2. Serializes the element to XML text.
+    3. Tokenizes it into a golden template (geometry placeholders,
+       ``@@IDENTIFIER@@``, ``@@VISUAL_ELEMENT_ID@@``, removes param
+       value members, inserts ``@@PARAM_MEMBERS@@``).
+    4. Builds a catalog JSON with param metadata.
+    5. Writes both to ``<project_view_dir>/.cds-visu/frames/``.
+    """
+    import json
+    import os
+    import xml.etree.ElementTree as ET
+
+    from . import builder as _builder
+
+    found = _find_frame_instance(project_view_dir, visu_name, screen, folder)
+    if found is None:
+        _err("no frame referencing '{0}' found in project".format(visu_name))
+        sys.exit(1)
+
+    element = found["element"]
+
+    # Serialize element to XML fragment text.
+    fragment = ET.tostring(element, encoding="unicode")
+
+    # Extract params.
+    params, _ = _builder._extract_frame_params(element)
+    param_ids = set(p["member_id"] for p in params)
+
+    # Tokenize.
+    template_text = _builder._tokenize_frame(fragment, param_ids)
+
+    # Build catalog.
+    catalog = _builder._build_frame_catalog(visu_name, params)
+
+    # Write output files.
+    frames_dir = os.path.join(project_view_dir, ".cds-visu", "frames")
+    if not os.path.isdir(frames_dir):
+        os.makedirs(frames_dir)
+
+    tmpl_path = os.path.join(frames_dir, visu_name + ".xml.tmpl")
+    with open(tmpl_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(template_text)
+
+    cat_path = os.path.join(frames_dir, visu_name + ".json")
+    with open(cat_path, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, indent=2)
+
+    _ok("Captured frame '{0}' -> {1}".format(visu_name, tmpl_path))
+    _ok("Catalog -> {0}".format(cat_path))
+    _ok("Params: {0}".format(", ".join(p["name"] for p in params)))
+    print(tmpl_path)
 
 
 def _default_for_param(catalog, spec):

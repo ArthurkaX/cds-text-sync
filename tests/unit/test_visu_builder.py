@@ -1417,3 +1417,272 @@ class TestSliderDecompile:
         assert 'y="60"' in out
         assert 'width="200"' in out
         assert 'height="30"' in out
+
+
+# ===================================================================
+# Capture-frame tests (spec 1/2)
+# ===================================================================
+
+
+class TestCaptureFrame:
+    """Tests for _extract_frame_params, _tokenize_frame, _build_frame_catalog."""
+
+    @staticmethod
+    def _make_frame_xml():
+        """Minimal VisuFbFrame XML for capture-frame tests.
+
+        Includes geometry members, the 363316305 member with interface
+        definition (params a=111/INT, b=222/INT), identifier, and
+        VisualElementId.
+        """
+        return (
+            '<Single Type="{f86c2928-8614-4cca-824b-e819ac4d58c4}" Method="IArchivable">'
+            '<Array Name="ConfiguredComplexInputs" />'
+            '<List Name="Elements" />'
+            '<Null Name="VisualElementDescription" />'
+            '<Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">'
+            '<List Name="VisualElemMemberList" Type="{a4b83bea-3742-489c-9fe8-d96d68dba7ab}">'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value" Type="int">100</Single>'
+            '</Single>'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value" Type="int">200</Single>'
+            '</Single>'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">2422045748</Single>'
+            '<Single Name="Value" Type="int">300</Single>'
+            '</Single>'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">2134141914</Single>'
+            '<Single Name="Value" Type="int">400</Single>'
+            '</Single>'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">550940142</Single>'
+            '<Single Name="Value" Type="int">250</Single>'
+            '</Single>'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">1473355128</Single>'
+            '<Single Name="Value" Type="int">400</Single>'
+            '</Single>'
+            '<Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">'
+            '<Single Name="Id" Type="long">363316305</Single>'
+            '<Single Name="Value" Type="{503c5b2e-e80e-4ee7-ae00-c5b93a62b1aa}" Method="IArchivable">'
+            '<Single Name="StructuredTypeNodeIsAnimation" Type="bool">False</Single>'
+            '<List Name="TypeNodeChildren" Type="System.Collections.ArrayList">'
+            '<Single Type="{f8db32ff-bdd5-49e9-9014-6d9a6dea5d8c}" Method="IArchivable">'
+            '<Single Name="VisuNodeReferenceGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>'
+            '<Null Name="VisuNodeReference" />'
+            '<Single Name="VisNodeRefs33" Type="string">test_frame</Single>'
+            '<List Name="TypeNodeChildren" Type="System.Collections.ArrayList">'
+            '<Single Type="{f7e1e748-ea0f-4fcb-b563-94837ee17e8d}" Method="IArchivable">'
+            '<Single Name="TypeNodeName" Type="string">a</Single>'
+            '<Single Name="TypeNodeIdLong" Type="long">111</Single>'
+            '<Single Name="TypeNodeType" Type="{b12a9636-e818-4598-ae0d-fb6a2446102c}" Method="IArchivable">'
+            '<Single Name="QualifiedName" Type="string">INT</Single>'
+            '</Single>'
+            '</Single>'
+            '<Single Type="{f7e1e748-ea0f-4fcb-b563-94837ee17e8d}" Method="IArchivable">'
+            '<Single Name="TypeNodeName" Type="string">b</Single>'
+            '<Single Name="TypeNodeIdLong" Type="long">222</Single>'
+            '<Single Name="TypeNodeType" Type="{b12a9636-e818-4598-ae0d-fb6a2446102c}" Method="IArchivable">'
+            '<Single Name="QualifiedName" Type="string">INT</Single>'
+            '</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            '</Single>'
+            '</List>'
+            '</Single>'
+            '<Single Name="VisualElementName" Type="string">Frame</Single>'
+            '<Single Name="VisualElementTypeName" Type="string">VisuFbFrame</Single>'
+            '<Single Name="VisualElementIsRectangle" Type="bool">True</Single>'
+            '<Single Name="VisualElementIdentifier" Type="string">GenElemInst_5</Single>'
+            '<Single Name="VisualElementId" Type="int">42</Single>'
+            '</Single>'
+        )
+
+    def test_extract_params(self):
+        """_extract_frame_params returns expected params a(111,INT), b(222,INT)."""
+        import xml.etree.ElementTree as ET
+        from cli.visu import builder
+
+        xml = self._make_frame_xml()
+        node = ET.fromstring(xml)
+        params, visu_name = builder._extract_frame_params(node)
+
+        assert visu_name == "test_frame"
+        assert len(params) == 2
+        assert params[0]["name"] == "a"
+        assert params[0]["member_id"] == 111
+        assert params[0]["iec_type"] == "INT"
+        assert params[1]["name"] == "b"
+        assert params[1]["member_id"] == 222
+        assert params[1]["iec_type"] == "INT"
+
+    def test_tokenize_geometry(self):
+        """_tokenize_frame replaces geometry, identifier, VE id and inserts
+        @@PARAM_MEMBERS@@."""
+        import xml.etree.ElementTree as ET
+        from cli.visu import builder
+
+        xml = self._make_frame_xml()
+        node = ET.fromstring(xml)
+        fragment = ET.tostring(node, encoding="unicode")
+        param_ids = {111, 222}
+        template = builder._tokenize_frame(fragment, param_ids)
+
+        assert "@@X@@" in template
+        assert "@@WIDTH@@" in template
+        assert "@@IDENTIFIER@@" in template
+        assert "@@VISUAL_ELEMENT_ID@@" in template
+        assert "@@PARAM_MEMBERS@@" in template
+
+        # Raw value 100 should be replaced by @@X@@, 300 by @@WIDTH@@
+        assert ">100<" not in template.replace("@@X@@", "MARK")
+        assert ">300<" not in template.replace("@@WIDTH@@", "MARK")
+
+    def test_tokenize_preserves_interface(self):
+        """_tokenize_frame does not corrupt the interface definition or
+        sub-visu name."""
+        import xml.etree.ElementTree as ET
+        from cli.visu import builder
+
+        xml = self._make_frame_xml()
+        node = ET.fromstring(xml)
+        fragment = ET.tostring(node, encoding="unicode")
+        param_ids = {111, 222}
+        template = builder._tokenize_frame(fragment, param_ids)
+
+        # Interface param ids are NOT tokenized.
+        assert 'TypeNodeIdLong" Type="long">111' in template
+        assert 'TypeNodeIdLong" Type="long">222' in template
+        # Sub-visu name preserved.
+        assert "test_frame" in template
+
+    def test_catalog_shape(self):
+        """_build_frame_catalog produces the expected catalog shape."""
+        from cli.visu import builder
+
+        params = [
+            {"name": "a", "member_id": 111, "iec_type": "INT", "default": ""},
+            {"name": "b", "member_id": 222, "iec_type": "INT", "default": ""},
+        ]
+        catalog = builder._build_frame_catalog("test_frame", params)
+
+        assert catalog["type"] == "frame"
+        assert catalog["visualElementTypeName"] == "VisuFbFrame"
+        assert catalog["visu"] == "test_frame"
+        assert len(catalog["params"]) == 2
+        assert catalog["params"][0]["member_id"] == 111
+        assert catalog["params"][1]["name"] == "b"
+
+
+class TestFrameCompile:
+    """Frame element compile tests (parse, param member synthesis, compile, error)."""
+
+    def test_parse_frame(self):
+        """_parse_frame extracts geometry, visu, and data-param-* attrs."""
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+            '<rect data-cds-type="frame" data-visu="X" '
+            'data-param-a="7" data-param-b="9" '
+            'x="10" y="20" width="200" height="100"/></svg>'
+        )
+        parsed = svg_import.parse_svg(svg)
+        assert len(parsed["elements"]) == 1
+        elem = parsed["elements"][0]
+        assert elem["type"] == "frame"
+        assert elem["params"]["visu"] == "X"
+        assert elem["params"]["params"] == {"a": "7", "b": "9"}
+        assert elem["params"]["x"] == "10"
+        assert elem["params"]["y"] == "20"
+        assert elem["params"]["width"] == "200"
+        assert elem["params"]["height"] == "100"
+
+    def test_render_param_members(self):
+        """_render_frame_param_members resolves values, defaults, skips empty."""
+        catalog = {
+            "type": "frame",
+            "visualElementTypeName": "VisuFbFrame",
+            "visu": "test_visu",
+            "golden_template": "test.xml.tmpl",
+            "base_members": [],
+            "params": [
+                {"name": "a", "member_id": 111, "iec_type": "INT", "default": ""},
+                {"name": "b", "member_id": 222, "iec_type": "INT", "default": "5"},
+            ],
+        }
+        params = {"params": {"a": "7"}}
+        result = builder._render_frame_param_members(catalog, params)
+        # a=7 was provided -> should appear.
+        assert 'Name="Id" Type="long">111' in result
+        assert 'Name="Value" Type="string">7' in result
+        # b not provided, default is "5" -> should appear.
+        assert 'Name="Id" Type="long">222' in result
+        assert 'Name="Value" Type="string">5' in result
+        # Correct _MEMBER_TYPE guid.
+        assert "{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" in result
+
+    def test_compile_frame_end_to_end(self, empty_screen):
+        """append_element with golden_template_text substitutes all placeholders
+        and renders param members."""
+        tmpl = (
+            '<Single Type="{f86c2928-8614-4cca-824b-e819ac4d58c4}" Method="IArchivable">'
+            '<Single Name="VisualElemMemberList">'
+            '<List Name="VisualElemMemberList">'
+            '<Single>'
+            '<Single Name="Id" Type="long">1649127785</Single>'
+            '<Single Name="Value">@@X@@</Single>'
+            '</Single>'
+            '<Single>'
+            '<Single Name="Id" Type="long">357335551</Single>'
+            '<Single Name="Value">@@Y@@</Single>'
+            '</Single>'
+            '@@PARAM_MEMBERS@@'
+            '</List>'
+            '</Single>'
+            '<Single Name="VisualElementIdentifier">@@IDENTIFIER@@</Single>'
+            '<Single Name="VisualElementId">@@VISUAL_ELEMENT_ID@@</Single>'
+            '</Single>'
+        )
+        cat = {
+            "type": "frame",
+            "visualElementTypeName": "VisuFbFrame",
+            "visu": "test_visu",
+            "golden_template": "test.xml.tmpl",
+            "base_members": [],
+            "params": [
+                {"name": "a", "member_id": 111, "iec_type": "INT", "default": ""},
+            ],
+        }
+        params = {
+            "x": "10",
+            "y": "20",
+            "width": "200",
+            "height": "100",
+            "visu": "test_visu",
+            "params": {"a": "7"},
+        }
+        new_xml, geometry, info = builder.append_element(
+            empty_screen, cat, params,
+            golden_template_text=tmpl,
+        )
+        # No unresolved placeholders.
+        assert "@@" not in new_xml
+        # Geometry members present.
+        assert 'Name="Id" Type="long">1649127785' in new_xml
+        assert 'Name="Id" Type="long">357335551' in new_xml
+        # Param a=7 landed with correct member id.
+        assert 'Name="Id" Type="long">111' in new_xml
+        assert 'Name="Value" Type="string">7' in new_xml
+
+    def test_frame_catalog_missing(self, tmp_path):
+        from cli.visu import catalog as _catalog
+
+        with pytest.raises(_catalog.CatalogError) as exc:
+            _catalog.load_frame_catalog(str(tmp_path), "nonexistent")
+        assert "capture-frame" in str(exc.value)

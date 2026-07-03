@@ -88,3 +88,32 @@ def shape_value(catalog, shape_name):
     """
     variants = catalog.get("shape_variants") or {}
     return variants.get(shape_name)
+
+
+def load_frame_catalog(project_view_dir, visu):
+    """Load the project-local frame catalog for *visu*.
+
+    Frame catalogs live under ``<project_view_dir>/.cds-visu/frames/``
+    and are produced by ``capture-frame``.
+    """
+    path = os.path.join(
+        project_view_dir, ".cds-visu", "frames", "{0}.json".format(visu)
+    )
+    if not os.path.isfile(path):
+        raise CatalogError(
+            "no captured template for frame '{0}'; "
+            "run `cts visu capture-frame --visu {0}` first".format(visu)
+        )
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    _validate_catalog(data, visu)
+    return data
+
+
+def load_frame_template(project_view_dir, visu):
+    """Load the project-local frame template text for *visu*."""
+    path = os.path.join(
+        project_view_dir, ".cds-visu", "frames", "{0}.xml.tmpl".format(visu)
+    )
+    with open(path, "r", encoding="utf-8") as handle:
+        return handle.read()

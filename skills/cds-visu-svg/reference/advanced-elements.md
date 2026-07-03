@@ -60,20 +60,46 @@ Geometry only — no variable binding.
 - Attributes: geometry only (`x`, `y`, `width`, `height`).
 - GVL: **none** (no variable declared).
 
-## Decompile-only
+## Frame (embedded sub-visualization / faceplate instance)
 
-`frame` (an embedded sub-visualization / faceplate instance) and `slider` are
-read by `cts visu to-svg` but cannot yet be authored with `cts visu from-svg`.
-Decompiling a real screen emits them as:
+A frame embeds another visualization (an icon or faceplate such as `PUMP_ICON`)
+and passes interface parameters to it. Authoring syntax:
 
 ```xml
 <rect data-cds-type="frame" data-visu="PUMP_ICON" data-param-pump_number="5" x=".." y=".." width=".." height=".."/>
-<rect data-cds-type="slider" data-var="HMI.Setpoint" data-orientation="VERTICAL" data-min="0" data-max="100" x=".." y=".." width=".." height=".."/>
 ```
 
 `data-visu` names the referenced sub-visualization; each `data-param-<name>`
-passes one interface parameter to it. When round-tripping an existing screen,
-leave these elements as-is — compiling them back is not implemented yet.
+passes one interface parameter to it (usually a literal index).
+
+**Frames compile via capture, not from scratch.** A faceplate's interface is
+project-specific, so before you can author a frame you must capture a real
+instance of it from the project once:
+
+```sh
+cts visu capture-frame --visu PUMP_ICON --sync-folder <project>
+```
+
+This snapshots one existing `PUMP_ICON` frame into
+`<project>/project-view/.cds-visu/frames/PUMP_ICON.{xml.tmpl,json}` (the real
+interface and member ids baked in). After that, `cts visu from-svg` can stamp new
+`data-cds-type="frame" data-visu="PUMP_ICON"` instances with any
+`data-param-*` values, and `cts visu to-svg` decompiles them back. If you author
+a frame whose sub-visualization has not been captured yet, compile fails with a
+clear "run capture-frame first" message.
+
+Frame parameters are treated as literals — they are NOT auto-declared in the GVL.
+
+## Slider (decompile-only)
+
+`slider` is read by `cts visu to-svg` but cannot yet be authored with
+`cts visu from-svg`. Decompiling emits:
+
+```xml
+<rect data-cds-type="slider" data-var="HMI.Setpoint" data-orientation="VERTICAL" data-min="0" data-max="100" x=".." y=".." width=".." height=".."/>
+```
+
+When round-tripping an existing screen, leave sliders as-is.
 
 ## Not supported
 

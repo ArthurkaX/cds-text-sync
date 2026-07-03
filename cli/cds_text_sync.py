@@ -494,6 +494,17 @@ def main():
                 folder=getattr(args, "folder", ""),
                 out_path=getattr(args, "out", ""),
             )
+        elif args.visu_action == "capture-frame":
+            visu_name = getattr(args, "visu", "")
+            if not visu_name:
+                _print_error("--visu is required")
+                sys.exit(1)
+            visu_cmds.capture_frame(
+                project_view_dir=pv,
+                visu_name=visu_name,
+                screen=getattr(args, "screen", None) or "",
+                folder=getattr(args, "folder", ""),
+            )
 
     else:
         parser.print_help()

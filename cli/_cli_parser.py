@@ -514,6 +514,7 @@ from-svg SVG contract:
             "describe",
             "from-svg",
             "to-svg",
+            "capture-frame",
         ],
         help="new - scaffold an editable SVG sketch from the seed template\n"
         "create-screen - create a new empty screen\n"
@@ -523,7 +524,8 @@ from-svg SVG contract:
         "types - list available element types\n"
         "describe - describe a type or element\n"
         "from-svg - compile SVG to CODESYS screen XML\n"
-        "to-svg - decompile CODESYS screen XML to SVG",
+        "to-svg - decompile CODESYS screen XML to SVG\n"
+        "capture-frame - capture a VisuFbFrame instance as golden template + catalog",
     )
     p_visu.add_argument(
         "--sync-folder", default="", help="Sync folder or project-view dir"
@@ -549,6 +551,9 @@ from-svg SVG contract:
         help="Set as start visualization (for create-screen)",
     )
     p_visu.add_argument("--screen", default="", help="Screen name or path")
+    p_visu.add_argument(
+        "--visu", default="", help="Sub-visu name (for capture-frame)"
+    )
     p_visu.add_argument("--type", default="", help="Element type (for add, describe)")
     p_visu.add_argument("--x", type=int, help="X position")
     p_visu.add_argument("--y", type=int, help="Y position")
