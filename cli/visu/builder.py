@@ -1172,11 +1172,36 @@ def _render_input_action(spec, values):
             )
             continue
         if kind == "dict":
-            fields.append(
-                ' <Dictionary Type="System.Collections.Hashtable" Name="{0}" />\n'.format(
-                    _esc(xml_name)
+            from_key = field.get("from")
+            dict_values = values.get(from_key) if from_key else None
+            if from_key and dict_values:
+                lines = []
+                lines.append(
+                    ' <Dictionary Type="System.Collections.Hashtable" '
+                    'Name="{0}">\n'.format(_esc(xml_name))
                 )
-            )
+                for key, val in dict_values.items():
+                    lines.extend([
+                        '  <Entry>\n',
+                        '   <Key>\n',
+                        '    <Single Type="string">{0}</Single>\n'.format(
+                            _esc(key)),
+                        '   </Key>\n',
+                        '   <Value>\n',
+                        '    <Single Type="string">{0}</Single>\n'.format(
+                            _esc(val)),
+                        '   </Value>\n',
+                        '  </Entry>\n',
+                    ])
+                lines.append(' </Dictionary>\n')
+                fields.append("".join(lines))
+            else:
+                fields.append(
+                    ' <Dictionary Type="System.Collections.Hashtable" '
+                    'Name="{0}" />\n'.format(
+                        _esc(xml_name)
+                    )
+                )
             continue
         value = values.get(field.get("name"), field.get("default", ""))
         fields.append(

@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import re
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 
 from . import themes
 from .xml_ns import find_named, named_text, strip_ns
@@ -748,11 +749,41 @@ def _read_dialog_action(element):
         if st_snippet is not None and st_snippet.text:
             st = st_snippet.text.strip()
 
+    # Read Parameters dict (only non-empty values, sparse).
+    params = OrderedDict()
+    params_dict = find_named(dialog_action, "Dictionary", "Parameters")
+    if params_dict is not None:
+        for entry in list(params_dict):
+            if strip_ns(entry.tag) != "Entry":
+                continue
+            key_el = val_el = None
+            for child in list(entry):
+                if strip_ns(child.tag) == "Key":
+                    key_el = child
+                elif strip_ns(child.tag) == "Value":
+                    val_el = child
+            if key_el is None or val_el is None:
+                continue
+            # Extract text from the first <Single> inside Key/Value.
+            key_text = ""
+            val_text = ""
+            for sub in list(key_el):
+                if strip_ns(sub.tag) == "Single":
+                    key_text = (sub.text or "").strip()
+                    break
+            for sub in list(val_el):
+                if strip_ns(sub.tag) == "Single":
+                    val_text = (sub.text or "").strip()
+                    break
+            if key_text and val_text:
+                params[key_text] = val_text
+
     return {
         "dialog": dialog_name,
         "modal": modal,
         "centered": centered,
         "st": st,
+        "params": params,
     }
 
 
@@ -773,6 +804,10 @@ def _inject_dialog_attrs(tag_str, info):
         parts.append('data-dialog-centered="{0}"'.format(info["centered"]))
     if info.get("st") is not None:
         parts.append('data-dialog-st="{0}"'.format(_esc_xml(info["st"])))
+    if info.get("params"):
+        for name, expr in info["params"].items():
+            parts.append('data-dialog-param-{0}="{1}"'.format(
+                _esc_xml(name), _esc_xml(expr)))
     if not parts:
         return tag_str
 

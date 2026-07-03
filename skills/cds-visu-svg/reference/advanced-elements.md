@@ -127,8 +127,18 @@ whose template carries input actions):
 ```
 
 Putting `data-open-dialog` on any other element type (a line, label, textfield,
-etc.) raises a clear error. Dialog parameters (the interface values passed to the
-opened dialog) are not authored yet — the `Parameters` list is emitted empty.
+etc.) raises a clear error.
+
+**Dialog parameters** (the interface values passed to the opened dialog) are
+authored with `data-dialog-param-<name>="<ST expression>"` on the same element
+that carries `data-open-dialog`. Only assigned (non-empty) params are authored;
+CODESYS fills the rest from the dialog interface on import. Values are ST
+expressions (usually a variable name):
+
+```xml
+<rect data-cds-type="button" data-open-dialog="pump_faceplate"
+      data-dialog-param-pump_number="pump_number" .../>
+```
 
 ## Not supported
 

@@ -83,6 +83,7 @@ class TestCatalog:
         assert "label" in types
         assert "button" in types
         assert "textfield" in types
+        assert "input_actions" not in types
 
     def test_shape_value(self, rectangle_catalog):
         assert (
@@ -1975,4 +1976,173 @@ class TestDialogCompile:
   assert 'data-open-dialog="pump_faceplate"' in out
   assert 'data-dialog-modal="true"' in out
   assert 'data-dialog-st="X:=1;"' in out
+
+
+# ===================================================================
+# Dialog PARAMS tests (decompile, compile, round-trip)
+# ===================================================================
+
+
+class TestDialogParams:
+ """Dialog parameter decompile/compile tests."""
+
+ def test_decompile_reads_params(self):
+  """_read_dialog_action extracts non-empty params from Parameters dict."""
+  from cli.visu import svg_export
+  import xml.etree.ElementTree as ET
+
+  xml = (
+   '<Single>'
+   '<Single Name="VisualElementTypeName" Type="string">VisuFbElemSimple</Single>'
+   '<Single Name="VisualElemMemberList">'
+   '<List Name="VisualElemMemberList">'
+   '<Single><Single Name="Id" Type="long">1649127785</Single>'
+   '<Single Name="Value" Type="int">100</Single></Single>'
+   '<Single><Single Name="Id" Type="long">357335551</Single>'
+   '<Single Name="Value" Type="int">200</Single></Single>'
+   '<Single><Single Name="Id" Type="long">2422045748</Single>'
+   '<Single Name="Value" Type="int">300</Single></Single>'
+   '<Single><Single Name="Id" Type="long">2134141914</Single>'
+   '<Single Name="Value" Type="int">400</Single></Single>'
+   '</List>'
+   '</Single>'
+   '<Dictionary Name="VisualElementInputActions">'
+   '<Entry>'
+   '<Key><Single Type="string">OnMouseClick</Single></Key>'
+   '<Value>'
+   '<Array Type="{69265815-6ecb-4b71-9d97-8ce14e84f3cb}">'
+   '<Single Type="{c01cd804-0a56-4714-ba1b-1040cfc48b6b}" Method="IArchivable">'
+   '<Null Name="Dialog" />'
+   '<Single Name="Dialog33" Type="string">pump_faceplate</Single>'
+   '<Dictionary Type="System.Collections.Hashtable" Name="Parameters">'
+   '<Entry>'
+   '<Key><Single Type="string">pump_number</Single></Key>'
+   '<Value><Single Type="string">pump_number</Single></Value>'
+   '</Entry>'
+   '<Entry>'
+   '<Key><Single Type="string">bStart</Single></Key>'
+   '<Value><Single Type="string" /></Value>'
+   '</Entry>'
+   '</Dictionary>'
+   '<Dictionary Name="Selected" />'
+   '<Single Name="OpenModal" Type="bool">True</Single>'
+   '<Single Name="OpenCentered" Type="bool">True</Single>'
+   '<Single Name="PositionX" Type="string" />'
+   '<Single Name="PositionY" Type="string" />'
+   '</Single>'
+   '</Array>'
+   '</Value>'
+   '</Entry>'
+   '</Dictionary>'
+   '</Single>'
+  )
+  node = ET.fromstring(xml)
+  info = svg_export._read_dialog_action(node)
+  assert info is not None
+  assert info["params"] == {"pump_number": "pump_number"}
+
+ def test_decompile_emits_param_attr(self):
+  """_inject_dialog_attrs includes data-dialog-param-<name>."""
+  from cli.visu import svg_export
+
+  result = svg_export._inject_dialog_attrs(
+   "<rect/>",
+   {"dialog": "d", "modal": None, "centered": None, "st": None,
+    "params": {"pump_number": "pump_number"}},
+  )
+  assert 'data-dialog-param-pump_number="pump_number"' in result
+
+ def test_dict_field_populated(self):
+  """_render_input_action with params produces populated Parameters dict."""
+  spec = builder._visual_input_action("open_dialog")
+  values = {"dialog": "d", "params": {"pump_number": "pump_number"}}
+  result = builder._render_input_action(spec, values)
+  # Populated Parameters dict with Entry
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Parameters">' in result
+  assert '<Single Type="string">pump_number</Single>' in result
+  assert '</Dictionary>' in result
+  # Selected stays self-closing empty
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Selected" />' in result
+
+ def test_dict_field_empty_backcompat(self):
+  """_render_input_action without params keeps both dicts self-closing."""
+  spec = builder._visual_input_action("open_dialog")
+  values = {"dialog": "d"}
+  result = builder._render_input_action(spec, values)
+  # Both Parameters and Selected stay self-closing
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Parameters" />' in result
+  assert '<Dictionary Type="System.Collections.Hashtable" Name="Selected" />' in result
+
+ def test_parse_dialog_param_attrs(self):
+  """SVG parse of a button with data-dialog-param-* produces params."""
+  svg = (
+   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">'
+   '<rect x="10" y="20" width="120" height="40" data-cds-type="button"'
+   ' data-open-dialog="pump_faceplate"'
+   ' data-dialog-param-pump_number="pump_number"'
+   '/></svg>'
+  )
+  parsed = svg_import.parse_svg(svg)
+  button = parsed["elements"][0]
+  actions = button["params"].get("input_actions", [])
+  assert len(actions) == 1
+  assert actions[0]["type"] == "open_dialog"
+  assert actions[0]["values"]["params"] == {"pump_number": "pump_number"}
+
+ def test_roundtrip_param(self, empty_screen, button_catalog):
+  """Compile with params, then decompile and verify round-trip."""
+  from cli.visu import svg_export
+  import xml.etree.ElementTree as ET
+
+  params = {
+   "x": "10",
+   "y": "20",
+   "width": "120",
+   "height": "40",
+   "text": "Open",
+   "input_actions": [
+    {
+     "event": "OnMouseClick",
+     "type": "open_dialog",
+     "values": {
+      "dialog": "pump_faceplate",
+      "modal": "True",
+      "centered": "True",
+      "position_x": "",
+      "position_y": "",
+      "params": {"pump_number": "pump_number"},
+     },
+    },
+   ],
+  }
+  new_xml, geometry, info = builder.append_element(
+   empty_screen, button_catalog, params
+  )
+  # Compile: populated Parameters Entry in output
+  assert 'pump_number' in new_xml
+  assert '<Single Type="string">pump_number</Single>' in new_xml
+  # Decompile round-trip
+  root = ET.fromstring(new_xml)
+  btn_node = None
+  for el in root.iter():
+   tag = el.tag.split("}")[-1] if "}" in str(el.tag) else el.tag
+   if tag == "Single":
+    for child in list(el):
+     ct = (
+      child.tag.split("}")[-1]
+      if "}" in str(child.tag)
+      else child.tag
+     )
+     if (
+      ct == "Single"
+      and child.attrib.get("Name") == "VisualElementTypeName"
+      and (child.text or "") == "VisuFbElemButton"
+     ):
+      btn_node = el
+      break
+   if btn_node is not None:
+    break
+  assert btn_node is not None, "Button node not found in compiled XML"
+  out = svg_export._element_to_svg(btn_node)
+  assert 'data-dialog-param-pump_number="pump_number"' in out
 
