@@ -654,10 +654,10 @@ def _apply_dialog_attrs(child, element_dict):
         return
 
     element_type = element_dict.get("type")
-    if element_type != "button":
+    if element_type not in ("button", "rectangle"):
         raise ValueError(
-            'data-open-dialog is only supported on a button element in this '
-            'version (put it on <rect data-cds-type="button"> ...>)'
+            'data-open-dialog is only supported on a button or a simple '
+            'rectangle/circle/ellipse element in this version'
         )
 
     modal_raw = (child.get("data-dialog-modal") or "True").strip()
