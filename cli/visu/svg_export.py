@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import print_function
 
+import re
 import xml.etree.ElementTree as ET
 
 from . import themes
@@ -690,6 +691,99 @@ def _render_alarm_banner(element):
     return _svg_tag("rect", attrs)
 
 
+def _read_dialog_action(element):
+    """Read dialog-open action info from an element's VisualElementInputActions.
+
+    Returns a dict with keys ``dialog``, ``modal``, ``centered``, ``st``
+    if a dialog-open action is found, or ``None`` otherwise.
+    """
+    # Find the VisualElementInputActions dictionary.
+    actions_dict = None
+    for child in element.iter():
+        if strip_ns(child.tag) == "Dictionary" and child.attrib.get(
+            "Name"
+        ) == "VisualElementInputActions":
+            actions_dict = child
+            break
+    if actions_dict is None:
+        return None
+
+    # Scan all Singles within the dictionary for the dialog-open action
+    # (Type {c01cd804...}) and an optional ST-snippet action (Type {6302d3fe...}).
+    dialog_action = None
+    st_action = None
+    for el in actions_dict.iter():
+        if strip_ns(el.tag) != "Single":
+            continue
+        t = el.attrib.get("Type", "")
+        if t.startswith("{c01cd804"):
+            dialog_action = el
+        elif t.startswith("{6302d3fe"):
+            st_action = el
+
+    if dialog_action is None:
+        return None
+
+    dialog_name = named_text(dialog_action, "Dialog33")
+    if not dialog_name:
+        return None
+
+    open_modal = find_named(dialog_action, "Single", "OpenModal")
+    modal = (
+        (open_modal.text or "").strip().lower()
+        if open_modal is not None
+        else None
+    )
+
+    open_centered = find_named(dialog_action, "Single", "OpenCentered")
+    centered = (
+        (open_centered.text or "").strip().lower()
+        if open_centered is not None
+        else None
+    )
+
+    st = None
+    if st_action is not None:
+        st_snippet = find_named(st_action, "Single", "STSnippet")
+        if st_snippet is not None and st_snippet.text:
+            st = st_snippet.text.strip()
+
+    return {
+        "dialog": dialog_name,
+        "modal": modal,
+        "centered": centered,
+        "st": st,
+    }
+
+
+def _inject_dialog_attrs(tag_str, info):
+    """Inject dialog-related data attributes into an SVG tag string.
+
+    Inserts ``data-open-dialog``, ``data-dialog-modal``,
+    ``data-dialog-centered``, and ``data-dialog-st`` attributes just before
+    the closing ``/>`` or ``>`` of the opening tag.  Works for both
+    self-closing tags (``<rect .../>``) and bodied tags (``<text ...>body</text>``).
+    """
+    parts = []
+    if info.get("dialog"):
+        parts.append('data-open-dialog="{0}"'.format(_esc_xml(info["dialog"])))
+    if info.get("modal") is not None:
+        parts.append('data-dialog-modal="{0}"'.format(info["modal"]))
+    if info.get("centered") is not None:
+        parts.append('data-dialog-centered="{0}"'.format(info["centered"]))
+    if info.get("st") is not None:
+        parts.append('data-dialog-st="{0}"'.format(_esc_xml(info["st"])))
+    if not parts:
+        return tag_str
+
+    attrs = " " + " ".join(parts)
+
+    m = re.match(r"^(<\w+\b[^>]*?)(\s*/?>)(.*)$", tag_str, re.DOTALL)
+    if m:
+        return m.group(1) + attrs + m.group(2) + (m.group(3) or "")
+    return tag_str
+
+
 def _element_to_svg(element):
     """Dispatch a CODESYS visual element to the appropriate SVG renderer."""
     type_name = named_text(element, "VisualElementTypeName")
@@ -697,27 +791,27 @@ def _element_to_svg(element):
         raise SvgExportError("Element has no VisualElementTypeName")
 
     if type_name == "VisuFbElemSimple":
-        return _simple_to_svg(element)
+        svg = _simple_to_svg(element)
     elif type_name == "VisuFbElemLine":
-        return _render_line(element)
+        svg = _render_line(element)
     elif type_name == "VisuFbLabel":
-        return _render_label(element)
+        svg = _render_label(element)
     elif type_name == "VisuFbElemButton":
-        return _render_button(element)
+        svg = _render_button(element)
     elif type_name == "VisuFbElemTextfield":
-        return _render_textfield(element)
+        svg = _render_textfield(element)
     elif type_name == "VisuFbElemLamp":
-        return _render_lamp(element)
+        svg = _render_lamp(element)
     elif type_name == "VisuFbImageSwitcher":
-        return _render_image_switcher(element)
+        svg = _render_image_switcher(element)
     elif type_name == "VisuFbComboBoxInteger":
-        return _render_combobox(element)
+        svg = _render_combobox(element)
     elif type_name == "VisuFbElemAlarmBanner":
-        return _render_alarm_banner(element)
+        svg = _render_alarm_banner(element)
     elif type_name == "VisuFbFrame":
-        return _render_frame(element)
+        svg = _render_frame(element)
     elif type_name == "VisuFbElemSlider":
-        return _render_slider(element)
+        svg = _render_slider(element)
     else:
         raise SvgExportError(
             "Unsupported element type: '{0}' "
@@ -729,6 +823,12 @@ def _element_to_svg(element):
             "VisuFbElemSlider, "
             "VisuFbFrame)".format(type_name)
         )
+
+    # Cross-cutting: inject dialog-open data attributes.
+    info = _read_dialog_action(element)
+    if info is not None:
+        svg = _inject_dialog_attrs(svg, info)
+    return svg
 
 
 # ---------------------------------------------------------------------------
