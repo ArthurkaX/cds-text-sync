@@ -1,96 +1,109 @@
 {
-  "configured_complex_inputs": {
-    "tap": {
-      "signature_name": "Visu_TapInput",
-      "name": "Tap",
-      "description": "Configure the tapping of a Boolean variable",
-      "members": [
-        {
-          "name": "variable",
-          "member_id": 1186196937,
-          "kind": "string"
-        }
-      ],
-      "svg_grammar": [
-        "TAP <variable>",
-        "tap:<variable>",
-        "toggle:<variable>"
-      ]
-    },
-    "toggle": {
-      "signature_name": "Visu_ToggleInput",
-      "name": "Toggle",
-      "description": "Configure the toggling of a Boolean variable",
-      "members": [
-        {
-          "name": "variable",
-          "member_id": 1186196937,
-          "kind": "string"
-        },
-        {
-          "name": "toggle_on",
-          "member_id": 2164770859,
-          "kind": "bool",
-          "default": "False"
-        }
-      ],
-      "svg_grammar": [
-        "TOGGLE <variable>",
-        "toggle:<variable>"
-      ]
-    }
-  },
-  "visual_element_input_actions": {
-    "array_type": "{69265815-ba9d-4bec-bfcb-427fb9172844}",
-    "st_snippet": {
-      "type": "{6302d3fe-6ea5-4c42-819a-a9734a133b3d}",
-      "fields": [
-        {
-          "name": "snippet",
-          "xml_name": "STSnippet",
-          "kind": "string"
-        }
-      ]
-    },
-    "toggle_variable": {
-      "type": "{9dcc475d-e53e-4dd3-abd9-995bf52d466f}",
-      "fields": [
-        {
-          "name": "variable",
-          "xml_name": "ToggleVariable",
-          "kind": "string"
-        },
-        {
-          "xml_name": "Error",
-          "kind": "null"
-        }
-      ]
-    },
-    "change_screen": {
-      "type": "{b4c3a27b-74e5-4a67-bfa9-12f8c8cda31f}",
-      "fields": [
-        {
-          "name": "assign_expr",
-          "xml_name": "AssignExpr",
-          "kind": "string",
-          "default": ""
-        },
-        {
-          "xml_name": "Assign",
-          "kind": "null"
-        },
-        {
-          "name": "screen",
-          "xml_name": "Assign33",
-          "kind": "string"
-        },
-        {
-          "name": "assignment_type",
-          "xml_name": "Type",
-          "kind": "{a418300c-fdec-47d4-86a4-53b5a5f941fa}",
-          "default": "Assignment"
-        }
-      ]
-    }
-  }
+ "configured_complex_inputs": {
+ "tap": {
+ "signature_name": "Visu_TapInput",
+ "name": "Tap",
+ "description": "Configure the tapping of a Boolean variable",
+ "members": [
+ {
+ "name": "variable",
+ "member_id": 1186196937,
+ "kind": "string"
+ }
+ ],
+ "svg_grammar": [
+ "TAP <variable>",
+ "tap:<variable>",
+ "toggle:<variable>"
+ ]
+ },
+ "toggle": {
+ "signature_name": "Visu_ToggleInput",
+ "name": "Toggle",
+ "description": "Configure the toggling of a Boolean variable",
+ "members": [
+ {
+ "name": "variable",
+ "member_id": 1186196937,
+ "kind": "string"
+ },
+ {
+ "name": "toggle_on",
+ "member_id": 2164770859,
+ "kind": "bool",
+ "default": "False"
+ }
+ ],
+ "svg_grammar": [
+ "TOGGLE <variable>",
+ "toggle:<variable>"
+ ]
+ }
+ },
+ "visual_element_input_actions": {
+ "array_type": "{69265815-ba9d-4bec-bfcb-427fb9172844}",
+ "st_snippet": {
+ "type": "{6302d3fe-6ea5-4c42-819a-a9734a133b3d}",
+ "fields": [
+ {
+ "name": "snippet",
+ "xml_name": "STSnippet",
+ "kind": "string"
+ }
+ ]
+ },
+ "toggle_variable": {
+ "type": "{9dcc475d-e53e-4dd3-abd9-995bf52d466f}",
+ "fields": [
+ {
+ "name": "variable",
+ "xml_name": "ToggleVariable",
+ "kind": "string"
+ },
+ {
+ "xml_name": "Error",
+ "kind": "null"
+ }
+ ]
+ },
+ "change_screen": {
+ "type": "{b4c3a27b-74e5-4a67-bfa9-12f8c8cda31f}",
+ "fields": [
+ {
+ "name": "assign_expr",
+ "xml_name": "AssignExpr",
+ "kind": "string",
+ "default": ""
+ },
+ {
+ "xml_name": "Assign",
+ "kind": "null"
+ },
+ {
+ "name": "screen",
+ "xml_name": "Assign33",
+ "kind": "string"
+ },
+ {
+ "name": "assignment_type",
+ "xml_name": "Type",
+ "kind": "{a418300c-fdec-47d4-86a4-53b5a5f941fa}",
+ "default": "Assignment"
+ }
+ ]
+ },
+ "open_dialog": {
+ "type": "{c01cd804-0a56-4714-ba1b-1040cfc48b6b}",
+ "fields": [
+ {"xml_name": "Dialog", "kind": "null"},
+ {"name": "dialog", "xml_name": "Dialog33", "kind": "string"},
+ {"xml_name": "Parameters", "kind": "dict"},
+ {"xml_name": "Selected", "kind": "dict"},
+ {"name": "modal", "xml_name": "OpenModal", "kind": "bool", "default": "True"},
+ {"name": "centered", "xml_name": "OpenCentered", "kind": "bool", "default": "True"},
+ {"name": "position_x", "xml_name": "PositionX", "kind": "string", "default": ""},
+ {"name": "position_y", "xml_name": "PositionY", "kind": "string", "default": ""}
+ ]
+ }
+ }
 }

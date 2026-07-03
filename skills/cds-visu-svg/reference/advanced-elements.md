@@ -101,11 +101,13 @@ Frame parameters are treated as literals — they are NOT auto-declared in the G
 
 When round-tripping an existing screen, leave sliders as-is.
 
-## Dialog opener (decompile-only)
+## Dialog opener
 
-A dialog is opened by an **input-action** on any element (an icon rect/circle),
-not by a dedicated element type. `cts visu to-svg` surfaces it as data-attributes
-on that element; `cts visu from-svg` cannot yet author it. Decompiling emits:
+A dialog is opened by an **input-action** on an element, not by a dedicated
+element type.
+
+**Decompile** (`to-svg`) surfaces the opener as data-attributes on whatever
+element carries it (commonly an icon rect/circle):
 
 ```xml
 <rect ... data-open-dialog="pump_faceplate" data-dialog-modal="true" data-dialog-centered="true" data-dialog-st="DB_DRV.drv_number:=pump_number;"/>
@@ -115,7 +117,17 @@ on that element; `cts visu from-svg` cannot yet author it. Decompiling emits:
 - `data-dialog-modal` / `data-dialog-centered` — the OpenModal / OpenCentered flags.
 - `data-dialog-st` — the ST snippet the click also runs, if any.
 
-When round-tripping, leave these attributes on the element as-is.
+**Compile** (`from-svg`) authors the opener from those same attributes, but only
+on a **button** element in this version (the button template is the only one that
+carries input actions):
+
+```xml
+<rect data-cds-type="button" data-open-dialog="pump_faceplate" data-dialog-modal="true" data-dialog-st="DB_DRV.drv_number:=1;" x=".." y=".." width=".." height=".."/>
+```
+
+Putting `data-open-dialog` on a non-button element raises a clear error. Dialog
+parameters (the interface values passed to the opened dialog) are not authored
+yet — the `Parameters` list is emitted empty.
 
 ## Not supported
 

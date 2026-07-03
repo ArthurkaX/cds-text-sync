@@ -641,6 +641,55 @@ def _parse_frame(elem, theme):
     }
 
 
+def _apply_dialog_attrs(child, element_dict):
+    """Parse data-open-dialog attrs into element's input_actions.
+
+    Called AFTER the element has been parsed and appended to the elements
+    list.  In this version, only button elements support dialog-open at
+    compile time.  Decompile still reads openers on any element; compile is
+    button-only (only element_button.xml.tmpl has @@VISUAL_ELEMENT_INPUT_ACTIONS@@).
+    """
+    dialog = child.get("data-open-dialog")
+    if dialog is None:
+        return
+
+    element_type = element_dict.get("type")
+    if element_type != "button":
+        raise ValueError(
+            'data-open-dialog is only supported on a button element in this '
+            'version (put it on <rect data-cds-type="button"> ...>)'
+        )
+
+    modal_raw = (child.get("data-dialog-modal") or "True").strip()
+    modal = "True" if modal_raw.lower() == "true" else "False"
+
+    centered_raw = (child.get("data-dialog-centered") or "True").strip()
+    centered = "True" if centered_raw.lower() == "true" else "False"
+
+    actions = element_dict.setdefault("params", {}).setdefault(
+        "input_actions", []
+    )
+    actions.append({
+        "event": "OnMouseClick",
+        "type": "open_dialog",
+        "values": {
+            "dialog": dialog,
+            "modal": modal,
+            "centered": centered,
+            "position_x": "",
+            "position_y": "",
+        },
+    })
+
+    st = child.get("data-dialog-st")
+    if st:
+        actions.append({
+            "event": "OnMouseClick",
+            "type": "st_snippet",
+            "values": {"snippet": st},
+        })
+
+
 _ELEMENT_PARSERS = {
     "rect": _parse_rect,
     "circle": _parse_circle,
@@ -746,36 +795,43 @@ def parse_svg(svg_text, theme=None, project_dir=None):
         # Promote <rect data-cds-type="button"> to button.
         if tag == "rect" and child.get("data-cds-type") == "button":
             elements.append(_parse_button(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         # Promote <text data-cds-type="textfield"> to textfield.
         if tag == "text" and child.get("data-cds-type") == "textfield":
             elements.append(_parse_textfield(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         # Promote <rect data-cds-type="lamp"> to indicator lamp.
         if tag == "rect" and child.get("data-cds-type") == "lamp":
             elements.append(_parse_lamp(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         # Promote <rect data-cds-type="image-switcher"> to ImageSwitcher.
         if tag == "rect" and child.get("data-cds-type") == "image-switcher":
             elements.append(_parse_image_switcher(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         # Promote <rect data-cds-type="combobox"> to ComboBoxInteger.
         if tag == "rect" and child.get("data-cds-type") == "combobox":
             elements.append(_parse_combobox(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         # Promote <rect data-cds-type="alarm-banner"> to AlarmBanner.
         if tag == "rect" and child.get("data-cds-type") == "alarm-banner":
             elements.append(_parse_alarm_banner(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         # Promote <rect data-cds-type="frame"> to VisuFbFrame.
         if tag == "rect" and child.get("data-cds-type") == "frame":
             elements.append(_parse_frame(child, merged_theme))
+            _apply_dialog_attrs(child, elements[-1])
             continue
 
         parser = _ELEMENT_PARSERS.get(tag)
@@ -786,6 +842,7 @@ def parse_svg(svg_text, theme=None, project_dir=None):
                 )
             )
         elements.append(parser(child, merged_theme))
+        _apply_dialog_attrs(child, elements[-1])
 
     # Determine background colour from theme.
     bg_color = None

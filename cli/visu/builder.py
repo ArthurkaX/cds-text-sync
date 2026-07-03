@@ -1168,7 +1168,14 @@ def _render_input_action(spec, values):
         xml_name = field["xml_name"]
         if kind == "null":
             fields.append(
-                '                        <Null Name="{0}" />\n'.format(_esc(xml_name))
+                ' <Null Name="{0}" />\n'.format(_esc(xml_name))
+            )
+            continue
+        if kind == "dict":
+            fields.append(
+                ' <Dictionary Type="System.Collections.Hashtable" Name="{0}" />\n'.format(
+                    _esc(xml_name)
+                )
             )
             continue
         value = values.get(field.get("name"), field.get("default", ""))
