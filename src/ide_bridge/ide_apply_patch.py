@@ -796,6 +796,31 @@ def _find_named_object_anywhere(project, name):
     return None
 
 
+def _rewrite_parent_guid(native_xml, container):
+    """Point the payload's own ParentGuid at the resolved container's live GUID.
+
+    An exported native payload carries the ParentGuid it had at export time,
+    which can be stale (the folder was regenerated, or the export recorded a
+    parent that no longer exists). import_native is called on the resolved
+    container, but CODESYS refuses the payload when its embedded ParentGuid does
+    not match that container -- the object silently fails to appear. Align the
+    first (top MetaObject) ParentGuid with the container we actually resolved so
+    objects inside folders import correctly.
+    """
+    if not native_xml:
+        return native_xml
+    try:
+        cguid = normalize_guid(getattr(container, "guid", None))
+    except Exception:
+        cguid = ""
+    if not cguid:
+        return native_xml
+    pattern = re.compile(
+        r'(<Single Name="ParentGuid" Type="System\.Guid">)[^<]*(</Single>)'
+    )
+    return pattern.sub(lambda m: m.group(1) + cguid + m.group(2), native_xml, count=1)
+
+
 def _apply_native_create(project, entry):
     container, _chain = _ensure_container_path_with_chain(
         project, entry.get("path")
@@ -809,7 +834,8 @@ def _apply_native_create(project, entry):
         print("Native object already exists, skipping: " + str(entry.get("path")))
         return False
 
-    wrapped = _wrap_native_object_xml(entry.get("native_xml"), container)
+    native_xml = _rewrite_parent_guid(entry.get("native_xml"), container)
+    wrapped = _wrap_native_object_xml(native_xml, container)
 
     temp_path = None
     try:
