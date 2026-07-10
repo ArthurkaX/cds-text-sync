@@ -190,7 +190,7 @@ class SnapshotReader:
         entry_lists = self._structured_view_entry_lists(root)
         if not entry_lists:
             print("Could not find any EntryList in native XML.")
-            return model
+            return None
 
         for structured_view_guid, structured_view_single_attrs, entry_list in entry_lists:
             entries = entry_list.findall("./{0}Single".format(self.ns))
