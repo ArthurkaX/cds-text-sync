@@ -695,6 +695,40 @@ def _codesys_version():
     return ""
 
 
+def _project_path(prj):
+    """Best-effort filesystem path of a project object, or ""."""
+    for attr in ("path", "filename", "FileName", "FullName", "Path"):
+        try:
+            v = getattr(prj, attr)
+            if v:
+                return str(v)
+        except Exception:
+            pass
+    return ""
+
+
+def _open_projects(projects):
+    """Best-effort list of currently open project objects.
+
+    ScriptProjects exposes the open set differently across CODESYS versions;
+    probe a couple of accessors, then fall back to the primary alone.
+    """
+    for attr in ("all", "get_all_projects"):
+        try:
+            val = getattr(projects, attr)
+            if callable(val):
+                val = val()
+            if val:
+                return list(val)
+        except Exception:
+            pass
+    try:
+        primary = projects.primary
+    except Exception:
+        primary = None
+    return [primary] if primary is not None else []
+
+
 def _cmd_project_open(params):
     path = (params or {}).get("path", "")
     if not path:
@@ -703,6 +737,19 @@ def _cmd_project_open(params):
     if projects is None:
         return {"ok": False, "error": "projects not captured"}
     try:
+        # Guard: reopening an already-open project can pop a modal reload dialog
+        # in CODESYS, which blocks the single-threaded daemon loop. Skip it.
+        norm = os.path.normcase(os.path.normpath(path))
+        for prj in _open_projects(projects):
+            if os.path.normcase(os.path.normpath(_project_path(prj))) == norm:
+                return {
+                    "ok": True,
+                    "data": {
+                        "opened": path,
+                        "already_open": True,
+                        "name": _obj_name(prj),
+                    },
+                }
         project = projects.open(path)
         name = _obj_name(project) if project is not None else ""
         return {"ok": True, "data": {"opened": path, "name": name}}
@@ -733,53 +780,23 @@ def _cmd_project_list():
     if projects is None:
         return {"ok": False, "error": "projects not captured"}
     try:
-        primary = None
         try:
             primary = projects.primary
         except Exception:
             primary = None
-        primary_guid = None
-        if primary is not None:
-            try:
-                primary_guid = str(getattr(primary, "guid", None))
-            except Exception:
-                primary_guid = None
-
-        # ScriptProjects exposes open projects differently across versions;
-        # probe a couple of accessors, then fall back to the primary alone.
-        candidates = []
-        for attr in ("all", "get_all_projects"):
-            try:
-                val = getattr(projects, attr)
-                if callable(val):
-                    val = val()
-                if val:
-                    candidates = list(val)
-                    break
-            except Exception:
-                pass
-        if not candidates and primary is not None:
-            candidates = [primary]
-
         found = []
-        for prj in candidates:
-            entry = {"name": _obj_name(prj), "path": ""}
-            for attr in ("path", "filename", "FileName", "FullName", "Path"):
-                try:
-                    v = getattr(prj, attr)
-                    if v:
-                        entry["path"] = str(v)
-                        break
-                except Exception:
-                    pass
-            try:
-                entry["primary"] = (
-                    primary_guid is not None
-                    and str(getattr(prj, "guid", None)) == primary_guid
-                )
-            except Exception:
-                entry["primary"] = False
-            found.append(entry)
+        for prj in _open_projects(projects):
+            path = _project_path(prj)
+            name = _obj_name(prj)
+            if not name and path:
+                name = os.path.splitext(os.path.basename(path))[0]
+            found.append(
+                {
+                    "name": name,
+                    "path": path,
+                    "primary": prj is primary,
+                }
+            )
         return {"ok": True, "data": {"projects": found, "count": len(found)}}
     except Exception as e:
         return {"ok": False, "error": "Project list error: {0}".format(e)}

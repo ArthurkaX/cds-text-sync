@@ -39,7 +39,10 @@ def cmd_project_read(path="", name="", guid="", use_reverse=False):
 
 def cmd_project_open(path="", use_reverse=False):
     """Open a project in CODESYS."""
-    _project_command("project_open", {"path": path}, use_reverse=use_reverse)
+    # Loading a project from disk can take a while on large projects.
+    _project_command(
+        "project_open", {"path": path}, timeout=180, use_reverse=use_reverse
+    )
 
 
 def cmd_project_close(use_reverse=False):
@@ -105,7 +108,13 @@ def cmd_write_var(name, value, use_reverse=False):
 
 def cmd_simulate(enable="on", use_reverse=False):
     """Enable/disable simulation mode."""
-    _project_command("set_simulation_mode", {"enable": enable}, use_reverse=use_reverse)
+    # Toggling simulation scans the device tree and saves the project.
+    _project_command(
+        "set_simulation_mode",
+        {"enable": enable},
+        timeout=120,
+        use_reverse=use_reverse,
+    )
 
 
 def cmd_set_credentials(username, password="", use_reverse=False):
@@ -129,7 +138,8 @@ def cmd_diagnose_online(use_reverse=False):
 
 def cmd_discover(use_reverse=False):
     """Discover CODESYS installations and open projects via daemon."""
-    _project_command("discover", use_reverse=use_reverse)
+    # Full object-tree + profile-coverage diagnostic is slow on large projects.
+    _project_command("discover", timeout=180, use_reverse=use_reverse)
 
 
 def cmd_compare(against="", use_reverse=False):
