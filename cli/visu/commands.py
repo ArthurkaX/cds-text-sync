@@ -459,118 +459,59 @@ def new_svg(out_path, name="", width=800, height=480):
 # ---------------------------------------------------------------------------
 
 
-def from_svg(
-    project_view_dir,
-    svg_path,
-    screen,
-    folder,
-    theme_name,
-    out_path,
-    create_screen,
-    screen_name,
-    gvl_name=None,
-    gvl_file=None,
-):
-    """Compile an SVG file to a CODESYS screen XML."""
+def _create_screen_for_svg(project_view_dir, folder, screen_name, bg_color):
+    """Create a new screen file for --create-screen; return (out_path, screen).
+
+    Placement (parent guids, path) is copied from an existing sibling object in
+    the target folder. Exits with an error if the folder is empty or the screen
+    already exists.
+    """
     import os
     import sys
 
     from . import builder as _builder
+
+    if not screen_name:
+        _err("--screen-name is required when --create-screen is used")
+        sys.exit(1)
+    target_dir = _folder_to_dir(project_view_dir, folder)
+    sibling = _builder.find_sibling_object(target_dir)
+    if sibling is None:
+        _err("Folder contains no existing object to copy placement from.")
+        sys.exit(1)
+    placement = _builder.read_placement_from_sibling(sibling)
+    out_path = os.path.join(target_dir, screen_name + ".xml")
+    if os.path.exists(out_path):
+        _err("Screen already exists: {0}".format(out_path))
+        sys.exit(1)
+    xml_text = _builder.build_screen(
+        name=screen_name,
+        size_x=800,
+        size_y=480,
+        parent_guid=placement["parent_guid"],
+        parent_svnode_guid=placement["parent_svnode_guid"],
+        path_segments=placement["path"],
+        is_start_visu=False,
+        bg_color=bg_color,
+    )
+    with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(xml_text)
+    _ok("Created screen {0} at {1}".format(screen_name, out_path))
+    return out_path, screen_name
+
+
+def _append_svg_elements(xml_text, elements, project_view_dir, theme_colors):
+    """Append each parsed SVG element to the screen XML; return the new XML.
+
+    Frame elements load a project-local catalog + golden template; other types
+    load a builtin catalog and allocate a Text-ID when they carry literal text.
+    Any catalog/builder error is reported and exits.
+    """
+    import sys
+
+    from . import builder as _builder
     from . import catalog as _catalog
-    from . import gvl as _gvl
-    from . import screen_xml as _screen_xml
 
-    # Read SVG.
-    if not os.path.isfile(svg_path):
-        _err("SVG file not found: {0}".format(svg_path))
-        sys.exit(1)
-    with open(svg_path, "r", encoding="utf-8") as handle:
-        svg_text = handle.read()
-
-    # Parse SVG (need result early for bg_color when creating screen).
-    theme_colors = None
-    if theme_name:
-        try:
-            theme_colors = themes.load_theme(theme_name)
-        except themes.ThemeError as exc:
-            _err(str(exc))
-            sys.exit(1)
-
-    try:
-        result = svg_import.parse_svg(
-            svg_text, theme=theme_colors, project_dir=project_view_dir
-        )
-    except (ValueError, themes.ThemeError) as exc:
-        _err(str(exc))
-        sys.exit(1)
-
-    canvas = result["canvas"]
-    elements = result["elements"]
-    parsed_theme = result.get("theme")
-    bg_color = result.get("bg_color")
-
-    # Merge parsed inline theme over CLI theme.
-    if parsed_theme:
-        if theme_colors:
-            theme_colors = dict(theme_colors, **parsed_theme)
-        else:
-            theme_colors = parsed_theme
-
-    # Resolve screen target.
-    if create_screen:
-        # Create a new screen first (inline to avoid shadowing the module function).
-        if not screen_name:
-            _err("--screen-name is required when --create-screen is used")
-            sys.exit(1)
-        target_dir = _folder_to_dir(project_view_dir, folder)
-        sibling = _builder.find_sibling_object(target_dir)
-        if sibling is None:
-            _err("Folder contains no existing object to copy placement from.")
-            sys.exit(1)
-        placement = _builder.read_placement_from_sibling(sibling)
-        out_path = os.path.join(target_dir, screen_name + ".xml")
-        if os.path.exists(out_path):
-            _err("Screen already exists: {0}".format(out_path))
-            sys.exit(1)
-        xml_text = _builder.build_screen(
-            name=screen_name,
-            size_x=800,
-            size_y=480,
-            parent_guid=placement["parent_guid"],
-            parent_svnode_guid=placement["parent_svnode_guid"],
-            path_segments=placement["path"],
-            is_start_visu=False,
-            bg_color=bg_color,
-        )
-        with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(xml_text)
-        _ok("Created screen {0} at {1}".format(screen_name, out_path))
-        screen = screen_name
-
-    path = _resolve_screen_path(project_view_dir, screen, folder)
-    if not os.path.isfile(path):
-        _err("Screen file not found: {0}".format(path))
-        sys.exit(1)
-
-    # Resize screen if canvas differs.
-    with open(path, "r", encoding="utf-8") as handle:
-        xml_text = handle.read()
-    size_x, size_y = _screen_xml.read_screen_size(xml_text)
-    if (size_x, size_y) != (canvas["width"], canvas["height"]):
-        _ok(
-            "Screen size ({0}x{1}) differs from canvas ({2}x{3}); resizing".format(
-                size_x, size_y, canvas["width"], canvas["height"]
-            )
-        )
-        xml_text = _screen_xml.resize_screen(
-            xml_text, canvas["width"], canvas["height"]
-        )
-
-    # If screen already existed and has no custom bg, set from theme.
-    if bg_color and not create_screen:
-        xml_text = _screen_xml.set_screen_background(xml_text, bg_color)
-
-    # Append each element.
     textlist_module = None
     for elem_spec in elements:
         type_name = elem_spec["type"]
@@ -631,12 +572,16 @@ def from_svg(
             _err(str(exc))
             sys.exit(1)
 
-    # Write output.
-    output_path = out_path or path
-    with open(output_path, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(xml_text)
+    return xml_text
 
-    # GVL generation for runtime variables.
+
+def _emit_gvl(project_view_dir, elements, gvl_name, gvl_file, output_path):
+    """Generate/refresh the GVL for bound runtime variables, or hint if unused."""
+    import os
+    import sys
+
+    from . import gvl as _gvl
+
     if gvl_name or gvl_file:
         gvl_result = _gvl.ensure_gvl(
             project_view_dir,
@@ -665,6 +610,103 @@ def from_svg(
             "Use --gvl to auto-generate GVL declarations.",
             file=sys.stderr,
         )
+
+
+def from_svg(
+    project_view_dir,
+    svg_path,
+    screen,
+    folder,
+    theme_name,
+    out_path,
+    create_screen,
+    screen_name,
+    gvl_name=None,
+    gvl_file=None,
+):
+    """Compile an SVG file to a CODESYS screen XML."""
+    import os
+    import sys
+
+    from . import screen_xml as _screen_xml
+
+    # Read SVG.
+    if not os.path.isfile(svg_path):
+        _err("SVG file not found: {0}".format(svg_path))
+        sys.exit(1)
+    with open(svg_path, "r", encoding="utf-8") as handle:
+        svg_text = handle.read()
+
+    # Parse SVG (need result early for bg_color when creating screen).
+    theme_colors = None
+    if theme_name:
+        try:
+            theme_colors = themes.load_theme(theme_name)
+        except themes.ThemeError as exc:
+            _err(str(exc))
+            sys.exit(1)
+
+    try:
+        result = svg_import.parse_svg(
+            svg_text, theme=theme_colors, project_dir=project_view_dir
+        )
+    except (ValueError, themes.ThemeError) as exc:
+        _err(str(exc))
+        sys.exit(1)
+
+    canvas = result["canvas"]
+    elements = result["elements"]
+    parsed_theme = result.get("theme")
+    bg_color = result.get("bg_color")
+
+    # Merge parsed inline theme over CLI theme.
+    if parsed_theme:
+        if theme_colors:
+            theme_colors = dict(theme_colors, **parsed_theme)
+        else:
+            theme_colors = parsed_theme
+
+    # Resolve screen target.
+    if create_screen:
+        out_path, screen = _create_screen_for_svg(
+            project_view_dir, folder, screen_name, bg_color
+        )
+
+    path = _resolve_screen_path(project_view_dir, screen, folder)
+    if not os.path.isfile(path):
+        _err("Screen file not found: {0}".format(path))
+        sys.exit(1)
+
+    # Resize screen if canvas differs.
+    with open(path, "r", encoding="utf-8") as handle:
+        xml_text = handle.read()
+    size_x, size_y = _screen_xml.read_screen_size(xml_text)
+    if (size_x, size_y) != (canvas["width"], canvas["height"]):
+        _ok(
+            "Screen size ({0}x{1}) differs from canvas ({2}x{3}); resizing".format(
+                size_x, size_y, canvas["width"], canvas["height"]
+            )
+        )
+        xml_text = _screen_xml.resize_screen(
+            xml_text, canvas["width"], canvas["height"]
+        )
+
+    # If screen already existed and has no custom bg, set from theme.
+    if bg_color and not create_screen:
+        xml_text = _screen_xml.set_screen_background(xml_text, bg_color)
+
+    # Append each element.
+    xml_text = _append_svg_elements(
+        xml_text, elements, project_view_dir, theme_colors
+    )
+
+    # Write output.
+    output_path = out_path or path
+    with open(output_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(xml_text)
+
+    # GVL generation for runtime variables.
+    _emit_gvl(project_view_dir, elements, gvl_name, gvl_file, output_path)
 
     count = len(elements)
     _ok("Compiled {0} element(s) from SVG to {1}".format(count, output_path))
