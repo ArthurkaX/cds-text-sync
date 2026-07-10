@@ -109,7 +109,7 @@ def _get_root_dir(script_file=None):
             break
         current = parent
     # Legacy fallbacks
-    if os.path.basename(script_dir).lower() in [".dev_tools", ".runtime"]:
+    if os.path.basename(script_dir).lower() == ".dev_tools":
         return os.path.dirname(script_dir)
     return script_dir
 
@@ -118,13 +118,9 @@ def _ensure_sys_path(root_dir):
     ide_bridge_dir = os.path.join(root_dir, "src", "ide_bridge")
     engine_dir = os.path.join(root_dir, "cli", "external_engine")
     old_engine_dir = os.path.join(root_dir, "src", "external_engine")
-    runtime_dir = os.path.join(root_dir, ".runtime")
     for path in (ide_bridge_dir, engine_dir, old_engine_dir, root_dir):
         if path and path not in sys.path:
             sys.path.insert(0, path)
-    # Keep .runtime on sys.path for back-compat if it still exists
-    if os.path.isdir(runtime_dir) and runtime_dir not in sys.path:
-        sys.path.insert(0, runtime_dir)
 
 
 def _load_python_module(name, path):
@@ -151,11 +147,9 @@ def load_hidden_module(name, script_file=None):
     root_dir = _get_root_dir(script_file)
     _ensure_sys_path(root_dir)
     ide_bridge_path = os.path.join(root_dir, "src", "ide_bridge", name + ".pyw")
-    runtime_path = os.path.join(root_dir, ".runtime", name + ".pyw")
     root_path = os.path.join(root_dir, name + ".pyw")
     return (
         _load_python_module(name, ide_bridge_path)
-        or _load_python_module(name, runtime_path)
         or _load_python_module(name, root_path)
     )
 

@@ -8,12 +8,16 @@ The workflow is designed to combine the robustness of CODESYS for hardware confi
 
 ![Development Workflow](img/Workflow.svg)
 
+The steps below use the CODESYS-side `Project_*.py` entrypoints. The same
+export / compare / import / build actions can also be driven from a shell with
+the `cts` CLI once `Project_daemon.py` is running inside CODESYS (see `cli/CLI.md`).
+
 ## 1. Project Initialization
 
 Before the team can start working, the project must be prepared:
 
-1.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes `.dump/views/` for review.
-2.  **Choose Git Scope**: For team review, track `.dump/views/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
+1.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes the editable `project-view/` tree for review.
+2.  **Choose Git Scope**: For team review, track `project-view/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
 3.  **Initialize Repository**: A Git repository is created, and the chosen exported view files (and optionally the `.project` binary using LFS) are pushed to a remote server (e.g., GitHub, GitLab).
 
 ## 2. Team Roles
@@ -41,7 +45,7 @@ For every new task (Feature or Bug Fix), developers follow these steps:
 
 1.  **Clone / Sync**: Clone the repository or `git pull` the latest changes from `main`.
 2.  **Make Changes**: Open the CODESYS project and implement the required logic.
-3.  **Extract to Disk**: Run `Project_export.py` to update `.dump/views/` with the latest CODESYS state before committing.
+3.  **Extract to Disk**: Run `Project_export.py` to update `project-view/` with the latest CODESYS state before committing.
 4.  **Compare When Needed**: Run `Project_compare.py` before committing if you need a machine-readable `.dump/compare_report.json`. Use `Project_compare_ui.py` when you want the same compare result as a CODESYS dialog with full import/export actions.
 5.  **Commit & Push**: Use Git to commit the updated view files and push them to a dedicated **feature branch**.
 6.  **Create Pull Request**: Open a Pull Request (PR) to merge the feature branch into `main`.

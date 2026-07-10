@@ -12,7 +12,7 @@ Modules guarded:
  - ide_daemon_state.py (MUST import — failure is a test failure)
  - all other ide_*.py under src/ide_bridge/ (skipped on import error)
  - ide_daemon_ui* modules are always xfail/skipped (WinForms — no CPython support)
- - *.pyw files in src/ide_bridge/ and .runtime/ (skipped on import error — expected)
+ - *.pyw files in src/ide_bridge/ (skipped on import error — expected)
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ _IDE_BRIDGE = Path(__file__).parent.parent.parent / "src" / "ide_bridge"
 assert _IDE_BRIDGE.is_dir(), f"ide_bridge not found at {_IDE_BRIDGE}"
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_RUNTIME_DIR = _PROJECT_ROOT / ".runtime"
 
 # ---------------------------------------------------------------------------
 # Auto-stub infrastructure
@@ -136,19 +135,12 @@ for _p in sorted(_IDE_BRIDGE.glob("ide_*.py")):
     _all_ide_modules.append(_p.stem)
 
 # ---------------------------------------------------------------------------
-# Discovery: *.pyw files in src/ide_bridge/ and .runtime/
-# Prefer src/ide_bridge/ when the same stem appears in both dirs.
+# Discovery: *.pyw files in src/ide_bridge/
 # ---------------------------------------------------------------------------
 
-# stem -> Path mapping (src/ide_bridge takes priority)
+# stem -> Path mapping
 _pyw_stem_to_path: dict[str, Path] = {}
 
-# First collect from .runtime/ (lower priority)
-if _RUNTIME_DIR.is_dir():
-    for _p in sorted(_RUNTIME_DIR.glob("*.pyw")):
-        _pyw_stem_to_path[_p.stem] = _p
-
-# Then overlay with src/ide_bridge/ (higher priority)
 for _p in sorted(_IDE_BRIDGE.glob("*.pyw")):
     _pyw_stem_to_path[_p.stem] = _p
 
@@ -300,18 +292,14 @@ def test_daemon_name_resolution(module_stem: str, module_filepath: "Path | None"
         actual_path = module_filepath
 
     # --- Prepare sys.path so intra-package imports resolve ---
-    # Insert both src/ide_bridge and .runtime (if present) at the front
-    # so that .pyw files that import each other can resolve those imports.
+    # Insert src/ide_bridge at the front so that .pyw files that import each
+    # other can resolve those imports.
     paths_to_insert: list[str] = []
     bridge_str = str(_IDE_BRIDGE)
-    runtime_str = str(_RUNTIME_DIR) if _RUNTIME_DIR.is_dir() else None
 
     if bridge_str not in sys.path:
         sys.path.insert(0, bridge_str)
         paths_to_insert.append(bridge_str)
-    if runtime_str and runtime_str not in sys.path:
-        sys.path.insert(0, runtime_str)
-        paths_to_insert.append(runtime_str)
 
     # Ensure sys._codesys_daemon_loop exists before importing
     had_loop = hasattr(sys, "_codesys_daemon_loop")

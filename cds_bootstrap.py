@@ -24,10 +24,6 @@ def ensure_runtime_path(script_file=None):
  ide_bridge_dir = os.path.join(script_dir, "src", "ide_bridge")
  if ide_bridge_dir not in sys.path:
   sys.path.insert(0, ide_bridge_dir)
- # Keep .runtime on sys.path for back-compat if it still exists
- runtime_dir = os.path.join(script_dir, ".runtime")
- if os.path.isdir(runtime_dir) and runtime_dir not in sys.path:
-  sys.path.insert(0, runtime_dir)
  return ide_bridge_dir
 
 
@@ -41,10 +37,8 @@ def import_runtime_module(name, script_file=None, force=False):
   return sys.modules[name]
 
  script_dir = _script_dir(script_file)
- # Prefer src/ide_bridge first, then .runtime (back-compat), then root
+ # Prefer src/ide_bridge, then repo root
  module_path = os.path.join(script_dir, "src", "ide_bridge", name + ".pyw")
- if not os.path.exists(module_path):
-  module_path = os.path.join(script_dir, ".runtime", name + ".pyw")
  if not os.path.exists(module_path):
   module_path = os.path.join(script_dir, name + ".pyw")
   if not os.path.exists(module_path):

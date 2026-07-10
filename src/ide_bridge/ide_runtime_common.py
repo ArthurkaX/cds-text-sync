@@ -48,13 +48,12 @@ def object_name(obj):
 
 
 def get_workspace_dir(script_file=None):
-    # Find the root by looking for src/ide_bridge, cli/external_engine, or .runtime
+    # Find the root by looking for src/ide_bridge or cli/external_engine
     path = os.path.abspath(script_file or __file__)
     current = os.path.dirname(path)
     while True:
         if (os.path.isdir(os.path.join(current, "src", "ide_bridge"))
-                or os.path.isdir(os.path.join(current, "cli", "external_engine"))
-                or os.path.isdir(os.path.join(current, ".runtime"))):
+                or os.path.isdir(os.path.join(current, "cli", "external_engine"))):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:

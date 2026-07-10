@@ -112,12 +112,6 @@ def main():
     if getattr(args, "pretty", False):
         output_fmt = "text"
 
-    # Deprecated direct engine aliases retained for compatibility.
-    if args.command in ("validate", "resources"):
-        full_args = [args.command] + unknown
-        cmd_direct(full_args)
-        return
-
     if args.command == "engine":
         if not args.engine_args:
             _print_error(
