@@ -225,3 +225,69 @@ def test_no_permission_entries_are_real_methods(daemon):
     assert not unknown, (
         "_NO_PERMISSION lists names absent from _DISPATCH: " + ", ".join(unknown)
     )
+
+
+# ---------------------------------------------------------------------------
+# Characterization of a KNOWN DEFECT (not a passing contract).
+#
+# The hidden/deprecated `project` subcommand routes every action through
+# _cli_io._project_command, which ALWAYS sends over the reverse pipe (its
+# `use_reverse` parameter is dead -- the body never branches on it). Several
+# actions send daemon methods that have no handler in _DISPATCH, so at runtime
+# they return {"ok": false, "error": "Unknown method: X"}. The daemon has a
+# single static dispatch table (Project_daemon.py only exec()s the reverse-pipe
+# loop -- there is no forward mode), so these commands are genuinely broken:
+#
+#   cts project open / close / list / list-devices / simulate /
+#   set-credentials / diagnose-online      (+ top-level `cts discover`)
+#
+# This test pins the EXACT broken set so the defect is visible and bounded:
+#   * fix one (add the daemon handler) -> this test fails, prompting its removal
+#     from _KNOWN_UNHANDLED;
+#   * add a new broken _project_command send -> this test fails.
+# Fixing it for real (add IronPython handlers, or remove the dead actions) is a
+# user-facing call tracked separately; it is not asserted as passing here.
+# ---------------------------------------------------------------------------
+
+_KNOWN_UNHANDLED = frozenset(
+    {
+        "project_open",
+        "project_close",
+        "project_list",
+        "list_devices",
+        "set_simulation_mode",
+        "set_credentials",
+        "diagnose_online",
+        "discover",
+    }
+)
+
+
+def test_project_subcommand_unhandled_set_is_exactly_known(daemon):
+    """The `project` handlers' unhandled daemon methods are exactly the known set."""
+    resolvable = _resolvable_methods(daemon)
+    project_sends = set()
+    for node in ast.walk(
+        ast.parse(
+            (_CLI / "_cli_handlers_project.py").read_text(encoding="utf-8")
+        )
+    ):
+        if (
+            isinstance(node, ast.Call)
+            and node.args
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_project_command"
+        ):
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                project_sends.add(first.value)
+
+    unhandled = {m for m in project_sends if m not in resolvable}
+    assert unhandled == set(_KNOWN_UNHANDLED), (
+        "project-subcommand broken-method set drifted.\n"
+        "  newly broken (add handler or update set): "
+        + ", ".join(sorted(unhandled - set(_KNOWN_UNHANDLED)))
+        + "\n  now fixed (remove from _KNOWN_UNHANDLED): "
+        + ", ".join(sorted(set(_KNOWN_UNHANDLED) - unhandled))
+    )
+
