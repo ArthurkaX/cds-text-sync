@@ -53,27 +53,9 @@ from cli._cli_io import (  # noqa: E402
 from cli._cli_parser import build_parser  # noqa: E402
 
 from cli._cli_handlers_project import (  # noqa: E402
-    cmd_project_info,
-    cmd_project_tree,
-    cmd_project_read,
-    cmd_project_open,
-    cmd_project_close,
-    cmd_project_list,
-    cmd_project_snapshot,
-    cmd_project_build,
-    cmd_project_list_devices,
-    cmd_device_status,
-    cmd_connect,
-    cmd_disconnect,
-    cmd_read_var,
-    cmd_write_var,
-    cmd_simulate,
-    cmd_set_credentials,
-    cmd_application_state,
-    cmd_diagnose_online,
     cmd_discover,
-    cmd_compare,
-    cmd_pou_delete,
+    dispatch_project,
+    dispatch_pou,
 )
 
 from cli._cli_handlers_vars import (  # noqa: E402
@@ -273,52 +255,10 @@ def main():
         )
 
     elif args.command == "project":
-        if args.project_action == "info":
-            cmd_project_info(use_reverse=use_reverse)
-        elif args.project_action == "tree":
-            cmd_project_tree(depth=args.depth, use_reverse=use_reverse)
-        elif args.project_action == "read":
-            cmd_project_read(
-                path=args.path, name=args.name, guid=args.guid, use_reverse=use_reverse
-            )
-        elif args.project_action == "open":
-            cmd_project_open(path=args.path, use_reverse=use_reverse)
-        elif args.project_action == "close":
-            cmd_project_close(use_reverse=use_reverse)
-        elif args.project_action == "list":
-            cmd_project_list(use_reverse=use_reverse)
-        elif args.project_action == "snapshot":
-            cmd_project_snapshot(path=args.path, use_reverse=use_reverse)
-        elif args.project_action == "build":
-            cmd_project_build(use_reverse=use_reverse)
-        elif args.project_action == "list-devices":
-            cmd_project_list_devices(use_reverse=use_reverse)
-        elif args.project_action == "compare":
-            cmd_compare(against=args.against, use_reverse=use_reverse)
-        elif args.project_action == "device-status":
-            cmd_device_status(device=args.device, use_reverse=use_reverse)
-        elif args.project_action == "connect":
-            cmd_connect(ip=args.ip, gateway=args.gateway, use_reverse=use_reverse)
-        elif args.project_action == "disconnect":
-            cmd_disconnect(use_reverse=use_reverse)
-        elif args.project_action == "read-var":
-            cmd_read_var(name=args.name, use_reverse=use_reverse)
-        elif args.project_action == "write-var":
-            cmd_write_var(name=args.name, value=args.value, use_reverse=use_reverse)
-        elif args.project_action == "simulate":
-            cmd_simulate(enable=args.enable, use_reverse=use_reverse)
-        elif args.project_action == "set-credentials":
-            cmd_set_credentials(
-                username=args.username, password=args.password, use_reverse=use_reverse
-            )
-        elif args.project_action == "application-state":
-            cmd_application_state(use_reverse=use_reverse)
-        elif args.project_action == "diagnose-online":
-            cmd_diagnose_online(use_reverse=use_reverse)
+        dispatch_project(args, use_reverse=use_reverse)
 
     elif args.command == "pou":
-        if args.pou_action == "delete":
-            cmd_pou_delete(name=args.name, app=args.app, use_reverse=use_reverse)
+        dispatch_pou(args, use_reverse=use_reverse)
 
     elif args.command == "discover":
         cmd_discover(use_reverse=use_reverse)
