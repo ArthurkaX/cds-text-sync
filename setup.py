@@ -9,11 +9,26 @@ Usage:
 After install, `cts` and `cds-text-sync` work in any shell (CMD, PowerShell, Git Bash).
 """
 
+import io
+import os
+import re
+
 from setuptools import find_packages, setup
+
+
+def _read_version():
+    here = os.path.dirname(os.path.abspath(__file__))
+    init_path = os.path.join(here, "cli", "__init__.py")
+    with io.open(init_path, encoding="utf-8") as f:
+        match = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', f.read(), re.M)
+    if not match:
+        raise RuntimeError("Unable to find __version__ in cli/__init__.py")
+    return match.group(1)
+
 
 setup(
     name="cds-text-sync",
-    version="2.6.1",
+    version=_read_version(),
     description="CODESYS CLI + reverse-pipe daemon",
     author="cds-text-sync contributors",
     url="https://github.com/ArthurkaX/cds-text-sync",

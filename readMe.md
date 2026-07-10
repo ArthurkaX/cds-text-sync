@@ -111,8 +111,8 @@ The classic `Project_*.py` workflow remains supported and is still documented be
 
 ### Method 1: Manual Copy
 
-1. **Copy Files**: Copy the full tool folder to the CODESYS scripts directory, including root `Project_*.py` scripts, `cds_bootstrap.py`, `.runtime/`, `cli/`, `src/`, and `profiles/`.
-   - **Note on `.pyw`**: Files inside `.runtime/` and `src/` are internal runtime modules. They are hidden from the CODESYS "Scripts" menu by design.
+1. **Copy Files**: Copy the full tool folder to the CODESYS scripts directory, including root `Project_*.py` scripts, `cds_bootstrap.py`, `cli/`, `src/`, and `profiles/`.
+   - **Note on `.pyw`**: Files inside `src/` are internal runtime modules. They are hidden from the CODESYS "Scripts" menu by design.
    - **Note on `cds_bootstrap.py`**: This is a support loader used by the public `Project_*.py` entrypoints. Do not run it directly.
    - **CLI note**: To use the `cds-text-sync` command from a shell, also run `python -m pip install -e <cds-text-sync-folder>` after copying the files.
 

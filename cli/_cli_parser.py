@@ -11,6 +11,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import __version__
+
 
 def build_parser() -> argparse.ArgumentParser:
     prog = Path(sys.argv[0]).stem or "cts"
@@ -57,6 +59,11 @@ Examples:
   cts raw application_tree --flat --output C:\\Temp\\vars.json --timeout 120
   cts engine validate --project-root ./MyProject
         """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s {0}".format(__version__),
     )
     parser.add_argument(
         "--output",
@@ -601,21 +608,6 @@ from-svg SVG contract:
         default="",
         help="Explicit GVL .st file path",
     )
-
-    # -- deprecated proxy subcommands for engine_cli -------------------------
-    for cmd_name in ("validate", "resources"):
-        _p = subparsers.add_parser(
-            cmd_name,
-            help=argparse.SUPPRESS,
-            description="Deprecated alias for `cts engine {0}` (deprecated; use `cts engine {0}`)".format(cmd_name),
-            add_help=False,
-        )
-        _p.add_argument(
-            "--timeout",
-            type=float,
-            default=None,
-            help="Accepted for consistency; ignored by the offline engine",
-        )
 
     subparsers._choices_actions = [
         action
