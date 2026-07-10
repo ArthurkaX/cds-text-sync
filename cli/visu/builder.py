@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 
 from . import catalog as _catalog
 from . import screen_xml as _screen_xml
-from .xml_ns import find_named, named_text, strip_ns
+from .xml_ns import find_named, strip_ns
 
 # Re-exported so commands.py can call them via the builder facade.
 read_screen_size = _screen_xml.read_screen_size
