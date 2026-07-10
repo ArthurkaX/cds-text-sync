@@ -35,6 +35,8 @@ def calls(monkeypatch):
         "cmd_project_info",
         "cmd_project_tree",
         "cmd_project_read",
+        "cmd_project_open",
+        "cmd_project_list",
         "cmd_compare",
         "cmd_pou_delete",
     ):
@@ -85,3 +87,45 @@ def test_pou_delete_routes(calls):
         "app": "App",
         "use_reverse": True,
     }
+
+
+# -- deprecation warnings -----------------------------------------------------
+
+
+def test_duplicate_action_warns_with_replacement(calls, capsys):
+    h.dispatch_project(_args(project_action="info"), use_reverse=True)
+    err = capsys.readouterr().err
+    assert "[WARN]" in err
+    assert "cts project info" in err
+    assert "cts project-info" in err
+    # still dispatches
+    assert "cmd_project_info" in calls
+
+
+def test_unique_action_does_not_warn(calls, capsys):
+    h.dispatch_project(_args(project_action="list"), use_reverse=True)
+    err = capsys.readouterr().err
+    assert "[WARN]" not in err
+    assert "cmd_project_list" in calls
+
+
+def test_pou_delete_warns(calls, capsys):
+    h.dispatch_pou(_args(pou_action="delete", name="X", app=""), use_reverse=True)
+    err = capsys.readouterr().err
+    assert "[WARN]" in err
+    assert "cts delete-pou" in err
+
+
+def test_every_deprecated_action_maps_to_a_real_top_level_command():
+    # Guard: the replacement strings must name commands that actually exist.
+    from cli._cli_parser import build_parser
+
+    parser = build_parser()
+    sub = next(
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    choices = set(sub.choices)
+    for replacement in h._DEPRECATED_PROJECT_ACTIONS.values():
+        cmd = replacement.split(" ", 1)[1]  # strip the "cts " prefix
+        assert cmd in choices, "{0} is not a real top-level command".format(cmd)
+

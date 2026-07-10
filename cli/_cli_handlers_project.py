@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 
-from cli._cli_io import _print_error, _project_command
+from cli._cli_io import _print_error, _print_warn, _project_command
 
 
 # -- Project commands ---------------------------------------------------------
@@ -158,10 +158,37 @@ def cmd_pou_delete(name="", app="", use_reverse=False):
 
 # -- Subcommand dispatch ------------------------------------------------------
 
+# Hidden `project`/`pou` actions that duplicate a modern top-level command
+# (same daemon method). They keep working but emit a deprecation warning to
+# stderr pointing at the replacement. Actions absent here are unique — no
+# top-level equivalent — and dispatch silently: open, close, list, snapshot
+# (daemon `export`, not `sync_export_text`), list-devices, compare (unique
+# --against), device-status, simulate, set-credentials, diagnose-online.
+_DEPRECATED_PROJECT_ACTIONS = {
+    "info": "cts project-info",
+    "tree": "cts project-tree",
+    "read": "cts read-object",
+    "build": "cts build",
+    "connect": "cts connect",
+    "disconnect": "cts disconnect",
+    "read-var": "cts read",
+    "write-var": "cts write",
+    "application-state": "cts app-state",
+}
+
+
+def _warn_deprecated(invocation, replacement):
+    _print_warn(
+        "'{0}' is deprecated; use '{1}' instead.".format(invocation, replacement)
+    )
+
 
 def dispatch_project(args, use_reverse=True):
     """Route a parsed `project` subcommand to its cmd_* handler."""
     action = args.project_action
+    replacement = _DEPRECATED_PROJECT_ACTIONS.get(action)
+    if replacement:
+        _warn_deprecated("cts project {0}".format(action), replacement)
     if action == "info":
         cmd_project_info(use_reverse=use_reverse)
     elif action == "tree":
@@ -209,4 +236,5 @@ def dispatch_project(args, use_reverse=True):
 def dispatch_pou(args, use_reverse=True):
     """Route a parsed `pou` subcommand to its cmd_* handler."""
     if args.pou_action == "delete":
+        _warn_deprecated("cts pou delete", "cts delete-pou")
         cmd_pou_delete(name=args.name, app=args.app, use_reverse=use_reverse)
