@@ -881,7 +881,7 @@ def build_call_tree(
     project_symbols: dict[str, dict] = {}
 
     if snapshot_path:
-        from snapshot_reader import SnapshotReader  # noqa: late import
+        from snapshot_reader import SnapshotReader  # local import avoids a cycle
 
         reader = SnapshotReader(
             snapshot_path,
