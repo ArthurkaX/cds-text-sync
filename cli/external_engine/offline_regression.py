@@ -2,6 +2,7 @@
 """
 offline_regression.py - Minimal offline regression checks for engine_cli flow.
 """
+import contextlib
 import json
 import os
 import shutil
@@ -13,10 +14,27 @@ import xml.etree.ElementTree as ET
 ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 FIXTURE_DIR = os.path.join(ROOT_DIR, "fixtures", "offline_engine", "basic_case")
 ENGINE_CLI = os.path.join(ROOT_DIR, "cli", "external_engine", "engine_cli.py")
+ENGINE_DIR = os.path.join(ROOT_DIR, "cli", "external_engine")
 
 
 class RegressionFailure(Exception):
     pass
+
+
+@contextlib.contextmanager
+def _engine_on_path():
+    """Put the external_engine dir on sys.path for the flat-import block, then remove it.
+
+    The engine modules import each other flat (``from _project_model import ...``),
+    so a scenario that drives them directly must prepend the dir first. This
+    replaces the hand-rolled insert/try/finally that was repeated per scenario.
+    """
+    sys.path.insert(0, ENGINE_DIR)
+    try:
+        yield
+    finally:
+        if sys.path and sys.path[0] == ENGINE_DIR:
+            del sys.path[0]
 
 
 def _run(args, expect_code=0):
@@ -456,8 +474,7 @@ def main():
         if not os.path.exists(projection_readme_path):
             raise RegressionFailure("projection export removed unmanaged non-projection file")
 
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _project_model import ProjectModel, ProjectNode
             from folder_reader import FolderReader
             from folder_writer import FolderWriter
@@ -597,9 +614,6 @@ def main():
             child_folder_node = child_folder_model.get_node("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
             if "FB_Method := FALSE;" not in child_folder_node.xml_text:
                 raise RegressionFailure("POU child ST projection did not rehydrate implementation")
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
 
         projection_objects_report = os.path.join(config_layout_root, ".dump", "projection_objects.json")
         _run([
@@ -657,8 +671,7 @@ def main():
                 "edit (PLC_PRG_XML_EDIT) instead of letting .st win"
             )
 
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _project_model import ProjectModel, ProjectNode
             from folder_writer import FolderWriter
             projection_filter_root = os.path.join(work_dir, "projection_filter")
@@ -688,14 +701,10 @@ def main():
                 },
                 projections={"pou_st": {"enabled": True}},
             ).write(projection_model)
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         if os.path.exists(os.path.join(projection_filter_view, "GRAPHICAL_POU.st")):
             raise RegressionFailure("graphical POU emitted ST projection")
 
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _project_model import ProjectModel, ProjectNode
             from folder_writer import FolderWriter
             dut_projection_root = os.path.join(work_dir, "dut_projection")
@@ -723,9 +732,6 @@ def main():
                 },
                 projections={"dut_st": {"enabled": True}},
             ).write(dut_model)
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         dut_projection_path = os.path.join(dut_projection_view, "DUT_SAMPLE.st")
         if not os.path.exists(dut_projection_path):
             raise RegressionFailure("DUT ST projection was not written")
@@ -733,8 +739,7 @@ def main():
             if "TYPE DUT_SAMPLE" not in handle.read():
                 raise RegressionFailure("DUT ST projection content was not written")
 
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _project_model import ProjectModel, ProjectNode
             from _project_profiles import load_profile
             from folder_writer import FolderWriter
@@ -756,9 +761,6 @@ def main():
                 profile=load_profile("default"),
                 projections={"gvl_st": {"enabled": True}},
             ).write(persistent_model)
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         persistent_projection_path = os.path.join(persistent_projection_view, "PersistentVars.st")
         if not os.path.exists(persistent_projection_path):
             raise RegressionFailure("persistent variable list ST projection was not written")
@@ -847,8 +849,7 @@ def main():
             global_textlist_csv_content = handle.read()
         if 'TextID,TextDefault,ENG,DEU\n3,Global,Global EN,Global DE\n' != global_textlist_csv_content:
             raise RegressionFailure("TextList CSV language columns were unexpected")
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _patch_builder import PatchBuilder
             from diff_engine import DiffEngine
             from folder_reader import FolderReader
@@ -889,9 +890,6 @@ def main():
             except ProjectionValidationError as error:
                 if "inserted TextID: 3" not in str(error):
                     raise RegressionFailure("inserted TextList CSV row error was unexpected")
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
 
         alarm_projection_root = os.path.join(work_dir, "alarm_projection")
         alarm_projection_view = os.path.join(alarm_projection_root, "project-view")
@@ -960,8 +958,7 @@ def main():
         alarm_extractors = alarm_manifest["entries"][0].get("projection_extractors") or {}
         if alarm_extractors.get("TEST_ALARMS.csv") != "alarm_items_csv":
             raise RegressionFailure("Alarm items CSV extractor was not recorded in manifest")
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _patch_builder import PatchBuilder
             from diff_engine import DiffEngine
             from folder_reader import FolderReader
@@ -1024,14 +1021,10 @@ def main():
             except ProjectionValidationError as error:
                 if "AdditionalMessageIDs is read-only" not in str(error):
                     raise RegressionFailure("changed Alarm AdditionalMessageIDs error was unexpected")
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
 
         settings_write_root = os.path.join(work_dir, "settings_write")
         os.makedirs(settings_write_root)
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _project_settings import load_project_settings, save_project_settings
             saved_settings = save_project_settings(settings_write_root, {
                 "layout": "root-view",
@@ -1040,24 +1033,17 @@ def main():
                 "projections": {"pou": {"format": "st"}},
             })
             loaded_settings = load_project_settings(settings_write_root)
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         _assert_equal(saved_settings["layout"], "root-view", "saved settings layout")
         _assert_equal(loaded_settings["layout"], "root-view", "loaded settings layout")
         _assert_equal(loaded_settings["projections"], {"pou": {"format": "st"}}, "loaded settings projections")
 
         missing_settings_root = os.path.join(work_dir, "missing_settings")
         os.makedirs(missing_settings_root)
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from _project_layout import resolve_layout
             from _project_settings import load_project_settings
             missing_settings = load_project_settings(missing_settings_root)
             missing_layout = resolve_layout(missing_settings_root, layout_mode=missing_settings.get("layout"))
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         _assert_equal(missing_settings["layout"], "project-view", "missing settings layout")
         _assert_equal(
             missing_layout.view_root,
@@ -1085,13 +1071,9 @@ def main():
   </StructuredView>
 </Project>
 """)
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from snapshot_reader import SnapshotReader
             pathless_model = SnapshotReader(pathless_snapshot, project_name="VKO-Beumer").read()
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         pathless_node = list(pathless_model.nodes.values())[0]
         _assert_equal(pathless_node.display_path, ["POUs"], "pathless project object display path")
 
@@ -1132,13 +1114,9 @@ def main():
   </StructuredView>
 </Project>
 """)
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from snapshot_reader import SnapshotReader
             duplicate_view_model = SnapshotReader(duplicate_view_snapshot, project_name="VKO-Beumer").read()
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         _assert_equal(len(duplicate_view_model.nodes), 1, "structured view GUID normalization deduplicates nodes")
 
         alias_view_snapshot = os.path.join(work_dir, "alias_structured_view_paths.xml")
@@ -1186,13 +1164,9 @@ def main():
   </StructuredView>
 </Project>
 """)
-        sys.path.insert(0, os.path.join(ROOT_DIR, "cli", "external_engine"))
-        try:
+        with _engine_on_path():
             from snapshot_reader import SnapshotReader
             alias_view_model = SnapshotReader(alias_view_snapshot, project_name="VKO-Beumer").read()
-        finally:
-            if sys.path[0] == os.path.join(ROOT_DIR, "cli", "external_engine"):
-                del sys.path[0]
         _assert_equal(len(alias_view_model.nodes), 1, "structured view path aliases deduplicate nodes")
         alias_node = list(alias_view_model.nodes.values())[0]
         _assert_equal(
