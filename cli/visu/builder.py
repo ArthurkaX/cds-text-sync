@@ -19,17 +19,21 @@ import xml.etree.ElementTree as ET
 
 from . import catalog as _catalog
 from . import screen_xml as _screen_xml
+from ._builder_base import (
+    BuilderError,
+    _COLOR_TYPE,
+    _EL,
+    _FONT_TYPE,
+    _MB,
+    _MEMBER_TYPE,
+    _ROOT_TYPE,
+    _esc,
+)
 from .xml_ns import find_named, strip_ns
 
 # Re-exported so commands.py can call them via the builder facade.
 read_screen_size = _screen_xml.read_screen_size
 list_elements = _screen_xml.list_elements
-
-# Member block element type guid (every VisualElemMemberList entry).
-_MEMBER_TYPE = "{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}"
-_COLOR_TYPE = "{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}"
-_FONT_TYPE = "{9e842eb2-1463-4af2-b605-4fbb17044f94}"
-_ROOT_TYPE = "{6198ad31-4b98-445c-927f-3258a0e82fe3}"
 
 # --------------------------------------------------------------------------
 # Frame capture / tokenization helpers (spec 1/2 -- capture-frame)
@@ -281,29 +285,8 @@ def _build_frame_catalog(visu_name, params):
 	}
 
 
-# Indentation matching the template / ground-truth file.
-_EL = " " * 12  # the <Single Type="{f86c2928...}"> element block indent
-_MB = " " * 16  # member block indent inside VisualElemMemberList
+# Lazy-loaded input-action catalog (input_actions.json).
 _INPUT_ACTIONS = None
-
-
-class BuilderError(Exception):
-    pass
-
-
-# --------------------------------------------------------------------------
-# XML escaping
-# --------------------------------------------------------------------------
-
-
-def _esc(value):
-    if value is None:
-        value = ""
-    value = str(value)
-    value = value.replace("&", "&amp;")
-    value = value.replace("<", "&lt;")
-    value = value.replace(">", "&gt;")
-    return value
 
 
 # --------------------------------------------------------------------------
