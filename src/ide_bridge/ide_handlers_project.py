@@ -707,6 +707,20 @@ def _project_path(prj):
     return ""
 
 
+def _project_display_name(prj):
+    """Project name, falling back to the path basename.
+
+    CODESYS project wrappers often expose no usable get_name(), so derive a
+    readable name from the file path when the name is empty.
+    """
+    name = _obj_name(prj)
+    if not name:
+        path = _project_path(prj)
+        if path:
+            name = os.path.splitext(os.path.basename(path))[0]
+    return name
+
+
 def _open_projects(projects):
     """Best-effort list of currently open project objects.
 
@@ -747,11 +761,11 @@ def _cmd_project_open(params):
                     "data": {
                         "opened": path,
                         "already_open": True,
-                        "name": _obj_name(prj),
+                        "name": _project_display_name(prj),
                     },
                 }
         project = projects.open(path)
-        name = _obj_name(project) if project is not None else ""
+        name = _project_display_name(project) if project is not None else ""
         return {"ok": True, "data": {"opened": path, "name": name}}
     except Exception as e:
         return {"ok": False, "error": "Project open error: {0}".format(e)}
@@ -762,7 +776,7 @@ def _cmd_project_close():
     if err:
         return err
     try:
-        name = _obj_name(project)
+        name = _project_display_name(project)
         if hasattr(project, "close"):
             project.close()
         else:
@@ -784,17 +798,20 @@ def _cmd_project_list():
             primary = projects.primary
         except Exception:
             primary = None
+        primary_path = ""
+        if primary is not None:
+            primary_path = os.path.normcase(os.path.normpath(_project_path(primary)))
         found = []
         for prj in _open_projects(projects):
             path = _project_path(prj)
-            name = _obj_name(prj)
-            if not name and path:
-                name = os.path.splitext(os.path.basename(path))[0]
+            is_primary = bool(primary_path) and (
+                os.path.normcase(os.path.normpath(path)) == primary_path
+            )
             found.append(
                 {
-                    "name": name,
+                    "name": _project_display_name(prj),
                     "path": path,
-                    "primary": prj is primary,
+                    "primary": is_primary,
                 }
             )
         return {"ok": True, "data": {"projects": found, "count": len(found)}}
