@@ -10,13 +10,13 @@ renamed daemon handler or a typo'd method name is a silent runtime failure
 ("Unknown method: X") that no unit test would otherwise catch. These contract
 tests close that gap.
 
-Scope: the ACTIVE top-level daemon command surface -- the _cli_handlers_daemon
-and _cli_handlers_vars routers. The hidden/deprecated `project`/`pou` subcommands
-route through _cli_io._project_command to method names that are NOT all present
-in the reverse-pipe _DISPATCH (e.g. project_open, set_simulation_mode); those are
-intentionally OUT OF SCOPE here -- asserting on them would couple this guard to
-deprecated code whose (possibly forward-mode) daemon path is not runtime-testable
-under CPython. That mismatch is a separate, pre-existing concern.
+Scope: the full CLI daemon-send surface -- the _cli_handlers_daemon,
+_cli_handlers_vars, and _cli_handlers_project routers. Every daemon method any of
+them sends (via cmd_daemon / send_command_reverse / _batch / _project_command)
+must resolve to a handler in the reverse-pipe _DISPATCH. The `project`
+subcommand's methods (project_open, list_devices, set_simulation_mode, discover,
+...) used to be unhandled and were pinned as a known defect; they are now
+handled, so this guard asserts them rather than excluding them.
 
 The daemon module is IronPython 2.7 but imports cleanly under CPython once .NET
 namespaces are stubbed (same technique as test_daemon_name_resolution), so we
@@ -158,7 +158,7 @@ def _resolvable_methods(daemon_module):
 # ---------------------------------------------------------------------------
 
 # Functions whose FIRST positional arg is the daemon method name.
-_SEND_FUNCS = {"cmd_daemon", "send_command_reverse", "_batch"}
+_SEND_FUNCS = {"cmd_daemon", "send_command_reverse", "_batch", "_project_command"}
 
 
 def _sent_method_literals(py_path):
@@ -199,13 +199,24 @@ def test_daemon_methods_table_is_dispatchable(daemon):
 
 
 def test_direct_sends_are_dispatchable(daemon):
-    """Every literal daemon method sent by the daemon/vars handlers is handled."""
+    """Every literal daemon method sent by a CLI router is handled.
+
+    Covers the daemon, vars, and project routers (cmd_daemon /
+    send_command_reverse / _batch / _project_command with a string-literal first
+    arg). The project subcommand's sends -- project_open, project_close,
+    project_list, list_devices, set_simulation_mode, set_credentials,
+    diagnose_online, discover -- are included here.
+    """
     resolvable = _resolvable_methods(daemon)
     sent = set()
-    for handler_file in ("_cli_handlers_daemon.py", "_cli_handlers_vars.py"):
+    for handler_file in (
+        "_cli_handlers_daemon.py",
+        "_cli_handlers_vars.py",
+        "_cli_handlers_project.py",
+    ):
         sent |= _sent_method_literals(_CLI / handler_file)
     # Sanity: the scan actually found sends (guards against a silent no-match).
-    assert "read_variables" in sent and "cicd" in sent, sorted(sent)
+    assert {"read_variables", "cicd", "discover", "project_open"} <= sent, sorted(sent)
     missing = sorted(m for m in sent if m not in resolvable)
     assert not missing, (
         "CLI handlers send daemon methods with no handler in _DISPATCH: "
@@ -224,70 +235,5 @@ def test_no_permission_entries_are_real_methods(daemon):
     unknown = sorted(m for m in daemon._NO_PERMISSION if m not in dispatch)
     assert not unknown, (
         "_NO_PERMISSION lists names absent from _DISPATCH: " + ", ".join(unknown)
-    )
-
-
-# ---------------------------------------------------------------------------
-# Characterization of a KNOWN DEFECT (not a passing contract).
-#
-# The hidden/deprecated `project` subcommand routes every action through
-# _cli_io._project_command, which ALWAYS sends over the reverse pipe (its
-# `use_reverse` parameter is dead -- the body never branches on it). Several
-# actions send daemon methods that have no handler in _DISPATCH, so at runtime
-# they return {"ok": false, "error": "Unknown method: X"}. The daemon has a
-# single static dispatch table (Project_daemon.py only exec()s the reverse-pipe
-# loop -- there is no forward mode), so these commands are genuinely broken:
-#
-#   cts project open / close / list / list-devices / simulate /
-#   set-credentials / diagnose-online      (+ top-level `cts discover`)
-#
-# This test pins the EXACT broken set so the defect is visible and bounded:
-#   * fix one (add the daemon handler) -> this test fails, prompting its removal
-#     from _KNOWN_UNHANDLED;
-#   * add a new broken _project_command send -> this test fails.
-# Fixing it for real (add IronPython handlers, or remove the dead actions) is a
-# user-facing call tracked separately; it is not asserted as passing here.
-# ---------------------------------------------------------------------------
-
-_KNOWN_UNHANDLED = frozenset(
-    {
-        "project_open",
-        "project_close",
-        "project_list",
-        "list_devices",
-        "set_simulation_mode",
-        "set_credentials",
-        "diagnose_online",
-        "discover",
-    }
-)
-
-
-def test_project_subcommand_unhandled_set_is_exactly_known(daemon):
-    """The `project` handlers' unhandled daemon methods are exactly the known set."""
-    resolvable = _resolvable_methods(daemon)
-    project_sends = set()
-    for node in ast.walk(
-        ast.parse(
-            (_CLI / "_cli_handlers_project.py").read_text(encoding="utf-8")
-        )
-    ):
-        if (
-            isinstance(node, ast.Call)
-            and node.args
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_project_command"
-        ):
-            first = node.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                project_sends.add(first.value)
-
-    unhandled = {m for m in project_sends if m not in resolvable}
-    assert unhandled == set(_KNOWN_UNHANDLED), (
-        "project-subcommand broken-method set drifted.\n"
-        "  newly broken (add handler or update set): "
-        + ", ".join(sorted(unhandled - set(_KNOWN_UNHANDLED)))
-        + "\n  now fixed (remove from _KNOWN_UNHANDLED): "
-        + ", ".join(sorted(set(_KNOWN_UNHANDLED) - unhandled))
     )
 

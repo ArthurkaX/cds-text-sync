@@ -23,6 +23,7 @@ from ide_daemon_state import (
     _build_path,
     _read_online_attr,
     _bool_or_none,
+    _get_plc_status_snapshot,
 )
 
 from ide_daemon_helpers import (
@@ -657,3 +658,237 @@ def _cmd_probe_oa(params):
                     result["try_app_" + name + "_error"] = str(e)[:200]
 
     return {"ok": True, "data": result}
+
+
+# ── Project lifecycle / devices / diagnostics (cts project ...) ────────────────
+# Handlers for the `project` subcommand and `discover` that previously had no
+# entry in _DISPATCH (returned "Unknown method"). See tests/unit/
+# test_cli_daemon_protocol.py for the CLI<->daemon parity contract.
+
+
+def _sync_folder_for_project(project):
+    """Read the project's cds-sync-folder property, or "" if unavailable."""
+    try:
+        proj_info = _get_project_info_object(project)
+        if proj_info is not None:
+            props = _project_info_properties(proj_info)
+            sf = props.get("cds-sync-folder", "")
+            if sf:
+                return str(sf)
+    except Exception:
+        pass
+    return ""
+
+
+def _codesys_version():
+    """Best-effort CODESYS/runtime version from the captured system object."""
+    system = sys._codesys_daemon_loop.get("system")
+    if system is None:
+        return ""
+    for attr in ("version", "Version", "build_version", "BuildVersion"):
+        try:
+            val = getattr(system, attr)
+            if val:
+                return str(val)
+        except Exception:
+            pass
+    return ""
+
+
+def _cmd_project_open(params):
+    path = (params or {}).get("path", "")
+    if not path:
+        return {"ok": False, "error": "project open requires a 'path'"}
+    projects = sys._codesys_daemon_loop.get("projects")
+    if projects is None:
+        return {"ok": False, "error": "projects not captured"}
+    try:
+        project = projects.open(path)
+        name = _obj_name(project) if project is not None else ""
+        return {"ok": True, "data": {"opened": path, "name": name}}
+    except Exception as e:
+        return {"ok": False, "error": "Project open error: {0}".format(e)}
+
+
+def _cmd_project_close():
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        name = _obj_name(project)
+        if hasattr(project, "close"):
+            project.close()
+        else:
+            projects = sys._codesys_daemon_loop.get("projects")
+            if projects is None:
+                return {"ok": False, "error": "projects not captured"}
+            projects.close(project)
+        return {"ok": True, "data": {"closed": name}}
+    except Exception as e:
+        return {"ok": False, "error": "Project close error: {0}".format(e)}
+
+
+def _cmd_project_list():
+    projects = sys._codesys_daemon_loop.get("projects")
+    if projects is None:
+        return {"ok": False, "error": "projects not captured"}
+    try:
+        primary = None
+        try:
+            primary = projects.primary
+        except Exception:
+            primary = None
+        primary_guid = None
+        if primary is not None:
+            try:
+                primary_guid = str(getattr(primary, "guid", None))
+            except Exception:
+                primary_guid = None
+
+        # ScriptProjects exposes open projects differently across versions;
+        # probe a couple of accessors, then fall back to the primary alone.
+        candidates = []
+        for attr in ("all", "get_all_projects"):
+            try:
+                val = getattr(projects, attr)
+                if callable(val):
+                    val = val()
+                if val:
+                    candidates = list(val)
+                    break
+            except Exception:
+                pass
+        if not candidates and primary is not None:
+            candidates = [primary]
+
+        found = []
+        for prj in candidates:
+            entry = {"name": _obj_name(prj), "path": ""}
+            for attr in ("path", "filename", "FileName", "FullName", "Path"):
+                try:
+                    v = getattr(prj, attr)
+                    if v:
+                        entry["path"] = str(v)
+                        break
+                except Exception:
+                    pass
+            try:
+                entry["primary"] = (
+                    primary_guid is not None
+                    and str(getattr(prj, "guid", None)) == primary_guid
+                )
+            except Exception:
+                entry["primary"] = False
+            found.append(entry)
+        return {"ok": True, "data": {"projects": found, "count": len(found)}}
+    except Exception as e:
+        return {"ok": False, "error": "Project list error: {0}".format(e)}
+
+
+def _cmd_list_devices():
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        devices = []
+        seen = set()
+        for child in project.get_children(True):
+            is_device_like = False
+            try:
+                if hasattr(child, "set_simulation_mode") or hasattr(
+                    child, "set_gateway_and_address"
+                ):
+                    is_device_like = True
+                else:
+                    cls = str(type(child).__name__)
+                    if "Device" in cls or "Controller" in cls:
+                        is_device_like = True
+            except Exception:
+                pass
+            if not is_device_like:
+                continue
+            key = str(getattr(child, "guid", id(child)))
+            if key in seen:
+                continue
+            seen.add(key)
+            devices.append(
+                {
+                    "name": _obj_name(child),
+                    "path": _build_path(child),
+                    "type_guid": str(getattr(child, "type", "")),
+                    "class": str(type(child).__name__),
+                }
+            )
+        return {"ok": True, "data": {"devices": devices, "count": len(devices)}}
+    except Exception as e:
+        return {"ok": False, "error": "List devices error: {0}".format(e)}
+
+
+def _cmd_set_simulation_mode(params):
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        enable_raw = (params or {}).get("enable", "on")
+        enable = _bool_or_none(enable_raw)
+        if enable is None:
+            enable = str(enable_raw).strip().lower() in ("on", "true", "1", "yes")
+        result = _helpers.set_simulation_mode_impl(project, enable)
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": "Set simulation mode error: {0}".format(e)}
+
+
+def _cmd_set_credentials(params):
+    params = params or {}
+    username = params.get("username", "")
+    password = params.get("password", "")
+    if not username:
+        return {"ok": False, "error": "set-credentials requires a 'username'"}
+    try:
+        result = _helpers.set_credentials_impl(username, password)
+        return {"ok": True, "data": result}
+    except Exception as e:
+        return {"ok": False, "error": "Set credentials error: {0}".format(e)}
+
+
+def _cmd_diagnose_online():
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        diag = {}
+        try:
+            diag["application"] = _helpers.get_application_state_impl(project)
+        except Exception as e:
+            diag["application_error"] = str(e)
+        try:
+            diag["plc"] = _get_plc_status_snapshot()
+        except Exception as e:
+            diag["plc_error"] = str(e)
+        return {"ok": True, "data": diag}
+    except Exception as e:
+        return {"ok": False, "error": "Diagnose online error: {0}".format(e)}
+
+
+def _cmd_discover(params):
+    project, err = _get_active_project()
+    if err:
+        return err
+    try:
+        base_dir = (params or {}).get("path", "")
+        if not base_dir:
+            base_dir = _sync_folder_for_project(project)
+        if not base_dir:
+            return {
+                "ok": False,
+                "error": "No sync folder set (cds-sync-folder); pass --path",
+            }
+        from discover_report import build_discovery_report
+
+        report = build_discovery_report(project, base_dir, _codesys_version())
+        if report.get("status") != "success":
+            return {"ok": False, "error": report.get("error", "discover failed")}
+        return {"ok": True, "data": report}
+    except Exception as e:
+        return {"ok": False, "error": "Discover error: {0}".format(e)}

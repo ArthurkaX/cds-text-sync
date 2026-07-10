@@ -122,6 +122,14 @@ from ide_handlers_project import (
     _cmd_explore_api,
     _cmd_help,
     _cmd_probe_oa,
+    _cmd_project_open,
+    _cmd_project_close,
+    _cmd_project_list,
+    _cmd_list_devices,
+    _cmd_set_simulation_mode,
+    _cmd_set_credentials,
+    _cmd_diagnose_online,
+    _cmd_discover,
 )
 
 from ide_handlers_crc import (
@@ -260,6 +268,10 @@ _NO_PERMISSION = frozenset([
     "project_tree",
     "read_object",
     "explore",
+    "project_list",
+    "list_devices",
+    "diagnose_online",
+    "discover",
 ])
 
 _DISPATCH = {
@@ -315,6 +327,15 @@ _DISPATCH = {
     "create_boot_app": _noarg(_cmd_create_boot_app),
     "app_info": _noarg(_cmd_app_info),
     "permissions": _noarg(_cmd_permissions),
+    # project lifecycle / devices / diagnostics (cts project ..., cts discover)
+    "project_open": _cmd_project_open,
+    "project_close": _noarg(_cmd_project_close),
+    "project_list": _noarg(_cmd_project_list),
+    "list_devices": _noarg(_cmd_list_devices),
+    "set_simulation_mode": _cmd_set_simulation_mode,
+    "set_credentials": _cmd_set_credentials,
+    "diagnose_online": _noarg(_cmd_diagnose_online),
+    "discover": _cmd_discover,
 }
 
 
