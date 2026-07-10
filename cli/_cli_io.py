@@ -52,6 +52,10 @@ def _print_error(msg):
     print(f"[ERROR] {msg}", file=sys.stderr)
 
 
+def _print_warn(msg):
+    print(f"[WARN] {msg}", file=sys.stderr)
+
+
 def _format_output(data, fmt="json", title=None):
     """Format output as JSON (machine) or text (human)."""
     if fmt == "text":
