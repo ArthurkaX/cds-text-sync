@@ -10,8 +10,6 @@ cmd_discover, cmd_pou_delete.
 
 from __future__ import annotations
 
-import sys
-
 from cli._cli_io import _print_error, _print_warn, _project_command
 
 
@@ -46,8 +44,14 @@ def cmd_project_open(path="", use_reverse=False):
 
 
 def cmd_project_close(use_reverse=False):
-    """Close the current project in CODESYS."""
-    _project_command("project_close", use_reverse=use_reverse)
+    """Close the current project in CODESYS.
+
+    Closing a large or online project can exceed the default 30s timeout,
+    so a longer timeout (60s) is used.  Note that a CODESYS modal dialog
+    (disconnect / save prompt) may still block the daemon and requires
+    manual dismissal.
+    """
+    _project_command("project_close", timeout=60, use_reverse=use_reverse)
 
 
 def cmd_project_list(use_reverse=False):
