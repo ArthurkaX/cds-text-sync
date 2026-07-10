@@ -26,3 +26,4 @@ offline-regression-*/
 .handoff/
 temp/
 .claude/
+.mu/
