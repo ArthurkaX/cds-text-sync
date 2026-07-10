@@ -103,7 +103,7 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     use_reverse = True
 

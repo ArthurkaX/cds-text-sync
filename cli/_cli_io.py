@@ -309,18 +309,26 @@ def cmd_daemon(
 
 
 def _project_command(method, params=None, timeout=30, use_reverse=True):
-    """Send a project command to the reverse-pipe daemon and print result."""
+    """Send a project command to the reverse-pipe daemon and print result.
+
+    Exits non-zero on any failure so callers (and CI) get a truthful exit code,
+    matching the daemon-command contract in _daemon_command().
+    """
     try:
         resp = send_command_reverse(method, params or {}, timeout=timeout)
-        if resp.get("ok"):
-            data = resp.get("data", {})
-            print(json.dumps(data, indent=2, ensure_ascii=False))
-        else:
-            _print_error(resp.get("error", "unknown error"))
     except ConnectionError as e:
         _print_error("Cannot connect to daemon: {0}".format(e))
+        sys.exit(1)
     except RuntimeError as e:
         _print_error("Command error: {0}".format(e))
+        sys.exit(1)
+
+    if resp.get("ok"):
+        data = resp.get("data", {})
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        _print_error(resp.get("error", "unknown error"))
+        sys.exit(1)
 
 
 # -- Batch helper -------------------------------------------------------------

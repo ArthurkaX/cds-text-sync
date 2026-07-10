@@ -70,6 +70,36 @@ def _guid_texts(path):
     return guids
 
 
+def _local(tag):
+    return tag.split("}", 1)[-1]
+
+
+def _native_create_guids(path):
+    """Guids of objects emitted as <CreateNativeObject> native-create entries.
+
+    A brand-new object present on disk but absent from the IDE is created
+    natively: its full object XML lives as a string inside <NativeXml>, so it
+    must be parsed separately -- _guid_texts() walks parsed elements and cannot
+    see a guid that sits inside element text.
+    """
+    root = ET.parse(path).getroot()
+    guids = []
+    for elem in root.iter():
+        if _local(elem.tag) != "CreateNativeObject":
+            continue
+        for child in elem:
+            if _local(child.tag) != "NativeXml" or not child.text:
+                continue
+            try:
+                inner = ET.fromstring(child.text)
+            except ET.ParseError:
+                continue
+            for node in inner.iter():
+                if node.attrib.get("Name") == "Guid" and node.text:
+                    guids.append(node.text.strip().lower())
+    return guids
+
+
 def _assert_equal(actual, expected, label):
     if actual != expected:
         raise RegressionFailure(
@@ -1258,12 +1288,20 @@ def main():
 
         added_patch_path = os.path.join(added_dump_path, "IMPORT_added.xml")
         _run(["import", "--project-root", added_project_root, "--snapshot", added_snapshot_path, "--views", added_views_path, "--patch", added_patch_path])
+        # A brand-new object present on disk but absent from the IDE is emitted
+        # as a native-create entry (<CreateNativeObject>), not a StructuredView
+        # guid patch. Its guid lives inside the embedded NativeXml.
         _assert_equal(
             _guid_texts(added_patch_path),
+            [],
+            "added patch StructuredView guids",
+        )
+        _assert_equal(
+            _native_create_guids(added_patch_path),
             [
                 "22222222-2222-2222-2222-222222222222",
             ],
-            "added patch guids",
+            "added patch native-create guids",
         )
 
         selected_added_patch_path = os.path.join(added_dump_path, "IMPORT_selected_added.xml")
