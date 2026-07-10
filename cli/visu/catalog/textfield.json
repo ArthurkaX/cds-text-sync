@@ -60,7 +60,7 @@
       "member_id": 390574330,
       "kind": "string",
       "requires": "textid",
-      "doc": "Static text / format string (требует Text-ID когда не пустой)"
+      "doc": "Static text / format string (requires a Text-ID when non-empty)"
     },
     "text_id": {
       "member_id": 823443203,

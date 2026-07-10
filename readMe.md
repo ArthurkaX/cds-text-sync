@@ -6,7 +6,7 @@
 [![Issues](https://img.shields.io/github/issues/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/issues)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
 
-**Version**: `2.6.1`
+**Version**: `2.7.0`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -62,7 +62,7 @@ The quick PowerShell installer also checks for `python` up front and can offer a
 
 ## CLI + Reverse-Pipe Daemon
 
-Version 2.6.1 focuses on the `cts` command-line workflow and the reverse-pipe daemon for fast, repeatable interaction with an open CODESYS IDE.
+Version 2.7.0 continues to focus on the `cts` command-line workflow and the reverse-pipe daemon for fast, repeatable interaction with an open CODESYS IDE.
 
 The daemon runs inside CODESYS through `Project_daemon.py`. The `cds-text-sync` CLI talks to it over a per-user Windows named pipe, so shell scripts and CI helpers can request CODESYS actions without opening additional script dialogs for every operation.
 
@@ -80,6 +80,9 @@ cts import --timeout 120      # project-view/ -> IDE
 cts build --timeout 120
 cts plc-crc --timeout 30
 cts test --file arithmetic.json --timeout 120
+cts discover --timeout 180      # CODESYS installs, open projects, object-tree coverage
+cts project list                # open projects (primary by path)
+cts project open --path <proj>  # open / close / list-devices / simulate / diagnose-online
 cts engine call-tree -r . -s .dump/IDE.xml -o call-tree.json  # offline call graph
 ```
 
@@ -92,9 +95,13 @@ Common daemon capabilities include:
 - PLC file listing, upload, and download commands.
 - Application CRC checks for deployment verification.
 - JSON-based test plans for repeatable validation.
+- Project lifecycle and inspection: open, close, list open projects, list devices, toggle simulation, set credentials, online diagnostics, and environment/object-tree discovery.
 - Access to the same XML-first project sync engine used by the classic `Project_*.py` scripts.
 
-The 2.6.1 daemon workflow was verified on a live CODESYS project by running the main user-facing command set through `cts`: `ping`, `status`, permissions, raw calls, `project-info`, `project-tree`, export, compare, import, build, connect/disconnect, start/stop, `app-state`, PLC CRC, variable read/write, variable map/snapshot/restore, object read/update/delete, log reading, sync commands, application history/CRC/info, boot application creation, PLC upload, and JSON/text output modes.
+The 2.7.0 release adds the previously non-functional project-management commands (`project open`/`close`/`list`/`list-devices`/`simulate`/`set-credentials`/`diagnose-online` and top-level `discover`) and hardens native object import so POUs and objects nested in folders import reliably. The daemon workflow was verified on a live CODESYS project by running the main user-facing command set through `cts`: `ping`, `status`, permissions, raw calls, `project-info`, `project-tree`, export, compare, import, build, connect/disconnect, start/stop, `app-state`, PLC CRC, variable read/write, variable map/snapshot/restore, object read/update/delete, log reading, sync commands, application history/CRC/info, boot application creation, PLC upload, and JSON/text output modes.
+
+> [!NOTE]
+> **`cts visu` (experimental)**: an SVG-to-CODESYS-visualization pipeline (`cts visu from-svg`) is under active development. It can render catalog elements and supports fill/stroke opacity, but it has **not** been fully validated end-to-end against the CODESYS visualization editor. Treat it as experimental and verify results before relying on it.
 
 The CLI is installed with Python packaging:
 
@@ -158,7 +165,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 When upgrading to a new version of `cds-text-sync`:
 
 1. **Check Stable Releases**: First check if there's a newer stable release at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
-2. **Replace All Files**: Copy the full tool payload again: root scripts, `cds_bootstrap.py`, `.runtime/`, `cli/`, `src/`, and `profiles/`.
+2. **Replace All Files**: Copy the full tool payload again: root scripts, `cds_bootstrap.py`, `cli/`, `src/`, and `profiles/`.
    - **Important Note**: Active scripts held in CODESYS memory may become **stale** after replacing files. Restart CODESYS or reload your project so the Script Engine picks up the latest modules.
 3. **Clean Extract**: Run `Project_export.py` to refresh `.dump/IDE.xml`, the configured view root, and manifest data with the latest script logic.
 4. **Commit Changes**: Review and commit the changes in Git.

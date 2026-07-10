@@ -14,6 +14,57 @@ The following CLI aliases are retained for backwards compatibility but are sched
 
 ---
 
+### Version 2.7.0 (2026-07-10)
+
+**New / fixed CLI commands (previously non-functional):**
+
+- `cts project open`, `close`, `list`, `list-devices`, `simulate`, `set-credentials`, `diagnose-online`, and top-level `cts discover` now work against the reverse-pipe daemon. These eight methods were sent by the CLI but had no daemon handler and returned `Unknown method: X` at runtime; they are now implemented and covered by a CLI↔daemon parity contract test.
+- `cts project open` guards against reopening the already-open project and uses a longer timeout for large projects; `cts project close` uses a 60s timeout (a CODESYS modal save/disconnect dialog can still require manual dismissal).
+- `cts project list` reports the primary project by path with a display-name fallback when the wrapper exposes no usable name.
+
+**Sync import reliability (POUs/objects inside folders):**
+
+- Native object import now succeeds for objects nested in folders. The embedded `ParentGuid` in an exported native payload is rewritten to the resolved container's live GUID before `import_native`, fixing the case where CODESYS refused the payload because the exported parent GUID no longer matched the live container.
+- Native import is now resilient and diagnostic: a single object that CODESYS rejects no longer aborts the whole import. Failures are collected, reported per object under `failed_native_objects`, and the remaining objects still import.
+- A name clash with an object in a different or nested folder (or a global-scope object) is now reported with a clear, located message instead of a generic rejection.
+- The device object cache is invalidated after import so newly created objects are visible immediately.
+
+**Daemon & online diagnostics:**
+
+- `diagnose_online` now primes the online-app cache before reading the PLC snapshot, so the PLC section is populated without a prior explicit `app-state`/`connect` call.
+- `SnapshotReader.read()` returns `None` instead of raising a `NameError` on a missing snapshot.
+
+**CLI correctness:**
+
+- Unknown CLI options now error with exit code 2 instead of being silently ignored (a typo such as `cts import --dry-runn` no longer runs a real import). `raw`/`engine` passthrough is unaffected.
+- Legacy `cts project ...` commands now exit non-zero on failure, matching the daemon-command contract so scripting and CI see a truthful exit code.
+- The hidden `project`/`pou` subcommand actions that duplicate a top-level command are now deprecated with a stderr warning pointing at the replacement.
+
+**Visualization — experimental, not yet fully tested:**
+
+- `cts visu from-svg` gained fill/stroke opacity support in SVG import. The SVG-to-visualization pipeline is still under active development and has **not** been fully validated end-to-end against the CODESYS visualization editor; treat it as experimental.
+
+**Internal refactors & tech debt:**
+
+- Extracted a shared discovery-report builder so forward-mode discover and the daemon `discover` handler share one implementation.
+- Split the visualization builder into focused modules (`_builder_base`, `builder_frame`, `builder_inputs`) and separated `from_svg` into screen-create/append/GVL helpers.
+- Split the offline regression runner into per-scenario functions and replaced repeated `sys.path` juggling with a single `_engine_on_path()` helper.
+- Extracted CLI dispatch into per-area handler modules (`_cli_handlers_daemon`, `_cli_handlers_project`, `_cli_handlers_visu`).
+- Fixed a latent path bug where build/discover ops computed the engine directory one level short after the `.runtime -> src/ide_bridge` move; added `ensure_engine_path()` as the shared resolver.
+- Removed dead code and unused imports flagged during the cleanup pass.
+
+**Packaging:**
+
+- `setup.py` now ships every data file the code reads (`themes/*.json`, `styles_snapshot.json`, `stylesheet.css`, `DESIGN.md`, `external_engine/sys_funcs.json`) so a non-editable `pip install .` is complete (verified via wheel build).
+- Added `cli.__version__` as the single source of truth and a `cts --version` command.
+
+**Tests:**
+
+- Added a CLI↔daemon method-parity contract test and a static daemon name-resolution guard that catches missing imports / unresolved globals in the IronPython daemon modules.
+- Added end-to-end coverage for `commands.from_svg` and rewrote the integration smoke test as proper pytest functions.
+
+---
+
 ### Version 2.6.1 (2026-06-15)
 
 **CLI fixes from user feedback:**
