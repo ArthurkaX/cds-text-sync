@@ -897,6 +897,7 @@ def _cmd_diagnose_online():
         except Exception as e:
             diag["application_error"] = str(e)
         try:
+            _ensure_online_app(project)  # prime the online-app cache
             diag["plc"] = _get_plc_status_snapshot()
         except Exception as e:
             diag["plc_error"] = str(e)
