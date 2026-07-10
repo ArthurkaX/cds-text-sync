@@ -154,3 +154,59 @@ def cmd_pou_delete(name="", app="", use_reverse=False):
     if app:
         params["app"] = app
     _project_command("delete_pou", params, use_reverse=use_reverse)
+
+
+# -- Subcommand dispatch ------------------------------------------------------
+
+
+def dispatch_project(args, use_reverse=True):
+    """Route a parsed `project` subcommand to its cmd_* handler."""
+    action = args.project_action
+    if action == "info":
+        cmd_project_info(use_reverse=use_reverse)
+    elif action == "tree":
+        cmd_project_tree(depth=args.depth, use_reverse=use_reverse)
+    elif action == "read":
+        cmd_project_read(
+            path=args.path, name=args.name, guid=args.guid, use_reverse=use_reverse
+        )
+    elif action == "open":
+        cmd_project_open(path=args.path, use_reverse=use_reverse)
+    elif action == "close":
+        cmd_project_close(use_reverse=use_reverse)
+    elif action == "list":
+        cmd_project_list(use_reverse=use_reverse)
+    elif action == "snapshot":
+        cmd_project_snapshot(path=args.path, use_reverse=use_reverse)
+    elif action == "build":
+        cmd_project_build(use_reverse=use_reverse)
+    elif action == "list-devices":
+        cmd_project_list_devices(use_reverse=use_reverse)
+    elif action == "compare":
+        cmd_compare(against=args.against, use_reverse=use_reverse)
+    elif action == "device-status":
+        cmd_device_status(device=args.device, use_reverse=use_reverse)
+    elif action == "connect":
+        cmd_connect(ip=args.ip, gateway=args.gateway, use_reverse=use_reverse)
+    elif action == "disconnect":
+        cmd_disconnect(use_reverse=use_reverse)
+    elif action == "read-var":
+        cmd_read_var(name=args.name, use_reverse=use_reverse)
+    elif action == "write-var":
+        cmd_write_var(name=args.name, value=args.value, use_reverse=use_reverse)
+    elif action == "simulate":
+        cmd_simulate(enable=args.enable, use_reverse=use_reverse)
+    elif action == "set-credentials":
+        cmd_set_credentials(
+            username=args.username, password=args.password, use_reverse=use_reverse
+        )
+    elif action == "application-state":
+        cmd_application_state(use_reverse=use_reverse)
+    elif action == "diagnose-online":
+        cmd_diagnose_online(use_reverse=use_reverse)
+
+
+def dispatch_pou(args, use_reverse=True):
+    """Route a parsed `pou` subcommand to its cmd_* handler."""
+    if args.pou_action == "delete":
+        cmd_pou_delete(name=args.name, app=args.app, use_reverse=use_reverse)
