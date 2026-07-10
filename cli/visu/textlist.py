@@ -56,11 +56,6 @@ def _find_global_textlist(project_view_dir):
     return None
 
 
-def _global_textlist_csv_path(project_view_dir):
-    """Return the absolute path to ``POUs/GlobalTextList.csv``."""
-    return os.path.abspath(os.path.join(project_view_dir, "POUs", "GlobalTextList.csv"))
-
-
 # ---------------------------------------------------------------------------
 # Reading
 # ---------------------------------------------------------------------------

@@ -825,7 +825,7 @@ def _replace_text_document(doc, value):
     return True
 
 
-def _text_document(obj, attr_name, flag_name):
+def _text_document(obj, attr_name):
     if obj is None or not hasattr(obj, attr_name):
         return None
     return getattr(obj, attr_name)
@@ -836,15 +836,11 @@ def _apply_textual_patch(obj, texts):
     declaration = texts.get("declaration")
     implementation = texts.get("implementation")
 
-    declaration_doc = _text_document(
-        obj, "textual_declaration", "has_textual_declaration"
-    )
+    declaration_doc = _text_document(obj, "textual_declaration")
     if declaration is not None and declaration_doc is not None:
         updated = _replace_text_document(declaration_doc, declaration) or updated
 
-    implementation_doc = _text_document(
-        obj, "textual_implementation", "has_textual_implementation"
-    )
+    implementation_doc = _text_document(obj, "textual_implementation")
     if implementation is not None and implementation_doc is not None:
         updated = _replace_text_document(implementation_doc, implementation) or updated
 
@@ -892,13 +888,13 @@ def _can_apply_textual_patch(obj, texts):
 
     if (
         declaration is not None
-        and _text_document(obj, "textual_declaration", "has_textual_declaration")
+        and _text_document(obj, "textual_declaration")
         is not None
     ):
         return True
     if (
         implementation is not None
-        and _text_document(obj, "textual_implementation", "has_textual_implementation")
+        and _text_document(obj, "textual_implementation")
         is not None
     ):
         return True

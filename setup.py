@@ -20,7 +20,15 @@ setup(
     packages=find_packages(include=["cli", "cli.*"]),
     package_data={
         "cli": ["CLI.md", "TEST_FORMAT.md"],
-        "cli.visu": ["catalog/*.json", "templates/*.tmpl"],
+        "cli.external_engine": ["sys_funcs.json"],
+        "cli.visu": [
+            "catalog/*.json",
+            "templates/*.tmpl",
+            "themes/*.json",
+            "styles_snapshot.json",
+            "stylesheet.css",
+            "DESIGN.md",
+        ],
     },
     python_requires=">=3.8",
     entry_points={

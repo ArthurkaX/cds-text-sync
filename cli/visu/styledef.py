@@ -268,32 +268,3 @@ def load_snapshot():
         else:
             _SNAPSHOT_CACHE = {}
     return _SNAPSHOT_CACHE
-
-
-def resolve_profile(name, version, company):
-    """Resolve a StyleProfile from the live install, else the committed snapshot.
-
-    Raises StyleDefError if the style is available in neither source.
-    """
-    try:
-        index = build_index()
-        if _lookup(index, name, version, company) is not None:
-            return resolve_chain(name, version, company, index=index)
-    except StyleDefError:
-        pass
-    snap = load_snapshot()
-    entry = snap.get(_snapshot_key(name, version, company))
-    if entry is None:
-        # Tolerate version/company drift in the snapshot too.
-        for key, val in snap.items():
-            kn = key.split("|")
-            if kn and kn[0] == name:
-                entry = val
-                break
-    if entry is None:
-        raise StyleDefError(
-            "Style unavailable (no install, not in snapshot): {0}".format(
-                format_styleref(name, version, company)
-            )
-        )
-    return entry

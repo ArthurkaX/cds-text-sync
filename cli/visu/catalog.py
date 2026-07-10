@@ -22,10 +22,6 @@ class CatalogError(Exception):
     pass
 
 
-def catalog_dir():
-    return _CATALOG_DIR
-
-
 def list_types():
     """Return the sorted list of available element type names."""
     types = []

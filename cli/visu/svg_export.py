@@ -920,7 +920,6 @@ def _load_default_theme():
         return themes.load_theme("flat-style")
     except themes.ThemeError:
         return {}
-    return {}
 
 
 def _format_theme_block(theme_colors):

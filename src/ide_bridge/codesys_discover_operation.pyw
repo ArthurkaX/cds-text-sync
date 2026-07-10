@@ -8,21 +8,13 @@ import json
 import os
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import load_base_dir, init_logging, resolve_projects, safe_str
-
-
-def _utility_root():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _ensure_engine_path():
-    import sys
-    engine_dir = os.path.join(_utility_root(), "cli", "external_engine")
-    if not os.path.isdir(engine_dir):
-        engine_dir = os.path.join(_utility_root(), "src", "external_engine")
-    if engine_dir not in sys.path:
-        sys.path.insert(0, engine_dir)
-    return engine_dir
+from codesys_utils import (
+    ensure_engine_path,
+    init_logging,
+    load_base_dir,
+    resolve_projects,
+    safe_str,
+)
 
 
 def _dump_root(base_dir):
@@ -45,7 +37,7 @@ def _write_json(path, data):
 
 
 def _load_settings_profile(base_dir):
-    _ensure_engine_path()
+    ensure_engine_path()
     from _project_profiles import kind_for_type_guid, load_profile, projection_options
     from _project_settings import load_project_settings
     settings = load_project_settings(base_dir)

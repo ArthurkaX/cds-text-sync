@@ -86,9 +86,6 @@ from cli._cli_handlers_vars import (  # noqa: E402
     cmd_variable_restore,
 )
 
-# csv import kept for any legacy callers that might have imported it from here
-import csv as _csv  # noqa: E402
-
 _BATCH_SIZE = 500
 
 

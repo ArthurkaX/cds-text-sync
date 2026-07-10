@@ -11,6 +11,11 @@ import xml.etree.ElementTree as ET
 
 from _project_model import ProjectModel, ProjectNode
 from _project_profiles import kind_for_type_guid
+from _view_paths import (
+    managed_relative_paths,
+    manifest_view_root,
+    normalize_fs_path,
+)
 from xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
     ST_IMPLEMENTATION_MARKER,
@@ -95,18 +100,10 @@ class FolderReader:
         self.profile = profile or {}
 
     def _normalize_fs_path(self, path):
-        return os.path.normcase(os.path.abspath(os.path.normpath(path or "")))
+        return normalize_fs_path(path)
 
     def _manifest_view_root(self, manifest):
-        value = manifest.get("view_root") or manifest.get("views_path")
-        if not value:
-            return None
-        text = str(value)
-        if text == ".":
-            return self.project_root
-        if os.path.isabs(text):
-            return os.path.abspath(os.path.normpath(text))
-        return os.path.abspath(os.path.normpath(os.path.join(self.project_root, text)))
+        return manifest_view_root(manifest, self.project_root)
 
     def _safe_path_in_root(self, relative_path, root_path):
         if not relative_path:
@@ -126,12 +123,7 @@ class FolderReader:
         return full_path
 
     def _managed_relative_paths(self, entry):
-        relative_paths = []
-        if entry.get("xml_path") or entry.get("view_path"):
-            relative_paths.append(entry.get("xml_path") or entry.get("view_path"))
-        for projection_path in entry.get("projection_paths") or []:
-            relative_paths.append(projection_path)
-        return relative_paths
+        return managed_relative_paths(entry)
 
     def _ensure_view_root_is_current(self, manifest):
         previous_root = self._manifest_view_root(manifest)

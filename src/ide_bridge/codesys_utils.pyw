@@ -27,6 +27,29 @@ def log_error(message, critical=False):
     print("[ERROR] " + safe_str(message))
 
 
+def _utility_root():
+    """Repo root. This module lives at ``<root>/src/ide_bridge/``, so the root
+    is three directories up. (The historical two-level form pointed one level
+    short after the ``.runtime`` -> ``src/ide_bridge`` move.)
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.dirname(here))
+
+
+def ensure_engine_path():
+    """Put the offline engine dir (cli/external_engine) on sys.path and return it.
+
+    Falls back to the historical src/external_engine location when the primary
+    directory is absent.
+    """
+    engine_dir = os.path.join(_utility_root(), "cli", "external_engine")
+    if not os.path.isdir(engine_dir):
+        engine_dir = os.path.join(_utility_root(), "src", "external_engine")
+    if engine_dir not in sys.path:
+        sys.path.insert(0, engine_dir)
+    return engine_dir
+
+
 def resolve_system(caller_globals=None):
     if caller_globals and "system" in caller_globals:
         return caller_globals["system"]
