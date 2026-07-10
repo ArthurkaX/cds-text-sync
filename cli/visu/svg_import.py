@@ -84,6 +84,26 @@ def _int(value, default=0):
         return default
 
 
+def _apply_opacity(fill_value, opacity_value):
+    """Combine fill color and opacity attribute into single #AARRGGBB hex."""
+    if fill_value is None:
+        return None
+    opacity_attr = opacity_value if opacity_value is not None else "1.0"
+    try:
+        opacity_ratio = float(opacity_attr)
+        opacity_ratio = max(0.0, min(1.0, opacity_ratio))
+    except (ValueError, TypeError):
+        opacity_ratio = 1.0
+    alpha_byte = int(round(opacity_ratio * 255))
+    fill_value = fill_value.strip()
+    if fill_value.startswith("#"):
+        if len(fill_value) == 7:      # #RRGGBB
+            return "#{:02X}{}".format(alpha_byte, fill_value[1:])
+        elif len(fill_value) == 9:    # #AARRGGBB already present; replace alpha
+            return "#{:02X}{}".format(alpha_byte, fill_value[3:])
+    return fill_value  # var(--role) or other theme ref: opacity ignored
+
+
 def _resolve(value, theme_colors):
     """Resolve a colour expression to an unsigned-int string.
 
@@ -112,8 +132,8 @@ def _parse_rect(elem, theme):
     h = _float(elem.get("height"), 100)
     rx = elem.get("rx")
 
-    fill = _resolve(elem.get("fill"), theme)
-    stroke = _resolve(elem.get("stroke"), theme)
+    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
         "x": str(int(x)),
@@ -147,8 +167,8 @@ def _parse_circle(elem, theme):
     w = 2.0 * r
     h = 2.0 * r
 
-    fill = _resolve(elem.get("fill"), theme)
-    stroke = _resolve(elem.get("stroke"), theme)
+    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
         "x": str(int(x)),
@@ -178,8 +198,8 @@ def _parse_ellipse(elem, theme):
     w = 2.0 * rx
     h = 2.0 * ry
 
-    fill = _resolve(elem.get("fill"), theme)
-    stroke = _resolve(elem.get("stroke"), theme)
+    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
         "x": str(int(x)),
@@ -209,8 +229,8 @@ def _parse_line(elem, theme):
     w = abs(x2 - x1)
     h = abs(y2 - y1)
 
-    fill = _resolve(elem.get("fill"), theme)
-    stroke = _resolve(elem.get("stroke"), theme)
+    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
         "x": str(x),
@@ -270,7 +290,7 @@ def _parse_text(elem, theme):
     # Convert SVG baseline-y to CODESYS top-y.
     y_top = y - font_size
 
-    font_color = _resolve(elem.get("fill"), theme)
+    font_color = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
 
     params = {
         "x": str(int(x)),
@@ -320,8 +340,8 @@ def _parse_button(elem, theme):
     tap_var = _parse_tap_var(elem.get("data-cds-tap", ""))
     actions = _parse_button_actions(elem.get("data-cds-action", ""))
 
-    fill = _resolve(elem.get("fill"), theme)
-    stroke = _resolve(elem.get("stroke"), theme)
+    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
         "x": str(int(x)),
@@ -465,7 +485,7 @@ def _parse_textfield(elem, theme):
 
     y_top = y - font_size
 
-    font_color = _resolve(elem.get("fill"), theme)
+    font_color = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
 
     params = {
         "x": str(int(x)),

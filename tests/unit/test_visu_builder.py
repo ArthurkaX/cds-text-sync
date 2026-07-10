@@ -2146,3 +2146,65 @@ class TestDialogParams:
   out = svg_export._element_to_svg(btn_node)
   assert 'data-dialog-param-pump_number="pump_number"' in out
 
+
+# ===================================================================
+# Transparency / alpha tests
+# ===================================================================
+
+
+class TestTransparency:
+    """Test alpha/opacity in SVG parsing and emission."""
+
+    def test_parse_fill_opacity_combination(self):
+        """fill + fill-opacity -> single ARGB with alpha byte."""
+        svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <rect x="10" y="10" width="50" height="50" fill="#E6E6E6" fill-opacity="0.5"/>
+        </svg>'''
+        theme = themes.load_theme("flat-style")
+        parsed = svg_import.parse_svg(svg, theme=theme)
+        elem = parsed["elements"][0]
+        # #E6E6E6 + 0.5 opacity => round(127.5) = 128 = 0x80
+        assert elem["params"]["fill"] == str(0x80E6E6E6)
+
+    def test_parse_fill_opacity_zero(self):
+        """fill-opacity="0" -> fully transparent."""
+        svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <rect x="10" y="10" width="50" height="50" fill="#FF0000" fill-opacity="0"/>
+        </svg>'''
+        theme = themes.load_theme("flat-style")
+        parsed = svg_import.parse_svg(svg, theme=theme)
+        elem = parsed["elements"][0]
+        assert elem["params"]["fill"] == str(0x00FF0000)
+
+    def test_parse_missing_opacity_defaults_to_opaque(self):
+        """fill without fill-opacity -> alpha=0xFF."""
+        svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <rect x="10" y="10" width="50" height="50" fill="#E6E6E6"/>
+        </svg>'''
+        theme = themes.load_theme("flat-style")
+        parsed = svg_import.parse_svg(svg, theme=theme)
+        elem = parsed["elements"][0]
+        assert elem["params"]["fill"] == str(0xFFE6E6E6)
+
+    def test_parse_8digit_hex_overwrites_opacity_attr(self):
+        """If both #AARRGGBB and fill-opacity present, fill-opacity wins."""
+        svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <rect x="10" y="10" width="50" height="50" fill="#40E6E6E6" fill-opacity="0.8"/>
+        </svg>'''
+        theme = themes.load_theme("flat-style")
+        parsed = svg_import.parse_svg(svg, theme=theme)
+        elem = parsed["elements"][0]
+        # fill-opacity="0.8" = 0xCC (204/255), should override the 0x40
+        assert elem["params"]["fill"] == str(0xCCE6E6E6)
+
+    def test_stroke_opacity_combination(self):
+        """stroke + stroke-opacity -> single ARGB."""
+        svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <line x1="10" y1="10" x2="50" y2="50" stroke="#0000FF" stroke-opacity="0.6"/>
+        </svg>'''
+        theme = themes.load_theme("flat-style")
+        parsed = svg_import.parse_svg(svg, theme=theme)
+        elem = parsed["elements"][0]
+        # #0000FF + 0.6 = 0x990000FF (153/255 approx 0.6)
+        assert elem["params"]["frame"] == str(0x990000FF)
+
