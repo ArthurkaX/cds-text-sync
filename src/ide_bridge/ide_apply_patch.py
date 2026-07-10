@@ -758,6 +758,44 @@ def _wrap_native_object_xml(native_xml, container):
     )
 
 
+def _object_location(obj):
+    """Best-effort 'parent/name' label for an object, for diagnostics."""
+    try:
+        name = object_name(obj)
+    except Exception:
+        name = "?"
+    try:
+        parent = getattr(obj, "parent", None)
+        if parent is not None:
+            return "{0}/{1}".format(object_name(parent), name)
+    except Exception:
+        pass
+    return name
+
+
+def _find_named_object_anywhere(project, name):
+    """Return the first project-wide object whose name matches, else None.
+
+    _find_child_transparent only inspects the immediate container (plus one
+    'Plc Logic' hop), so it misses an object in a different/nested folder or a
+    globally-scoped GVL. import_native refuses to create such a duplicate, so we
+    scan the whole tree to explain the refusal.
+    """
+    target = str(name or "").lower()
+    if not target:
+        return None
+    try:
+        for obj in project.get_children(recursive=True):
+            try:
+                if object_name(obj).lower() == target:
+                    return obj
+            except Exception:
+                continue
+    except Exception:
+        return None
+    return None
+
+
 def _apply_native_create(project, entry):
     container, _chain = _ensure_container_path_with_chain(
         project, entry.get("path")
@@ -792,6 +830,15 @@ def _apply_native_create(project, entry):
     # surfaced via apply_patch -> log_error into sync_debug.log.
     created = _find_child_transparent(container, name)
     if created is None:
+        clash = _find_named_object_anywhere(project, name)
+        if clash is not None:
+            print(
+                "Native object '{0}' not created under {1}: an object named "
+                "'{0}' already exists at {2} (a different folder or a "
+                "global-scope object); CODESYS refused the duplicate. "
+                "Skipping.".format(name, entry.get("path"), _object_location(clash))
+            )
+            return False
         raise Exception(
             "import_native did not create '{0}' under {1} "
             "(CODESYS rejected the native payload)".format(name, entry.get("path"))

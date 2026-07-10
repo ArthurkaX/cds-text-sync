@@ -409,6 +409,7 @@ def _cmd_sync_import_text(params):
 
         native_creates = _iap._native_create_entries(root)
         created_native = []
+        failed_native = []
         if native_creates:
             _log("Creating {0} new native objects...".format(len(native_creates)))
             for entry in native_creates:
@@ -416,18 +417,29 @@ def _cmd_sync_import_text(params):
                     _iap._apply_native_create(project, entry)
                     created_native.append(entry.get("name"))
                 except Exception as e:
+                    # One bad object (e.g. a stale name/GUID that already exists
+                    # in another folder) must not abort the whole import; record
+                    # it and keep going so the remaining objects still apply.
                     _log(
                         "Failed to create native {0}: {1}".format(
                             entry.get("name"), str(e)
                         )
                     )
-                    return {
-                        "ok": False,
-                        "error": "native object create failed for {0}: {1}".format(
-                            entry.get("name"), str(e)
-                        ),
-                    }
-            _log("Created native objects: {0}".format(", ".join(created_native)))
+                    failed_native.append(
+                        {
+                            "name": entry.get("name"),
+                            "path": entry.get("path"),
+                            "error": str(e),
+                        }
+                    )
+            if created_native:
+                _log("Created native objects: {0}".format(", ".join(created_native)))
+            if failed_native:
+                _log(
+                    "Native objects that failed (import continued): {0}".format(
+                        ", ".join(f["name"] for f in failed_native)
+                    )
+                )
 
         updated_text = []
         skipped_projection_objects = []
@@ -491,12 +503,14 @@ def _cmd_sync_import_text(params):
             "created_native_objects": created_native,
             "updated_text_objects": updated_text,
             "skipped_projection_objects": skipped_projection_objects,
+            "failed_native_objects": failed_native,
         }
         if (
             not text_creates
             and not created_native
             and not updated_text
             and not skipped_projection_objects
+            and not failed_native
         ):
             return_data["note"] = (
                 "No objects were created, updated, or skipped. "
@@ -504,6 +518,8 @@ def _cmd_sync_import_text(params):
                 "cannot be applied automatically; use update-pou or edit "
                 "the object in the IDE."
             )
+
+        _invalidate_device_cache()
 
         return {
             "ok": True,
