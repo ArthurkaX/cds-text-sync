@@ -721,21 +721,11 @@ def render_element(
     return block, geometry
 
 
-def _render_golden_element(
-    template,
-    catalog,
-    params,
-    identifier,
-    owning_guid,
-    identification_guid,
-    visual_element_id=0,
-    theme_colors=None,
-):
-    """Render an element by substituting placeholders in a golden (IDE-exported)
-    template, instead of synthesizing members.
+def _resolve_golden_geometry(catalog, params):
+    """Resolve x/y/width/height (+ center) for a golden-template element.
 
-    Handles color override (uint form for primitives), text/text-id, line-specific
-    geometry, and sequential VisualElementId.
+    Each dimension comes from ``params`` when supplied, else falls back to the
+    matching base-member value declared by the template's geometry roles.
     """
     geo = catalog.get("geometry", {})
     base = catalog.get("base_members", [])
@@ -761,53 +751,33 @@ def _render_golden_element(
         if params.get("height") is not None
         else _geo_default(geo.get("height"))
     )
-    center_x = x + w // 2
-    center_y = y + h // 2
+    return {
+        "x": x,
+        "y": y,
+        "width": w,
+        "height": h,
+        "center_x": x + w // 2,
+        "center_y": y + h // 2,
+    }
 
-    # Shape resolution.
-    shape_val = None
-    if params.get("shape"):
-        sv = _catalog.shape_value(catalog, params["shape"])
-        if sv is None:
-            raise BuilderError(
-                "Unknown shape '{0}'. Variants: {1}".format(
-                    params["shape"],
-                    ", ".join(sorted(catalog.get("shape_variants", {}))),
-                )
-            )
-        shape_val = sv
-    elif catalog.get("shape_variants"):
-        default_shape = catalog.get("default_shape", "rectangle")
-        shape_val = catalog.get("shape_variants", {}).get(
-            default_shape, "VISU_ST_RECTANGLE"
-        )
 
-    # Line endpoint geometry.
-    x1 = params.get("x1")
-    y1 = params.get("y1")
-    x2 = params.get("x2")
-    y2 = params.get("y2")
+def _resolve_golden_colors(catalog, params, theme_colors):
+    """Resolve (fill, frame, font) color uints for a golden-template element.
 
-    # Text / Text-ID.
-    text_val = params.get("text", "")
-    text_id_val = params.get("text_id", "")
-    text_var_val = params.get("text_var", "")
-    tap_var_val = params.get("tap_var", "")
-    toggle_var_val = params.get("toggle_var", "")
-    font_name_val = params.get("font_name", "Arial")
-    font_size_val = params.get("font_size", "12")
-
-    # Color override: custom primitives get theme defaults as uint literals.
-    # Native controls keep CODESYS visual-style colors unless SVG explicitly
-    # supplies fill/stroke.
+    ``fill``/``frame`` stay None when the element keeps its CODESYS visual-style
+    color -- native controls (button/textfield) with no explicit SVG fill/stroke.
+    Custom primitives fall back to their theme role (or signed default). Font
+    color always resolves, defaulting to opaque white.
+    """
     catalog_tcolors = catalog.get("themeable_colors", {})
     native_style_defaults = catalog.get("type") in ("button", "textfield")
     fill_uint = None
     frame_uint = None
 
     # Resolve font color (needed for any text-bearing element, not just primitives).
-    font_expr = params.get("font_color")
-    font_color_uint = _resolve_uint_color(font_expr, theme_colors, "4294967295")
+    font_color_uint = _resolve_uint_color(
+        params.get("font_color"), theme_colors, "4294967295"
+    )
 
     if catalog_tcolors:
         # Resolve fill color.
@@ -849,6 +819,74 @@ def _render_golden_element(
                     )
         else:
             frame_uint = _resolve_uint_color(frame_expr, theme_colors, None)
+
+    return fill_uint, frame_uint, font_color_uint
+
+
+def _render_golden_element(
+    template,
+    catalog,
+    params,
+    identifier,
+    owning_guid,
+    identification_guid,
+    visual_element_id=0,
+    theme_colors=None,
+):
+    """Render an element by substituting placeholders in a golden (IDE-exported)
+    template, instead of synthesizing members.
+
+    Handles color override (uint form for primitives), text/text-id, line-specific
+    geometry, and sequential VisualElementId.
+    """
+    geometry = _resolve_golden_geometry(catalog, params)
+    x = geometry["x"]
+    y = geometry["y"]
+    w = geometry["width"]
+    h = geometry["height"]
+    center_x = geometry["center_x"]
+    center_y = geometry["center_y"]
+
+    # Shape resolution.
+    shape_val = None
+    if params.get("shape"):
+        sv = _catalog.shape_value(catalog, params["shape"])
+        if sv is None:
+            raise BuilderError(
+                "Unknown shape '{0}'. Variants: {1}".format(
+                    params["shape"],
+                    ", ".join(sorted(catalog.get("shape_variants", {}))),
+                )
+            )
+        shape_val = sv
+    elif catalog.get("shape_variants"):
+        default_shape = catalog.get("default_shape", "rectangle")
+        shape_val = catalog.get("shape_variants", {}).get(
+            default_shape, "VISU_ST_RECTANGLE"
+        )
+
+    # Line endpoint geometry.
+    x1 = params.get("x1")
+    y1 = params.get("y1")
+    x2 = params.get("x2")
+    y2 = params.get("y2")
+
+    # Text / Text-ID.
+    text_val = params.get("text", "")
+    text_id_val = params.get("text_id", "")
+    text_var_val = params.get("text_var", "")
+    tap_var_val = params.get("tap_var", "")
+    toggle_var_val = params.get("toggle_var", "")
+    font_name_val = params.get("font_name", "Arial")
+    font_size_val = params.get("font_size", "12")
+
+    # Color override: custom primitives get theme defaults; native controls keep
+    # CODESYS visual-style colors unless SVG supplies fill/stroke. catalog_tcolors
+    # is retained here to drop unused color placeholders below.
+    catalog_tcolors = catalog.get("themeable_colors", {})
+    fill_uint, frame_uint, font_color_uint = _resolve_golden_colors(
+        catalog, params, theme_colors
+    )
 
     block = template
     block = block.replace("@@IDENTIFIER@@", _esc(identifier))
@@ -966,14 +1004,6 @@ def _render_golden_element(
             _render_frame_param_members(catalog, params),
         )
 
-    geometry = {
-        "x": x,
-        "y": y,
-        "width": w,
-        "height": h,
-        "center_x": center_x,
-        "center_y": center_y,
-    }
     return block, geometry
 
 
