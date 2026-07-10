@@ -13,7 +13,7 @@ import os
 import re
 import sys
 
-from . import builder, svg_export, svg_import, textlist, themes
+from . import builder, svg_export, svg_import, themes
 from . import catalog as _catalog
 
 
