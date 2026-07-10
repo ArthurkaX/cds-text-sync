@@ -10,6 +10,11 @@ import time
 
 from _project_layout import is_reserved_root_child
 from _project_profiles import enabled_projection_options, kind_for_type_guid
+from _view_paths import (
+    managed_relative_paths,
+    manifest_view_root,
+    normalize_fs_path,
+)
 from xml_helpers import (
     csv_projection_content,
     ensure_dir,
@@ -30,7 +35,7 @@ def _log(message):
 
 
 def _normalize_fs_path(path):
-    return os.path.normcase(os.path.abspath(os.path.normpath(path or "")))
+    return normalize_fs_path(path)
 
 
 def _absolute_view_path(path):
@@ -189,23 +194,10 @@ class FolderWriter:
         return root_path
 
     def _manifest_view_root(self, manifest):
-        value = manifest.get("view_root") or manifest.get("views_path")
-        if not value:
-            return None
-        text = str(value)
-        if text == ".":
-            return self.project_root
-        if os.path.isabs(text):
-            return _absolute_view_path(text)
-        return _absolute_view_path(os.path.join(self.project_root, text))
+        return manifest_view_root(manifest, self.project_root)
 
     def _managed_relative_paths(self, entry):
-        relative_paths = []
-        if entry.get("xml_path") or entry.get("view_path"):
-            relative_paths.append(entry.get("xml_path") or entry.get("view_path"))
-        for projection_path in entry.get("projection_paths") or []:
-            relative_paths.append(projection_path)
-        return relative_paths
+        return managed_relative_paths(entry)
 
     def _remove_previous_managed_files_from_root(
         self, manifest, root_path, selected_guids=None

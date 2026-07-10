@@ -45,7 +45,6 @@ from System.IO.Pipes import NamedPipeClientStream, PipeDirection
 from ide_daemon_state import (
     PIPE_NAME,
     VERSION,
-    POLL_INTERVAL,
     CONNECT_TIMEOUT_MS,
     LOG_FILE,
     MAX_MESSAGE_SIZE,
@@ -60,7 +59,6 @@ from ide_daemon_state import (
     _obj_name,
     _json_safe,
     _build_path,
-    _clear_path_cache,
     _load_daemon_config,
     _save_daemon_config,
     _check_permission,

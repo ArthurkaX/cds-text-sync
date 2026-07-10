@@ -421,25 +421,6 @@ def _render_color_member(member_id, color_int, canonical_name):
     )
 
 
-def _render_color_uint(member_id, unsigned_int):
-    """Render a color member as short-form uint literal (no struct, no CanonicalName).
-
-    Per plan_1 \u00a74: uint form is used for primitives when a color override is
-    provided OR when the theme default is applied (never style-linked for primitives).
-    """
-    return (
-        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
-        '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
-        '{mb}  <Single Name="Value" Type="uint">{val}</Single>\n'
-        "{mb}</Single>\n"
-    ).format(
-        mb=_MB,
-        mt=_MEMBER_TYPE,
-        id=member_id,
-        val=str(unsigned_int),
-    )
-
-
 def _remove_color_uint_placeholder(block, member_id):
     """Remove an unresolved short-form color override from a template block."""
     pattern = re.compile(

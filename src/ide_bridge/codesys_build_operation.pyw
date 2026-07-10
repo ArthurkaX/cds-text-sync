@@ -10,24 +10,16 @@ import re
 import time
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import load_base_dir, init_logging, resolve_projects, safe_str
+from codesys_utils import (
+    ensure_engine_path,
+    init_logging,
+    load_base_dir,
+    resolve_projects,
+    safe_str,
+)
 
 
 BUILD_CATEGORY_GUID = "97F48D64-A2A3-4856-B640-75C046E37EA9"
-
-
-def _utility_root():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _ensure_engine_path():
-    import sys
-    engine_dir = os.path.join(_utility_root(), "cli", "external_engine")
-    if not os.path.isdir(engine_dir):
-        engine_dir = os.path.join(_utility_root(), "src", "external_engine")
-    if engine_dir not in sys.path:
-        sys.path.insert(0, engine_dir)
-    return engine_dir
 
 
 def _dump_root(base_dir):
@@ -74,7 +66,7 @@ def _project_name(project):
 
 
 def _load_profile(base_dir):
-    _ensure_engine_path()
+    ensure_engine_path()
     try:
         from _project_profiles import kind_for_type_guid, load_profile
         from _project_settings import load_project_settings

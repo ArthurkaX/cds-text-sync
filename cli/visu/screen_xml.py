@@ -201,12 +201,6 @@ def resize_screen(xml_text, width, height):
     if (size_x, size_y) == (width, height):
         return xml_text  # no change needed
 
-    def _replace_size(pattern, new_value):
-        def _replacer(m):
-            return m.group(1) + str(new_value) + m.group(4)
-
-        return _NAME_INT_RE.sub(_replacer, xml_text, count=1)
-
     # Replace SizeX.
     new_text = _NAME_INT_RE.sub(
         lambda m: (

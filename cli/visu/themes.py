@@ -413,25 +413,10 @@ def resolve_color(color_expr, theme_colors):
         raise ThemeError("Cannot resolve color expression: '{0}'".format(color_expr))
 
 
-def resolve_color_signed(color_expr, theme_colors):
-    """Resolve color expression to a *signed* 32-bit int string.
-
-    For use with the struct-based color emitter (_render_color_member).
-    """
-    unsigned = resolve_color(color_expr, theme_colors)
-    if unsigned is None:
-        return None
-    if unsigned >= 0x80000000:
-        signed = unsigned - 0x100000000
-    else:
-        signed = unsigned
-    return str(signed)
-
-
 def resolve_color_unsigned(color_expr, theme_colors):
     """Resolve color expression to an *unsigned* 32-bit int string.
 
-    For use with the uint emitter (_render_color_uint).
+    For use with the short-form uint color emitter.
     """
     unsigned = resolve_color(color_expr, theme_colors)
     if unsigned is None:
