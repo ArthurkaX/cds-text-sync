@@ -295,6 +295,7 @@ if ([string]::IsNullOrWhiteSpace($choice)) {
 
 # 4. Determine download URL and version name
 $zipUrl = ""
+$fallbackZipUrl = ""
 $versionName = ""
 
 if ($choice -eq "L") {
@@ -305,6 +306,7 @@ if ($choice -eq "L") {
     if ($testIndex -ge 0 -and $testIndex -lt $testTags.Count) {
         $selectedTag = $testTags[$testIndex]
         $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
+        $fallbackZipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
         $versionName = $selectedTag
     } else {
         Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
@@ -316,6 +318,7 @@ if ($choice -eq "L") {
     if ($tagIndex -ge 0 -and $tagIndex -lt $stableTags.Count) {
         $selectedTag = $stableTags[$tagIndex]
         $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
+        $fallbackZipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
         $versionName = $selectedTag
     } else {
         Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
@@ -375,14 +378,30 @@ $tempExtractPath = "$env:TEMP\cds-text-sync-temp-$versionName"
 
 try {
     Write-Host "[*] Downloading cds-text-sync ($versionName)..." -ForegroundColor Cyan
-    Invoke-WebRequest -Uri $zipUrl -OutFile $tempZipPath -UseBasicParsing
-    
+    try {
+        Invoke-WebRequest -Uri $zipUrl -OutFile $tempZipPath -UseBasicParsing
+    } catch {
+        if ($fallbackZipUrl) {
+            Write-Host "[!] Release asset not available; downloading source archive for $versionName instead." -ForegroundColor Yellow
+            Invoke-WebRequest -Uri $fallbackZipUrl -OutFile $tempZipPath -UseBasicParsing
+        } else {
+            throw
+        }
+    }
+
     Write-Host "[*] Extracting archive..." -ForegroundColor Cyan
     Expand-Archive -Path $tempZipPath -DestinationPath $tempExtractPath -Force
-    
-    # Find the extracted folder (it will be named "cds-text-sync-main" or "cds-text-sync-v1.7.3")
-    $extractedFolder = Get-ChildItem $tempExtractPath -Directory | Select-Object -First 1
-    $extractedPath = $extractedFolder.FullName
+
+    # Archives normally contain a single top-level folder ("cds-text-sync-main",
+    # "cds-text-sync-v1.7.3"). Some older release assets are flat (files at the
+    # archive root) - in that case the extract directory itself is the package.
+    $topDirs = @(Get-ChildItem $tempExtractPath -Directory)
+    $topFiles = @(Get-ChildItem $tempExtractPath -File)
+    if ($topDirs.Count -eq 1 -and $topFiles.Count -eq 0) {
+        $extractedPath = $topDirs[0].FullName
+    } else {
+        $extractedPath = $tempExtractPath
+    }
     
     if (Test-Path $fullPath) {
         Write-Host "[*] Updating existing installation..." -ForegroundColor Cyan
