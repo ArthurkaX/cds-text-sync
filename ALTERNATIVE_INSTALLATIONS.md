@@ -17,9 +17,16 @@ This guide explains how to install `cds-text-sync` in non-standard environments 
 
 ## Installation Paths
 
-### 1. Default (Recommended)
+> [!IMPORTANT]
+> **CODESYS version matters.** Newer CODESYS scans the per-user `%LOCALAPPDATA%\CODESYS\ScriptDir`, while **older CODESYS (roughly before V3.5 SP17, e.g. 3.5.16) only scans the machine-wide `%PROGRAMDATA%\CODESYS\ScriptDir`**. If you install into `%LOCALAPPDATA%` on an old CODESYS, the scripts will **not** appear under `Tools -> Scripting`. The [Quick Installer](irm/setup.md) auto-detects the installed version and recommends the correct path; on a legacy install pick option **[3] Legacy CODESYS**.
+
+### 1. Default (Recommended, modern CODESYS)
 `%LOCALAPPDATA%\CODESYS\ScriptDir\`
 Portable, avoids Program Files permission issues, and works with side-by-side installations.
+
+### 1b. Legacy CODESYS (< 3.5.17)
+`%PROGRAMDATA%\CODESYS\ScriptDir\`
+Machine-wide path scanned by older CODESYS. Writing here usually requires **administrator rights** — run the installer (or the copy step) from an elevated PowerShell.
 
 ### 2. Per-Installation
 `C:\Program Files\CODESYS 3.5.x.x\CODESYS\ScriptDir\`
@@ -37,8 +44,9 @@ Example: `...DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir\`
 - **ScriptDir missing:** Create it manually before installation or let the Quick Installer create it.
 - **Scripts not in menu:**
   1. Ensure files are in `ScriptDir\cds-text-sync`.
-  2. Restart CODESYS completely.
-  3. Verify `.py` and `.pyw` files are both present (don't copy only `.py`).
+  2. **Check the ScriptDir location matches your CODESYS version.** Old CODESYS (< ~3.5.17) reads `%PROGRAMDATA%\CODESYS\ScriptDir`, not `%LOCALAPPDATA%`. If you are on 3.5.16 or similar and installed into `%LOCALAPPDATA%`, copy the package to `%PROGRAMDATA%\CODESYS\ScriptDir\` (elevated shell) or re-run the installer and choose **[3] Legacy CODESYS**.
+  3. Restart CODESYS completely.
+  4. Verify `.py` and `.pyw` files are both present (don't copy only `.py`).
 - **CLI command missing:** manual ScriptDir installation does not install the system CLI. Run `python -m pip install -e "<ScriptDir>\cds-text-sync"` so `cds-text-sync --help` works from CMD, PowerShell, Git Bash, or WSL.
 - **Python errors inside CODESYS scripts:** CODESYS uses its own internal Python/IronPython environment for `Project_*.py` scripts.
 - **Python errors from `cds-text-sync` CLI:** the system CLI uses your Windows Python 3 installation.

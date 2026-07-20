@@ -15,7 +15,8 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 ## Features
 
-- **Path Selection**: Choose between standard CODESYS paths or custom paths for forks (KeStudio, DIA Designer, etc.).
+- **Version-Aware Path**: Detects the installed CODESYS version and recommends the right `ScriptDir`. Newer CODESYS uses `%LOCALAPPDATA%\CODESYS\ScriptDir`; older CODESYS (before ~V3.5 SP17, e.g. 3.5.16) only scans `%PROGRAMDATA%\CODESYS\ScriptDir` — pick **[3] Legacy CODESYS** for those (may require administrator rights).
+- **Path Selection**: Choose between the standard user path, the legacy machine-wide path, or a custom path for forks (KeStudio, DIA Designer, etc.).
 - **Version Control**: Interactive menu with the latest `main` branch, the last 5 stable releases, and the last 5 test / pre-release builds.
 - **Auto-Update**: Detects existing versions, creates backups, and replaces files safely.
 - **CLI Install**: Offers to run `python -m pip install -e <install-path>` so `cds-text-sync` is available from any shell.

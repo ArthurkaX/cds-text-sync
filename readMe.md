@@ -125,6 +125,7 @@ The classic `Project_*.py` workflow remains supported and is still documented be
 
    Depending on your software and setup preference, use one of the following paths:
    - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
+   - **Legacy CODESYS (< ~3.5.17)**: `C:\ProgramData\CODESYS\ScriptDir\` — older CODESYS (e.g. 3.5.16) scans this machine-wide path, **not** the user profile one. May require administrator rights.
    - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
    - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
 

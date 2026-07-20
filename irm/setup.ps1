@@ -183,6 +183,72 @@ function Install-CliCommand {
     }
 }
 
+function Get-CodesysSpVersions {
+    # Return the sorted, unique SP minor numbers (the N in 3.5.N.x) of every
+    # CODESYS installation found under Program Files. Vendor forks (DIAStudio,
+    # KeStudio, ...) use their own folder names and are intentionally not
+    # detected here - those rely on the custom path option.
+    $roots = @()
+    if ($env:ProgramFiles) { $roots += $env:ProgramFiles }
+    if (${env:ProgramFiles(x86)}) { $roots += ${env:ProgramFiles(x86)} }
+
+    $sps = @()
+    foreach ($root in $roots) {
+        $dirs = Get-ChildItem -Path $root -Directory -Filter "CODESYS *" -ErrorAction SilentlyContinue
+        foreach ($dir in $dirs) {
+            if ($dir.Name -match "CODESYS\s+3\.5\.(\d+)(?:\.|$)") {
+                $sps += [int]$matches[1]
+            }
+        }
+    }
+    return @($sps | Sort-Object -Unique)
+}
+
+function Resolve-ScriptDirDefault {
+    # Pick a recommended ScriptDir based on the installed CODESYS versions.
+    # Older CODESYS scans the machine-wide %PROGRAMDATA%\CODESYS\ScriptDir,
+    # newer versions scan the per-user %LOCALAPPDATA%\CODESYS\ScriptDir. The
+    # boundary is only used to pre-select a default; the user can always
+    # override it in the menu, so an imperfect boundary is recoverable.
+    param([int]$LegacyBoundary = 17)
+
+    $sps = @(Get-CodesysSpVersions)
+    $legacy = @($sps | Where-Object { $_ -lt $LegacyBoundary })
+    $modern = @($sps | Where-Object { $_ -ge $LegacyBoundary })
+
+    $recommended = "LocalAppData"
+    $reason = ""
+
+    if ($legacy.Count -gt 0 -and $modern.Count -eq 0) {
+        $recommended = "ProgramData"
+        $reason = "Only legacy CODESYS (SP < $LegacyBoundary) detected - the machine-wide ProgramData path is required."
+    } elseif ($modern.Count -gt 0 -and $legacy.Count -eq 0) {
+        $recommended = "LocalAppData"
+        $reason = "Modern CODESYS (SP >= $LegacyBoundary) detected - the per-user ScriptDir is used."
+    } elseif ($legacy.Count -gt 0 -and $modern.Count -gt 0) {
+        $recommended = "LocalAppData"
+        $reason = "Both legacy and modern CODESYS detected - defaulting to the user path. If scripts do not appear on the legacy install, re-run and pick the Legacy path (3)."
+    } else {
+        $laExists = Test-Path (Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir")
+        $pdExists = Test-Path (Join-Path $env:ProgramData "CODESYS\ScriptDir")
+        if ($pdExists -and -not $laExists) {
+            $recommended = "ProgramData"
+            $reason = "No CODESYS version detected, but a legacy ProgramData ScriptDir already exists."
+        } else {
+            $recommended = "LocalAppData"
+            $reason = "No CODESYS installation detected - using the standard user path."
+        }
+    }
+
+    return [PSCustomObject]@{
+        Versions       = $sps
+        LegacyDetected = ($legacy.Count -gt 0)
+        ModernDetected = ($modern.Count -gt 0)
+        Recommended    = $recommended
+        Reason         = $reason
+    }
+}
+
 if (-not (Test-PythonCommand)) {
     $pythonReady = Offer-PythonInstall
     if (-not $pythonReady -and -not (Test-PythonCommand)) {
@@ -328,13 +394,30 @@ if ($choice -eq "L") {
 }
 
 # 5. Installation Path Selection
-Write-Host "`n--- Installation Path ---" -ForegroundColor Cyan
-Write-Host "[1] Standard CODESYS (%LOCALAPPDATA%\CODESYS\ScriptDir\) [DEFAULT]"
-Write-Host "[2] Alternative path (for KeStudio, DIA Designer-AX, etc.)"
+$recommendation = Resolve-ScriptDirDefault
+$localAppDataScriptDir = Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir"
+$programDataScriptDir  = Join-Path $env:ProgramData "CODESYS\ScriptDir"
+$targetIsProgramData = $false
 
-$pathChoice = Read-Host "`nSelect installation path [1, 2] (default: 1)"
+Write-Host "`n--- Installation Path ---" -ForegroundColor Cyan
+if ($recommendation.Versions.Count -gt 0) {
+    Write-Host ("[i] Detected CODESYS: " + (($recommendation.Versions | ForEach-Object { "3.5.$_" }) -join ", ")) -ForegroundColor DarkGray
+}
+if ($recommendation.Reason) {
+    Write-Host "[i] $($recommendation.Reason)" -ForegroundColor DarkGray
+}
+
+$laLabel = if ($recommendation.Recommended -eq "LocalAppData") { " [RECOMMENDED]" } else { "" }
+$pdLabel = if ($recommendation.Recommended -eq "ProgramData") { " [RECOMMENDED]" } else { "" }
+
+Write-Host "[1] Standard CODESYS user path (%LOCALAPPDATA%\CODESYS\ScriptDir\)$laLabel"
+Write-Host "[2] Alternative path (for KeStudio, DIA Designer-AX, custom forks)"
+Write-Host "[3] Legacy CODESYS < 3.5.17 (%PROGRAMDATA%\CODESYS\ScriptDir\)$pdLabel"
+
+$defaultChoice = if ($recommendation.Recommended -eq "ProgramData") { "3" } else { "1" }
+$pathChoice = Read-Host "`nSelect installation path [1, 2, 3] (default: $defaultChoice)"
 if ([string]::IsNullOrWhiteSpace($pathChoice)) {
-    $pathChoice = "1"
+    $pathChoice = $defaultChoice
 }
 
 if ($pathChoice -eq "2") {
@@ -353,17 +436,58 @@ if ($pathChoice -eq "2") {
     if (-not (Test-Path $targetBaseDir)) {
         Write-Host "[*] Directory does not exist. Creating: $targetBaseDir" -ForegroundColor Yellow
         try {
-            New-Item -ItemType Directory -Force -Path $targetBaseDir | Out-Null
+            New-Item -ItemType Directory -Force -Path $targetBaseDir -ErrorAction Stop | Out-Null
             Write-Host "[+] Directory created successfully." -ForegroundColor Green
         } catch {
             Write-Host "[!] Failed to create directory: $_" -ForegroundColor Red
             Write-Host "[*] Falling back to standard path..." -ForegroundColor Yellow
-            $targetBaseDir = Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir"
+            $targetBaseDir = $localAppDataScriptDir
         }
     }
+} elseif ($pathChoice -eq "3") {
+    $targetBaseDir = $programDataScriptDir
+    $targetIsProgramData = $true
+    Write-Host "[*] Using legacy machine-wide path: $targetBaseDir" -ForegroundColor Cyan
+} else {
+    $targetBaseDir = $localAppDataScriptDir
+}
 
-    # Update fullPath with new targetBaseDir
-    $fullPath = Join-Path $targetBaseDir $repoName
+# Update fullPath with the resolved targetBaseDir
+$fullPath = Join-Path $targetBaseDir $repoName
+
+# 5b. If installing into ProgramData, verify write access up front.
+# %PROGRAMDATA%\CODESYS usually needs administrator rights. On failure we warn,
+# print the exact elevated copy command, and fall back to the user path so the
+# package and CLI still install (the legacy CODESYS only sees the scripts once
+# they are copied into ProgramData).
+if ($targetIsProgramData) {
+    $canWriteProgramData = $false
+    try {
+        if (-not (Test-Path $targetBaseDir)) {
+            New-Item -ItemType Directory -Force -Path $targetBaseDir -ErrorAction Stop | Out-Null
+        }
+        $probeFile = Join-Path $targetBaseDir (".cts_write_test_" + $PID)
+        Set-Content -Path $probeFile -Value "test" -ErrorAction Stop
+        Remove-Item -Path $probeFile -Force -ErrorAction SilentlyContinue
+        $canWriteProgramData = $true
+    } catch {
+        $canWriteProgramData = $false
+    }
+
+    if (-not $canWriteProgramData) {
+        Write-Host "`n[!] No write permission for the legacy ProgramData ScriptDir:" -ForegroundColor Yellow
+        Write-Host "    $targetBaseDir" -ForegroundColor Yellow
+        Write-Host "    This path typically requires administrator rights." -ForegroundColor Yellow
+        Write-Host "`n    Fix option A - re-run this installer from an elevated PowerShell (Run as administrator)." -ForegroundColor Cyan
+        Write-Host "    Fix option B - after this run, copy the files once from an elevated PowerShell:" -ForegroundColor Cyan
+        Write-Host "        Copy-Item -Recurse -Force `"$localAppDataScriptDir\$repoName`" `"$targetBaseDir\`"" -ForegroundColor Cyan
+        Write-Host "`n[*] Falling back to the standard user path so the package and CLI still install:" -ForegroundColor Yellow
+        Write-Host "    $localAppDataScriptDir" -ForegroundColor Yellow
+        Write-Host "    (On legacy CODESYS the scripts appear only after they exist in ProgramData.)" -ForegroundColor Yellow
+        $targetBaseDir = $localAppDataScriptDir
+        $targetIsProgramData = $false
+        $fullPath = Join-Path $targetBaseDir $repoName
+    }
 }
 
 # 6. Create required directories if they don't exist
