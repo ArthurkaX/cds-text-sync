@@ -4,10 +4,12 @@ engine_cli.py - Command Line Interface for the Python 3 External Engine.
 """
 
 import argparse
+import json
 import os
 import sys
 import time
 
+from _dirty_scan import scan_dirty
 from _patch_builder import PatchBuilder, UnsupportedPatchError
 from _project_layout import (
     LAYOUT_LEGACY_DUMP_VIEWS,
@@ -15,8 +17,12 @@ from _project_layout import (
     LAYOUT_ROOT_VIEW,
     resolve_layout,
 )
-from _project_profiles import load_profile
-from _project_settings import load_project_settings
+from _project_profiles import (
+    effective_projection_selection,
+    enabled_projection_options,
+    load_profile,
+)
+from _project_settings import load_project_settings, normalize_sync_mode
 from call_tree import run_call_tree as _run_call_tree
 from diff_engine import DiffEngine
 from folder_reader import FolderReader
@@ -62,6 +68,27 @@ def _timestamp():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _configure_stdio_utf8():
+    """Force stdout/stderr to UTF-8 so diagnostic prints never crash.
+
+    Windows consoles (and redirected pipes) default sys.stdout to the legacy
+    ANSI codepage (cp1252), which raises UnicodeEncodeError the moment a log
+    line contains a non-cp1252 character -- e.g. the Cyrillic source paths that
+    embedded-resource objects carry as their name. That crash exits the engine
+    non-zero and surfaces to the daemon as a bare "external engine ... failed".
+    The daemon already reads our streams as UTF-8 (errors="replace"), so emit
+    UTF-8 unconditionally. errors="replace" keeps us alive even on odd streams.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
 def _log(message):
     print("[{0}] {1}".format(_timestamp(), message))
 
@@ -80,6 +107,36 @@ def _layout(args):
     )
 
 
+def _read_manifest(dump_path):
+    manifest_path = os.path.join(dump_path, "manifest.json")
+    if not os.path.exists(manifest_path):
+        return None
+    try:
+        with open(manifest_path, "r") as f:
+            return json.load(f)
+    except Exception as error:
+        print("Warning: Could not read manifest:", error)
+        return None
+
+
+def _ensure_sync_mode_consistent(settings, dump_path):
+    """The sync mode is fixed at initialization; refuse a mismatched settings file."""
+    manifest = _read_manifest(dump_path)
+    if manifest is None:
+        return
+    manifest_mode = normalize_sync_mode(manifest.get("sync_mode"))
+    settings_mode = normalize_sync_mode(settings.get("sync_mode"))
+    if manifest_mode != settings_mode:
+        print(
+            "Error: Sync mode is fixed at initialization: this sync folder is {0} "
+            "but cds-text-sync.json requests {1}. To switch between XML-first and "
+            "text-first, start from a clean sync directory.".format(
+                manifest_mode, settings_mode
+            )
+        )
+        sys.exit(1)
+
+
 def _load_models(args, context):
     ide_reader = SnapshotReader(
         args.snapshot, project_name=os.path.basename(args.project_root)
@@ -89,6 +146,7 @@ def _load_models(args, context):
     project_layout = _layout(args)
     dump_path = project_layout.dump_root
     settings = _settings(args)
+    _ensure_sync_mode_consistent(settings, dump_path)
     profile = load_profile(settings.get("profile"))
     folder_reader = FolderReader(project_layout.view_root, dump_path, profile=profile)
     try:
@@ -204,18 +262,79 @@ def run_export(args):
         sys.exit(1)
 
     dump_path = project_layout.dump_root
+    sync_mode = normalize_sync_mode(settings.get("sync_mode"))
+    profile = load_profile(settings.get("profile"))
     writer = FolderWriter(
         project_layout.view_root,
         dump_path,
-        profile=load_profile(settings.get("profile")),
-        projections=settings.get("projections"),
+        profile=profile,
+        projections=effective_projection_selection(
+            profile,
+            settings.get("projections"),
+            sync_mode,
+        ),
         selected_guids=selected_guids,
+        overwrite_dirty=bool(getattr(args, "overwrite_dirty", False)),
+        remove_orphans=bool(getattr(args, "remove_orphans", False)),
+        sync_mode=sync_mode,
+        xml_in_view_kinds=settings.get("xml_in_view_kinds"),
     )
     try:
         writer.write(model)
     except RuntimeError as error:
         print("Error:", error)
         sys.exit(1)
+
+
+def _enabled_projection_extensions(settings):
+    profile = load_profile(settings.get("profile"))
+    selection = effective_projection_selection(
+        profile,
+        settings.get("projections"),
+        normalize_sync_mode(settings.get("sync_mode")),
+    )
+    extensions = set()
+    for projection in enabled_projection_options(profile, selection):
+        extension = "." + str(projection.get("format") or "").strip().lower()
+        if extension in (".st", ".csv"):
+            extensions.add(extension)
+    return extensions
+
+
+def run_check_dirty(args):
+    project_layout = _layout(args)
+    manifest = _read_manifest(project_layout.dump_root)
+
+    settings = _settings(args)
+    sync_mode = (manifest or {}).get("sync_mode") or "xml_first"
+    # Text-first preserves unmanaged .st/.csv files, so orphans are not at risk.
+    enabled_extensions = (
+        None if sync_mode == "text_first" else _enabled_projection_extensions(settings)
+    )
+    report = scan_dirty(
+        manifest,
+        project_layout.view_root,
+        enabled_extensions=enabled_extensions,
+        selected_guids=_filter_guids(args) or None,
+    )
+    report["generated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    report["view_root"] = project_layout.view_root
+    report["sync_mode"] = sync_mode
+
+    report_dir = os.path.dirname(os.path.abspath(args.report))
+    if report_dir and not os.path.isdir(report_dir):
+        os.makedirs(report_dir)
+    with open(args.report, "w") as f:
+        json.dump(report, f, indent=2)
+
+    if report["dirty"] or report["orphans"]:
+        print(
+            "Warning: export would overwrite {0} locally-modified and remove {1} unmanaged view files.".format(
+                len(report["dirty"]), len(report["orphans"])
+            )
+        )
+    else:
+        _log("Dirty check clean: no locally-modified view files.")
 
 
 def run_compare(args):
@@ -303,6 +422,7 @@ def run_snapshooter_map(args):
 
 
 def main():
+    _configure_stdio_utf8()
     parser = argparse.ArgumentParser(description="CODESYS Offline Sync Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -336,6 +456,54 @@ def main():
 
     # export
     parser_export = subparsers.add_parser("export", parents=[parent_parser])
+    dirty_group = parser_export.add_mutually_exclusive_group()
+    dirty_group.add_argument(
+        "--overwrite-dirty",
+        action="store_true",
+        help="Overwrite view files whose content changed on disk since the last export.",
+    )
+    dirty_group.add_argument(
+        "--skip-dirty",
+        action="store_true",
+        help="Keep locally-modified view files untouched and carry their previous "
+        "manifest hashes forward so the next import still sees the edits. "
+        "This is the default when neither flag is given.",
+    )
+    parser_export.add_argument(
+        "--remove-orphans",
+        action="store_true",
+        help="Delete unmanaged derived (.st/.csv) files with no manifest entry. "
+        "Independent of --overwrite-dirty; off by default (orphans are kept "
+        "and reported).",
+    )
+
+    # check-dirty (no --snapshot: works from the manifest and disk state alone)
+    parser_checkdirty = subparsers.add_parser("check-dirty")
+    parser_checkdirty.add_argument(
+        "--project-root", required=True, help="Path to project root"
+    )
+    parser_checkdirty.add_argument(
+        "--view-root",
+        "--views",
+        dest="view_root",
+        default=None,
+        help="Path to editable project view root. --views is a backward-compatible alias.",
+    )
+    parser_checkdirty.add_argument(
+        "--layout",
+        choices=[LAYOUT_LEGACY_DUMP_VIEWS, LAYOUT_PROJECT_VIEW, LAYOUT_ROOT_VIEW],
+        default=None,
+        help="Resolve default view root when --view-root is omitted.",
+    )
+    parser_checkdirty.add_argument(
+        "--filter-guids",
+        action="append",
+        default=[],
+        help="Comma-separated GUID list to limit the dirty check to selected objects.",
+    )
+    parser_checkdirty.add_argument(
+        "--report", required=True, help="Path to dirty report JSON"
+    )
 
     # compare
     parser_compare = subparsers.add_parser("compare", parents=[parent_parser])
@@ -398,6 +566,8 @@ def main():
 
     if args.command == "export":
         run_export(args)
+    elif args.command == "check-dirty":
+        run_check_dirty(args)
     elif args.command == "compare":
         run_compare(args)
     elif args.command == "import":

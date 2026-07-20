@@ -16,9 +16,18 @@ the `cts` CLI once `Project_daemon.py` is running inside CODESYS (see `cli/CLI.m
 
 Before the team can start working, the project must be prepared:
 
-1.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes the editable `project-view/` tree for review.
-2.  **Choose Git Scope**: For team review, track `project-view/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
-3.  **Initialize Repository**: A Git repository is created, and the chosen exported view files (and optionally the `.project` binary using LFS) are pushed to a remote server (e.g., GitHub, GitLab).
+1.  **Choose the sync mode**: Run `Project_options.py` on the **empty** sync folder and decide between XML-first (default) and text-first (`.st` files are the source of truth). The mode is fixed once the first export runs; switching later requires a new empty sync folder.
+2.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes the editable `project-view/` tree for review.
+3.  **Choose Git Scope**: For team review, track `project-view/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
+4.  **Initialize Repository**: A Git repository is created, and the chosen exported view files (and optionally the `.project` binary using LFS) are pushed to a remote server (e.g., GitHub, GitLab).
+
+### Text-first projects: what is tracked
+
+In text-first mode the tracked surface is intentionally text:
+
+- **Tracked**: `project-view/**/*.st` (and `.csv` projections), the native `.xml` of kinds kept in the view via `xml_in_view_kinds` (default: visualizations), and `cds-text-sync.json`.
+- **Not tracked**: everything in `.dump/`, including the tool-owned `.dump/xml/` structural mirror. A teammate's fresh clone has no `.dump/` at all — `Project_import.py` still applies the `.st` files by overlaying them on a fresh IDE baseline, and objects missing from the IDE are recreated from their text.
+- Local `.st` edits are protected: export skips (or, interactively, asks before overwriting) any file changed on disk that has not been imported yet.
 
 ## 2. Team Roles
 

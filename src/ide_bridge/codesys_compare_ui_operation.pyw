@@ -143,6 +143,9 @@ def main(params=None, runtime=None):
             if not selected_guids:
                 runtime.ui.warning("No objects selected for export.")
                 return {"status": "success", "action": "none"}
+            confirm_overwrite_fn = None
+            if not runtime.is_headless and hasattr(runtime.ui, "confirm_overwrite_dirty"):
+                confirm_overwrite_fn = runtime.ui.confirm_overwrite_dirty
             if ide_run_action.run_action(
                 "export",
                 system,
@@ -151,6 +154,9 @@ def main(params=None, runtime=None):
                 view_root=params.get("view_root"),
                 layout_mode=params.get("layout"),
                 selected_guids=selected_guids,
+                overwrite_dirty=params.get("overwrite_dirty"),
+                remove_orphans=params.get("remove_orphans"),
+                confirm_overwrite_fn=confirm_overwrite_fn,
             ):
                 runtime.ui.info("Selected export completed from compare UI.")
                 return {"status": "success", "action": "export", "selected_guids": selected_guids}

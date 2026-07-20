@@ -7,8 +7,12 @@ These are helper-level unit tests, not full subprocess tests.
 """
 
 import argparse
+import io
+import sys
 
-from engine_cli import _filter_diff_result, _filter_guids
+import pytest
+
+from engine_cli import _configure_stdio_utf8, _filter_diff_result, _filter_guids, _log
 
 # ===================================================================
 # _filter_guids
@@ -93,3 +97,55 @@ class TestFilterDiffResult:
         }
         result = _filter_diff_result(diff, None)
         assert result == diff
+
+
+# ===================================================================
+# _configure_stdio_utf8 (regression: non-ASCII diagnostic prints)
+# ===================================================================
+
+
+class TestConfigureStdioUtf8:
+    """A legacy Windows codepage (cp1252) stdout crashes on non-ASCII log lines.
+
+    Embedded-resource objects carry their original import path as their name,
+    which is frequently Cyrillic. When compare logs such a node, the bare
+    print() in _log raised UnicodeEncodeError and the engine exited non-zero,
+    surfacing to the daemon as "external engine compare failed". The fix forces
+    stdout/stderr to UTF-8 so those diagnostics never crash.
+    """
+
+    def test_log_survives_non_ascii_after_reconfigure(self):
+        legacy = io.TextIOWrapper(
+            io.BytesIO(), encoding="cp1252", errors="strict", newline=""
+        )
+        cyrillic = "Рабочий стол/пикчи/safety_door.png"
+        saved_out, saved_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout = legacy
+            sys.stderr = legacy
+            # Baseline: the legacy codepage cannot encode Cyrillic -- the crash.
+            with pytest.raises(UnicodeEncodeError):
+                legacy.write(cyrillic)
+                legacy.flush()
+            # Apply the fix and re-run the exact code path compare uses.
+            _configure_stdio_utf8()
+            _log("deleted: " + cyrillic)
+            sys.stdout.flush()
+            payload = legacy.buffer.getvalue().decode("utf-8")
+        finally:
+            sys.stdout, sys.stderr = saved_out, saved_err
+        assert cyrillic in payload
+
+    def test_reconfigure_is_safe_on_streams_without_reconfigure(self):
+        # Streams that predate TextIOWrapper.reconfigure (or are swapped for a
+        # plain object) must be tolerated, not crash the engine at startup.
+        class _NoReconfigure:
+            pass
+
+        saved_out, saved_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout = _NoReconfigure()
+            sys.stderr = _NoReconfigure()
+            _configure_stdio_utf8()  # must not raise
+        finally:
+            sys.stdout, sys.stderr = saved_out, saved_err

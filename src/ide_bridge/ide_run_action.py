@@ -60,9 +60,9 @@ def _completion_popup_enabled(project_root):
         return True
 
 
-def _completion_message(action, views_path, dump_root, ide_xml_path, patch_path=None, apply_result=None):
+def _completion_message(action, views_path, dump_root, ide_xml_path, patch_path=None, apply_result=None, pending_import=None, kept_orphans=None):
     if action == "export":
-        return (
+        message = (
             "Export completed successfully.\n\n"
             "View root:\n{0}\n\n"
             "Snapshot:\n{1}\n\n"
@@ -72,6 +72,17 @@ def _completion_message(action, views_path, dump_root, ide_xml_path, patch_path=
             ide_xml_path,
             os.path.join(dump_root, "manifest.json"),
         )
+        if pending_import:
+            message += (
+                "\n\nPending import (locally modified, not overwritten):\n"
+                + "\n".join(pending_import)
+            )
+        if kept_orphans:
+            message += (
+                "\n\nUnmanaged files kept (re-run and tick 'Remove' to delete):\n"
+                + "\n".join(kept_orphans)
+            )
+        return message
     if action == "import":
         summary = apply_result.summary() if hasattr(apply_result, "summary") else "success"
         return (
@@ -80,6 +91,43 @@ def _completion_message(action, views_path, dump_root, ide_xml_path, patch_path=
             "Result:\n{1}"
         ).format(patch_path or os.path.join(dump_root, "IMPORT.xml"), summary)
     return "Action " + action + " completed successfully."
+
+
+def _read_json_file(path):
+    try:
+        import json
+        with open(path, "r") as handle:
+            return json.load(handle)
+    except Exception:
+        return None
+
+
+def _dirty_preflight(project_root, dump_root, views_path, selected_guids, warning_fn):
+    """Run the engine dirty check before an export.
+
+    Returns the dirty report dict, or None when there is nothing to check
+    (first export) or the check could not run (export then proceeds in the
+    safe skip mode).
+    """
+    manifest_path = os.path.join(dump_root, "manifest.json")
+    if not os.path.exists(manifest_path):
+        return None
+    report_path = os.path.join(dump_root, "dirty_report.json")
+    args = [
+        "check-dirty",
+        "--project-root", project_root,
+        "--view-root", views_path,
+        "--report", report_path,
+    ]
+    args.extend(_selected_guid_args(selected_guids))
+    if not ide_runtime_common.run_external_engine(
+        args, project_root=project_root, dump_root=dump_root, warning_fn=warning_fn
+    ):
+        ide_runtime_common.log_error(
+            "Dirty check failed; export will keep locally-modified files untouched."
+        )
+        return None
+    return _read_json_file(report_path)
 
 
 def run_action(
@@ -92,6 +140,9 @@ def run_action(
     layout_mode=None,
     selected_guids=None,
     include_objects=False,
+    overwrite_dirty=None,
+    remove_orphans=None,
+    confirm_overwrite_fn=None,
 ):
     """
     1. Dump IDE.xml
@@ -105,20 +156,57 @@ def run_action(
     views_path = project_layout.view_root
     verbose_logging, log_path = ide_runtime_common.project_logging_config(project_root, dump_root)
     detailed_log = ide_runtime_common.make_detailed_logger(log_path)
-    
+
     # Ensure dump dir exists
     if not os.path.exists(dump_root):
         os.makedirs(dump_root)
-        
+
+    def warning_fn(message):
+        _show_warning(system, message)
+
+    # 0. Dirty preflight for export: never silently overwrite local edits, and
+    # softly propose (never force) removing unmanaged files.
+    engine_overwrite_dirty = bool(overwrite_dirty)
+    engine_remove_orphans = bool(remove_orphans)
+    pending_import = []
+    kept_orphans = []
+    if action == "export":
+        report = _dirty_preflight(project_root, dump_root, views_path, selected_guids, warning_fn)
+        dirty_items = (report or {}).get("dirty") or []
+        orphan_items = (report or {}).get("orphans") or []
+        if dirty_items or orphan_items:
+            if confirm_overwrite_fn is not None:
+                decision = confirm_overwrite_fn(report)
+                if decision is None:
+                    _show_info(
+                        system,
+                        "Export cancelled. No files were changed.\n\n"
+                        "Run Import first to bring the local edits into the IDE.",
+                    )
+                    ide_runtime_common.log_info(
+                        "Export cancelled by user: local changes present."
+                    )
+                    return True
+                engine_overwrite_dirty = bool(decision.get("overwrite_dirty"))
+                engine_remove_orphans = bool(decision.get("remove_orphans"))
+            if not engine_overwrite_dirty:
+                pending_import = [
+                    item.get("path") for item in dirty_items if item.get("path")
+                ]
+            if not engine_remove_orphans:
+                kept_orphans = [
+                    item.get("path") for item in orphan_items if item.get("path")
+                ]
+
     # 1. Export Snapshot
     if not ide_export_snapshot.export_snapshot(system, project, ide_xml_path, log_fn=detailed_log):
         ide_runtime_common.log_error("Failed to export native IDE snapshot.")
         return False
-    
+
     # 2. Invoke Engine CLI
     args = [action, "--project-root", project_root, "--snapshot", ide_xml_path, "--view-root", views_path]
     args.extend(_selected_guid_args(selected_guids))
-    
+
     if action == "compare":
         report_path = os.path.join(dump_root, "compare_report.json")
         args.extend(["--report", report_path])
@@ -127,9 +215,11 @@ def run_action(
     elif action == "import":
         patch_path = os.path.join(dump_root, "IMPORT.xml")
         args.extend(["--patch", patch_path])
-
-    def warning_fn(message):
-        _show_warning(system, message)
+    elif action == "export":
+        if engine_overwrite_dirty:
+            args.append("--overwrite-dirty")
+        if engine_remove_orphans:
+            args.append("--remove-orphans")
 
     if not ide_runtime_common.run_external_engine(args, project_root=project_root, dump_root=dump_root, warning_fn=warning_fn):
         ide_runtime_common.log_error("External engine action failed.")
@@ -160,6 +250,8 @@ def run_action(
                 ide_xml_path,
                 patch_path=os.path.join(dump_root, "IMPORT.xml") if action == "import" else None,
                 apply_result=apply_result if action == "import" else None,
+                pending_import=pending_import if action == "export" else None,
+                kept_orphans=kept_orphans if action == "export" else None,
             ),
         )
     return True

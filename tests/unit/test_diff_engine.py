@@ -270,3 +270,80 @@ class TestDiffEngineExportOnly:
         ).compare()
         assert "g1" not in result["deleted"]
         assert "g1" in result["unchanged"]
+
+
+# ===================================================================
+# Text-first: st_only comparison and import_inert demotion
+# ===================================================================
+
+
+class TestDiffEngineTextFirst:
+    def _ide_node_and_st(self, declaration, implementation):
+        from xml_helpers import st_projection_content
+
+        xml_text = _pou_xml(declaration, implementation)
+        ide_node = _make_node("g1", xml_text=xml_text)
+        disk_st = st_projection_content(ET.fromstring(xml_text))
+        return ide_node, disk_st
+
+    def test_st_only_unchanged_when_st_matches_ide(self):
+        ide_node, disk_st = self._ide_node_and_st(
+            "PROGRAM P\nVAR\nEND_VAR", "x := 1;"
+        )
+        folder_node = _make_node(
+            "g1",
+            st_only=True,
+            projection_contents={"P.st": disk_st},
+            projection_changed_paths=["P.st"],
+        )
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["unchanged"]
+        assert "g1" not in result["modified"]
+
+    def test_st_only_modified_when_st_differs(self):
+        ide_node, disk_st = self._ide_node_and_st(
+            "PROGRAM P\nVAR\nEND_VAR", "x := 1;"
+        )
+        folder_node = _make_node(
+            "g1",
+            st_only=True,
+            projection_contents={"P.st": disk_st.replace("x := 1;", "x := 2;")},
+        )
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["modified"]
+
+    def test_st_only_detects_ide_side_drift_without_hash_changes(self):
+        """IDE edited, .st untouched since a stale export: content comparison
+        (not hashes) must still flag the entry as modified."""
+        ide_node, _ = self._ide_node_and_st("PROGRAM P\nVAR\nEND_VAR", "x := 9;")
+        _, stale_disk_st = self._ide_node_and_st(
+            "PROGRAM P\nVAR\nEND_VAR", "x := 1;"
+        )
+        folder_node = _make_node(
+            "g1",
+            st_only=True,
+            projection_contents={"P.st": stale_disk_st},
+        )
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["modified"]
+
+    def test_import_inert_modified_demoted_to_unchanged(self):
+        ide_node = _make_node("g1", xml_text="<Single Name='Object'>a</Single>")
+        folder_node = _make_node(
+            "g1",
+            xml_text="<Single Name='Object'>b-stale-mirror</Single>",
+            import_inert=True,
+        )
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["unchanged"]
+        assert "g1" not in result["modified"]
+
+    def test_import_inert_added_never_resurrected(self):
+        folder_node = _make_node(
+            "g1",
+            xml_text="<Single Name='Object'>mirror-of-deleted</Single>",
+            import_inert=True,
+        )
+        result = DiffEngine(model_with(), model_with(folder_node)).compare()
+        assert "g1" not in result["added"]
+        assert "g1" in result["unchanged"]

@@ -164,7 +164,22 @@ class FolderReader:
     def _projection_full_path(self, relative_path):
         return os.path.join(self.views_path, relative_path)
 
-    def _projection_change_info(self, projection_paths, projection_hashes):
+    def _replace_extension(self, relative_path, extension):
+        base, _ = os.path.splitext(relative_path)
+        return base + extension
+
+    def _xml_full_path(self, entry):
+        """Resolve an entry's xml file, honoring the text-first .dump mirror."""
+        xml_path = entry.get("xml_path")
+        if not xml_path:
+            return None
+        if (entry.get("xml_root") or "").lower() == "dump":
+            return os.path.join(self.dump_path, "xml", xml_path)
+        return os.path.join(self.views_path, xml_path)
+
+    def _projection_change_info(
+        self, projection_paths, projection_hashes, treat_missing_hash_as_changed=False
+    ):
         changed = []
         current_hashes = {}
         current_contents = {}
@@ -181,12 +196,16 @@ class FolderReader:
             expected_hash = expected_hashes.get(projection_path)
             if expected_hash and expected_hash != current_hash:
                 changed.append(projection_path)
+            elif not expected_hash and treat_missing_hash_as_changed:
+                # Text-first: a projection file with no recorded hash is a new
+                # local edit, not background noise.
+                changed.append(projection_path)
         return changed, current_hashes, current_contents
 
     def _relative_path(self, full_path):
         return os.path.relpath(full_path, self.views_path).replace(os.sep, "/")
 
-    def _discover_pending_st_creates(self, model, managed_paths):
+    def _discover_pending_st_creates(self, model, managed_paths, allow_sibling_xml=False):
         if not os.path.exists(self.views_path):
             return
 
@@ -201,7 +220,7 @@ class FolderReader:
                 if rel_path in managed_paths:
                     continue
                 sidecar_xml_path = os.path.splitext(full_path)[0] + ".xml"
-                if os.path.exists(sidecar_xml_path):
+                if os.path.exists(sidecar_xml_path) and not allow_sibling_xml:
                     continue
 
                 with codecs.open(full_path, "r", "utf-8") as f:
@@ -520,6 +539,31 @@ class FolderReader:
             return entry_to_xml(root)
         return xml_text
 
+    def _st_create_metadata(self, node, st_path, st_content):
+        """Pre-populate create_* metadata so an st-only entry whose object is
+        also missing from the IDE can be recreated from its text."""
+        semantic_kind = kind_for_type_guid(self.profile, node.type)
+        if not semantic_kind:
+            semantic_kind = _detect_st_kind(st_content)
+        if not semantic_kind:
+            return
+        base_name = os.path.splitext(os.path.basename(str(st_path)))[0]
+        object_name = base_name
+        parent_name = None
+        if "." in base_name and semantic_kind in ("method", "action", "property"):
+            parent_name, object_name = base_name.rsplit(".", 1)
+        declaration, implementation = _split_st_create_content(
+            strip_cds_text_sync_pragmas(st_content)
+        )
+        node.metadata["create_kind"] = semantic_kind
+        if node.type:
+            node.metadata["create_type_guid"] = node.type
+        node.metadata["create_path"] = str(st_path).replace("\\", "/")
+        node.metadata["create_name"] = object_name
+        node.metadata["create_parent_name"] = parent_name
+        node.metadata["create_declaration"] = declaration
+        node.metadata["create_implementation"] = implementation
+
     def read(self):
         if not os.path.exists(self.manifest_path):
             print("Manifest not found at:", self.manifest_path)
@@ -529,6 +573,9 @@ class FolderReader:
             manifest = json.load(f)
         self._ensure_view_root_is_current(manifest)
 
+        text_first = (
+            str(manifest.get("sync_mode") or "").strip().lower() == "text_first"
+        )
         ns = manifest.get("ns", "")
         model = ProjectModel(namespace=ns)
         managed_paths = set()
@@ -544,24 +591,45 @@ class FolderReader:
             xml_path = entry.get("xml_path")
             if xml_path:
                 managed_paths.add(xml_path.replace("\\", "/"))
-                for projection_path in entry.get("projection_paths") or []:
+                projection_paths = list(entry.get("projection_paths") or [])
+                projection_hashes = dict(entry.get("projection_hashes") or {})
+                for projection_path in projection_paths:
                     managed_paths.add(str(projection_path).replace("\\", "/"))
                 node.metadata["view_path"] = xml_path
-                full_path = os.path.join(self.views_path, xml_path)
-                if os.path.exists(full_path):
+                xml_in_dump = (entry.get("xml_root") or "").lower() == "dump"
+
+                if text_first and not any(
+                    str(path).lower().endswith(".st") for path in projection_paths
+                ):
+                    # Text-first: probe the expected sibling .st even when the
+                    # manifest registered no ST projection for this entry.
+                    candidate = self._replace_extension(xml_path, ".st")
+                    if os.path.exists(self._projection_full_path(candidate)):
+                        projection_paths.append(candidate)
+                        managed_paths.add(str(candidate).replace("\\", "/"))
+
+                full_path = self._xml_full_path(entry)
+                xml_exists = bool(full_path) and os.path.exists(full_path)
+                if xml_exists:
                     with codecs.open(full_path, "r", "utf-8") as f:
                         node.xml_text = f.read()
                     raw_xml_hash = sha1_hex(node.xml_text)
-                    node.metadata["xml_changed"] = bool(
-                        entry.get("hash") and entry.get("hash") != raw_xml_hash
-                    )
+                    if xml_in_dump:
+                        # The .dump mirror is tool-owned; direct edits there are
+                        # not a user surface and never count as changes.
+                        node.metadata["xml_changed"] = False
+                    else:
+                        node.metadata["xml_changed"] = bool(
+                            entry.get("hash") and entry.get("hash") != raw_xml_hash
+                        )
                     (
                         projection_changed_paths,
                         current_projection_hashes,
                         current_projection_contents,
                     ) = self._projection_change_info(
-                        entry.get("projection_paths") or [],
-                        entry.get("projection_hashes") or {},
+                        projection_paths,
+                        projection_hashes,
+                        treat_missing_hash_as_changed=text_first,
                     )
                     if projection_changed_paths:
                         node.metadata["projection_changed_paths"] = (
@@ -583,13 +651,26 @@ class FolderReader:
                         )
                     if node.metadata.get("xml_changed") and projection_changed_paths:
                         node.metadata["projection_conflict"] = True
+                    has_st_content = any(
+                        str(path).lower().endswith(".st")
+                        for path in current_projection_contents
+                    )
+                    if xml_in_dump:
+                        if has_st_content:
+                            # Patch must be built from the .st overlaid on the
+                            # IDE baseline, never from the (possibly stale)
+                            # mirror xml.
+                            node.metadata["st_authoritative"] = True
+                        elif not current_projection_contents:
+                            # No user-editable artifact exists for this entry.
+                            node.metadata["import_inert"] = True
                     node.xml_text = self._rehydrate_externalized_text(
                         node.xml_text,
-                        entry.get("projection_paths") or [],
+                        projection_paths,
                     )
                     node.xml_text = self._rehydrate_import_safe_csv(
                         node.xml_text,
-                        entry.get("projection_paths") or [],
+                        projection_paths,
                         entry.get("projection_extractors") or {},
                         entry.get("projection_import_safe") or {},
                     )
@@ -598,6 +679,38 @@ class FolderReader:
                     )
                     if exclude_from_build is not None:
                         node.metadata["exclude_from_build"] = exclude_from_build
+                elif text_first:
+                    # The xml baseline is absent (fresh clone: .dump is
+                    # git-ignored). The entry is driven by its .st alone.
+                    (
+                        projection_changed_paths,
+                        current_projection_hashes,
+                        current_projection_contents,
+                    ) = self._projection_change_info(
+                        projection_paths,
+                        projection_hashes,
+                        treat_missing_hash_as_changed=True,
+                    )
+                    st_paths = [
+                        path
+                        for path in current_projection_contents
+                        if str(path).lower().endswith(".st")
+                    ]
+                    if st_paths:
+                        node.metadata["st_only"] = True
+                        if projection_changed_paths:
+                            node.metadata["projection_changed_paths"] = (
+                                projection_changed_paths
+                            )
+                        node.metadata["projection_hashes"] = current_projection_hashes
+                        node.metadata["projection_contents"] = (
+                            current_projection_contents
+                        )
+                        self._st_create_metadata(
+                            node,
+                            st_paths[0],
+                            current_projection_contents[st_paths[0]],
+                        )
             else:
                 view_path = entry.get("view_path")
                 if view_path:
@@ -621,7 +734,9 @@ class FolderReader:
 
             model.add_node(node)
 
-        self._discover_pending_st_creates(model, managed_paths)
+        self._discover_pending_st_creates(
+            model, managed_paths, allow_sibling_xml=text_first
+        )
         self._discover_pending_xml_creates(model, managed_paths)
 
         return model

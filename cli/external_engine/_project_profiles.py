@@ -178,3 +178,68 @@ def enabled_projection_options(profile, selected):
 
         result.append(projection)
     return result
+
+
+def _projection_kinds(projection):
+    kinds = projection.get("kinds") or [projection.get("kind")]
+    return [str(kind).strip().lower() for kind in kinds if kind]
+
+
+def st_projection_ids(profile):
+    """Ids of every ST-format projection defined by the profile."""
+    result = []
+    for projection in projection_options(profile):
+        if str(projection.get("format") or "").strip().lower() != "st":
+            continue
+        projection_id = projection.get("id") or projection.get("kind")
+        if projection_id and projection_id not in result:
+            result.append(projection_id)
+    return result
+
+
+def effective_projection_selection(profile, selected, sync_mode=None):
+    """Return the projection selection the pipeline should actually use.
+
+    In text-first mode every ST projection is force-enabled - ``.st`` files are
+    the editable surface, so they must exist for all st-capable kinds. CSV
+    projections keep their per-project opt-in. XML-first returns ``selected``
+    unchanged.
+    """
+    if (sync_mode or "").strip().lower() != "text_first":
+        return selected
+    result = dict(_safe_dict(selected))
+    for projection in projection_options(profile):
+        if str(projection.get("format") or "").strip().lower() != "st":
+            continue
+        projection_id = projection.get("id") or projection.get("kind")
+        if not projection_id:
+            continue
+        result[projection_id] = {
+            "enabled": True,
+            "kind": projection.get("kind"),
+            "format": "st",
+            "import_safe": bool(projection.get("import_safe", False)),
+        }
+    return result
+
+
+def xml_in_view_kind_options(profile):
+    """Kinds that may keep their native XML in the view root in text-first mode.
+
+    Candidates are profile kinds with no ST projection: their XML sidecar is
+    the only editable artifact, so hiding it in ``.dump`` makes them
+    export-only. Kinds covered by an ST projection are excluded - their text
+    lives in ``.st`` files and the XML mirror is internal.
+    """
+    profile = _safe_dict(profile)
+    st_kinds = set()
+    for projection in projection_options(profile):
+        if str(projection.get("format") or "").strip().lower() != "st":
+            continue
+        st_kinds.update(_projection_kinds(projection))
+    result = []
+    for kind in sorted(_safe_dict(profile.get("guid_aliases")).keys()):
+        key = str(kind).strip().lower()
+        if key and key not in st_kinds and key not in result:
+            result.append(key)
+    return result

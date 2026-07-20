@@ -80,30 +80,51 @@ class PatchBuilder:
                 return text
         return None
 
+    def _overlay_st_on_ide_baseline(self, guid, st_text):
+        """Rebuild a patch entry from the IDE baseline structure with the
+        on-disk .st text blobs overlaid. Returns an Element, or None when the
+        overlay is not possible (no baseline, no text blobs, parse failure)."""
+        ide_node = self.ide_model.get_node(guid)
+        ide_xml = getattr(ide_node, "xml_text", None) if ide_node else None
+        if st_text is None or not ide_xml:
+            return None
+        try:
+            root = ET.fromstring(ide_xml)
+            if not text_blob_elements(root):
+                return None
+            replace_text_blob_values(
+                root,
+                split_st_projection_values(
+                    strip_cds_text_sync_pragmas(st_text), root
+                ),
+            )
+            return ET.fromstring(entry_to_xml(root))
+        except Exception:
+            return None
+
     def _patch_entry(self, guid):
         ide_node = self.ide_model.get_node(guid)
         folder_node = self.folder_model.get_node(guid)
 
-        # Projection conflict: both the raw XML projection and the .st text were
-        # edited on disk. Policy is .st wins -> rebuild from the IDE baseline
-        # structure with the .st text blobs overlaid, ignoring the conflicting
-        # raw-XML edit. (folder_node.xml_text would leak that XML edit.)
-        if guid in (self.diff_result.get("projection_conflicts") or []):
-            st_text = self._conflict_st_text(folder_node) if folder_node else None
-            ide_xml = getattr(ide_node, "xml_text", None) if ide_node else None
-            if st_text is not None and ide_xml:
-                try:
-                    root = ET.fromstring(ide_xml)
-                    if text_blob_elements(root):
-                        replace_text_blob_values(
-                            root,
-                            split_st_projection_values(
-                                strip_cds_text_sync_pragmas(st_text), root
-                            ),
-                        )
-                        return ET.fromstring(entry_to_xml(root))
-                except Exception:
-                    pass  # fall through to the default paths below
+        # The .st text wins whenever it is authoritative for this entry:
+        #  - projection conflict: both the raw XML projection and the .st were
+        #    edited on disk (folder_node.xml_text would leak that XML edit);
+        #  - st_authoritative: text-first entry whose xml lives in the
+        #    tool-owned .dump mirror (possibly stale relative to the IDE);
+        #  - st_only: no xml baseline on disk at all (fresh clone).
+        # In each case rebuild from the fresh IDE baseline structure with the
+        # .st text blobs overlaid.
+        if folder_node is not None and (
+            guid in (self.diff_result.get("projection_conflicts") or [])
+            or folder_node.metadata.get("st_authoritative")
+            or folder_node.metadata.get("st_only")
+        ):
+            overlaid = self._overlay_st_on_ide_baseline(
+                guid, self._conflict_st_text(folder_node)
+            )
+            if overlaid is not None:
+                return overlaid
+            # fall through to the default paths below
 
         if folder_node and getattr(folder_node, "xml_text", None):
             return ET.fromstring(folder_node.xml_text)
@@ -156,6 +177,17 @@ class PatchBuilder:
         if self.ide_model.get_node(guid) is not None:
             return False
         return True
+
+    def _is_st_only_recreate(self, guid):
+        """Text-first: a manifest entry whose xml baseline is absent (fresh
+        clone) and whose object is also missing from the IDE. Recreate it from
+        the .st text via CreateTextObject."""
+        folder_node = self.folder_model.get_node(guid)
+        if not folder_node or not folder_node.metadata.get("st_only"):
+            return False
+        if folder_node.metadata.get("create_declaration") is None:
+            return False
+        return self.ide_model.get_node(guid) is None
 
     def _application_scope(self, display_path):
         parts = [
@@ -331,9 +363,40 @@ class PatchBuilder:
             guid for guid in added_guids if self._is_native_recreate(guid)
         ]
         native_create_guids.extend(native_recreate_guids)
+        # Text-first: st-only entries missing from the IDE are recreated from
+        # their .st text (no xml baseline exists on a fresh clone).
+        st_recreate_guids = [
+            guid
+            for guid in added_guids
+            if guid not in create_guids
+            and guid not in native_recreate_guids
+            and self._is_st_only_recreate(guid)
+        ]
+        text_create_guids.extend(st_recreate_guids)
+        # st-only entries that cannot be recreated (kind undetectable) would
+        # crash the StructuredView path (no IDE baseline) - warn and skip.
+        skipped_st_only = [
+            guid
+            for guid in added_guids
+            if guid not in create_guids
+            and guid not in native_recreate_guids
+            and guid not in st_recreate_guids
+            and bool(
+                self.folder_model.get_node(guid)
+                and self.folder_model.get_node(guid).metadata.get("st_only")
+            )
+        ]
+        if skipped_st_only:
+            print(
+                "Warning: cannot recreate st-only objects (kind undetectable), "
+                "skipped: {0}".format(", ".join(skipped_st_only))
+            )
         patch_guids = modified_guids + [
             guid for guid in added_guids
-            if guid not in create_guids and guid not in native_recreate_guids
+            if guid not in create_guids
+            and guid not in native_recreate_guids
+            and guid not in st_recreate_guids
+            and guid not in skipped_st_only
         ]
 
         if deleted_guids:

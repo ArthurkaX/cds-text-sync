@@ -271,13 +271,57 @@ def _cmd_sync_export_text(params):
     out_path = export_result["data"]["path"]
     sync_folder = export_result["data"]["sync_folder"]
 
+    # Step 1b: dirty preflight -- the daemon is headless, so locally-modified
+    # view files are skipped by default (pending import) and unmanaged files
+    # are kept (soft proposal) unless the caller opts in.
+    overwrite_dirty = bool(params.get("overwrite_dirty"))
+    remove_orphans = bool(params.get("remove_orphans"))
+    pending_import = []
+    removable_orphans = []
+    manifest_path = os.path.join(sync_folder, ".dump", "manifest.json")
+    if (not overwrite_dirty or not remove_orphans) and os.path.exists(manifest_path):
+        dirty_report_path = os.path.join(sync_folder, ".dump", "dirty_report.json")
+        check_args = [
+            "check-dirty",
+            "--project-root",
+            sync_folder,
+            "--report",
+            dirty_report_path,
+        ]
+        if _common.run_external_engine(check_args):
+            try:
+                with open(dirty_report_path, "r") as handle:
+                    report = json.load(handle)
+                if not overwrite_dirty:
+                    pending_import = [
+                        item.get("path")
+                        for item in (report.get("dirty") or [])
+                        if item.get("path")
+                    ]
+                if not remove_orphans:
+                    removable_orphans = [
+                        item.get("path")
+                        for item in (report.get("orphans") or [])
+                        if item.get("path")
+                    ]
+            except Exception:
+                pending_import = []
+                removable_orphans = []
+
     # Step 2: Run engine_cli
     args = ["export", "--project-root", sync_folder, "--snapshot", out_path]
+    args.append("--overwrite-dirty" if overwrite_dirty else "--skip-dirty")
+    if remove_orphans:
+        args.append("--remove-orphans")
     success = _common.run_external_engine(args)
     if not success:
         return {"ok": False, "error": "external engine export failed"}
 
     export_result["data"]["text_sync"] = "success"
+    if pending_import:
+        export_result["data"]["pending_import"] = pending_import
+    if removable_orphans:
+        export_result["data"]["removable_orphans"] = removable_orphans
     return export_result
 
 
@@ -616,7 +660,10 @@ def _apply_modified_st_objects(project, report_path):
 
 def _find_st_file(sync_folder, rel_path):
     """Find the .st source file for a CreateTextObject entry."""
-    views_path = os.path.join(sync_folder, "project-view")
+    try:
+        views_path = _common.layout(sync_folder).view_root
+    except Exception:
+        views_path = os.path.join(sync_folder, "project-view")
     candidate = os.path.join(views_path, rel_path)
     if os.path.exists(candidate):
         return candidate

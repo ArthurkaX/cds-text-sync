@@ -77,10 +77,11 @@ def _ensure_gitignore_entries(project_root):
 def _compact_settings(settings):
     projections = settings.get("projections") or {}
     return (
-        "layout={0}, view_root={1}, profile={2}, projections={3}, verbose_logging={4}, completion_popup={5}, pre_import_backup={6}, backup_retention={7}".format(
+        "layout={0}, view_root={1}, profile={2}, sync_mode={3}, projections={4}, verbose_logging={5}, completion_popup={6}, pre_import_backup={7}, backup_retention={8}".format(
             settings.get("layout"),
             settings.get("view_root") or "<default>",
             settings.get("profile"),
+            settings.get("sync_mode"),
             len(projections),
             settings.get("verbose_logging"),
             settings.get("show_completion_popup"),
@@ -97,18 +98,23 @@ def _export_lock_info(project_root):
             "locked": False,
             "path": manifest_path,
             "view_root": None,
+            "sync_mode": None,
         }
     view_root = None
+    sync_mode = None
     try:
         with open(manifest_path, "r") as handle:
             manifest = json.load(handle)
         view_root = manifest.get("view_root") or manifest.get("views_path")
+        sync_mode = manifest.get("sync_mode")
     except Exception:
         view_root = None
+        sync_mode = None
     return {
         "locked": True,
         "path": manifest_path,
         "view_root": view_root,
+        "sync_mode": sync_mode,
     }
 
 
@@ -139,23 +145,43 @@ def main(params=None, runtime=None):
         sys.path.insert(0, engine_dir)
 
     try:
-        from _project_profiles import list_profiles, load_profile, projection_options
-        from _project_settings import load_project_settings, save_project_settings, settings_path
+        from _project_profiles import (
+            list_profiles,
+            load_profile,
+            projection_options,
+            xml_in_view_kind_options,
+        )
+        from _project_settings import (
+            load_project_settings,
+            normalize_sync_mode,
+            save_project_settings,
+            settings_path,
+        )
 
         settings = load_project_settings(base_dir)
         export_lock = _export_lock_info(base_dir)
         settings["_view_root_locked"] = export_lock.get("locked")
         settings["_view_root_lock_path"] = export_lock.get("path")
         settings["_view_root_lock_value"] = export_lock.get("view_root")
+        settings["_sync_mode_locked"] = export_lock.get("locked")
+        settings["_sync_mode_lock_value"] = normalize_sync_mode(
+            export_lock.get("sync_mode"), settings.get("sync_mode")
+        )
+        if export_lock.get("locked"):
+            # The manifest is the authority on the mode once initialized.
+            settings["sync_mode"] = settings["_sync_mode_lock_value"]
         profile = load_profile(settings.get("profile"))
         settings["_available_profiles"] = list_profiles()
         settings["_available_projections"] = projection_options(profile)
+        settings["_available_xml_in_view_kinds"] = xml_in_view_kind_options(profile)
         changed = False
         has_explicit_params = any(key in params for key in (
             "layout",
             "view_root",
             "profile",
             "projections",
+            "sync_mode",
+            "xml_in_view_kinds",
             "verbose_logging",
             "show_completion_popup",
             "ensure_gitignore",
@@ -171,6 +197,12 @@ def main(params=None, runtime=None):
             message = "Custom view root cannot be changed after export. To choose another folder, start over with a clean sync directory."
             runtime.ui.error(message)
             return {"status": "error", "error": message}
+        if export_lock.get("locked") and "sync_mode" in params and _setting_changed(
+            settings, "sync_mode", normalize_sync_mode(params.get("sync_mode"), settings.get("sync_mode"))
+        ):
+            message = "Sync mode is fixed at initialization. To switch between XML-first and text-first, initialize a new empty sync folder."
+            runtime.ui.error(message)
+            return {"status": "error", "error": message}
 
         if "layout" in params:
             settings["layout"] = params.get("layout")
@@ -182,9 +214,20 @@ def main(params=None, runtime=None):
             settings["profile"] = params.get("profile") or "default"
             profile = load_profile(settings.get("profile"))
             settings["_available_projections"] = projection_options(profile)
+            settings["_available_xml_in_view_kinds"] = xml_in_view_kind_options(profile)
             changed = True
         if "projections" in params and isinstance(params.get("projections"), dict):
             settings["projections"] = params.get("projections")
+            changed = True
+        if "sync_mode" in params:
+            settings["sync_mode"] = normalize_sync_mode(
+                params.get("sync_mode"), settings.get("sync_mode")
+            )
+            changed = True
+        if "xml_in_view_kinds" in params and isinstance(
+            params.get("xml_in_view_kinds"), (list, tuple)
+        ):
+            settings["xml_in_view_kinds"] = list(params.get("xml_in_view_kinds"))
             changed = True
         if "verbose_logging" in params:
             settings["verbose_logging"] = params.get("verbose_logging")
@@ -208,6 +251,9 @@ def main(params=None, runtime=None):
                 return {"status": "cancelled", "settings": settings, "path": settings_path(base_dir)}
             ensure_gitignore = bool(selected.pop("_ensure_gitignore", False))
             settings.update(selected)
+            if export_lock.get("locked"):
+                # Belt-and-braces: the mode can never change after initialization.
+                settings["sync_mode"] = settings["_sync_mode_lock_value"]
             changed = True
 
         gitignore_result = None

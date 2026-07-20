@@ -59,6 +59,23 @@ class DiffEngine:
         self.folder_model = folder_model
         self.profile = profile or {}
 
+    def _is_import_blocked(self, guid):
+        """True when disk-side changes must never be patched into the IDE.
+
+        Covers profile ``export_only`` kinds and text-first ``import_inert``
+        entries (tool-owned mirror xml with no user-editable artifact).
+        """
+        folder_node = self.folder_model.get_node(guid)
+        if folder_node is not None and folder_node.metadata.get("import_inert"):
+            return True
+        node = folder_node or self.ide_model.get_node(guid)
+        if node is None:
+            return False
+        kind = _kind_for_node(self.profile, node)
+        if kind is None:
+            return False
+        return _sync_direction(self.profile, kind) == "export_only"
+
     def _is_export_only(self, guid):
         """Check if an object's kind is marked export_only in the profile."""
         node = self.folder_model.get_node(guid) or self.ide_model.get_node(guid)
@@ -146,18 +163,31 @@ class DiffEngine:
             projection_extractors = (
                 folder_node.metadata.get("projection_extractors") or {}
             )
-            projection_content_differs = self._projection_differs(
-                ide_node, folder_node, projection_changed_paths
-            ) if projection_changed_paths else False
-            projection_content_matches = self._all_projection_content_matches(
-                ide_node, folder_node
-            )
-            xml_differs = ide_content != folder_content
-            if (
-                projection_content_matches
-                and not folder_node.metadata.get("xml_changed")
-            ):
+            st_only = bool(folder_node.metadata.get("st_only"))
+            if st_only:
+                # No xml baseline on disk: the entry is its .st text. Compare
+                # every loaded projection against the IDE so drift on either
+                # side surfaces as modified and an in-sync .st stays unchanged.
+                all_paths = list(
+                    (folder_node.metadata.get("projection_contents") or {}).keys()
+                )
+                projection_content_differs = self._projection_differs(
+                    ide_node, folder_node, all_paths
+                )
                 xml_differs = False
+            else:
+                projection_content_differs = self._projection_differs(
+                    ide_node, folder_node, projection_changed_paths
+                ) if projection_changed_paths else False
+                projection_content_matches = self._all_projection_content_matches(
+                    ide_node, folder_node
+                )
+                xml_differs = ide_content != folder_content
+                if (
+                    projection_content_matches
+                    and not folder_node.metadata.get("xml_changed")
+                ):
+                    xml_differs = False
             unsupported_paths = [
                 path
                 for path in projection_changed_paths
@@ -189,13 +219,16 @@ class DiffEngine:
         for guid in ide_guids - folder_guids:
             diff_result["deleted"].append(guid)
 
-        # Filter out export_only objects from import-direction changes.
-        # export_only objects must not be patched back into the IDE,
-        # so we demote them from modified/added to unchanged.
-        if self.profile:
+        # Filter out import-blocked objects from import-direction changes.
+        # export_only kinds and import_inert entries must not be patched back
+        # into the IDE, so we demote them from modified/added to unchanged.
+        if self.profile or any(
+            node.metadata.get("import_inert")
+            for node in self.folder_model.nodes.values()
+        ):
             modified_only = []
             for guid in diff_result["modified"]:
-                if self._is_export_only(guid):
+                if self._is_import_blocked(guid):
                     diff_result["unchanged"].append(guid)
                 else:
                     modified_only.append(guid)
@@ -203,16 +236,16 @@ class DiffEngine:
 
             added_only = []
             for guid in diff_result["added"]:
-                if self._is_export_only(guid):
+                if self._is_import_blocked(guid):
                     diff_result["unchanged"].append(guid)
                 else:
                     added_only.append(guid)
             diff_result["added"] = added_only
 
-            # export_only objects should never be deleted through sync
+            # Import-blocked objects should never be deleted through sync
             deleted_only = []
             for guid in diff_result["deleted"]:
-                if self._is_export_only(guid):
+                if self._is_import_blocked(guid):
                     diff_result["unchanged"].append(guid)
                 else:
                     deleted_only.append(guid)

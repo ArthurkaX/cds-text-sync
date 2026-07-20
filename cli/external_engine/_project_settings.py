@@ -14,6 +14,9 @@ from _project_layout import LAYOUT_PROJECT_VIEW, normalize_layout_mode
 
 SETTINGS_FILENAME = "cds-text-sync.json"
 
+SYNC_MODE_XML_FIRST = "xml_first"
+SYNC_MODE_TEXT_FIRST = "text_first"
+
 
 def default_project_settings():
     return {
@@ -22,6 +25,8 @@ def default_project_settings():
         "view_root": None,
         "profile": "default",
         "projections": {},
+        "sync_mode": SYNC_MODE_XML_FIRST,
+        "xml_in_view_kinds": ["visu"],
         "verbose_logging": False,
         "show_completion_popup": True,
         "pre_import_backup_enabled": True,
@@ -69,6 +74,35 @@ def _normalize_view_root(project_root, value):
     return os.path.abspath(os.path.normpath(os.path.join(project_root, view_root)))
 
 
+def _safe_sync_mode(value, default=SYNC_MODE_XML_FIRST):
+    if value is None:
+        return default
+    text = str(value).strip().lower().replace("-", "_")
+    if text in (SYNC_MODE_TEXT_FIRST, "text", "textfirst"):
+        return SYNC_MODE_TEXT_FIRST
+    if text in (SYNC_MODE_XML_FIRST, "xml", "xmlfirst"):
+        return SYNC_MODE_XML_FIRST
+    return default
+
+
+def normalize_sync_mode(value, default=SYNC_MODE_XML_FIRST):
+    """Public alias used by the options workflow and the engine."""
+    return _safe_sync_mode(value, default)
+
+
+def _safe_kind_list(value, default):
+    if value is None:
+        return list(default)
+    if not isinstance(value, (list, tuple)):
+        return list(default)
+    result = []
+    for item in value:
+        text = str(item or "").strip().lower()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
 def load_project_settings(project_root):
     settings = default_project_settings()
     path = settings_path(project_root)
@@ -95,6 +129,14 @@ def load_project_settings(project_root):
     if data.get("profile"):
         settings["profile"] = str(data.get("profile"))
     settings["projections"] = _safe_dict(data.get("projections"))
+    settings["sync_mode"] = _safe_sync_mode(
+        data.get("sync_mode"),
+        settings["sync_mode"],
+    )
+    settings["xml_in_view_kinds"] = _safe_kind_list(
+        data.get("xml_in_view_kinds"),
+        settings["xml_in_view_kinds"],
+    )
     settings["verbose_logging"] = _safe_bool(
         data.get("verbose_logging"),
         settings["verbose_logging"],
@@ -129,6 +171,14 @@ def save_project_settings(project_root, settings):
     if data.get("profile"):
         current["profile"] = str(data.get("profile"))
     current["projections"] = _safe_dict(data.get("projections"))
+    current["sync_mode"] = _safe_sync_mode(
+        data.get("sync_mode"),
+        current["sync_mode"],
+    )
+    current["xml_in_view_kinds"] = _safe_kind_list(
+        data.get("xml_in_view_kinds"),
+        current["xml_in_view_kinds"],
+    )
     current["verbose_logging"] = _safe_bool(
         data.get("verbose_logging"),
         current["verbose_logging"],

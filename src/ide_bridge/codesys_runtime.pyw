@@ -281,6 +281,22 @@ class InteractiveUIAdapter(object):
             return self.ui_module.show_project_options_dialog(current_settings)
         return None
 
+    def confirm_overwrite_dirty(self, report):
+        """Ask the user how to handle local changes before export.
+
+        Returns a dict {overwrite_dirty, remove_orphans} to proceed, None to
+        cancel the export, or None when no dialog is available (caller falls
+        back to the safe skip mode).
+        """
+        if self.ui_module and hasattr(self.ui_module, "show_overwrite_confirm_dialog"):
+            report = report or {}
+            dirty_paths = [item.get("path") for item in report.get("dirty") or []]
+            orphan_paths = [item.get("path") for item in report.get("orphans") or []]
+            return self.ui_module.show_overwrite_confirm_dialog(
+                dirty_paths, orphan_paths
+            )
+        return None
+
     def show_compare_dialog(self, different, new_in_ide, new_on_disk, unchanged_count, moved=None):
         if self.ui_module and hasattr(self.ui_module, "show_compare_dialog"):
             action, selected = self.ui_module.show_compare_dialog(
@@ -337,6 +353,14 @@ class HeadlessUIAdapter(object):
     def show_project_options_dialog(self, current_settings):
         print("[HEADLESS PROJECT OPTIONS] returning current settings")
         return current_settings
+
+    def confirm_overwrite_dirty(self, report):
+        decision = {
+            "overwrite_dirty": bool(self.params.get("overwrite_dirty", False)),
+            "remove_orphans": bool(self.params.get("remove_orphans", False)),
+        }
+        print("[HEADLESS OVERWRITE-DIRTY] -> %s" % decision)
+        return decision
 
     def show_compare_dialog(self, different, new_in_ide, new_on_disk, unchanged_count, moved=None):
         action = safe_text(self.params.get("compare_action", "report")).lower() or "report"

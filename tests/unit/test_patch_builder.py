@@ -244,3 +244,105 @@ class TestPatchBuilder:
             )
         finally:
             os.remove(path)
+
+
+# ===================================================================
+# Text-first: st-authoritative overlay and st-only recreates
+# ===================================================================
+
+
+def _pou_xml(declaration, implementation):
+    root = ET.Element("Single", {"Name": "Object"})
+    decl_parent = ET.SubElement(root, "Single", {"Name": "Declaration"})
+    decl = ET.SubElement(decl_parent, "Single", {"Name": "TextBlobForSerialisation"})
+    decl.text = declaration
+    impl_parent = ET.SubElement(root, "Single", {"Name": "Implementation"})
+    impl = ET.SubElement(impl_parent, "Single", {"Name": "TextBlobForSerialisation"})
+    impl.text = implementation
+    return ET.tostring(root, encoding="unicode")
+
+
+def _build_patch(builder):
+    fd, path = tempfile.mkstemp(suffix=".xml")
+    os.close(fd)
+    try:
+        emitted = builder.build_patch(path)
+        with open(path, "r", encoding="utf-8") as handle:
+            return emitted, handle.read()
+    finally:
+        os.remove(path)
+
+
+class TestPatchBuilderTextFirst:
+    def test_st_authoritative_overlays_ide_baseline_not_mirror_xml(self):
+        """The patch must carry the .st text on the fresh IDE structure; the
+        (possibly stale) rehydrated mirror xml must never win."""
+        from xml_helpers import st_projection_content
+
+        ide_xml = _pou_xml("PROGRAM P\nVAR\nEND_VAR", "x := 1;")
+        disk_st = st_projection_content(ET.fromstring(ide_xml)).replace(
+            "x := 1;", "x := 42;"
+        )
+        stale_mirror = _pou_xml("PROGRAM P_STALE\nVAR\nEND_VAR", "stale := 0;")
+
+        ide_node = _make_node("g1", xml_text=ide_xml, structured_view_guid="sv-1")
+        folder_node = _make_node(
+            "g1",
+            xml_text=stale_mirror,
+            st_authoritative=True,
+            projection_contents={"P.st": disk_st},
+            structured_view_guid="sv-1",
+        )
+        builder = PatchBuilder(
+            {"modified": ["g1"], "added": [], "deleted": []},
+            model_with(ide_node),
+            model_with(folder_node),
+        )
+        emitted, patch_text = _build_patch(builder)
+        assert emitted is True
+        assert "x := 42;" in patch_text
+        assert "P_STALE" not in patch_text
+        assert "stale := 0;" not in patch_text
+
+    def test_st_only_added_entry_becomes_text_create(self):
+        """A manifest entry with no xml baseline whose object is missing from
+        the IDE is recreated from its .st text."""
+        folder_node = _make_node(
+            "g1",
+            name="P",
+            st_only=True,
+            create_kind="pou",
+            create_path="Folder/P.st",
+            create_name="P",
+            create_declaration="PROGRAM P\nVAR\nEND_VAR",
+            create_implementation="x := 2;",
+        )
+        builder = PatchBuilder(
+            {"modified": [], "added": ["g1"], "deleted": []},
+            model_with(),
+            model_with(folder_node),
+        )
+        assert builder._is_st_only_recreate("g1")
+        emitted, patch_text = _build_patch(builder)
+        assert emitted is True
+        root = ET.fromstring(patch_text)
+        creates = root.findall(".//CreateTextObject")
+        assert len(creates) == 1
+        assert creates[0].get("Kind") == "pou"
+        assert creates[0].get("Name") == "P"
+        assert "PROGRAM P" in creates[0].find("Declaration").text
+        assert "x := 2;" in creates[0].find("Implementation").text
+        assert root.findall(".//CreateNativeObject") == []
+
+    def test_st_only_without_create_metadata_is_skipped_not_fatal(self):
+        """An st-only added entry whose kind could not be detected must not
+        crash the whole patch."""
+        folder_node = _make_node("g1", name="P", st_only=True)
+        builder = PatchBuilder(
+            {"modified": [], "added": ["g1"], "deleted": []},
+            model_with(),
+            model_with(folder_node),
+        )
+        emitted, patch_text = _build_patch(builder)
+        assert emitted is False
+        assert "CreateTextObject" not in patch_text
