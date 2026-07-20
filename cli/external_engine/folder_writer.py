@@ -8,8 +8,10 @@ import json
 import os
 import time
 
+from _dirty_scan import dirty_view_paths
 from _project_layout import is_reserved_root_child
 from _project_profiles import enabled_projection_options, kind_for_type_guid
+from _project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
 from _view_paths import (
     managed_relative_paths,
     manifest_view_root,
@@ -87,7 +89,16 @@ def _rename_case_only(source_path, target_path):
 
 class FolderWriter:
     def __init__(
-        self, views_path, dump_path, profile=None, projections=None, selected_guids=None
+        self,
+        views_path,
+        dump_path,
+        profile=None,
+        projections=None,
+        selected_guids=None,
+        overwrite_dirty=False,
+        remove_orphans=False,
+        sync_mode=None,
+        xml_in_view_kinds=None,
     ):
         self.views_path = views_path
         self.dump_path = dump_path
@@ -102,6 +113,17 @@ class FolderWriter:
             for guid in (selected_guids or [])
             if normalize_guid(guid)
         )
+        self.overwrite_dirty = bool(overwrite_dirty)
+        self.remove_orphans = bool(remove_orphans)
+        self.sync_mode = normalize_sync_mode(sync_mode)
+        self.xml_in_view_kinds = set(
+            str(kind).strip().lower()
+            for kind in (xml_in_view_kinds or [])
+            if str(kind or "").strip()
+        )
+        self._dirty_paths = set()
+        self._previous_hash_by_path = {}
+        self._skipped_dirty = []
 
     def _safe_path_in_root(self, relative_path, root_path):
         if not relative_path:
@@ -127,6 +149,23 @@ class FolderWriter:
 
     def _safe_view_path(self, relative_path):
         return self._safe_path_in_root(relative_path, self.views_path)
+
+    def _dump_mirror_root(self):
+        return os.path.join(self.dump_path, "xml")
+
+    def _xml_target(self, node, xml_path):
+        """Resolve where a node's structural xml file lives.
+
+        Returns ``(full_path, in_dump_mirror)``. Text-first hides the tool-owned
+        xml in the ``.dump/xml`` mirror unless the node's kind is explicitly kept
+        in the view (``xml_in_view_kinds``, e.g. hand-edited visualizations).
+        """
+        if self.sync_mode == SYNC_MODE_TEXT_FIRST:
+            kind = kind_for_type_guid(self.profile, node.type)
+            if kind not in self.xml_in_view_kinds:
+                full_path = self._safe_path_in_root(xml_path, self._dump_mirror_root())
+                return full_path, True
+        return self._safe_view_path(xml_path), False
 
     def _load_existing_manifest(self):
         if not os.path.exists(self.manifest_path):
@@ -200,11 +239,12 @@ class FolderWriter:
         return managed_relative_paths(entry)
 
     def _remove_previous_managed_files_from_root(
-        self, manifest, root_path, selected_guids=None
+        self, manifest, root_path, selected_guids=None, keep_paths=None
     ):
         if not manifest or not root_path:
             return 0
 
+        keep = set(keep_paths or ())
         removed = 0
         seen = set()
         for entry in manifest.get("entries", []):
@@ -213,8 +253,18 @@ class FolderWriter:
                 if guid not in selected_guids:
                     continue
 
+            entry_xml_path = entry.get("xml_path") or entry.get("view_path")
+            xml_in_dump = (entry.get("xml_root") or "").lower() == "dump"
             for relative_path in self._managed_relative_paths(entry):
-                full_path = self._safe_path_in_root(relative_path, root_path)
+                if str(relative_path).replace("\\", "/") in keep:
+                    continue
+                # The entry xml may live in the tool-owned .dump/xml mirror;
+                # projections are always view-rooted.
+                if relative_path == entry_xml_path and xml_in_dump:
+                    target_root = self._dump_mirror_root()
+                else:
+                    target_root = root_path
+                full_path = self._safe_path_in_root(relative_path, target_root)
                 if not full_path or full_path in seen:
                     continue
                 seen.add(full_path)
@@ -222,7 +272,9 @@ class FolderWriter:
                     try:
                         os.remove(full_path)
                         removed += 1
-                        self._remove_empty_parent_dirs(full_path, root_path=root_path)
+                        self._remove_empty_parent_dirs(
+                            full_path, root_path=target_root
+                        )
                     except Exception as e:
                         _log(
                             "Warning: Could not remove managed view file: {0} {1}".format(
@@ -245,6 +297,16 @@ class FolderWriter:
             )
         )
 
+    def _ensure_sync_mode_not_changed(self, manifest):
+        previous_mode = normalize_sync_mode((manifest or {}).get("sync_mode"))
+        if previous_mode == self.sync_mode:
+            return
+        raise RuntimeError(
+            "Sync mode is fixed at initialization: this sync folder is {0} but the "
+            "settings request {1}. To switch between XML-first and text-first, "
+            "start from a clean sync directory.".format(previous_mode, self.sync_mode)
+        )
+
     def _ensure_no_legacy_root_view_duplicates(self, manifest):
         if _normalize_fs_path(self.views_path) == _normalize_fs_path(self.project_root):
             return
@@ -262,13 +324,14 @@ class FolderWriter:
                         )
                     )
 
-    def _remove_previous_managed_files(self, selected_guids=None):
+    def _remove_previous_managed_files(self, selected_guids=None, keep_paths=None):
         manifest = self._load_existing_manifest()
         if not manifest:
             return
 
         previous_root = self._manifest_view_root(manifest)
         self._ensure_view_root_not_changed(previous_root)
+        self._ensure_sync_mode_not_changed(manifest)
         self._ensure_no_legacy_root_view_duplicates(manifest)
         if previous_root and _normalize_fs_path(previous_root) != _normalize_fs_path(
             self.views_path
@@ -279,10 +342,42 @@ class FolderWriter:
             manifest,
             self.views_path,
             selected_guids=selected_guids,
+            keep_paths=keep_paths,
         )
 
         if removed:
             _log("Removed {0} previously managed view files.".format(removed))
+
+    def _manifest_hash_by_path(self, manifest):
+        result = {}
+        for entry in (manifest or {}).get("entries", []) or []:
+            xml_path = entry.get("xml_path") or entry.get("view_path")
+            if xml_path and entry.get("hash"):
+                result[str(xml_path).replace("\\", "/")] = entry.get("hash")
+            for projection_path, value in (entry.get("projection_hashes") or {}).items():
+                if value:
+                    result[str(projection_path).replace("\\", "/")] = value
+        return result
+
+    def _prepare_dirty_state(self, selected_guids=None):
+        """Find locally-modified managed files that this export must not overwrite.
+
+        No-op in overwrite mode. In skip mode (the default) the dirty paths are
+        preserved on disk and their previous manifest hashes are carried forward
+        so the next import still sees the disk edits.
+        """
+        self._dirty_paths = set()
+        self._previous_hash_by_path = {}
+        self._skipped_dirty = []
+        if self.overwrite_dirty:
+            return
+        manifest = self._load_existing_manifest()
+        if not manifest:
+            return
+        self._previous_hash_by_path = self._manifest_hash_by_path(manifest)
+        self._dirty_paths = dirty_view_paths(
+            manifest, self.views_path, selected_guids=selected_guids
+        )
 
     def _existing_manifest_entries(self):
         manifest = self._load_existing_manifest()
@@ -429,6 +524,28 @@ class FolderWriter:
                     )
                 )
                 continue
+            rel_key = str(projection_path).replace("\\", "/")
+            if rel_key in self._dirty_paths and os.path.isfile(full_path):
+                # Locally modified since the last export: keep the user's file and
+                # carry the previous hash forward so the next import sees the edit.
+                _log(
+                    "Projection preserved (locally modified, pending import): {0}".format(
+                        projection_path
+                    )
+                )
+                self._skipped_dirty.append(rel_key)
+                projection_paths.append(projection_path)
+                previous_hash = self._previous_hash_by_path.get(rel_key)
+                if previous_hash:
+                    projection_hashes[projection_path] = previous_hash
+                if projection.get("extractor"):
+                    projection_extractors[projection_path] = projection.get("extractor")
+                elif projection.get("format") == "csv":
+                    projection_extractors[projection_path] = projection.get("id")
+                projection_import_safe[projection_path] = bool(
+                    projection.get("import_safe", False)
+                )
+                continue
             ensure_dir(os.path.dirname(full_path))
             self._canonicalize_existing_path(full_path)
             if extension == ".st" and needs_type_guid_pragma:
@@ -475,6 +592,11 @@ class FolderWriter:
         return extensions
 
     def _remove_orphan_projection_files(self, emitted_paths):
+        if self.sync_mode == SYNC_MODE_TEXT_FIRST:
+            # Text-first: unmanaged .st/.csv files are first-class pending
+            # creates, never derived garbage. Managed files of renamed or
+            # deleted objects are already pruned via the previous manifest.
+            return
         extensions = self._enabled_projection_extensions()
         if not extensions or not os.path.exists(self.views_path):
             return
@@ -482,6 +604,7 @@ class FolderWriter:
         view_root = _normalize_fs_path(self.views_path)
         emitted = set(_normalize_fs_path(path) for path in emitted_paths)
         removed = 0
+        preserved = []
         for root, dirs, files in os.walk(self.views_path):
             if _normalize_fs_path(root) == view_root:
                 dirs[:] = [name for name in dirs if not is_reserved_root_child(name)]
@@ -491,6 +614,17 @@ class FolderWriter:
                     continue
                 full_path = _normalize_fs_path(os.path.join(root, filename))
                 if full_path in emitted:
+                    continue
+                if not self.remove_orphans:
+                    # Orphan removal is a separate, opt-in action from
+                    # overwriting dirty files: by default keep unmanaged files
+                    # (they may be hand-authored / pending import) and just
+                    # report them so the caller can choose to clean up.
+                    preserved.append(
+                        os.path.relpath(full_path, self.views_path).replace(
+                            os.sep, "/"
+                        )
+                    )
                     continue
                 try:
                     os.remove(full_path)
@@ -505,10 +639,45 @@ class FolderWriter:
 
         if removed:
             print("Removed {0} orphan projection files.".format(removed))
+        if preserved:
+            print(
+                "Warning: kept {0} unmanaged projection files (not emitted by this "
+                "export): {1}".format(len(preserved), ", ".join(sorted(preserved)))
+            )
+
+    def _remove_stale_dump_mirror_files(self, emitted_paths):
+        """Prune ``.dump/xml`` mirror files not emitted by this full export.
+
+        The mirror is entirely tool-owned, so stale files (renames, deletions)
+        are always safe to remove regardless of the dirty mode.
+        """
+        mirror_root = self._dump_mirror_root()
+        if not os.path.isdir(mirror_root):
+            return
+        emitted = set(_normalize_fs_path(path) for path in emitted_paths)
+        removed = 0
+        for root, _dirs, files in os.walk(mirror_root):
+            for filename in files:
+                full_path = _normalize_fs_path(os.path.join(root, filename))
+                if full_path in emitted:
+                    continue
+                try:
+                    os.remove(full_path)
+                    removed += 1
+                    self._remove_empty_parent_dirs(full_path, root_path=mirror_root)
+                except Exception as e:
+                    print(
+                        "Warning: Could not remove stale mirror file:", full_path, e
+                    )
+        if removed:
+            _log("Removed {0} stale mirror xml files.".format(removed))
 
     def write(self, project_model):
         selected_guids = self.selected_guids or None
-        self._remove_previous_managed_files(selected_guids=selected_guids)
+        self._prepare_dirty_state(selected_guids=selected_guids)
+        self._remove_previous_managed_files(
+            selected_guids=selected_guids, keep_paths=self._dirty_paths
+        )
         ensure_dir(self.views_path)
 
         manifest_entries = []
@@ -559,19 +728,41 @@ class FolderWriter:
             if projection_paths and self._has_st_projection(projection_options):
                 xml_text = externalized_text_xml(node.entry_element)
             if xml_text is not None:
-                full_path = self._safe_view_path(xml_path)
+                full_path, in_dump_mirror = self._xml_target(node, xml_path)
                 if not full_path:
                     continue
-                ensure_dir(os.path.dirname(full_path))
-                self._canonicalize_existing_path(full_path)
-                with codecs.open(full_path, "w", "utf-8") as f:
-                    f.write(xml_text)
-                emitted_paths.add(full_path)
-                if projection_paths and self._has_st_projection(projection_options):
-                    _log("XML externalized for projection: {0}".format(xml_path))
+                rel_key = str(xml_path).replace("\\", "/")
+                if (
+                    not in_dump_mirror
+                    and rel_key in self._dirty_paths
+                    and os.path.isfile(full_path)
+                ):
+                    # Locally modified since the last export: keep the user's file
+                    # and carry the previous hash forward (pending import).
+                    _log(
+                        "XML preserved (locally modified, pending import): {0}".format(
+                            xml_path
+                        )
+                    )
+                    self._skipped_dirty.append(rel_key)
+                    emitted_paths.add(full_path)
+                    metadata["xml_path"] = xml_path
+                    metadata["hash"] = self._previous_hash_by_path.get(
+                        rel_key
+                    ) or sha1_hex(xml_text)
+                else:
+                    ensure_dir(os.path.dirname(full_path))
+                    self._canonicalize_existing_path(full_path)
+                    with codecs.open(full_path, "w", "utf-8") as f:
+                        f.write(xml_text)
+                    emitted_paths.add(full_path)
+                    if projection_paths and self._has_st_projection(projection_options):
+                        _log("XML externalized for projection: {0}".format(xml_path))
 
-                metadata["xml_path"] = xml_path
-                metadata["hash"] = sha1_hex(xml_text)
+                    metadata["xml_path"] = xml_path
+                    metadata["hash"] = sha1_hex(xml_text)
+                if in_dump_mirror:
+                    metadata["xml_root"] = "dump"
                 if projection_paths:
                     metadata["projection_paths"] = projection_paths
                     metadata["projection_hashes"] = projection_hashes
@@ -584,6 +775,7 @@ class FolderWriter:
 
         if selected_guids is None:
             self._remove_orphan_projection_files(emitted_paths)
+            self._remove_stale_dump_mirror_files(emitted_paths)
 
         manifest_entries = self._merge_manifest_entries(
             selected_guids, manifest_entries
@@ -595,10 +787,20 @@ class FolderWriter:
             "ns": project_model.ns,
             "entries": manifest_entries,
         }
+        if self.sync_mode == SYNC_MODE_TEXT_FIRST:
+            manifest["sync_mode"] = self.sync_mode
 
         ensure_dir(self.dump_path)
         with open(self.manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
 
+        if self._skipped_dirty:
+            print(
+                "Warning: export skipped {0} locally-modified files (pending import): "
+                "{1}".format(
+                    len(set(self._skipped_dirty)),
+                    ", ".join(sorted(set(self._skipped_dirty))),
+                )
+            )
         _log("Export to XML folder complete.")
         return True

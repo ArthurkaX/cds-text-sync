@@ -15,7 +15,7 @@ try:
         MessageBox, MessageBoxButtons, MessageBoxIcon, DialogResult,
         Form, Label, Button, CheckBox, Panel, ToolTip, FormBorderStyle,
         FormStartPosition, FlatStyle, ComboBox, TextBox, ComboBoxStyle,
-        Control, Keys
+        Control, Keys, ScrollBars
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, ContentAlignment
 except Exception:
@@ -34,6 +34,7 @@ except Exception:
     ComboBoxStyle = None
     Control = None
     Keys = None
+    ScrollBars = None
     FormBorderStyle = None
     FormStartPosition = None
     FlatStyle = None
@@ -137,6 +138,149 @@ def show_directory_choice_dialog(title, message):
     return ask_yes_no_cancel(title, message)
 
 
+class OverwriteConfirmForm(Form if Form is not None else object):
+    """Pre-export prompt for locally-modified and unmanaged view files.
+
+    Both actions are independent, opt-in checkboxes with safe defaults:
+      - overwrite locally-modified files (default off -> keep, pending import);
+      - remove unmanaged derived files (default off -> keep).
+    "Continue" proceeds with whatever is checked; "Cancel" aborts the export.
+    """
+
+    def __init__(self, dirty_paths, orphan_paths):
+        self.Text = "Export - Local Changes Detected"
+        self.Size = Size(560, 470)
+        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self.StartPosition = FormStartPosition.CenterScreen
+        self.MaximizeBox = False
+        self.MinimizeBox = False
+        self.BackColor = Color.FromArgb(250, 250, 250)
+        self.confirmed = False
+        self.overwrite_dirty = False
+        self.remove_orphans = False
+        self._has_dirty = bool(dirty_paths)
+        self._has_orphans = bool(orphan_paths)
+
+        lbl_msg = Label()
+        lbl_msg.Text = "Review local changes before export"
+        lbl_msg.Font = Font("Segoe UI", 12, FontStyle.Bold)
+        lbl_msg.Location = Point(20, 18)
+        lbl_msg.AutoSize = True
+        lbl_msg.ForeColor = Color.FromArgb(50, 50, 50)
+        self.Controls.Add(lbl_msg)
+
+        lbl_sub = Label()
+        lbl_sub.Text = (
+            "By default nothing here is touched: modified files are kept for the\n"
+            "next import, and unmanaged files are left in place."
+        )
+        lbl_sub.Font = Font("Segoe UI", 9)
+        lbl_sub.Location = Point(22, 46)
+        lbl_sub.AutoSize = True
+        lbl_sub.ForeColor = Color.Gray
+        self.Controls.Add(lbl_sub)
+
+        lines = []
+        if dirty_paths:
+            lines.append("Modified since last export (not yet imported):")
+            for path in dirty_paths:
+                lines.append("  " + path)
+        if orphan_paths:
+            if lines:
+                lines.append("")
+            lines.append("Unmanaged derived files (no longer produced):")
+            for path in orphan_paths:
+                lines.append("  " + path)
+
+        txt_list = TextBox()
+        txt_list.Multiline = True
+        txt_list.ReadOnly = True
+        txt_list.WordWrap = False
+        if ScrollBars is not None:
+            txt_list.ScrollBars = ScrollBars.Both
+        txt_list.Font = Font("Consolas", 9)
+        txt_list.Location = Point(22, 88)
+        txt_list.Size = Size(500, 200)
+        txt_list.Text = "\r\n".join(lines)
+        self.Controls.Add(txt_list)
+
+        y = 298
+        self.chk_overwrite = CheckBox()
+        self.chk_overwrite.Text = "Overwrite my local changes (discard un-imported edits)"
+        self.chk_overwrite.Location = Point(22, y)
+        self.chk_overwrite.Size = Size(500, 22)
+        self.chk_overwrite.Checked = False
+        self.chk_overwrite.Enabled = self._has_dirty
+        self.Controls.Add(self.chk_overwrite)
+        y += 26
+
+        self.chk_remove_orphans = CheckBox()
+        self.chk_remove_orphans.Text = "Remove the unmanaged derived files listed above"
+        self.chk_remove_orphans.Location = Point(22, y)
+        self.chk_remove_orphans.Size = Size(500, 22)
+        self.chk_remove_orphans.Checked = False
+        self.chk_remove_orphans.Enabled = self._has_orphans
+        self.Controls.Add(self.chk_remove_orphans)
+
+        btn_cancel = Button()
+        btn_cancel.Text = "Cancel export"
+        btn_cancel.Font = Font("Segoe UI", 9)
+        btn_cancel.Location = Point(282, 388)
+        btn_cancel.Size = Size(115, 30)
+        btn_cancel.BackColor = Color.White
+        btn_cancel.FlatStyle = FlatStyle.Flat
+        btn_cancel.FlatAppearance.BorderColor = Color.LightGray
+        btn_cancel.Click += self._on_cancel
+        self.Controls.Add(btn_cancel)
+
+        btn_continue = Button()
+        btn_continue.Text = "Continue"
+        btn_continue.Font = Font("Segoe UI", 9)
+        btn_continue.Location = Point(405, 388)
+        btn_continue.Size = Size(140, 30)
+        btn_continue.BackColor = Color.White
+        btn_continue.FlatStyle = FlatStyle.Flat
+        btn_continue.FlatAppearance.BorderColor = Color.LightGray
+        btn_continue.Click += self._on_continue
+        self.Controls.Add(btn_continue)
+
+        self.AcceptButton = btn_continue
+        self.CancelButton = btn_cancel
+
+    def _on_continue(self, sender, event):
+        self.confirmed = True
+        self.overwrite_dirty = bool(self.chk_overwrite.Checked)
+        self.remove_orphans = bool(self.chk_remove_orphans.Checked)
+        self.DialogResult = DialogResult.OK
+        self.Close()
+
+    def _on_cancel(self, sender, event):
+        self.confirmed = False
+        self.DialogResult = DialogResult.Cancel
+        self.Close()
+
+
+def show_overwrite_confirm_dialog(dirty_paths, orphan_paths):
+    """Return a dict {overwrite_dirty, remove_orphans} to proceed, or None to
+    cancel the export."""
+    dirty_paths = list(dirty_paths or [])
+    orphan_paths = list(orphan_paths or [])
+    if Form is not None:
+        try:
+            form = OverwriteConfirmForm(dirty_paths, orphan_paths)
+            result = form.ShowDialog()
+            if result != DialogResult.OK or not form.confirmed:
+                return None
+            return {
+                "overwrite_dirty": bool(form.overwrite_dirty),
+                "remove_orphans": bool(form.remove_orphans),
+            }
+        except Exception as e:
+            print("Error showing overwrite confirm dialog: " + str(e))
+    # Fallback without WinForms: proceed safely (keep everything).
+    return {"overwrite_dirty": False, "remove_orphans": False}
+
+
 def show_toast(title, message, timeout=3000):
     print("%s: %s" % (title, message))
 
@@ -149,7 +293,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
     def __init__(self, current_settings):
         self.Text = "cds-text-sync: Project Options"
-        self.Size = Size(580, 690)
+        self.Size = Size(580, 720)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -157,9 +301,16 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.BackColor = Color.FromArgb(250, 250, 250)
         self.result_settings = None
         self.projection_controls = []
+        self.xml_in_view_controls = []
         self.view_root_locked = bool(current_settings.get("_view_root_locked"))
+        self.sync_mode_locked = bool(current_settings.get("_sync_mode_locked"))
         self.initial_layout = current_settings.get("layout") or "project-view"
         self.initial_view_root = current_settings.get("view_root") or None
+        self.initial_sync_mode = (
+            current_settings.get("_sync_mode_lock_value")
+            if self.sync_mode_locked
+            else current_settings.get("sync_mode")
+        ) or "xml_first"
 
         title = Label()
         title.Text = "Project Sync Options"
@@ -276,56 +427,102 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.cmb_profile.SelectedIndex = profile_ids.index(current_profile) if current_profile in profile_ids else 0
         self.Controls.Add(self.cmb_profile)
 
-        lbl_projections = Label()
-        lbl_projections.Text = "Derived views"
-        lbl_projections.Location = Point(24, 290)
-        lbl_projections.Size = Size(120, 20)
-        self.Controls.Add(lbl_projections)
+        # -- Sync mode (paradigm) -----------------------------------------
+        # The paradigm selector sits directly above the single list slot it
+        # drives. The two lists are mutually exclusive, so only one is ever
+        # visible (see _refresh_sync_mode_panels):
+        #   xml-first  -> "Derived views"  (which .st/.csv views to generate)
+        #   text-first -> "Keep XML in view" (which kinds keep native .xml in
+        #                 the view instead of the .dump/xml mirror)
+        lbl_sync_mode = Label()
+        lbl_sync_mode.Text = "Sync mode"
+        lbl_sync_mode.Location = Point(24, 290)
+        lbl_sync_mode.Size = Size(120, 20)
+        self.Controls.Add(lbl_sync_mode)
+
+        self.chk_text_first = CheckBox()
+        self.chk_text_first.Text = "Text-first mode (.st files are the source of truth)"
+        self.chk_text_first.Location = Point(150, 286)
+        self.chk_text_first.Size = Size(360, 22)
+        self.chk_text_first.Checked = self.initial_sync_mode == "text_first"
+        self.chk_text_first.Enabled = not self.sync_mode_locked
+        self.chk_text_first.CheckedChanged += self._on_text_first_changed
+        self.Controls.Add(self.chk_text_first)
+
+        lbl_sync_mode_help = Label()
+        if self.sync_mode_locked:
+            lbl_sync_mode_help.Text = (
+                "Mode is fixed at initialization. To switch, initialize a new "
+                "empty sync folder."
+            )
+        else:
+            lbl_sync_mode_help.Text = (
+                "Choose before the first export. Text-first hides native XML in "
+                ".dump/xml and ST files drive import."
+            )
+        lbl_sync_mode_help.Location = Point(150, 310)
+        lbl_sync_mode_help.Size = Size(370, 30)
+        lbl_sync_mode_help.ForeColor = Color.FromArgb(110, 110, 110)
+        lbl_sync_mode_help.Font = Font("Segoe UI", 8)
+        self.Controls.Add(lbl_sync_mode_help)
+
+        # -- Swappable list slot: "Derived views" XOR "Keep XML in view" ---
+        self.lbl_list = Label()
+        self.lbl_list.Location = Point(24, 352)
+        self.lbl_list.Size = Size(120, 20)
+        self.Controls.Add(self.lbl_list)
 
         self.projections_panel = Panel()
-        self.projections_panel.Location = Point(150, 286)
+        self.projections_panel.Location = Point(150, 348)
         self.projections_panel.Size = Size(360, 118)
         self.projections_panel.AutoScroll = False
         self.projections_panel.BackColor = Color.White
         self.Controls.Add(self.projections_panel)
         self._add_projection_options(current_settings)
 
-        projection_hint = Label()
-        projection_hint.Text = "Enabled .st views own text on disk; XML is rehydrated internally."
-        projection_hint.Location = Point(150, 410)
-        projection_hint.Size = Size(340, 20)
-        projection_hint.ForeColor = Color.FromArgb(110, 110, 110)
-        projection_hint.Font = Font("Segoe UI", 8)
-        self.Controls.Add(projection_hint)
+        self.xml_in_view_panel = Panel()
+        self.xml_in_view_panel.Location = Point(150, 348)
+        self.xml_in_view_panel.Size = Size(360, 118)
+        self.xml_in_view_panel.AutoScroll = True
+        self.xml_in_view_panel.BackColor = Color.White
+        self.Controls.Add(self.xml_in_view_panel)
+        self._add_xml_in_view_options(current_settings)
+
+        self.list_hint = Label()
+        self.list_hint.Location = Point(150, 470)
+        self.list_hint.Size = Size(370, 20)
+        self.list_hint.ForeColor = Color.FromArgb(110, 110, 110)
+        self.list_hint.Font = Font("Segoe UI", 8)
+        self.Controls.Add(self.list_hint)
 
         lbl_backup = Label()
         lbl_backup.Text = "Safety backup"
-        lbl_backup.Location = Point(24, 440)
+        lbl_backup.Location = Point(24, 504)
         lbl_backup.Size = Size(120, 20)
         self.Controls.Add(lbl_backup)
 
         self.chk_pre_import_backup = CheckBox()
         self.chk_pre_import_backup.Text = "Backup before import"
-        self.chk_pre_import_backup.Location = Point(150, 436)
+        self.chk_pre_import_backup.Location = Point(150, 500)
         self.chk_pre_import_backup.Size = Size(190, 22)
         self.chk_pre_import_backup.Checked = bool(current_settings.get("pre_import_backup_enabled", True))
         self.Controls.Add(self.chk_pre_import_backup)
 
         lbl_retention = Label()
         lbl_retention.Text = "Max backups"
-        lbl_retention.Location = Point(350, 440)
+        lbl_retention.Location = Point(350, 504)
         lbl_retention.Size = Size(82, 20)
         self.Controls.Add(lbl_retention)
 
         self.txt_backup_retention = TextBox()
-        self.txt_backup_retention.Location = Point(436, 437)
+        self.txt_backup_retention.Location = Point(436, 501)
         self.txt_backup_retention.Size = Size(42, 22)
         self.txt_backup_retention.Text = str(current_settings.get("backup_retention_count", 10))
         self.Controls.Add(self.txt_backup_retention)
 
         backup_hint = Label()
         backup_hint.Text = "Timestamped project binaries are written to .backup/ before IDE changes."
-        backup_hint.Location = Point(150, 463)
+        backup_hint.Location = Point(150, 526)
         backup_hint.Size = Size(360, 20)
         backup_hint.ForeColor = Color.FromArgb(110, 110, 110)
         backup_hint.Font = Font("Segoe UI", 8)
@@ -333,28 +530,28 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
         self.chk_verbose_logging = CheckBox()
         self.chk_verbose_logging.Text = "Save detailed engine logs in .dump"
-        self.chk_verbose_logging.Location = Point(150, 494)
+        self.chk_verbose_logging.Location = Point(150, 556)
         self.chk_verbose_logging.Size = Size(300, 22)
         self.chk_verbose_logging.Checked = bool(current_settings.get("verbose_logging", False))
         self.Controls.Add(self.chk_verbose_logging)
 
         self.chk_completion_popup = CheckBox()
         self.chk_completion_popup.Text = "Show completion summary after import/export"
-        self.chk_completion_popup.Location = Point(150, 522)
+        self.chk_completion_popup.Location = Point(150, 584)
         self.chk_completion_popup.Size = Size(330, 22)
         self.chk_completion_popup.Checked = bool(current_settings.get("show_completion_popup", True))
         self.Controls.Add(self.chk_completion_popup)
 
         self.chk_gitignore = CheckBox()
         self.chk_gitignore.Text = "Add recommended .gitignore entries"
-        self.chk_gitignore.Location = Point(150, 550)
+        self.chk_gitignore.Location = Point(150, 612)
         self.chk_gitignore.Size = Size(310, 22)
         self.chk_gitignore.Checked = bool(current_settings.get("_ensure_gitignore", False))
         self.Controls.Add(self.chk_gitignore)
 
         btn_ok = Button()
         btn_ok.Text = "Save"
-        btn_ok.Location = Point(344, 598)
+        btn_ok.Location = Point(344, 650)
         btn_ok.Size = Size(85, 28)
         btn_ok.Click += self._on_save
         self.Controls.Add(btn_ok)
@@ -362,13 +559,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
-        btn_cancel.Location = Point(436, 598)
+        btn_cancel.Location = Point(436, 650)
         btn_cancel.Size = Size(85, 28)
         btn_cancel.DialogResult = DialogResult.Cancel
         self.Controls.Add(btn_cancel)
         self.CancelButton = btn_cancel
         self._refresh_view_root_state()
         self._refresh_view_root_summary()
+        self._refresh_sync_mode_panels()
 
     def _projection_enabled(self, current_settings, projection):
         current = current_settings.get("projections") or {}
@@ -470,6 +668,69 @@ class ProjectOptionsForm(Form if Form is not None else object):
             }
         return selected
 
+    def _add_xml_in_view_options(self, current_settings):
+        kinds = current_settings.get("_available_xml_in_view_kinds") or []
+        selected_kinds = [
+            str(kind).strip().lower()
+            for kind in (current_settings.get("xml_in_view_kinds") or [])
+        ]
+        if not kinds:
+            empty = Label()
+            empty.Text = "No XML-only kinds in selected profile."
+            empty.Location = Point(8, 8)
+            empty.Size = Size(320, 20)
+            empty.ForeColor = Color.FromArgb(110, 110, 110)
+            self.xml_in_view_panel.Controls.Add(empty)
+            return
+
+        y = 6
+        for kind in kinds:
+            checkbox = CheckBox()
+            checkbox.Text = kind
+            checkbox.Location = Point(8, y)
+            checkbox.Size = Size(320, 22)
+            checkbox.Checked = str(kind).strip().lower() in selected_kinds
+            checkbox.Tag = kind
+            self.xml_in_view_panel.Controls.Add(checkbox)
+            self.xml_in_view_controls.append(checkbox)
+            y += 24
+
+    def _selected_xml_in_view_kinds(self):
+        selected = []
+        for checkbox in self.xml_in_view_controls:
+            if checkbox.Checked and checkbox.Tag:
+                selected.append(str(checkbox.Tag).strip().lower())
+        return selected
+
+    def _text_first_selected(self):
+        if self.sync_mode_locked:
+            return self.initial_sync_mode == "text_first"
+        return bool(self.chk_text_first.Checked)
+
+    def _refresh_sync_mode_panels(self):
+        # The two derived-file lists are mutually exclusive by paradigm, so only
+        # the one matching the selected mode is shown (the other's checkboxes are
+        # kept but hidden, preserving their saved values). xml-first: choose which
+        # .st/.csv views to derive. text-first: ST is forced on, so instead choose
+        # which kinds keep their native .xml in the view vs. the .dump/xml mirror.
+        text_first = self._text_first_selected()
+        self.projections_panel.Visible = not text_first
+        self.xml_in_view_panel.Visible = text_first
+        if text_first:
+            self.lbl_list.Text = "Keep XML in view"
+            self.list_hint.Text = (
+                "These kinds keep their native .xml in the view; every other "
+                "kind's XML moves to the .dump/xml mirror."
+            )
+        else:
+            self.lbl_list.Text = "Derived views"
+            self.list_hint.Text = (
+                "Enabled .st views own text on disk; XML is rehydrated internally."
+            )
+
+    def _on_text_first_changed(self, sender, event):
+        self._refresh_sync_mode_panels()
+
     def _backup_retention_count(self):
         try:
             value = int(self.txt_backup_retention.Text.strip())
@@ -487,11 +748,19 @@ class ProjectOptionsForm(Form if Form is not None else object):
             view_root_value = self.initial_view_root
         elif self.chk_custom_view_root.Checked:
             view_root_value = self.txt_view_root.Text.strip() or None
+        if self.sync_mode_locked:
+            sync_mode_value = self.initial_sync_mode
+        else:
+            sync_mode_value = (
+                "text_first" if self.chk_text_first.Checked else "xml_first"
+            )
         self.result_settings = {
             "layout": layout_value,
             "view_root": view_root_value,
             "profile": str(self.cmb_profile.SelectedItem) or "default",
             "projections": self._selected_projections(),
+            "sync_mode": sync_mode_value,
+            "xml_in_view_kinds": self._selected_xml_in_view_kinds(),
             "verbose_logging": bool(self.chk_verbose_logging.Checked),
             "show_completion_popup": bool(self.chk_completion_popup.Checked),
             "pre_import_backup_enabled": bool(self.chk_pre_import_backup.Checked),

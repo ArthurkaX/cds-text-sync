@@ -459,3 +459,224 @@ class TestFolderReaderPendingXmlCreates:
             assert not node.name.endswith(".cds-object")
             create_path = node.metadata.get("create_path") or ""
             assert not create_path.endswith(".cds-object.xml")
+
+
+# ===================================================================
+# Text-first import: st_only, sibling probe, pair discovery
+# ===================================================================
+
+
+class TestTextFirstReader:
+    def _make_reader(self, tmp_path, manifest_data, text_first=True):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        manifest_data.setdefault("view_root", views)
+        manifest_data.setdefault("ns", "")
+        manifest_data.setdefault("entries", [])
+        if text_first:
+            manifest_data["sync_mode"] = "text_first"
+        _write_manifest(dump, manifest_data)
+        return FolderReader(views, dump), views, dump
+
+    def _write_mirror_xml(self, dump, relative_path, content):
+        full = os.path.join(dump, "xml", relative_path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with codecs.open(full, "w", "utf-8") as f:
+            f.write(content)
+
+    def test_st_only_entry_loaded_when_dump_xml_missing(self, tmp_path):
+        """Fresh clone: .dump/xml is git-ignored, the entry must be driven by
+        its .st alone (gap d)."""
+        original_st = (
+            "PROGRAM P\nVAR\nEND_VAR\n\n// --- implementation ---\n\nx := 1;"
+        )
+        edited_st = original_st.replace("x := 1;", "x := 2;")
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "P",
+                        "type_guid": None,
+                        "parent_guid": None,
+                        "xml_path": "Folder/P.xml",
+                        "xml_root": "dump",
+                        "hash": "somehash",
+                        "projection_paths": ["Folder/P.st"],
+                        "projection_hashes": {"Folder/P.st": sha1_hex(original_st)},
+                    }
+                ]
+            },
+        )
+        _write_file(views, "Folder/P.st", edited_st)
+
+        model = reader.read()
+        node = model.get_node("g1")
+        assert node is not None
+        assert node.metadata.get("st_only") is True
+        assert node.metadata["projection_contents"]["Folder/P.st"] == edited_st
+        assert node.metadata.get("projection_changed_paths") == ["Folder/P.st"]
+        assert node.metadata.get("create_kind") == "pou"
+        assert "PROGRAM P" in node.metadata.get("create_declaration")
+        assert "x := 2;" in node.metadata.get("create_implementation")
+
+    def test_st_only_skipped_in_xml_first_mode(self, tmp_path):
+        """Same fixture without text-first: the entry block is skipped as
+        before (no st_only metadata, no contents)."""
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "P",
+                        "type_guid": None,
+                        "parent_guid": None,
+                        "xml_path": "Folder/P.xml",
+                        "hash": "somehash",
+                        "projection_paths": ["Folder/P.st"],
+                        "projection_hashes": {"Folder/P.st": "unrelated"},
+                    }
+                ]
+            },
+            text_first=False,
+        )
+        _write_file(views, "Folder/P.st", "PROGRAM P\nEND_PROGRAM")
+
+        model = reader.read()
+        node = model.get_node("g1")
+        assert node is not None
+        assert not node.metadata.get("st_only")
+        assert "projection_contents" not in node.metadata
+
+    def test_text_first_st_create_discovered_despite_sibling_xml(self, tmp_path):
+        """Hand-made .st + .xml pair resolves to ONE st-driven create (gaps
+        b+c); the xml discovery keeps skipping the sibling."""
+        reader, views, dump = self._make_reader(tmp_path, {})
+        _write_file(views, "New.st", "PROGRAM New\nEND_PROGRAM")
+        _write_file(
+            views,
+            "New.xml",
+            '<Single Name="Object" Type="{a1b2c3d4-e5f6-7890-abcd-ef1234567890}">'
+            "<Guid>{n}</Guid></Single>",
+        )
+
+        model = reader.read()
+        pending = [
+            n for n in model.nodes.values() if n.metadata.get("pending_create")
+        ]
+        assert len(pending) == 1
+        assert pending[0].metadata["create_kind"] == "pou"
+        assert pending[0].metadata["create_path"] == "New.st"
+
+    def test_xml_first_pair_remains_mutually_skipped(self, tmp_path):
+        """Control: without text-first the historical mutual skip stands."""
+        reader, views, dump = self._make_reader(tmp_path, {}, text_first=False)
+        _write_file(views, "New.st", "PROGRAM New\nEND_PROGRAM")
+        _write_file(views, "New.xml", '<Single Name="Object">plain</Single>')
+
+        model = reader.read()
+        pending = [
+            n for n in model.nodes.values() if n.metadata.get("pending_create")
+        ]
+        assert pending == []
+
+    def test_expected_sibling_st_probed_without_manifest_hash(self, tmp_path):
+        """Text-first lifts the projection gate: a .st beside a managed entry
+        is read and marked changed even when the manifest has no hash for it
+        (gap b)."""
+        mirror_xml = (
+            '<Single Name="Object">'
+            '<Single Name="Declaration">'
+            '<Single Name="TextBlobForSerialisation">PROGRAM P</Single>'
+            "</Single></Single>"
+        )
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "P",
+                        "type_guid": None,
+                        "parent_guid": None,
+                        "xml_path": "Folder/P.xml",
+                        "xml_root": "dump",
+                        "hash": sha1_hex(mirror_xml),
+                    }
+                ]
+            },
+        )
+        self._write_mirror_xml(dump, os.path.join("Folder", "P.xml"), mirror_xml)
+        _write_file(views, "Folder/P.st", "PROGRAM P\n// new local edit")
+
+        model = reader.read()
+        node = model.get_node("g1")
+        assert node is not None
+        assert node.metadata.get("projection_changed_paths") == ["Folder/P.st"]
+        assert node.metadata.get("st_authoritative") is True
+        # The probed .st is managed now: no duplicate pending create.
+        pending = [
+            n for n in model.nodes.values() if n.metadata.get("pending_create")
+        ]
+        assert pending == []
+
+    def test_xml_first_ignores_unregistered_sibling_st(self, tmp_path):
+        """Control: xml-first keeps ignoring a .st the manifest never
+        registered (historical behavior)."""
+        view_xml = '<Single Name="Object">data</Single>'
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "P",
+                        "type_guid": None,
+                        "parent_guid": None,
+                        "xml_path": "Folder/P.xml",
+                        "hash": sha1_hex(view_xml),
+                    }
+                ]
+            },
+            text_first=False,
+        )
+        _write_file(views, "Folder/P.xml", view_xml)
+        _write_file(views, "Folder/P.st", "PROGRAM P\n// hand made")
+
+        model = reader.read()
+        node = model.get_node("g1")
+        assert node is not None
+        assert not node.metadata.get("projection_changed_paths")
+        assert "projection_contents" not in node.metadata
+
+    def test_mirror_xml_edits_do_not_count_as_changes(self, tmp_path):
+        """The .dump mirror is tool-owned: hash drift there is not a user
+        change, and an entry with no editable artifact is import-inert."""
+        mirror_xml = '<Single Name="Object">edited-mirror</Single>'
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "P",
+                        "type_guid": None,
+                        "parent_guid": None,
+                        "xml_path": "Folder/P.xml",
+                        "xml_root": "dump",
+                        "hash": "different-old-hash",
+                    }
+                ]
+            },
+        )
+        self._write_mirror_xml(dump, os.path.join("Folder", "P.xml"), mirror_xml)
+
+        model = reader.read()
+        node = model.get_node("g1")
+        assert node is not None
+        assert node.metadata.get("xml_changed") is False
+        assert node.metadata.get("import_inert") is True

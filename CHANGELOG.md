@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.8.0 (2026-07-20)
+
+**Text-first sync mode (opt-in, chosen at initialization):**
+
+- New `sync_mode` project setting (`Project_options.py` checkbox "Text-first mode"). Selected on an **empty** sync folder and locked once `.dump/manifest.json` exists — recorded in the manifest, enforced by the options dialog, the options params API, and the engine itself (export/compare/import refuse a mismatched settings file). To switch modes, initialize a new empty sync folder.
+- In text-first mode every ST projection is force-enabled, and the structural XML sidecars move out of the view into the tool-owned, git-ignored `.dump/xml/` mirror (manifest entries record `xml_root: "dump"`). A per-kind "Keep XML in view for:" list (`xml_in_view_kinds`, default `["visu"]`) keeps selected kinds' XML in the view and in Git; it can be changed at any time.
+- `.st` files are first-class import input in text-first mode: edits are applied even when the manifest never registered the projection; a hand-made `.st` — with or without a sidecar `.xml` — becomes one text-driven create; on a fresh clone (no `.dump/`) the `.st` text is overlaid on a fresh IDE baseline, and objects missing from the IDE are recreated from text. Conflicts keep the existing ".st wins" policy. Unmanaged `.st` files are never deleted by export; entries with no editable artifact (mirror XML only) are never pushed back into the IDE.
+- The Project Options dialog shows a **single derived-files list that follows the selected paradigm** instead of two lists at once: the "Text-first mode" checkbox is the selector, and the list beneath it swaps in place — XML-first shows the `.st`/`.csv` projection toggles ("Derived views"), text-first shows the per-kind "Keep XML in view" list. The two are mutually exclusive, so only the relevant one is displayed.
+
+**Export overwrite protection (both modes):**
+
+- Export no longer silently overwrites locally-modified view files. Interactive export shows a review dialog with two independent, opt-in checkboxes — "Overwrite my local changes" and "Remove the unmanaged derived files" — both off by default, plus Continue / Cancel. Headless, daemon, and direct engine invocations **skip** dirty files by default: the files keep their content, their previous manifest hashes are carried forward so the next import still sees the edits, and they are reported as "pending import" (`pending_import` in the daemon `sync_export_text` response, and in the export completion popup).
+- Unmanaged derived (`.st`/`.csv`) files with no manifest entry are **kept by default** and reported (softly proposed for removal), not deleted. Removal is a separate opt-in: `--remove-orphans` (engine CLI) or `remove_orphans=true` (operation/daemon params); the daemon lists them as `removable_orphans`. Orphan removal is independent of dirty overwrite — `--overwrite-dirty` no longer deletes orphans.
+- **Behavior change**: engine `export` without flags now runs in skip-dirty mode and no longer deletes orphan projection files. Pass `--overwrite-dirty` to regenerate locally-modified files and `--remove-orphans` to delete unmanaged derived files.
+- New engine subcommand `check-dirty` writes `.dump/dirty_report.json` (dirty managed files + would-be-removed orphans) without touching the view.
+
+**Engine robustness (both modes):**
+
+- The external engine no longer crashes when a diagnostic line contains non-ASCII characters — e.g. embedded-resource objects (`Resources/Embedded/*`) whose name is the original Cyrillic source path. On Windows the engine's stdout defaults to the legacy ANSI codepage (cp1252), so `compare` — the verb that logs per-object diff details — raised `UnicodeEncodeError` and exited non-zero, which the daemon surfaced as a bare `external engine compare failed`. Engine stdout/stderr are now forced to UTF-8 at startup (`errors="replace"`), matching how the daemon already reads them.
+
+---
+
 ### Deprecated
 
 The following CLI aliases are retained for backwards compatibility but are scheduled for removal in **3.0.0**:

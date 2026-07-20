@@ -254,7 +254,12 @@ def _scenario_baseline(work_dir):
 
 
 def _scenario_project_view_layout(work_dir):
-    """project-view layout prunes stale managed files, keeps unmanaged ones."""
+    """project-view layout prunes stale managed files, keeps unmanaged ones.
+
+    A stale managed file whose content no longer matches its manifest hash
+    counts as locally modified: the default (skip-dirty) export preserves it,
+    and only ``--overwrite-dirty`` prunes it.
+    """
     project_view_root = os.path.join(work_dir, "project_view_layout")
     os.makedirs(project_view_root)
     project_view_snapshot = os.path.join(project_view_root, "IDE.xml")
@@ -267,19 +272,37 @@ def _scenario_project_view_layout(work_dir):
     unmanaged_path = os.path.join(project_view_path, "README.md")
     stale_managed_path = os.path.join(project_view_path, "Old", "Removed.xml")
     _write_text(unmanaged_path, "keep me")
-    _write_text(stale_managed_path, "<removed />")
     project_view_manifest_path = os.path.join(project_view_root, ".dump", "manifest.json")
-    project_view_manifest = _read_json(project_view_manifest_path)
-    project_view_manifest["entries"].append({
-        "guid": "33333333-3333-3333-3333-333333333333",
-        "name": "Removed",
-        "type_guid": "6f9dac99-8de1-4efc-8465-68ac443b7d08",
-        "parent_guid": None,
-        "xml_path": "Old\\Removed.xml",
-        "hash": "stale",
-    })
-    _write_json(project_view_manifest_path, project_view_manifest)
+
+    def _plant_stale_entry():
+        _write_text(stale_managed_path, "<removed />")
+        project_view_manifest = _read_json(project_view_manifest_path)
+        project_view_manifest["entries"] = [
+            entry
+            for entry in project_view_manifest["entries"]
+            if entry.get("guid") != "33333333-3333-3333-3333-333333333333"
+        ]
+        project_view_manifest["entries"].append({
+            "guid": "33333333-3333-3333-3333-333333333333",
+            "name": "Removed",
+            "type_guid": "6f9dac99-8de1-4efc-8465-68ac443b7d08",
+            "parent_guid": None,
+            "xml_path": "Old\\Removed.xml",
+            "hash": "stale",
+        })
+        _write_json(project_view_manifest_path, project_view_manifest)
+
+    # Default (skip-dirty) export preserves the dirty stale file.
+    _plant_stale_entry()
     _run(["export", "--project-root", project_view_root, "--snapshot", project_view_snapshot, "--layout", "project-view"])
+    if not os.path.exists(unmanaged_path):
+        raise RegressionFailure("project-view export removed unmanaged file")
+    if not os.path.exists(stale_managed_path):
+        raise RegressionFailure("skip-dirty export removed a locally-modified managed file")
+
+    # --overwrite-dirty prunes it (the pre-guard behavior).
+    _plant_stale_entry()
+    _run(["export", "--project-root", project_view_root, "--snapshot", project_view_snapshot, "--layout", "project-view", "--overwrite-dirty"])
     if not os.path.exists(unmanaged_path):
         raise RegressionFailure("project-view export removed unmanaged file")
     if os.path.exists(stale_managed_path):
@@ -539,9 +562,18 @@ def _scenario_projection_config(work_dir):
     projection_readme_path = os.path.join(config_layout_root, "project-view", "Device", "Application", "README.md")
     _write_text(orphan_projection_path, "PROGRAM Orphan\nEND_VAR\n")
     _write_text(projection_readme_path, "keep projection folder note")
+    # Default export preserves hand-authored (unmanaged) projection files.
     _run(["export", "--project-root", config_layout_root, "--snapshot", config_layout_snapshot])
+    if not os.path.exists(orphan_projection_path):
+        raise RegressionFailure("default export removed a hand-authored ST file")
+    # --overwrite-dirty alone must NOT delete orphans (decoupled).
+    _run(["export", "--project-root", config_layout_root, "--snapshot", config_layout_snapshot, "--overwrite-dirty"])
+    if not os.path.exists(orphan_projection_path):
+        raise RegressionFailure("--overwrite-dirty unexpectedly removed an orphan ST file")
+    # --remove-orphans opts into deleting unmanaged derived files.
+    _run(["export", "--project-root", config_layout_root, "--snapshot", config_layout_snapshot, "--remove-orphans"])
     if os.path.exists(orphan_projection_path):
-        raise RegressionFailure("enabled ST projection export kept orphan ST file")
+        raise RegressionFailure("--remove-orphans did not remove the orphan ST file")
     if not os.path.exists(projection_readme_path):
         raise RegressionFailure("projection export removed unmanaged non-projection file")
 
@@ -1120,6 +1152,86 @@ def _scenario_alarm_projection(work_dir):
                 raise RegressionFailure("changed Alarm AdditionalMessageIDs error was unexpected")
 
 
+def _scenario_text_first_roundtrip(work_dir):
+    """Text-first mode: xml mirrored into .dump, .st drives import, mode locked."""
+    text_first_root = os.path.join(work_dir, "text_first")
+    os.makedirs(text_first_root)
+    text_first_snapshot = os.path.join(text_first_root, "IDE.xml")
+    shutil.copyfile(os.path.join(FIXTURE_DIR, "IDE.xml"), text_first_snapshot)
+    _write_json(os.path.join(text_first_root, "cds-text-sync.json"), {
+        "version": 1,
+        "layout": "project-view",
+        "profile": "default",
+        "projections": {},
+        "sync_mode": "text_first",
+    })
+
+    # Export: .st emitted (force-enabled), xml hidden in the .dump mirror.
+    _run(["export", "--project-root", text_first_root, "--snapshot", text_first_snapshot])
+    view_st_path = os.path.join(text_first_root, "project-view", "Device", "Application", "PLC_PRG.st")
+    view_xml_path = os.path.join(text_first_root, "project-view", "Device", "Application", "PLC_PRG.xml")
+    mirror_xml_path = os.path.join(text_first_root, ".dump", "xml", "Device", "Application", "PLC_PRG.xml")
+    if not os.path.exists(view_st_path):
+        raise RegressionFailure("text-first export did not write the .st view")
+    if os.path.exists(view_xml_path):
+        raise RegressionFailure("text-first export left xml in the view root")
+    if not os.path.exists(mirror_xml_path):
+        raise RegressionFailure("text-first export did not write the .dump/xml mirror")
+    text_first_manifest = _read_json(os.path.join(text_first_root, ".dump", "manifest.json"))
+    if text_first_manifest.get("sync_mode") != "text_first":
+        raise RegressionFailure("text-first manifest did not record sync_mode")
+    plc_entry = None
+    for entry in text_first_manifest["entries"]:
+        if str(entry.get("xml_path") or "").endswith("PLC_PRG.xml"):
+            plc_entry = entry
+            break
+    if plc_entry is None or plc_entry.get("xml_root") != "dump":
+        raise RegressionFailure("text-first manifest entry did not record xml_root=dump")
+
+    # Edit the .st and import: the patch must carry the edited text.
+    _replace_in_file(view_st_path, "x := 1;", "x := 2;")
+    text_first_patch = os.path.join(text_first_root, ".dump", "IMPORT.xml")
+    _run(["import", "--project-root", text_first_root, "--snapshot", text_first_snapshot, "--patch", text_first_patch])
+    with open(text_first_patch, "r") as handle:
+        patch_text = handle.read()
+    if "x := 2;" not in patch_text:
+        raise RegressionFailure("text-first import patch did not carry the .st edit")
+
+    # Fresh-clone simulation: remove the git-ignored mirror; the .st alone
+    # must still drive the import (st_only overlay on the IDE baseline).
+    shutil.rmtree(os.path.join(text_first_root, ".dump", "xml"))
+    _run(["import", "--project-root", text_first_root, "--snapshot", text_first_snapshot, "--patch", text_first_patch])
+    with open(text_first_patch, "r") as handle:
+        patch_text = handle.read()
+    if "x := 2;" not in patch_text:
+        raise RegressionFailure("st-only import patch did not carry the .st edit")
+
+    # Hand-made .st + .xml pair resolves to one text create.
+    pair_st = os.path.join(text_first_root, "project-view", "Device", "Application", "PairPou.st")
+    pair_xml = os.path.join(text_first_root, "project-view", "Device", "Application", "PairPou.xml")
+    _write_text(pair_st, "PROGRAM PairPou\nVAR\nEND_VAR\n// --- implementation ---\ny := 1;\n")
+    _write_text(pair_xml, '<Single Name="Object" Type="{6f9dac99-8de1-4efc-8465-68ac443b7d08}"><Guid>{p}</Guid></Single>')
+    _run(["import", "--project-root", text_first_root, "--snapshot", text_first_snapshot, "--patch", text_first_patch])
+    with open(text_first_patch, "r") as handle:
+        patch_text = handle.read()
+    if patch_text.count("CreateTextObject") == 0 or "PairPou" not in patch_text:
+        raise RegressionFailure("text-first pair discovery did not produce a text create")
+    if "CreateNativeObject" in patch_text:
+        raise RegressionFailure("text-first pair discovery leaked a native create for the sidecar xml")
+    os.remove(pair_st)
+    os.remove(pair_xml)
+
+    # The mode is locked once initialized: an xml-first settings file must fail.
+    _write_json(os.path.join(text_first_root, "cds-text-sync.json"), {
+        "version": 1,
+        "layout": "project-view",
+        "profile": "default",
+        "projections": {},
+        "sync_mode": "xml_first",
+    })
+    _run(["export", "--project-root", text_first_root, "--snapshot", text_first_snapshot], expect_code=1)
+
+
 def _scenario_settings_roundtrip(work_dir):
     """Project settings save/load round-trip."""
     settings_write_root = os.path.join(work_dir, "settings_write")
@@ -1131,11 +1243,15 @@ def _scenario_settings_roundtrip(work_dir):
             "view_root": None,
             "profile": "default",
             "projections": {"pou": {"format": "st"}},
+            "sync_mode": "text-first",
+            "xml_in_view_kinds": ["Visu", "textlist"],
         })
         loaded_settings = load_project_settings(settings_write_root)
     _assert_equal(saved_settings["layout"], "root-view", "saved settings layout")
     _assert_equal(loaded_settings["layout"], "root-view", "loaded settings layout")
     _assert_equal(loaded_settings["projections"], {"pou": {"format": "st"}}, "loaded settings projections")
+    _assert_equal(loaded_settings["sync_mode"], "text_first", "loaded settings sync_mode")
+    _assert_equal(loaded_settings["xml_in_view_kinds"], ["visu", "textlist"], "loaded settings xml_in_view_kinds")
 
 
 def _scenario_missing_settings(work_dir):
@@ -1404,6 +1520,7 @@ def main():
         _scenario_create_standalone_st(work_dir)
         _scenario_create_native_xml(work_dir)
         _scenario_projection_config(work_dir)
+        _scenario_text_first_roundtrip(work_dir)
         _scenario_full_pou_and_child(work_dir)
         _scenario_projection_filter_graphical(work_dir)
         _scenario_dut_projection(work_dir)
