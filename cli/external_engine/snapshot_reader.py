@@ -5,6 +5,7 @@ snapshot_reader.py - Reads and normalizes the native IDE.xml snapshot.
 import xml.etree.ElementTree as ET
 import ntpath
 
+from _locale_aliases import canonical_display
 from _project_model import ProjectModel, ProjectNode
 from xml_helpers import (
     entry_to_xml,
@@ -71,7 +72,11 @@ class SnapshotReader:
         for item in list(path_elem):
             text = (item.text or "").strip()
             if text:
-                parts.append(text)
+                # CODESYS emits localized standard-container labels on non-English
+                # UI locales; fold them back to canonical English so the on-disk
+                # tree and import-time resolution stay locale-independent. English
+                # segments fall through unchanged (no-op).
+                parts.append(canonical_display(text))
         return parts
 
     def _structured_view_entry_lists(self, root):
