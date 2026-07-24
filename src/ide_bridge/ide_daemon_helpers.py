@@ -347,7 +347,7 @@ def _get_sync_folder():
         )
         if is_relative:
             project_path = ""
-            for attr in ["filename", "FileName", "FullName", "Path"]:
+            for attr in ["path", "filename", "FileName", "FullName", "Path"]:
                 try:
                     val = getattr(prj, attr)
                     if val:
