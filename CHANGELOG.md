@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.8.1 (2026-07-24)
+
+**Non-English UI locale fix (import resolution + on-disk tree):**
+
+- On a non-English CODESYS UI locale (e.g. Chinese zh-CN) the native XML snapshot encodes the `Path` array of standard objects using localized labels (`PLC逻辑`, `任务配置`) while each object's own `Name` field stays English (`Plc Logic`, `Task Configuration`). The tool trusted the `Path` verbatim, so `project-view/` folders became localized (`Device/PLC逻辑/Application/...`) and, on import, `_find_child_transparent` — which matches against the English IDE object name — never resolved the localized segment, creating the object under a fallback root-level folder instead of its intended parent.
+- Standard-container labels are now folded back to their canonical English form via a bounded locale-alias table (`cli/external_engine/_locale_aliases.py`). The snapshot reader normalizes `Path` segments so the on-disk tree is locale-independent, and container resolution compares names through a locale-independent key, so a localized path segment matches an English (or localized) live IDE object. The transparent "Plc Logic" hop is likewise no longer hardcoded to English.
+- **English projects are unaffected**: English names are never in the alias table, so canonicalization is a strict no-op (same folders, same matches) — verified by the offline regression harness and the full unit suite.
+- Known localized labels are currently seeded for zh-CN from the reported issue; additional locales and segments extend the table one entry at a time.
+
+---
+
 ### Version 2.8.0 (2026-07-20)
 
 **Text-first sync mode (opt-in, chosen at initialization):**

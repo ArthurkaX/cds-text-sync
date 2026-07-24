@@ -14,6 +14,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 from ide_runtime_common import normalize_guid, object_name
+from _locale_aliases import canonical_key
 
 
 class ApplyPatchResult(object):
@@ -318,17 +319,24 @@ def _children_of(obj):
         return []
 
 
+# Canonical (locale-independent, lowercased) names of standard CODESYS containers
+# that are treated as "transparent" -- resolution may hop straight through them to
+# their children. Generalized from the former hardcoded English "plc logic" check
+# so it also fires when the live IDE reports a localized label.
+_TRANSPARENT_CONTAINERS = set(["plc logic"])
+
+
 def _find_child_transparent(parent, name):
-    name_lower = str(name or "").lower()
-    if not name_lower:
+    target = canonical_key(name)
+    if not target:
         return None
     for child in _children_of(parent):
-        if object_name(child).lower() == name_lower:
+        if canonical_key(object_name(child)) == target:
             return child
     for child in _children_of(parent):
-        if object_name(child).lower() == "plc logic":
+        if canonical_key(object_name(child)) in _TRANSPARENT_CONTAINERS:
             for grandchild in _children_of(child):
-                if object_name(grandchild).lower() == name_lower:
+                if canonical_key(object_name(grandchild)) == target:
                     return grandchild
     return None
 
