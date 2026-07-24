@@ -18,6 +18,7 @@ from ide_daemon_state import (
     _log,
     _get_active_project,
     _load_daemon_config,
+    _project_file_path,
 )
 
 from ide_daemon_helpers import (
@@ -443,35 +444,30 @@ def _cmd_compare_crc(params):
             if projects is not None:
                 prj = projects.primary
                 if prj is not None:
-                    for attr in ["filename", "FileName", "FullName", "Path"]:
-                        try:
-                            val = getattr(prj, attr)
-                            if val:
-                                project_dir = os.path.dirname(str(val))
-                                # Common build output locations
-                                candidates = [
-                                    os.path.join(project_dir, "Application.crc"),
-                                    os.path.join(
-                                        project_dir,
-                                        "PlcLogic",
-                                        "Application",
-                                        "Application.crc",
-                                    ),
-                                    os.path.join(project_dir, "bin", "Application.crc"),
-                                    os.path.join(
-                                        project_dir, "Debug", "Application.crc"
-                                    ),
-                                    os.path.join(
-                                        project_dir, "Release", "Application.crc"
-                                    ),
-                                ]
-                                for c in candidates:
-                                    if os.path.exists(c):
-                                        local_path = c
-                                        break
+                    val = _project_file_path(prj)
+                    if val:
+                        project_dir = os.path.dirname(val)
+                        # Common build output locations
+                        candidates = [
+                            os.path.join(project_dir, "Application.crc"),
+                            os.path.join(
+                                project_dir,
+                                "PlcLogic",
+                                "Application",
+                                "Application.crc",
+                            ),
+                            os.path.join(project_dir, "bin", "Application.crc"),
+                            os.path.join(
+                                project_dir, "Debug", "Application.crc"
+                            ),
+                            os.path.join(
+                                project_dir, "Release", "Application.crc"
+                            ),
+                        ]
+                        for c in candidates:
+                            if os.path.exists(c):
+                                local_path = c
                                 break
-                        except Exception:
-                            pass
 
         if local_path and os.path.exists(local_path):
             try:

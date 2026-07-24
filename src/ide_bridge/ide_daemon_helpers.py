@@ -15,7 +15,7 @@ import time
 
 import ide_runtime_common as _common
 import ide_online_helpers as _helpers
-from ide_daemon_state import _json_safe, _build_path, _log, _obj_name
+from ide_daemon_state import _json_safe, _build_path, _log, _obj_name, _project_file_path
 
 # ── Constants ─────────────────────────────────────────────────────────────
 
@@ -341,27 +341,26 @@ def _get_sync_folder():
                 "Sync folder not configured. Set 'cds-sync-folder' project property (Tools → Project_directory.py)",
             )
         base_dir = str(base_dir).strip()
-        # Resolve relative paths
+        # Resolve relative paths against the project file's directory.
         is_relative = (
             base_dir == "." or base_dir.startswith("./") or base_dir.startswith(".\\")
         )
         if is_relative:
-            project_path = ""
-            for attr in ["filename", "FileName", "FullName", "Path"]:
-                try:
-                    val = getattr(prj, attr)
-                    if val:
-                        project_path = str(val)
-                        break
-                except Exception:
-                    pass
-            if project_path:
-                project_dir = os.path.dirname(project_path)
-                base_dir = os.path.normpath(
-                    os.path.join(
-                        project_dir, base_dir.replace("/", os.sep).replace("\\", os.sep)
-                    )
+            project_path = _project_file_path(prj)
+            if not project_path:
+                return (
+                    None,
+                    "Relative cds-sync-folder '{0}' could not be anchored: the "
+                    "project exposes no file path (projects.primary has no "
+                    "path/filename). Save the project, or set cds-sync-folder to "
+                    "an absolute path via Project_directory.py.".format(base_dir),
                 )
+            project_dir = os.path.dirname(project_path)
+            base_dir = os.path.normpath(
+                os.path.join(
+                    project_dir, base_dir.replace("/", os.sep).replace("\\", os.sep)
+                )
+            )
         return base_dir, None
     except Exception as e:
         return None, str(e)

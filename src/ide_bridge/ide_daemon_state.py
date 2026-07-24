@@ -21,7 +21,7 @@ import time
 
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
-VERSION = "2.6.1"
+VERSION = "2.8.1"
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
 CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)
@@ -144,6 +144,25 @@ def _obj_name(obj):
                 n = n()
             if n:
                 return str(n)
+        except Exception:
+            pass
+    return ""
+
+
+def _project_file_path(prj):
+    """Best-effort filesystem path of a CODESYS project object, or "".
+
+    IronPython attribute access is case-sensitive. The canonical ScriptEngine
+    attribute is the lowercase ``path``; some builds instead expose one of the
+    PascalCase variants. Try lowercase ``path`` FIRST — omitting it (as older
+    call sites did) leaves relative sync-folder resolution unanchored on builds
+    such as SP18, which then falls through to a misleading "Access denied".
+    """
+    for attr in ("path", "filename", "FileName", "FullName", "Path"):
+        try:
+            val = getattr(prj, attr)
+            if val:
+                return str(val)
         except Exception:
             pass
     return ""
@@ -361,14 +380,9 @@ def _get_status_info():
                         if sf:
                             result["sync_folder"] = str(sf)
                 # Project filename
-                for attr in ["filename", "FileName", "FullName", "Path"]:
-                    try:
-                        val = getattr(prj, attr)
-                        if val:
-                            result["project"] = str(val)
-                            break
-                    except Exception:
-                        pass
+                project_file = _project_file_path(prj)
+                if project_file:
+                    result["project"] = project_file
     except Exception:
         pass
     return result

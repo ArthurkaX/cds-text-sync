@@ -24,6 +24,7 @@ from ide_daemon_state import (
     _read_online_attr,
     _bool_or_none,
     _get_plc_status_snapshot,
+    _project_file_path,
 )
 
 from ide_daemon_helpers import (
@@ -52,14 +53,9 @@ def _cmd_project_info():
             "daemon_pid": os.getpid(),
             "mode": "reverse_pipe",
         }
-        for attr in ["filename", "FileName", "FullName", "Path"]:
-            try:
-                val = getattr(project, attr)
-                if val:
-                    info["filename"] = str(val)
-                    break
-            except Exception:
-                pass
+        filename = _project_file_path(project)
+        if filename:
+            info["filename"] = filename
         try:
             children = project.get_children(recursive=True)
             info["object_count"] = len(list(children))
@@ -697,14 +693,7 @@ def _codesys_version():
 
 def _project_path(prj):
     """Best-effort filesystem path of a project object, or ""."""
-    for attr in ("path", "filename", "FileName", "FullName", "Path"):
-        try:
-            v = getattr(prj, attr)
-            if v:
-                return str(v)
-        except Exception:
-            pass
-    return ""
+    return _project_file_path(prj)
 
 
 def _project_display_name(prj):
