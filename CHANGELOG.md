@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Version 2.8.1 (2026-07-24)
+### Version 2.8.1 (2026-07-25)
 
 **Non-English UI locale fix (import resolution + on-disk tree):**
 
@@ -12,6 +12,15 @@ All notable changes to this project will be documented in this file.
 - Standard-container labels are now folded back to their canonical English form via a bounded locale-alias table (`cli/external_engine/_locale_aliases.py`). The snapshot reader normalizes `Path` segments so the on-disk tree is locale-independent, and container resolution compares names through a locale-independent key, so a localized path segment matches an English (or localized) live IDE object. The transparent "Plc Logic" hop is likewise no longer hardcoded to English.
 - **English projects are unaffected**: English names are never in the alias table, so canonicalization is a strict no-op (same folders, same matches) — verified by the offline regression harness and the full unit suite.
 - Known localized labels are currently seeded for zh-CN from the reported issue; additional locales and segments extend the table one entry at a time.
+
+**Relative `cds-sync-folder` fix (GH #61):**
+
+- A relative sync folder (`.\CDS\`, `./CDS`, `.`) failed with `[Errno 13] Access denied` on CODESYS SP18. The path is anchored against the project file's directory, but every call site looked the project path up as `["filename", "FileName", "FullName", "Path"]` — and IronPython attribute access is case-sensitive, so the canonical lowercase `path` attribute exposed by ScriptEngine was never tried. The relative folder stayed unanchored and was resolved against the CODESYS working directory, which is not writable.
+- Project-path lookup is now centralized in `_project_file_path()` (`ide_daemon_state.py`) with lowercase `path` tried **first**, and all four duplicated call sites (`_get_sync_folder`, `project_info`, `_project_path`, CRC file discovery) delegate to it.
+- When a relative folder genuinely cannot be anchored (project never saved / no path exposed), the daemon now fails loudly with an actionable message instead of falling through to a misleading "Access denied".
+- Regression guard: `tests/unit/test_project_file_path.py` pins the lookup order, including the exact SP18 shape (only lowercase `path` present).
+
+Thanks to **@reibax-marcus** for the report and the diagnosis in #61 / #62.
 
 ---
 
