@@ -17,6 +17,20 @@ An opt-in **text-first mode** inverts the on-disk truth: `.st` files become the 
 
 Custom object behavior and optional text projections are profile-driven; see [profiles/profiles.md](profiles/profiles.md).
 
+> [!TIP]
+> **Using this tool? There is a place to say what you think of it.**
+>
+> This project is built almost entirely from user reports — relative paths, localized IDEs, nested methods,
+> visualizations and library placeholders were all fixed because somebody said something.
+>
+> Not everything worth saying is a bug report, though. If you have an opinion on where the tool should go,
+> a workflow it does not fit, or a question about whether something is intended —
+> **[come say it in Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions)**. No format required.
+>
+> And if something simply feels awkward to use, there is a
+> **[form for exactly that](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=3-friction.yml)** —
+> no reproduction steps, no version numbers, half a sentence is enough.
+
 ### ⚡ External Editing & Sync (The "Developer" Workflow)
 
 - **Goal**: Review and edit CODESYS projects with normal Git tools, external editors, and automation tools.
@@ -452,9 +466,34 @@ Refer to that repository's README for detailed verification procedures and contr
 
 ---
 
-## 🗣️ Community & Future Roadmap
+## 🗣️ Community & Feedback
 
-While Issues are great for reporting bugs, I invite you to join our **[GitHub Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions)** for everything else! There you can suggest improvements and influence the development of the project.
+This is a third-party tool maintained by one person, and nearly every feature and fix in the changelog
+traces back to a user who took a few minutes to describe a problem. If you use it, you are in a better
+position than anyone to say what should change.
+
+**Pick whichever costs you the least effort:**
+
+| I want to... | Where |
+|---|---|
+| Report something broken | [Bug report](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=1-bug.yml) |
+| Say what is confusing or tedious — *no repro needed* | [Friction report](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=3-friction.yml) |
+| Ask for something the tool cannot do | [Feature request](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=2-feature.yml) |
+| Ask whether something is a bug or expected | [Q&A discussion](https://github.com/ArthurkaX/cds-text-sync/discussions/categories/q-a) |
+| Say something that is none of the above | [Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions) |
+| Influence a roadmap decision in one click | [Polls](https://github.com/ArthurkaX/cds-text-sync/discussions/categories/polls) |
+| Just react to what is planned next | [Open roadmap issues](https://github.com/ArthurkaX/cds-text-sync/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap) |
+
+> [!NOTE]
+> **Discussions are open, and quieter than they should be.**
+> If you have something to say that does not fit an issue — a doubt about the direction, a workflow this
+> tool does not serve, an opinion on a decision that is being made — that is what
+> [Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions) are for. You do not need a proposal,
+> evidence, or a solution. An objection with nothing behind it but experience is still worth reading.
+
+Bug reports are usually resolved within a day or two. Reporters are credited by name in the changelog.
+Corporate users: internal criticism is welcome here too — an anonymized "our team keeps tripping over X"
+is more valuable than silence, and you do not need permission to describe a workflow problem.
 
 ---
 

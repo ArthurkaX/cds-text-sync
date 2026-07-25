@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Ask a question (Q&A)
+    url: https://github.com/ArthurkaX/cds-text-sync/discussions/categories/q-a
+    about: Not sure whether something is a bug or expected behavior? Ask here first — no template, no formalities.
+  - name: 🗳️ Vote on what gets built next
+    url: https://github.com/ArthurkaX/cds-text-sync/discussions/categories/polls
+    about: Open polls on roadmap decisions. One click, no writing required.
+  - name: 🧪 Reference project & test cases
+    url: https://github.com/ArthurkaX/cds-text-sync-reference-project
+    about: Problematic objects, compatibility examples, and verification procedures live in a separate repository.

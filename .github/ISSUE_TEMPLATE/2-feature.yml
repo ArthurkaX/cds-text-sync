@@ -1,0 +1,50 @@
+name: ✨ Feature request
+description: Something the tool should be able to do and currently cannot.
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are read and most of them get built — several of the current core features
+        started as one-line issues from users.
+
+        Describe the **problem** first. A described problem often has a simpler solution than the one
+        that comes to mind first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The workflow you are stuck in, not the feature you have in mind.
+      placeholder: |
+        I review PLC changes in pull requests, but device configuration lands as one large XML blob,
+        so a changed IP address is invisible in the diff.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How do you work around it today?
+      description: Manual steps, an external script, or "I gave up on it". This is the best signal of how much the feature is worth.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like the tool to do?
+      description: Optional. A rough idea is fine — you do not need to design it.
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does this come up?
+      options:
+        - Every day
+        - Every project
+        - Occasionally
+        - Once, but it cost me a lot of time
+    validations:
+      required: true

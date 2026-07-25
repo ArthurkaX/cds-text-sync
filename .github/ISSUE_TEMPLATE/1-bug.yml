@@ -1,0 +1,89 @@
+name: 🐞 Bug report
+description: Something works differently than documented, or breaks outright.
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        Most bugs in this project turn out to be **version- or locale-specific** — the two fields below usually
+        point straight at the cause, so please fill them in even if the problem looks unrelated to them.
+
+  - type: input
+    id: codesys-version
+    attributes:
+      label: CODESYS version
+      description: Exact build from `Help → About` — e.g. `3.5.18.60`. Patch level matters; SP18 and SP20 expose different scripting APIs.
+      placeholder: "3.5.18.60"
+    validations:
+      required: true
+
+  - type: input
+    id: tool-version
+    attributes:
+      label: cds-text-sync version
+      description: From `readMe.md`, the daemon log line, or `cts --version`.
+      placeholder: "2.8.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ui-language
+    attributes:
+      label: CODESYS UI language
+      description: A non-English IDE writes localized object paths, which has caused import bugs before.
+      options:
+        - English
+        - German
+        - Chinese
+        - Russian
+        - Other / not listed
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sync-mode
+    attributes:
+      label: Sync mode
+      options:
+        - XML-first (default)
+        - Text-first (opt-in)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, and what the tool did instead of what you expected.
+      placeholder: |
+        Ran `cts export` on a saved project. Expected `project-view/` to refresh;
+        instead it failed with "Access denied" and nothing was written.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: If you can reproduce it on a fresh project, that is worth more than any log. If you cannot, say so — a one-off report is still useful.
+      placeholder: |
+        1. New standard project, add one POU
+        2. Set `cds-sync-folder` to `.\CDS\`
+        3. Run `cts export`
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output / log
+      description: Console output, or `%TEMP%\cds-daemon-debug.log`. Redact anything confidential — paths and POU names from a customer project are fine to mask.
+      render: text
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Non-standard install path, CODESYS fork (Automation Builder, e!COCKPIT, ...), network drive, corporate policy blocking scripts — anything that makes your setup unusual.
