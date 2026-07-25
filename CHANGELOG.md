@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
 - When a relative folder genuinely cannot be anchored (project never saved / no path exposed), the daemon now fails loudly with an actionable message instead of falling through to a misleading "Access denied".
 - Regression guard: `tests/unit/test_project_file_path.py` pins the lookup order, including the exact SP18 shape (only lowercase `path` present).
 
-Thanks to **@reibax-marcus** for the report and the diagnosis in #61 / #62.
+Reported and diagnosed by reibax-marcus in #61 / #62.
 
 ---
 
