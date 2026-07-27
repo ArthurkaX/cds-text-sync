@@ -263,6 +263,13 @@ def _estimate_text_height(font_size=12):
     return max(16, int(font_size) * 1.4)
 
 
+# Fully transparent, for shapes that genuinely have no fill or no frame.
+# Written as 8-digit #AARRGGBB on purpose: ``themes.resolve_color`` forces
+# alpha to FF on any expression of 6 hex digits or fewer, so the shorter
+# spellings ("0", "#000000") would come back as *opaque black*.
+TRANSPARENT_ARGB = "#00000000"
+
+
 _int_attrs = ("x", "y", "width", "height")
 
 
@@ -298,6 +305,13 @@ def _parse_text(elem, theme):
         "width": str(int(w)),
         "height": str(int(h)),
         "text": text_content,
+        # An SVG <text> has no box. Without an explicit fill/frame the builder
+        # would resolve the label's ``custom-fill`` role and paint an opaque
+        # rectangle behind every caption -- visible as a pale block wherever a
+        # label sits on a panel. Transparent ARGB keeps the glyphs only; author
+        # a <rect> behind the <text> when a boxed label is what you want.
+        "fill": TRANSPARENT_ARGB,
+        "frame": TRANSPARENT_ARGB,
     }
 
     # SVG text-anchor="middle" -> HCENTER
@@ -342,6 +356,7 @@ def _parse_button(elem, theme):
 
     fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
     stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
+    font_color = _resolve("var(--button-text)", theme)
 
     params = {
         "x": str(int(x)),
@@ -355,6 +370,13 @@ def _parse_button(elem, theme):
         params["fill"] = fill
     if stroke is not None:
         params["frame"] = stroke
+    if font_color is not None:
+        # Same reasoning as the textfield: a native control skips class
+        # expansion, so it never picks up ``fill: var(--text)`` and would fall
+        # back to the builder's opaque white. ``button.text`` tracks the button
+        # face rather than the panel behind it, and in light it *is* that white
+        # -- so naming the role changes nothing here and everything in dark.
+        params["font_color"] = font_color
     if tap_var:
         params["tap_var"] = tap_var
     if actions["configured_inputs"]:
@@ -486,6 +508,14 @@ def _parse_textfield(elem, theme):
     y_top = y - font_size
 
     font_color = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    if font_color is None:
+        # Native controls skip class expansion, so a textfield never picks up
+        # ``fill: var(--text)`` the way a plain <text> does -- and the builder's
+        # last-resort font colour is opaque white, which is invisible on the
+        # light field the CODESYS style paints. Resolve the field's own text
+        # role instead: it tracks the *field box*, not the panel behind it, so
+        # the pairing survives a scheme flip in either direction.
+        font_color = _resolve("var(--field-text)", theme)
 
     params = {
         "x": str(int(x)),
@@ -751,7 +781,29 @@ def _apply_class_attributes(elem, sheet):
             elem.set(attr, value)
 
 
-def parse_svg(svg_text, theme=None, project_dir=None):
+def read_scheme(svg_text, override=None):
+    """Resolve the colour scheme of a sketch without parsing its elements.
+
+    Same precedence as :func:`parse_svg`: an explicit *override* wins, then
+    ``data-cds-scheme`` on the root ``<svg>``, then ``light``.
+
+    This exists because the scheme has to be known *before* the theme is loaded:
+    ``load_theme`` decides there which roles the CODESYS style is allowed to own,
+    and a light theme layered over a dark base palette would repaint the whole
+    screen light again. A malformed document resolves to the override (or light)
+    rather than raising -- reporting the parse error is ``parse_svg``'s job, and
+    doing it twice would only bury it.
+    """
+    if override is not None:
+        return _style_roles.normalize_scheme(override)
+    try:
+        root = ET.fromstring(svg_text)
+    except ET.ParseError:
+        return "light"
+    return _style_roles.normalize_scheme(root.get("data-cds-scheme"))
+
+
+def parse_svg(svg_text, theme=None, project_dir=None, background=None, scheme=None):
     """Parse an SVG string and return a dict of ElementSpec entries.
 
     Args:
@@ -760,6 +812,13 @@ def parse_svg(svg_text, theme=None, project_dir=None):
                resolution (e.g. ``{"surface": "#1e1e1e"}``).  May be
                overridden by inline ``:root`` variables found in a
                ``<defs><style>`` block inside the SVG.
+        project_dir: Optional directory searched for a project ``visu.css``.
+        background: ``auto`` (default, curated neutral), ``style`` (the CODESYS
+               style's own element background) or an explicit ``#RRGGBB``.
+        scheme: ``light`` / ``dark``, or ``None`` to read ``data-cds-scheme``
+               off the root ``<svg>`` (defaulting to ``light``). An explicit
+               argument wins so a one-off ``--scheme`` render does not have to
+               edit the sketch.
 
     Returns:
         A dict with keys:
@@ -767,6 +826,7 @@ def parse_svg(svg_text, theme=None, project_dir=None):
         - **canvas**: ``{"width": int, "height": int}``
         - **elements**: list of ElementSpec dicts (see below)
         - **theme**: merged theme dict (inline vars take priority)
+        - **scheme**: the resolved scheme name
 
     ElementSpec format::
 
@@ -789,15 +849,23 @@ def parse_svg(svg_text, theme=None, project_dir=None):
     width = _int(root.get("width"), 800)
     height = _int(root.get("height"), 480)
 
+    # -- Scheme ------------------------------------------------------------
+    # The sketch carries its own scheme so preview and compile cannot disagree
+    # about it; the caller can still override for a single render.
+    resolved_scheme = _style_roles.normalize_scheme(
+        scheme if scheme is not None else root.get("data-cds-scheme")
+    )
+
     # -- Inline theme ------------------------------------------------------
     inline_theme = _parse_inline_theme(root)
 
     # Merge role -> hex layers, later wins:
-    #   1. built-in style_roles fallbacks (so any documented var(--role) always
-    #      resolves -- no "white element" from an unmapped role);
+    #   1. built-in style_roles fallbacks for the active scheme (so any
+    #      documented var(--role) always resolves -- no "white element" from an
+    #      unmapped role);
     #   2. caller-provided theme;
     #   3. inline :root overrides.
-    merged_theme = _style_roles.role_palette(None)
+    merged_theme = _style_roles.role_palette(None, resolved_scheme)
     if theme is not None:
         merged_theme.update(theme)
     merged_theme.update(inline_theme)
@@ -873,16 +941,32 @@ def parse_svg(svg_text, theme=None, project_dir=None):
         _apply_dialog_attrs(child, elements[-1])
 
     # Determine background colour from theme.
-    bg_color = None
-    for key in ("surface", "background"):
-        val = merged_theme.get(key)
-        if val:
-            bg_color = val
-            break
+    bg_color = resolve_background(background, merged_theme)
 
     return {
         "canvas": {"width": width, "height": height},
         "elements": elements,
         "theme": merged_theme,
         "bg_color": bg_color,
+        "scheme": resolved_scheme,
     }
+
+
+def resolve_background(mode, theme_colors):
+    """Pick the screen background colour for a ``--background`` mode.
+
+    ``auto`` (the default) uses the curated ``screen`` role, a neutral field
+    chosen so panels, status colours and native controls all read cleanly on
+    it. ``style`` uses whatever the project's CODESYS style puts behind an
+    element, which on several shipped styles is a saturated tint. Anything
+    starting with ``#`` is taken literally.
+    """
+    text = str(mode or "auto").strip().lower()
+    if text.startswith("#"):
+        return str(mode).strip()
+    keys = ("surface", "background") if text == "style" else ("screen", "surface", "background")
+    for key in keys:
+        val = (theme_colors or {}).get(key)
+        if val:
+            return val
+    return None

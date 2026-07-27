@@ -16,19 +16,43 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
 
 ## Workflow
 
-1. **Scaffold a starter SVG** with `cts visu new`. This writes a valid,
-   ready-to-edit sketch that already contains one EXAMPLE of every common
-   element and a commented list of the colour classes — always start from it
-   instead of writing an SVG from a blank canvas:
+1. **Scaffold a starter SVG** with `cts visu new`. This composes a complete,
+   already-laid-out screen for the canvas size you ask for — header band,
+   content panel, KPI cards, a bound field, a status row, an action row — plus a
+   commented list of the colour classes. Always start from it instead of writing
+   an SVG from a blank canvas:
    ```sh
    cts visu new --name "<Screen>" --w 800 --h 480 --out <screen>.svg
    ```
 2. **Edit the SVG**: keep or adjust the example elements, add more as needed.
    Colour comes from `class="..."` (see "Colour classes" below) — you do not
-   write colours yourself. For elements beyond the seed, copy from the files in
-   the skill's `examples/` folder (`status-panel.svg`, `pid-schematic.svg`).
+   write colours yourself. Follow "Layout rules" below; the skeleton already
+   does. For elements beyond the skeleton, copy from the files in the skill's
+   `examples/` folder (`status-panel.svg`, `pid-schematic.svg`) — both of them
+   lint clean, so they are safe to imitate.
    The screen background is set for you; never add a full-screen background rect.
-3. **Generate the GVL automatically** (see "GVL variable declarations"
+3. **Check the design** with `cts visu lint`. It reports the things that make a
+   technically valid screen look unfinished — off-grid coordinates, text wider
+   than its box, a font size outside the scale, a button too small to press, a
+   field with nothing bound to it:
+   ```sh
+   cts visu lint --svg <screen>.svg          # report
+   cts visu lint --svg <screen>.svg --fix    # snap the mechanical ones
+   ```
+   Fix everything it reports before moving on. `--fix` rewrites only the
+   attributes it flagged, leaving your comments and formatting intact; anything
+   it cannot fix mechanically is a judgement call and is yours to make.
+4. **Look at what you made.** The sketch itself carries no colours, so opening
+   it in a viewer shows black shapes on white and tells you nothing. Render it
+   with the real resolved palette and *actually open the PNG*:
+   ```sh
+   cts visu preview --svg <screen>.svg
+   ```
+   This writes `<screen>.preview.svg` and `<screen>.preview.png` next to the
+   sketch. Read the PNG. Check the things lint cannot: is the hierarchy
+   readable, is anything visually lost, does it look like a screen someone
+   designed. Iterate here — this loop is cheap, the CODESYS round-trip is not.
+5. **Generate the GVL automatically** (see "GVL variable declarations"
    section below). When compiling, use the `--gvl` flag to auto-generate
    declarations for all runtime variables detected in the SVG:
    ```sh
@@ -41,11 +65,10 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
    This is **recommended** for every SVG that uses `data-text-var`,
    `data-cds-tap`, or `data-cds-action`. Variables already declared in
    existing GVL files are silently skipped.
-4. **Pause for visual approval.** Tell the user the SVG path and invite them to
-   open/review it. Do not run `cts visu from-svg` yet unless the user already
-   explicitly requested an unattended compile in the same request. If browser or
-   image-preview tooling is available, offer or use it to show the SVG preview.
-5. **After the user approves, compile it.** If `cts` is available in the
+6. **Pause for visual approval.** Show the user the preview PNG from step 4 and
+   tell them the SVG path. Do not run `cts visu from-svg` yet unless the user
+   already explicitly requested an unattended compile in the same request.
+7. **After the user approves, compile it.** If `cts` is available in the
    environment, run:
    ```sh
    cts visu from-svg --svg <screen>.svg --create-screen --screen-name <ScreenName> \
@@ -57,9 +80,11 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
 
    Use the appropriate ``--theme`` (default: ``flat-style``). Include ``--gvl`` to
    auto-generate variable declarations when the SVG uses runtime bindings.
-6. If `cts` is **not** available, report this clearly and provide the exact
+   `from-svg` runs lint and preview itself; `--strict` makes lint findings fatal,
+   `--no-preview` skips the PNG.
+8. If `cts` is **not** available, report this clearly and provide the exact
    command the user can run manually.
-7. Always report the compile result (success / error / waiting for approval /
+9. Always report the compile result (success / error / waiting for approval /
    not run).
 
 ### Approval rule
@@ -80,8 +105,39 @@ explicitly asks for immediate compilation.
 - `width` / `height` → screen size.
 - Coordinate system: top-left origin, y-down, 1 user-unit = 1 px.
 - The screen **background is set automatically** (from the CODESYS style /
-  `--theme`). Do NOT add a full-screen `<rect>` to paint the background, and do
-  NOT add a `<defs>`/`<style>` block — colour is chosen by class, not inline.
+  `--theme`). Do NOT add a full-screen `<rect>` to paint the background.
+  `--background style|auto|#RRGGBB` on `from-svg` overrides it if you must.
+
+## Layout rules
+
+A screen that follows these looks designed; one that ignores them looks
+generated. `cts visu lint` grades against them, so following them is also the
+fastest way to a clean run.
+
+- **4px grid.** Every `x`/`y`/`width`/`height` is a multiple of 4. Lay blocks
+  out on 8 or 16 — the grid is the floor, not the rhythm.
+- **24px page margin.** Nothing but the background touches the outer 24px.
+- **16px between blocks, 16px panel padding.** Content starts 16px inside a
+  `.panel`, and panels sit 16px apart.
+- **Bands, not scatter.** Header (title + a divider at y≈72), body, then an
+  action row above the bottom margin with a divider over it. Buttons live in the
+  action row, not floating in the body.
+- **One `.h1` per screen.** `.h2` per section, `.label` for body text,
+  `.caption` for units and notes, `.value` for the one number that matters.
+  Never write a bare `font-size` — pick a class.
+- **Touch targets.** A button is at least 48×32; 160×48 is the comfortable
+  default. A lamp is at least 16×16.
+- **Text is anchored on its BASELINE.** This is the single most common mistake.
+  For a `<text>` — including a `data-cds-type="textfield"` — the `y` you write is
+  the baseline, and the compiled box top is `y - font-size`. So a 12px field
+  whose box should start at 160 is written `y="172"`. With
+  `text-anchor="middle"` the box is centred on `y` instead, so give it an
+  explicit `data-height` or the centre lands off-grid.
+- **24px from a label's baseline to its field's baseline.** That leaves 16px
+  between the field and the next label.
+- **Pipes are thin rects, not lines.** A CODESYS line has no width member, so
+  `<line>` always draws one pixel wide — fine for a `.divider`, invisible for a
+  process line. Draw a pipe as an 8px-tall `<rect class="pipe-water">`.
 
 ## Colour classes
 
@@ -93,23 +149,59 @@ sketch re-themes automatically.
 | class | use on | meaning |
 |---|---|---|
 | `panel` | `<rect>` | grouping / container backing |
-| `card` | `<rect>` | lighter inner surface |
-| `title` | `<text>` | heading text |
-| `value` | `<text>` | large read-out number / text |
+| `card` | `<rect>` | lighter inner surface, one step down |
 | `divider` | `<line>` | separator line |
-| `ok` | `<rect>` | status: healthy / running |
-| `warn` | `<rect>` | status: caution |
-| `alarm` | `<rect>` | status: fault (fill + frame) |
-| `pipe-water` | `<line>` `<rect>` `<ellipse>` | P and ID fluid line / vessel |
+| `h1` | `<text>` | screen title (22px) — one per screen |
+| `h2` | `<text>` | section / panel heading (16px) |
+| `value` | `<text>` | large read-out (28px) |
+| `label` | `<text>` | body text, field name (12px) |
+| `caption` | `<text>` | units, secondary note (11px) |
+| `muted` | `<text>` | de-emphasised, keeps its size |
+| `inverse` | `<text>` | text sitting on a status / accent fill |
+| `ok` | `<rect>` `<circle>` | status: healthy / running |
+| `warn` | `<rect>` `<circle>` | status: caution |
+| `alarm` | `<rect>` `<circle>` | status: fault (fill + frame) |
+| `pipe-water` | `<rect>` `<line>` `<ellipse>` | P and ID fluid line / vessel |
 | `metal` | `<rect>` `<circle>` `<ellipse>` | P and ID structural / equipment |
 
-- **Buttons and textfields take NO class.** They inherit the native CODESYS
-  control style automatically — leave their colour alone.
+`title` still works as a legacy alias of `h1`; prefer `h1` in new sketches.
+
+- **Buttons, textfields and lamps take NO class.** They inherit the native
+  CODESYS control style automatically — leave their colour alone.
 - Classes are defined in `cli/visu/stylesheet.css` and can be extended, or
   overridden per project with a `visu.css` in the project-view directory. To add
   a new colour meaning, add a class there rather than hard-coding a colour.
 - Escape hatch (rare): an explicit `fill="#RRGGBB"` / `stroke="#RRGGBB"` still
   works and overrides the class, but prefer a class so the screen stays themed.
+  An inline `<defs><style>:root { --water: #… }</style></defs>` block also works
+  and overrides the theme for that one sketch — reach for it only when a screen
+  genuinely needs a palette the project style does not have.
+
+## Dark screens
+
+A night shift reads the same screen in a dark control room. Ask for it once, at
+scaffold time:
+
+```sh
+cts visu new --name "<Screen>" --w 800 --h 480 --scheme dark --out <screen>.svg
+```
+
+That records `data-cds-scheme="dark"` on the root `<svg>`, and **nothing else in
+your workflow changes**. You still never write a colour: the same classes resolve
+to the dark palette, so lint, preview and `from-svg` all follow the sketch
+without being told. `--scheme dark|light` is also accepted by `lint`, `preview`
+and `from-svg` if you want to see one sketch both ways — it overrides the
+attribute for that single run, without editing the file.
+
+Two things to know:
+
+- **Lamps keep their indicator colours.** Red stays red on a dark screen. An
+  indicator that changed meaning with the colour scheme would be a safety
+  problem, so lamps are deliberately outside the palette.
+- **In dark the palette is authoritative.** Every CODESYS visual style that
+  ships is a light style, so on a dark screen the palette owns the surfaces,
+  the text on them, and the button/textfield colours — `--theme` no longer
+  changes those. Light is unchanged: it still defers to the project style.
 
 ## Element vocabulary
 
@@ -119,10 +211,10 @@ sketch re-themes automatically.
 | `<rect rx="…">` | `VisuFbElemSimple` (rounded) | same as rect + `rx` |
 | `<circle>` | `VisuFbElemSimple` (ellipse) | `cx cy r` `class` |
 | `<ellipse>` | `VisuFbElemSimple` (ellipse) | `cx cy rx ry` `class` |
-| `<line>` | `VisuFbElemLine` | `x1 y1 x2 y2` `class` |
-| `<text>` | `VisuFbLabel` | `x y` `class` `font-size font-family` + textContent |
-| `<rect data-cds-type="button">` | `VisuFbElemButton` | geometry + `data-text` (caption) |
-| `<text data-cds-type="textfield">` | `VisuFbElemTextfield` | `x y` `data-width data-height` `data-text-var` + textContent |
+| `<line>` | `VisuFbElemLine` | `x1 y1 x2 y2` `class` (always 1px — see Layout rules) |
+| `<text>` | `VisuFbLabel` | `x`(=left) `y`(=**baseline**) `class` `font-size font-family` + textContent |
+| `<rect data-cds-type="button">` | `VisuFbElemButton` | geometry + `data-text` (caption — a `<rect>` cannot carry text content) |
+| `<text data-cds-type="textfield">` | `VisuFbElemTextfield` | `x y`(=**baseline**) `data-width data-height` `data-text-var` + textContent |
 
 ## Advanced elements (lamp, image-switcher, combobox, alarm-banner)
 
@@ -151,12 +243,14 @@ the control in question.
 
 ### Textfield (runtime variable display)
 ```xml
-<text x="300" y="50" font-size="16" font-family="Arial"
-      data-cds-type="textfield" data-width="200" data-height="30"
-      data-text-var="HMI.Temperature">show %3.2f</text>
+<text x="424" y="172" font-size="12"
+      data-cds-type="textfield" data-width="336" data-height="32"
+      data-text-var="HMI.Temperature">%3.2f C</text>
 ```
 - `data-width` / `data-height` — bounding box (required; `<text>` has no
   native width/height).
+- `y` is the **baseline**, not the box top: this field's box starts at
+  `172 - 12 = 160`. Size it and place it on the grid through the box top.
 - `data-text-var` — optional runtime variable binding (e.g. `HMI.MyVar`).
 - Text content — the display format string.
 - Font colour comes from the CODESYS style; add a class only if you need a
@@ -284,8 +378,8 @@ level under `Hotkeys`, not inside the button element.
 - `<polygon>`, `<polyline>`, `<image>`
 - `transform`, nested `<svg>`, `viewBox` scaling, gradients, filters, masks,
   animation
-- Inline `<style>` / `:root` theme blocks (colour comes from `class`, not CSS
-  variables). Only the `class` names listed in "Colour classes" are recognised.
+- `stroke-width` — a CODESYS line has no width member. Draw a thick run as a
+  `<rect>` instead.
 - Table, TabControl, GroupBox, Checkbox, RadioButton,
   Scrollbar, SpinControl, ProgressBar, InvisibleInput
 
@@ -301,34 +395,56 @@ authoring syntax.
 
 ## Example — Pump Station sketch
 
+Lints clean. Note the baselines: the field at `y="172"` has its box top at
+`172 - 12 = 160`, 24px under the `y="148"` label above it.
+
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">
 
-  <text class="title" x="20" y="36">Pump Station 1</text>
-  <line class="divider" x1="20" y1="50" x2="780" y2="50"/>
+  <!-- header -->
+  <text class="h1" x="24" y="46">Pump Station 1</text>
+  <text class="caption" x="616" y="40" data-width="160" text-anchor="middle">Circuit A</text>
+  <line class="divider" x1="24" y1="72" x2="776" y2="72"/>
 
-  <rect class="panel" x="20" y="70" width="360" height="160" rx="8"/>
-  <text x="30" y="100" font-size="14">Motor: Running</text>
-  <circle class="ok" cx="330" cy="100" r="20"/>
+  <!-- left: machine state -->
+  <rect class="panel" x="24" y="88" width="368" height="296"/>
+  <text class="h2" x="40" y="120">Motor</text>
 
-  <rect class="panel" x="20" y="250" width="340" height="70" rx="4"/>
-  <rect x="30" y="265" width="140" height="40"
-        data-cds-type="button" data-text="Start Pump"
-        data-cds-tap="TAP HMI.StartPump"/>
-  <rect x="190" y="265" width="140" height="40"
-        data-cds-type="button" data-text="Stop Pump"
-        data-cds-tap="TAP HMI.StopPump"/>
+  <rect data-cds-type="lamp" x="40" y="144" width="20" height="20"
+        data-color="green" data-var="HMI.MotorRunning"/>
+  <text class="label" x="72" y="160">Running</text>
 
-  <text class="value" x="400" y="120"
-        data-cds-type="textfield" data-width="200" data-height="30"
-        data-text-var="HMI.Temperature">%3.1f C</text>
+  <rect data-cds-type="lamp" x="40" y="176" width="20" height="20"
+        data-color="red" data-var="HMI.MotorFault"/>
+  <text class="label" x="72" y="192">Fault</text>
 
-  <line class="divider" x1="20" y1="340" x2="780" y2="340"/>
+  <rect class="card" x="40" y="224" width="336" height="96" rx="4"/>
+  <rect class="ok" x="40" y="224" width="8" height="96"/>
+  <text class="label" x="64" y="256">Speed</text>
+  <text class="value" x="64" y="296">1 480</text>
+  <text class="caption" x="176" y="295">rpm</text>
 
-  <text class="title" x="20" y="420">Alarms</text>
-  <rect class="ok" x="20" y="435" width="180" height="30"/>
-  <text x="28" y="454" font-size="11">Level Sensor OK</text>
-  <rect class="warn" x="210" y="435" width="180" height="30"/>
-  <text x="218" y="454" font-size="11">Temp High Warning</text>
+  <!-- right: live values -->
+  <rect class="panel" x="408" y="88" width="368" height="296"/>
+  <text class="h2" x="424" y="120">Temperatures</text>
+
+  <text class="label" x="424" y="148">Bearing</text>
+  <text data-cds-type="textfield" x="424" y="172" data-width="336" data-height="32"
+        data-text-var="HMI.BearingTemp" font-size="12">%3.1f C</text>
+
+  <text class="label" x="424" y="220">Oil</text>
+  <text data-cds-type="textfield" x="424" y="244" data-width="336" data-height="32"
+        data-text-var="HMI.OilTemp" font-size="12">%3.1f C</text>
+
+  <rect class="alarm" x="424" y="304" width="336" height="48" rx="4"/>
+  <text class="inverse" x="424" y="328" data-width="336" data-height="16"
+        text-anchor="middle">Bearing over temperature</text>
+
+  <!-- action row -->
+  <line class="divider" x1="24" y1="392" x2="776" y2="392"/>
+  <rect data-cds-type="button" x="24" y="408" width="160" height="48"
+        data-text="Start Pump" data-cds-tap="TAP HMI.StartPump"/>
+  <rect data-cds-type="button" x="200" y="408" width="160" height="48"
+        data-text="Stop Pump" data-cds-tap="TAP HMI.StopPump"/>
 </svg>
 ```

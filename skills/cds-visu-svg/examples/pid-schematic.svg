@@ -1,67 +1,78 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">
 
- <!-- ============================================================
- P and ID process schematic. Edit this file, then compile with
- `cts visu from-svg`. Background is set at generation time.
- Do NOT add a full-screen rect just to paint the background.
+  <!-- ============================================================
+       P and ID schematic. Shows line, circle and ellipse with the
+       pipe-water and metal classes: equipment in metal, everything
+       carrying fluid in pipe-water, one caption per tag number.
 
- COLOURS: never write a colour. Add class="..." and the active
- CODESYS style picks the colour. Available classes:
- panel, card, title, value, divider, ok, warn, alarm,
- pipe-water, metal.
- Buttons and textfields take NO class: they inherit the native
- CODESYS control style automatically.
+       Overlap is how a P and ID is drawn: a pipe run should meet the
+       vessel it feeds, and the fluid body sits inside its equipment
+       outline. `cts visu lint` only reports overlap between shapes
+       that can hide a caption or a control.
 
- Demonstrates line, circle, and ellipse elements with pipe-water
- and metal classes for a simple process flow.
- ============================================================ -->
+       Pipes are thin rects, not lines: a CODESYS line has no width,
+       so it always draws one pixel wide.
 
- <!-- Main container panel -->
- <rect class="panel" x="24" y="24" width="752" height="432" />
+       COLOURS: never write one. Put class="..." on the element and
+       the active CODESYS style picks the colour.
+         surfaces  panel  card  divider
+         type      h1 (22)  h2 (16)  value (28)  label (12)  caption (11)
+         emphasis  muted  inverse
+         status    ok  warn  alarm
+         P&ID      pipe-water  metal
+       Buttons, textfields and lamps take NO class: they inherit the
+       native CODESYS control style.
+       ============================================================ -->
 
- <!-- Screen heading -->
- <text class="title" x="48" y="72">Process Schematic</text>
+  <!-- header -->
+  <text class="h1" x="24" y="46">Process Schematic</text>
+  <text class="caption" x="616" y="40" data-width="160" text-anchor="middle">Circuit 1</text>
+  <line class="divider" x1="24" y1="72" x2="776" y2="72"/>
 
- <!-- Feed tank (equipment) -->
- <ellipse class="metal" cx="140" cy="260" rx="70" ry="90" />
+  <rect class="panel" x="24" y="88" width="752" height="296"/>
+  <text class="h2" x="40" y="120">Flow path</text>
 
- <!-- Fluid in tank -->
- <ellipse class="pipe-water" cx="140" cy="290" rx="60" ry="60" />
+  <!-- feed tank: metal outline, fluid body inside it -->
+  <ellipse class="metal" cx="120" cy="248" rx="64" ry="88"/>
+  <ellipse class="pipe-water" cx="120" cy="264" rx="52" ry="64"/>
 
- <!-- Pipe from tank to pump -->
- <line class="pipe-water" x1="210" y1="260" x2="300" y2="260" />
+  <!-- suction pipe. A pipe is a thin RECT, not a <line>: a CODESYS line is
+       always one pixel wide, which disappears next to the equipment. Give the
+       run a height and it reads as a pipe; butt it exactly against the vessel
+       bbox (no overlap) and the drawing still lints clean. -->
+  <rect class="pipe-water" x="184" y="244" width="80" height="8"/>
 
- <!-- Pump -->
- <circle class="metal" cx="350" cy="260" r="40" />
+  <!-- pump -->
+  <circle class="metal" cx="296" cy="248" r="32"/>
 
- <!-- Pipe from pump to output -->
- <line class="pipe-water" x1="390" y1="260" x2="480" y2="260" />
+  <!-- discharge pipe -->
+  <rect class="pipe-water" x="328" y="244" width="80" height="8"/>
 
- <!-- Output vessel -->
- <rect class="metal" x="490" y="180" width="110" height="160" />
- <rect class="pipe-water" x="500" y="220" width="90" height="110" />
+  <!-- receiver vessel -->
+  <rect class="metal" x="408" y="160" width="120" height="176" rx="4"/>
+  <rect class="pipe-water" x="424" y="216" width="88" height="104"/>
 
- <!-- Drain pipe -->
- <line class="pipe-water" x1="545" y1="340" x2="545" y2="400" />
+  <!-- outlet stub -->
+  <rect class="pipe-water" x="528" y="244" width="24" height="8"/>
 
- <!-- Level readout label -->
- <text class="title" x="48" y="120">Tank Level</text>
+  <!-- tag numbers, on one baseline under the equipment -->
+  <text class="caption" x="56" y="352" data-width="128" text-anchor="middle">T-101 Feed tank</text>
+  <text class="caption" x="264" y="352" data-width="64" text-anchor="middle">P-101</text>
+  <text class="caption" x="408" y="352" data-width="120" text-anchor="middle">V-201 Receiver</text>
 
- <!-- Level textfield -->
- <text data-cds-type="textfield" x="160" y="104"
-       data-width="120" data-height="32"
-       data-text-var="HMI.TankLevel">show %3.1f m</text>
+  <!-- readouts -->
+  <text class="label" x="576" y="132">Tank level</text>
+  <text data-cds-type="textfield" x="576" y="168" data-width="184" data-height="32"
+        data-text-var="HMI.TankLevel" font-size="12">%3.1f m</text>
 
- <!-- Flow readout label -->
- <text class="title" x="460" y="120">Flow</text>
+  <text class="label" x="576" y="220">Flow</text>
+  <text data-cds-type="textfield" x="576" y="256" data-width="184" data-height="32"
+        data-text-var="HMI.ProcessFlow" font-size="12">%3.1f m3/h</text>
 
- <!-- Flow textfield -->
- <text data-cds-type="textfield" x="520" y="104"
-       data-width="120" data-height="32"
-       data-text-var="HMI.ProcessFlow">show %3.1f m3/h</text>
-
- <!-- Start pump button -->
- <rect data-cds-type="button" x="640" y="380" width="120" height="40"
-       data-text="Start Pump" data-cds-tap="TAP HMI.StartPump" />
-
+  <!-- action row -->
+  <line class="divider" x1="24" y1="392" x2="776" y2="392"/>
+  <rect data-cds-type="button" x="24" y="408" width="160" height="48"
+        data-text="Start pump" data-cds-tap="TAP HMI.StartPump"/>
+  <rect data-cds-type="button" x="200" y="408" width="160" height="48"
+        data-text="Stop pump" data-cds-tap="TAP HMI.StopPump"/>
 </svg>

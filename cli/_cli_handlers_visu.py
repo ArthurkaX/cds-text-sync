@@ -19,6 +19,20 @@ from cli._cli_io import _print_error
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
 
+def _optional_project_view(sync_folder):
+    """project-view dir if one can be found, else ``None``.
+
+    ``preview`` and ``lint`` work on a sketch file, not on a project. They only
+    want the project-view directory so an optional project-level ``visu.css``
+    is picked up -- so a missing daemon or sync folder must not stop them.
+    """
+    try:
+        pv, _ = _resolve_project_view(sync_folder)
+    except SystemExit:
+        return None
+    return pv
+
+
 def dispatch_visu(args):
     """Route a parsed `visu` subcommand to cli.visu.commands."""
     _root_dir = _SCRIPT_DIR.parent
@@ -27,6 +41,7 @@ def dispatch_visu(args):
     from cli.visu import commands as visu_cmds
 
     sync_folder = getattr(args, "sync_folder", "")
+    scheme = getattr(args, "scheme", "") or None
 
     if args.visu_action == "types":
         visu_cmds.list_types()
@@ -41,7 +56,36 @@ def dispatch_visu(args):
             name=args.name,
             width=getattr(args, "w", None) or args.width,
             height=getattr(args, "h", None) or args.height,
+            scheme=scheme,
         )
+        return
+
+    if args.visu_action in ("preview", "lint"):
+        if not args.svg:
+            _print_error("--svg is required")
+            sys.exit(1)
+        background = getattr(args, "background", "") or None
+        if args.visu_action == "preview":
+            visu_cmds.preview_svg(
+                project_view_dir=_optional_project_view(sync_folder),
+                svg_path=args.svg,
+                theme_name=getattr(args, "theme", "flat-style"),
+                out_path=getattr(args, "out", ""),
+                background=background,
+                grid=getattr(args, "grid", 0) or 0,
+                png=not getattr(args, "no_png", False),
+                scheme=scheme,
+            )
+        else:
+            visu_cmds.lint_svg(
+                project_view_dir=_optional_project_view(sync_folder),
+                svg_path=args.svg,
+                theme_name=getattr(args, "theme", "flat-style"),
+                background=background,
+                fix=getattr(args, "fix", False),
+                strict=getattr(args, "strict", False),
+                scheme=scheme,
+            )
         return
 
     pv, _ = _resolve_project_view(sync_folder)
@@ -134,6 +178,10 @@ def dispatch_visu(args):
             screen_name=getattr(args, "screen_name", ""),
             gvl_name=getattr(args, "gvl", None) or None,
             gvl_file=getattr(args, "gvl_file", None) or None,
+            background=getattr(args, "background", "") or None,
+            preview=not getattr(args, "no_preview", False),
+            strict=getattr(args, "strict", False),
+            scheme=scheme,
         )
     elif args.visu_action == "to-svg":
         if not args.screen:

@@ -8,13 +8,14 @@ interactive controls (button/textfield) ignore classes.
 """
 
 import os
+import re
 import sys
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import stylesheet, svg_import
+from cli.visu import stylesheet, svg_import, themes
 
 
 def test_parse_stylesheet_keeps_only_allowed_props():
@@ -73,3 +74,30 @@ def test_button_and_textfield_ignore_class():
     # A class on a native control must not inject a fill/frame override.
     assert button["params"].get("fill") is None
     assert button["params"].get("frame") is None
+
+
+def test_every_role_the_stylesheet_names_resolves_in_every_theme():
+    """A class must never resolve to nothing, in any style the user can pick.
+
+    ``svg_import.parse_svg`` layers the curated palette *under* the theme, so a
+    role missing from a theme still works there and the hole stays invisible.
+    ``builder`` resolves straight out of a theme dict for ``cts visu add`` --
+    with nothing underneath, the same hole is a ThemeError. ``--text-bright``
+    was exactly that: absent from all twelve presets, and reachable only
+    through the one path that could not see it.
+    """
+    roles = set()
+    for props in stylesheet.load_stylesheet().values():
+        for value in props.values():
+            roles.update(re.findall(r"var\(--([^)]+)\)", value))
+    assert roles, "stylesheet declared no themed colours"
+
+    missing = []
+    for name in themes.list_themes():
+        colors = themes.load_theme(name)
+        for role in sorted(roles):
+            try:
+                themes.resolve_color("var(--{0})".format(role), colors)
+            except themes.ThemeError:
+                missing.append("{0}: --{1}".format(name, role))
+    assert missing == []

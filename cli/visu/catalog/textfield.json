@@ -261,5 +261,20 @@
       "Color": "-16777216",
       "CanonicalName": "Font-Default-Color"
     }
+  },
+
+  "themeable_colors": {
+    "fill": {
+      "member_id": 2812299069,
+      "role": "field.fill",
+      "canonical_name": "Element-Fill-Color",
+      "default_signed": -1
+    },
+    "frame": {
+      "member_id": 494569607,
+      "role": "field.frame",
+      "canonical_name": "Element-Frame-Color",
+      "default_signed": -4276546
+    }
   }
 }
