@@ -12,13 +12,31 @@
  * ignore classes: they inherit the native CODESYS visual style.
  */
 
+/* --- surfaces ---------------------------------------------------------- */
 .panel      { fill: var(--panel); }              /* grouping / container backing */
-.card       { fill: var(--surface); }            /* lighter inner surface        */
-.title      { fill: var(--text); font-size: 20; }/* heading text                 */
-.value      { fill: var(--text); font-size: 28; }/* large read-out number/text   */
+.card       { fill: var(--card); }               /* inner surface, one step down  */
 .divider    { stroke: var(--divider); }          /* separator line               */
+
+/* --- type scale --------------------------------------------------------
+ * Use a class, never a bare font-size. Five steps is the whole scale; a
+ * screen that needs a sixth almost always needs less text instead.
+ */
+.h1         { fill: var(--text); font-size: 22; }       /* screen title          */
+.h2         { fill: var(--text); font-size: 16; }       /* section / panel head  */
+.value      { fill: var(--text); font-size: 28; }       /* large read-out        */
+.label      { fill: var(--text); font-size: 12; }       /* body text, field name */
+.caption    { fill: var(--text-muted); font-size: 11; } /* units, secondary note */
+.title      { fill: var(--text); font-size: 22; }       /* alias of .h1 (legacy) */
+
+/* --- text emphasis ------------------------------------------------------ */
+.muted      { fill: var(--text-muted); }         /* de-emphasised, keeps size    */
+.inverse    { fill: var(--text-bright); }        /* text on a status/accent fill */
+
+/* --- status ------------------------------------------------------------- */
 .ok         { fill: var(--success); }            /* status: healthy / running    */
 .warn       { fill: var(--warning); }            /* status: caution              */
 .alarm      { fill: var(--alarm-fill); stroke: var(--alarm-frame); } /* status: fault */
-.pipe-water { fill: var(--water); stroke: var(--water-dim); }        /* P&ID fluid    */
-.metal      { fill: var(--metal); }              /* P&ID structural / equipment  */
+
+/* --- P&ID --------------------------------------------------------------- */
+.pipe-water { fill: var(--water); stroke: var(--water-dim); }        /* fluid    */
+.metal      { fill: var(--metal); }              /* structural / equipment       */

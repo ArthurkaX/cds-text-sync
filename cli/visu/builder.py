@@ -20,6 +20,7 @@ from . import catalog as _catalog
 from . import builder_frame as _builder_frame
 from . import builder_inputs as _builder_inputs
 from . import screen_xml as _screen_xml
+from . import style_roles as _style_roles
 from ._builder_base import (
     BuilderError,
     _COLOR_TYPE,
@@ -192,11 +193,57 @@ def _remove_color_uint_placeholder(block, member_id):
     return pattern.sub("", block)
 
 
+def _replace_color_struct_with_literal(block, member_id, color_uint):
+    """Swap a style-linked colour struct for a short-form literal override.
+
+    Some golden templates (textfield) carry a native control's colour as a
+    struct with a ``CanonicalName``. CODESYS always resolves that form from the
+    project's visual style -- the ``Color`` sitting beside the name is ignored
+    -- and blanking the ``CanonicalName`` to break the link crashes the build.
+    The short form is the only encoding that actually overrides the style, and
+    it *replaces* the struct: a member id may appear only once in the list.
+
+    Returns *block* untouched when the member is not present in this form, so
+    templates that already use ``@@FILL_COLOR_UINT@@`` are unaffected.
+    """
+    pattern = re.compile(
+        r"(^[ \t]*)<Single Type=\"" + re.escape(_MEMBER_TYPE) + r"\" "
+        r"Method=\"IArchivable\">\n"
+        r"[ \t]*<Single Name=\"Id\" Type=\"long\">"
+        + re.escape(str(member_id))
+        + r"</Single>\n"
+        r"[ \t]*<List Name=\"Value\" Type=\"System\.Collections\.ArrayList\">\n"
+        r"[ \t]*<Single Type=\"" + re.escape(_COLOR_TYPE) + r"\" "
+        r"Method=\"IArchivable\">\n"
+        r"[ \t]*<Single Name=\"Color\" Type=\"int\">-?\d+</Single>\n"
+        r"[ \t]*<Single Name=\"CanonicalName\" Type=\"string\">[^<]*</Single>\n"
+        r"[ \t]*</Single>\n"
+        r"[ \t]*</List>\n"
+        r"[ \t]*</Single>",
+        re.MULTILINE,
+    )
+
+    def _short_form(match):
+        indent = match.group(1)
+        return (
+            '{i}<Single Type="{mt}" Method="IArchivable">\n'
+            '{i}  <Single Name="Id" Type="long">{id}</Single>\n'
+            '{i}  <Single Name="Value" Type="uint">{val}</Single>\n'
+            "{i}</Single>"
+        ).format(i=indent, mt=_MEMBER_TYPE, id=member_id, val=color_uint)
+
+    return pattern.sub(_short_form, block, count=1)
+
+
 def _render_font_color_struct(member_id, signed_int):
     """Render a font colour member as struct form.
 
-    CODESYS labels/textfields apply font colour ONLY when the member is a
-    struct with CanonicalName; the short-form uint value is silently ignored.
+    This member is not what CODESYS draws with. A probe screen carrying four
+    encodings of the same label proved the rendered colour follows the font
+    descriptor alone -- switching this member to the short-form uint changed
+    nothing on screen. It stays in the struct form the IDE writes itself, so a
+    round-trip through CODESYS is clean; the colour that actually wins is set
+    by :func:`_unlink_font_color_from_style`.
     """
     return (
         '{mb}<Single Type="{mt}" Method="IArchivable">\n'
@@ -215,6 +262,78 @@ def _render_font_color_struct(member_id, signed_int):
         id=member_id,
         color=str(signed_int),
     )
+
+
+# The element's own font descriptor (member 3729828405) carries the colour
+# twice: an ``ExplicitColor`` literal and a ``NamedColor`` link to the visual
+# style's ``Font-Default-Color``. While the link is there the literal is
+# ignored, so the screen follows the project's style -- which is what the light
+# scheme wants, and why the defect below stayed invisible for so long: a
+# curated light ``text`` and the style's black are both dark.
+_FONT_DESCRIPTOR_MEMBER_RE = re.compile(
+    r'<Single Type="' + re.escape(_MEMBER_TYPE) + r'" Method="IArchivable">\s*'
+    r'<Single Name="Id" Type="long">3729828405</Single>.*?</List>\s*</Single>',
+    re.DOTALL,
+)
+
+_FONT_EXPLICIT_COLOR_RE = re.compile(
+    r'(<Single Name="ExplicitColor" Type="int">)-?\d+(</Single>)'
+)
+
+_FONT_NAMED_COLOR_RE = re.compile(
+    r'([ \t]*)<Single Name="NamedColor" Type="' + re.escape(_COLOR_TYPE) + r'" '
+    r'Method="IArchivable">\n'
+    r'[ \t]*<Single Name="Color" Type="int">-?\d+</Single>\n'
+    r'[ \t]*<Single Name="CanonicalName" Type="string">[^<]*</Single>\n'
+    r"[ \t]*</Single>"
+)
+
+
+def _signed_color(color_uint):
+    """0xAARRGGBB as an unsigned string -> the signed int CODESYS stores."""
+    value = int(color_uint) & 0xFFFFFFFF
+    if value >= 0x80000000:
+        return value - 0x100000000
+    return value
+
+
+def _font_defers_to_style(scheme):
+    """True while the CODESYS visual style owns the font colour.
+
+    Light curates surfaces but leaves text to the style, so the two agree and
+    deferring keeps a generated screen consistent with the rest of the project.
+    Dark curates the text roles and has to take the colour back -- otherwise
+    every label is painted in the style's black on a dark panel.
+    """
+    return "text" not in _style_roles.curated_roles(scheme)
+
+
+def _unlink_font_color_from_style(block, signed_int):
+    """Make the font colour a literal instead of a link to the visual style.
+
+    Verified in the IDE with a probe screen carrying four encodings of one
+    label: of the three places a font colour is written, only nulling
+    ``NamedColor`` changed what was drawn. CODESYS writes exactly this form
+    itself -- the screen background is a ``BgNamedColor`` Null beside a
+    ``BgUseColor`` literal, and the stock combobox template does the same for
+    its font. Blanking the ``CanonicalName`` instead is not an option: codegen
+    asserts it is non-empty and the build fails.
+
+    ``ExplicitColor`` is rewritten alongside it, because the templates that
+    hard-code it (button) never carried the resolved colour -- with the link
+    gone their text would otherwise fall back to the template's black.
+    """
+
+    def _rewrite(match):
+        member = _FONT_EXPLICIT_COLOR_RE.sub(
+            lambda m: "{0}{1}{2}".format(m.group(1), signed_int, m.group(2)),
+            match.group(0),
+        )
+        return _FONT_NAMED_COLOR_RE.sub(
+            lambda m: '{0}<Null Name="NamedColor" />'.format(m.group(1)), member
+        )
+
+    return _FONT_DESCRIPTOR_MEMBER_RE.sub(_rewrite, block)
 
 
 def _render_scalar_member(member_id, value_type, value):
@@ -516,18 +635,31 @@ def _resolve_golden_geometry(catalog, params):
     }
 
 
-def _resolve_golden_colors(catalog, params, theme_colors):
+def _resolve_golden_colors(catalog, params, theme_colors, scheme="light"):
     """Resolve (fill, frame, font) color uints for a golden-template element.
 
     ``fill``/``frame`` stay None when the element keeps its CODESYS visual-style
     color -- native controls (button/textfield) with no explicit SVG fill/stroke.
     Custom primitives fall back to their theme role (or signed default). Font
     color always resolves, defaulting to opaque white.
+
+    Deferring to the style is right only while the scheme and the style agree
+    about how light the screen is. In ``dark`` the palette curates the native
+    control roles, and a control that deferred would be a light island on a
+    dark screen -- so a curated role is written as a literal instead.
     """
     catalog_tcolors = catalog.get("themeable_colors", {})
-    native_style_defaults = catalog.get("type") in ("button", "textfield")
+    curated = _style_roles.curated_roles(scheme)
+    is_native = catalog.get("type") in ("button", "textfield")
     fill_uint = None
     frame_uint = None
+
+    def _defers(role_def):
+        """True when this colour is left for the CODESYS style to paint."""
+        if not is_native:
+            return False
+        role = (role_def or {}).get("role")
+        return not (role and role.replace("-", ".") in curated)
 
     # Resolve font color (needed for any text-bearing element, not just primitives).
     font_color_uint = _resolve_uint_color(
@@ -540,7 +672,7 @@ def _resolve_golden_colors(catalog, params, theme_colors):
         fill_role = catalog_tcolors.get("fill", {})
         if fill_expr is None:
             # Use theme default for custom primitives only.
-            if not native_style_defaults:
+            if not _defers(fill_role):
                 if theme_colors and fill_role.get("role"):
                     fill_uint = _resolve_theme_role_uint(
                         fill_role["role"],
@@ -558,7 +690,7 @@ def _resolve_golden_colors(catalog, params, theme_colors):
         frame_expr = params.get("frame")
         frame_role = catalog_tcolors.get("frame", {})
         if frame_expr is None:
-            if not native_style_defaults:
+            if not _defers(frame_role):
                 if theme_colors and frame_role.get("role"):
                     frame_uint = _resolve_theme_role_uint(
                         frame_role["role"],
@@ -587,6 +719,7 @@ def _render_golden_element(
     identification_guid,
     visual_element_id=0,
     theme_colors=None,
+    scheme="light",
 ):
     """Render an element by substituting placeholders in a golden (IDE-exported)
     template, instead of synthesizing members.
@@ -640,7 +773,7 @@ def _render_golden_element(
     # is retained here to drop unused color placeholders below.
     catalog_tcolors = catalog.get("themeable_colors", {})
     fill_uint, frame_uint, font_color_uint = _resolve_golden_colors(
-        catalog, params, theme_colors
+        catalog, params, theme_colors, scheme
     )
 
     block = template
@@ -714,21 +847,36 @@ def _render_golden_element(
         )
     if "@@FONT_COLOR_UINT@@" in block:
         block = block.replace("@@FONT_COLOR_UINT@@", font_color_uint)
+
+    # Templates that hard-code a style-linked colour struct (textfield) rather
+    # than carrying a @@..._UINT@@ placeholder. A no-op unless a literal was
+    # actually resolved, so nothing changes while the control defers to the
+    # style -- which is every element in the light scheme.
+    if fill_uint is not None and "fill" in catalog_tcolors:
+        block = _replace_color_struct_with_literal(
+            block, catalog_tcolors["fill"]["member_id"], fill_uint
+        )
+    if frame_uint is not None and "frame" in catalog_tcolors:
+        block = _replace_color_struct_with_literal(
+            block, catalog_tcolors["frame"]["member_id"], frame_uint
+        )
+
     if "@@FONT_COLOR_STRUCT@@" in block:
-        fc_int = int(font_color_uint) & 0xFFFFFFFF
-        if fc_int >= 0x80000000:
-            fc_signed = fc_int - 0x100000000
-        else:
-            fc_signed = fc_int
-        fc_member = _render_font_color_struct(663104332, fc_signed)
+        fc_member = _render_font_color_struct(
+            663104332, _signed_color(font_color_uint)
+        )
         block = block.replace("@@FONT_COLOR_STRUCT@@", fc_member)
     if "@@FONT_COLOR_SIGNED@@" in block:
-        fc_int = int(font_color_uint) & 0xFFFFFFFF
-        if fc_int >= 0x80000000:
-            fc_signed = fc_int - 0x100000000
-        else:
-            fc_signed = fc_int
-        block = block.replace("@@FONT_COLOR_SIGNED@@", str(fc_signed))
+        block = block.replace(
+            "@@FONT_COLOR_SIGNED@@", str(_signed_color(font_color_uint))
+        )
+
+    # The colour the sketch asked for only reaches the screen once the font
+    # descriptor stops pointing at the style's Font-Default-Color.
+    if not _font_defers_to_style(scheme):
+        block = _unlink_font_color_from_style(
+            block, _signed_color(font_color_uint)
+        )
 
     # Generic catalog-driven placeholders. A catalog may declare a
     # "template_params" map so new element types can bind arbitrary members
@@ -915,7 +1063,14 @@ def build_screen(
 # --------------------------------------------------------------------------
 
 
-def append_element(xml_text, catalog, params, theme_colors=None, golden_template_text=None):
+def append_element(
+    xml_text,
+    catalog,
+    params,
+    theme_colors=None,
+    golden_template_text=None,
+    scheme="light",
+):
     """Append a new element to a screen file's VisualElementList.
 
     Bumps UniqueIdGenerator and LastUsedIdForIdentifier, assigns a
@@ -952,6 +1107,7 @@ def append_element(xml_text, catalog, params, theme_colors=None, golden_template
             identification_guid,
             visual_element_id=visual_element_id,
             theme_colors=theme_colors,
+            scheme=scheme,
         )
     else:
         block, geometry = render_element(

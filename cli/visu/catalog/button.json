@@ -274,7 +274,7 @@
   "themeable_colors": {
     "fill": {
       "member_id": 2812299069,
-      "role": "primary",
+      "role": "button.fill",
       "canonical_name": "BasicElement-Fill-Color",
       "default_signed": -1
     },

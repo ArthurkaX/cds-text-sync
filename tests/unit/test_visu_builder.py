@@ -330,7 +330,14 @@ class TestElement:
         )
         assert "@@FILL_COLOR_UINT@@" not in new_xml
         assert "@@FRAME_COLOR_UINT@@" not in new_xml
-        assert themes.resolve_color_unsigned("var(--custom-fill)", colors) not in new_xml
+        # "Keeps style defaults" means the fill/frame members are *absent*, not
+        # that they carry some other value: _render_golden_element drops the
+        # member entirely for a native control with no explicit colour. Assert
+        # that directly -- searching the XML for the resolved custom-fill uint
+        # would false-positive, because #FFFFFF is also what dozens of unrelated
+        # members in the button's golden template legitimately hold.
+        assert self._find_member(new_xml, 2812299069) is None  # fill
+        assert self._find_member(new_xml, 494569607) is None  # frame
 
     def test_color_canonical_name_nonempty(self):
         """_render_color_member rejects empty canonical_name."""
@@ -517,11 +524,21 @@ class TestCodesysStyleThemes:
         assert colors["primary"] == "#43A7D9"
 
     def test_layout_and_custom_roles_are_derived(self):
+        """Style-owned roles come from the style; curated roles come from us.
+
+        ``custom.fill``/``custom.frame`` are what an unclassed ``<rect>`` lands
+        on, and they anchor to the same BasicElement-* names as
+        ``panel``/``divider``. Letting the style own one pair while we curate
+        the other would paint two shapes of identical intent differently, so
+        both pairs are curated and must agree. ``frame``/``border`` stay the
+        style's -- they describe native controls, which CODESYS owns.
+        """
         colors = themes.load_theme("basic-style")
-        assert colors["screen.background"] == "#FFFFE1"
+        assert colors["screen.background"] == "#FFFFE1"  # style-owned
+        assert colors["frame"] == "#999999"  # style-owned
         assert colors["custom.fill"] == colors["panel"]
-        assert colors["custom.frame"] == colors["frame"]
-        assert colors["divider"] == colors["border"]
+        assert colors["custom.frame"] == colors["divider"]
+        assert colors["custom.frame"] != colors["frame"]
 
 
 # ===================================================================

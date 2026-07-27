@@ -4,7 +4,57 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Version 2.8.2 (2026-07-27)
+### Version 2.8.3 (2026-07-27)
+
+**Generated HMI screens now look designed (`cts visu from-svg`):**
+
+A screen compiled from an SVG sketch was structurally correct and visually dated — cream field, cyan vessels, acid-green status bars, no type hierarchy, no grid. None of it was a bug: it was exactly what the defaults specified. Three causes, fixed together.
+
+- **The extracted styles were overwriting a palette they had no opinion about.** `cli/visu/style_roles.py` curates a fallback per role and documents that `water`/`metal`/status roles have *no* CanonicalName anchor — they are ours, not CODESYS's. But `cli/visu/themes/*.json`, snapshotted from installed styles, redefined them from arbitrary entries and won the merge, so `--theme flat-style` (the default) yielded `water #00F3FF` and `success #ADE204`. `load_theme` now strips the roles we curate and re-fills them from `style_roles`; everything CODESYS genuinely defines — fonts, native control colours, frame, border, accent — still resolves through the project's style. Dropping `--theme` used to give a better screen than keeping it; that inversion is gone.
+- **`var(--water-dim)` never resolved.** `resolve_color` maps it to the dotted key `water.dim`, the JSON themes store `water-dim`, so a `.pipe-water` shape took its fill from the theme and its stroke from the built-in fallback — a mismatched pair by construction. Hyphenated roles are now aliased to dotted at load time.
+- **`--text-bright` was missing from all twelve presets.** `.inverse` worked anyway because `svg_import.parse_svg` layers the curated palette *underneath* the theme — but `builder` resolves straight out of a theme dict for `cts visu add`, with nothing underneath, where the same hole is a `ThemeError`. `_finalize` now makes every theme self-sufficient for every role `style_roles` knows, and a new test walks every `var(--role)` in `stylesheet.css` against every theme so the next hole fails in CI rather than at a user's prompt.
+
+**`cts visu preview` — see the screen before it reaches the IDE (new):**
+
+- A sketch is deliberately colourless (`class="pipe-water"`, never a hex), so opening it in a viewer showed black shapes on white. Nobody — human reviewer or authoring model — could see the result before importing it. `cts visu preview --svg FILE` renders `<file>.preview.svg` + `.preview.png` with the colours the compiler will actually emit.
+- The preview renders from the **parsed element list** and asks `builder._resolve_golden_colors` for the colours, so preview and compile cannot disagree about geometry, colour, or the baseline→top-left conversion: one resolution path, used twice. Native controls are drawn the way the style paints them rather than left invisible.
+- Rasterisation uses a headless Chrome/Edge when one is installed (`$CHROME_PATH` overrides the search); without a browser the SVG is still written. `from-svg` writes a preview on the way through unless `--no-preview`.
+
+**`cts visu lint` — a design contract a weak model can follow (new):**
+
+- `cts visu check` validates a *compiled* screen — bounds, member consistency, Text-ID invariants, the things CODESYS would reject. That is correctness, and it runs too late to help someone still drawing. `cts visu lint --svg FILE` checks the sketch for what makes a valid screen look unfinished: off-grid coordinates, text wider than its box, a font size outside the scale, a button too small to press, a field with nothing bound to it, a captionless button, overlap, near-miss gaps.
+- `--fix` snaps the mechanical findings by splicing the affected start-tags back at their own character offsets, so comments and formatting survive byte-for-byte. `from-svg` runs lint and prints findings; only `--strict` makes them fatal.
+- Two rules had to know what they were grading. A `<text>` `y` is a *baseline* — including a textfield's — so the rule grades the **compiled box top** and shifts the baseline by the same delta; snapping the baseline itself would push the box off-grid, the opposite of the intent. And `rx` on a `<rect>` is a corner radius, not a position, so it is exempt: `--fix` would otherwise have rounded a deliberate 2px radius down to a square corner. On an `<ellipse>` the same attribute is real geometry and stays graded.
+
+**Type scale, layout skeleton, and the authoring skill:**
+
+- `stylesheet.css` gains a five-step type scale as classes — `.h1` 22, `.h2` 16, `.value` 28, `.label` 12, `.caption` 11 (`.title` stays as an alias of `.h1`) — plus `.card`, `.muted` and `.inverse`. An author picks a class; a bare `font-size` is now a lint finding.
+- `cts visu new` no longer copies a fixed seed file with four floating examples whose coordinates ignored `--w/--h`. The skeleton is composed from layout tokens, so any canvas size gets a correct layout, and blocks that will not fit are dropped rather than squeezed — narrow canvases fall back to one KPI card, short ones drop the lamp rows. Verified lint-clean at 800×480, 1024×600, 1280×800, 640×400 and 480×320.
+- `skills/cds-visu-svg/SKILL.md` gains a "Layout rules" section (4px grid, 24px page margin, bands, type scale, touch targets, the baseline rule) and a "look at what you made" step — render the preview and read the PNG before asking for approval. Both shipped examples were rewritten and now lint clean; a test asserts they stay that way, because SKILL.md tells an authoring model to copy from them. The stale claim that inline `<style>`/`:root` is unsupported is gone — `_parse_inline_theme` has supported it all along.
+- A pipe is now drawn as a thin `<rect>`, not a `<line>`: a CODESYS line has no width member, so `<line>` always draws one pixel wide. Fine for a `.divider`, invisible for a process line.
+
+`--` is illegal inside an XML comment, which made naming a flag in the skeleton's own guidance block (`cts visu lint --fix`) render the whole file unparseable — as a `ParseError` on line 5, saying nothing about comments. Guarded by a test.
+
+**Dark screens (`--scheme dark`, new):**
+
+A night shift reads the same HMI in a dark control room; for an industrial screen that is not cosmetic. The sketch format already made most of it free — an author writes `class="panel"`, never a hex — so no example sketch, no `stylesheet.css` rule and no `themes/*.json` needed to change. What had to move is the ownership boundary.
+
+- **In dark the curated palette is authoritative, not a fallback.** Every CODESYS visual style that ships is a light style, so sampling one for `text` while painting the panel behind it dark is precisely how white-on-white happens. `style_roles.curated_roles(scheme)` widens from 15 roles in light to all 41 the dark palette names — surfaces, the text on them, frames, native control colours — and `themes.load_theme(name, scheme)` strips and re-fills those, so two different `--theme` values compile the same dark screen. Light is untouched: it still defers to the project style for everything CODESYS genuinely owns.
+- **Buttons and textfields were unreachable by any palette.** `builder._resolve_golden_colors` forces their fill and frame to `None` so the style owns them at runtime — correct for light, and a light island on a dark screen. The gate now applies only where the role is *not* curated in the active scheme. `textfield.json` had no `themeable_colors` block at all and gained one for the two members its template already carried; `button.json`'s fill role moved from `primary` to a new `button.fill`, so a dark button is a dark surface instead of a shouting accent blue.
+- **A style-linked colour cannot be overridden in place.** A colour member written as a struct with a `CanonicalName` resolves from the project style and the literal beside it is ignored — and blanking the name crashes the CODESYS build. The short-form `<Single Name="Value" Type="uint">` is the only encoding that wins, and it *replaces* the struct rather than sitting beside it, so a member id still appears exactly once. Light continues to emit the struct, byte-for-byte what it emitted before.
+- **Font colour is written in three places and drawn from one.** A label carries it as a plain member, as a style-linked struct beside it, and inside the font descriptor — which holds it twice more, as an `ExplicitColor` literal and a `NamedColor` link to the style's `Font-Default-Color`. All three already carried the right value, and the first dark screen still came back with every label in the style's black, unreadable on its own panel: while that link exists the literal is ignored. Which of the three mattered was settled by importing a probe screen carrying four encodings of the same label into a live IDE — only nulling the link changed what was drawn, and switching the colour member to the short form changed nothing at all. Dark now emits `<Null Name="NamedColor" />`, the encoding CODESYS itself uses for a screen background and for the stock combobox font, and rewrites `ExplicitColor` alongside it because the button template hard-codes a black one. Light keeps the link and keeps following the project's style. The comment in `builder._render_font_color_struct` asserted the opposite and had been wrong from the start — light could not have exposed it, since a curated light `text` and the style's black look alike.
+- **Two new roles, so a pairing is named rather than implied.** `field.text` (a textfield's value colour) and `button.fill` have to be chosen together with the box behind them. In light both derive from the role they refine (`text`, `primary`) — a style snapshot predates them and never names them, so left to a literal fallback they would have silently ignored the project style.
+- **The sketch carries its own scheme.** `cts visu new --scheme dark` records `data-cds-scheme="dark"` on the root `<svg>`; lint, preview and `from-svg` read it, so the rest of the workflow needs no flag and preview cannot drift from compile. `--scheme light|dark` overrides it for a single run. The scheme is resolved by a pre-parse (`svg_import.read_scheme`) before the theme is loaded — loading a light theme first would layer it over the dark base palette and repaint the screen light again, but only when `--theme` was supplied.
+- **Preview follows.** `_resolved_colors` hands the scheme to the compiler instead of arriving at the same colour by a different route, its light-biased fallbacks (`#DDDDDD`, `#808080`, `#000000`) now come from the palette, and the `--grid` hairline flips to white on dark — a black one at 6% opacity reads as "the flag is broken".
+- **Lamps are deliberately excluded.** Their colour comes from `Element-Lamp-*` and stays identical in both schemes: an indicator that changed meaning with the colour scheme would be a safety problem.
+
+Light output was verified byte-identical, not merely tested: the same fixture screen compiled against `flat-style`, `basic-style` and `white-style` produces the same 508630 characters before and after. New tests pin the contrast of every text role against the surface it actually sits on in *both* schemes — the rule that would have caught white-on-white before it reached the IDE — plus scheme precedence, the struct/short-form switch, and that no preset can drag a light `text` into a dark screen.
+
+Not yet covered: `cts visu to-svg` does not emit `data-cds-scheme` when decompiling, so round-tripping a dark screen loses the attribute.
+
+Unit suite: 670 passed, 3 skipped (was 521/3).
+
+---
 
 **ACTION round-trip (`cts export` → edit → `cts import`):**
 

@@ -15,6 +15,8 @@ import json
 import os
 import re
 
+from . import style_roles as _roles
+
 _THEME_DIR = os.path.join(os.path.dirname(__file__), "themes")
 
 
@@ -23,12 +25,9 @@ _STYLE_ROLES = {
     "surface": "#FFFFFF",
     "screen.background": "#F5F5F5",
     "screen.surface": "#FFFFFF",
-    "panel": "#FFFFFF",
-    "panel.frame": "#B8B8B8",
     "panel.header": "#EAEAEA",
     "panel.header.text": "#1F1F1F",
     "border": "#B8B8B8",
-    "divider": "#B8B8B8",
     "frame": "#808080",
     "text": "#1F1F1F",
     "text.muted": "#666666",
@@ -43,16 +42,13 @@ _STYLE_ROLES = {
     "primary": "#007ACC",
     "secondary": "#6A6A6A",
     "accent": "#007ACC",
-    "success": "#3A8A3A",
-    "warning": "#C47A00",
-    "error": "#C9302C",
     "muted": "#7A7A7A",
     "hover": "#E9F3FF",
     "disabled": "#A6A6A6",
-    "water": "#2D8CCB",
-    "water-dim": "#1F6FA3",
-    "metal": "#8C8C8C",
 }
+# NOTE: panel / card / divider / status / P&ID roles are intentionally absent.
+# They are curated in style_roles._ROLE_DEFS and stripped from every theme by
+# _finalize(), so a preset cannot drift away from the authoring palette.
 
 
 def _style_roles(**overrides):
@@ -78,6 +74,13 @@ _DERIVED_ROLES = {
     "custom.text": ("text", "on-surface"),
     "custom.accent.fill": ("accent", "primary", "element.active"),
     "custom.accent.text": ("on-surface", "text"),
+    # A style snapshot predates these two roles and so never names them. Left
+    # to the literal fallback they would ignore the project style entirely --
+    # a black textfield caption would silently become #1F1F1F. Derive them from
+    # the role each one refines, so light output is exactly what it was before
+    # the roles existed; in dark they are curated and forced instead.
+    "field.text": ("text", "on-surface"),
+    "button.fill": ("primary", "accent", "element.active"),
     "focus": ("element.active", "accent", "primary"),
     "primary": ("accent", "element.active"),
     "accent": ("primary", "element.active"),
@@ -103,6 +106,48 @@ def _complete_roles(colors):
                     result[role] = result[fallback]
                     changed = True
                     break
+    return _alias_dotted_roles(result)
+
+
+def _alias_dotted_roles(colors):
+    """Add a dotted alias for every hyphenated multi-word role (in place-safe).
+
+    ``resolve_color`` turns ``var(--water-dim)`` into the dotted lookup key
+    ``water.dim``, but style snapshots and the presets below spell the same role
+    ``water-dim``.  Without an alias the two halves of one class resolve from
+    different layers -- ``.pipe-water`` took its fill from the theme and its
+    stroke from the built-in fallback, which is how a cyan body ended up with a
+    navy outline.  Existing keys are never overwritten.
+    """
+    result = dict(colors or {})
+    for key in list(result):
+        if "-" in key:
+            dotted = key.replace("-", ".")
+            result.setdefault(dotted, result[key])
+    return result
+
+
+def strip_curated_roles(colors, scheme="light"):
+    """Drop the roles :mod:`style_roles` curates in *scheme* from a style snapshot.
+
+    ``cli/visu/themes/*.json`` are sampled from real ``styledef.xml`` files, so
+    they carry a value for every role name the extractor knew -- including the
+    ones with no genuine CanonicalName behind them (``water``, ``metal``, the
+    status colours).  Those samples are arbitrary: flat-style yields
+    ``water #00F3FF`` and ``success #ADE204``.  Removing them lets the curated
+    base layer in ``svg_import.parse_svg`` win, while every role CODESYS really
+    defines still comes from the project's style.
+
+    The curated set widens in ``dark``: every shipped style is light, so a dark
+    screen has to drop the style's ``text`` and ``field.fill`` too, not just its
+    ``water``.
+    """
+    curated = _roles.curated_roles(scheme)
+    result = {}
+    for key, value in (colors or {}).items():
+        if key.replace("-", ".") in curated:
+            continue
+        result[key] = value
     return result
 
 
@@ -317,10 +362,17 @@ def _normalize_name(name):
     return _STYLE_ALIASES.get(text, text)
 
 
-def load_theme(name):
+def load_theme(name, scheme="light"):
     """Load a CODESYS style preset or JSON theme and return its color roles.
 
     Returns a dict mapping role->#hex, e.g. {"surface": "#161B22", ...}.
+    Roles curated by :mod:`style_roles` are deliberately absent -- see
+    :func:`strip_curated_roles` -- so the caller's base palette provides them.
+
+    *scheme* selects which curated palette wins. ``light`` (the default) leaves
+    every existing caller unchanged; ``dark`` returns the same dark values for
+    every preset, because a light style has nothing useful to contribute to a
+    dark screen.
     Raises ThemeError if the theme is not found or malformed.
     """
     if not name:
@@ -329,20 +381,51 @@ def load_theme(name):
 
     path = os.path.join(_THEME_DIR, "{0}.json".format(normalized))
     if os.path.isfile(path):
-        return _load_theme_json(path, name)
+        return _load_theme_json(path, name, scheme)
 
     if normalized in _CODESYS_STYLES:
-        return _complete_roles(_CODESYS_STYLES[normalized]["colors"])
+        return _finalize(_CODESYS_STYLES[normalized]["colors"], scheme)
 
     legacy_path = os.path.join(_THEME_DIR, "{0}.json".format(str(name).strip()))
     if os.path.isfile(legacy_path):
-        return _load_theme_json(legacy_path, name)
+        return _load_theme_json(legacy_path, name, scheme)
 
     available = ", ".join(list_themes()) or "(none)"
     raise ThemeError("Unknown theme '{0}'. Available: {1}".format(name, available))
 
 
-def _load_theme_json(path, name):
+def _finalize(colors, scheme="light"):
+    """Drop the style's take on curated roles, then make the theme self-sufficient.
+
+    Stripping first matters: ``_complete_roles`` would otherwise derive a curated
+    role from a neighbour (``divider`` <- ``border``) and hand back a value the
+    style never meant as a divider, and that value would then seed further
+    derivations.
+
+    Filling from :mod:`style_roles` afterwards matters just as much.
+    ``svg_import.parse_svg`` layers the curated palette *under* the theme, so a
+    theme with holes in it still works there -- but ``builder`` resolves roles
+    straight out of a theme dict for ``cts visu add``, with nothing underneath.
+    A hole there is a ``ThemeError`` at the worst possible moment.
+
+    The two directions differ, and the difference is the ownership boundary:
+    roles we curate always take our value, roles CODESYS owns keep the style's
+    and only fall back to ours where the style has no opinion at all. In
+    ``dark`` that boundary moves -- see :func:`style_roles.curated_roles`.
+    """
+    curated = _roles.curated_roles(scheme)
+    completed = _complete_roles(strip_curated_roles(colors, scheme))
+    for role, value in _roles.role_palette(None, scheme).items():
+        if not value:
+            continue
+        if role in curated:
+            completed[role] = value
+        else:
+            completed.setdefault(role, value)
+    return _alias_dotted_roles(completed)
+
+
+def _load_theme_json(path, name, scheme="light"):
     """Load a JSON theme file and return its first theme color dictionary."""
     if not os.path.isfile(path):
         available = ", ".join(list_themes()) or "(none)"
@@ -355,7 +438,7 @@ def _load_theme_json(path, name):
     colors = themes_list[0].get("style", {}).get("colors", {})
     if not colors:
         raise ThemeError("Theme '{0}' has no style.colors".format(name))
-    return _complete_roles(colors)
+    return _finalize(colors, scheme)
 
 
 # ---------------------------------------------------------------------------

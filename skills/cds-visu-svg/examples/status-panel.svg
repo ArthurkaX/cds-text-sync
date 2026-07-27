@@ -1,60 +1,66 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="480">
 
- <!-- ============================================================
- HMI status panel screen. Edit this file, then compile with
- `cts visu from-svg`. Background is set at generation time.
- Do NOT add a full-screen rect just to paint the background.
+  <!-- ============================================================
+       Status panel. Shows the type scale and the status colours:
+       one h1 per screen, an h2 per section, label for body text,
+       caption for units and notes, value for a read-out.
 
- COLOURS: never write a colour. Add class="..." and the active
- CODESYS style picks the colour. Available classes:
- panel, card, title, value, divider, ok, warn, alarm,
- pipe-water, metal.
- Buttons and textfields take NO class: they inherit the native
- CODESYS control style automatically.
- ============================================================ -->
+       COLOURS: never write one. Put class="..." on the element and
+       the active CODESYS style picks the colour.
+         surfaces  panel  card  divider
+         type      h1 (22)  h2 (16)  value (28)  label (12)  caption (11)
+         emphasis  muted  inverse
+         status    ok  warn  alarm
+         P&ID      pipe-water  metal
+       Buttons, textfields and lamps take NO class: they inherit the
+       native CODESYS control style.
 
- <!-- Main container panel -->
- <rect class="panel" x="24" y="24" width="752" height="432" />
+       LAYOUT: 24px page margin, 16px between blocks, 16px panel
+       padding, coordinates on a 4px grid.
+       ============================================================ -->
 
- <!-- Screen heading -->
- <text class="title" x="48" y="72">Status Panel</text>
+  <!-- header -->
+  <text class="h1" x="24" y="46">Status Panel</text>
+  <text class="caption" x="616" y="40" data-width="160" text-anchor="middle">Line 1 / Shift A</text>
+  <line class="divider" x1="24" y1="72" x2="776" y2="72"/>
 
- <!-- Divider below heading -->
- <line class="divider" x1="48" y1="88" x2="752" y2="88" />
+  <!-- left panel: status rows. A 16px swatch reads as a state light;
+       use data-cds-type="lamp" instead when it must follow a variable. -->
+  <rect class="panel" x="24" y="88" width="368" height="296"/>
+  <text class="h2" x="40" y="120">Machine status</text>
 
- <!-- Section: machine status -->
- <text class="title" x="48" y="124">Machine Status</text>
+  <rect class="ok" x="40" y="144" width="16" height="16" rx="2"/>
+  <text class="label" x="68" y="156">Motor running</text>
 
- <rect class="ok" x="48" y="140" width="16" height="16" />
- <text class="title" x="72" y="154">Motor Running</text>
+  <rect class="warn" x="40" y="176" width="16" height="16" rx="2"/>
+  <text class="label" x="68" y="188">Filter due for service</text>
 
- <rect class="alarm" x="48" y="172" width="16" height="16" />
- <text class="title" x="72" y="186">Pressure Fault</text>
+  <rect class="alarm" x="40" y="208" width="16" height="16" rx="2"/>
+  <text class="label" x="68" y="220">Pressure fault</text>
 
- <!-- Divider -->
- <line class="divider" x1="48" y1="212" x2="752" y2="212" />
+  <text class="caption" x="40" y="267">Faults latch until acknowledged.</text>
 
- <!-- Section: live values -->
- <text class="title" x="48" y="248">Live Values</text>
+  <!-- right panel: live values. A label baseline and the field under it are
+       24px apart, which leaves 16px between the field and the next label. -->
+  <rect class="panel" x="408" y="88" width="368" height="296"/>
+  <text class="h2" x="424" y="120">Live values</text>
 
- <text data-cds-type="textfield" x="48" y="272"
-       data-width="160" data-height="32"
-       data-text-var="HMI.Temperature">show %3.1f C</text>
+  <text class="label" x="424" y="148">Temperature</text>
+  <text data-cds-type="textfield" x="424" y="172" data-width="336" data-height="32"
+        data-text-var="HMI.Temperature" font-size="12">%3.1f C</text>
 
- <text data-cds-type="textfield" x="240" y="272"
-       data-width="160" data-height="32"
-       data-text-var="HMI.Pressure">show %3.2f bar</text>
+  <text class="label" x="424" y="220">Pressure</text>
+  <text data-cds-type="textfield" x="424" y="244" data-width="336" data-height="32"
+        data-text-var="HMI.Pressure" font-size="12">%3.2f bar</text>
 
- <!-- Divider -->
- <line class="divider" x1="48" y1="328" x2="752" y2="328" />
+  <text class="label" x="424" y="292">Throughput</text>
+  <text class="value" x="424" y="332">1 284</text>
+  <text class="caption" x="544" y="335">units / h</text>
 
- <!-- Section: controls -->
- <text class="title" x="48" y="364">Controls</text>
-
- <rect data-cds-type="button" x="48" y="388" width="140" height="40"
-       data-text="Start" data-cds-tap="TAP HMI.StartPump" />
-
- <rect data-cds-type="button" x="208" y="388" width="140" height="40"
-       data-text="Stop" data-cds-action="OnMouseClick: ST HMI.StopPump := TRUE;" />
-
+  <!-- action row -->
+  <line class="divider" x1="24" y1="392" x2="776" y2="392"/>
+  <rect data-cds-type="button" x="24" y="408" width="160" height="48"
+        data-text="Start" data-cds-tap="TAP HMI.StartPump"/>
+  <rect data-cds-type="button" x="200" y="408" width="160" height="48"
+        data-text="Stop" data-cds-action="OnMouseClick: ST HMI.StopPump := TRUE;"/>
 </svg>

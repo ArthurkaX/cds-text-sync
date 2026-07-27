@@ -480,11 +480,22 @@ from-svg SVG contract:
   Supported elements: rect, circle, ellipse, line, text,
     rect[data-cds-type=button], text[data-cds-type=textfield]
 
-  CSS variables (set in :root block):
-    --background   screen background
+  Prefer a semantic class over a colour. class="..." expands through
+  cli/visu/stylesheet.css (override it with a project-level visu.css):
+    surfaces   panel card divider
+    type       h1 h2 value label caption   (the whole scale: 22/16/28/12/11)
+    emphasis   muted inverse
+    status     ok warn alarm
+    P&ID       pipe-water metal
+
+  CSS variables (set in a :root block, or use the class above):
+    --screen       generated screen background
+    --background   style background
     --surface      panel/background fill default
     --panel        sub-panel fill
+    --card         inner surface, one step down from panel
     --border       --frame stroke default
+    --divider      separator line
     --text         font colour
     --text-muted   muted/secondary font colour
     --primary      accent/highlight
@@ -493,6 +504,7 @@ from-svg SVG contract:
     --warning      orange/caution
     --error        red/alarm
     --water        pipe/fluid
+    --water-dim    pipe/fluid outline
     --metal        structural elements
 
   Color rules for SVG attributes:
@@ -503,6 +515,10 @@ from-svg SVG contract:
       browser preview but is IGNORED by the transpiler. These
       elements inherit the CODESYS project visual style.
       For coloured button-like shapes use plain <rect> + <text>.
+
+  Look before you import:
+    cts visu preview --svg screen.svg        # resolved SVG + PNG
+    cts visu lint --svg screen.svg [--fix]   # grid, type scale, overflow
 
   Unsupported in v1: polygon, polyline, image, transform,
     gradients, filters, masks, animation, viewBox scaling,
@@ -521,6 +537,8 @@ from-svg SVG contract:
             "describe",
             "from-svg",
             "to-svg",
+            "preview",
+            "lint",
             "capture-frame",
         ],
         help="new - scaffold an editable SVG sketch from the seed template\n"
@@ -532,6 +550,8 @@ from-svg SVG contract:
         "describe - describe a type or element\n"
         "from-svg - compile SVG to CODESYS screen XML\n"
         "to-svg - decompile CODESYS screen XML to SVG\n"
+        "preview - render an SVG sketch to a viewable SVG/PNG (resolved colours)\n"
+        "lint - check an SVG sketch for layout/typography problems\n"
         "capture-frame - capture a VisuFbFrame instance as golden template + catalog",
     )
     p_visu.add_argument(
@@ -607,6 +627,51 @@ from-svg SVG contract:
         "--gvl-file",
         default="",
         help="Explicit GVL .st file path",
+    )
+    p_visu.add_argument(
+        "--background",
+        default="",
+        help=(
+            "Screen background (for from-svg, preview, lint): "
+            "auto (curated neutral, default) | style (the project style's own "
+            "background) | #RRGGBB"
+        ),
+    )
+    p_visu.add_argument(
+        "--scheme",
+        default="",
+        choices=["", "light", "dark"],
+        help=(
+            "Colour scheme (for new, from-svg, preview, lint): light (default) "
+            "| dark. 'visu new' records it as data-cds-scheme on the sketch; "
+            "elsewhere it overrides that attribute for a single render"
+        ),
+    )
+    p_visu.add_argument(
+        "--no-preview",
+        action="store_true",
+        help="Skip writing the .preview.svg/.png next to the compiled screen (for from-svg)",
+    )
+    p_visu.add_argument(
+        "--no-png",
+        action="store_true",
+        help="Write only the preview SVG, do not rasterise (for preview)",
+    )
+    p_visu.add_argument(
+        "--grid",
+        type=int,
+        default=0,
+        help="Overlay a grid of this spacing on the preview, in px (for preview)",
+    )
+    p_visu.add_argument(
+        "--fix",
+        action="store_true",
+        help="Rewrite the mechanically fixable findings in place (for lint)",
+    )
+    p_visu.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat any lint finding as fatal (for lint, from-svg)",
     )
 
     subparsers._choices_actions = [
