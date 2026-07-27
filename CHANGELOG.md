@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.8.2 (2026-07-27)
+
+**ACTION round-trip (`cts export` → edit → `cts import`):**
+
+- ACTIONs (and other declaration-less POU children) expose an `Implementation` section only, so `st_projection_content` never matched its two-section branch and exported them as a bare body — no `ACTION <name>` header, no `// --- implementation ---` marker. The file was not self-describing: `_detect_st_kind` could not classify it, and the import path could not tell the body apart from a GVL/DUT declaration, so it routed the text into `textual_declaration` (absent on an ACTION) and the edit never reached the IDE. The object landed in `skipped_projection_objects` while `cts compare` kept showing the diff.
+- The header is now synthesised on export from the entry's own `MetaObject/Name`, and stripped again by `split_st_projection_values` on the way back, so the text-first path (`folder_reader`) and the patch builder store the bare body in the `Implementation` blob exactly as before. Both directions are covered by `tests/unit/test_action_round_trip.py` — a forward-only fix would write the header and the marker straight into the stored ST code.
+- Splitting of projected `.st` text now lives in one place, `src/ide_bridge/ide_st_text.py`, shared by the update path, the creation path and `update-pou`; the three used to disagree about what a marker-less file means. A marker-less file is still a **declaration** — that is what GVLs, DUTs and empty-bodied POUs project to, and treating it as an implementation would silently write their declaration nowhere.
+- `.st` files exported before this change (bare body, no header) keep working without a re-export: when the target object exposes no declaration but does expose an implementation, the body is routed to the implementation. Objects that do have a declaration are never re-routed.
+- An empty or whitespace-only `.st` is no longer reported in `updated_text_objects`: nothing is written, so claiming an IDE update was misleading.
+- The skip reason for non-ST projections (`.csv` textlists, alarm tables) no longer advises `update-pou`, which only understands `.st`.
+
+Problem surface identified from eddiedon's report in #63; implementation and reverse-direction fix are independent. Verified live against a 894-object project in both `text_first` and `xml_first` sync modes: declaration-only objects (GVL/DUT/interfaces — 303 of them) still route to `Interface`, POUs and methods to both sections, and `cts compare` stays clean across an edit → import → revert cycle.
+
+---
+
 ### Version 2.8.1 (2026-07-25)
 
 **Non-English UI locale fix (import resolution + on-disk tree):**

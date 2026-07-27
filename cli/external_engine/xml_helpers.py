@@ -14,6 +14,11 @@ import xml.etree.ElementTree as ET
 TEXT_PROJECTION_SEPARATOR = "\n\n// === SECTION ===\n\n"
 ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
 IMPORT_SAFE_CSV_EXTRACTORS = set(["textlist_csv", "alarm_items_csv"])
+ACTION_HEADER_RE = re.compile(
+    r"^\s*ACTION\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",
+    re.IGNORECASE,
+)
+
 POU_END_KEYWORDS = {
     "PROGRAM": "END_PROGRAM",
     "FUNCTION_BLOCK": "END_FUNCTION_BLOCK",
@@ -210,6 +215,27 @@ def _normalize_trailing_newline(text):
     return (text or "").rstrip() + "\n"
 
 
+def _entry_object_name(entry_element):
+    """Return the object name carried by the entry's own MetaObject, or None.
+
+    Only direct children are inspected: a nested object's MetaObject must never
+    be mistaken for this entry's own.
+    """
+    meta = _named_child_any(entry_element, "MetaObject")
+    if meta is None:
+        return None
+    name_element = _named_child_any(meta, "Name")
+    if name_element is None:
+        return None
+    return (name_element.text or "").strip() or None
+
+
+def _action_header_name(line):
+    """Return the name from an ``ACTION <name>`` header line, or None."""
+    match = ACTION_HEADER_RE.match(line or "")
+    return match.group(1) if match else None
+
+
 def st_projection_content(entry_element):
     sections = _text_blob_sections(entry_element)
     if not sections:
@@ -241,6 +267,22 @@ def st_projection_content(entry_element):
                 + ST_IMPLEMENTATION_MARKER
                 + "\n\n"
                 + _normalize_trailing_newline(implementation)
+            )
+    # ACTIONs (and other declaration-less POU children) expose an implementation
+    # section only. Without a header the projected .st is not self-describing:
+    # the folder reader cannot tell what kind it is, and the import path cannot
+    # tell the body apart from a GVL/DUT declaration. Synthesise the header from
+    # the entry's own MetaObject name; split_st_projection_values() strips it
+    # again on the way back, so the stored blob is unchanged.
+    if not declarations and len(implementations) == 1:
+        action_name = _entry_object_name(entry_element)
+        if action_name:
+            return (
+                "ACTION {0}\n".format(action_name)
+                + "\n"
+                + ST_IMPLEMENTATION_MARKER
+                + "\n\n"
+                + _normalize_trailing_newline(implementations[0])
             )
     return join_text_blob_values([section["text"] for section in sections])
 
@@ -305,6 +347,38 @@ def _split_full_pou_projection(value):
     )
 
 
+def split_action_projection(value):
+    """Return the implementation body of an ``ACTION``-headed ST projection.
+
+    Returns None when *value* carries no ``ACTION <name>`` header, so callers
+    can fall back to their normal declaration/implementation handling. The
+    optional ``END_ACTION`` terminator is dropped: CODESYS stores the bare body
+    and re-adds the keywords itself.
+    """
+    normalized = (value or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    index = 0
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    if index >= len(lines) or not _action_header_name(lines[index]):
+        return None
+
+    body = lines[index + 1 :]
+    while body and not body[0].strip():
+        body.pop(0)
+    if body and body[0].strip() == ST_IMPLEMENTATION_MARKER:
+        body.pop(0)
+        while body and not body[0].strip():
+            body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    if body and body[-1].strip().upper() == "END_ACTION":
+        body.pop()
+        while body and not body[-1].strip():
+            body.pop()
+    return "\n".join(body) + ("\n" if body else "")
+
+
 def _split_marked_projection(value):
     marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
     normalized = (value or "").replace("\r\n", "\n")
@@ -321,6 +395,17 @@ def _split_marked_projection(value):
 def split_st_projection_values(value, entry_element):
     blobs = text_blob_elements(entry_element)
     sections = _text_blob_sections(entry_element)
+    # Declaration-less entry (ACTION): the projection carries a synthesised
+    # ``ACTION <name>`` header that must not reach the stored blob. Strip it
+    # here, otherwise the header and the marker are written straight into the
+    # Implementation text by replace_text_blob_values().
+    if (
+        len(blobs) == len(sections) == 1
+        and sections[0]["role"] == "implementation"
+    ):
+        action_body = split_action_projection(value)
+        if action_body is not None:
+            return [action_body]
     marked_parts = _split_marked_projection(value) or _split_full_pou_projection(value)
     if marked_parts and len(blobs) == len(sections) == 2:
         declaration, implementation = marked_parts

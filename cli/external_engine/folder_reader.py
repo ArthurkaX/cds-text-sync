@@ -27,6 +27,7 @@ from xml_helpers import (
     extract_cds_text_sync_type_guid,
     replace_text_blob_values,
     sha1_hex,
+    split_action_projection,
     split_st_projection_values,
     strip_cds_text_sync_pragmas,
     text_blob_elements,
@@ -79,6 +80,12 @@ def _detect_st_kind(content):
 
 def _split_st_create_content(content):
     normalized = (content or "").replace("\r\n", "\n").replace("\r", "\n")
+    # An ACTION carries no declaration: everything after the synthesised
+    # ``ACTION <name>`` header is implementation. Checked before the marker so
+    # the header itself never ends up in the declaration of a new object.
+    action_body = split_action_projection(normalized)
+    if action_body is not None:
+        return "", action_body.strip()
     marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
     if marker in normalized:
         declaration, implementation = normalized.split(marker, 1)

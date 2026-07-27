@@ -6,7 +6,7 @@
 [![Issues](https://img.shields.io/github/issues/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/issues)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
 
-**Version**: `2.8.1`
+**Version**: `2.8.2`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
