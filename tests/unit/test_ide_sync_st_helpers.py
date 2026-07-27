@@ -179,3 +179,93 @@ class TestSplitStContent:
         decl, impl = sync_module._split_st_content(content)
         assert decl == ""
         assert impl == "testVal := 5;"
+
+
+# ---------------------------------------------------------------------------
+# _apply_text_to_object — success semantics for declaration-less objects
+# ---------------------------------------------------------------------------
+
+
+class _WriteableDoc:
+    """Minimal stand-in for a CODESYS text document (supports .text assignment)."""
+
+    def __init__(self, initial=""):
+        self.text = initial
+
+
+class _StubTarget:
+    """Stand-in for a CODESYS object node.
+
+    ``textual_declaration`` / ``textual_implementation`` mirror the real API;
+    setting an attribute to None simulates an object that has no such section
+    (e.g. an ACTION has no declaration).
+    """
+
+    def __init__(self, *, has_declaration=True, has_implementation=True):
+        self.textual_declaration = _WriteableDoc() if has_declaration else None
+        self.textual_implementation = (
+            _WriteableDoc() if has_implementation else None
+        )
+
+
+class TestApplyTextToObject:
+    def test_writes_both_sections_for_full_pou(self, sync_module):
+        target = _StubTarget()
+        decl_ok, impl_ok = sync_module._apply_text_to_object(
+            target, "PROGRAM P\nVAR x:INT;END_VAR", "x := 1;"
+        )
+        assert decl_ok is True
+        assert impl_ok is True
+        assert target.textual_declaration.text == "PROGRAM P\nVAR x:INT;END_VAR"
+        assert target.textual_implementation.text == "x := 1;"
+
+    def test_action_with_declaration_header_still_reports_impl_ok(self, sync_module):
+        """Regression: when a user re-adds the ``ACTION <name>`` header to an
+        exported ACTION file and imports it, the header is parsed as the
+        declaration. An ACTION has no ``textual_declaration`` (it is None), so
+        ``_replace_text_document`` returns False for the declaration and the
+        old code reported the whole update as incomplete — even though the
+        implementation was written successfully. The implementation outcome
+        must be reported accurately (impl_ok=True) so the caller can count it
+        as updated instead of misclassifying it as skipped."""
+        target = _StubTarget(has_declaration=False)  # ACTION: no declaration
+        decl_ok, impl_ok = sync_module._apply_text_to_object(
+            target, "ACTION DoAct", "outVal := 999;"
+        )
+        # decl couldn't be written (object has no declaration section) — that
+        # is expected for an ACTION, not a failure of the import.
+        assert decl_ok is True  # treated as "nothing to write / N/A"
+        assert impl_ok is True
+        assert target.textual_implementation.text == "outVal := 999;"
+
+    def test_real_declaration_failure_is_still_reported(self, sync_module):
+        """If the object *does* expose a declaration section but writing into
+        it fails, decl_ok must still be False (we don't want to mask genuine
+        write failures for objects that genuinely have declarations)."""
+        target = _StubTarget(has_declaration=True)
+        # Force the declaration document to reject writes.
+        target.textual_declaration = _UnwriteableDoc()
+        decl_ok, impl_ok = sync_module._apply_text_to_object(
+            target, "PROGRAM P\nVAR x:INT;END_VAR", "x := 1;"
+        )
+        assert decl_ok is False
+        assert impl_ok is True
+
+    def test_empty_inputs_return_both_ok(self, sync_module):
+        target = _StubTarget()
+        decl_ok, impl_ok = sync_module._apply_text_to_object(target, "", "")
+        assert decl_ok is True
+        assert impl_ok is True
+
+
+class _UnwriteableDoc:
+    """A document-like object whose .text setter always raises, and which has
+    no .replace method, so _replace_text_document cannot succeed."""
+
+    @property
+    def text(self):
+        return ""
+
+    @text.setter
+    def text(self, value):
+        raise RuntimeError("write rejected")

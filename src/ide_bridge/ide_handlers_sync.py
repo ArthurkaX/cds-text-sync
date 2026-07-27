@@ -605,18 +605,36 @@ def _apply_text_to_object(target, decl, impl):
     decl_ok = True
     impl_ok = True
     if decl:
-        decl_ok = False
-        try:
-            decl_ok = _replace_text_document(target.textual_declaration, decl)
-        except Exception as e:
-            _log("Warning: could not set declaration: {0}".format(e))
+        decl_ok = _apply_text_section(target, "textual_declaration", decl)
     if impl:
-        impl_ok = False
-        try:
-            impl_ok = _replace_text_document(target.textual_implementation, impl)
-        except Exception as e:
-            _log("Warning: could not set implementation: {0}".format(e))
+        impl_ok = _apply_text_section(target, "textual_implementation", impl)
     return decl_ok, impl_ok
+
+
+def _apply_text_section(target, attr_name, text):
+    """Write text into getattr(target, attr_name).
+
+    Returns True when the section was written, OR when the object does not
+    expose that section at all (the attribute is missing or its document is
+    None). The latter is normal for declaration-less objects such as ACTIONs:
+    their textual_declaration is absent, so failing to "write the
+    declaration" is expected rather than an error. Only an actual write
+    failure against a present document returns False.
+    """
+    try:
+        doc = getattr(target, attr_name)
+    except Exception:
+        # Object type does not expose this section at all — treat as N/A.
+        return True
+    if doc is None:
+        # Section exists conceptually but this object has none (e.g. an ACTION
+        # has no declaration). Not a failure.
+        return True
+    try:
+        return _replace_text_document(doc, text)
+    except Exception as e:
+        _log("Warning: could not set {0}: {1}".format(attr_name, e))
+        return False
 
 
 def _apply_modified_st_objects(project, report_path):
