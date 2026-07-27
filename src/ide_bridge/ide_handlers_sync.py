@@ -579,7 +579,11 @@ def _split_st_update_content(content):
     if marker in normalized:
         parts = normalized.split(marker, 1)
         return parts[0].strip(), parts[1].strip()
-    return normalized.strip(), ""
+    # No marker: the content is a bare body (e.g. an exported ACTION, which
+    # carries only an implementation). Treat it as the implementation, not the
+    # declaration, so _apply_text_to_object writes it to textual_implementation
+    # instead of misrouting it into textual_declaration and skipping the impl.
+    return "", normalized.strip()
 
 
 def _replace_text_document(doc, text):
@@ -693,7 +697,10 @@ def _split_st_content(content):
                 impl = impl.rstrip()[: -len(end_kw)].rstrip()
                 break
         return decl, impl
-    return normalized.strip(), ""
+    # No marker: bare body (e.g. exported ACTION with only an implementation).
+    # Treat it as the implementation, not the declaration, to avoid misrouting
+    # the body into textual_declaration. Mirror _split_st_update_content.
+    return "", normalized.strip()
 
 
 def _strip_text_creates(root):
