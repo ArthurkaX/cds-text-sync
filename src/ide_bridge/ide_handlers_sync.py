@@ -32,6 +32,8 @@ from ide_daemon_helpers import (
     _invalidate_device_cache,
 )
 
+from ide_st_text import split_st_text
+
 
 # ── Sync command handlers and private ST helpers ─────────────────────────────
 
@@ -504,15 +506,26 @@ def _cmd_sync_import_text(params):
                         continue
                     _pd = obj.get("projection_diff") or {}
                     if _pd.get("format") and _pd.get("disk_content") is not None:
+                        _fmt = str(_pd.get("format") or "")
+                        if _fmt.lower() == "st":
+                            _reason = (
+                                "projection change not applied automatically; "
+                                "use update-pou or edit in the IDE"
+                            )
+                        else:
+                            # update-pou only understands .st — do not send the
+                            # user to a command that cannot help them.
+                            _reason = (
+                                "'{0}' projections cannot be applied "
+                                "automatically; edit the object in the "
+                                "IDE".format(_fmt)
+                            )
                         skipped_projection_objects.append(
                             {
                                 "name": _name,
                                 "path": obj.get("path", ""),
                                 "format": _pd.get("format", ""),
-                                "reason": (
-                                    "projection change not applied automatically; "
-                                    "use update-pou or edit in the IDE"
-                                ),
+                                "reason": _reason,
                             }
                         )
             except Exception:
@@ -574,12 +587,12 @@ def _cmd_sync_import_text(params):
 
 
 def _split_st_update_content(content):
-    marker = "// --- implementation ---"
-    normalized = (content or "").replace("\r\n", "\n").replace("\r", "\n")
-    if marker in normalized:
-        parts = normalized.split(marker, 1)
-        return parts[0].strip(), parts[1].strip()
-    return normalized.strip(), ""
+    """Split a modified .st file into (declaration, implementation).
+
+    See ide_st_text.split_st_text for the rules; update and creation must not
+    diverge, so both go through it.
+    """
+    return split_st_text(content)
 
 
 def _replace_text_document(doc, text):
@@ -595,6 +608,35 @@ def _replace_text_document(doc, text):
         doc.replace(text)
         return True
     return False
+
+
+def _text_section(target, attribute_name):
+    """Return target.<attribute_name>, or None if it is absent or unreadable."""
+    try:
+        return getattr(target, attribute_name, None)
+    except Exception:
+        return None
+
+
+def _route_sections_for_target(target, decl, impl):
+    """Re-route a marker-less body onto the section the object actually has.
+
+    .st files exported before ACTIONs carried a header are a bare implementation
+    body with no marker, so the splitter classifies them as a declaration. When
+    the object exposes no declaration but does expose an implementation, the
+    text can only be the implementation — routing by what the object has keeps
+    those legacy files working without a re-export.
+
+    Declaration-only kinds (GVL, DUT) do expose textual_declaration, so they are
+    never re-routed; that would write their declaration nowhere.
+    """
+    if decl and not impl:
+        if (
+            _text_section(target, "textual_declaration") is None
+            and _text_section(target, "textual_implementation") is not None
+        ):
+            return "", decl
+    return decl, impl
 
 
 def _apply_text_to_object(target, decl, impl):
@@ -646,6 +688,16 @@ def _apply_modified_st_objects(project, report_path):
             )
             continue
         decl, impl = _split_st_update_content(disk_content)
+        if not decl and not impl:
+            # Nothing to write. Reporting this as "updated" would claim an IDE
+            # change that never happened, so leave it out of the result.
+            _log(
+                "Skipped empty .st projection for {0}".format(
+                    obj.get("name") or obj.get("guid")
+                )
+            )
+            continue
+        decl, impl = _route_sections_for_target(target, decl, impl)
         decl_ok, impl_ok = _apply_text_to_object(target, decl, impl)
         if decl_ok and impl_ok:
             updated.append(obj.get("name") or obj.get("guid") or "?")
@@ -681,19 +733,7 @@ def _split_st_content(content):
     Strips END_FUNCTION_BLOCK / END_FUNCTION / END_PROGRAM from implementation
     as CODESYS API auto-adds these.
     """
-    marker = "// --- implementation ---"
-    normalized = (content or "").replace("\r\n", "\n").replace("\r", "\n")
-    if marker in normalized:
-        parts = normalized.split(marker, 1)
-        decl = parts[0].strip()
-        impl = parts[1].strip()
-        # Strip trailing END_* keywords (CODESYS API auto-adds them)
-        for end_kw in ["END_FUNCTION_BLOCK", "END_FUNCTION", "END_PROGRAM"]:
-            if impl.rstrip().endswith(end_kw):
-                impl = impl.rstrip()[: -len(end_kw)].rstrip()
-                break
-        return decl, impl
-    return normalized.strip(), ""
+    return split_st_text(content, strip_pou_end=True)
 
 
 def _strip_text_creates(root):
@@ -833,13 +873,7 @@ def _cmd_update_pou(params):
     content = _read_text_utf8(st_path)
 
     # Split into declaration and implementation
-    marker = "// --- implementation ---"
-    decl = content
-    impl = ""
-    if marker in content:
-        parts = content.split(marker, 1)
-        decl = parts[0].strip()
-        impl = parts[1].strip()
+    decl, impl = split_st_text(content)
 
     # Find the POU object in the project tree
     target, _target_type = _find_object_in_project(project, pou_name, app_name)
@@ -852,6 +886,7 @@ def _cmd_update_pou(params):
         }
 
     # Update declaration
+    decl, impl = _route_sections_for_target(target, decl, impl)
     decl_ok = False
     impl_ok = False
     decl_skipped = None
