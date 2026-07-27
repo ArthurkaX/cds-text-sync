@@ -210,6 +210,27 @@ def _normalize_trailing_newline(text):
     return (text or "").rstrip() + "\n"
 
 
+def _action_name_from_entry(entry_element):
+    """Return the ACTION name carried under MetaObject/Name, or None.
+
+    CODESYS ACTIONs have no declaration section; their name lives on the
+    surrounding object metadata rather than in the projection body. We need
+    it to synthesise the ``ACTION <name>`` header on export so the projected
+    .st round-trips back through ``cts import``.
+    """
+    meta = _named_child_any(entry_element, "MetaObject")
+    if meta is None:
+        # Some snapshots serialise MetaObject one level down; fall back to a
+        # descendant search but stay scoped to a MetaObject ancestor.
+        meta = _named_descendant(entry_element, "Single", "MetaObject")
+    if meta is None:
+        return None
+    name_elem = _named_child_any(meta, "Name")
+    if name_elem is None or not (name_elem.text or "").strip():
+        return None
+    return name_elem.text.strip()
+
+
 def st_projection_content(entry_element):
     sections = _text_blob_sections(entry_element)
     if not sections:
@@ -238,6 +259,21 @@ def st_projection_content(entry_element):
             return (
                 _normalize_trailing_newline(declaration)
                 + "\n"
+                + ST_IMPLEMENTATION_MARKER
+                + "\n\n"
+                + _normalize_trailing_newline(implementation)
+            )
+    # ACTIONs (and other declaration-less POU children) carry only an
+    # implementation section. Synthesise the ``ACTION <name>`` header from the
+    # entry metadata so the projected .st is self-describing and round-trips
+    # through ``cts import``. Without this header, import sees a bare body and
+    # (per the _split_st_update_content fallback) refuses to update the IDE.
+    if not declarations and len(implementations) == 1:
+        implementation = implementations[0]
+        action_name = _action_name_from_entry(entry_element)
+        if action_name:
+            return (
+                "ACTION {0}\n".format(action_name)
                 + ST_IMPLEMENTATION_MARKER
                 + "\n\n"
                 + _normalize_trailing_newline(implementation)

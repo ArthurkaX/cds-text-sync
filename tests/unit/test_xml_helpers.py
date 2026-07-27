@@ -217,6 +217,24 @@ class TestStProjectionContent:
         impl.text = implementation
         return root
 
+    def _make_action_entry(self, name, implementation):
+        """Build a minimal ACTION entry element.
+
+        ACTIONs in CODESYS have **no declaration** — only an Implementation
+        section — plus a MetaObject/Name carrying the action's name. This
+        mirrors the real ``<父>.<动作>.xml`` shape captured by ``cts export``.
+        """
+        root = ET.Element("Single", {"Name": "Object"})
+        meta = ET.SubElement(root, "Single", {"Name": "MetaObject"})
+        name_elem = ET.SubElement(meta, "Single", {"Name": "Name"})
+        name_elem.text = name
+        impl_parent = ET.SubElement(root, "Single", {"Name": "Implementation"})
+        impl = ET.SubElement(
+            impl_parent, "Single", {"Name": "TextBlobForSerialisation"}
+        )
+        impl.text = implementation
+        return root
+
     def test_produces_declaration_and_implementation_with_marker(self):
         entry = self._make_entry(
             "PROGRAM MyPrg\nVAR\n  x : INT;\nEND_VAR",
@@ -230,6 +248,18 @@ class TestStProjectionContent:
 
     def test_none_for_empty_entry(self):
         assert st_projection_content(None) is None
+
+    def test_action_emits_keyword_marker_and_implementation(self):
+        """An ACTION (declaration-less) must project to a complete two-section
+        .st: ``ACTION <name>`` + marker + implementation. Currently it projects
+        to a bare implementation body, which ``cts import`` then refuses to
+        apply (regression: editing an exported ACTION never reaches the IDE)."""
+        entry = self._make_action_entry("TestAct2", "testVal := 1;")
+        result = st_projection_content(entry)
+        assert result is not None
+        assert "ACTION TestAct2" in result
+        assert ST_IMPLEMENTATION_MARKER in result
+        assert "testVal := 1;" in result
 
 
 class TestSplitStProjectionValues:
