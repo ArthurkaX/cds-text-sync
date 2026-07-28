@@ -290,11 +290,23 @@ def _estimate_text_width(text, font_size=12):
     if not text:
         return 20
     em = sum(_char_em(ch) for ch in text)
-    return max(20, int(em * int(font_size) / 1000.0) + 8)
+    return _to_grid(max(20, int(em * int(font_size) / 1000.0) + 8))
 
 
 def _estimate_text_height(font_size=12):
-    return max(16, int(font_size) * 1.4)
+    return _to_grid(max(16, int(int(font_size) * 1.4)))
+
+
+def _to_grid(value, grid=4):
+    """Round *value* up to the next multiple of *grid*.
+
+    The estimates below are what a label gets when the author wrote no
+    data-width/data-height, and they land on arbitrary pixels -- so the box the
+    sketch compiled to failed the project's own 4px grid rule, and ``lint`` then
+    reported a finding against a number no one had written. Rounding *up* keeps
+    the box at least as wide as the glyphs need.
+    """
+    return int((value + grid - 1) // grid * grid)
 
 
 # Fully transparent, for shapes that genuinely have no fill or no frame.

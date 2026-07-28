@@ -202,6 +202,8 @@ Flags shared by the SVG commands:
 | `--scheme light\|dark` | Colour scheme. `visu new` records it on the sketch as `data-cds-scheme`, so the rest of the workflow needs no flag; on `lint`, `preview` and `from-svg` it overrides that attribute for a single run. On `to-svg` it overrides the scheme inferred from the screen's background. In `dark` the curated palette owns surfaces, text and native control colours — every shipped CODESYS style is a light style — so `--theme` stops affecting them. Lamps keep their indicator colours in both. |
 | `--fix` | `lint` only: rewrite the mechanically fixable findings. |
 | `--strict` | `from-svg` only: make lint findings fatal instead of advisory. |
+| `--create-screen --screen-name NAME` | `from-svg` only: compile into a screen that does not exist yet, instead of `--screen`. Its placement in the project tree is copied from a sibling object in `--folder`, so the folder must already hold one. |
+| `--replace` | `from-svg --create-screen` only: rebuild a screen that is already there. It keeps the existing object Guid — that Guid is the screen's identity on `cts import`, so a recompile updates the object CODESYS already has instead of adding a second screen beside it. Without the flag an existing screen is never overwritten. |
 | `--no-preview` / `--no-png` | Skip the preview entirely, or write only the SVG. |
 | `--grid N` | `preview` only: overlay an N-px grid as hairlines. |
 

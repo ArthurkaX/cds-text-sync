@@ -629,16 +629,16 @@ def test_findings_name_the_drawn_shape_not_the_parser_category():
 
 @pytest.mark.parametrize(
     "cls,below",
-    [("label", 4), ("caption", 5), ("h2", 6), ("h1", 8), ("value", 11)],
+    [("label", 4), ("caption", 5), ("h2", 8), ("h1", 10), ("value", 12)],
 )
 def test_text_box_hangs_below_the_baseline_by_the_documented_amount(cls, below):
     """SKILL.md quotes these five numbers, so they cannot be left to drift.
 
-    A text box is 1.4x the font size tall (floored at 16), and the top is the
-    baseline minus the font size -- so the box extends *below* the baseline.
-    Three overlaps in one authoring run came from sizing a card to the baseline
-    of the value inside it; the numbers an author needs to avoid that are only
-    trustworthy if a test holds them to the code.
+    A text box is 1.4x the font size tall (floored at 16, rounded up to the 4px
+    grid), and the top is the baseline minus the font size -- so the box extends
+    *below* the baseline. Three overlaps in one authoring run came from sizing a
+    card to the baseline of the value inside it; the numbers an author needs to
+    avoid that are only trustworthy if a test holds them to the code.
     """
     parsed = svg_import.parse_svg(
         _svg('<text class="{0}" x="40" y="160">Xy</text>'.format(cls))

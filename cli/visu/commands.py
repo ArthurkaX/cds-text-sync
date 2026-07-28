@@ -879,12 +879,36 @@ def lint_svg(
 # ---------------------------------------------------------------------------
 
 
-def _create_screen_for_svg(project_view_dir, folder, screen_name, bg_color):
+def _read_screen_guid(xml_path):
+    """Return the object Guid a screen file already carries, or ``None``."""
+    import xml.etree.ElementTree as ET
+
+    from .xml_ns import find_named
+
+    try:
+        root = ET.parse(xml_path).getroot()
+    except Exception:
+        return None
+    meta = find_named(root, "Single", "MetaObject")
+    if meta is None:
+        return None
+    guid = find_named(meta, "Single", "Guid")
+    return (guid.text or "").strip() if guid is not None and guid.text else None
+
+
+def _create_screen_for_svg(
+    project_view_dir, folder, screen_name, bg_color, replace=False
+):
     """Create a new screen file for --create-screen; return (out_path, screen).
 
     Placement (parent guids, path) is copied from an existing sibling object in
-    the target folder. Exits with an error if the folder is empty or the screen
-    already exists.
+    the target folder. Exits with an error if the folder is empty, or if the
+    screen already exists and *replace* is not set.
+
+    With *replace*, an existing compile of the same screen is rebuilt in place
+    and keeps its object Guid. That Guid is the screen's identity on import, so
+    reusing it makes a recompile update the object CODESYS already has instead
+    of adding a second screen beside it.
     """
     import os
     import sys
@@ -901,9 +925,13 @@ def _create_screen_for_svg(project_view_dir, folder, screen_name, bg_color):
         sys.exit(1)
     placement = _builder.read_placement_from_sibling(sibling)
     out_path = os.path.join(target_dir, screen_name + ".xml")
+    visu_guid = None
     if os.path.exists(out_path):
-        _err("Screen already exists: {0}".format(out_path))
-        sys.exit(1)
+        if not replace:
+            _err("Screen already exists: {0}".format(out_path))
+            _err("Pass --replace to recompile it from the sketch.")
+            sys.exit(1)
+        visu_guid = _read_screen_guid(out_path)
     xml_text = _builder.build_screen(
         name=screen_name,
         size_x=800,
@@ -912,11 +940,16 @@ def _create_screen_for_svg(project_view_dir, folder, screen_name, bg_color):
         parent_svnode_guid=placement["parent_svnode_guid"],
         path_segments=placement["path"],
         is_start_visu=False,
+        visu_guid=visu_guid,
         bg_color=bg_color,
     )
     with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(xml_text)
-    _ok("Created screen {0} at {1}".format(screen_name, out_path))
+    _ok(
+        "{0} screen {1} at {2}".format(
+            "Replaced" if visu_guid else "Created", screen_name, out_path
+        )
+    )
     return out_path, screen_name
 
 
@@ -1054,6 +1087,7 @@ def from_svg(
     preview=True,
     strict=False,
     scheme=None,
+    replace=False,
 ):
     """Compile an SVG file to a CODESYS screen XML."""
     import os
@@ -1124,7 +1158,7 @@ def from_svg(
     # Resolve screen target.
     if create_screen:
         out_path, screen = _create_screen_for_svg(
-            project_view_dir, folder, screen_name, bg_color
+            project_view_dir, folder, screen_name, bg_color, replace=replace
         )
 
     path = _resolve_screen_path(project_view_dir, screen, folder)

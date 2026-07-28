@@ -633,6 +633,14 @@ from-svg SVG contract:
         "--screen-name", default="", help="Screen name when --create-screen is used"
     )
     p_visu.add_argument(
+        "--replace",
+        action="store_true",
+        help=(
+            "Recompile an existing screen from the sketch, keeping its object "
+            "Guid (for from-svg --create-screen)"
+        ),
+    )
+    p_visu.add_argument(
         "--gvl",
         default="",
         help="GVL name for auto-generated declarations (e.g. VisuVars)",

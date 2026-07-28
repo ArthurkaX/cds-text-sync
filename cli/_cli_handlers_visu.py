@@ -207,6 +207,7 @@ def dispatch_visu(args):
             preview=not getattr(args, "no_preview", False),
             strict=getattr(args, "strict", False),
             scheme=scheme,
+            replace=getattr(args, "replace", False),
         )
     elif args.visu_action == "to-svg":
         _require_screen(args, "to-svg")
