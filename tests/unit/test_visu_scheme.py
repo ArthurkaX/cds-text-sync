@@ -33,6 +33,7 @@ from cli.visu import (  # noqa: E402
     commands,
     preview,
     style_roles,
+    svg_export,
     svg_import,
     themes,
 )
@@ -529,3 +530,80 @@ def test_light_skeleton_carries_no_scheme_attribute():
         assert "data-cds-scheme" not in commands.compose_skeleton(
             800, 480, "Demo", scheme
         )
+
+
+# ---------------------------------------------------------------------------
+# Decompile: the scheme survives the round trip
+# ---------------------------------------------------------------------------
+#
+# A compiled screen does not record which scheme produced it -- the two differ
+# only in the colours they resolved to. Without recovering it, `to-svg` handed
+# back a sketch with no attribute, and recompiling that sketch repainted a dark
+# screen light.
+
+
+def _compiled_screen(scheme):
+    """A screen XML compiled in *scheme*, background and all."""
+    parsed = svg_import.parse_svg(_svg(_LABEL), scheme=scheme)
+    return builder.build_screen(
+        name="T",
+        size_x=800,
+        size_y=480,
+        parent_guid="11111111-1111-1111-1111-111111111111",
+        parent_svnode_guid="22222222-2222-2222-2222-222222222222",
+        path_segments=["HMI"],
+        is_start_visu=False,
+        bg_color=parsed["bg_color"],
+    )
+
+
+def test_decompiled_dark_screen_is_stamped_dark():
+    assert 'data-cds-scheme="dark"' in svg_export.screen_to_svg(
+        _compiled_screen("dark")
+    )
+
+
+def test_decompiled_light_screen_carries_no_attribute():
+    assert "data-cds-scheme" not in svg_export.screen_to_svg(_compiled_screen("light"))
+
+
+def test_scheme_survives_compile_then_decompile():
+    """The whole point: to-svg output re-reads as the scheme it came from."""
+    for scheme in ("light", "dark"):
+        sketch = svg_export.screen_to_svg(_compiled_screen(scheme))
+        assert svg_import.read_scheme(sketch) == scheme
+
+
+def test_decompiled_dark_sketch_carries_the_dark_palette():
+    """A dark stamp over light ``:root`` vars would contradict itself."""
+    markup = svg_export.screen_to_svg(_compiled_screen("dark"))
+    assert "--surface:{0}".format(style_roles.role_palette(None, "dark")["surface"]) in (
+        markup
+    )
+
+
+def test_explicit_scheme_beats_the_inferred_one():
+    light_screen = _compiled_screen("light")
+    assert 'data-cds-scheme="dark"' in svg_export.screen_to_svg(
+        light_screen, scheme="dark"
+    )
+    assert "data-cds-scheme" not in svg_export.screen_to_svg(
+        _compiled_screen("dark"), scheme="light"
+    )
+
+
+@pytest.mark.parametrize(
+    "bg,expected",
+    [
+        (None, "light"),  # BgColor=False -- same fallback as a bare sketch
+        ("", "light"),
+        ("#F4F5F7", "light"),
+        ("#10141A", "dark"),
+        ("#000000", "dark"),
+        ("#FFFFFF", "light"),
+        ("nonsense", "light"),
+        ("#12345", "light"),  # malformed: guess rather than raise
+    ],
+)
+def test_scheme_inference_from_background(bg, expected):
+    assert svg_export._infer_scheme(bg) == expected

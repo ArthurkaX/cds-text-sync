@@ -51,7 +51,9 @@ def calls(monkeypatch):
         monkeypatch.setattr(visu_cmds, fn_name, _stub(fn_name))
 
     monkeypatch.setattr(
-        _cli_handlers_visu, "_resolve_project_view", lambda sync_folder: ("PV", None)
+        _cli_handlers_visu,
+        "_resolve_project_view",
+        lambda sync_folder, **kw: ("PV", None),
     )
     return recorded
 
@@ -106,3 +108,48 @@ def test_to_svg_requires_screen(calls):
         _cli_handlers_visu.dispatch_visu(
             _args(visu_action="to-svg", sync_folder="", screen="", folder="", out="")
         )
+
+
+# -- Offline sketch commands ---------------------------------------------------
+#
+# `lint` and `preview` grade a file. They consult the daemon only to pick up an
+# optional project-level visu.css, so with no IDE running they must come back
+# promptly and say nothing about it -- these are the first commands a new user
+# runs, usually before CODESYS is even open.
+
+
+def _no_daemon(monkeypatch, record):
+    """Make the daemon call fail the way an absent IDE does, recording timeout."""
+    from cli import _cli_handlers_vars
+
+    def _fail(method, params, timeout=30):
+        record["timeout"] = timeout
+        raise RuntimeError("Timeout ({0}s) waiting for IDE to connect".format(timeout))
+
+    monkeypatch.setattr(_cli_handlers_vars, "send_command_reverse", _fail)
+
+
+def test_optional_project_view_is_silent_without_daemon(monkeypatch, capsys):
+    _no_daemon(monkeypatch, {})
+    assert _cli_handlers_visu._optional_project_view("") is None
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_optional_project_view_does_not_wait_the_full_daemon_timeout(monkeypatch):
+    record = {}
+    _no_daemon(monkeypatch, record)
+    _cli_handlers_visu._optional_project_view("")
+    # The project commands wait 10s; a sketch command must not.
+    assert record["timeout"] <= 3
+
+
+def test_project_commands_still_report_a_missing_daemon(monkeypatch, capsys):
+    """The quiet path is opt-in: the default still explains itself."""
+    from cli import _cli_handlers_vars
+
+    _no_daemon(monkeypatch, {})
+    with pytest.raises(SystemExit):
+        _cli_handlers_vars._resolve_project_view("")
+    assert "Could not get sync folder from daemon" in capsys.readouterr().err

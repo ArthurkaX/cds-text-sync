@@ -189,7 +189,7 @@ lands in `project-view/` and reaches the IDE through the normal `cts import`.
 | `visu lint --svg FILE [--fix] [--strict]` | Check the sketch for design problems: off-grid coordinates, text wider than its box, a font size outside the scale, a button too small to press, an unbound field, overlap, crowding. `--fix` snaps the mechanical ones in place, leaving comments and formatting intact. |
 | `visu preview --svg FILE [--out PATH] [--grid N] [--no-png]` | Render the sketch with the colours the compiler will actually emit, as `<file>.preview.svg` + `.preview.png`. The sketch itself carries no colours, so this is the only way to see the screen before it is in the IDE. |
 | `visu from-svg --svg FILE ...` | Compile the sketch into a screen `.xml`. Runs lint and writes a preview on the way through. |
-| `visu to-svg --screen NAME` | Decompile an existing screen back to SVG. |
+| `visu to-svg --screen NAME` | Decompile an existing screen back to SVG. A dark screen comes back stamped `data-cds-scheme="dark"`, so recompiling reproduces it. |
 | `visu check --screen NAME` | Validate a *compiled* screen (bounds, member consistency, Text-IDs). |
 | `visu add / list / types / describe / create-screen` | Element-level operations on a compiled screen, without going through SVG. |
 
@@ -199,16 +199,18 @@ Flags shared by the SVG commands:
 | --- | --- |
 | `--theme NAME` | CODESYS visual style to resolve colours against (default `flat-style`). `visu types` aside, every SVG command accepts it. |
 | `--background auto\|style\|#RRGGBB` | Screen background. `auto` (default) uses the curated neutral; `style` restores the visual style's own. |
-| `--scheme light\|dark` | Colour scheme. `visu new` records it on the sketch as `data-cds-scheme`, so the rest of the workflow needs no flag; on `lint`, `preview` and `from-svg` it overrides that attribute for a single run. In `dark` the curated palette owns surfaces, text and native control colours — every shipped CODESYS style is a light style — so `--theme` stops affecting them. Lamps keep their indicator colours in both. |
+| `--scheme light\|dark` | Colour scheme. `visu new` records it on the sketch as `data-cds-scheme`, so the rest of the workflow needs no flag; on `lint`, `preview` and `from-svg` it overrides that attribute for a single run. On `to-svg` it overrides the scheme inferred from the screen's background. In `dark` the curated palette owns surfaces, text and native control colours — every shipped CODESYS style is a light style — so `--theme` stops affecting them. Lamps keep their indicator colours in both. |
 | `--fix` | `lint` only: rewrite the mechanically fixable findings. |
 | `--strict` | `from-svg` only: make lint findings fatal instead of advisory. |
 | `--no-preview` / `--no-png` | Skip the preview entirely, or write only the SVG. |
 | `--grid N` | `preview` only: overlay an N-px grid as hairlines. |
 
 `lint` and `preview` do not need a running daemon — they read the sketch and a
-style, nothing else. Rasterisation uses a headless Chrome/Edge if one is
-installed (`$CHROME_PATH` overrides the search); without a browser the preview
-SVG is still written.
+style, nothing else. They still ask a live daemon for the project view so a
+project-level `visu.css` is picked up, but that lookup is brief and silent: with
+no IDE running they simply proceed without one. Rasterisation uses a headless
+Chrome/Edge if one is installed (`$CHROME_PATH` overrides the search); without a
+browser the preview SVG is still written.
 
 Colours are never written into a sketch. Elements carry a semantic
 `class="panel|card|h1|value|ok|warn|alarm|pipe-water|metal|…"`, defined in

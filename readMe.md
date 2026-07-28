@@ -54,6 +54,7 @@ For Zed users, [`PLC Structured Text`](https://github.com/ArthurkaX/zed-plc-stru
 - **Profile-Aware Behavior**: JSON profiles describe vendor/fork-specific object kinds, projection availability, and safety rules.
 - **Diagnostics**: `Project_build.py`, `Project_discover.py`, and `Project_resources.py` provide build, environment, profile, and snapshot-size diagnostics.
 - **CLI + Reverse-Pipe Daemon**: `cds-text-sync` can control a running CODESYS IDE through `Project_daemon.py` for build, online diagnostics, PLC file access, CRC checks, and JSON-based test plans.
+- **HMI Screens from SVG**: `cts visu` authors visualizations as SVG sketches — lint, preview and a light/dark colour scheme included — and compiles them into CODESYS visualization objects. See [HMI Screens from SVG](#-hmi-screens-from-svg-cts-visu).
 
 ---
 
@@ -156,7 +157,7 @@ Common daemon capabilities include:
 The 2.7.0 release adds the previously non-functional project-management commands (`project open`/`close`/`list`/`list-devices`/`simulate`/`set-credentials`/`diagnose-online` and top-level `discover`) and hardens native object import so POUs and objects nested in folders import reliably. The daemon workflow was verified on a live CODESYS project by running the main user-facing command set through `cts`: `ping`, `status`, permissions, raw calls, `project-info`, `project-tree`, export, compare, import, build, connect/disconnect, start/stop, `app-state`, PLC CRC, variable read/write, variable map/snapshot/restore, object read/update/delete, log reading, sync commands, application history/CRC/info, boot application creation, PLC upload, and JSON/text output modes.
 
 > [!NOTE]
-> **`cts visu` (experimental)**: an SVG-to-CODESYS-visualization pipeline (`cts visu from-svg`) is under active development. It can render catalog elements and supports fill/stroke opacity, but it has **not** been fully validated end-to-end against the CODESYS visualization editor. Treat it as experimental and verify results before relying on it.
+> **`cts visu`**: HMI screens are authored as SVG sketches and compiled into CODESYS visualization objects. See [HMI Screens from SVG](#-hmi-screens-from-svg-cts-visu) below.
 
 The CLI is installed with Python packaging:
 
@@ -166,6 +167,69 @@ cts --help
 ```
 
 The classic `Project_*.py` workflow remains supported and is still documented below. Full CLI details are available in [cli/CLI.md](cli/CLI.md).
+
+---
+
+## 🖥️ HMI Screens from SVG (`cts visu`)
+
+Draw the screen as an SVG sketch; `cts visu` compiles it into a CODESYS
+visualization object. The sketch is the source of truth — it is text, so it
+diffs, reviews and merges like the rest of the project.
+
+**You never write a colour.** An element carries `class="panel"`, `class="h1"`,
+`class="pipe-water"`, and the palette resolves it against the CODESYS visual
+style your project actually uses. That is what makes the same sketch, with
+nothing else changed, come out as either of these:
+
+| `--scheme light` | `--scheme dark` |
+| --- | --- |
+| ![Light screen compiled from an SVG sketch](img/visu_light.png) | ![The same sketch compiled dark](img/visu_dark.png) |
+
+Both images are `cts visu preview` output of
+[`skills/cds-visu-svg/examples/pid-schematic.svg`](skills/cds-visu-svg/examples/pid-schematic.svg) —
+the colours the compiler emits, rendered before anything reaches the IDE.
+
+```powershell
+cts visu new --name Line1 --w 1024 --h 600 --out line1.svg   # laid-out skeleton
+cts visu lint --svg line1.svg --fix                          # design check, snaps the mechanical ones
+cts visu preview --svg line1.svg                             # .preview.svg + .preview.png
+cts visu from-svg --svg line1.svg --create-screen --screen-name Line1
+cts visu to-svg --screen Line1                               # and back again
+```
+
+`new`, `lint` and `preview` need no IDE and no project — they work on the file.
+Only `from-svg`/`to-svg` touch the project view.
+
+**`lint` grades the sketch, `check` grades the compiled screen.** Lint catches
+what makes a valid screen look unfinished: off-grid coordinates, text wider than
+its box, a font size outside the type scale, a button too small to press, a
+field with nothing bound to it, a captionless button, overlap, near-miss gaps.
+`--fix` splices the mechanical findings back at their own character offsets, so
+comments and formatting survive byte-for-byte.
+
+Element vocabulary: `rectangle` (rect / ellipse / rounded-rect / line),
+`line`, `label`, `textfield`, `button`, `lamp`, `combobox`, `image-switcher`,
+`alarm-banner`, and captured `frame` instances — `cts visu types` prints the
+current list with descriptions. An SVG tag outside that vocabulary is refused
+by name rather than dropped silently.
+
+> [!NOTE]
+> **Scope of verification.** The sketch-side workflow (`new`, `lint`, `preview`,
+> and the SVG↔XML conversion both ways) is covered by the unit suite. On the
+> compiled side, light output is pinned byte-for-byte across the `flat-style`,
+> `basic-style` and `white-style` presets, and the dark colour encodings were
+> settled by importing probe screens into a live IDE. What is *not* claimed is
+> an exhaustive end-to-end sweep of every element and option against the
+> CODESYS visualization editor — review a generated screen before you ship it,
+> and please report what does not survive the import.
+
+PNG rasterisation uses a headless Chrome/Edge when one is installed
+(`$CHROME_PATH` overrides the search); without a browser the preview SVG is
+still written. Colour roles are defined in `cli/visu/stylesheet.css` and can be
+overridden per project with a `visu.css` in the project-view directory.
+[`skills/cds-visu-svg/SKILL.md`](skills/cds-visu-svg/SKILL.md) is the authoring
+guide — layout rules, the type scale, and the conventions an authoring model is
+expected to follow.
 
 ---
 

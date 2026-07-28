@@ -27,3 +27,4 @@ offline-regression-*/
 temp/
 .claude/
 .mu/
+static_analyze/
