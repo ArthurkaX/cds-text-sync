@@ -24,22 +24,29 @@ from cli._cli_io import (
 # -- Shared helpers -----------------------------------------------------------
 
 
-def _resolve_project_view(sync_folder):
+def _resolve_project_view(sync_folder, timeout=10, quiet=False):
     """Return (project_view_dir, sync_folder_base).
 
     Uses --sync-folder when given, else asks the daemon for sync_folder.
+
+    ``timeout`` bounds the wait for the IDE to connect to the reverse pipe.
+    ``quiet`` suppresses the failure messages: callers for which a project
+    view is optional still get the ``SystemExit``, but a user who never
+    asked for the IDE is not told that it is missing.
     """
     base = sync_folder
     if not base:
         try:
-            resp = send_command_reverse("status", {}, timeout=10)
+            resp = send_command_reverse("status", {}, timeout=timeout)
             if resp.get("ok"):
                 base = resp.get("data", {}).get("sync_folder")
         except Exception as e:
-            _print_error("Could not get sync folder from daemon: {0}".format(e))
+            if not quiet:
+                _print_error("Could not get sync folder from daemon: {0}".format(e))
             sys.exit(1)
     if not base:
-        _print_error("No sync folder. Pass --sync-folder or start the daemon.")
+        if not quiet:
+            _print_error("No sync folder. Pass --sync-folder or start the daemon.")
         sys.exit(1)
     base = str(base)
     if os.path.basename(os.path.normpath(base)) == "project-view" and os.path.isdir(
@@ -48,7 +55,8 @@ def _resolve_project_view(sync_folder):
         return base, os.path.dirname(os.path.normpath(base))
     pv = os.path.join(base, "project-view")
     if not os.path.isdir(pv):
-        _print_error("project-view not found under: {0}".format(base))
+        if not quiet:
+            _print_error("project-view not found under: {0}".format(base))
         sys.exit(1)
     return pv, base
 

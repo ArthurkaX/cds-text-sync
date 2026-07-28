@@ -18,16 +18,25 @@ from cli._cli_io import _print_error
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
+# The daemon wait for an *optional* project view. `lint` and `preview` run
+# offline by design, so the cost of no IDE being up must be a blink, not the
+# full 10s the project commands are willing to wait. At the default 200ms
+# daemon poll this still leaves ten attempts for a live IDE to answer.
+_OPTIONAL_DAEMON_TIMEOUT = 2.0
+
 
 def _optional_project_view(sync_folder):
     """project-view dir if one can be found, else ``None``.
 
     ``preview`` and ``lint`` work on a sketch file, not on a project. They only
     want the project-view directory so an optional project-level ``visu.css``
-    is picked up -- so a missing daemon or sync folder must not stop them.
+    is picked up -- so a missing daemon or sync folder must not stop them, and
+    must not report an error for something the user did not ask for.
     """
     try:
-        pv, _ = _resolve_project_view(sync_folder)
+        pv, _ = _resolve_project_view(
+            sync_folder, timeout=_OPTIONAL_DAEMON_TIMEOUT, quiet=True
+        )
     except SystemExit:
         return None
     return pv
@@ -192,6 +201,7 @@ def dispatch_visu(args):
             screen=args.screen,
             folder=getattr(args, "folder", ""),
             out_path=getattr(args, "out", ""),
+            scheme=scheme,
         )
     elif args.visu_action == "capture-frame":
         visu_name = getattr(args, "visu", "")

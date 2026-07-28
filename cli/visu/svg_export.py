@@ -19,7 +19,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 
-from . import themes
+from . import style_roles, themes
 from .xml_ns import find_named, named_text, strip_ns
 
 
@@ -914,12 +914,40 @@ def _read_screen_size(root):
     return size_x, size_y
 
 
-def _load_default_theme():
+def _load_default_theme(scheme="light"):
     """Load the default CODESYS style colors for inline ``:root`` CSS vars."""
     try:
-        return themes.load_theme("flat-style")
+        return themes.load_theme("flat-style", scheme)
     except themes.ThemeError:
         return {}
+
+
+def _infer_scheme(bg_hex):
+    """Guess the colour scheme of a compiled screen from its background.
+
+    A compiled screen does not record which scheme produced it -- the two
+    differ only in the colours they resolved to. The background is the one
+    member that always carries the answer: the curated ``screen`` role is
+    ``#F4F5F7`` in light and ``#10141A`` in dark, so its luminance separates
+    them with room to spare.
+
+    A screen with no custom background (``BgColor=False``) reads as ``light``,
+    matching :func:`svg_import.read_scheme`'s own fallback for a sketch with no
+    attribute. A hand-set dark background on an otherwise light screen will
+    read as dark -- pass an explicit *scheme* to :func:`screen_to_svg` when the
+    guess is wrong.
+    """
+    if not bg_hex:
+        return "light"
+    raw = bg_hex.lstrip("#")
+    if len(raw) != 6:
+        return "light"
+    try:
+        red, green, blue = (int(raw[i : i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return "light"
+    luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    return "dark" if luminance < 128 else "light"
 
 
 def _format_theme_block(theme_colors):
@@ -942,7 +970,7 @@ def _format_theme_block(theme_colors):
 # ---------------------------------------------------------------------------
 
 
-def screen_to_svg(xml_text, theme_colors=None):
+def screen_to_svg(xml_text, theme_colors=None, scheme=None):
     """Convert a CODESYS screen XML string to an SVG string.
 
     Parameters
@@ -954,6 +982,12 @@ def screen_to_svg(xml_text, theme_colors=None):
         variables.  When ``None`` (the default) the built-in CODESYS
         ``flat-style`` preset
         is loaded.
+    scheme : str or None
+        ``light`` / ``dark``. ``None`` (the default) infers it from the
+        screen's background -- see :func:`_infer_scheme`. A dark result is
+        stamped on the root as ``data-cds-scheme``, so recompiling the
+        decompiled sketch reproduces the screen it came from; light is left
+        unstamped, matching what ``cts visu new`` writes.
 
     Returns
     -------
@@ -966,9 +1000,6 @@ def screen_to_svg(xml_text, theme_colors=None):
         If the XML is malformed, a required member is missing, or an
         out-of-vocabulary element type is encountered.
     """
-    if theme_colors is None:
-        theme_colors = _load_default_theme()
-
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
@@ -977,8 +1008,17 @@ def screen_to_svg(xml_text, theme_colors=None):
     # Screen canvas size.
     size_x, size_y = _read_screen_size(root)
 
-    # Background colour.
+    # Background colour. Read before the theme is loaded: it is what tells the
+    # two schemes apart, and the theme's curated roles depend on the answer.
     bg_hex = _read_background(root)
+    resolved_scheme = (
+        style_roles.normalize_scheme(scheme)
+        if scheme is not None
+        else _infer_scheme(bg_hex)
+    )
+    if theme_colors is None:
+        theme_colors = _load_default_theme(resolved_scheme)
+
     bg_style = (
         'style="background:{0}"'.format(bg_hex)
         if bg_hex
@@ -1010,12 +1050,19 @@ def screen_to_svg(xml_text, theme_colors=None):
     # Build the ``:root`` CSS block.
     theme_block = _format_theme_block(theme_colors)
 
+    # Only a non-default scheme is stamped -- same rule as ``cts visu new``.
+    scheme_attr = (
+        ' data-cds-scheme="{0}"'.format(resolved_scheme)
+        if resolved_scheme != "light"
+        else ""
+    )
+
     # Assemble the SVG document.
     lines = [
         '<svg xmlns="http://www.w3.org/2000/svg"',
         '     width="{0}" height="{1}"'.format(size_x, size_y),
         '     viewBox="0 0 {0} {1}"'.format(size_x, size_y),
-        "     {0}>".format(bg_style),
+        "     {0}{1}>".format(bg_style, scheme_attr),
     ]
     if theme_block:
         lines.append("  <defs><style>{0}</style></defs>".format(theme_block))

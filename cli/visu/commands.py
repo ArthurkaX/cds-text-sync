@@ -1120,8 +1120,13 @@ def from_svg(
 # ---------------------------------------------------------------------------
 
 
-def to_svg(project_view_dir, screen, folder, out_path):
-    """Decompile a CODESYS screen XML to SVG."""
+def to_svg(project_view_dir, screen, folder, out_path, scheme=None):
+    """Decompile a CODESYS screen XML to SVG.
+
+    *scheme* overrides the scheme inferred from the screen's background; the
+    result is stamped on the sketch when it is dark, so the decompiled file
+    recompiles into the screen it came from.
+    """
     import os
     import sys
 
@@ -1134,7 +1139,7 @@ def to_svg(project_view_dir, screen, folder, out_path):
         xml_text = handle.read()
 
     try:
-        svg_text = svg_export.screen_to_svg(xml_text)
+        svg_text = svg_export.screen_to_svg(xml_text, scheme=scheme)
     except (ValueError, svg_export.SvgExportError) as exc:
         _err(str(exc))
         sys.exit(1)
