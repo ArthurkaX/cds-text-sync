@@ -251,12 +251,46 @@ def _parse_line(elem, theme):
     return {"type": "line", "params": params}
 
 
+# Character advance widths in 1/1000 em, approximating the Arial-like
+# proportional face CODESYS uses for its default UI font. A single average
+# cannot stand in for these: 0.65 em/char is about right for uppercase, but it
+# overstates mixed-case text by a quarter, and this estimate is load-bearing in
+# four places -- the default box width of a <text> with no data-width, and the
+# lint text-overflow, overlap and crowding rules, all of which read that width
+# back. An inflated box reports overflow that is not there and collides with
+# neighbours it does not touch, which pushes an author into a sparser layout to
+# silence findings that were never real.
+_EM_NARROW = " .,:;'`|!ijlI"
+_EM_THIN = "ft()[]{}/\\-\"J"
+_EM_WIDE = "ABCDEFGHKLNOPQRSTUVXYZ&$#"
+_EM_WIDEST = "mwMW%@"
+_EM_DEFAULT = 556
+
+
+def _char_em(ch):
+    if ch in _EM_NARROW:
+        return 280
+    if ch in _EM_THIN:
+        return 333
+    if ch in _EM_WIDE:
+        return 667
+    if ch in _EM_WIDEST:
+        return 833
+    return _EM_DEFAULT
+
+
 def _estimate_text_width(text, font_size=12):
-    """Rough estimate of CSS text width in px."""
+    """Estimate the rendered width of ``text`` in px.
+
+    Sums per-character advances rather than assuming one average width, so a
+    label of lowercase prose is not measured as though it were an all-caps tag.
+    The trailing 8px is padding, matching what the box needs to keep the glyphs
+    off its own frame.
+    """
     if not text:
         return 20
-    avg = int(font_size) * 0.65
-    return max(20, int(len(text) * avg) + 8)
+    em = sum(_char_em(ch) for ch in text)
+    return max(20, int(em * int(font_size) / 1000.0) + 8)
 
 
 def _estimate_text_height(font_size=12):
@@ -314,13 +348,21 @@ def _parse_text(elem, theme):
         "frame": TRANSPARENT_ARGB,
     }
 
-    # SVG text-anchor="middle" -> HCENTER
+    # SVG text-anchor -> CODESYS h_align. Note that x stays the box LEFT edge in
+    # every case: CODESYS places text inside a box, so the anchor picks where the
+    # glyphs sit *within* data-width rather than moving the box. Real SVG instead
+    # reads x as the centre (middle) or the right edge (end) -- see SKILL.md,
+    # which has to state this because it is the one place the sketch format does
+    # not mean what an SVG viewer would show.
     anchor = elem.get("text-anchor")
     if anchor == "middle":
         params["h_align"] = "HCENTER"
         params["v_align"] = "VCENTER"
         # Restore y to baseline-centered for middle anchor.
         params["y"] = str(int(y - h / 2))
+    elif anchor == "end":
+        params["h_align"] = "RIGHT"
+        params["v_align"] = "TOP"
     else:
         # CODESYS template defaults are HCENTER/VCENTER; override to LEFT/TOP.
         params["h_align"] = "LEFT"
@@ -496,14 +538,21 @@ def _parse_textfield(elem, theme):
     """
     x = _float(elem.get("x"), 0)
     y = _float(elem.get("y"), 0)
-    w = _float(elem.get("data-width"), 100)
-    h = _float(elem.get("data-height"), 100)
     text = elem.text or ""
     text = text.strip() if text else ""
     text_var = elem.get("data-text-var", "")
     fs = elem.get("font-size")
     font_size = int(_float(fs, 12)) if fs else 12
     font_name = elem.get("font-family", "Arial")
+
+    # Same estimate a plain <text> gets. A flat 100x100 default was a box the
+    # author never asked for: it overflowed whatever card held the field, which
+    # the lint then reported as an overlap, and the compiled control really was
+    # 100px tall on screen. A field without an explicit size is still worth
+    # writing one for -- that is a lint finding -- but the guess it falls back
+    # to should be the documented one.
+    w = _float(elem.get("data-width"), _estimate_text_width(text, font_size))
+    h = _float(elem.get("data-height"), _estimate_text_height(font_size))
 
     y_top = y - font_size
 
@@ -533,6 +582,9 @@ def _parse_textfield(elem, theme):
         params["h_align"] = "HCENTER"
         params["v_align"] = "VCENTER"
         params["y"] = str(int(y - h / 2))
+    elif anchor == "end":
+        params["h_align"] = "RIGHT"
+        params["v_align"] = "TOP"
     else:
         params["h_align"] = "LEFT"
         params["v_align"] = "TOP"
@@ -803,6 +855,34 @@ def read_scheme(svg_text, override=None):
     return _style_roles.normalize_scheme(root.get("data-cds-scheme"))
 
 
+def _parse_error_message(svg_text, exc):
+    """Turn an ElementTree ParseError into something an author can act on.
+
+    A sketch is hand-written, so the first ``cts visu lint`` on a new file is
+    exactly when a typo surfaces -- and a raw ``xml.etree`` traceback names
+    neither the offending line nor the rule it broke. The commonest cause by a
+    wide margin is a decorative comment: ``<!-- ---- Supply air ---- -->`` looks
+    like every other section header a programmer writes, and is not valid XML.
+    """
+    parts = ["malformed SVG: {0}".format(exc)]
+    line = getattr(exc, "position", (0, 0))[0]
+    lines = svg_text.splitlines()
+    if 0 < line <= len(lines):
+        source = lines[line - 1].strip()
+        parts.append("  {0}".format(source))
+        inner = source
+        if inner.startswith("<!--"):
+            inner = inner[4:]
+        if inner.endswith("-->"):
+            inner = inner[:-3]
+        if "--" in inner:
+            parts.append(
+                'XML reserves "--" for the comment delimiter, so it cannot '
+                'appear inside a comment. Rule a separator off with "====".'
+            )
+    return "\n".join(parts)
+
+
 def parse_svg(svg_text, theme=None, project_dir=None, background=None, scheme=None):
     """Parse an SVG string and return a dict of ElementSpec entries.
 
@@ -841,9 +921,12 @@ def parse_svg(svg_text, theme=None, project_dir=None, background=None, scheme=No
         }
 
     Raises:
-        ValueError: On unsupported SVG elements.
+        ValueError: On unsupported SVG elements, or on XML that will not parse.
     """
-    root = ET.fromstring(svg_text)
+    try:
+        root = ET.fromstring(svg_text)
+    except ET.ParseError as exc:
+        raise ValueError(_parse_error_message(svg_text, exc))
 
     # -- Canvas size -------------------------------------------------------
     width = _int(root.get("width"), 800)

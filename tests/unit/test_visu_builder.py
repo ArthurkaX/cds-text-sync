@@ -20,6 +20,7 @@ if _ROOT not in sys.path:
 
 from cli.visu import builder
 from cli.visu import catalog as _catalog
+from cli.visu import screen_xml
 from cli.visu import svg_import
 from cli.visu import themes
 
@@ -119,6 +120,48 @@ class TestScreenEnvelope:
         """ParentGuid and ParentSVNodeGuid are present and non-empty."""
         assert ">aed6d2f4-6485-4017-982c-3b2fa7b0b4be<" in empty_screen
         assert ">ddc05353-f826-4861-84cf-5fd88f7a319e<" in empty_screen
+
+    def test_each_screen_gets_its_own_identity(self, placement):
+        """Two generated screens must not claim the same object guid.
+
+        The guid is written into the project verbatim on import. A shared
+        placeholder gave every generated screen one identity, so importing a
+        second screen collided with the first -- CODESYS raised an overwrite
+        prompt, and a modal dialog on the single-threaded script engine
+        freezes the whole daemon, not just the call that caused it.
+        """
+
+        def _guid_of(name):
+            return screen_xml.read_owning_guid(
+                builder.build_screen(
+                    name=name,
+                    size_x=800,
+                    size_y=480,
+                    parent_guid=placement["parent_guid"],
+                    parent_svnode_guid=placement["parent_svnode_guid"],
+                    path_segments=placement["path"],
+                )
+            )
+
+        first, second = _guid_of("ScreenA"), _guid_of("ScreenB")
+        assert first != second
+        assert "11111111-1111-1111-1111-111111111111" not in (first, second)
+
+    def test_explicit_guid_is_honoured(self, placement):
+        """A caller that owns the identity keeps it (round-trip of an edit)."""
+        xml_text = builder.build_screen(
+            name="Pinned",
+            size_x=800,
+            size_y=480,
+            parent_guid=placement["parent_guid"],
+            parent_svnode_guid=placement["parent_svnode_guid"],
+            path_segments=placement["path"],
+            visu_guid="4d1b4f9a-0c2e-4f7b-9a3d-2b6c8e1f0a55",
+        )
+        assert (
+            screen_xml.read_owning_guid(xml_text)
+            == "4d1b4f9a-0c2e-4f7b-9a3d-2b6c8e1f0a55"
+        )
 
     def test_path_present(self, empty_screen):
         """Path array contains the expected segments."""
@@ -2225,3 +2268,47 @@ class TestTransparency:
         # #0000FF + 0.6 = 0x990000FF (153/255 approx 0.6)
         assert elem["params"]["frame"] == str(0x990000FF)
 
+
+
+class TestMalformedSvg:
+    """XML that will not parse has to come back as advice, not a traceback.
+
+    ``parse_svg`` is reached from ``cts visu lint``, ``preview`` and ``from-svg``,
+    all of which catch ValueError and print it. An ElementTree ParseError escapes
+    that net, so an author who typed one bad character saw a stack trace with the
+    CLI's own frames in it and no mention of their file.
+    """
+
+    def test_parse_error_is_raised_as_value_error(self):
+        with pytest.raises(ValueError) as exc:
+            svg_import.parse_svg('<svg width="100"><rect/></svgg>')
+        assert "malformed SVG" in str(exc.value)
+
+    def test_parse_error_quotes_the_offending_line(self):
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">\n'
+            '  <rect x="10" y="10" width="50" height="50"\n'
+            "</svg>\n"
+        )
+        with pytest.raises(ValueError) as exc:
+            svg_import.parse_svg(svg)
+        assert "</svg>" in str(exc.value)
+
+    def test_double_dash_in_a_comment_is_explained(self):
+        """The commonest way a hand-authored sketch stops parsing.
+
+        Ruling a section off with dashes is a natural thing to write and an
+        illegal thing in XML, and the raw ParseError ("not well-formed") points
+        at the line without saying what about it is wrong.
+        """
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">\n'
+            "  <!-- ---- Supply air ---- -->\n"
+            "</svg>\n"
+        )
+        with pytest.raises(ValueError) as exc:
+            svg_import.parse_svg(svg)
+        message = str(exc.value)
+        assert "Supply air" in message
+        assert '"--"' in message
+        assert "====" in message

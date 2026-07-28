@@ -84,6 +84,46 @@ def test_from_svg_resizes_screen_to_canvas(tmp_path, capsys):
     assert screen_xml.read_screen_size(result_xml) == (400, 200)
 
 
+def test_recompiling_replaces_the_screen_instead_of_adding_to_it(tmp_path, capsys):
+    """A second run must leave the screen with one copy of the sketch.
+
+    ``--screen`` is the documented way to recompile, and it appended: 31
+    elements became 62, every one of them sitting exactly on top of its twin,
+    so the screen still looked right in the tool and was doubled in CODESYS.
+    """
+    pv = str(tmp_path)
+    path = _make_screen(pv, "Screen1")
+    svg_path = _write_svg(pv)
+
+    commands.from_svg(pv, svg_path, "Screen1", "", None, "", False, "")
+    commands.from_svg(pv, svg_path, "Screen1", "", None, "", False, "")
+
+    with open(path, "r", encoding="utf-8") as handle:
+        result_xml = handle.read()
+    assert len(screen_xml.list_elements(result_xml)) == 2
+    assert "Replacing 2 existing element(s)" in capsys.readouterr().err
+
+
+def test_recompiling_drops_what_the_author_deleted(tmp_path):
+    """The sketch is the screen: a removed rect must leave the screen too."""
+    pv = str(tmp_path)
+    path = _make_screen(pv, "Screen1")
+    svg_path = _write_svg(pv)
+    commands.from_svg(pv, svg_path, "Screen1", "", None, "", False, "")
+
+    one_rect = SAMPLE_SVG.replace(
+        '  <rect x="10" y="70" width="120" height="40" data-cds-type="rectangle"\n'
+        '        fill="#0078d4"/>\n',
+        "",
+    )
+    assert one_rect != SAMPLE_SVG  # the edit above actually removed a rect
+    _write_svg(pv, one_rect)
+    commands.from_svg(pv, svg_path, "Screen1", "", None, "", False, "")
+
+    with open(path, "r", encoding="utf-8") as handle:
+        assert len(screen_xml.list_elements(handle.read())) == 1
+
+
 def test_from_svg_missing_screen_exits(tmp_path):
     pv = str(tmp_path)
     svg_path = _write_svg(pv)
@@ -98,3 +138,24 @@ def test_from_svg_missing_svg_exits(tmp_path):
         commands.from_svg(
             pv, os.path.join(pv, "absent.svg"), "Screen1", "", None, None, False, "",
         )
+
+
+def test_from_svg_without_a_screen_says_so(tmp_path, capsys):
+    """No --screen must not be reported as a screen that went missing.
+
+    An empty name used to build "<project-view>/.xml" and come back as
+    "Screen file not found: ...\\.xml", which reads as damage to the project
+    rather than a missing argument -- and points at a file the author never
+    named.
+    """
+    pv = str(tmp_path)
+    _make_screen(pv, "Screen1")
+    svg_path = _write_svg(pv)
+
+    with pytest.raises(SystemExit):
+        commands.from_svg(pv, svg_path, "", "", None, None, False, "")
+
+    message = capsys.readouterr().err
+    assert "--screen" in message
+    assert ".xml" not in message
+

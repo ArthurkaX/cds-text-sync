@@ -179,17 +179,24 @@ def _paint(fill, fill_a, frame, frame_a, stroke_width=1):
     return " ".join(out)
 
 
-def _text_node(params, x, y, w, h, color, size, content, weight=None):
-    """Place text inside a box using the CODESYS h_align / v_align semantics."""
+def _text_node(params, x, y, w, h, color, size, content, weight=None, inset=0):
+    """Place text inside a box using the CODESYS h_align / v_align semantics.
+
+    *inset* is the gap a native control keeps between its frame and its value --
+    real for a textfield, and 0 for a plain label, which CODESYS draws flush.
+    Charging every label 2px made the preview disagree with the sketch about the
+    one thing an author reads a preview for: a label written ``x="48"`` came
+    back drawn at 50, so lining it up with a card edge always looked 2px wrong.
+    """
     h_align = (params.get("h_align") or "LEFT").upper()
     v_align = (params.get("v_align") or "TOP").upper()
 
     if h_align == "HCENTER":
         tx, anchor = x + w / 2.0, "middle"
     elif h_align == "RIGHT":
-        tx, anchor = x + w - 2, "end"
+        tx, anchor = x + w - inset, "end"
     else:
-        tx, anchor = x + 2, "start"
+        tx, anchor = x + inset, "start"
 
     if v_align == "VCENTER":
         ty = y + h / 2.0 + size * 0.36
@@ -285,7 +292,10 @@ def _render_element(spec, theme_colors, scheme="light"):
         if not shown and params.get("text_var"):
             shown = "%s"
         out.append(
-            _text_node(params, x, y, w, h, font, _num(params, "font_size", 12), shown)
+            _text_node(
+                params, x, y, w, h, font, _num(params, "font_size", 12), shown,
+                inset=2,
+            )
         )
 
     elif type_name == "lamp":

@@ -24,6 +24,16 @@ def _ok(msg):
     print("[OK] {0}".format(msg), file=sys.stderr)
 
 
+def _warn(msg):
+    print("[WARN] {0}".format(msg), file=sys.stderr)
+
+
+# How many times ``lint --fix`` re-runs itself before giving up. Fixes feed each
+# other -- a new font size moves the box top the grid rule grades -- so one pass
+# leaves work behind; a handful reaches a fixed point on any sketch that has one.
+_FIX_PASSES = 5
+
+
 def _folder_to_dir(project_view_dir, folder):
     """Map a CODESYS folder path (e.g. 'Runtime/PLC Logic/...') to a real dir."""
     folder = (folder or "").replace("\\", "/").strip("/")
@@ -40,6 +50,15 @@ def _resolve_screen_path(project_view_dir, screen, folder):
     the name is not found there, fall back to a recursive search of
     project-view for ``<name>.xml`` (so callers need not repeat --folder).
     """
+    if not (screen or "").strip():
+        # Falling through with an empty name builds "<project-view>/.xml" and
+        # reports it as a missing screen, which reads as "the file I asked for
+        # is gone" rather than "you did not ask for one".
+        _err(
+            "No screen given: pass --screen <name> to target an existing "
+            "screen, or --create-screen --name <name> to make a new one"
+        )
+        sys.exit(1)
     if os.path.isabs(screen) and os.path.isfile(screen):
         return screen
     if os.path.isfile(screen):
@@ -637,6 +656,43 @@ def _kpi_fits(card_x, card_w, label):
     return _kpi_value_box(card_x, card_w, label)[1] >= 48
 
 
+# The smallest canvas the layout blocks are sized against. Below this the
+# composition does not degrade further -- it collides, because the header band,
+# the panel inset and the action row are fixed costs that stop fitting rather
+# than shrinking. 480x320 is the smallest size the skeleton is tested at.
+_MIN_CANVAS = (480, 320)
+
+
+def _check_canvas(width, height):
+    """Warn about canvas sizes the composed skeleton is not sound at.
+
+    ``visu new`` used to hand back a skeleton for any numbers it was given, and
+    the two ways that goes wrong both produce a file that fails the linter the
+    same tool ships -- which reads as the sketch format being broken rather than
+    the canvas being outside what the layout can do. Say it here instead, once,
+    while the author can still pick a different size.
+    """
+    if width < _MIN_CANVAS[0] or height < _MIN_CANVAS[1]:
+        _warn(
+            "Canvas {0}x{1} is below {2}x{3}, the smallest size the layout blocks "
+            "fit at -- expect the skeleton to overlap itself. Run `cts visu lint` "
+            "and lay it out by hand.".format(
+                width, height, _MIN_CANVAS[0], _MIN_CANVAS[1]
+            )
+        )
+    off = [n for n, v in (("--w", width), ("--h", height)) if v % 4]
+    if off:
+        _warn(
+            "{0} {1} not {2} of 4, so the halves the layout computes land off the "
+            "4px grid `cts visu lint` enforces. Run it with --fix, or round the "
+            "canvas.".format(
+                " and ".join(off),
+                "is" if len(off) == 1 else "are",
+                "a multiple" if len(off) == 1 else "multiples",
+            )
+        )
+
+
 def new_svg(out_path, name="", width=800, height=480, scheme=None):
     """Write a ready-to-edit SVG skeleton for the requested canvas size."""
     text = compose_skeleton(width, height, name, scheme)
@@ -644,6 +700,7 @@ def new_svg(out_path, name="", width=800, height=480, scheme=None):
         handle.write(text)
 
     _ok("Created SVG sketch: {0}".format(out_path))
+    _check_canvas(int(width), int(height))
     print(out_path)
 
 
@@ -769,21 +826,38 @@ def lint_svg(
     )
 
     if fix:
-        try:
-            fixed, count = _lint.apply_fixes(svg_text, findings)
-        except ValueError as exc:
-            _err(str(exc))
-            sys.exit(1)
-        if count:
+        # One pass does not settle it. The font-scale rule rewrites font-size,
+        # and a <text> baseline is graded through its box top -- which is the
+        # baseline minus that very font size. So snapping the grid has to happen
+        # again against the new size, and an author who ran --fix once was left
+        # holding a file the next lint still complained about. Iterate to a
+        # fixed point instead, bounded so a rule that ever disagrees with itself
+        # cannot spin here.
+        total = 0
+        for _ in range(_FIX_PASSES):
+            try:
+                fixed, count = _lint.apply_fixes(svg_text, findings)
+            except ValueError as exc:
+                _err(str(exc))
+                sys.exit(1)
+            if not count:
+                break
+            total += count
             with open(svg_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(fixed)
-            _ok("Fixed {0} attribute(s) in {1}".format(count, svg_path))
             # Re-check so the report reflects the file on disk, not the old one.
-            _svg_text, findings, _parsed = _load_sketch(
-                svg_path, theme_name, project_view_dir, background
+            svg_text, findings, _parsed = _load_sketch(
+                svg_path, theme_name, project_view_dir, background, scheme
             )
+        if total:
+            _ok("Fixed {0} attribute(s) in {1}".format(total, svg_path))
         else:
             _ok("Nothing mechanically fixable")
+        if any(f.fixable for f in findings):
+            _warn(
+                "Still fixable after {0} passes -- two rules are disagreeing; "
+                "please report this sketch".format(_FIX_PASSES)
+            )
 
     errors = _print_findings(findings, header=False)
     counts = {}
@@ -929,23 +1003,24 @@ def _append_svg_elements(
 
 def _emit_gvl(project_view_dir, elements, gvl_name, gvl_file, output_path):
     """Generate/refresh the GVL for bound runtime variables, or hint if unused."""
-    import os
     import sys
 
     from . import gvl as _gvl
 
     if gvl_name or gvl_file:
-        gvl_result = _gvl.ensure_gvl(
+        gvl_result, written = _gvl.ensure_gvl_result(
             project_view_dir,
             elements,
             gvl_name=gvl_name or "VisuVars",
             gvl_path=gvl_file,
+            warn=lambda msg: _warn("Not declared: {0}".format(msg)),
         )
-        if gvl_result and os.path.isfile(gvl_result):
+        if gvl_result and written:
             _ok("Updated GVL: {0}".format(gvl_result))
         elif gvl_result:
-            # A path was resolved but nothing was written: every referenced
-            # variable is already declared (here or in another project GVL).
+            # Every referenced variable is already declared -- here or in
+            # another project GVL. Saying "Updated" would send the author
+            # looking for declarations this run did not add.
             _ok("All runtime variables already declared; GVL not modified")
         else:
             _ok("No runtime variables detected; GVL not generated")
@@ -1074,6 +1149,16 @@ def from_svg(
     # If screen already existed and has no custom bg, set from theme.
     if bg_color and not create_screen:
         xml_text = _screen_xml.set_screen_background(xml_text, bg_color)
+
+    # Recompiling replaces the screen, it does not add to it. The sketch is the
+    # whole screen, so anything the author took out of the SVG has to leave the
+    # screen as well -- and appending meant every rerun stacked a second copy of
+    # every element on top of the first.
+    if not create_screen:
+        stale = len(_screen_xml.list_elements(xml_text))
+        if stale:
+            xml_text = _screen_xml.clear_elements(xml_text)
+            _ok("Replacing {0} existing element(s) in {1}".format(stale, screen))
 
     # Append each element.
     xml_text = _append_svg_elements(

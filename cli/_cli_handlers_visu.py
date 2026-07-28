@@ -42,6 +42,28 @@ def _optional_project_view(sync_folder):
     return pv
 
 
+def _require_screen(args, action):
+    """Exit unless ``--screen`` names the screen to work on.
+
+    ``--name`` belongs to screen *creation* and is ignored by the subcommands
+    that operate on an existing screen. Answering those with a bare "--screen
+    is required" leaves an author looking at a screen name they just typed and
+    a message saying they gave no screen, so when ``--name`` is present the
+    error says which flag carries it here.
+    """
+    if args.screen:
+        return
+    given = (getattr(args, "name", "") or "").strip()
+    if given:
+        _print_error(
+            "--screen is required: `visu {0}` works on an existing screen, so "
+            "pass --screen {1} (--name is for creating one)".format(action, given)
+        )
+    else:
+        _print_error("--screen is required")
+    sys.exit(1)
+
+
 def dispatch_visu(args):
     """Route a parsed `visu` subcommand to cli.visu.commands."""
     _root_dir = _SCRIPT_DIR.parent
@@ -112,9 +134,7 @@ def dispatch_visu(args):
             start_visu=getattr(args, "start_visu", False),
         )
     elif args.visu_action == "add":
-        if not args.screen:
-            _print_error("--screen is required")
-            sys.exit(1)
+        _require_screen(args, "add")
         if not args.type:
             _print_error("--type is required")
             sys.exit(1)
@@ -144,18 +164,14 @@ def dispatch_visu(args):
             params=params,
         )
     elif args.visu_action == "list":
-        if not args.screen:
-            _print_error("--screen is required")
-            sys.exit(1)
+        _require_screen(args, "list")
         visu_cmds.list_screen(
             project_view_dir=pv,
             screen=args.screen,
             folder=getattr(args, "folder", ""),
         )
     elif args.visu_action == "check":
-        if not args.screen:
-            _print_error("--screen is required")
-            sys.exit(1)
+        _require_screen(args, "check")
         visu_cmds.check_screen(
             project_view_dir=pv,
             screen=args.screen,
@@ -193,9 +209,7 @@ def dispatch_visu(args):
             scheme=scheme,
         )
     elif args.visu_action == "to-svg":
-        if not args.screen:
-            _print_error("--screen is required")
-            sys.exit(1)
+        _require_screen(args, "to-svg")
         visu_cmds.to_svg(
             project_view_dir=pv,
             screen=args.screen,
