@@ -159,3 +159,44 @@ def test_from_svg_without_a_screen_says_so(tmp_path, capsys):
     assert "--screen" in message
     assert ".xml" not in message
 
+
+def test_create_screen_refuses_to_clobber_and_says_how(tmp_path, capsys):
+    """The error has to name the way forward, or the only way out is rm."""
+    pv = str(tmp_path)
+    _make_screen(pv, "Sibling")  # placement source
+    svg_path = _write_svg(pv)
+
+    commands.from_svg(pv, svg_path, "", "", None, "", True, "Made")
+    with pytest.raises(SystemExit):
+        commands.from_svg(pv, svg_path, "", "", None, "", True, "Made")
+
+    assert "--replace" in capsys.readouterr().err
+
+
+def test_replace_recompiles_a_screen_and_keeps_its_identity(tmp_path):
+    """The Guid is the screen's identity on import.
+
+    Rebuilding with a fresh one would make a recompile add a second screen in
+    CODESYS rather than update the one already there.
+    """
+    pv = str(tmp_path)
+    _make_screen(pv, "Sibling")
+    svg_path = _write_svg(pv)
+
+    commands.from_svg(pv, svg_path, "", "", None, "", True, "Made")
+    path = os.path.join(pv, "Made.xml")
+    first_guid = commands._read_screen_guid(path)
+
+    # One rect fewer, so a stale screen would show up as the wrong count.
+    _write_svg(pv, SAMPLE_SVG.replace(
+        '  <rect x="10" y="70" width="120" height="40" data-cds-type="rectangle"\n'
+        '        fill="#0078d4"/>\n',
+        "",
+    ))
+    commands.from_svg(pv, svg_path, "", "", None, "", True, "Made", replace=True)
+
+    with open(path, "r", encoding="utf-8") as handle:
+        assert len(screen_xml.list_elements(handle.read())) == 1
+    assert commands._read_screen_guid(path) == first_guid
+    assert first_guid
+

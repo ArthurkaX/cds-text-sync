@@ -223,6 +223,52 @@ _MID_X2 = 1837598620
 _MID_Y2 = 669032122
 _MID_FONT_NAME = 1603690730
 _MID_FONT_SIZE = 4253639993
+_MID_H_ALIGN = 2340015797
+
+# Same fallback the builder uses when a label carries no font_size.
+_DEFAULT_FONT_SIZE = 12
+
+
+def _text_geometry(element, y, h, font_size):
+    """Invert the import's baseline -> box conversion for a label/textfield.
+
+    A CODESYS text element is a box plus an alignment; an SVG ``<text>`` is a
+    baseline plus an anchor, and ``_parse_text`` converts the one into the
+    other. Reading the box back out without converting it loses both halves of
+    that: every centred caption comes out flush left, and every baseline lands
+    one font-size too high. Round-tripping a screen through ``to-svg`` and back
+    then moves text the author never touched.
+
+    Only h_align is read. The import derives v_align from it (VCENTER with
+    HCENTER, TOP otherwise), so for a sketch-authored screen it carries nothing
+    new -- and for a hand-authored LEFT/VCENTER text, deriving the baseline from
+    v_align instead would put the glyphs right and move the *box* on recompile.
+    Preserving the box is the stronger guarantee.
+
+    Returns ``(text_anchor_or_None, svg_y_string)``.
+    """
+    _h_align = _member_value(element, _MID_H_ALIGN)
+    h_align = _h_align if isinstance(_h_align, str) else ""
+
+    try:
+        y_val = float(y)
+    except (TypeError, ValueError):
+        return None, y
+
+    if h_align == "HCENTER":
+        # Import stored y as ``baseline - height/2``; add it back, rounding the
+        # half-pixel an odd height leaves behind so the value survives a trip.
+        try:
+            return "middle", str(int(y_val + float(h) / 2 + 0.5))
+        except (TypeError, ValueError):
+            return "middle", str(int(y_val))
+
+    try:
+        fs = int(float(font_size))
+    except (TypeError, ValueError):
+        fs = _DEFAULT_FONT_SIZE
+    anchor = "end" if h_align == "RIGHT" else None
+    return anchor, str(int(y_val + fs))
 
 
 def _render_rect(x, y, w, h, element, rx=None):
@@ -337,7 +383,10 @@ def _render_label(element):
     if x is not None:
         attrs["x"] = x
     if y is not None:
+        anchor, y = _text_geometry(element, y, h, font_size)
         attrs["y"] = y
+        if anchor:
+            attrs["text-anchor"] = anchor
     # Emit bounding-box as data attributes for layout awareness.
     if w is not None:
         attrs["data-width"] = w
@@ -383,7 +432,10 @@ def _render_textfield(element):
     if x is not None:
         attrs["x"] = x
     if y is not None:
+        anchor, y = _text_geometry(element, y, h, font_size)
         attrs["y"] = y
+        if anchor:
+            attrs["text-anchor"] = anchor
     if w is not None:
         attrs["data-width"] = w
     if h is not None:
@@ -692,6 +744,96 @@ def _render_alarm_banner(element):
     return _svg_tag("rect", attrs)
 
 
+# ConfiguredComplexInputs / VisualElementInputActions, read back the way
+# svg_import writes them (see catalog/input_actions.json).
+_MID_INPUT_VARIABLE = 1186196937
+
+# SignatureName -> the ``data-cds-action`` word _parse_complex_action expects.
+_COMPLEX_INPUT_WORDS = {
+    "Visu_TapInput": "TAP",
+    "Visu_ToggleInput": "TOGGLE",
+}
+
+# Action type GUID prefix -> (field to read, body template) for
+# _parse_event_action. Dialog actions are handled by _read_dialog_action.
+_EVENT_ACTION_BODIES = {
+    "{6302d3fe": ("STSnippet", "ST {0}"),
+    "{9dcc475d": ("ToggleVariable", "toggle {0}"),
+    "{b4c3a27b": ("Assign33", "screen {0}"),
+}
+
+
+def _read_input_actions(element, skip_events):
+    """Recover an element's input wiring as ``data-cds-action`` clauses.
+
+    ``from-svg`` splits a button's behaviour across two places: tap and toggle
+    land in ConfiguredComplexInputs, and the per-event actions in
+    VisualElementInputActions. Reading neither back gave a decompiled sketch
+    buttons that look right and do nothing -- and recompiling that sketch
+    stripped the wiring out of a screen that had it.
+
+    *skip_events* suppresses the event actions when :func:`_read_dialog_action`
+    has already claimed them, so a dialog button does not emit its ST snippet
+    twice.
+
+    Returns the list of clauses, in the order ``data-cds-action`` joins them.
+    """
+    clauses = []
+
+    configured = find_named(element, "Array", "ConfiguredComplexInputs")
+    for entry in list(configured) if configured is not None else []:
+        if strip_ns(entry.tag) != "Single":
+            continue
+        word = _COMPLEX_INPUT_WORDS.get(named_text(entry, "SignatureName"))
+        variable = _member_value(entry, _MID_INPUT_VARIABLE)
+        if word and isinstance(variable, str) and variable:
+            clauses.append("{0} {1}".format(word, variable))
+
+    if skip_events:
+        return clauses
+
+    actions = find_named(element, "Dictionary", "VisualElementInputActions")
+    for entry in list(actions) if actions is not None else []:
+        if strip_ns(entry.tag) != "Entry":
+            continue
+        key_el = _find_child(entry, "Key")
+        value_el = _find_child(entry, "Value")
+        if key_el is None or value_el is None:
+            continue
+        event = _first_single_text(key_el)
+        array = _find_child(value_el, "Array")
+        if not event or array is None:
+            continue
+        for action in list(array):
+            if strip_ns(action.tag) != "Single":
+                continue
+            for prefix, (field, template) in _EVENT_ACTION_BODIES.items():
+                if not action.attrib.get("Type", "").startswith(prefix):
+                    continue
+                value = named_text(action, field)
+                if value:
+                    clauses.append(
+                        "{0}: {1}".format(event, template.format(value))
+                    )
+                break
+
+    return clauses
+
+
+def _find_child(parent, tag_name):
+    """First direct child of *parent* with *tag_name*, ignoring any Name."""
+    for child in list(parent):
+        if strip_ns(child.tag) == tag_name:
+            return child
+    return None
+
+
+def _first_single_text(parent):
+    """Text of the first ``<Single>`` directly under *parent*."""
+    child = _find_child(parent, "Single")
+    return (child.text or "").strip() if child is not None and child.text else ""
+
+
 def _read_dialog_action(element):
     """Read dialog-open action info from an element's VisualElementInputActions.
 
@@ -808,6 +950,15 @@ def _inject_dialog_attrs(tag_str, info):
         for name, expr in info["params"].items():
             parts.append('data-dialog-param-{0}="{1}"'.format(
                 _esc_xml(name), _esc_xml(expr)))
+    return _inject_attrs(tag_str, parts)
+
+
+def _inject_attrs(tag_str, parts):
+    """Append rendered ``name="value"`` *parts* to an SVG tag's opening tag.
+
+    Works for both self-closing tags (``<rect .../>``) and bodied ones
+    (``<text ...>body</text>``).
+    """
     if not parts:
         return tag_str
 
@@ -863,6 +1014,13 @@ def _element_to_svg(element):
     info = _read_dialog_action(element)
     if info is not None:
         svg = _inject_dialog_attrs(svg, info)
+
+    # Cross-cutting: recover tap / toggle / event wiring.
+    clauses = _read_input_actions(element, skip_events=info is not None)
+    if clauses:
+        svg = _inject_attrs(
+            svg, ['data-cds-action="{0}"'.format(_esc_xml(" || ".join(clauses)))]
+        )
     return svg
 
 

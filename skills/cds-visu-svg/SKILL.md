@@ -164,7 +164,7 @@ fastest way to a clean run.
 
   **`text-anchor="middle"` and `"end"` change this rule**: the box is then
   centred on `y`, so the top is `y - height/2` — *height*, not font-size. With no
-  `data-height` that height is the `max(16, font-size × 1.4)` below, so the
+  `data-height` that height is the one below, so the
   scaffold's `<text class="caption" y="40">` has its box top at `40 - 16/2 = 32`,
   on-grid. Do not apply the `y - font-size` rule to anchored text: it gives 29
   here and tells you the scaffold is broken when it is not. Give anchored text an
@@ -176,14 +176,15 @@ fastest way to a clean run.
   is correct (46 − 22 = 24) and `y="48"` is not (48 − 22 = 26, off-grid). Every
   `<text>` in the example at the bottom of this file is written this way.
 
-  **The box is 1.4× the font size tall, so it hangs below the baseline** —
+  **The box is ~1.4× the font size tall, so it hangs below the baseline** —
   descender space, exactly like a line of type. A `<text>` with no `data-height`
-  compiles to `max(16, font-size × 1.4)`, so the bottom edge is
-  `y + 0.4 × font-size`: 4px under the baseline for a `.label`, 5 for a
-  `.caption`, 6 for an `.h2`, 8 for an `.h1`, 11 for a `.value`. This is what
-  makes a value overflow the card you put it in — a `.value` with `y="160"`
-  needs its card to reach 171, not 168. Size a card from the bottom of the text
-  it holds, not from the baseline.
+  compiles to `max(16, font-size × 1.4)` rounded up to the 4px grid, which makes
+  it 16 for a `.label` and a `.caption`, 24 for an `.h2`, 32 for an `.h1` and 40
+  for a `.value`. The bottom edge is therefore 4px under the baseline for a
+  `.label`, 5 for a `.caption`, 8 for an `.h2`, 10 for an `.h1`, 12 for a
+  `.value`. This is what makes a value overflow the card you put it in — a
+  `.value` with `y="160"` needs its card to reach 172, not 168. Size a card from
+  the bottom of the text it holds, not from the baseline.
 - **`x` on a `<text>` is always the box LEFT edge**, even with
   `text-anchor="middle"` or `"end"`. This is the one place the sketch does not
   mean what an SVG viewer would show you: CODESYS puts text in a box, so the

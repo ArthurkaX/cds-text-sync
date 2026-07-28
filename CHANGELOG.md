@@ -109,7 +109,21 @@ Light output was verified byte-identical, not merely tested: the same fixture sc
 
 `cts visu lint` and `cts visu preview` grade a file. They consult the daemon only to pick up an optional project-level `visu.css` — and `_optional_project_view` was written to shrug that off — but the failure still cost the full 10s project-command timeout and printed `[ERROR] Could not get sync folder from daemon … Make sure the reverse-pipe daemon is running inside CODESYS` before succeeding. These are the first two commands a new user runs, usually before CODESYS is open, so the one flow that is meant to work offline was the one that looked broken. `_resolve_project_view` gained `timeout` and `quiet`; the optional path waits 2s — ten attempts at the default 200ms daemon poll — and says nothing. The project commands are unchanged and still explain themselves.
 
-Unit suite: 754 passed, 3 skipped (was 521/3).
+**`cts visu to-svg` gave back a sketch that was not the screen:**
+
+Decompiling is how an existing screen enters the SVG workflow, and how a compiled one is reviewed. Three things it dropped only became visible by linting the round trip — the original sketch lints clean, so nothing upstream could have caught them, and each of the three does damage twice: the sketch is wrong, and recompiling that sketch writes the loss back into the screen.
+
+- **Every caption came back moved.** A CODESYS text element is a box plus an alignment; an SVG `<text>` is a baseline plus an anchor, and `_parse_text` converts the one into the other on import. The export emitted the raw box top as `y` and never read the alignment members at all, so a centred caption came out flush left and every line of text rose by one font size. It now inverts the import: `HCENTER` restores `text-anchor="middle"` and `y + height/2`, `RIGHT` restores `text-anchor="end"`, and left-aligned text gets `y + font-size` — the same fallback size the builder uses when a label carries none.
+- **Buttons came back inert.** A button's behaviour is split across two places in the compiled XML — tap and toggle in `ConfiguredComplexInputs`, per-event actions in `VisualElementInputActions` — and the export read neither, so a decompiled screen had six buttons that looked right and did nothing. `_read_input_actions` recovers all of it as `data-cds-action` clauses (`TAP`, `TOGGLE`, `OnMouseClick: ST|toggle|screen`), suppressing the event half when the dialog reader has already claimed it so a dialog button does not emit its snippet twice. A fixed-point test now compiles, decompiles and recompiles, and asserts the wiring is identical.
+- **Estimated text boxes failed the project's own grid rule.** `_estimate_text_width/height` are what a `<text>` gets when the author wrote no `data-width`/`data-height`, and they landed on arbitrary pixels — so `lint` reported sixteen grid findings against numbers no one had written. Both now round **up** to the 4px grid, which keeps the box at least as wide as the glyphs need. The alternative — omitting the estimates on export — was rejected: it would silently move genuinely off-grid boxes in hand-authored CODESYS screens. The documented below-baseline overhang shifts with them (4/5/8/10/12 px for `.label`/`.caption`/`.h2`/`.h1`/`.value`); SKILL.md and its test move together.
+
+A compile → decompile → lint cycle on the reference project's 95-element screen is now clean in both schemes.
+
+**`from-svg --create-screen --replace` (new):**
+
+Recompiling a generated screen meant deleting its `.xml` first, and a fresh compile mints a fresh object Guid. That Guid is the screen's identity on `cts import`, so the delete-and-rebuild loop adds a second screen in CODESYS beside the first rather than updating it. `--replace` rebuilds in place and keeps the Guid. Without it an existing screen is still never overwritten, and the refusal now names the flag instead of leaving `rm` as the only way forward.
+
+Unit suite: 769 passed, 3 skipped (was 521/3).
 
 ---
 
