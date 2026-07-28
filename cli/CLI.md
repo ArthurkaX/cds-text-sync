@@ -185,7 +185,7 @@ lands in `project-view/` and reaches the IDE through the normal `cts import`.
 
 | Command | Meaning |
 | --- | --- |
-| `visu new --name NAME --w W --h H --out FILE` | Compose a laid-out SVG skeleton for that canvas size — header band, panels, KPI cards, bound field, action row. Not a fixed template: the layout is derived, so any `--w/--h` comes out correct. |
+| `visu new --name NAME --w W --h H --out FILE` | Compose a laid-out SVG skeleton for that canvas size — header band, panels, KPI cards, bound field, action row. Not a fixed template: the layout is derived from `--w/--h`, and blocks that will not fit are dropped rather than squeezed. Verified lint-clean from 480×320 up, on sides that are multiples of 4; outside that the composition can collapse into itself or land off-grid, and `visu new` says so. |
 | `visu lint --svg FILE [--fix] [--strict]` | Check the sketch for design problems: off-grid coordinates, text wider than its box, a font size outside the scale, a button too small to press, an unbound field, overlap, crowding. `--fix` snaps the mechanical ones in place, leaving comments and formatting intact. |
 | `visu preview --svg FILE [--out PATH] [--grid N] [--no-png]` | Render the sketch with the colours the compiler will actually emit, as `<file>.preview.svg` + `.preview.png`. The sketch itself carries no colours, so this is the only way to see the screen before it is in the IDE. |
 | `visu from-svg --svg FILE ...` | Compile the sketch into a screen `.xml`. Runs lint and writes a preview on the way through. |

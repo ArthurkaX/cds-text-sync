@@ -182,6 +182,55 @@ class TestEnsureGvl:
         result = gvl.ensure_gvl(str(tmp_path), [], gvl_name="VisuVars")
         assert result is None
 
+    def test_says_it_wrote_only_when_it_wrote(self, tmp_path):
+        """The message an author reads has to match what happened on disk.
+
+        Once a project has real signals, most screens bind entirely to GVLs
+        that already exist and there is nothing to declare. Reporting that as
+        "Updated GVL" sends somebody looking for declarations no run added --
+        which is exactly what happened to the first author who used this on a
+        live project.
+        """
+        pou_dir = os.path.join(str(tmp_path), "POUs")
+        os.makedirs(pou_dir)
+        elems = [{"params": {"text_var": "HMI.Test"}}]
+
+        path, written = gvl.ensure_gvl_result(
+            str(tmp_path), elems, gvl_name="VisuVars"
+        )
+        assert written is True
+        before = open(path).read()
+
+        path_again, written_again = gvl.ensure_gvl_result(
+            str(tmp_path), elems, gvl_name="VisuVars"
+        )
+        assert path_again == path
+        assert written_again is False
+        assert open(path).read() == before
+
+    def test_already_declared_elsewhere_is_not_a_write(self, tmp_path):
+        """A reference resolved by another project GVL leaves this one alone."""
+        pou_dir = os.path.join(str(tmp_path), "POUs")
+        os.makedirs(pou_dir)
+        with open(os.path.join(pou_dir, "GVL_Routing.st"), "w") as handle:
+            handle.write(
+                "{attribute 'qualified_only'}\nVAR_GLOBAL\n"
+                "    partWeight : REAL;\nEND_VAR\n"
+            )
+        elems = [{"params": {"text_var": "GVL_Routing.partWeight"}}]
+
+        path, written = gvl.ensure_gvl_result(
+            str(tmp_path), elems, gvl_name="VisuVars"
+        )
+        assert written is False
+        assert not os.path.isfile(path)
+
+    def test_no_vars_reports_no_path_and_no_write(self, tmp_path):
+        assert gvl.ensure_gvl_result(str(tmp_path), [], gvl_name="VisuVars") == (
+            None,
+            False,
+        )
+
     def test_custom_gvl_path(self, tmp_path):
         custom_path = os.path.join(str(tmp_path), "Custom.st")
         elems = [{"params": {"text_var": "HMI.X"}}]
@@ -262,6 +311,32 @@ class TestScanProjectGvls:
         gvls = gvl.scan_project_gvls(str(tmp_path))
         assert "MAIN" not in gvls
 
+    def test_finds_variables_mapped_to_hardware_addresses(self, tmp_path):
+        # Real PLC globals carry an "AT %IX0.6" location between the name and
+        # the colon. Missing it hid every located variable from the dedup.
+        with open(os.path.join(str(tmp_path), "FIO_SIGNALS.st"), "w") as f:
+            f.write(
+                "VAR_GLOBAL\n"
+                "\tEStop         AT %IX0.6 : BOOL;  // NC: TRUE = OK\n"
+                "\tEmitter       AT %QX0.3 : BOOL;\n"
+                "\tWeight        AT %IW0 : WORD := 0;\n"
+                "\tPlain : INT;\n"
+                "END_VAR\n"
+            )
+        names = gvl.scan_project_gvls(str(tmp_path)).get("FIO_SIGNALS", set())
+        assert {"EStop", "Emitter", "Weight", "Plain"} <= names
+
+    def test_located_variable_is_not_redeclared(self, tmp_path):
+        os.makedirs(os.path.join(str(tmp_path), "POUs"))
+        with open(os.path.join(str(tmp_path), "FIO_SIGNALS.st"), "w") as f:
+            f.write("VAR_GLOBAL\n\tEmitter AT %QX0.3 : BOOL;\nEND_VAR\n")
+        elems = [{"type": "lamp", "params": {"var": "FIO_SIGNALS.Emitter"}}]
+        gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
+        assert not os.path.isfile(
+            os.path.join(str(tmp_path), "POUs", "VisuVars.st")
+        )
+
+
 
 class TestCrossGvlDedup:
     def test_var_in_other_gvl_not_redeclared(self, tmp_path):
@@ -277,20 +352,76 @@ class TestCrossGvlDedup:
         # Path is returned but the file is never created (nothing new to add).
         assert not os.path.isfile(os.path.join(pou_dir, "VisuVars.st"))
 
-    def test_new_var_still_declared(self, tmp_path):
+    def test_new_var_in_another_gvl_is_reported_not_fabricated(self, tmp_path):
         pou_dir = os.path.join(str(tmp_path), "POUs")
         os.makedirs(pou_dir)
         hmi_dir = os.path.join(str(tmp_path), "Runtime", "HMI")
         os.makedirs(hmi_dir)
         with open(os.path.join(hmi_dir, "HMI.st"), "w") as f:
             f.write("VAR_GLOBAL\n    OutTemp : REAL;\nEND_VAR\n")
-        # OutTemp exists in HMI; NewOne does not -> only NewOne declared.
+        # HMI is a real GVL that simply lacks NewOne. Declaring NewOne in
+        # VisuVars makes VisuVars.NewOne, which the binding never reads.
         elems = [
             {"params": {"text_var": "HMI.OutTemp", "text": "%3.1f"}},
             {"params": {"tap_var": "HMI.NewOne"}},
         ]
+        messages = []
+        gvl.ensure_gvl(
+            str(tmp_path), elems, gvl_name="VisuVars", warn=messages.append
+        )
+        assert not os.path.isfile(os.path.join(pou_dir, "VisuVars.st"))
+        assert any("HMI.NewOne" in m and "declares no" in m for m in messages)
+
+    def test_var_addressed_to_the_target_gvl_is_declared(self, tmp_path):
+        os.makedirs(os.path.join(str(tmp_path), "POUs"))
+        elems = [{"params": {"text_var": "VisuVars.Speed", "text": "%d"}}]
         result = gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
         with open(result) as f:
-            content = f.read()
-        assert "NewOne" in content
-        assert "OutTemp" not in content
+            assert "Speed : INT;" in f.read()
+
+
+class TestQualifiedPathsAreNeverFlattened:
+    """Regression: nine lamps bound to GVL_Sensors.<instance>.Q produced nine
+    bare ``Q : BOOL;`` declarations -- ST that CODESYS refuses to compile."""
+
+    def _sensors_project(self, tmp_path):
+        os.makedirs(os.path.join(str(tmp_path), "POUs"))
+        gvl_dir = os.path.join(str(tmp_path), "Application")
+        os.makedirs(gvl_dir)
+        with open(os.path.join(gvl_dir, "GVL_Sensors.st"), "w") as f:
+            f.write(
+                "VAR_GLOBAL\n"
+                "    Scale : FB_Sensor;\n"
+                "    ScaleEntry : FB_Sensor;\n"
+                "    ScaleExit : FB_Sensor;\n"
+                "END_VAR\n"
+            )
+
+    def test_instance_members_are_referenced_not_redeclared(self, tmp_path):
+        self._sensors_project(tmp_path)
+        elems = [
+            {"type": "lamp", "params": {"var": "GVL_Sensors.Scale.Q"}},
+            {"type": "lamp", "params": {"var": "GVL_Sensors.ScaleEntry.Q"}},
+            {"type": "lamp", "params": {"var": "GVL_Sensors.ScaleExit.Q"}},
+        ]
+        gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars_T4")
+        assert not os.path.isfile(
+            os.path.join(str(tmp_path), "POUs", "VisuVars_T4.st")
+        )
+
+    def test_two_paths_never_collide_on_one_identifier(self, tmp_path):
+        os.makedirs(os.path.join(str(tmp_path), "POUs"))
+        # No GVL_Sensors in this project, so the legacy leaf-declaring path
+        # applies -- but it must still not emit Q twice.
+        elems = [
+            {"type": "lamp", "params": {"var": "GVL_Sensors.Scale.Q"}},
+            {"type": "lamp", "params": {"var": "GVL_Sensors.ScaleExit.Q"}},
+        ]
+        messages = []
+        result = gvl.ensure_gvl(
+            str(tmp_path), elems, gvl_name="VisuVars_T4", warn=messages.append
+        )
+        with open(result) as f:
+            assert f.read().count("Q :") == 1
+        assert any("already declared" in m for m in messages)
+

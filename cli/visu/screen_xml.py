@@ -136,6 +136,58 @@ def list_elements(xml_text):
     return results
 
 
+_VELIST_MARKER = (
+    '<List Name="VisualElementList" Type="{ef9d0b20-c96e-48db-b361-2ded4063150e}">'
+)
+
+
+def _visual_element_list_body(xml_text):
+    """Return ``(start, end)`` of the VisualElementList's contents.
+
+    ``start`` is just past the opening tag and ``end`` is at its matching
+    ``</List>``, so ``xml_text[start:end]`` is exactly the elements. Nested
+    lists (a member list inside an element) are walked over by depth, and
+    self-closing ``<List ... />`` does not open one.
+    """
+    start = xml_text.find(_VELIST_MARKER)
+    if start < 0:
+        raise ScreenError("Screen file has no VisualElementList")
+    pos = start + len(_VELIST_MARKER)
+    depth = 0
+    while True:
+        next_open = xml_text.find("<List", pos)
+        next_close = xml_text.find("</List>", pos)
+        if next_close < 0:
+            raise ScreenError("Malformed VisualElementList (no closing tag)")
+        if 0 <= next_open < next_close:
+            tag_end = xml_text.find(">", next_open)
+            if tag_end >= 0 and xml_text[tag_end - 1 : tag_end + 1] != "/>":
+                depth += 1
+            pos = next_open + 5
+        elif depth == 0:
+            return start + len(_VELIST_MARKER), next_close
+        else:
+            depth -= 1
+            pos = next_close + 6
+
+
+def clear_elements(xml_text):
+    """Drop every element from the screen, keeping the screen itself.
+
+    ``from-svg`` recompiles a whole sketch, so the sketch is the screen: what
+    the author deleted from the SVG has to leave the screen too. Appending onto
+    what was already there meant a second run produced a screen with both
+    copies -- 31 elements became 62, overlapping pixel for pixel -- and the
+    author's own edits were buried under them.
+
+    The identifier counters are deliberately left where they are: they only
+    have to keep issuing names nothing else is using, and rewinding them would
+    hand a fresh element the identifier of one CODESYS has already seen.
+    """
+    start, end = _visual_element_list_body(xml_text)
+    return xml_text[:start] + xml_text[end:]
+
+
 def _member_map(element):
     """Map member id -> {value, kind, color, canonical_name} for one element."""
     out = {}

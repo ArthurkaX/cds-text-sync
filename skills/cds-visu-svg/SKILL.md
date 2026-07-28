@@ -16,6 +16,18 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
 
 ## Workflow
 
+**Every command below takes `--sync-folder <path>` when the project you are
+authoring for is not the current directory**, and most of the time it is not.
+That folder is the one holding `project-view/`; without it the tool looks in the
+cwd, fails to find the project, and cannot resolve your theme, your existing
+GVLs, or where to write the screen. It works the same on every subcommand —
+`lint`, `lint --fix`, `preview`, `from-svg`, `check` — and the examples below
+omit it only to keep them short:
+
+```sh
+cts visu lint --svg <screen>.svg --sync-folder C:\path\to\project
+```
+
 1. **Scaffold a starter SVG** with `cts visu new`. This composes a complete,
    already-laid-out screen for the canvas size you ask for — header band,
    content panel, KPI cards, a bound field, a status row, an action row — plus a
@@ -24,6 +36,11 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
    ```sh
    cts visu new --name "<Screen>" --w 800 --h 480 --out <screen>.svg
    ```
+   The scaffold is a *layout*, not a design. Its labels ("KPI 1") and its
+   bindings (`VisuVars.xRunning`, `VisuVars.rLineSpeed`) are placeholders that
+   name nothing in the project — every one of them has to be replaced in step 2
+   with a variable that actually exists, or you ship a screen wired to invented
+   names.
 2. **Edit the SVG**: keep or adjust the example elements, add more as needed.
    Colour comes from `class="..."` (see "Colour classes" below) — you do not
    write colours yourself. Follow "Layout rules" below; the skeleton already
@@ -36,12 +53,14 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
    than its box, a font size outside the scale, a button too small to press, a
    field with nothing bound to it:
    ```sh
-   cts visu lint --svg <screen>.svg          # report
-   cts visu lint --svg <screen>.svg --fix    # snap the mechanical ones
+   cts visu lint --svg <screen>.svg --fix    # snap the mechanical ones first
+   cts visu lint --svg <screen>.svg          # then read what is left
    ```
-   Fix everything it reports before moving on. `--fix` rewrites only the
-   attributes it flagged, leaving your comments and formatting intact; anything
-   it cannot fix mechanically is a judgement call and is yours to make.
+   Run `--fix` first and *then* read the report: it clears the arithmetic
+   (grid snapping, font sizes) so what remains is only the judgement calls, and
+   those are yours to make. Fix everything it reports before moving on. `--fix`
+   rewrites only the attributes it flagged, leaving your comments and formatting
+   intact, and it iterates until the sketch stops changing — one run is enough.
 4. **Look at what you made.** The sketch itself carries no colours, so opening
    it in a viewer shows black shapes on white and tells you nothing. Render it
    with the real resolved palette and *actually open the PNG*:
@@ -82,10 +101,17 @@ CODESYS visualization object using `cts visu from-svg` only after approval.
    auto-generate variable declarations when the SVG uses runtime bindings.
    `from-svg` runs lint and preview itself; `--strict` makes lint findings fatal,
    `--no-preview` skips the PNG.
-8. If `cts` is **not** available, report this clearly and provide the exact
+8. **Verify the screen the tool wrote.** `from-svg` reports what it compiled;
+   `check` re-reads the `.xml` in the project and grades it as CODESYS will:
+   ```sh
+   cts visu check --screen <ScreenName> --folder "Runtime/PLC Logic/Application/HMI"
+   ```
+   `check` works on a screen that already exists, so it takes `--screen`, not
+   `--name` (`--name` belongs to `new` and `create-screen`).
+9. If `cts` is **not** available, report this clearly and provide the exact
    command the user can run manually.
-9. Always report the compile result (success / error / waiting for approval /
-   not run).
+10. Always report the compile result (success / error / waiting for approval /
+    not run).
 
 ### Approval rule
 
@@ -115,10 +141,14 @@ generated. `cts visu lint` grades against them, so following them is also the
 fastest way to a clean run.
 
 - **4px grid.** Every `x`/`y`/`width`/`height` is a multiple of 4. Lay blocks
-  out on 8 or 16 — the grid is the floor, not the rhythm.
+  out on 8 or 16 — the grid is the floor, not the rhythm. **`<text>` is the
+  exception**: see the baseline rule below, which is what the grid is graded
+  against there.
 - **24px page margin.** Nothing but the background touches the outer 24px.
 - **16px between blocks, 16px panel padding.** Content starts 16px inside a
-  `.panel`, and panels sit 16px apart.
+  `.panel`, and panels sit 16px apart. This rhythm assumes a canvas of 480×320
+  or more; `cts visu new` warns if you ask for less, and below that you are
+  laying the screen out by hand.
 - **Bands, not scatter.** Header (title + a divider at y≈72), body, then an
   action row above the bottom margin with a divider over it. Buttons live in the
   action row, not floating in the body.
@@ -130,26 +160,73 @@ fastest way to a clean run.
 - **Text is anchored on its BASELINE.** This is the single most common mistake.
   For a `<text>` — including a `data-cds-type="textfield"` — the `y` you write is
   the baseline, and the compiled box top is `y - font-size`. So a 12px field
-  whose box should start at 160 is written `y="172"`. With
-  `text-anchor="middle"` the box is centred on `y` instead, so give it an
-  explicit `data-height` or the centre lands off-grid.
+  whose box should start at 160 is written `y="172"`.
+
+  **`text-anchor="middle"` and `"end"` change this rule**: the box is then
+  centred on `y`, so the top is `y - height/2` — *height*, not font-size. With no
+  `data-height` that height is the `max(16, font-size × 1.4)` below, so the
+  scaffold's `<text class="caption" y="40">` has its box top at `40 - 16/2 = 32`,
+  on-grid. Do not apply the `y - font-size` rule to anchored text: it gives 29
+  here and tells you the scaffold is broken when it is not. Give anchored text an
+  explicit `data-height` when you want the arithmetic to be obvious.
+
+  **This is what the 4px grid means for text: put the *box top* on the grid, so
+  write `y = (multiple of 4) + font-size`.** Since `.h1` is 22 and `.caption` is
+  11, their baselines are deliberately *not* multiples of 4 — `y="46"` for an h1
+  is correct (46 − 22 = 24) and `y="48"` is not (48 − 22 = 26, off-grid). Every
+  `<text>` in the example at the bottom of this file is written this way.
+
+  **The box is 1.4× the font size tall, so it hangs below the baseline** —
+  descender space, exactly like a line of type. A `<text>` with no `data-height`
+  compiles to `max(16, font-size × 1.4)`, so the bottom edge is
+  `y + 0.4 × font-size`: 4px under the baseline for a `.label`, 5 for a
+  `.caption`, 6 for an `.h2`, 8 for an `.h1`, 11 for a `.value`. This is what
+  makes a value overflow the card you put it in — a `.value` with `y="160"`
+  needs its card to reach 171, not 168. Size a card from the bottom of the text
+  it holds, not from the baseline.
+- **`x` on a `<text>` is always the box LEFT edge**, even with
+  `text-anchor="middle"` or `"end"`. This is the one place the sketch does not
+  mean what an SVG viewer would show you: CODESYS puts text in a box, so the
+  anchor chooses where the glyphs sit *inside* `data-width` rather than moving
+  the box. To centre a label over a 336px panel starting at x=424, write
+  `x="424" data-width="336" text-anchor="middle"` — not `x="592"`. Anchored text
+  without a `data-width` is a lint finding, because then the box width is guessed
+  from the text and the alignment lands wherever the guess falls.
+
+  `"end"` works the same way and catches people out harder: to right-align a
+  value against the inner edge of a card that ends at x=760, you still write the
+  box's *left* edge — `x="640" data-width="120" text-anchor="end"`, not
+  `x="736"`. Writing the right edge pushes the box to 736+120=856 and the bounds
+  rule reports it as off-canvas.
 - **24px from a label's baseline to its field's baseline.** That leaves 16px
   between the field and the next label.
 - **Pipes are thin rects, not lines.** A CODESYS line has no width member, so
   `<line>` always draws one pixel wide — fine for a `.divider`, invisible for a
   process line. Draw a pipe as an 8px-tall `<rect class="pipe-water">`.
+- **`--` cannot appear inside an XML comment.** Ruling a section off with
+  `<!-- ---- Supply air ---- -->` makes the whole file unparseable. Use `====`.
+- **Only five named entities exist here.** A sketch is XML, not HTML, so
+  `&lt;` `&gt;` `&amp;` `&quot;` `&apos;` are the whole list. HTML spellings that
+  look obvious in a caption — `&rarr;` for an arrow, `&le;` for a threshold,
+  `&mdash;` — fail the parse with *undefined entity* and take the whole file
+  with them. Write the character itself (`→`, `≤`), or a numeric reference
+  (`&#8594;`), or plain ASCII (`->`, `<=`).
 
 ## Colour classes
 
-You never write a colour. Put a **class** on an element and the active CODESYS
-style / theme decides the actual colour. This means an element always gets a
-real colour that matches the project style — no "white elements", and the same
-sketch re-themes automatically.
+You never write a colour **as a hex value**. Put a **class** on an element and
+the active CODESYS style / theme decides the actual colour. This means an element
+always gets a real colour that matches the project style — no "white elements",
+and the same sketch re-themes automatically.
+
+The one place you name a colour is a lamp's `data-color="red|green|yellow|blue|
+gray"`. That is not an exception to the rule: you are naming the *role* the lamp
+signals, and the theme still picks the pixels — exactly like a class does.
 
 | class | use on | meaning |
 |---|---|---|
 | `panel` | `<rect>` | grouping / container backing |
-| `card` | `<rect>` | lighter inner surface, one step down |
+| `card` | `<rect>` | inner surface, one step in from a `panel` |
 | `divider` | `<line>` | separator line |
 | `h1` | `<text>` | screen title (22px) — one per screen |
 | `h2` | `<text>` | section / panel heading (16px) |
@@ -165,6 +242,20 @@ sketch re-themes automatically.
 | `metal` | `<rect>` `<circle>` `<ellipse>` | P and ID structural / equipment |
 
 `title` still works as a legacy alias of `h1`; prefer `h1` in new sketches.
+
+- **`card` is an inner surface, not a top-level box.** It is one step in from
+  the `.panel` that holds it, and in the light scheme that step lands it within
+  ~3% of the screen background — so a `.card` dropped straight onto the screen
+  has almost no visible edge (#EDEFF2 on #F4F5F7) and reads as a shape that
+  failed to render. A box that sits directly on the background is a `.panel`;
+  `.card` is for the KPI tiles and read-outs *inside* one.
+
+- **Text over a P&ID fill.** `inverse` is for text on a status colour
+  (`ok`/`warn`/`alarm`). There is no class for text sitting on `metal` or
+  `pipe-water`, and `label` on a dark vessel can be unreadable — so put tag
+  numbers and captions *beside* or *under* the equipment rather than on it. The
+  shipped `pid-schematic.svg` does exactly that: one row of `.caption` tags on a
+  shared baseline beneath the flow path.
 
 - **Buttons, textfields and lamps take NO class.** They inherit the native
   CODESYS control style automatically — leave their colour alone.
@@ -215,6 +306,23 @@ Two things to know:
 | `<text>` | `VisuFbLabel` | `x`(=left) `y`(=**baseline**) `class` `font-size font-family` + textContent |
 | `<rect data-cds-type="button">` | `VisuFbElemButton` | geometry + `data-text` (caption — a `<rect>` cannot carry text content) |
 | `<text data-cds-type="textfield">` | `VisuFbElemTextfield` | `x y`(=**baseline**) `data-width data-height` `data-text-var` + textContent |
+| `<rect data-cds-type="lamp">` | `VisuFbElemLamp` | geometry + `data-color` (red\|green\|yellow\|blue\|gray) `data-var` |
+
+**A control is recognised by the *pair* — tag plus `data-cds-type`.** Every
+control above is a `<rect>` except the textfield, which is a `<text>`. Put
+`data-cds-type` on any other tag and it is not an error and not a control: it
+falls through to the plain shape parser, `data-var` and `data-text` are dropped,
+and you get a decoration that draws correctly and does nothing. The one that
+catches people is the lamp — a circle is the obvious shape for an indicator
+light, but `<circle data-cds-type="lamp">` is just an ellipse. Draw the lamp as a
+square `<rect>`; the native lamp bitmap is round anyway. `cts visu lint` reports
+this as `control-tag`.
+
+**`cts visu preview` draws that lamp as a circle, not the square you wrote.**
+That is the preview being honest about the round bitmap CODESYS will actually
+render — your sketch is not wrong and nothing rewrote it. Expect the same of
+textfields: the preview shows the literal format string (`%3.1f`, `%d`), because
+there is no PLC attached to supply a value.
 
 ## Advanced elements (lamp, image-switcher, combobox, alarm-banner)
 
@@ -234,7 +342,9 @@ the control in question.
 - `data-text` — button caption. The transpiler allocates a Text-ID in the
   GlobalTextList automatically.
 - `data-cds-tap="TAP HMI.StartPump"` — bind the native CODESYS button
-  tap/toggle variable.
+  tap/toggle variable. The verb is optional: `TAP `, `TOGGLE `, `tap:` and
+  `toggle:` are all stripped, and a bare `data-cds-tap="HMI.StartPump"` binds the
+  same way. `cts visu new` emits the bare form; both are correct.
 - `data-cds-action` — optional native action binding. Supported forms:
   `TAP HMI.StartPump`, `TOGGLE HMI.StartPump`,
   `OnMouseClick: ST HMI.StartPump := TRUE;`,
@@ -248,13 +358,22 @@ the control in question.
       data-text-var="HMI.Temperature">%3.2f C</text>
 ```
 - `data-width` / `data-height` — bounding box (required; `<text>` has no
-  native width/height).
+  native width/height). Give it at least 32px of height, the same floor a button
+  has; the example's 32 with a 12px font is the comfortable default.
 - `y` is the **baseline**, not the box top: this field's box starts at
   `172 - 12 = 160`. Size it and place it on the grid through the box top.
 - `data-text-var` — optional runtime variable binding (e.g. `HMI.MyVar`).
-- Text content — the display format string.
-- Font colour comes from the CODESYS style; add a class only if you need a
-  specific themed colour (e.g. `class="value"`).
+- Text content — the display format string. **Put the unit in it** (`%3.1f C`,
+  `%d rpm`) rather than adding a separate `.caption` next to the field: the
+  field is one box, and a unit parked beside it has to be re-aligned by hand
+  every time the value's width changes.
+- **A textfield's size comes from its `font-size` attribute, and `class` does
+  nothing at all on a field.** This is the one element where the colour-class
+  system does not apply: a field takes the native CODESYS textfield style, so
+  `class="value"` changes neither its size nor its colour — it is silently
+  ignored. For a large read-out write `font-size="28"` (the box top is then
+  `y - 28`). If you need a themed colour on a field, you cannot have one; use a
+  `<text>` label beside it, or accept the native style.
 
 ## GVL variable declarations (auto-generated)
 
@@ -315,14 +434,57 @@ END_VAR
 ### Rules
 
 1. **Collect all unique variable paths** from every control in the SVG.
-2. **Normalise** the paths: if a path starts with a known GVL name (e.g.
-   `GVL_Sensors.`), verify that GVL already contains the declaration. If it
-   does not, add it to that GVL.
-3. **For flat `HMI.*` paths**, create or update the `GVL_HMI.st` file with
-   all variables as members of a single `VAR_GLOBAL` block.
-4. **Do not duplicate** existing declarations. Check the project's existing
-   GVL files first before creating new ones.
-5. **Report** which GVL file was created/updated in your workflow summary.
+2. **A path names its owner in the FIRST segment.** `GVL_Sensors.Scale.Q` means
+   member `Q` of instance `Scale`, and what `GVL_Sensors` declares is `Scale`.
+   `--gvl` looks the owner up among the project's GVLs — including variables
+   mapped to hardware as `Emitter AT %QX0.3 : BOOL;` — and if the owner declares
+   it, the reference is *used as written* and nothing new is generated.
+3. **`--gvl` only ever declares into the GVL you named.** The screen binds the
+   full path you wrote, so a declaration elsewhere cannot satisfy it: putting
+   `Q : BOOL;` in `VisuVars` gives you `VisuVars.Q`, which `GVL_Sensors.Scale.Q`
+   never reads. When a reference cannot be served this way the tool prints
+   `[WARN] Not declared: <path> — <why>` and declines rather than inventing a
+   declaration that compiles to nothing.
+4. **Two paths can never share one declaration.** Nine lamps on
+   `GVL_Sensors.<instance>.Q` are nine references to one existing GVL, not nine
+   new `Q : BOOL;` lines — that would not compile.
+5. **Read the output.** `Updated GVL: <path>` means declarations were written;
+   `All runtime variables already declared; GVL not modified` means every path
+   resolved against an existing GVL and nothing was needed — the normal result
+   when you bind to variables the PLC program already owns.
+
+### Signals whose TRUE is not "good"
+
+An E-stop wired normally-closed reads TRUE when healthy and FALSE when pressed.
+Nothing in the sketch can invert that for you, and a green lamp bound straight to
+it is correct but reads backwards to anyone who has not been told. Say it in the
+label rather than leaving the operator to infer it — `E-Stop (OK when lit)` — or
+bind the lamp to an inverted flag the PLC already computes. Do not rely on colour
+alone to carry the polarity.
+
+### Never state a live value in static text
+
+A `<text>` without `data-text-var` compiles to a Text ID: fixed at import,
+identical forever. So `E-Stop = Stopped` reads "Stopped" while the machine
+runs, and `9 sensors — diagnostics active` claims a diagnostic that was never
+wired. Both pass every geometric check, both are the most confident-looking
+thing on the screen, and an operator reads them as instrumentation.
+
+Anything to the right of `=`, `:` or `—` that names a state must be live:
+
+```xml
+<!-- WRONG: says "Stopped" forever -->
+<text class="label" x="616" y="432">E-Stop = Stopped</text>
+
+<!-- RIGHT: the label names the signal, the field or lamp reports it -->
+<text class="label" x="616" y="432">E-Stop</text>
+<rect data-cds-type="lamp" x="700" y="420" width="16" height="16"
+      data-color="red" data-var="FIO_SIGNALS.xEStop"/>
+```
+
+A bare state word as a *legend* is fine and expected — `Running` beside a lamp
+labels it. What is wrong is joining a name to a state, because that is a
+reading. `cts visu lint` reports these as `static-state`.
 
 ### Example — GVL_HMI.st for the Pump Station sketch
 
@@ -382,6 +544,15 @@ level under `Hotkeys`, not inside the button element.
   `<rect>` instead.
 - Table, TabControl, GroupBox, Checkbox, RadioButton,
   Scrollbar, SpinControl, ProgressBar, InvisibleInput
+- **Operator data entry.** A textfield *displays* `data-text-var`; it cannot be
+  typed into. Only `<rect data-cds-type="button">` and plain shapes carry input
+  actions, so a screen authored here is read-and-press: the operator can start,
+  stop, toggle and navigate, but cannot key in a setpoint. Write a setpoint from
+  a button instead (`data-cds-action="OnMouseClick: ST HMI.Setpoint := 50;"`).
+  Adding the writable field in the CODESYS editor works, but do not round-trip
+  that screen: `to-svg` reads a textfield's geometry, variable and font and not
+  its input action, so the next `from-svg` compiles the field back as
+  display-only.
 
 **Decompile-only** (read by `cts visu to-svg`, but cannot yet be authored with
 `cts visu from-svg`): `slider`. Decompiling a real screen emits

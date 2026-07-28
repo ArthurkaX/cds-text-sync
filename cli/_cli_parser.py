@@ -557,20 +557,22 @@ from-svg SVG contract:
     p_visu.add_argument(
         "--sync-folder", default="", help="Sync folder or project-view dir"
     )
-    p_visu.add_argument("--name", default="", help="Screen name (for create-screen)")
+    p_visu.add_argument(
+        "--name", default="", help="Screen name (for new, create-screen)"
+    )
     p_visu.add_argument(
         "--folder",
         default="",
         help="CODESYS folder path e.g. Runtime/PLC Logic/Application/HMI",
     )
     p_visu.add_argument(
-        "--width", type=int, default=800, help="Screen width (for create-screen)"
+        "--width", type=int, default=800, help="Screen width (for new, create-screen)"
     )
     p_visu.add_argument(
         "--height",
         type=int,
         default=480,
-        help="Screen height (for create-screen)",
+        help="Screen height (for new, create-screen)",
     )
     p_visu.add_argument(
         "--start-visu",
@@ -582,22 +584,30 @@ from-svg SVG contract:
         "--visu", default="", help="Sub-visu name (for capture-frame)"
     )
     p_visu.add_argument("--type", default="", help="Element type (for add, describe)")
-    p_visu.add_argument("--x", type=int, help="X position")
-    p_visu.add_argument("--y", type=int, help="Y position")
-    p_visu.add_argument("--w", type=int, help="Width")
-    p_visu.add_argument("--h", type=int, help="Height")
+    p_visu.add_argument("--x", type=int, help="X position (for add)")
+    p_visu.add_argument("--y", type=int, help="Y position (for add)")
+    p_visu.add_argument(
+        "--w", type=int, help="Width (for add; also overrides --width for new)"
+    )
+    p_visu.add_argument(
+        "--h", type=int, help="Height (for add; also overrides --height for new)"
+    )
     p_visu.add_argument(
         "--shape",
         default="",
         help="Shape variant: rectangle|ellipse|rounded|line (for add)",
     )
-    p_visu.add_argument("--fill", default="", help="Fill color (0xAARRGGBB or name)")
-    p_visu.add_argument("--frame", default="", help="Frame color")
+    p_visu.add_argument(
+        "--fill", default="", help="Fill color, 0xAARRGGBB or name (for add)"
+    )
+    p_visu.add_argument("--frame", default="", help="Frame color (for add)")
     p_visu.add_argument("--corner-radius", type=int, help="Corner radius (for add)")
     p_visu.add_argument("--border-width", type=int, help="Border width (for add)")
     p_visu.add_argument("--angle", type=int, help="Rotation angle (for add)")
     p_visu.add_argument("--tooltip", default="", help="Tooltip text (for add)")
-    p_visu.add_argument("--svg", default="", help="SVG file path (for from-svg)")
+    p_visu.add_argument(
+        "--svg", default="", help="SVG file path (for from-svg, preview, lint)"
+    )
     p_visu.add_argument(
         "--elem", type=int, help="Element index (for describe --screen --elem)"
     )
@@ -605,11 +615,15 @@ from-svg SVG contract:
         "--theme",
         default="flat-style",
         help=(
-            "CODESYS style preset for from-svg "
-            "(flat-style|basic-style|default|white-style|style-2...)"
+            "CODESYS style preset (for from-svg, preview, lint): "
+            "flat-style|basic-style|default|white-style|style-2..."
         ),
     )
-    p_visu.add_argument("--out", default="", help="Output path (for from-svg, to-svg)")
+    p_visu.add_argument(
+        "--out",
+        default="",
+        help="Output path (for new, from-svg, to-svg, preview)",
+    )
     p_visu.add_argument(
         "--create-screen",
         action="store_true",

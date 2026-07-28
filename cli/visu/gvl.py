@@ -293,6 +293,15 @@ def write_gvl_file(path, content):
 # ---------------------------------------------------------------------------
 
 
+# A GVL declaration line, e.g. ``    OutTemp : REAL := 0.0;``. PLC globals are
+# very often mapped to hardware, which puts an ``AT %IX0.6`` location between
+# the name and the colon; missing that made every located variable invisible to
+# the cross-GVL dedup below, so ``FIO_SIGNALS.Emitter`` looked undeclared.
+_DECL_RE = re.compile(
+    r"^\s+(\w+)\s*(?:AT\s+%[\w.*]+\s*)?:", re.IGNORECASE | re.MULTILINE
+)
+
+
 def detect_existing_variables(gvl_path):
     """Scan an existing GVL ``.st`` file for declared variable names.
 
@@ -301,10 +310,9 @@ def detect_existing_variables(gvl_path):
     if not os.path.isfile(gvl_path):
         return set()
     existing = set()
-    var_decl_re = re.compile(r"^\s+(\w+)\s*:")
     with open(gvl_path, "r", encoding="utf-8") as handle:
         for line in handle:
-            m = var_decl_re.match(line)
+            m = _DECL_RE.match(line)
             if m:
                 existing.add(m.group(1))
     return existing
@@ -337,7 +345,9 @@ def scan_project_gvls(project_view_dir):
             if "VAR_GLOBAL" not in text:
                 continue
             name = fname[:-3]  # strip .st
-            names = set(m.group(1) for m in re.finditer(r"(?m)^\s+(\w+)\s*:", text))
+            names = set(
+                m.group(1) for m in _DECL_RE.finditer(text) if m.group(1)
+            )
             # Merge in case two files share a basename in different folders.
             result.setdefault(name, set()).update(names)
     return result
@@ -348,21 +358,108 @@ def scan_project_gvls(project_view_dir):
 # ---------------------------------------------------------------------------
 
 
-def ensure_gvl(project_view_dir, elements, gvl_name="VisuVars", gvl_path=None):
+def partition_variables(variables, project_gvls, gvl_name):
+    """Split referenced paths into what this GVL declares and what it only reads.
+
+    A path names its owner in the *first* segment, not the last: the reference
+    ``GVL_Sensors.Scale.Q`` reads member ``Q`` of instance ``Scale``, and what
+    ``GVL_Sensors`` actually declares is ``Scale``. Matching on everything
+    before the final dot instead looks for a GVL called ``GVL_Sensors.Scale``,
+    finds nothing, and re-declares the leaf -- which is how nine lamps once
+    produced nine bare ``Q : BOOL;`` lines that CODESYS refuses to compile.
+
+    Returns ``(declare, unresolved)``: *declare* maps full path to the
+    identifier to emit, *unresolved* maps full path to why we declined.
+    """
+    declare = {}
+    unresolved = {}
+    for full_path in sorted(variables):
+        short_name = variables[full_path]
+        if "." not in full_path:
+            declare[full_path] = short_name
+            continue
+        owner, _, member_path = full_path.partition(".")
+        head = member_path.partition(".")[0]
+        if owner == gvl_name:
+            # Addressed to us. A nested path names a member of an instance we
+            # would have to invent a type for, so say so rather than guess.
+            if "." in member_path:
+                unresolved[full_path] = (
+                    "cannot synthesise nested member {0!r}; declare {1!r} in "
+                    "{2} yourself".format(member_path, head, gvl_name)
+                )
+            else:
+                declare[full_path] = member_path
+            continue
+        known = project_gvls.get(owner)
+        if known is not None:
+            if head not in known:
+                unresolved[full_path] = (
+                    "GVL {0!r} declares no {1!r} -- adding it to {2} would "
+                    "not satisfy this reference".format(owner, head, gvl_name)
+                )
+            # Declared in its own GVL: reference it, never re-declare it here.
+            continue
+        declare[full_path] = short_name
+
+    # Two paths can still land on one identifier. Emitting both repeats the
+    # declaration, so keep one and say which reference went unserved.
+    kept = {}
+    by_name = {}
+    for full_path in sorted(declare):
+        name = declare[full_path]
+        if name in by_name:
+            unresolved[full_path] = (
+                "identifier {0!r} already declared for {1!r}; two paths cannot "
+                "share one declaration".format(name, by_name[name])
+            )
+            continue
+        by_name[name] = full_path
+        kept[full_path] = name
+    return kept, unresolved
+
+
+def ensure_gvl(
+    project_view_dir, elements, gvl_name="VisuVars", gvl_path=None, warn=None
+):
     """Ensure a GVL file exists for the variables referenced by *elements*.
 
-    Returns the path to the GVL file that was written, or ``None`` if no
-    variables were detected.
+    Returns the path to the GVL file, or ``None`` if no variables were
+    detected. See :func:`ensure_gvl_result` when the caller needs to know
+    whether the file was actually written.
+    """
+    path, _written = ensure_gvl_result(
+        project_view_dir, elements, gvl_name=gvl_name, gvl_path=gvl_path, warn=warn
+    )
+    return path
+
+
+def ensure_gvl_result(
+    project_view_dir, elements, gvl_name="VisuVars", gvl_path=None, warn=None
+):
+    """Ensure a GVL exists, reporting whether anything was written.
+
+    Returns ``(path, written)``. ``path`` is ``None`` when no variables were
+    detected at all; otherwise it is the GVL file, and ``written`` says whether
+    this call added declarations to it.
+
+    The flag exists because the two outcomes are indistinguishable from the
+    path alone, and they mean opposite things to an author: a screen bound
+    entirely to GVLs that already exist -- the normal case once a project has
+    real signals -- would otherwise be reported as "Updated GVL", sending
+    somebody to look for declarations that were never added.
 
     *project_view_dir*: root of the project-view (used for default path).
     *elements*: list of ElementSpec dicts.
     *gvl_name*: GVL name (default ``VisuVars``).
     *gvl_path*: explicit output path (default
         ``<project_view_dir>/POUs/<gvl_name>.st``).
+    *warn*: optional ``callable(message)`` used to report references this GVL
+        must not fabricate a declaration for.
     """
     variables = collect_variables(elements)
     if not variables:
-        return None
+        return None, False
 
     var_types = collect_variable_types(elements)
 
@@ -370,17 +467,13 @@ def ensure_gvl(project_view_dir, elements, gvl_name="VisuVars", gvl_path=None):
         gvl_dir = os.path.join(project_view_dir, "POUs")
         gvl_path = os.path.join(gvl_dir, gvl_name + ".st")
 
-    # Drop dotted vars already declared in ANOTHER project GVL. A path like
-    # "HMI.OutTemp" means variable OutTemp inside GVL HMI; if that GVL already
-    # declares it, we only reference it -- never re-declare it here.
+    # A dotted path is only declarable here when it addresses this GVL; the
+    # rest either already resolve elsewhere in the project or dangle.
     project_gvls = scan_project_gvls(project_view_dir)
-    remaining = {}
-    for full_path, short_name in variables.items():
-        if "." in full_path:
-            prefix, _, leaf = full_path.rpartition(".")
-            if leaf in project_gvls.get(prefix, set()):
-                continue
-        remaining[full_path] = short_name
+    remaining, unresolved = partition_variables(variables, project_gvls, gvl_name)
+    if unresolved and warn:
+        for full_path in sorted(unresolved):
+            warn("{0} -- {1}".format(full_path, unresolved[full_path]))
 
     # Check for duplicates against the target file itself (flat HMI.* names
     # that legitimately land in this GVL).
@@ -389,7 +482,7 @@ def ensure_gvl(project_view_dir, elements, gvl_name="VisuVars", gvl_path=None):
 
     if not new_vars:
         # All variables already declared (here or in another project GVL).
-        return gvl_path
+        return gvl_path, False
 
     content = generate_gvl(new_vars, gvl_name=gvl_name, types=var_types)
 
@@ -407,4 +500,4 @@ def ensure_gvl(project_view_dir, elements, gvl_name="VisuVars", gvl_path=None):
             content = existing_text + "\n" + content
 
     write_gvl_file(gvl_path, content)
-    return gvl_path
+    return gvl_path, True

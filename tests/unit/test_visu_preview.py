@@ -113,6 +113,47 @@ def test_label_is_drawn_back_on_the_baseline_the_author_wrote():
     assert float(text.get("y")) == 100.0
 
 
+def test_a_label_is_drawn_at_the_x_the_author_wrote():
+    """Horizontally too: ``x="24"`` must put glyphs at 24, not near it.
+
+    The preview used to inset every left-aligned text by 2px, borrowing the gap
+    a native field keeps inside its frame. A plain label has no frame, so the
+    only thing the inset did was make a label look misaligned against the card
+    edge it was lined up with -- in the one view an author uses to check
+    alignment.
+    """
+    markup, _ = _render('<text class="label" x="24" y="100">Speed</text>')
+    text = [n for n in _root(markup).iter() if n.tag.endswith("text")][0]
+    assert float(text.get("x")) == 24.0
+
+
+def test_a_field_keeps_the_gap_inside_its_frame():
+    """A textfield does have a frame, and CODESYS does not print on it."""
+    markup, _ = _render(
+        '<text data-cds-type="textfield" x="24" y="100" data-width="120"'
+        ' data-height="24" data-text-var="GVL.Speed">%d</text>'
+    )
+    text = [n for n in _root(markup).iter() if n.tag.endswith("text")][0]
+    assert float(text.get("x")) == 26.0
+
+
+def test_a_sizeless_field_falls_back_to_the_documented_estimate():
+    """Not to 100x100, which is a box nobody asked for.
+
+    The flat default made a field taller than the card holding it, so the lint
+    reported an overlap the author had not drawn -- and the compiled control
+    really was 100px tall in the IDE. The estimate a plain <text> gets is the
+    documented fallback, so it is the one a field should get too.
+    """
+    _markup, parsed = _render(
+        '<text data-cds-type="textfield" x="24" y="100" font-size="16"'
+        ' data-text-var="GVL.Speed">%d</text>'
+    )
+    params = parsed["elements"][0]["params"]
+    assert int(params["height"]) == int(svg_import._estimate_text_height(16))
+    assert int(params["width"]) == svg_import._estimate_text_width("%d", 16)
+
+
 def test_class_colour_reaches_the_preview_unchanged():
     markup, _ = _render('<rect class="ok" x="40" y="144" width="16" height="16"/>')
     shape = list(_root(markup))[1]

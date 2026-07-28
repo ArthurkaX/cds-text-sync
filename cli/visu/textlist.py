@@ -13,10 +13,12 @@ parsing only.
 
 from __future__ import print_function
 
+import contextlib
 import csv
 import os
 import re
 import sys
+import time
 import xml.etree.ElementTree as ET
 
 # TextList entry element type GUID.
@@ -345,6 +347,79 @@ def _write_csv_entry(xml_path, text_id, text):
 
 
 # ---------------------------------------------------------------------------
+# Cross-process serialisation
+# ---------------------------------------------------------------------------
+
+# A compile holds the lock for milliseconds at a time, so anything older than
+# this is a process that died mid-write. Wedging every later run behind a dead
+# one is worse than the collision the lock exists to prevent.
+_LOCK_STALE_SECONDS = 30.0
+_LOCK_POLL_SECONDS = 0.05
+
+
+def _lock_age(lock_path):
+    """Seconds since the lock file was created; 0 if it has since vanished."""
+    try:
+        return max(0.0, time.time() - os.path.getmtime(lock_path))
+    except OSError:
+        return 0.0
+
+
+@contextlib.contextmanager
+def _textlist_lock(xml_path):
+    """Serialise the read-modify-write of the text list across processes.
+
+    Allocation is ``max(existing id) + 1`` followed by an append. Two
+    ``from-svg`` runs against one project -- two authors, or one author with
+    two screens in flight -- read the same maximum and both append it, and the
+    result is two screens whose labels point at one entry. In the IDE that
+    shows as a caption from the wrong screen, and nothing in either compile
+    says so; a duplicate id is invisible to every check we have.
+
+    The contending writers are always separate ``cts`` processes, so a lock
+    file beside the list is enough. Failure to acquire is deliberately not
+    fatal: an author whose compile stops because of a leftover file from a
+    crash is worse off than one who risks a collision that has to be raced for
+    within the same millisecond.
+    """
+    lock_path = xml_path + ".lock"
+    handle = None
+    start = time.time()
+    while handle is None:
+        try:
+            handle = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except OSError:
+            waited = time.time() - start
+            if _lock_age(lock_path) >= _LOCK_STALE_SECONDS:
+                try:
+                    os.unlink(lock_path)
+                except OSError:
+                    pass
+            elif waited >= _LOCK_STALE_SECONDS:
+                print(
+                    "[WARN] GlobalTextList is locked by another cts process; "
+                    "continuing without the lock. If two screens compiled at "
+                    "once, check for duplicate Text IDs.",
+                    file=sys.stderr,
+                )
+                break
+            time.sleep(_LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        if handle is not None:
+            try:
+                os.close(handle)
+            except OSError:
+                pass
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -408,13 +483,21 @@ def allocate_text_id(project_view_dir, text):
        projection.
 
     Returns the Text-ID string (e.g. ``"875"``).
+
+    Steps 1-4 run under :func:`_textlist_lock`, because between the scan and
+    the write is exactly where a second ``cts`` process hands out the same id.
     """
     if not text:
         text = ""
 
     xml_path = _find_global_textlist(project_view_dir)
 
-    if xml_path is not None:
+    if xml_path is None:
+        # No list to serialise against; register_text_entry says so.
+        register_text_entry(project_view_dir, "1", text)
+        return "1"
+
+    with _textlist_lock(xml_path):
         entries = _read_textlist_entries(xml_path)
         # Check for existing entry (case-sensitive exact match).
         for entry in entries:
@@ -422,11 +505,7 @@ def allocate_text_id(project_view_dir, text):
                 return entry.get("text_id")
 
         # Allocate new ID.
-        max_id = _max_numeric_text_id(entries)
-        text_id = str(max_id + 1)
-    else:
-        # No GlobalTextList.xml exists — start from 1.
-        text_id = "1"
+        text_id = str(_max_numeric_text_id(entries) + 1)
+        _write_textlist_entry(xml_path, text_id, text)
 
-    register_text_entry(project_view_dir, text_id, text)
     return text_id

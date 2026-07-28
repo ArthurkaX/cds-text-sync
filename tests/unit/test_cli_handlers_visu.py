@@ -110,6 +110,31 @@ def test_to_svg_requires_screen(calls):
         )
 
 
+def test_a_screen_named_with_name_is_pointed_at_screen(calls, capsys):
+    """`check --name X` must say which flag carries the screen name.
+
+    --name belongs to screen *creation*; the subcommands that work on an
+    existing screen ignore it. Answering `check --name T_Sensors` with a bare
+    "--screen is required" leaves an author looking at the name they just
+    typed and a message saying they gave none.
+    """
+    with pytest.raises(SystemExit) as exc:
+        _cli_handlers_visu.dispatch_visu(
+            _args(
+                visu_action="check",
+                sync_folder="",
+                screen="",
+                name="T_Sensors",
+                folder="",
+            )
+        )
+    assert exc.value.code == 1
+    assert "check_screen" not in calls
+    err = capsys.readouterr().err
+    assert "--screen T_Sensors" in err
+    assert "--name" in err
+
+
 # -- Offline sketch commands ---------------------------------------------------
 #
 # `lint` and `preview` grade a file. They consult the daemon only to pick up an

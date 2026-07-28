@@ -14,6 +14,7 @@ from __future__ import print_function
 
 import os
 import re
+import uuid
 import xml.etree.ElementTree as ET
 
 from . import catalog as _catalog
@@ -989,9 +990,6 @@ def find_sibling_object(folder, exclude=None):
 # Screen building
 # --------------------------------------------------------------------------
 
-_FIXED_GUID = "11111111-1111-1111-1111-111111111111"
-
-
 def build_screen(
     name,
     size_x,
@@ -1007,6 +1005,13 @@ def build_screen(
 
     If ``bg_color`` is provided (as an ARGB hex string like "#FF3FF0C1" or
     "0xFF3FF0C1"), the screen background is set to that colour.
+
+    ``visu_guid`` is the object identity CODESYS stores for the screen, and it
+    is written into the project verbatim on import. A fresh one is generated
+    when the caller does not supply it: a shared placeholder here handed every
+    generated screen the same identity, so importing a second screen collided
+    with the first -- CODESYS raised an overwrite prompt, and since the script
+    engine is single-threaded that modal dialog froze the whole daemon.
     """
     template = _catalog.load_screen_template()
     path_xml = "".join(
@@ -1014,7 +1019,7 @@ def build_screen(
         for seg in (path_segments or [])
     )
     text = template
-    text = text.replace("@@VISU_GUID@@", visu_guid or _FIXED_GUID)
+    text = text.replace("@@VISU_GUID@@", visu_guid or str(uuid.uuid4()))
     text = text.replace("@@PARENT_GUID@@", parent_guid)
     text = text.replace("@@PARENT_SVNODE_GUID@@", parent_svnode_guid)
     text = text.replace("@@NAME@@", _esc(name))
