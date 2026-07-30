@@ -6,11 +6,12 @@ This document explains the recommended team workflow for PLC development using *
 
 The workflow is designed to combine the robustness of CODESYS for hardware configuration and HMI development with Git-based review of the XML-first exported view tree.
 
-![Development Workflow](img/Workflow.svg)
+![Development Workflow](../img/Workflow.svg)
 
 The steps below use the CODESYS-side `Project_*.py` entrypoints. The same
 export / compare / import / build actions can also be driven from a shell with
-the `cts` CLI once `Project_daemon.py` is running inside CODESYS (see `cli/CLI.md`).
+the `cts` CLI once `Project_daemon.py` is running inside CODESYS (see
+[`cli/CLI.md`](../cli/CLI.md)).
 
 ## 1. Project Initialization
 

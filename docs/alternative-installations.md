@@ -18,7 +18,7 @@ This guide explains how to install `cds-text-sync` in non-standard environments 
 ## Installation Paths
 
 > [!IMPORTANT]
-> **CODESYS version matters.** Newer CODESYS scans the per-user `%LOCALAPPDATA%\CODESYS\ScriptDir`, while **older CODESYS (roughly before V3.5 SP17, e.g. 3.5.16) only scans the machine-wide `%PROGRAMDATA%\CODESYS\ScriptDir`**. If you install into `%LOCALAPPDATA%` on an old CODESYS, the scripts will **not** appear under `Tools -> Scripting`. The [Quick Installer](irm/setup.md) auto-detects the installed version and recommends the correct path; on a legacy install pick option **[3] Legacy CODESYS**.
+> **CODESYS version matters.** Newer CODESYS scans the per-user `%LOCALAPPDATA%\CODESYS\ScriptDir`, while **older CODESYS (roughly before V3.5 SP17, e.g. 3.5.16) only scans the machine-wide `%PROGRAMDATA%\CODESYS\ScriptDir`**. If you install into `%LOCALAPPDATA%` on an old CODESYS, the scripts will **not** appear under `Tools -> Scripting`. The [Quick Installer](../irm/setup.md) auto-detects the installed version and recommends the correct path; on a legacy install pick option **[3] Legacy CODESYS**.
 
 ### 1. Default (Recommended, modern CODESYS)
 `%LOCALAPPDATA%\CODESYS\ScriptDir\`
@@ -37,7 +37,7 @@ Vendors often rebrand the path while keeping the `CODESYS\ScriptDir` structure.
 Example: `...DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir\`
 
 > [!TIP]
-> Use **Option 2** in the [Quick Installer](irm/setup.md) to provide a custom path. You can quickly get the path by holding **Shift + Right-click** on the folder in File Explorer and choosing **Copy as path**.
+> Use **Option 2** in the [Quick Installer](../irm/setup.md) to provide a custom path. You can quickly get the path by holding **Shift + Right-click** on the folder in File Explorer and choosing **Copy as path**.
 
 ## Common Pitfalls & Troubleshooting
 
@@ -69,7 +69,7 @@ If you successfully install on a new fork, please open an issue with:
 
 ## Summary
 
-- Use the [Quick Installer](irm/setup.md) if possible.
+- Use the [Quick Installer](../irm/setup.md) if possible.
 - Choose **Option 2** for alternative paths.
 - Point to the specific product's `CODESYS\ScriptDir`.
 - Install the system CLI separately with `python -m pip install -e "<ScriptDir>\cds-text-sync"` if needed.

@@ -50,4 +50,4 @@ If you use KeStudio, DIA Designer-AX, or another fork:
 
 1. Select **Option 2** in the installer.
 2. Provide your `ScriptDir` path (Shift + Right-click folder -> **Copy as path**).
-3. See [ALTERNATIVE_INSTALLATIONS.md](../ALTERNATIVE_INSTALLATIONS.md) for details.
+3. See [Alternative Installations](../docs/alternative-installations.md) for details.
