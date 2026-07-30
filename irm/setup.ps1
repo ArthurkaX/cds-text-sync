@@ -425,7 +425,7 @@ if ($pathChoice -eq "2") {
     Write-Host "    1. Navigate to your ScriptDir folder in File Explorer"
     Write-Host "    2. Hold Shift and right-click the folder"
     Write-Host "    3. Select 'Copy as path'"
-    Write-Host "`nFor more details, see: https://github.com/ArthurkaX/cds-text-sync/blob/main/ALTERNATIVE_INSTALLATIONS.md" -ForegroundColor Yellow
+    Write-Host "`nFor more details, see: https://github.com/ArthurkaX/cds-text-sync/blob/main/docs/alternative-installations.md" -ForegroundColor Yellow
 
     $targetBaseDir = Read-Host "`nEnter the full path to ScriptDir"
 
