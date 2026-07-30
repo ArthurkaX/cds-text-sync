@@ -86,12 +86,8 @@ For Zed users, [`PLC Structured Text`](https://github.com/ArthurkaX/zed-plc-stru
 Draw the screen as an SVG sketch; `cts visu` compiles it into a CODESYS
 visualization object. You never write a colour — an element carries
 `class="panel"`, `class="h1"`, `class="pipe-water"`, and the palette resolves it
-against the CODESYS visual style your project actually uses. That is what makes
-the same sketch, with nothing else changed, come out as either of these:
-
-| `--scheme light` | `--scheme dark` |
-| --- | --- |
-| ![Light screen compiled from an SVG sketch](img/visu_light.png) | ![The same sketch compiled dark](img/visu_dark.png) |
+against the CODESYS visual style your project actually uses, in a light or a
+dark scheme, from the same unchanged sketch.
 
 ```powershell
 cts visu new --name Line1 --w 1024 --h 600 --out line1.svg   # laid-out skeleton

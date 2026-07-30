@@ -122,16 +122,16 @@ unwired field gets caught before the IDE sees it.
 
 **You never write a colour.** An element carries `class="panel"`, `class="h1"`,
 `class="pipe-water"`, and the palette resolves it against the CODESYS visual
-style your project actually uses. That is what makes the same sketch, with
-nothing else changed, come out as either of these:
+style your project actually uses. The same sketch, with nothing else changed,
+comes out light or dark.
 
-| `--scheme light` | `--scheme dark` |
-| --- | --- |
-| ![Light screen compiled from an SVG sketch](../img/visu_light.png) | ![The same sketch compiled dark](../img/visu_dark.png) |
+Render it yourself to see what the compiler will emit — the two shipped examples
+are a good place to start:
 
-Both images are `cts visu preview` output of
-[`skills/cds-visu-svg/examples/pid-schematic.svg`](../skills/cds-visu-svg/examples/pid-schematic.svg) —
-the colours the compiler emits, rendered before anything reaches the IDE.
+```powershell
+cts visu preview --svg skills/cds-visu-svg/examples/pid-schematic.svg
+cts visu preview --svg skills/cds-visu-svg/examples/pid-schematic.svg --scheme dark
+```
 
 Three flags control the resolution, and `lint`, `preview` and `from-svg` all
 accept them, so what you preview is what you compile:
