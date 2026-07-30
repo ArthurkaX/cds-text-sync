@@ -125,8 +125,11 @@ unwired field gets caught before the IDE sees it.
 style your project actually uses. The same sketch, with nothing else changed,
 comes out light or dark.
 
-Render it yourself to see what the compiler will emit — the two shipped examples
-are a good place to start:
+![A sorting-line overview screen compiled from an SVG sketch](../img/visu_preview.png)
+
+That is `cts visu preview` output — the colours the compiler emits, rendered
+before anything reaches the IDE. Render your own; the two shipped examples are a
+good place to start:
 
 ```powershell
 cts visu preview --svg skills/cds-visu-svg/examples/pid-schematic.svg

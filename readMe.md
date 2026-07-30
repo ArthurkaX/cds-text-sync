@@ -89,6 +89,12 @@ visualization object. You never write a colour — an element carries
 against the CODESYS visual style your project actually uses, in a light or a
 dark scheme, from the same unchanged sketch.
 
+![A sorting-line overview screen compiled from an SVG sketch](img/visu_preview.png)
+
+`cts visu preview` output — the colours the compiler emits, rendered before
+anything reaches the IDE. The `%3.1f g` and `%d` are the format strings of
+fields bound to PLC variables; at runtime they show values.
+
 ```powershell
 cts visu new --name Line1 --w 1024 --h 600 --out line1.svg   # laid-out skeleton
 cts visu lint --svg line1.svg --fix                          # design check
