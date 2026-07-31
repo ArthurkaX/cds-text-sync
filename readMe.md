@@ -79,7 +79,7 @@ JSON or text output on every command.
 
 This is the layer that makes autonomous work possible: an agent can read the
 project, change it, build it, check the result, and iterate — without a person
-in the loop clicking dialogs. See the **[CLI reference](cli/CLI.md)**.
+in the loop clicking dialogs. See the **[CLI reference](cds_text_sync/CLI.md)**.
 
 ### 3. `cts visu` — HMI screens authored by an LLM
 
@@ -142,7 +142,7 @@ cts --help
 ```
 
 Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) ·
-[Project layout](docs/project-layout.md) · [CLI reference](cli/CLI.md)
+[Project layout](docs/project-layout.md) · [CLI reference](cds_text_sync/CLI.md)
 
 ![CLI daemon demo](img/cli_demo.gif)
 
@@ -156,7 +156,7 @@ Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) �
 | [Sync modes](docs/sync-modes.md) | XML-first vs text-first, and overwrite protection |
 | [Script overview](docs/scripts.md) | What each `Project_*.py` does, and the optional projections |
 | [Project layout](docs/project-layout.md) | On-disk structure, `.gitignore`, the day-to-day cycle, Git LFS |
-| [CLI reference](cli/CLI.md) | Every `cts` command, flag, timeout and error mode |
+| [CLI reference](cds_text_sync/CLI.md) | Every `cts` command, flag, timeout and error mode |
 | [HMI screens from SVG](docs/visu.md) | `cts visu` end to end, including PLC variable binding |
 | [Team workflow](docs/workflow.md) | Branches and PRs for HMI/hardware engineers and developers |
 | [Alternative installations](docs/alternative-installations.md) | Forks and non-standard CODESYS environments |

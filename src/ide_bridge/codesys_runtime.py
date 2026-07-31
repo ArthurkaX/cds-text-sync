@@ -103,7 +103,7 @@ def _get_root_dir(script_file=None):
 
 def _ensure_sys_path(root_dir):
     ide_bridge_dir = os.path.join(root_dir, "src", "ide_bridge")
-    engine_dir = os.path.join(root_dir, "cli", "external_engine")
+    engine_dir = os.path.join(root_dir, "cds_text_sync", "engine")
     old_engine_dir = os.path.join(root_dir, "src", "external_engine")
     # Inserted at 0 in turn, so this tuple is walked back-to-front: the
     # resulting order is ide_bridge, engine, old_engine, root. The bridge must

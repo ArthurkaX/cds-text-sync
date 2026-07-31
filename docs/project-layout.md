@@ -76,7 +76,7 @@ inserted, removed, renamed, or duplicate rows fail explicitly.
      report, shows the result and can launch full import/export.
 
 The same cycle from a shell: `cts export`, `cts compare`, `cts import`. See
-[`cli/CLI.md`](../cli/CLI.md).
+[`cds_text_sync/CLI.md`](../cds_text_sync/CLI.md).
 
 ## Why Git LFS for `.project`?
 

@@ -3,7 +3,7 @@
 
 The tool publishes a fixed set of ``Project_*.py`` entry points: the
 ``ENTRYPOINTS`` manifest in ``cds_bootstrap.py`` is the single source of
-truth, and ``cli/install_menu.py`` renders matching stubs into a CODESYS
+truth, and ``cds_text_sync/install_menu.py`` renders matching stubs into a CODESYS
 ScriptDir so the Script Engine shows exactly the public menu commands while
 the real tree ("the body") stays outside the scan. These tests pin down that
 contract:
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from cli import install_menu  # noqa: E402
+from cds_text_sync import install_menu  # noqa: E402
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 

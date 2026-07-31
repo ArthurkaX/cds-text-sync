@@ -18,11 +18,11 @@ from setuptools import find_packages, setup
 
 def _read_version():
     here = os.path.dirname(os.path.abspath(__file__))
-    init_path = os.path.join(here, "cli", "__init__.py")
+    init_path = os.path.join(here, "cds_text_sync", "__init__.py")
     with io.open(init_path, encoding="utf-8") as f:
         match = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', f.read(), re.M)
     if not match:
-        raise RuntimeError("Unable to find __version__ in cli/__init__.py")
+        raise RuntimeError("Unable to find __version__ in cds_text_sync/__init__.py")
     return match.group(1)
 
 
@@ -32,11 +32,11 @@ setup(
     description="CODESYS CLI + reverse-pipe daemon",
     author="cds-text-sync contributors",
     url="https://github.com/ArthurkaX/cds-text-sync",
-    packages=find_packages(include=["cli", "cli.*"]),
+    packages=find_packages(include=["cds_text_sync", "cds_text_sync.*"]),
     package_data={
-        "cli": ["CLI.md", "TEST_FORMAT.md"],
-        "cli.external_engine": ["sys_funcs.json"],
-        "cli.visu": [
+        "cds_text_sync": ["CLI.md", "TEST_FORMAT.md"],
+        "cds_text_sync.engine": ["sys_funcs.json"],
+        "cds_text_sync.visu": [
             "catalog/*.json",
             "templates/*.tmpl",
             "themes/*.json",
@@ -48,8 +48,8 @@ setup(
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
-            "cds-text-sync=cli.cds_text_sync:main",
-            "cts=cli.cds_text_sync:main",
+            "cds-text-sync=cds_text_sync.cds_text_sync:main",
+            "cts=cds_text_sync.cds_text_sync:main",
         ],
     },
     include_package_data=True,

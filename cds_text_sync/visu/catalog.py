@@ -2,9 +2,9 @@
 """
 catalog.py - Data-driven loader for visu element catalogs.
 
-Each element type is described by a JSON file under ``cli/visu/catalog/``.
+Each element type is described by a JSON file under ``cds_text_sync/visu/catalog/``.
 Adding a new element type later = adding a JSON file, no code change here.
-See ``cli/visu/DESIGN.md`` for the schema.
+See ``cds_text_sync/visu/DESIGN.md`` for the schema.
 """
 
 from __future__ import print_function

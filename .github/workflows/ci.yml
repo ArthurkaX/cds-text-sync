@@ -49,7 +49,7 @@ jobs:
             Project_resources.py `
             Project_snapshooter.py `
             Project_daemon.py `
-            cli `
+            cds_text_sync `
             src
 
       - name: Run local regression suite

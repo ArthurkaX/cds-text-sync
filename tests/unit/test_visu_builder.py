@@ -13,16 +13,16 @@ import sys
 
 import pytest
 
-# -- Path setup: add project root so we can import ``cli.visu`` --------------
+# -- Path setup: add project root so we can import ``cds_text_sync.visu`` --------------
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import builder
-from cli.visu import catalog as _catalog
-from cli.visu import screen_xml
-from cli.visu import svg_import
-from cli.visu import themes
+from cds_text_sync.visu import builder
+from cds_text_sync.visu import catalog as _catalog
+from cds_text_sync.visu import screen_xml
+from cds_text_sync.visu import svg_import
+from cds_text_sync.visu import themes
 
 # ===================================================================
 # Fixtures
@@ -803,7 +803,7 @@ class TestLamp:
         )
 
     def test_export_round_trip(self, empty_screen, lamp_catalog):
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         params = {
@@ -845,13 +845,13 @@ class TestLamp:
 
 class TestLampGvl:
     def test_lamp_var_collected(self):
-        from cli.visu import gvl
+        from cds_text_sync.visu import gvl
 
         elems = [{"type": "lamp", "params": {"var": "HMI.PumpFault"}}]
         assert gvl.collect_variables(elems) == {"HMI.PumpFault": "PumpFault"}
 
     def test_lamp_var_typed_bool(self):
-        from cli.visu import gvl
+        from cds_text_sync.visu import gvl
 
         elems = [{"type": "lamp", "params": {"var": "HMI.PumpFault"}}]
         assert gvl.collect_variable_types(elems) == {"HMI.PumpFault": "BOOL"}
@@ -929,7 +929,7 @@ class TestImageSwitcher:
         assert elem["params"]["var"] == ""
 
     def test_export_round_trip(self, empty_screen, image_switcher_catalog):
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         params = {
@@ -973,13 +973,13 @@ class TestImageSwitcher:
 
 class TestImageSwitcherGvl:
     def test_image_switcher_var_collected(self):
-        from cli.visu import gvl
+        from cds_text_sync.visu import gvl
 
         elems = [{"type": "image-switcher", "params": {"var": "HMI.PumpRunning"}}]
         assert gvl.collect_variables(elems) == {"HMI.PumpRunning": "PumpRunning"}
 
     def test_image_switcher_var_typed_bool(self):
-        from cli.visu import gvl
+        from cds_text_sync.visu import gvl
 
         elems = [{"type": "image-switcher", "params": {"var": "HMI.PumpRunning"}}]
         assert gvl.collect_variable_types(elems) == {"HMI.PumpRunning": "BOOL"}
@@ -1053,7 +1053,7 @@ class TestComboBox:
         assert elem["params"]["var"] == ""
 
     def test_export_round_trip(self, empty_screen, combobox_catalog):
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         params = {
@@ -1095,13 +1095,13 @@ class TestComboBox:
 
 class TestComboBoxGvl:
     def test_combobox_var_collected(self):
-        from cli.visu import gvl
+        from cds_text_sync.visu import gvl
 
         elems = [{"type": "combobox", "params": {"var": "HMI.Recipe"}}]
         assert gvl.collect_variables(elems) == {"HMI.Recipe": "Recipe"}
 
     def test_combobox_var_typed_int(self):
-        from cli.visu import gvl
+        from cds_text_sync.visu import gvl
 
         elems = [{"type": "combobox", "params": {"var": "HMI.Recipe"}}]
         assert gvl.collect_variable_types(elems) == {"HMI.Recipe": "INT"}
@@ -1167,7 +1167,7 @@ class TestAlarmBanner:
         assert elem["params"]["height"] == "25"
 
     def test_export_round_trip(self, empty_screen, alarm_banner_catalog):
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         params = {
@@ -1261,7 +1261,7 @@ class TestFrameDecompile:
 
     def test_render_frame_basic(self):
         """Full frame with geometry, visu ref, and params."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_frame_xml()
@@ -1278,7 +1278,7 @@ class TestFrameDecompile:
 
     def test_render_frame_no_decoy_params(self):
         """Decoy internal TypeNodeChildren does not leak into output."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         decoy = (
@@ -1302,7 +1302,7 @@ class TestFrameDecompile:
 
     def test_dispatch_frame(self):
         """svg_export._element_to_svg routes VisuFbFrame to _render_frame."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_frame_xml()
@@ -1315,7 +1315,7 @@ class TestFrameDecompile:
 
     def test_frame_no_reference(self):
         """Frame with only Null VisNodeRefs33 still renders geometry, no data-visu."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = (
@@ -1431,7 +1431,7 @@ class TestSliderDecompile:
 
     def test_render_slider_basic(self):
         """Full slider with geometry, var, orientation, min, max."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_slider_xml()
@@ -1449,7 +1449,7 @@ class TestSliderDecompile:
 
     def test_dispatch_slider(self):
         """svg_export._element_to_svg routes VisuFbElemSlider to _render_slider."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_slider_xml()
@@ -1463,7 +1463,7 @@ class TestSliderDecompile:
 
     def test_slider_minimal(self):
         """Slider with only geometry renders data-cds-type, no optional attrs, no raise."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_minimal_slider_xml()
@@ -1569,7 +1569,7 @@ class TestCaptureFrame:
     def test_extract_params(self):
         """_extract_frame_params returns expected params a(111,INT), b(222,INT)."""
         import xml.etree.ElementTree as ET
-        from cli.visu import builder
+        from cds_text_sync.visu import builder
 
         xml = self._make_frame_xml()
         node = ET.fromstring(xml)
@@ -1588,7 +1588,7 @@ class TestCaptureFrame:
         """_tokenize_frame replaces geometry, identifier, VE id and inserts
         @@PARAM_MEMBERS@@."""
         import xml.etree.ElementTree as ET
-        from cli.visu import builder
+        from cds_text_sync.visu import builder
 
         xml = self._make_frame_xml()
         node = ET.fromstring(xml)
@@ -1610,7 +1610,7 @@ class TestCaptureFrame:
         """_tokenize_frame does not corrupt the interface definition or
         sub-visu name."""
         import xml.etree.ElementTree as ET
-        from cli.visu import builder
+        from cds_text_sync.visu import builder
 
         xml = self._make_frame_xml()
         node = ET.fromstring(xml)
@@ -1626,7 +1626,7 @@ class TestCaptureFrame:
 
     def test_catalog_shape(self):
         """_build_frame_catalog produces the expected catalog shape."""
-        from cli.visu import builder
+        from cds_text_sync.visu import builder
 
         params = [
             {"name": "a", "member_id": 111, "iec_type": "INT", "default": ""},
@@ -1742,7 +1742,7 @@ class TestFrameCompile:
         assert 'Name="Value" Type="string">7' in new_xml
 
     def test_frame_catalog_missing(self, tmp_path):
-        from cli.visu import catalog as _catalog
+        from cds_text_sync.visu import catalog as _catalog
 
         with pytest.raises(_catalog.CatalogError) as exc:
             _catalog.load_frame_catalog(str(tmp_path), "nonexistent")
@@ -1821,7 +1821,7 @@ class TestDialogDecompile:
 
     def test_dialog_attrs_emitted(self):
         """decompile emits data-open-dialog and related data attrs."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_opener_xml()
@@ -1834,7 +1834,7 @@ class TestDialogDecompile:
 
     def test_no_dialog_no_attrs(self):
         """decompile of a plain element emits NO data-open-dialog."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         xml = self._make_plain_xml()
@@ -1844,7 +1844,7 @@ class TestDialogDecompile:
 
     def test_dialog_helper_none(self):
         """_read_dialog_action returns None for plain, dict for opener."""
-        from cli.visu import svg_export
+        from cds_text_sync.visu import svg_export
         import xml.etree.ElementTree as ET
 
         plain_xml = self._make_plain_xml()
@@ -1974,7 +1974,7 @@ class TestDialogCompile:
 
  def test_compile_round_trip(self, empty_screen, button_catalog):
   """Compile a button with dialog input_actions and verify XML output."""
-  from cli.visu import svg_export
+  from cds_text_sync.visu import svg_export
   import xml.etree.ElementTree as ET
 
   params = {
@@ -2048,7 +2048,7 @@ class TestDialogParams:
 
  def test_decompile_reads_params(self):
   """_read_dialog_action extracts non-empty params from Parameters dict."""
-  from cli.visu import svg_export
+  from cds_text_sync.visu import svg_export
   import xml.etree.ElementTree as ET
 
   xml = (
@@ -2103,7 +2103,7 @@ class TestDialogParams:
 
  def test_decompile_emits_param_attr(self):
   """_inject_dialog_attrs includes data-dialog-param-<name>."""
-  from cli.visu import svg_export
+  from cds_text_sync.visu import svg_export
 
   result = svg_export._inject_dialog_attrs(
    "<rect/>",
@@ -2151,7 +2151,7 @@ class TestDialogParams:
 
  def test_roundtrip_param(self, empty_screen, button_catalog):
   """Compile with params, then decompile and verify round-trip."""
-  from cli.visu import svg_export
+  from cds_text_sync.visu import svg_export
   import xml.etree.ElementTree as ET
 
   params = {

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_gvl.py -- Tests for ``cli.visu.gvl``.
+test_gvl.py -- Tests for ``cds_text_sync.visu.gvl``.
 
 Verifies variable detection from element specs and correct .st file generation.
 """
@@ -15,7 +15,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import gvl
+from cds_text_sync.visu import gvl
 
 
 class TestCollectVariables:

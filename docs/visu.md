@@ -7,7 +7,7 @@ diffs, reviews and merges like the rest of the project.
 This page is the walkthrough: what you need before you start, the whole chain
 from an empty file to a screen open in CODESYS, and how the screen gets wired to
 PLC variables. For the exhaustive flag reference see
-[`cli/CLI.md`](../cli/CLI.md#visualization-svg--codesys); for the authoring
+[`cds_text_sync/CLI.md`](../cds_text_sync/CLI.md#visualization-svg--codesys); for the authoring
 contract an LLM is expected to follow, see
 [`skills/cds-visu-svg/SKILL.md`](../skills/cds-visu-svg/SKILL.md).
 
@@ -56,7 +56,7 @@ cts import                                                   # project-view/ -> 
 **The last line is the one people miss.** `from-svg` writes a visualization
 `.xml` into `project-view/` — it does not touch the running IDE. The screen
 reaches CODESYS the same way every other edit does, through
-[`cts import`](../cli/CLI.md#main-sync-commands) (or `Project_import.py` from
+[`cts import`](../cds_text_sync/CLI.md#main-sync-commands) (or `Project_import.py` from
 the Tools > Scripting menu). Until you run it, the screen exists on disk only.
 
 In [text-first mode](sync-modes.md#text-first-opt-in) this works unchanged:
@@ -151,7 +151,7 @@ accept them, so what you preview is what you compile:
 - **`--background auto|style|#RRGGBB`** — `auto` (default) uses a curated
   neutral; `style` restores the visual style's own background.
 
-Colour roles are defined in [`cli/visu/stylesheet.css`](../cli/visu/stylesheet.css)
+Colour roles are defined in [`cds_text_sync/visu/stylesheet.css`](../cds_text_sync/visu/stylesheet.css)
 and can be overridden per project with a `visu.css` in the project-view
 directory.
 

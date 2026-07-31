@@ -216,7 +216,7 @@ browser the preview SVG is still written.
 
 Colours are never written into a sketch. Elements carry a semantic
 `class="panel|card|h1|value|ok|warn|alarm|pipe-water|metal|…"`, defined in
-`cli/visu/stylesheet.css` and overridable per project with a `visu.css` in the
+`cds_text_sync/visu/stylesheet.css` and overridable per project with a `visu.css` in the
 project-view directory. See `skills/cds-visu-svg/SKILL.md` for the authoring
 contract.
 
@@ -301,11 +301,11 @@ Common failures:
 Use Windows Python when calling from WSL:
 
 ```bash
-python.exe cli/cds_text_sync.py status --timeout 10
+python.exe cds_text_sync/cds_text_sync.py status --timeout 10
 ```
 
 If the installed command is not found, use the source form:
 
 ```bash
-python cli/cds_text_sync.py status --timeout 10
+python cds_text_sync/cds_text_sync.py status --timeout 10
 ```

@@ -27,7 +27,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import (  # noqa: E402
+from cds_text_sync.visu import (  # noqa: E402
     builder,
     catalog,
     commands,
@@ -515,7 +515,7 @@ def test_preview_follows_the_sketch_without_being_told():
 
 
 def test_skeleton_records_a_dark_scheme_and_stays_lint_clean():
-    from cli.visu import lint as _lint
+    from cds_text_sync.visu import lint as _lint
 
     text = commands.compose_skeleton(800, 480, "Demo", "dark")
     assert 'data-cds-scheme="dark"' in text

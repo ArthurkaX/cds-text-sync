@@ -20,7 +20,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import catalog, preview, style_roles, svg_import, themes
+from cds_text_sync.visu import catalog, preview, style_roles, svg_import, themes
 
 
 def _svg(body, width=800, height=480):

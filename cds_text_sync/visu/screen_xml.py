@@ -9,7 +9,7 @@ ElementTree reserialization) that ``builder.py`` uses.
 
 Usage::
 
-    from cli.visu import screen_xml
+    from cds_text_sync.visu import screen_xml
 
     size_x, size_y = screen_xml.read_screen_size(xml_text)
     xml_text = screen_xml.resize_screen(xml_text, 1024, 600)

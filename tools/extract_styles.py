@@ -4,7 +4,7 @@ extract_styles.py - Dev tool: snapshot installed CODESYS visualization styles.
 
 Walks the installed ``styledef.xml`` files, resolves each preset style's full
 colour/font palette through its ``baseStyle`` chain, and writes
-``cli/visu/styles_snapshot.json``. The snapshot lets the tool resolve theme
+``cds_text_sync/visu/styles_snapshot.json``. The snapshot lets the tool resolve theme
 palettes on machines without CODESYS installed (CI). It is committed.
 
 Run from the repo root:
@@ -28,9 +28,9 @@ _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import styledef  # noqa: E402
+from cds_text_sync.visu import styledef  # noqa: E402
 
-_SNAPSHOT_PATH = os.path.join(_ROOT, "cli", "visu", "styles_snapshot.json")
+_SNAPSHOT_PATH = os.path.join(_ROOT, "cds_text_sync", "visu", "styles_snapshot.json")
 
 
 def build_snapshot():

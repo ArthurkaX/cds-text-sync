@@ -80,7 +80,7 @@ def run_project_command(command, params=None, script_file=None, caller_globals=N
 #
 # The single source of truth for the public CODESYS menu commands. Both the
 # root scripts in the body and the generated stubs in ScriptDir go through
-# launch(); cli/install_menu.py reads this list to render the stubs.
+# launch(); cds_text_sync/install_menu.py reads this list to render the stubs.
 # ---------------------------------------------------------------------------
 
 ENTRYPOINTS = [

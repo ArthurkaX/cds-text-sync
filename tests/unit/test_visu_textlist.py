@@ -18,7 +18,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import textlist
+from cds_text_sync.visu import textlist
 
 
 _ENTRY = """          <Single Type="{53da1be7-ad25-47c3-b0e8-e26286dad2e0}" Method="IArchivable">
@@ -83,7 +83,7 @@ _WORKER = textwrap.dedent(
     """
     import sys
     sys.path.insert(0, {root!r})
-    from cli.visu import textlist
+    from cds_text_sync.visu import textlist
     pv, tag = sys.argv[1], sys.argv[2]
     for n in range(8):
         textlist.allocate_text_id(pv, "{{0}}-{{1}}".format(tag, n))

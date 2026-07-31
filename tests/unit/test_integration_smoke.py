@@ -15,7 +15,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import builder, catalog, gvl, screen_xml, svg_export, svg_import, themes
+from cds_text_sync.visu import builder, catalog, gvl, screen_xml, svg_export, svg_import, themes
 
 
 SAMPLE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">

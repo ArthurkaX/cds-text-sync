@@ -24,13 +24,13 @@ except Exception:
     pass
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_ENGINE_DIR = _SCRIPT_DIR / "external_engine"
+_ENGINE_DIR = _SCRIPT_DIR / "engine"
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
 
 # -- Re-exports from submodules (used by main() and kept accessible) ----------
 
-from cli._cli_io import (  # noqa: E402
+from cds_text_sync._cli_io import (  # noqa: E402
     _print_error,
     _print_info,
     _print_ok,
@@ -50,19 +50,19 @@ from cli._cli_io import (  # noqa: E402
     _CODESYS_CANDIDATES,
 )
 
-from cli._cli_parser import build_parser  # noqa: E402
+from cds_text_sync._cli_parser import build_parser  # noqa: E402
 
-from cli._cli_handlers_project import (  # noqa: E402
+from cds_text_sync._cli_handlers_project import (  # noqa: E402
     cmd_discover,
     dispatch_project,
     dispatch_pou,
 )
 
-from cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
+from cds_text_sync._cli_handlers_daemon import dispatch_daemon  # noqa: E402
 
-from cli._cli_handlers_menu import dispatch_menu  # noqa: E402
+from cds_text_sync._cli_handlers_menu import dispatch_menu  # noqa: E402
 
-from cli._cli_handlers_vars import (  # noqa: E402
+from cds_text_sync._cli_handlers_vars import (  # noqa: E402
     _resolve_project_view,
     _build_map_rows,
     _write_csv,
@@ -72,7 +72,7 @@ from cli._cli_handlers_vars import (  # noqa: E402
     cmd_variable_restore,
 )
 
-from cli._cli_handlers_visu import dispatch_visu  # noqa: E402
+from cds_text_sync._cli_handlers_visu import dispatch_visu  # noqa: E402
 
 _BATCH_SIZE = 500
 

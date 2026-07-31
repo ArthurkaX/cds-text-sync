@@ -15,7 +15,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import stylesheet, svg_import, themes
+from cds_text_sync.visu import stylesheet, svg_import, themes
 
 
 def test_parse_stylesheet_keeps_only_allowed_props():

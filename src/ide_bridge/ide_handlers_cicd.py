@@ -161,7 +161,7 @@ def _cmd_cicd(params):
                     "No .test/ directory found at {0}. "
                     "Create JSON test plans in <sync-folder>/.test/ "
                     "and run 'cts test --file plan.json'. "
-                    "Format documentation: cli/TEST_FORMAT.md"
+                    "Format documentation: cds_text_sync/TEST_FORMAT.md"
                 ).format(test_dir),
             }
         json_files = sorted([f for f in os.listdir(test_dir) if f.endswith(".json")])

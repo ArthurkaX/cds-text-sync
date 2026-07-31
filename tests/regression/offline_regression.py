@@ -12,9 +12,9 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-FIXTURE_DIR = os.path.join(ROOT_DIR, "fixtures", "offline_engine", "basic_case")
-ENGINE_CLI = os.path.join(ROOT_DIR, "cli", "external_engine", "engine_cli.py")
-ENGINE_DIR = os.path.join(ROOT_DIR, "cli", "external_engine")
+FIXTURE_DIR = os.path.join(ROOT_DIR, "tests", "fixtures", "offline_engine", "basic_case")
+ENGINE_CLI = os.path.join(ROOT_DIR, "cds_text_sync", "engine", "engine_cli.py")
+ENGINE_DIR = os.path.join(ROOT_DIR, "cds_text_sync", "engine")
 
 
 class RegressionFailure(Exception):
@@ -23,7 +23,7 @@ class RegressionFailure(Exception):
 
 @contextlib.contextmanager
 def _engine_on_path():
-    """Put the external_engine dir on sys.path for the flat-import block, then remove it.
+    """Put the engine dir on sys.path for the flat-import block, then remove it.
 
     The engine modules import each other flat (``from _project_model import ...``),
     so a scenario that drives them directly must prepend the dir first. This

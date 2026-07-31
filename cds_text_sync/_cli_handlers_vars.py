@@ -13,7 +13,7 @@ import csv as _csv
 import os
 import sys
 
-from cli._cli_io import (
+from cds_text_sync._cli_io import (
     _batch,
     _format_output,
     _print_error,

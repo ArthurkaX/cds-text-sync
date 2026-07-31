@@ -4,11 +4,16 @@ ide_apply_patch_regression.py - Fast fake-IDE checks for ide_apply_patch.
 """
 
 import os
+import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import xml.sax.saxutils as saxutils
 
-from ide_apply_patch import apply_patch
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "ide_bridge"),
+)
+from ide_apply_patch import apply_patch  # noqa: E402
 
 
 class RegressionFailure(Exception):

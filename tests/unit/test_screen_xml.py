@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_screen_xml.py -- Tests for ``cli.visu.screen_xml``.
+test_screen_xml.py -- Tests for ``cds_text_sync.visu.screen_xml``.
 
 These tests verify screen resize, background update, and read operations
 independently of the element builder.
@@ -16,7 +16,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import builder, screen_xml
+from cds_text_sync.visu import builder, screen_xml
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ class TestListElements:
         assert screen_xml.list_elements(screen_xml_text) == []
 
     def test_after_append(self, screen_xml_text):
-        from cli.visu import catalog as _catalog
+        from cds_text_sync.visu import catalog as _catalog
 
         cat = _catalog.load_catalog("rectangle")
         new_xml, geom, _ = builder.append_element(

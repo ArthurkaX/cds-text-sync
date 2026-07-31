@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 
-ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def _run(relative_path):
@@ -22,9 +22,9 @@ def _run(relative_path):
 
 def main():
     checks = [
-        os.path.join("cli", "external_engine", "offline_regression.py"),
-        os.path.join("src", "ide_bridge", "ide_apply_patch_regression.py"),
-        os.path.join("src", "ide_bridge", "ide_backup_regression.py"),
+        os.path.join("tests", "regression", "offline_regression.py"),
+        os.path.join("tests", "regression", "ide_apply_patch_regression.py"),
+        os.path.join("tests", "regression", "ide_backup_regression.py"),
     ]
     for check in checks:
         code = _run(check)

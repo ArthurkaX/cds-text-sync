@@ -2,7 +2,7 @@
 """
 _cli_io.py - Shared I/O helpers, daemon communication, CODESYS launcher.
 
-Imported by cli/_cli_handlers_project.py and cli/_cli_handlers_vars.py.
+Imported by cds_text_sync/_cli_handlers_project.py and cds_text_sync/_cli_handlers_vars.py.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import NoReturn
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_ENGINE_DIR = _SCRIPT_DIR / "external_engine"
+_ENGINE_DIR = _SCRIPT_DIR / "engine"
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
 
