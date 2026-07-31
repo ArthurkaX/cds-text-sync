@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_utils.pyw - Minimal helpers for the XML-first extract/inject flow.
+codesys_utils.py - Minimal helpers for the XML-first extract/inject flow.
 """
 from __future__ import print_function
 import os

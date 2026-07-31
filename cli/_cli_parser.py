@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .install_menu import add_menu_arguments
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,6 +234,27 @@ Examples:
         default=None,
         help="Accepted for consistency; ignored by the offline engine",
     )
+
+    # -- local install commands (no daemon, no CODESYS) ----------------------
+    p_menu = subparsers.add_parser(
+        "install-menu",
+        help="Write the CODESYS Tools>Scripting stubs into ScriptDir",
+        description=(
+            "Generate the Project_*.py menu stubs in <ScriptDir>/cds-text-sync, "
+            "pointed at this installation. Only the public entry points are "
+            "written, so the IDE menu stays clean."
+        ),
+    )
+    add_menu_arguments(p_menu)
+
+    p_where = subparsers.add_parser(
+        "where",
+        help="Show where the tool and its CODESYS menu stubs live",
+        description="Report the install layout: tool folder, ScriptDir, menu status.",
+    )
+    p_where.add_argument("--body", default="", help=argparse.SUPPRESS)
+    p_where.add_argument("--script-dir", dest="script_dir", default="",
+                         help=argparse.SUPPRESS)
 
     # -- project subcommand --------------------------------------------------
     p_project = subparsers.add_parser(

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_ui_diff.pyw - Side-by-side diff viewer for compare UI.
+codesys_ui_diff.py - Side-by-side diff viewer for compare UI.
 """
 from __future__ import print_function
 

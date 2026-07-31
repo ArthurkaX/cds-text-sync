@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_discover_operation.pyw - Diagnose CODESYS object tree and profile coverage.
+codesys_discover_operation.py - Diagnose CODESYS object tree and profile coverage.
 
 Forward-mode entry point. The report itself is built by the shared
 discover_report.build_discovery_report (reused by the reverse-pipe daemon's

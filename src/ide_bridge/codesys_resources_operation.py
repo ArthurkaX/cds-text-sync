@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_resources_operation.pyw - Snapshot-based resource diagnostics workflow.
+codesys_resources_operation.py - Snapshot-based resource diagnostics workflow.
 """
 from __future__ import print_function
 import os

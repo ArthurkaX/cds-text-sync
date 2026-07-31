@@ -6,7 +6,7 @@ builder (src/ide_bridge/discover_report.py).
 The builder is pure duck-typed logic over a CODESYS project's get_children()
 and the on-disk sync settings/profile, so it runs under CPython with a fake
 project and a bare temp dir (settings/profile default gracefully). This guards
-the extraction shared by codesys_discover_operation.pyw (forward mode) and
+the extraction shared by codesys_discover_operation.py (forward mode) and
 ide_handlers_project._cmd_discover (reverse-pipe daemon).
 """
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ide_runtime_common.pyw - Common functions for the IDE bridge.
+ide_runtime_common.py - Common functions for the IDE bridge.
 Provides paths, logging, process execution and error handling.
 Must be compatible with IronPython 2.7.
 """

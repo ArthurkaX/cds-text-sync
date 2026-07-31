@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ide_resources.pyw - Export a safe snapshot and run resource diagnostics.
+ide_resources.py - Export a safe snapshot and run resource diagnostics.
 Must be compatible with IronPython 2.7.
 """
 from __future__ import print_function

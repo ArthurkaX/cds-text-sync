@@ -12,63 +12,13 @@ Architecture:
 Usage in CODESYS:
     Tools -> Scripting -> Execute Script -> Project_daemon.py
 """
+from cds_bootstrap import launch
 
-import sys
-import os
-import time
-
-
-def _notify(msg, is_error=False):
-    """Show a message to the user in CODESYS."""
-    try:
-        if is_error:
-            system.ui.error(msg)
-        else:
-            system.ui.info(msg)
-    except Exception:
-        print(msg)
+_ENTRY = launch("Project_daemon", script_file=__file__, caller_globals=globals())
 
 
-def main():
-    # Find the reverse-pipe loop module
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    loop_path = os.path.join(script_dir, "src", "ide_bridge", "ide_reverse_pipe_loop.py")
-
-    if not os.path.exists(loop_path):
-        loop_path = os.path.join(script_dir, "ide_reverse_pipe_loop.py")
-
-    if not os.path.exists(loop_path):
-        _notify("ide_reverse_pipe_loop.py not found at:\n" + loop_path, is_error=True)
-        return
-
-    # Read the loop module code
-    with open(loop_path, "r") as f:
-        code = f.read()
-
-    # Create namespace with current CODESYS globals
-    ns = globals().copy()
-    ns["__file__"] = loop_path
-    ns["__name__"] = "__main__"
-
-    try:
-        exec(code, ns)
-    except Exception as e:
-        _notify("Reverse pipe daemon error:\n" + str(e), is_error=True)
-        return
-
-    # The loop module should have set up sys._codesys_daemon_loop
-    loop_info = getattr(sys, "_codesys_daemon_loop", None)
-    if not loop_info or not loop_info.get("started"):
-        _notify("Reverse pipe daemon failed to start.", is_error=True)
-        return
-
-    # Keep the script context alive while daemon is running
-    # When user clicks Stop, running=False and this exits naturally
-    try:
-        while sys._codesys_daemon_loop.get("running", False):
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        pass
+def main(params=None):
+    return _ENTRY(params=params)
 
 
 if __name__ == "__main__":

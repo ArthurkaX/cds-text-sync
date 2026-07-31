@@ -11,7 +11,7 @@ import importlib.machinery
 import importlib.util
 
 
-MODULE_PATH = os.path.join(BRIDGE, "project_snapshooter.pyw")
+MODULE_PATH = os.path.join(BRIDGE, "project_snapshooter.py")
 loader = importlib.machinery.SourceFileLoader("project_snapshooter", MODULE_PATH)
 spec = importlib.util.spec_from_loader(loader.name, loader)
 ps = importlib.util.module_from_spec(spec)

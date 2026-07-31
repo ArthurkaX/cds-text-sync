@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ide_run_action.pyw - Common entrypoint for export, import, compare actions.
+ide_run_action.py - Common entrypoint for export, import, compare actions.
 Delegates heavy lifting to the external engine.
 Must be compatible with IronPython 2.7.
 """

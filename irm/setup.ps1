@@ -4,7 +4,9 @@
 $repoUrl = "https://github.com/ArthurkaX/cds-text-sync"
 $targetBaseDir = Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir"
 $repoName = "cds-text-sync"
-$fullPath = Join-Path $targetBaseDir $repoName
+# ScriptDir gets generated menu stubs only; the tool itself goes to $bodyPath.
+$menuDir = Join-Path $targetBaseDir $repoName
+$bodyPath = Join-Path $env:LOCALAPPDATA $repoName
 
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
 
@@ -452,8 +454,9 @@ if ($pathChoice -eq "2") {
     $targetBaseDir = $localAppDataScriptDir
 }
 
-# Update fullPath with the resolved targetBaseDir
-$fullPath = Join-Path $targetBaseDir $repoName
+# The menu directory holds nothing but generated Project_*.py stubs.
+# The tool itself goes to $bodyPath, chosen a few lines below.
+$menuDir = Join-Path $targetBaseDir $repoName
 
 # 5b. If installing into ProgramData, verify write access up front.
 # %PROGRAMDATA%\CODESYS usually needs administrator rights. On failure we warn,
@@ -479,16 +482,111 @@ if ($targetIsProgramData) {
         Write-Host "    $targetBaseDir" -ForegroundColor Yellow
         Write-Host "    This path typically requires administrator rights." -ForegroundColor Yellow
         Write-Host "`n    Fix option A - re-run this installer from an elevated PowerShell (Run as administrator)." -ForegroundColor Cyan
-        Write-Host "    Fix option B - after this run, copy the files once from an elevated PowerShell:" -ForegroundColor Cyan
+        Write-Host "    Fix option B - after this run, copy the generated menu scripts once from an elevated PowerShell:" -ForegroundColor Cyan
         Write-Host "        Copy-Item -Recurse -Force `"$localAppDataScriptDir\$repoName`" `"$targetBaseDir\`"" -ForegroundColor Cyan
         Write-Host "`n[*] Falling back to the standard user path so the package and CLI still install:" -ForegroundColor Yellow
         Write-Host "    $localAppDataScriptDir" -ForegroundColor Yellow
         Write-Host "    (On legacy CODESYS the scripts appear only after they exist in ProgramData.)" -ForegroundColor Yellow
         $targetBaseDir = $localAppDataScriptDir
         $targetIsProgramData = $false
-        $fullPath = Join-Path $targetBaseDir $repoName
+        $menuDir = Join-Path $targetBaseDir $repoName
     }
 }
+
+# 5c. Program location (the "body").
+#
+# CODESYS scans ScriptDir recursively and lists every .py it finds, so the tool
+# itself must not live there: otherwise ~120 internal modules end up in the
+# Tools > Scripting menu. ScriptDir receives nothing but generated Project_*.py
+# stubs; everything else is installed here.
+$defaultBodyPath = Join-Path $env:LOCALAPPDATA $repoName
+$bodyPath = $defaultBodyPath
+
+Write-Host "`n--- Program Location ---" -ForegroundColor Cyan
+Write-Host "Only the generated menu scripts go into ScriptDir. The tool itself is installed to:"
+Write-Host "[1] $defaultBodyPath  [RECOMMENDED]"
+Write-Host "[2] Another folder (for example an existing git clone)"
+
+$bodyChoice = Read-Host "`nSelect program location [1, 2] (default: 1)"
+if ($bodyChoice -eq "2") {
+    $enteredBody = Read-Host "Enter the full path for the program folder"
+    $enteredBody = $enteredBody.Trim('"', "'")
+    if (-not [string]::IsNullOrWhiteSpace($enteredBody)) {
+        $bodyPath = $enteredBody
+    }
+}
+
+# Refuse a body inside any ScriptDir - the scanner would still walk all of it.
+$bodyProbe = $bodyPath
+$bodyInsideScriptDir = $false
+while (-not [string]::IsNullOrWhiteSpace($bodyProbe)) {
+    if ((Split-Path $bodyProbe -Leaf) -ieq "ScriptDir") { $bodyInsideScriptDir = $true; break }
+    $probeParent = Split-Path $bodyProbe -Parent
+    if ([string]::IsNullOrWhiteSpace($probeParent) -or $probeParent -eq $bodyProbe) { break }
+    $bodyProbe = $probeParent
+}
+if ($bodyInsideScriptDir) {
+    Write-Host "[!] That folder is inside a CODESYS ScriptDir, which defeats the purpose." -ForegroundColor Yellow
+    Write-Host "[*] Using the standard location instead: $defaultBodyPath" -ForegroundColor Yellow
+    $bodyPath = $defaultBodyPath
+}
+
+# 5d. Migrate an existing flat installation out of ScriptDir.
+$migrated = $false
+if (Test-Path -LiteralPath $menuDir) {
+    $menuItem = Get-Item -LiteralPath $menuDir -Force
+    $isLink = [bool]($menuItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+
+    if ($isLink) {
+        # A developer symlink or junction. Its target is the user's own working
+        # copy - never touch it. Delete the link itself only: Remove-Item
+        # -Recurse follows reparse points on Windows PowerShell 5.1 and would
+        # wipe the target's contents.
+        $linkTarget = $menuItem.Target
+        if ($linkTarget -is [array]) { $linkTarget = $linkTarget[0] }
+        Write-Host "`n[*] ScriptDir holds a link to: $linkTarget" -ForegroundColor Cyan
+        Write-Host "[*] Removing the link only; its target is left untouched." -ForegroundColor Cyan
+        if ($bodyChoice -ne "2" -and -not [string]::IsNullOrWhiteSpace($linkTarget)) {
+            $bodyPath = $linkTarget
+        }
+        if (-not $env:CTS_SETUP_DRYRUN) {
+            [System.IO.Directory]::Delete($menuDir, $false)
+        }
+        $migrated = $true
+    }
+    elseif ((Test-Path (Join-Path $menuDir "src\ide_bridge")) -or (Test-Path (Join-Path $menuDir ".git"))) {
+        Write-Host "`n[*] Found a full installation inside ScriptDir. Moving it out to:" -ForegroundColor Cyan
+        Write-Host "    $bodyPath" -ForegroundColor Cyan
+        if (Test-Path -LiteralPath $bodyPath) {
+            $asidePath = "$bodyPath.pre-migration"
+            Write-Host "[!] $bodyPath already exists; moving it aside to $asidePath" -ForegroundColor Yellow
+            if (-not $env:CTS_SETUP_DRYRUN) {
+                if (Test-Path -LiteralPath $asidePath) {
+                    Remove-Item -LiteralPath $asidePath -Recurse -Force
+                }
+                Move-Item -LiteralPath $bodyPath -Destination $asidePath
+            }
+        }
+        # Move, never copy-then-delete: profiles\astra.json and other untracked
+        # user files live inside the tree, and a git clone keeps its remote.
+        if (-not $env:CTS_SETUP_DRYRUN) {
+            Move-Item -LiteralPath $menuDir -Destination $bodyPath
+        }
+        $migrated = $true
+    }
+}
+
+# One-off cleanup: older installers left a full backup tree inside ScriptDir,
+# which doubled the menu pollution for everyone who ever updated.
+$legacyBackup = "$menuDir.backup"
+if (Test-Path -LiteralPath $legacyBackup) {
+    Write-Host "[*] Removing the old backup left inside ScriptDir: $legacyBackup" -ForegroundColor Cyan
+    if (-not $env:CTS_SETUP_DRYRUN) {
+        Remove-Item -LiteralPath $legacyBackup -Recurse -Force
+    }
+}
+
+Write-Host "[*] Program folder: $bodyPath" -ForegroundColor Cyan
 
 # 6. Create required directories if they don't exist
 if (-not (Test-Path $targetBaseDir)) {
@@ -527,34 +625,75 @@ try {
         $extractedPath = $tempExtractPath
     }
     
-    if (Test-Path $fullPath) {
+    if (Test-Path -LiteralPath $bodyPath) {
         Write-Host "[*] Updating existing installation..." -ForegroundColor Cyan
-        # Backup existing installation
-        $backupPath = "$fullPath.backup"
-        if (Test-Path $backupPath) {
-            Remove-Item -Path $backupPath -Recurse -Force
+        # Backup next to the program folder, never inside ScriptDir.
+        $backupPath = "$bodyPath.backup"
+        if (Test-Path -LiteralPath $backupPath) {
+            Remove-Item -LiteralPath $backupPath -Recurse -Force
         }
-        Copy-Item -Path $fullPath -Destination $backupPath -Recurse -Force
-        
+        Copy-Item -LiteralPath $bodyPath -Destination $backupPath -Recurse -Force
+
+        # Carry over user files that live inside the tree and are not shipped in
+        # the archive (profiles\astra.json and friends). Without this the
+        # replace below deletes them silently on every update.
+        $preserved = @()
+        foreach ($rel in @("profiles")) {
+            $preserveSrc = Join-Path $bodyPath $rel
+            if (Test-Path -LiteralPath $preserveSrc) {
+                foreach ($userFile in Get-ChildItem -LiteralPath $preserveSrc -File -Force) {
+                    $shipped = Join-Path (Join-Path $extractedPath $rel) $userFile.Name
+                    if (-not (Test-Path -LiteralPath $shipped)) {
+                        $preserved += [PSCustomObject]@{
+                            Rel  = $rel
+                            Name = $userFile.Name
+                            Path = $userFile.FullName
+                        }
+                    }
+                }
+            }
+        }
+
+        $stashDir = Join-Path $env:TEMP ("cts-preserve-" + $PID)
+        if ($preserved.Count -gt 0) {
+            New-Item -ItemType Directory -Force -Path $stashDir | Out-Null
+            foreach ($item in $preserved) {
+                Copy-Item -LiteralPath $item.Path -Destination (Join-Path $stashDir $item.Name) -Force
+            }
+        }
+
         # Replace with new version
-        Remove-Item -Path $fullPath -Recurse -Force
-        Move-Item -Path $extractedPath -Destination $fullPath
-        
+        Remove-Item -LiteralPath $bodyPath -Recurse -Force
+        Move-Item -LiteralPath $extractedPath -Destination $bodyPath
+
+        foreach ($item in $preserved) {
+            $restoreDir = Join-Path $bodyPath $item.Rel
+            if (-not (Test-Path -LiteralPath $restoreDir)) {
+                New-Item -ItemType Directory -Force -Path $restoreDir | Out-Null
+            }
+            Copy-Item -LiteralPath (Join-Path $stashDir $item.Name) `
+                      -Destination (Join-Path $restoreDir $item.Name) -Force
+        }
+        if ($preserved.Count -gt 0) {
+            Write-Host ("[+] Kept " + $preserved.Count + " of your own file(s) in profiles\.") -ForegroundColor Green
+            Remove-Item -LiteralPath $stashDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
         Write-Host "[+] Update completed." -ForegroundColor Green
     } else {
-        Write-Host "[*] Installing cds-text-sync to $fullPath..." -ForegroundColor Cyan
-        Move-Item -Path $extractedPath -Destination $fullPath
+        Write-Host "[*] Installing cds-text-sync to $bodyPath..." -ForegroundColor Cyan
+        Move-Item -LiteralPath $extractedPath -Destination $bodyPath
         Write-Host "[+] Installation completed!" -ForegroundColor Green
     }
 } catch {
     Write-Host "[!] An error occurred: $_" -ForegroundColor Red
     Write-Host "[*] Cleaning up temporary files..." -ForegroundColor Cyan
-    
+
     # Try to restore from backup if update failed
-    if (Test-Path "$fullPath.backup") {
-        if (-not (Test-Path $fullPath)) {
+    if (Test-Path -LiteralPath "$bodyPath.backup") {
+        if (-not (Test-Path -LiteralPath $bodyPath)) {
             Write-Host "[*] Restoring from backup..." -ForegroundColor Cyan
-            Move-Item -Path "$fullPath.backup" -Destination $fullPath
+            Move-Item -LiteralPath "$bodyPath.backup" -Destination $bodyPath
         }
     }
 } finally {
@@ -565,13 +704,49 @@ try {
     if (Test-Path $tempExtractPath) {
         Remove-Item -Path $tempExtractPath -Recurse -Force
     }
-    if (Test-Path "$fullPath.backup") {
-        Remove-Item -Path "$fullPath.backup" -Recurse -Force
+    if (Test-Path -LiteralPath "$bodyPath.backup") {
+        Remove-Item -LiteralPath "$bodyPath.backup" -Recurse -Force
     }
 }
 
-if (Test-Path $fullPath) {
-    Install-CliCommand -InstallPath $fullPath | Out-Null
+if (Test-Path -LiteralPath $bodyPath) {
+    $pythonName = Get-PythonCommandName
+
+    if ($migrated -and $pythonName) {
+        # A stale editable install still points at the old ScriptDir location;
+        # left alone it shadows the real package and `cts` breaks silently.
+        Write-Host "`n[*] Clearing the previous editable install..." -ForegroundColor Cyan
+        Start-Process -FilePath $pythonName `
+                      -ArgumentList @("-m", "pip", "uninstall", "-y", "cds-text-sync") `
+                      -Wait -NoNewWindow | Out-Null
+    }
+
+    Install-CliCommand -InstallPath $bodyPath | Out-Null
+
+    # Generate the menu stubs. Run from the program folder so this still works
+    # when the pip step was skipped or failed.
+    Write-Host "`n--- CODESYS Menu ---" -ForegroundColor Cyan
+    if ($pythonName) {
+        Push-Location $bodyPath
+        try {
+            & $pythonName -m cli.install_menu --body "$bodyPath" --script-dir "$targetBaseDir"
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[!] Menu generation failed. Run it manually:" -ForegroundColor Yellow
+                Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
+                Write-Host "    $pythonName -m cli.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
+            }
+        } finally {
+            Pop-Location
+        }
+    } else {
+        Write-Host "[!] Python is not available; generate the menu later with:" -ForegroundColor Yellow
+        Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
+        Write-Host "    python -m cli.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
+    }
 }
 
 Write-Host "`n--- Setup Finished! ---" -ForegroundColor Cyan
+Write-Host ("  Program : " + $bodyPath)
+Write-Host ("  Menu    : " + $menuDir)
+Write-Host  "  CLI     : cts / cds-text-sync"
+Write-Host "`n  Check anytime with:  cts where" -ForegroundColor DarkGray

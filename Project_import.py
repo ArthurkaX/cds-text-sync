@@ -2,10 +2,14 @@
 """
 Project_import.py - User entrypoint for injecting XML patches into CODESYS.
 """
-from cds_bootstrap import run_project_command
+from cds_bootstrap import launch
+
+_ENTRY = launch("Project_import", script_file=__file__, caller_globals=globals())
+
 
 def main(params=None):
-    return run_project_command("import", params=params, script_file=__file__, caller_globals=globals())
+    return _ENTRY(params=params)
+
 
 if __name__ == "__main__":
     main()

@@ -13,39 +13,14 @@ Run the script directly to start the small interactive wizard.
 
 from __future__ import print_function
 
-import os
-import sys
+from cds_bootstrap import launch
+
+_ENTRY = launch("Project_snapshooter", script_file=__file__, caller_globals=globals())
 
 
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-_BRIDGE = os.path.join(_ROOT, "src", "ide_bridge")
-if _BRIDGE not in sys.path:
-    sys.path.insert(0, _BRIDGE)
-
-try:
-    import imp
-    _impl = imp.load_source(
-        "project_snapshooter",
-        os.path.join(_BRIDGE, "project_snapshooter.pyw"),
-    )
-except Exception:
-    import project_snapshooter as _impl  # noqa: E402
-
-FORMAT_VERSION = _impl.FORMAT_VERSION
-build_tree = _impl.build_tree
-build_tui_tree = _impl.build_tui_tree
-compare = _impl.compare
-interactive = _impl.interactive
-load = _impl.load
-load_preset = _impl.load_preset
-read_values = _impl.read_values
-restore = _impl.restore
-restore_preset = _impl.restore_preset
-save = _impl.save
-save_preset = _impl.save_preset
-snapshooter = _impl.snapshooter
-take = _impl.take
+def main(params=None):
+    return _ENTRY(params=params)
 
 
 if __name__ == "__main__":
-    interactive()
+    main()
