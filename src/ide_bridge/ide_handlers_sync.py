@@ -35,6 +35,44 @@ from ide_daemon_helpers import (
 from ide_st_text import split_st_text
 
 
+# How many snapshot-*.xml files to keep in .dump/. Only the newest is ever read
+# back (_cmd_sync_import sorts and takes [0]); the rest are kept as a short
+# manual undo trail. Without a bound they accumulate forever — export, compare
+# and even `import --dry-run` each write one, at well over a megabyte a piece.
+# Matches the default of backup_retention_count so the two limits agree.
+SNAPSHOT_RETENTION_COUNT = 10
+
+
+def _is_snapshot_name(name):
+    """Match the file set that _cmd_sync_import selects from."""
+    return name.startswith("snapshot-") and name.endswith(".xml")
+
+
+def _prune_snapshots(dump_dir, keep=SNAPSHOT_RETENTION_COUNT):
+    """Drop all but the newest ``keep`` snapshots. Never raises.
+
+    Names are timestamped, so a reverse lexicographic sort is chronological —
+    the same ordering _cmd_sync_import relies on to find the latest.
+    """
+    try:
+        names = [f for f in os.listdir(dump_dir) if _is_snapshot_name(f)]
+    except Exception:
+        return 0
+    if len(names) <= keep:
+        return 0
+    names.sort(reverse=True)
+    removed = 0
+    for name in names[keep:]:
+        try:
+            os.remove(os.path.join(dump_dir, name))
+            removed += 1
+        except Exception:
+            pass
+    if removed:
+        _log("Pruned {0} old snapshot(s), kept {1}.".format(removed, keep))
+    return removed
+
+
 # ── Sync command handlers and private ST helpers ─────────────────────────────
 
 def _cmd_sync_info():
@@ -80,6 +118,7 @@ def _cmd_sync_export(params):
 
     try:
         out_path = params.get("output", "")
+        dump_dir = ""
         if not out_path:
             if sync_dir:
                 dump_dir = os.path.join(sync_dir, ".dump")
@@ -124,6 +163,8 @@ def _cmd_sync_export(params):
             raise
         size = os.path.getsize(out_path)
         _log("Exported snapshot: {0} ({1} bytes)".format(out_path, size))
+        if dump_dir:
+            _prune_snapshots(dump_dir)
         return {
             "ok": True,
             "data": {
@@ -155,11 +196,7 @@ def _cmd_sync_import(params):
         dump_dir = os.path.join(sync_dir, ".dump")
         if not os.path.exists(dump_dir):
             return {"ok": False, "error": "No .dump directory at {0}".format(dump_dir)}
-        xml_files = [
-            f
-            for f in os.listdir(dump_dir)
-            if f.endswith(".xml") and f.startswith("snapshot-")
-        ]
+        xml_files = [f for f in os.listdir(dump_dir) if _is_snapshot_name(f)]
         if not xml_files:
             return {
                 "ok": False,
@@ -201,11 +238,7 @@ def _cmd_sync_compare(params):
         dump_dir = os.path.join(sync_dir, ".dump")
         if not os.path.exists(dump_dir):
             return {"ok": False, "error": "No .dump directory at {0}".format(dump_dir)}
-        xml_files = [
-            f
-            for f in os.listdir(dump_dir)
-            if f.endswith(".xml") and f.startswith("snapshot-")
-        ]
+        xml_files = [f for f in os.listdir(dump_dir) if _is_snapshot_name(f)]
         if not xml_files:
             return {
                 "ok": False,
