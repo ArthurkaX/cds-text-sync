@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-project_snapshooter.pyw - PLC variable preset snapshots.
+project_snapshooter.py - PLC variable preset snapshots.
 
 Shared backend for the CODESYS Project_snapshooter.py entrypoint and the
 future cts snapshooter CLI. Keep UI concerns at the edge; this module owns the

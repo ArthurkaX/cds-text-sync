@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_options_operation.pyw - Minimal project settings workflow.
+codesys_options_operation.py - Minimal project settings workflow.
 
 This first options entrypoint intentionally avoids a full UI. It creates or
 updates cds-text-sync.json from explicit params and reports the active values.

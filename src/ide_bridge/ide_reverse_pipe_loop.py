@@ -553,7 +553,7 @@ def run_loop():
 if __name__ == "__main__" or __name__ == "__builtin__":
     run_loop()
 else:
-    # Called from Project_daemon.py via exec()
+    # Called from codesys_daemon_launcher.py via exec()
     # Check if globals suggest we're inside CODESYS
     if globals().get("projects") is not None or globals().get("system") is not None:
         run_loop()

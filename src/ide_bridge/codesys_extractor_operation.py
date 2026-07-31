@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_extractor_operation.pyw - Delegating extract workflow.
+codesys_extractor_operation.py - Delegating extract workflow.
 Now delegates to the new ide_bridge and external engine architecture.
 """
 from __future__ import print_function

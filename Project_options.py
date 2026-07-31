@@ -2,11 +2,13 @@
 """
 Project_options.py - User entrypoint for project sync options.
 """
-from cds_bootstrap import run_project_command
+from cds_bootstrap import launch
+
+_ENTRY = launch("Project_options", script_file=__file__, caller_globals=globals())
 
 
 def main(params=None):
-    return run_project_command("options", params=params, script_file=__file__, caller_globals=globals())
+    return _ENTRY(params=params)
 
 
 if __name__ == "__main__":

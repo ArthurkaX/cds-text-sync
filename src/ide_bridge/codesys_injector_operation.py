@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_injector_operation.pyw - Delegating inject workflow.
+codesys_injector_operation.py - Delegating inject workflow.
 Now delegates to the new ide_bridge and external engine architecture.
 """
 from __future__ import print_function

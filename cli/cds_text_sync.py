@@ -60,6 +60,8 @@ from cli._cli_handlers_project import (  # noqa: E402
 
 from cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
 
+from cli._cli_handlers_menu import dispatch_menu  # noqa: E402
+
 from cli._cli_handlers_vars import (  # noqa: E402
     _resolve_project_view,
     _build_map_rows,
@@ -105,6 +107,9 @@ def main():
             )
             sys.exit(1)
         cmd_direct(args.engine_args)
+        return
+
+    if dispatch_menu(args, output_fmt):
         return
 
     if dispatch_daemon(args, output_fmt):

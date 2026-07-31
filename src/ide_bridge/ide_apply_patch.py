@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ide_apply_patch.pyw - Apply a prepared IMPORT.xml patch to the IDE.
+ide_apply_patch.py - Apply a prepared IMPORT.xml patch to the IDE.
 Must be compatible with IronPython 2.7.
 """
 

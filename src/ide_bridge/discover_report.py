@@ -5,14 +5,15 @@ discover_report.py - Shared CODESYS project-discovery report builder.
 Builds the object-tree + profile-coverage diagnostic (kind resolution, unknown
 type detection, enabled projections) from a live CODESYS project plus the
 on-disk sync settings/profile. Pure logic: no runtime/ui/file-IO, so both the
-forward-mode operation (codesys_discover_operation.pyw) and the reverse-pipe
+forward-mode operation (codesys_discover_operation.py) and the reverse-pipe
 daemon handler (ide_handlers_project._cmd_discover) reuse it instead of
 duplicating ~150 lines.
 
 The offline-engine profile modules (_project_profiles/_project_settings) are
 imported lazily inside build_discovery_report, so importing this module stays
 cheap and free of engine dependencies (keeps the daemon name-resolution guard
-happy under CPython). This module imports no .pyw modules, so it is importable
+happy under CPython). This module imports no CODESYS bridge modules, so it is
+importable
 by name under both CPython and IronPython.
 """
 

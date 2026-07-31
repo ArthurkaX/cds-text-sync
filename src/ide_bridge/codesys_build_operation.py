@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_build_operation.pyw - Build active CODESYS application and export diagnostics.
+codesys_build_operation.py - Build active CODESYS application and export diagnostics.
 """
 from __future__ import print_function
 import codecs

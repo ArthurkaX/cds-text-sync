@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_compare_operation.pyw - Delegating compare workflow.
+codesys_compare_operation.py - Delegating compare workflow.
 Uses the XML-first bridge to produce a compare report.
 """
 from __future__ import print_function

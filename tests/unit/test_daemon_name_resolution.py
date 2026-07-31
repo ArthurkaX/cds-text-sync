@@ -12,7 +12,8 @@ Modules guarded:
  - ide_daemon_state.py (MUST import — failure is a test failure)
  - all other ide_*.py under src/ide_bridge/ (skipped on import error)
  - ide_daemon_ui* modules are always xfail/skipped (WinForms — no CPython support)
- - *.pyw files in src/ide_bridge/ (skipped on import error — expected)
+ - all other *.py modules under src/ide_bridge/ (codesys_* and
+   project_snapshooter, formerly .pyw; skipped on import error — expected)
 """
 
 from __future__ import annotations
@@ -98,7 +99,7 @@ def _install_stubs() -> dict[str, ModuleType]:
         "System.Array",
         "System.Byte",
         # CODESYS scripting engine — injected by the host in real runs;
-        # stub it so .pyw modules that do `import scriptengine` or
+        # stub it so bridge modules that do `import scriptengine` or
         # `from scriptengine import ...` can be imported under CPython.
         "scriptengine",
     ]
@@ -126,41 +127,31 @@ def _restore_stubs(saved: dict[str, ModuleType]) -> None:
 MUST_IMPORT = {"ide_reverse_pipe_loop", "ide_daemon_state"}
 UI_MODULES = {"ide_daemon_ui"}
 
-# ---------------------------------------------------------------------------
-# Discovery: ide_*.py files in src/ide_bridge/
-# ---------------------------------------------------------------------------
-
-_all_ide_modules: list[str] = []
-for _p in sorted(_IDE_BRIDGE.glob("ide_*.py")):
-    _all_ide_modules.append(_p.stem)
 
 # ---------------------------------------------------------------------------
-# Discovery: *.pyw files in src/ide_bridge/
+# Discovery: all *.py modules in src/ide_bridge/
+#
+# ide_*.py are the daemon modules; the codesys_*/project_snapshooter bridges
+# used to ship as .pyw and were discovered by a second glob. After the
+# .pyw -> .py rename a single glob covers everything. discover_report.py stays
+# out: it is pure logic with its own dedicated test suite.
 # ---------------------------------------------------------------------------
 
-# stem -> Path mapping
-_pyw_stem_to_path: dict[str, Path] = {}
+_EXCLUDED_STEMS = frozenset({"discover_report"})
 
-for _p in sorted(_IDE_BRIDGE.glob("*.pyw")):
-    _pyw_stem_to_path[_p.stem] = _p
-
-# Sorted list of (stem, filepath) pairs for parametrization
-_all_pyw_modules: list[tuple[str, Path]] = sorted(_pyw_stem_to_path.items())
-
-# ---------------------------------------------------------------------------
-# Combined parametrization: (stem, filepath_or_None)
-# For ide_*.py the filepath is derived from stem at test time; filepath=None signals that.
-# We pass an explicit Path for .pyw so the test body can do file-based loading.
-# ---------------------------------------------------------------------------
-
-# Build a flat list of (stem, filepath_or_none) pairs.
-# ide_*.py: filepath=None (resolved inside test from _IDE_BRIDGE / stem + ".py")
-# *.pyw:    filepath=actual Path
-_ALL_CASES: list[tuple[str, Path | None]] = [
-    (stem, None) for stem in _all_ide_modules
-] + [
-    (stem, fpath) for stem, fpath in _all_pyw_modules
+_all_modules: list[str] = [
+    _p.stem
+    for _p in sorted(_IDE_BRIDGE.glob("*.py"))
+    if _p.stem not in _EXCLUDED_STEMS
 ]
+
+# ---------------------------------------------------------------------------
+# Parametrization: (stem, filepath_or_None)
+# filepath is always None — the path is resolved inside the test body from
+# _IDE_BRIDGE / stem + ".py". (Kept as a tuple for signature stability.)
+# ---------------------------------------------------------------------------
+
+_ALL_CASES: list[tuple[str, Path | None]] = [(stem, None) for stem in _all_modules]
 
 
 # ---------------------------------------------------------------------------
@@ -246,17 +237,6 @@ _IRONPYTHON2_BUILTINS = frozenset({
     "raw_input", "reduce", "reload", "StandardError",
 })
 
-# Removed-stdlib modules that are conditionally imported with a guard flag.
-# Example in codesys_runtime.pyw:
-#   try:
-#       import imp
-#       _HAS_IMP = True
-#   except ImportError:      # imp removed in CPython 3.12
-#       _HAS_IMP = False
-# All uses inside functions are guarded by `if _HAS_IMP:` so the name is
-# never actually loaded at runtime on CPython 3.12. This mirrors the
-# basestring/try-except-NameError pattern — not a forgotten import.
-_REMOVED_STDLIB_GUARDS = frozenset({"imp"})
 
 # Optional CODESYS API objects that modules probe for via try/except Exception,
 # e.g. `try: PouType; except Exception: pass` in _find_pou_type_enum.
@@ -264,7 +244,7 @@ _REMOVED_STDLIB_GUARDS = frozenset({"imp"})
 _CODESYS_OPTIONAL_PROBES = frozenset({"PouType", "ScriptEngine"})
 
 _ALL_ALLOWED_GLOBALS = (
-    _CODESYS_INJECTED | _IRONPYTHON2_BUILTINS | _CODESYS_OPTIONAL_PROBES | _REMOVED_STDLIB_GUARDS
+    _CODESYS_INJECTED | _IRONPYTHON2_BUILTINS | _CODESYS_OPTIONAL_PROBES
 )
 
 # ---------------------------------------------------------------------------
@@ -292,8 +272,8 @@ def test_daemon_name_resolution(module_stem: str, module_filepath: "Path | None"
         actual_path = module_filepath
 
     # --- Prepare sys.path so intra-package imports resolve ---
-    # Insert src/ide_bridge at the front so that .pyw files that import each
-    # other can resolve those imports.
+# Insert src/ide_bridge at the front so that bridge modules that import
+# each other can resolve those imports.
     paths_to_insert: list[str] = []
     bridge_str = str(_IDE_BRIDGE)
 

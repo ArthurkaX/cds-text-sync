@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_compare_ui_operation.pyw - Interactive compare workflow.
+codesys_compare_ui_operation.py - Interactive compare workflow.
 Runs XML-first compare, shows an object list, then optionally starts import/export.
 """
 from __future__ import print_function

@@ -10,19 +10,6 @@ from __future__ import print_function
 import os
 import sys
 
-try:
-    import importlib.util
-    _HAS_IMPORTLIB_UTIL = True
-except ImportError:
-    _HAS_IMPORTLIB_UTIL = False
-
-try:
-    import imp
-    _HAS_IMP = True
-except ImportError:
-    _HAS_IMP = False
-
-
 CORE_MODULES = [
     "codesys_utils",
     "codesys_ui"
@@ -37,6 +24,7 @@ OPERATION_MODULES = {
     "compare_ui": "codesys_compare_ui_operation",
     "options": "codesys_options_operation",
     "build": "codesys_build_operation",
+ "directory": "codesys_directory_operation",
     "discover": "codesys_discover_operation",
     "resources": "codesys_resources_operation"
 }
@@ -118,40 +106,24 @@ def _ensure_sys_path(root_dir):
     ide_bridge_dir = os.path.join(root_dir, "src", "ide_bridge")
     engine_dir = os.path.join(root_dir, "cli", "external_engine")
     old_engine_dir = os.path.join(root_dir, "src", "external_engine")
-    for path in (ide_bridge_dir, engine_dir, old_engine_dir, root_dir):
+    # Inserted at 0 in turn, so this tuple is walked back-to-front: the
+    # resulting order is ide_bridge, engine, old_engine, root. The bridge must
+    # outrank the root because modules are imported by name now, and the root
+    # holds Project_snapshooter.py next to the bridge's project_snapshooter.py
+    # -- names that collide on a case-insensitive filesystem.
+    for path in (root_dir, old_engine_dir, engine_dir, ide_bridge_dir):
         if path and path not in sys.path:
             sys.path.insert(0, path)
-
-
-def _load_python_module(name, path):
-    if not os.path.exists(path):
-        return None
-
-    if _HAS_IMPORTLIB_UTIL:
-        spec = importlib.util.spec_from_file_location(name, path)
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            sys.modules[name] = mod
-            spec.loader.exec_module(mod)
-            return mod
-
-    if _HAS_IMP:
-        mod = imp.load_source(name, path)
-        sys.modules[name] = mod
-        return mod
-
-    return None
 
 
 def load_hidden_module(name, script_file=None):
     root_dir = _get_root_dir(script_file)
     _ensure_sys_path(root_dir)
-    ide_bridge_path = os.path.join(root_dir, "src", "ide_bridge", name + ".pyw")
-    root_path = os.path.join(root_dir, name + ".pyw")
-    return (
-        _load_python_module(name, ide_bridge_path)
-        or _load_python_module(name, root_path)
-    )
+    try:
+        __import__(name)
+    except ImportError:
+        return None
+    return sys.modules.get(name)
 
 
 def clear_hidden_modules(exclude=None):

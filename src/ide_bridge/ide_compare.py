@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ide_compare.pyw - Compare current IDE snapshot with disk state and report differences.
+ide_compare.py - Compare current IDE snapshot with disk state and report differences.
 Must be compatible with IronPython 2.7.
 """
 from __future__ import print_function

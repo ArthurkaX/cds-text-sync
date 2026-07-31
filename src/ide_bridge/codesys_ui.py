@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-codesys_ui.pyw - Minimal UI helpers for active XML-first commands.
+codesys_ui.py - Minimal UI helpers for active XML-first commands.
 """
 from __future__ import print_function
 import codecs

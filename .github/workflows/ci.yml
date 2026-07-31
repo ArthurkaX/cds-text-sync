@@ -48,6 +48,7 @@ jobs:
             Project_import.py `
             Project_options.py `
             Project_resources.py `
+            Project_snapshooter.py `
             Project_daemon.py `
             cli `
             src

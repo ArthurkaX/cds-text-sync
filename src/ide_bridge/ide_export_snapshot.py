@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ide_export_snapshot.pyw - Export entire project to a native IDE.xml snapshot.
+ide_export_snapshot.py - Export entire project to a native IDE.xml snapshot.
 Must be compatible with IronPython 2.7.
 """
 from __future__ import print_function

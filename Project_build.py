@@ -2,11 +2,13 @@
 """
 Project_build.py - User entrypoint for building the active CODESYS application.
 """
-from cds_bootstrap import run_project_command
+from cds_bootstrap import launch
+
+_ENTRY = launch("Project_build", script_file=__file__, caller_globals=globals())
 
 
 def main(params=None):
-    return run_project_command("build", params=params, script_file=__file__, caller_globals=globals())
+    return _ENTRY(params=params)
 
 
 if __name__ == "__main__":
