@@ -260,7 +260,7 @@ signals, and the theme still picks the pixels — exactly like a class does.
 
 - **Buttons, textfields and lamps take NO class.** They inherit the native
   CODESYS control style automatically — leave their colour alone.
-- Classes are defined in `cli/visu/stylesheet.css` and can be extended, or
+- Classes are defined in `cds_text_sync/visu/stylesheet.css` and can be extended, or
   overridden per project with a `visu.css` in the project-view directory. To add
   a new colour meaning, add a class there rather than hard-coding a colour.
 - Escape hatch (rare): an explicit `fill="#RRGGBB"` / `stroke="#RRGGBB"` still

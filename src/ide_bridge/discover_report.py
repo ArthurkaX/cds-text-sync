@@ -24,11 +24,11 @@ import sys
 
 
 def _engine_dir():
-    """Locate cli/external_engine relative to this file (src/ide_bridge/)."""
+    """Locate cds_text_sync/engine relative to this file (src/ide_bridge/)."""
     root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-    engine = os.path.join(root, "cli", "external_engine")
+    engine = os.path.join(root, "cds_text_sync", "engine")
     if not os.path.isdir(engine):
         engine = os.path.join(root, "src", "external_engine")
     return engine

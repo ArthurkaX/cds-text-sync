@@ -43,7 +43,7 @@ Example: `...DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir\`
 
 - **ScriptDir missing:** Create it manually before installation or let the Quick Installer create it.
 - **Scripts not in menu:**
-  1. Ensure the generated `Project_*.py` scripts are in `ScriptDir\cds-text-sync`. Run `cts install-menu` (or `python -m cli.install_menu` from the program folder) if the folder is empty or missing.
+  1. Ensure the generated `Project_*.py` scripts are in `ScriptDir\cds-text-sync`. Run `cts install-menu` (or `python -m cds_text_sync.install_menu` from the program folder) if the folder is empty or missing.
   2. **Check the ScriptDir location matches your CODESYS version.** Old CODESYS (< ~3.5.17) reads `%PROGRAMDATA%\CODESYS\ScriptDir`, not `%LOCALAPPDATA%`. If you are on 3.5.16 or similar and generated the menu into `%LOCALAPPDATA%`, re-run with `--script-dir "%PROGRAMDATA%\CODESYS\ScriptDir"` (elevated shell), or re-run the installer and choose **[3] Legacy CODESYS**.
   3. Restart CODESYS completely.
   4. Run `cts where` — it prints the program folder, every ScriptDir it found, and any problem with the generated scripts.

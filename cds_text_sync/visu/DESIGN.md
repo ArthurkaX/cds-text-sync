@@ -1,6 +1,6 @@
 # Catalog schema for CODESYS visu element types
 
-Each element type is described by a JSON file under `cli/visu/catalog/<type>.json`.
+Each element type is described by a JSON file under `cds_text_sync/visu/catalog/<type>.json`.
 Adding a new element type = adding one JSON file — no code changes to the engine.
 
 ## Top-level keys
@@ -62,6 +62,6 @@ block, in declaration order (must match the ground truth order).
 ## Adding a new element type
 
 1. Ground-truth: export a real element from CODESYS IDE as `.xml`.
-2. Create `cli/visu/catalog/<name>.json` following the schema above.
+2. Create `cds_text_sync/visu/catalog/<name>.json` following the schema above.
 3. If the element uses a new visualElementTypeName, the engine handles it generically.
 4. No code changes to `builder.py`, `catalog.py`, or `commands.py` needed.

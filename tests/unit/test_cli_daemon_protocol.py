@@ -4,7 +4,7 @@ test_cli_daemon_protocol.py -- CLI <-> daemon method-parity contract.
 
 Every daemon method the top-level CLI sends must be handled by the reverse-pipe
 daemon. Command name, CLI->method mapping, and the daemon's handler table live in
-three different files (cli/_cli_parser.py, cli/_cli_handlers_daemon.py,
+three different files (cds_text_sync/_cli_parser.py, cds_text_sync/_cli_handlers_daemon.py,
 src/ide_bridge/ide_reverse_pipe_loop.py); nothing enforces that they agree, so a
 renamed daemon handler or a typo'd method name is a silent runtime failure
 ("Unknown method: X") that no unit test would otherwise catch. These contract
@@ -35,7 +35,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 _IDE_BRIDGE = _ROOT / "src" / "ide_bridge"
-_CLI = _ROOT / "cli"
+_CLI = _ROOT / "cds_text_sync"
 
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -188,7 +188,7 @@ def _sent_method_literals(py_path):
 
 def test_daemon_methods_table_is_dispatchable(daemon):
     """Every value in _cli_handlers_daemon._DAEMON_METHODS is a daemon handler."""
-    from cli._cli_handlers_daemon import _DAEMON_METHODS
+    from cds_text_sync._cli_handlers_daemon import _DAEMON_METHODS
 
     resolvable = _resolvable_methods(daemon)
     missing = {cmd: m for cmd, m in _DAEMON_METHODS.items() if m not in resolvable}

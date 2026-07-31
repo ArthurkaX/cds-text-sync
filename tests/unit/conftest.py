@@ -2,7 +2,7 @@
 """
 conftest.py - Shared fixtures for the unit-test tier.
 
-Adds ``cli/external_engine`` to ``sys.path`` so that production modules
+Adds ``cds_text_sync/engine`` to ``sys.path`` so that production modules
 can be imported with their flat, non-package imports.
 """
 
@@ -16,7 +16,7 @@ import pytest
 # imports.
 # ---------------------------------------------------------------------------
 _EXTERNAL_ENGINE_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "cli", "external_engine")
+    os.path.join(os.path.dirname(__file__), "..", "..", "cds_text_sync", "engine")
 )
 
 if _EXTERNAL_ENGINE_DIR not in sys.path:

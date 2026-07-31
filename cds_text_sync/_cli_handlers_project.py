@@ -10,7 +10,7 @@ cmd_discover, cmd_pou_delete.
 
 from __future__ import annotations
 
-from cli._cli_io import _print_error, _print_warn, _project_command
+from cds_text_sync._cli_io import _print_error, _print_warn, _project_command
 
 
 # -- Project commands ---------------------------------------------------------

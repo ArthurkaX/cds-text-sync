@@ -8,7 +8,7 @@ reverse direction.
 
 Usage::
 
-    from cli.visu.svg_export import screen_to_svg
+    from cds_text_sync.visu.svg_export import screen_to_svg
 
     svg = screen_to_svg(xml_text)
 """

@@ -8,7 +8,7 @@ from ``commands.from_svg`` when ``--gvl`` or ``--gvl-file`` is used.
 
 Usage::
 
-    from cli.visu import gvl
+    from cds_text_sync.visu import gvl
 
     vars = gvl.collect_variables(elements)
     st = gvl.generate_gvl(vars, gvl_name="VisuVars")

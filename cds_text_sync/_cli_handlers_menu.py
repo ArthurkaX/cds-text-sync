@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import json
 
-from cli._cli_io import _format_output, _print_error, _print_ok
-from cli.install_menu import (
+from cds_text_sync._cli_io import _format_output, _print_error, _print_ok
+from cds_text_sync.install_menu import (
     MenuError,
     describe,
     format_result,

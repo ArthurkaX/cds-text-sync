@@ -6,7 +6,7 @@ The SVG bridge still resolves ``var(--role)`` values to concrete CODESYS color
 integers, because imported primitive colors must be literal values to survive a
 round-trip reliably.  The preset names, however, are modeled after CODESYS
 visualization styles rather than editor themes.  JSON files in
-``cli/visu/themes/<name>.json`` are kept as a compatibility extension point.
+``cds_text_sync/visu/themes/<name>.json`` are kept as a compatibility extension point.
 """
 
 from __future__ import print_function
@@ -130,7 +130,7 @@ def _alias_dotted_roles(colors):
 def strip_curated_roles(colors, scheme="light"):
     """Drop the roles :mod:`style_roles` curates in *scheme* from a style snapshot.
 
-    ``cli/visu/themes/*.json`` are sampled from real ``styledef.xml`` files, so
+    ``cds_text_sync/visu/themes/*.json`` are sampled from real ``styledef.xml`` files, so
     they carry a value for every role name the extractor knew -- including the
     ones with no genuine CanonicalName behind them (``water``, ``metal``, the
     status colours).  Those samples are arbitrary: flat-style yields

@@ -503,7 +503,7 @@ from-svg SVG contract:
     rect[data-cds-type=button], text[data-cds-type=textfield]
 
   Prefer a semantic class over a colour. class="..." expands through
-  cli/visu/stylesheet.css (override it with a project-level visu.css):
+  cds_text_sync/visu/stylesheet.css (override it with a project-level visu.css):
     surfaces   panel card divider
     type       h1 h2 value label caption   (the whole scale: 22/16/28/12/11)
     emphasis   muted inverse

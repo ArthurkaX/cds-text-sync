@@ -17,7 +17,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli.visu import builder, commands, screen_xml
+from cds_text_sync.visu import builder, commands, screen_xml
 
 
 # Primitive rectangles only: no text (no Text-ID allocation) and no bound

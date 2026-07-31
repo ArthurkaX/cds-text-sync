@@ -2,7 +2,7 @@ import os
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-ENGINE = os.path.join(ROOT, "cli", "external_engine")
+ENGINE = os.path.join(ROOT, "cds_text_sync", "engine")
 if ENGINE not in sys.path:
     sys.path.insert(0, ENGINE)
 

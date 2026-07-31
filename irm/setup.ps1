@@ -729,11 +729,11 @@ if (Test-Path -LiteralPath $bodyPath) {
     if ($pythonName) {
         Push-Location $bodyPath
         try {
-            & $pythonName -m cli.install_menu --body "$bodyPath" --script-dir "$targetBaseDir"
+            & $pythonName -m cds_text_sync.install_menu --body "$bodyPath" --script-dir "$targetBaseDir"
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[!] Menu generation failed. Run it manually:" -ForegroundColor Yellow
                 Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
-                Write-Host "    $pythonName -m cli.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
+                Write-Host "    $pythonName -m cds_text_sync.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
             }
         } finally {
             Pop-Location
@@ -741,7 +741,7 @@ if (Test-Path -LiteralPath $bodyPath) {
     } else {
         Write-Host "[!] Python is not available; generate the menu later with:" -ForegroundColor Yellow
         Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
-        Write-Host "    python -m cli.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
+        Write-Host "    python -m cds_text_sync.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
     }
 }
 

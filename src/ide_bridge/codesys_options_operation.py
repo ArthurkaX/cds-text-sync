@@ -138,7 +138,7 @@ def main(params=None, runtime=None):
     init_logging(base_dir)
 
     utility_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    engine_dir = os.path.join(utility_root, "cli", "external_engine")
+    engine_dir = os.path.join(utility_root, "cds_text_sync", "engine")
     if not os.path.isdir(engine_dir):
         engine_dir = os.path.join(utility_root, "src", "external_engine")
     if engine_dir not in sys.path:

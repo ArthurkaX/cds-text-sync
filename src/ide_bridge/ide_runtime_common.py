@@ -16,8 +16,8 @@ import codecs
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Try new path first (cli/external_engine/), fall back to old (src/external_engine/)
-_ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "..", "cli", "external_engine"))
+# Try new path first (cds_text_sync/engine/), fall back to old (src/external_engine/)
+_ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "..", "cds_text_sync", "engine"))
 if not os.path.isdir(_ENGINE_DIR):
     _ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "external_engine"))
 if _ENGINE_DIR not in sys.path:
@@ -48,12 +48,12 @@ def object_name(obj):
 
 
 def get_workspace_dir(script_file=None):
-    # Find the root by looking for src/ide_bridge or cli/external_engine
+    # Find the root by looking for src/ide_bridge or cds_text_sync/engine
     path = os.path.abspath(script_file or __file__)
     current = os.path.dirname(path)
     while True:
         if (os.path.isdir(os.path.join(current, "src", "ide_bridge"))
-                or os.path.isdir(os.path.join(current, "cli", "external_engine"))):
+                or os.path.isdir(os.path.join(current, "cds_text_sync", "engine"))):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:
@@ -133,12 +133,12 @@ def _external_notice_lines(stdout_text, stderr_text):
 
 def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None):
     root_dir = get_workspace_dir(script_file)
-    # Try new path first (cli/external_engine/), fall back to old path
-    engine_cli = os.path.join(root_dir, "cli", "external_engine", "engine_cli.py")
+    # Try new path first (cds_text_sync/engine/), fall back to old path
+    engine_cli = os.path.join(root_dir, "cds_text_sync", "engine", "engine_cli.py")
     if not os.path.exists(engine_cli):
         engine_cli = os.path.join(root_dir, "src", "external_engine", "engine_cli.py")
     if not os.path.exists(engine_cli):
-        log_error("External engine CLI not found (tried cli/ and src/ paths): " + str(engine_cli))
+        log_error("External engine CLI not found (tried cds_text_sync/ and src/ paths): " + str(engine_cli))
         return False
         
     cmd = ["python", engine_cli] + command_args

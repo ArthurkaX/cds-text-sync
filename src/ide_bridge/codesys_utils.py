@@ -37,12 +37,12 @@ def _utility_root():
 
 
 def ensure_engine_path():
-    """Put the offline engine dir (cli/external_engine) on sys.path and return it.
+    """Put the offline engine dir (cds_text_sync/engine) on sys.path and return it.
 
     Falls back to the historical src/external_engine location when the primary
     directory is absent.
     """
-    engine_dir = os.path.join(_utility_root(), "cli", "external_engine")
+    engine_dir = os.path.join(_utility_root(), "cds_text_sync", "engine")
     if not os.path.isdir(engine_dir):
         engine_dir = os.path.join(_utility_root(), "src", "external_engine")
     if engine_dir not in sys.path:

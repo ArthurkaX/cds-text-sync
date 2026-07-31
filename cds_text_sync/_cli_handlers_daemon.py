@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sys
 
-from cli._cli_io import (
+from cds_text_sync._cli_io import (
     _format_output,
     _print_error,
     _print_rp_error,

@@ -4,9 +4,14 @@ ide_backup_regression.py - Fast checks for pre-import binary backup behavior.
 """
 import os
 import shutil
+import sys
 import tempfile
 
-from ide_backup import create_pre_import_backup, patch_has_ide_changes
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "ide_bridge"),
+)
+from ide_backup import create_pre_import_backup, patch_has_ide_changes  # noqa: E402
 
 
 class RegressionFailure(Exception):

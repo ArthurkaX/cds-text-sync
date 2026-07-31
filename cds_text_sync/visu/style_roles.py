@@ -117,7 +117,7 @@ _ROLE_DEFS = [
 ]
 
 # Roles this module *curates*: they carry authoring semantics that no single
-# CanonicalName expresses, so a style snapshot (cli/visu/themes/*.json) must not
+# CanonicalName expresses, so a style snapshot (cds_text_sync/visu/themes/*.json) must not
 # redefine them -- see themes.strip_curated_roles(). Everything not listed here
 # (text, frame, accent, hover, native control colours, ...) stays owned by the
 # project's CODESYS visual style.

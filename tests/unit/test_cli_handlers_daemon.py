@@ -19,7 +19,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cli import _cli_handlers_daemon as d
+from cds_text_sync import _cli_handlers_daemon as d
 
 
 @pytest.fixture

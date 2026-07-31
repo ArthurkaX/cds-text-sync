@@ -8,8 +8,8 @@ modules. The fix is a split install: the real tree ("the body") lives outside
 ScriptDir, and ScriptDir holds nothing but the generated ``Project_*.py`` stubs
 produced here -- each one pinned to the body via a ``CDS_HOME`` literal.
 
-Deliberately stdlib-only, and deliberately free of any ``cli`` sibling import,
-so that ``python -m cli.install_menu`` works from a fresh clone before
+Deliberately stdlib-only, and deliberately free of any ``cds_text_sync`` sibling import,
+so that ``python -m cds_text_sync.install_menu`` works from a fresh clone before
 ``pip install -e`` has run.
 """
 
@@ -159,7 +159,7 @@ def load_manifest(body_root):
     """Read ENTRYPOINTS out of the body's cds_bootstrap.py.
 
     Loaded by path rather than imported: an editable install only exposes the
-    ``cli`` package, and the body may not be on sys.path at all.
+    ``cds_text_sync`` package, and the body may not be on sys.path at all.
     """
     bootstrap = Path(body_root) / "cds_bootstrap.py"
     if not bootstrap.is_file():
@@ -257,7 +257,13 @@ def classify_menu_dir(menu_dir):
     menu_dir = Path(menu_dir)
     if not menu_dir.exists():
         return "missing"
-    if (menu_dir / _SENTINEL_DIR).is_dir() or (menu_dir / "cli").is_dir():
+    # "cds_text_sync" is the current body package; "cli" is what it was called
+    # before 2.9, and a flat install predating the split still carries that name.
+    if (
+        (menu_dir / _SENTINEL_DIR).is_dir()
+        or (menu_dir / "cds_text_sync").is_dir()
+        or (menu_dir / "cli").is_dir()
+    ):
         return "flat"
     entries = list(menu_dir.iterdir())
     if not entries:
@@ -470,7 +476,7 @@ def describe(body_root=None, script_dir=None):
     info = {
         "body_root": str(body) if body else None,
         "body_valid": bool(body and body_is_valid(body)),
-        "cli_module": str(Path(__file__).resolve()),
+        "install_menu_module": str(Path(__file__).resolve()),
         "script_dirs": [],
     }
 
@@ -517,7 +523,7 @@ def _overall_layout(info):
 
 
 def add_menu_arguments(parser):
-    """Shared by ``cts install-menu`` and ``python -m cli.install_menu``."""
+    """Shared by ``cts install-menu`` and ``python -m cds_text_sync.install_menu``."""
     parser.add_argument(
         "--body", default="",
         help="Folder holding the tool itself (default: the tree this module lives in)",
@@ -593,8 +599,8 @@ def format_result(result):
 
 def main(argv=None):
     try:
-        from cli._stdio import configure_stdio_utf8
-    except ImportError:  # executed as a bare script: cli/ is sys.path[0]
+        from cds_text_sync._stdio import configure_stdio_utf8
+    except ImportError:  # executed as a bare script: cds_text_sync/ is sys.path[0]
         from _stdio import configure_stdio_utf8
     configure_stdio_utf8()
 

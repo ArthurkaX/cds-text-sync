@@ -13,8 +13,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from cli._cli_handlers_vars import _resolve_project_view
-from cli._cli_io import _print_error
+from cds_text_sync._cli_handlers_vars import _resolve_project_view
+from cds_text_sync._cli_io import _print_error
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -65,11 +65,11 @@ def _require_screen(args, action):
 
 
 def dispatch_visu(args):
-    """Route a parsed `visu` subcommand to cli.visu.commands."""
+    """Route a parsed `visu` subcommand to cds_text_sync.visu.commands."""
     _root_dir = _SCRIPT_DIR.parent
     if str(_root_dir) not in sys.path:
         sys.path.insert(0, str(_root_dir))
-    from cli.visu import commands as visu_cmds
+    from cds_text_sync.visu import commands as visu_cmds
 
     sync_folder = getattr(args, "sync_folder", "")
     scheme = getattr(args, "scheme", "") or None

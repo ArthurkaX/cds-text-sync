@@ -81,7 +81,7 @@ cts install-menu
 generator runs directly:
 
 ```powershell
-python -m cli.install_menu
+python -m cds_text_sync.install_menu
 ```
 
 - **Note on `cds_bootstrap.py`**: This is a support loader used by the public
@@ -116,7 +116,7 @@ ScriptDir**:
 git clone https://github.com/ArthurkaX/cds-text-sync C:\Tools\cds-text-sync
 cd C:\Tools\cds-text-sync
 python -m pip install -e .
-python -m cli.install_menu
+python -m cds_text_sync.install_menu
 ```
 
 Nothing has to be deleted from the clone, and nothing is copied into ScriptDir

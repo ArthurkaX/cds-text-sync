@@ -10,7 +10,7 @@ import shutil
 import time
 import xml.etree.ElementTree as ET
 
-import ide_runtime_common  # Sets up the external_engine import path.
+import ide_runtime_common  # Sets up the engine import path.
 from _project_settings import load_project_settings
 
 
