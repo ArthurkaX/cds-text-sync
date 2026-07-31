@@ -30,3 +30,4 @@ temp/
 .claude/
 .mu/
 static_analyze/
+probe/
