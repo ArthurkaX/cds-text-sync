@@ -264,6 +264,31 @@ def ensure_online_connection(project, prefer_device=False):
     )
 
 
+def require_online_session(project):
+    """Return the cached online application, or fail without touching the gateway.
+
+    For read/write of PLC data, never build a session implicitly. Creating one
+    means create_online_application plus _ensure_logged_in, and the latter walks
+    a list of login candidates calling online_app.login() on each. With no PLC
+    reachable, one of those attempts can raise a modal dialog in the IDE, which
+    blocks the single-threaded daemon loop for good: the pipe stops being served
+    and every later command times out.
+
+    Connecting is what connect_to_device is for. There the user asked for it and
+    a dialog is visible and expected; here it is a side effect of `cts read`.
+
+    Raises:
+        RuntimeError telling the caller to connect first.
+    """
+    online_app, _ = _get_cached_online_app()
+    if online_app is None:
+        raise RuntimeError(
+            "Not connected. The daemon has no online session, and reading will "
+            "not open one for you. Run 'cts connect' first."
+        )
+    return online_app
+
+
 def _find_main_device(project):
     """Find the first device object that looks like a main controller."""
     for child in project.get_children(True):
@@ -622,10 +647,8 @@ def read_variable_impl(project, variable_name):
     if not variable_name:
         raise ValueError("Variable name is required")
     
-    online_app, _ = ensure_online_connection(project)
-    if online_app is None:
-        raise RuntimeError("Not connected. Call connect_to_device first.")
-    
+    online_app = require_online_session(project)
+
     # Auto-login if needed
     _ensure_logged_in(online_app)
     
@@ -674,10 +697,8 @@ def write_variable_impl(project, variable_name, value):
     if value is None:
         raise ValueError("Value is required")
     
-    online_app, _ = ensure_online_connection(project)
-    if online_app is None:
-        raise RuntimeError("Not connected. Call connect_to_device first.")
-    
+    online_app = require_online_session(project)
+
     # Auto-login if needed
     _ensure_logged_in(online_app)
     
@@ -783,9 +804,7 @@ def read_variables_impl(project, names):
     if not names:
         return {"results": [], "count": 0}
 
-    online_app, _ = ensure_online_connection(project)
-    if online_app is None:
-        raise RuntimeError("Not connected. Call connect_to_device first.")
+    online_app = require_online_session(project)
     _ensure_logged_in(online_app)
 
     results = _bisect_read_variable(names, online_app)
@@ -806,9 +825,7 @@ def write_variables_impl(project, items, raw_value=False):
     if not items:
         return {"results": [], "written": 0}
 
-    online_app, _ = ensure_online_connection(project)
-    if online_app is None:
-        raise RuntimeError("Not connected. Call connect_to_device first.")
+    online_app = require_online_session(project)
     _ensure_logged_in(online_app)
 
     results = []
