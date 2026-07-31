@@ -1,3 +1,38 @@
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "cds-text-sync"
+dynamic = ["version"]
+description = "CODESYS CLI + reverse-pipe daemon"
+requires-python = ">=3.8"
+authors = [{ name = "cds-text-sync contributors" }]
+
+[project.urls]
+Homepage = "https://github.com/ArthurkaX/cds-text-sync"
+
+[project.scripts]
+cts = "cds_text_sync.main:main"
+cds-text-sync = "cds_text_sync.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "cds_text_sync.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["cds_text_sync", "cds_text_sync.*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+cds_text_sync = ["CLI.md", "TEST_FORMAT.md"]
+"cds_text_sync.engine" = ["sys_funcs.json"]
+"cds_text_sync.visu" = [
+    "catalog/*.json",
+    "templates/*.tmpl",
+    "themes/*.json",
+    "styles_snapshot.json",
+    "stylesheet.css",
+    "DESIGN.md",
+]

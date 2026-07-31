@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-cds_text_sync.py - CLI for cds-text-sync.
+main.py - CLI for cds-text-sync.
 
 Universal entry point for CODESYS project sync.
 Communicates with daemon inside CODESYS via Named Pipe.
