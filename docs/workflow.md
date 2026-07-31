@@ -56,7 +56,7 @@ For every new task (Feature or Bug Fix), developers follow these steps:
 1.  **Clone / Sync**: Clone the repository or `git pull` the latest changes from `main`.
 2.  **Make Changes**: Open the CODESYS project and implement the required logic.
 3.  **Extract to Disk**: Run `Project_export.py` to update `project-view/` with the latest CODESYS state before committing.
-4.  **Compare When Needed**: Run `Project_compare.py` before committing if you need a machine-readable `.dump/compare_report.json`. Use `Project_compare_ui.py` when you want the same compare result as a CODESYS dialog with full import/export actions.
+4.  **Compare When Needed**: Run `Project_compare_ui.py` before committing to see what differs as a CODESYS dialog with full import/export actions; it also writes the machine-readable `.dump/compare_report.json`. From a shell or in CI, `cts compare` gives the same report without a dialog.
 5.  **Commit & Push**: Use Git to commit the updated view files and push them to a dedicated **feature branch**.
 6.  **Create Pull Request**: Open a Pull Request (PR) to merge the feature branch into `main`.
 

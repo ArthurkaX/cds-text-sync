@@ -69,13 +69,11 @@ inserted, removed, renamed, or duplicate rows fail explicitly.
    - Git tracks the view root and ignores generated state.
    - **Git LFS** may track binary backups if your team intentionally stores them.
 4. **Edit**: Make changes in VS Code or CODESYS.
-5. **Sync**: Run `Project_import.py`, `Project_export.py`, `Project_compare.py`,
-   or `Project_compare_ui.py` depending on direction and whether you need a
-   report or an IDE dialog.
+5. **Sync**: Run `Project_import.py`, `Project_export.py`, or
+   `Project_compare_ui.py` depending on direction.
    - `Project_import.py` applies disk changes back into the IDE.
-   - `Project_compare.py` refreshes `IDE.current.xml` and writes a compare report.
-   - `Project_compare_ui.py` shows the compare result and can launch full
-     import/export.
+   - `Project_compare_ui.py` refreshes `IDE.current.xml`, writes a compare
+     report, shows the result and can launch full import/export.
 
 The same cycle from a shell: `cts export`, `cts compare`, `cts import`. See
 [`cli/CLI.md`](../cli/CLI.md).

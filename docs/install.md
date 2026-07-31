@@ -22,10 +22,27 @@ installation path if it is missing.
 
 ---
 
+## How the install is laid out
+
+Two folders, and it is worth knowing which is which:
+
+- **Program folder** — the tool itself. Default `%LOCALAPPDATA%\cds-text-sync\`,
+  or any folder you choose, including a Git clone.
+- **ScriptDir** — the CODESYS scripting folder. It receives **only the generated
+  `Project_*.py` menu scripts**, nothing else.
+
+The split is not cosmetic. CODESYS scans its ScriptDir recursively and lists
+every `.py` it finds, so installing the whole tool there would put ~120 internal
+modules into **Tools > Scripting** alongside the ten commands you actually use.
+Keeping the program out of ScriptDir is what keeps that menu clean.
+
+Run `cts where` at any time to see both paths and whether the menu is in order.
+
+---
+
 ## Method 1: Quick PowerShell Setup (Recommended)
 
-Automate the installation and folder creation for Standard (User Profile) with
-one command:
+Automate everything — download, both folders, CLI, menu — with one command:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
@@ -36,8 +53,12 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 >   not the full repository with history.
 > - **Choose version**: You can select the latest development version, a stable
 >   release, or a test / pre-release build from the interactive menu.
-> - **Smaller footprint**: Installation downloads a clean script archive instead
->   of cloning the full Git history.
+> - **Prints a map**: The installer ends by printing the program folder, the
+>   menu folder, and the CLI command, so you never have to guess where things
+>   went.
+> - **Migrates older installs**: If a previous version sits inside ScriptDir,
+>   the installer moves it out and generates the menu scripts in its place.
+>   Your own files under `profiles/` are carried across.
 
 > [!TIP]
 > For a detailed explanation of what the script does, check the
@@ -47,15 +68,27 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 ## Method 2: Manual Copy
 
-Copy the full tool folder to the CODESYS scripts directory, including root
-`Project_*.py` scripts, `cds_bootstrap.py`, `cli/`, `src/`, and `profiles/`.
+Extract the archive **anywhere except a CODESYS ScriptDir** — for example
+`%LOCALAPPDATA%\cds-text-sync\` — then, from that folder:
 
-- **Note on `.pyw`**: Files inside `src/` are internal runtime modules. They are
-  hidden from the CODESYS "Scripts" menu by design.
+```powershell
+python -m pip install -e .
+cts install-menu
+```
+
+`cts install-menu` finds every CODESYS ScriptDir on the machine and writes the
+`Project_*.py` menu scripts into it. If `pip` was skipped or failed, the same
+generator runs directly:
+
+```powershell
+python -m cli.install_menu
+```
+
 - **Note on `cds_bootstrap.py`**: This is a support loader used by the public
   `Project_*.py` entrypoints. Do not run it directly.
 
-Depending on your software and setup preference, use one of the following paths:
+These are the ScriptDir locations the generator knows about; it writes into the
+ones that exist:
 
 - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
 - **Legacy CODESYS (< ~3.5.17)**: `C:\ProgramData\CODESYS\ScriptDir\` — older
@@ -64,8 +97,8 @@ Depending on your software and setup preference, use one of the following paths:
 - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
 - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
 
-_(You may need to create the `CODESYS` and `ScriptDir` folders manually if they
-don't exist.)_
+Pass `--script-dir <path>` to target one explicitly, or `--all-script-dirs` to
+serve several CODESYS installations from a single program folder.
 
 > [!TIP]
 > Using a different CODESYS version or fork? See the
@@ -74,24 +107,52 @@ don't exist.)_
 
 ---
 
-## Install the CLI
+## Method 3: Git clone
 
-The `cts` command is installed with Python packaging, from the folder you copied:
+For updates through `git pull`, and for development. Clone **anywhere except a
+ScriptDir**:
 
 ```powershell
-python -m pip install -e <cds-text-sync-folder>
+git clone https://github.com/ArthurkaX/cds-text-sync C:\Tools\cds-text-sync
+cd C:\Tools\cds-text-sync
+python -m pip install -e .
+python -m cli.install_menu
+```
+
+Nothing has to be deleted from the clone, and nothing is copied into ScriptDir
+except the generated menu scripts. Updating afterwards is just:
+
+```powershell
+git pull
+```
+
+The menu scripts point at the clone, so a pull takes effect immediately. Re-run
+`cts install-menu` only if a release adds a new `Project_*` command; `cts where`
+reports when the menu and the program folder have drifted apart.
+
+---
+
+## Install the CLI
+
+`cts` is installed with Python packaging, from the program folder:
+
+```powershell
+python -m pip install -e <program-folder>
 cts --help
 ```
 
 This is what `cts`, the reverse-pipe daemon and [`cts visu`](visu.md) need. The
-classic `Project_*.py` menu workflow works without it.
+classic `Project_*.py` menu workflow works without it — but `cts install-menu`
+is the easiest way to create those menu scripts, so installing the CLI first is
+the smoother path.
 
 ---
 
 ## After installing
 
-1. **Access in CODESYS**: the scripts appear under
-   **Tools > Scripting > Scripts > P**.
+1. **Access in CODESYS**: the commands appear under
+   **Tools > Scripting > Scripts > P**, and nothing else from this tool appears
+   anywhere else in that menu.
 2. **Add to Toolbar (Recommended)**: go to **Tools > Customize > Toolbars** and
    add commands from **ScriptEngine Commands > P**.
 
@@ -108,8 +169,8 @@ classic `Project_*.py` menu workflow works without it.
 
 1. **Check stable releases**: first check whether there is a newer stable release
    at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases).
-2. **Replace all files**: copy the full tool payload again — root scripts,
-   `cds_bootstrap.py`, `cli/`, `src/`, and `profiles/`.
+2. **Re-run the installer**, or replace the contents of the program folder and
+   run `cts install-menu` again.
    - **Important**: active scripts held in CODESYS memory may become **stale**
      after replacing files. Restart CODESYS or reload your project so the Script
      Engine picks up the latest modules.
@@ -117,6 +178,14 @@ classic `Project_*.py` menu workflow works without it.
    configured view root, and manifest data with the latest script logic.
 4. **Commit changes**: review and commit the changes in Git.
 
+> **Upgrading from a version installed inside ScriptDir**: older releases put the
+> whole tool in ScriptDir. Those installs keep working untouched, so there is no
+> rush — but the IDE menu stays cluttered until you migrate. Re-running the
+> quick installer does the move for you. Doing it by hand is the same two steps
+> as a fresh install: move the folder out of ScriptDir, then run
+> `cts install-menu` from its new location. Toolbar buttons survive either way,
+> because the menu scripts keep their names.
+>
 > **Important when upgrading from pre-2.0 versions**: The current workflow uses
 > the XML-first layout and requires Python 3. Run `Project_options.py` after
 > upgrading, choose your layout/profile/projections, then run a clean
