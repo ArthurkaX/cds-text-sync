@@ -17,9 +17,11 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 - **Version-Aware Path**: Detects the installed CODESYS version and recommends the right `ScriptDir`. Newer CODESYS uses `%LOCALAPPDATA%\CODESYS\ScriptDir`; older CODESYS (before ~V3.5 SP17, e.g. 3.5.16) only scans `%PROGRAMDATA%\CODESYS\ScriptDir` — pick **[3] Legacy CODESYS** for those (may require administrator rights).
 - **Path Selection**: Choose between the standard user path, the legacy machine-wide path, or a custom path for forks (KeStudio, DIA Designer, etc.).
+- **Two Folders**: The tool is installed to a program folder (default `%LOCALAPPDATA%\cds-text-sync`) and only the generated `Project_*.py` menu scripts go into `ScriptDir`. CODESYS scans `ScriptDir` recursively, so keeping the program out of it is what keeps the scripting menu down to the commands you use.
+- **Migration**: An older installation sitting inside `ScriptDir` is moved out rather than copied, so untracked files of yours under `profiles/` come along.
 - **Version Control**: Interactive menu with the latest `main` branch, the last 5 stable releases, and the last 5 test / pre-release builds.
 - **Auto-Update**: Detects existing versions, creates backups, and replaces files safely.
-- **CLI Install**: Offers to run `python -m pip install -e <install-path>` so `cds-text-sync` is available from any shell.
+- **CLI Install**: Offers to run `python -m pip install -e <program-folder>` so `cds-text-sync` is available from any shell.
 - **Clean Install**: No `.git` history, minimal disk footprint (~5MB).
 
 ## Requirements
@@ -31,10 +33,10 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 ## CLI Command
 
-After files are installed into `ScriptDir\cds-text-sync`, the installer asks whether to install the system CLI command. This is a separate required step for CLI usage; copying files into `ScriptDir` only makes the CODESYS scripts available.
+After the tool is installed into the program folder, the installer asks whether to install the system CLI command. This is a separate required step for CLI usage; the generated menu scripts only make the CODESYS commands available.
 
 ```powershell
-python -m pip install -e "<ScriptDir>\cds-text-sync"
+python -m pip install -e "<program-folder>"
 ```
 
 Choose **Y** to make this work from any shell:
@@ -42,6 +44,7 @@ Choose **Y** to make this work from any shell:
 ```powershell
 cts --help
 cts ping --timeout 10
+cts where          # program folder, ScriptDir, and menu status
 ```
 
 ## Alternative Installations (Forks)

@@ -1,9 +1,9 @@
 # Script Overview
 
 The CODESYS-side entry points, in the order you use them. All of them appear
-under **Tools > Scripting > Scripts > P** after
-[installation](install.md). Every one of them has a `cts` equivalent for
-shell and CI use — see [`cli/CLI.md`](../cli/CLI.md).
+under **Tools > Scripting > Scripts > P** after [installation](install.md) —
+and they are the only thing this tool puts in that menu. Every one of them has
+a `cts` equivalent for shell and CI use — see [`cli/CLI.md`](../cli/CLI.md).
 
 ## 1. `Project_directory.py` (Setup)
 
@@ -37,9 +37,8 @@ shell and CI use — see [`cli/CLI.md`](../cli/CLI.md).
 ## 2. Active sync commands
 
 The active root entry points are `Project_directory.py`, `Project_options.py`,
-`Project_export.py`, `Project_import.py`, `Project_compare.py`,
-`Project_compare_ui.py`, `Project_build.py`, `Project_discover.py`, and
-`Project_resources.py`.
+`Project_export.py`, `Project_import.py`, `Project_compare_ui.py`,
+`Project_build.py`, `Project_discover.py`, and `Project_resources.py`.
 
 ## 3. `Project_options.py` (Layout, Profile, Projections)
 
@@ -100,10 +99,10 @@ Applies disk changes back into CODESYS using the XML-first bridge.
   the object kind is clear from the source. This is also how a screen compiled by
   [`cts visu from-svg`](visu.md) reaches the IDE.
 
-## 6. `Project_compare.py` (IDE vs Disk)
+## 6. `Project_compare_ui.py` (IDE vs Disk)
 
-Produces a report of differences between the current IDE state and the exported
-disk view.
+Shows what differs between the current IDE state and the exported disk view,
+and lets you act on it.
 
 ![Compare and Interactive Sync](../img/Compare-Import.gif)
 
@@ -111,19 +110,16 @@ disk view.
   `.dump/IDE.current.xml`.
 - **View Baseline**: Compares that snapshot against the configured view root
   using the external diff engine.
-- **Report Output**: Writes `.dump/compare_report.json` for diagnostics and
-  follow-up review.
-
-## 7. `Project_compare_ui.py` (Interactive IDE Compare)
-
-- **Same Baseline**: Uses the same `.dump/IDE.current.xml` vs configured view
-  root compare as `Project_compare.py`.
-- **Object List**: Adds object names and paths to `.dump/compare_report.json` and
-  shows them in a CODESYS dialog.
+- **Report Output**: Writes `.dump/compare_report.json` with object names and
+  paths, for diagnostics and follow-up review.
+- **Object List**: Shows the differing objects in a CODESYS dialog.
 - **Actions**: Can launch import or export from the dialog. Checked objects can be
   applied selectively when the external engine can resolve them by GUID.
 
-## 8. Optional projections
+For a compare without any dialog — in a shell, in CI, or from the daemon — use
+[`cts compare`](../cli/CLI.md).
+
+## 7. Optional projections
 
 Projections are editable views generated from XML-backed CODESYS objects. They
 are optional in XML-first mode and selected in `Project_options.py`; in
@@ -151,7 +147,7 @@ object per application, so creating a second one from a new `.st` file is
 rejected before IDE apply. Graphical implementations are skipped by profile
 safety rules unless a safe textual representation is available.
 
-## 9. Diagnostics
+## 8. Diagnostics
 
 - **`Project_build.py`**: Builds the active or selected application and writes
   `.dump/build_<Application>.log` plus `.dump/build_report.json`.

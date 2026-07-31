@@ -44,8 +44,8 @@ Export the open project to disk, edit it anywhere, bring the edits back.
 
 - **[`Project_export.py`](docs/scripts.md#4-project_exportpy-codesys---disk)** captures a full native snapshot to `.dump/IDE.xml` and rebuilds the editable view in `project-view/`.
 - **[`Project_import.py`](docs/scripts.md#5-project_importpy-disk---codesys)** applies your disk edits back — textual objects through the CODESYS text APIs, the rest through native XML import — with an optional timestamped `.project` backup first.
-- **[`Project_compare.py`](docs/scripts.md#6-project_comparepy-ide-vs-disk)** and **[`Project_compare_ui.py`](docs/scripts.md#7-project_compare_uipy-interactive-ide-compare)** report what differs between the IDE and disk, as JSON or as a dialog inside CODESYS that can apply changes object by object.
-- **[Text projections](docs/scripts.md#8-optional-projections)** make the code itself readable: POUs, their methods and actions, GVLs, persistent variable lists and DUTs as `.st`; text lists and alarm items as `.csv`. A logic change then shows up once, in the `.st` file, instead of twice in XML and text.
+- **[`Project_compare_ui.py`](docs/scripts.md#6-project_compare_uipy-ide-vs-disk)** reports what differs between the IDE and disk, as JSON and as a dialog inside CODESYS that can apply changes object by object.
+- **[Text projections](docs/scripts.md#7-optional-projections)** make the code itself readable: POUs, their methods and actions, GVLs, persistent variable lists and DUTs as `.st`; text lists and alarm items as `.csv`. A logic change then shows up once, in the `.st` file, instead of twice in XML and text.
 - **[Overwrite protection](docs/sync-modes.md#overwrite-protection-both-modes)** means export never silently discards a local edit you have not imported yet, and never deletes a file it does not own.
 - **[Profiles](profiles/profiles.md)** describe vendor and fork-specific object kinds, which projections are available, and the safety rules — so a DIAStudio or KeStudio project behaves correctly rather than approximately.
 
@@ -118,7 +118,8 @@ Full walkthrough: **[HMI screens from SVG](docs/visu.md)**.
 Python 3 available as `python`. Full list in
 [Installation](docs/install.md#requirements).
 
-Install into the CODESYS script directory with one command:
+Install with one command — it sets up the tool, the CLI, and the CODESYS
+scripting menu:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
@@ -136,7 +137,7 @@ Then, in CODESYS, from **Tools > Scripting > Scripts > P**:
 For layers 2 and 3, install the CLI and start the daemon:
 
 ```powershell
-python -m pip install -e <cds-text-sync-folder>
+python -m pip install -e <program-folder>
 cts --help
 ```
 
@@ -151,7 +152,7 @@ Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) �
 
 | Guide | What is in it |
 | --- | --- |
-| [Installation](docs/install.md) | Requirements, both install methods, CLI install, upgrading |
+| [Installation](docs/install.md) | Requirements, the three install methods, CLI install, upgrading |
 | [Sync modes](docs/sync-modes.md) | XML-first vs text-first, and overwrite protection |
 | [Script overview](docs/scripts.md) | What each `Project_*.py` does, and the optional projections |
 | [Project layout](docs/project-layout.md) | On-disk structure, `.gitignore`, the day-to-day cycle, Git LFS |

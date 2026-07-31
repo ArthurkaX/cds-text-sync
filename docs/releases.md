@@ -37,7 +37,8 @@ git checkout v2.0.1
 
 1. Go to [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
 2. Download the release archive for the stable version
-3. Extract and copy the scripts to your CODESYS ScriptDir
+3. Extract it over your program folder, then run `cts install-menu` to refresh
+   the CODESYS menu scripts — see [Installation](install.md#method-2-manual-copy)
 
 > [!NOTE]
 > You can also use the [Quick PowerShell Setup](install.md#method-1-quick-powershell-setup-recommended),
