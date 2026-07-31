@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 2.9.0 (2026-07-31)
+
+**Read this before updating.** This release changes where the tool is installed and what the package is called. The installer migrates an existing installation for you, but it moves folders on your disk, so it is worth knowing what it will do.
+
+**The CODESYS menu now lists 10 entries instead of 123:**
+
+The CODESYS Script Engine scans its ScriptDir fully recursively and filters only by file extension — proven by probe: dot and underscore folders, nesting depth and the Windows hidden attribute hide nothing from it. The installer used to unpack the whole repository into ScriptDir, so every tracked `.py` in the project landed in **Tools > Scripting**, on every user's machine and not only on a dev box. The old backup path doubled it: `setup.ps1` wrote a second full tree to `ScriptDir\cds-text-sync.backup`, so anyone who had ever updated saw the list twice.
+
+The install is now split in two. The tool itself — "the body" — lives outside ScriptDir, at `%LOCALAPPDATA%\cds-text-sync` by default or in any Git clone you point at. ScriptDir receives nothing but the generated `Project_*.py` stubs, each pinned to the body through a `CDS_HOME` literal.
+
+- The stub folder and the file names are unchanged, so **toolbar buttons you set up earlier keep working**.
+- Both layouts remain supported. An entry point declares its own body, so an existing in-ScriptDir install is untouched until you re-run the installer.
+- `cts install-menu` regenerates the stubs; `cts where` reports which layout you are on.
+
+**What the installer does to an existing install:**
+
+- Finds your current installation in ScriptDir and **moves** it out to the new body location — never copy-then-delete, so a Git clone keeps its remote and its branch, and untracked files come along.
+- If ScriptDir holds a developer symlink, only the link is removed; the target is left alone. (`Remove-Item -Recurse` follows a junction in Windows PowerShell 5.1 and would have deleted the target's contents.)
+- Deletes the legacy `ScriptDir\cds-text-sync.backup` left by earlier versions, and writes future backups next to the body instead.
+- **Fixes a long-standing data loss:** every previous update silently deleted untracked files under `profiles/` — a hand-written `profiles/astra.json` did not survive an upgrade. Those files are now stashed and restored.
+
+**The package is renamed `cli` → `cds_text_sync`:**
+
+The distribution was called `cds-text-sync` but installed a top-level package named `cli`. Any other project with a `cli` package — or a user with a `cli/` directory of their own — shadowed it silently, surfacing as an `ImportError` somewhere unrelated. For a tool people `pip install -e` next to their own code, that was a matter of time. `external_engine` becomes `engine` in the same pass.
+
+**Upgrading needs `pip install -e .` once.** An editable install made before the rename still resolves the old name, and `cts` then dies with `No module named cli` — an error naming something you have never heard of. The installer detects exactly this condition and clears the stale install; if you upgrade by hand, run the reinstall yourself. The pipe name (`cds-cli-*`) is protocol, not package, and is deliberately unchanged.
+
+**Reading a PLC variable no longer takes the daemon down:**
+
+`cts read` built an online session when none was cached: `create_online_application`, then a walk over a list of login candidates calling `login()` on each. Every candidate has to fail before the call returns, and the single-threaded daemon loop serves nothing meanwhile — measured at ~145 s against a project with compile errors, after which the read failed anyway. Any command issued inside that window timed out, so the daemon looked dead rather than busy, and in practice needed a restart from the CODESYS menu.
+
+Reads and writes now use the session they are given and refuse in about a second when there is none, which is what their docstrings already claimed. Opening a session stays with `cts connect` and `cts download`, where you asked for it and the wait is the point.
+
+**`.dump/` no longer grows without bound:**
+
+Every export wrote a timestamped snapshot and nothing ever removed one. `compare` and `import --dry-run` write one too, despite neither sounding like it touches the disk, so the folder grew by well over a megabyte per invocation — an afternoon of testing left 23 MB behind. Only the newest is ever read back, so ten are kept as a short manual undo trail, matching the existing `backup_retention_count` default.
+
+**`--pretty` output is readable again:**
+
+The text renderer collapsed a list to `[N items]` above five entries and printed every entry in full at five or fewer, which broke in both directions at once. `cts --pretty compare` returned five added objects carrying a ~300 KB XML blob each and printed all five whole: 1.5 MB across 16 lines. One more object in the project and the same payload would have rendered as `added: [6 items]`. Meanwhile `project-tree` showed nothing but `children: [8 items]`, and `read-log` nothing but `messages: [15 items]`.
+
+Output is now rendered recursively with indentation, bounded by four limits on *size* — per scalar, per list, by depth, and by total lines. Whenever anything is left out the output says so and points at `--output json`, which stays complete and exact. The same compare payload renders in 9 KB. Flat output — `where`, `ping`, `permissions` — is byte-identical to before.
+
+**Smaller fixes:**
+
+- A bridge module that is present but fails to import is now reported as the defect it is, instead of being conflated with an absent optional module and degrading silently.
+- `Project_compare` leaves the menu: it ran the same comparison as `Project_compare_ui`, which adds the object list and the import/export follow-up on top. `cts compare` still covers the no-dialog case, and `install-menu` removes the stale stub on its next run.
+- Regression scripts and fixtures move under `tests/`. `offline_regression.py` was the largest file in the engine package and pip shipped all 1550 lines of it to users.
+- Packaging metadata is consolidated into `pyproject.toml`, field for field.
+
+---
+
 ### Version 2.8.3 (2026-07-27)
 
 **Generated HMI screens now look designed (`cts visu from-svg`):**
