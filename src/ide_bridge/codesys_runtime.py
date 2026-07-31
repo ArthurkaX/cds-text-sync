@@ -20,11 +20,10 @@ OPERATION_MODULES = {
     "import": "codesys_injector_operation",
     "extract": "codesys_extractor_operation",
     "inject": "codesys_injector_operation",
-    "compare": "codesys_compare_operation",
     "compare_ui": "codesys_compare_ui_operation",
     "options": "codesys_options_operation",
     "build": "codesys_build_operation",
- "directory": "codesys_directory_operation",
+    "directory": "codesys_directory_operation",
     "discover": "codesys_discover_operation",
     "resources": "codesys_resources_operation"
 }
@@ -116,12 +115,30 @@ def _ensure_sys_path(root_dir):
             sys.path.insert(0, path)
 
 
+def _module_file_exists(root_dir, name):
+    for candidate in (
+        os.path.join(root_dir, "src", "ide_bridge", name + ".py"),
+        os.path.join(root_dir, name + ".py"),
+    ):
+        if os.path.isfile(candidate):
+            return True
+    return False
+
+
 def load_hidden_module(name, script_file=None):
     root_dir = _get_root_dir(script_file)
     _ensure_sys_path(root_dir)
     try:
         __import__(name)
     except ImportError:
+        # A module that is simply absent is a normal outcome - callers probe
+        # for optional modules and handle None. A module whose file is right
+        # there but fails to import is a defect, and swallowing it turns
+        # "broken" into "missing": the caller then degrades silently, which is
+        # how a resolve_runtime with no system object reaches the user as a
+        # command that quietly does nothing.
+        if _module_file_exists(root_dir, name):
+            raise
         return None
     return sys.modules.get(name)
 

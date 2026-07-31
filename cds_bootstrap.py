@@ -22,6 +22,17 @@ def ensure_runtime_path(script_file=None):
  return ide_bridge_dir
 
 
+def _module_file_exists(name, script_file=None):
+ script_dir = _script_dir(script_file)
+ for candidate in (
+  os.path.join(script_dir, "src", "ide_bridge", name + ".py"),
+  os.path.join(script_dir, name + ".py"),
+ ):
+  if os.path.isfile(candidate):
+   return True
+ return False
+
+
 def import_runtime_module(name, script_file=None, force=False):
  ensure_runtime_path(script_file)
 
@@ -34,6 +45,12 @@ def import_runtime_module(name, script_file=None, force=False):
  try:
   __import__(name)
  except ImportError:
+  # A module that is simply absent is a normal outcome - callers probe for
+  # optional modules and handle None. A module whose file is right there but
+  # fails to import is a defect, and swallowing it turns "broken" into
+  # "missing": the caller degrades silently instead of showing the real error.
+  if _module_file_exists(name, script_file):
+   raise
   return None
  return sys.modules.get(name)
 
