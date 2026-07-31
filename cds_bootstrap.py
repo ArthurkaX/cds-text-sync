@@ -76,8 +76,6 @@ ENTRYPOINTS = [
   "summary": "Export the project to the disk view"},
  {"name": "Project_import", "kind": "command", "command": "import",
   "summary": "Import disk changes back into the project"},
- {"name": "Project_compare", "kind": "command", "command": "compare",
-  "summary": "Compare the project against the disk view"},
  {"name": "Project_compare_ui", "kind": "command", "command": "compare_ui",
   "summary": "Compare with the visual diff window"},
  {"name": "Project_discover", "kind": "command", "command": "discover",
