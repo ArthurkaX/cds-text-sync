@@ -7,7 +7,6 @@
 /.github/.dev_tools/*
 
 __pycache__
-/.runtime/__pycache__
 
 /old_scripts/
 /old_scripts/*
