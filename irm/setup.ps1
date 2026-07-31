@@ -134,7 +134,8 @@ function Offer-PythonInstall {
 function Install-CliCommand {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$InstallPath
+        [string]$InstallPath,
+        [switch]$Required
     )
 
     $pythonName = Get-PythonCommandName
@@ -146,6 +147,10 @@ function Install-CliCommand {
     }
 
     Write-Host "`n--- CLI Installation ---" -ForegroundColor Cyan
+    if ($Required) {
+        Write-Host "[!] Your installed `cts still resolves the old package name `cli." -ForegroundColor Yellow
+        Write-Host "    Reinstalling the CLI is what fixes it - answering N leaves `cts broken." -ForegroundColor Yellow
+    }
     Write-Host "Install the system CLI command `cds-text-sync` with pip editable mode?"
     Write-Host "This lets agents and humans run: cds-text-sync --help" -ForegroundColor Green
     $cliChoice = Read-Host "`nInstall CLI command [Y, N] (default: Y)"
@@ -153,9 +158,15 @@ function Install-CliCommand {
         $cliChoice = "Y"
     }
     if ($cliChoice.ToUpperInvariant() -ne "Y") {
-        Write-Host "[*] Skipping CLI installation." -ForegroundColor Yellow
-        Write-Host "    You can install later with:" -ForegroundColor Yellow
-        Write-Host "    $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        if ($Required) {
+            Write-Host "[!] Skipping the CLI install, but your existing `cts stays broken." -ForegroundColor Yellow
+            Write-Host "    Fix it later with:" -ForegroundColor Yellow
+            Write-Host "    $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        } else {
+            Write-Host "[*] Skipping CLI installation." -ForegroundColor Yellow
+            Write-Host "    You can install later with:" -ForegroundColor Yellow
+            Write-Host "    $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        }
         return $false
     }
 
@@ -181,6 +192,30 @@ function Install-CliCommand {
     } catch {
         Write-Host "[!] CLI installation error: $_" -ForegroundColor Red
         Write-Host "    Try manually: $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+        return $false
+    }
+}
+
+function Test-StaleCliInstall {
+    param(
+        [string]$PythonName
+    )
+
+    if (-not $PythonName) { return $false }
+
+    $probe = 'import importlib.util as u, sys; sys.exit(0 if u.find_spec("cli") is not None and u.find_spec("cds_text_sync") is None else 1)'
+    try {
+        # Probe from a neutral directory. From the repo body, the current working
+        # directory itself satisfies find_spec("cds_text_sync") and would mask a
+        # stale install.
+        Push-Location $env:TEMP
+        try {
+            & $PythonName -c $probe 2>$null | Out-Null
+            return ($LASTEXITCODE -eq 0)
+        } finally {
+            Pop-Location
+        }
+    } catch {
         return $false
     }
 }
@@ -712,16 +747,30 @@ try {
 if (Test-Path -LiteralPath $bodyPath) {
     $pythonName = Get-PythonCommandName
 
-    if ($migrated -and $pythonName) {
-        # A stale editable install still points at the old ScriptDir location;
-        # left alone it shadows the real package and `cts` breaks silently.
+    $staleCli = Test-StaleCliInstall -PythonName $pythonName
+
+    if ($pythonName -and ($migrated -or $staleCli)) {
+        # Clear the previous editable install when the layout was moved out of
+        # ScriptDir, or when the installed distribution still resolves the old
+        # `cli` package name. Left alone it shadows the real package and `cts`
+        # breaks silently.
         Write-Host "`n[*] Clearing the previous editable install..." -ForegroundColor Cyan
-        Start-Process -FilePath $pythonName `
-                      -ArgumentList @("-m", "pip", "uninstall", "-y", "cds-text-sync") `
-                      -Wait -NoNewWindow | Out-Null
+        if (-not $env:CTS_SETUP_DRYRUN) {
+            Start-Process -FilePath $pythonName `
+                          -ArgumentList @("-m", "pip", "uninstall", "-y", "cds-text-sync") `
+                          -Wait -NoNewWindow | Out-Null
+        } else {
+            Write-Host "[*] Dry run: would uninstall the 'cds-text-sync' package" -ForegroundColor Cyan
+        }
     }
 
-    Install-CliCommand -InstallPath $bodyPath | Out-Null
+    $cliInstalled = Install-CliCommand -InstallPath $bodyPath -Required:$staleCli
+
+    if (-not $cliInstalled -and $staleCli) {
+        Write-Host "`n[!] Your existing 'cts' command still points at the previous package name" -ForegroundColor Yellow
+        Write-Host "    and will fail with `"No module named 'cli'`" until you run:" -ForegroundColor Yellow
+        Write-Host "    $pythonName -m pip install -e `"$bodyPath`"" -ForegroundColor Yellow
+    }
 
     # Generate the menu stubs. Run from the program folder so this still works
     # when the pip step was skipped or failed.

@@ -257,8 +257,8 @@ def classify_menu_dir(menu_dir):
     menu_dir = Path(menu_dir)
     if not menu_dir.exists():
         return "missing"
-    # "cds_text_sync" is the current body package; "cli" is what it was called
-    # before 2.9, and a flat install predating the split still carries that name.
+    # "cds_text_sync" is the current body package; "cli" is the historical
+    # package name, and a flat install predating the split still carries it.
     if (
         (menu_dir / _SENTINEL_DIR).is_dir()
         or (menu_dir / "cds_text_sync").is_dir()
