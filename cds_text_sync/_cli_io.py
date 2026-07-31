@@ -56,38 +56,102 @@ def _print_warn(msg):
     print(f"[WARN] {msg}", file=sys.stderr)
 
 
+# Text mode is for a person reading a terminal, so it has to stay readable
+# whatever the daemon returns. The limits below are on rendered size, never on
+# item count: `cts compare` returns five added objects carrying a ~300 KB XML
+# blob each, and a count-based guard let all five through — 1.5 MB across 16
+# lines. The same guard hid a whole project tree behind "children: [8 items]".
+MAX_TEXT_VALUE_CHARS = 500
+MAX_TEXT_LIST_ITEMS = 20
+# Nesting costs two levels per tree level (a dict holds a list holds a dict), so
+# this allows about four levels of project tree. The real bound is the line
+# budget below; this only stops pathologically deep payloads early.
+MAX_TEXT_DEPTH = 8
+MAX_TEXT_LINES = 200
+
+
+class _TextRenderer:
+    """Render a payload as indented lines, remembering whether it elided any.
+
+    The flag is the point: four different limits can cut something out, and a
+    reader who cannot tell the difference between "that is all of it" and "that
+    is the first 500 characters of it" is worse off than before.
+    """
+
+    def __init__(self):
+        self.elided = False
+
+    def scalar(self, value):
+        """One scalar on exactly one line, capped.
+
+        Newlines are folded away: an embedded XML blob would otherwise wreck
+        the indentation and slip past the line budget, which counts entries.
+        """
+        text = " ".join(str(value).split())
+        if len(text) <= MAX_TEXT_VALUE_CHARS:
+            return text
+        self.elided = True
+        omitted = len(text) - MAX_TEXT_VALUE_CHARS
+        return f"{text[:MAX_TEXT_VALUE_CHARS]}… (+{omitted} more chars)"
+
+    def entry(self, label, value, indent, depth):
+        """Lines for one labelled value — a dict's "key:" or a list's "-"."""
+        pad = "  " * indent
+        if not isinstance(value, (dict, list, tuple)):
+            rendered = self.scalar(value)
+            return [f"{pad}{label} {rendered}" if rendered else f"{pad}{label}"]
+        if not value:
+            return [f"{pad}{label} {_empty_marker(value)}"]
+        if depth >= MAX_TEXT_DEPTH:
+            self.elided = True
+            kind = "keys" if isinstance(value, dict) else "items"
+            return [f"{pad}{label} [{len(value)} {kind}]"]
+        return [f"{pad}{label}"] + self.block(value, indent + 1, depth + 1)
+
+    def block(self, value, indent, depth):
+        """Lines for the contents of a dict or a sequence."""
+        lines = []
+        if isinstance(value, dict):
+            for key, item in value.items():
+                lines.extend(self.entry(f"{key}:", item, indent, depth))
+            return lines
+
+        for item in value[:MAX_TEXT_LIST_ITEMS]:
+            lines.extend(self.entry("-", item, indent, depth))
+        hidden = len(value) - MAX_TEXT_LIST_ITEMS
+        if hidden > 0:
+            self.elided = True
+            lines.append(f"{'  ' * indent}… and {hidden} more")
+        return lines
+
+
+def _empty_marker(value):
+    return "{}" if isinstance(value, dict) else "[]"
+
+
 def _format_output(data, fmt="json", title=None):
     """Format output as JSON (machine) or text (human)."""
-    if fmt == "text":
-        if data is None:
-            return "None"
-        if isinstance(data, dict):
-            lines = []
-            if title:
-                lines.append(f"── {title} ──")
-            for k, v in data.items():
-                if isinstance(v, dict):
-                    lines.append(f"{k}:")
-                    for sk, sv in v.items():
-                        if isinstance(sv, (list, tuple)) and len(sv) > 5:
-                            sv = f"[{len(sv)} items]"
-                        lines.append(f"  {sk}: {sv}")
-                elif isinstance(v, (list, tuple)):
-                    if len(v) > 5:
-                        lines.append(f"{k}: [{len(v)} items]")
-                    elif len(v) > 0:
-                        lines.append(f"{k}:")
-                        for item in v:
-                            lines.append(f"  - {item}")
-                    else:
-                        lines.append(f"{k}: []")
-                else:
-                    lines.append(f"{k}: {v}")
-            return "\n".join(lines)
-        if isinstance(data, (list, tuple)):
-            return "\n".join(f"- {item}" for item in data)
-        return str(data)
-    return json.dumps(data, indent=2, ensure_ascii=False)
+    if fmt != "text":
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+    if data is None:
+        return "None"
+
+    renderer = _TextRenderer()
+    lines = [f"── {title} ──"] if title else []
+    if isinstance(data, (dict, list, tuple)):
+        lines.extend(
+            renderer.block(data, 0, 0) if data else [_empty_marker(data)]
+        )
+    else:
+        lines.append(renderer.scalar(data))
+
+    if len(lines) > MAX_TEXT_LINES:
+        renderer.elided = True
+        lines = lines[:MAX_TEXT_LINES]
+    if renderer.elided:
+        lines.append("… shortened for reading; use --output json for all of it")
+    return "\n".join(lines)
 
 
 # -- CODESYS launcher --------------------------------------------------------
