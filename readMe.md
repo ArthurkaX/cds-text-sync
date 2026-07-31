@@ -222,6 +222,6 @@ is more valuable than silence, and you do not need permission to describe a work
 
 See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions, and
 [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases) for
-stable download links. Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
+stable download links. Contributions: [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 MIT License.

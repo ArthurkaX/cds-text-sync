@@ -54,4 +54,4 @@ jobs:
 
       - name: Run local regression suite
         shell: pwsh
-        run: python src\regression_suite.py
+        run: python tests\regression\regression_suite.py
