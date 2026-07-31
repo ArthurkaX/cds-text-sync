@@ -40,7 +40,6 @@ jobs:
           python -m compileall `
             cds_bootstrap.py `
             Project_build.py `
-            Project_compare.py `
             Project_compare_ui.py `
             Project_directory.py `
             Project_discover.py `

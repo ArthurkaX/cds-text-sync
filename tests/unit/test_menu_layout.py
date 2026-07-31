@@ -16,8 +16,8 @@ contract:
     is IronPython 2.7);
   * Cyrillic ``CDS_HOME`` path literals survive an exec round-trip, including
     a trailing backslash;
-  * ``write_menu`` produces exactly the 11 stubs, is idempotent, and refuses
-    to run when the body sits inside a ScriptDir;
+  * ``write_menu`` produces exactly the manifest's stubs, is idempotent, and
+    refuses to run when the body sits inside a ScriptDir;
   * ``resolve_body`` finds the same body in flat and split layouts;
   * ``verify_menu`` catches corruption.
 
@@ -120,9 +120,10 @@ def _norm(path) -> str:
 
 def test_manifest_names_match_project_files():
     actual = {p.stem for p in _PROJECT_ROOT.glob("Project_*.py") if p.is_file()}
-    assert len(actual) == 11
-    assert len(ENTRYPOINTS) == 11
-    assert {spec["name"] for spec in ENTRYPOINTS} == actual
+    expected = {spec["name"] for spec in ENTRYPOINTS}
+    assert expected, "the entrypoint manifest is empty"
+    assert len(ENTRYPOINTS) == len(expected), "duplicate name in the manifest"
+    assert expected == actual
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +184,11 @@ def test_encode_path_literal_ascii_roundtrip(path):
 
 
 # ---------------------------------------------------------------------------
-# 6. write_menu produces exactly the 11 stub files, nothing else
+# 6. write_menu produces exactly the manifest's stub files, nothing else
 # ---------------------------------------------------------------------------
 
 
-def test_write_menu_creates_exactly_11_stubs(tmp_path):
+def test_write_menu_creates_exactly_the_manifest_stubs(tmp_path):
     body = _make_body(tmp_path)
     script_dir = tmp_path / "sd"
 
@@ -199,7 +200,7 @@ def test_write_menu_creates_exactly_11_stubs(tmp_path):
     assert result["warnings"] == []
 
     files = list(menu_dir.iterdir())
-    assert len(files) == 11
+    assert len(files) == len(MANIFEST_NAMES)
     assert all(item.is_file() for item in files)
     assert {item.name for item in files} == {name + ".py" for name in MANIFEST_NAMES}
     assert sorted(result["written"]) == sorted(name + ".py" for name in MANIFEST_NAMES)
@@ -221,7 +222,7 @@ def test_write_menu_is_idempotent(tmp_path):
     second = install_menu.write_menu(body, script_dir)
 
     assert second["written"] == []
-    assert len(second["unchanged"]) == 11
+    assert len(second["unchanged"]) == len(MANIFEST_NAMES)
     assert second["problems"] == []
     current = {p.name: p.read_bytes() for p in menu_dir.iterdir()}
     assert current == snapshot
@@ -259,7 +260,7 @@ def test_write_menu_allow_body_inside_script_dir_warns(tmp_path):
     )
 
     assert result["warnings"], "expected a non-empty exposure warning"
-    assert len(result["written"]) == 11
+    assert len(result["written"]) == len(MANIFEST_NAMES)
     menu_dir = out_script_dir / install_menu.MENU_FOLDER
     assert install_menu.verify_menu(menu_dir, body.resolve()) == []
 
