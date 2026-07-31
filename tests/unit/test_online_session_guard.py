@@ -4,15 +4,15 @@ test_online_session_guard.py — Reading PLC data must never open a session itse
 
 Building an online session means ``create_online_application`` followed by
 ``_ensure_logged_in``, which walks a list of candidates calling
-``online_app.login()`` on each. With no PLC reachable, one of those attempts can
-raise a modal dialog inside the IDE. That blocks the single-threaded daemon loop
-permanently: the pipe stops being served and every later ``cts`` command times
-out. Observed live — ``cts read`` on an unreachable PLC took the daemon down and
-it needed a manual restart from the CODESYS menu.
+``online_app.login()`` on each. Every candidate has to fail before the call
+returns, and the single-threaded daemon loop serves nothing meanwhile — no
+timeout inside the IDE cuts it short. Measured live at ~145 s against a project
+with compile errors, after which the read failed anyway; commands issued during
+that window time out, so the daemon looks dead rather than busy.
 
 So the data plane (read/write of variables) may only *use* a session that
 already exists. Opening one is what ``connect_to_device`` is for, where the user
-asked for it and a dialog is expected.
+asked for it and the wait is the point.
 """
 
 from __future__ import annotations
@@ -85,9 +85,9 @@ def _global_names(func):
 def test_data_plane_never_opens_a_session(helpers, name):
     reached = _global_names(getattr(helpers, name))
     assert "ensure_online_connection" not in reached, (
-        "{0} can open an online session. Creating one can block the daemon loop "
-        "on a modal login dialog when no PLC is reachable. Use "
-        "require_online_session instead.".format(name)
+        "{0} can open an online session. Creating one blocks the daemon loop "
+        "for as long as the login candidates take to fail — ~145 s measured. "
+        "Use require_online_session instead.".format(name)
     )
 
 
