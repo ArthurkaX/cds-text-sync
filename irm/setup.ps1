@@ -8,7 +8,18 @@ $repoName = "cds-text-sync"
 $menuDir = Join-Path $targetBaseDir $repoName
 $bodyPath = Join-Path $env:LOCALAPPDATA $repoName
 
+# Rehearsal mode. Set $env:CTS_SETUP_DRYRUN before running to walk every branch
+# — migration, replace, pip, menu — without changing anything outside $env:TEMP.
+# The name has to be true: this used to guard only the migration moves while the
+# body tree was still deleted and replaced, pip still ran, and the stubs were
+# still written, so a "rehearsal" performed a real install.
+$dryRun = -not [string]::IsNullOrWhiteSpace($env:CTS_SETUP_DRYRUN)
+
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
+
+if ($dryRun) {
+    Write-Host "[*] DRY RUN: nothing outside `$env:TEMP will be created, moved or deleted." -ForegroundColor Magenta
+}
 
 function Test-PythonCommandName {
     param(
@@ -144,6 +155,14 @@ function Install-CliCommand {
         Write-Host "    After installing Python, run:" -ForegroundColor Yellow
         Write-Host "    python -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
         return $false
+    }
+
+    # Self-guarding rather than relying on the caller: pip install -e rewrites
+    # the operator's environment, and a second call site added later would
+    # otherwise reopen the hole silently.
+    if ($dryRun) {
+        Write-Host "[*] Dry run: would run pip install -e `"$InstallPath`"" -ForegroundColor Magenta
+        return $true
     }
 
     Write-Host "`n--- CLI Installation ---" -ForegroundColor Cyan
@@ -471,14 +490,18 @@ if ($pathChoice -eq "2") {
 
     # Validate path - create parent directories if needed
     if (-not (Test-Path $targetBaseDir)) {
-        Write-Host "[*] Directory does not exist. Creating: $targetBaseDir" -ForegroundColor Yellow
-        try {
-            New-Item -ItemType Directory -Force -Path $targetBaseDir -ErrorAction Stop | Out-Null
-            Write-Host "[+] Directory created successfully." -ForegroundColor Green
-        } catch {
-            Write-Host "[!] Failed to create directory: $_" -ForegroundColor Red
-            Write-Host "[*] Falling back to standard path..." -ForegroundColor Yellow
-            $targetBaseDir = $localAppDataScriptDir
+        if ($dryRun) {
+            Write-Host "[*] Dry run: would create directory $targetBaseDir" -ForegroundColor Magenta
+        } else {
+            Write-Host "[*] Directory does not exist. Creating: $targetBaseDir" -ForegroundColor Yellow
+            try {
+                New-Item -ItemType Directory -Force -Path $targetBaseDir -ErrorAction Stop | Out-Null
+                Write-Host "[+] Directory created successfully." -ForegroundColor Green
+            } catch {
+                Write-Host "[!] Failed to create directory: $_" -ForegroundColor Red
+                Write-Host "[*] Falling back to standard path..." -ForegroundColor Yellow
+                $targetBaseDir = $localAppDataScriptDir
+            }
         }
     }
 } elseif ($pathChoice -eq "3") {
@@ -500,16 +523,23 @@ $menuDir = Join-Path $targetBaseDir $repoName
 # they are copied into ProgramData).
 if ($targetIsProgramData) {
     $canWriteProgramData = $false
-    try {
-        if (-not (Test-Path $targetBaseDir)) {
-            New-Item -ItemType Directory -Force -Path $targetBaseDir -ErrorAction Stop | Out-Null
-        }
-        $probeFile = Join-Path $targetBaseDir (".cts_write_test_" + $PID)
-        Set-Content -Path $probeFile -Value "test" -ErrorAction Stop
-        Remove-Item -Path $probeFile -Force -ErrorAction SilentlyContinue
+    if ($dryRun) {
+        # Probing means creating the folder and writing a file into ProgramData.
+        # Both are outside %TEMP%, so a rehearsal reports the gap instead.
+        Write-Host "[*] Dry run: skipping the ProgramData write probe" -ForegroundColor Magenta
         $canWriteProgramData = $true
-    } catch {
-        $canWriteProgramData = $false
+    } else {
+        try {
+            if (-not (Test-Path $targetBaseDir)) {
+                New-Item -ItemType Directory -Force -Path $targetBaseDir -ErrorAction Stop | Out-Null
+            }
+            $probeFile = Join-Path $targetBaseDir (".cts_write_test_" + $PID)
+            Set-Content -Path $probeFile -Value "test" -ErrorAction Stop
+            Remove-Item -Path $probeFile -Force -ErrorAction SilentlyContinue
+            $canWriteProgramData = $true
+        } catch {
+            $canWriteProgramData = $false
+        }
     }
 
     if (-not $canWriteProgramData) {
@@ -584,7 +614,7 @@ if (Test-Path -LiteralPath $menuDir) {
         if ($bodyChoice -ne "2" -and -not [string]::IsNullOrWhiteSpace($linkTarget)) {
             $bodyPath = $linkTarget
         }
-        if (-not $env:CTS_SETUP_DRYRUN) {
+        if (-not $dryRun) {
             [System.IO.Directory]::Delete($menuDir, $false)
         }
         $migrated = $true
@@ -595,7 +625,7 @@ if (Test-Path -LiteralPath $menuDir) {
         if (Test-Path -LiteralPath $bodyPath) {
             $asidePath = "$bodyPath.pre-migration"
             Write-Host "[!] $bodyPath already exists; moving it aside to $asidePath" -ForegroundColor Yellow
-            if (-not $env:CTS_SETUP_DRYRUN) {
+            if (-not $dryRun) {
                 if (Test-Path -LiteralPath $asidePath) {
                     Remove-Item -LiteralPath $asidePath -Recurse -Force
                 }
@@ -604,7 +634,7 @@ if (Test-Path -LiteralPath $menuDir) {
         }
         # Move, never copy-then-delete: profiles\astra.json and other untracked
         # user files live inside the tree, and a git clone keeps its remote.
-        if (-not $env:CTS_SETUP_DRYRUN) {
+        if (-not $dryRun) {
             Move-Item -LiteralPath $menuDir -Destination $bodyPath
         }
         $migrated = $true
@@ -616,7 +646,7 @@ if (Test-Path -LiteralPath $menuDir) {
 $legacyBackup = "$menuDir.backup"
 if (Test-Path -LiteralPath $legacyBackup) {
     Write-Host "[*] Removing the old backup left inside ScriptDir: $legacyBackup" -ForegroundColor Cyan
-    if (-not $env:CTS_SETUP_DRYRUN) {
+    if (-not $dryRun) {
         Remove-Item -LiteralPath $legacyBackup -Recurse -Force
     }
 }
@@ -625,8 +655,12 @@ Write-Host "[*] Program folder: $bodyPath" -ForegroundColor Cyan
 
 # 6. Create required directories if they don't exist
 if (-not (Test-Path $targetBaseDir)) {
-    Write-Host "[*] Creating directory: $targetBaseDir" -ForegroundColor Cyan
-    New-Item -ItemType Directory -Force -Path $targetBaseDir | Out-Null
+    if ($dryRun) {
+        Write-Host "[*] Dry run: would create directory $targetBaseDir" -ForegroundColor Magenta
+    } else {
+        Write-Host "[*] Creating directory: $targetBaseDir" -ForegroundColor Cyan
+        New-Item -ItemType Directory -Force -Path $targetBaseDir | Out-Null
+    }
 }
 
 # 6. Download and install
@@ -664,14 +698,18 @@ try {
         Write-Host "[*] Updating existing installation..." -ForegroundColor Cyan
         # Backup next to the program folder, never inside ScriptDir.
         $backupPath = "$bodyPath.backup"
-        if (Test-Path -LiteralPath $backupPath) {
-            Remove-Item -LiteralPath $backupPath -Recurse -Force
+        if (-not $dryRun) {
+            if (Test-Path -LiteralPath $backupPath) {
+                Remove-Item -LiteralPath $backupPath -Recurse -Force
+            }
+            Copy-Item -LiteralPath $bodyPath -Destination $backupPath -Recurse -Force
         }
-        Copy-Item -LiteralPath $bodyPath -Destination $backupPath -Recurse -Force
 
         # Carry over user files that live inside the tree and are not shipped in
         # the archive (profiles\astra.json and friends). Without this the
         # replace below deletes them silently on every update.
+        # Read-only, so a rehearsal computes it too: which of your files would
+        # survive is the main thing a rehearsal is asked to report.
         $preserved = @()
         foreach ($rel in @("profiles")) {
             $preserveSrc = Join-Path $bodyPath $rel
@@ -690,31 +728,42 @@ try {
         }
 
         $stashDir = Join-Path $env:TEMP ("cts-preserve-" + $PID)
-        if ($preserved.Count -gt 0) {
+        if ($preserved.Count -gt 0 -and -not $dryRun) {
             New-Item -ItemType Directory -Force -Path $stashDir | Out-Null
             foreach ($item in $preserved) {
                 Copy-Item -LiteralPath $item.Path -Destination (Join-Path $stashDir $item.Name) -Force
             }
         }
 
-        # Replace with new version
-        Remove-Item -LiteralPath $bodyPath -Recurse -Force
-        Move-Item -LiteralPath $extractedPath -Destination $bodyPath
-
-        foreach ($item in $preserved) {
-            $restoreDir = Join-Path $bodyPath $item.Rel
-            if (-not (Test-Path -LiteralPath $restoreDir)) {
-                New-Item -ItemType Directory -Force -Path $restoreDir | Out-Null
+        if ($dryRun) {
+            Write-Host "[*] Dry run: would back up to $backupPath" -ForegroundColor Magenta
+            Write-Host "[*] Dry run: would replace $bodyPath with the downloaded tree" -ForegroundColor Magenta
+            Write-Host ("[*] Dry run: would keep " + $preserved.Count + " of your own file(s) in profiles\") -ForegroundColor Magenta
+            foreach ($item in $preserved) {
+                Write-Host ("      " + $item.Rel + "\" + $item.Name) -ForegroundColor Magenta
             }
-            Copy-Item -LiteralPath (Join-Path $stashDir $item.Name) `
-                      -Destination (Join-Path $restoreDir $item.Name) -Force
-        }
-        if ($preserved.Count -gt 0) {
-            Write-Host ("[+] Kept " + $preserved.Count + " of your own file(s) in profiles\.") -ForegroundColor Green
-            Remove-Item -LiteralPath $stashDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
+        } else {
+            # Replace with new version
+            Remove-Item -LiteralPath $bodyPath -Recurse -Force
+            Move-Item -LiteralPath $extractedPath -Destination $bodyPath
 
-        Write-Host "[+] Update completed." -ForegroundColor Green
+            foreach ($item in $preserved) {
+                $restoreDir = Join-Path $bodyPath $item.Rel
+                if (-not (Test-Path -LiteralPath $restoreDir)) {
+                    New-Item -ItemType Directory -Force -Path $restoreDir | Out-Null
+                }
+                Copy-Item -LiteralPath (Join-Path $stashDir $item.Name) `
+                          -Destination (Join-Path $restoreDir $item.Name) -Force
+            }
+            if ($preserved.Count -gt 0) {
+                Write-Host ("[+] Kept " + $preserved.Count + " of your own file(s) in profiles\.") -ForegroundColor Green
+                Remove-Item -LiteralPath $stashDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+
+            Write-Host "[+] Update completed." -ForegroundColor Green
+        }
+    } elseif ($dryRun) {
+        Write-Host "[*] Dry run: would install cds-text-sync to $bodyPath" -ForegroundColor Magenta
     } else {
         Write-Host "[*] Installing cds-text-sync to $bodyPath..." -ForegroundColor Cyan
         Move-Item -LiteralPath $extractedPath -Destination $bodyPath
@@ -725,7 +774,7 @@ try {
     Write-Host "[*] Cleaning up temporary files..." -ForegroundColor Cyan
 
     # Try to restore from backup if update failed
-    if (Test-Path -LiteralPath "$bodyPath.backup") {
+    if (-not $dryRun -and (Test-Path -LiteralPath "$bodyPath.backup")) {
         if (-not (Test-Path -LiteralPath $bodyPath)) {
             Write-Host "[*] Restoring from backup..." -ForegroundColor Cyan
             Move-Item -LiteralPath "$bodyPath.backup" -Destination $bodyPath
@@ -739,7 +788,10 @@ try {
     if (Test-Path $tempExtractPath) {
         Remove-Item -Path $tempExtractPath -Recurse -Force
     }
-    if (Test-Path -LiteralPath "$bodyPath.backup") {
+    # A rehearsal makes no backup, so any .backup here belongs to an earlier
+    # real install - deleting it would be exactly the kind of damage a rehearsal
+    # exists to avoid.
+    if (-not $dryRun -and (Test-Path -LiteralPath "$bodyPath.backup")) {
         Remove-Item -LiteralPath "$bodyPath.backup" -Recurse -Force
     }
 }
@@ -755,12 +807,12 @@ if (Test-Path -LiteralPath $bodyPath) {
         # `cli` package name. Left alone it shadows the real package and `cts`
         # breaks silently.
         Write-Host "`n[*] Clearing the previous editable install..." -ForegroundColor Cyan
-        if (-not $env:CTS_SETUP_DRYRUN) {
+        if (-not $dryRun) {
             Start-Process -FilePath $pythonName `
                           -ArgumentList @("-m", "pip", "uninstall", "-y", "cds-text-sync") `
                           -Wait -NoNewWindow | Out-Null
         } else {
-            Write-Host "[*] Dry run: would uninstall the 'cds-text-sync' package" -ForegroundColor Cyan
+            Write-Host "[*] Dry run: would uninstall the 'cds-text-sync' package" -ForegroundColor Magenta
         }
     }
 
@@ -776,9 +828,16 @@ if (Test-Path -LiteralPath $bodyPath) {
     # when the pip step was skipped or failed.
     Write-Host "`n--- CODESYS Menu ---" -ForegroundColor Cyan
     if ($pythonName) {
+        # The generator has its own --dry-run, so a rehearsal still exercises it
+        # for real - manifest, ScriptDir discovery, and the guard that refuses a
+        # body the CODESYS scanner can still reach - and writes nothing.
+        $menuArgs = @("-m", "cds_text_sync.install_menu", "--body", "$bodyPath", "--script-dir", "$targetBaseDir")
+        if ($dryRun) {
+            $menuArgs += "--dry-run"
+        }
         Push-Location $bodyPath
         try {
-            & $pythonName -m cds_text_sync.install_menu --body "$bodyPath" --script-dir "$targetBaseDir"
+            & $pythonName @menuArgs
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[!] Menu generation failed. Run it manually:" -ForegroundColor Yellow
                 Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
@@ -798,4 +857,8 @@ Write-Host "`n--- Setup Finished! ---" -ForegroundColor Cyan
 Write-Host ("  Program : " + $bodyPath)
 Write-Host ("  Menu    : " + $menuDir)
 Write-Host  "  CLI     : cts / cds-text-sync"
-Write-Host "`n  Check anytime with:  cts where" -ForegroundColor DarkGray
+if ($dryRun) {
+    Write-Host "`n  DRY RUN: none of the above was actually written." -ForegroundColor Magenta
+} else {
+    Write-Host "`n  Check anytime with:  cts where" -ForegroundColor DarkGray
+}
