@@ -1,0 +1,3 @@
+# Rule files are Python but use the .ctsrule suffix so the CODESYS
+# ScriptDir scanner (which shows every .py) never picks them up.
+*.ctsrule linguist-language=Python diff=python

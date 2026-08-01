@@ -29,10 +29,14 @@ include-package-data = true
 cds_text_sync = ["CLI.md", "TEST_FORMAT.md"]
 "cds_text_sync.engine" = ["sys_funcs.json"]
 "cds_text_sync.visu" = [
-    "catalog/*.json",
-    "templates/*.tmpl",
-    "themes/*.json",
-    "styles_snapshot.json",
-    "stylesheet.css",
-    "DESIGN.md",
+  "catalog/*.json",
+  "templates/*.tmpl",
+  "themes/*.json",
+  "styles_snapshot.json",
+  "stylesheet.css",
+  "DESIGN.md",
 ]
+"cds_text_sync.analyze" = ["rules/*.ctsrule", "rules/*.md"]
+
+[tool.ruff]
+extend-include = ["*.ctsrule"]

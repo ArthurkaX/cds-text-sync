@@ -1,0 +1,533 @@
+"""
+runner.py - Dispatch of rules over a ProjectSnapshot.
+
+A rule receives only ``ctx`` (an AnalysisContext): it never opens files, runs
+git, or reads state. The context owns the capability providers, cached so
+each view of the project is built once per run.
+
+The runner guarantees:
+
+* analysis never crashes on one bad object - an unavailable declared
+  capability or a rule error becomes a Diagnostic, and the run is marked
+  incomplete (policy-controlled);
+* output is deterministic: findings are sorted by
+  ``path -> position -> rule_id -> fingerprint``;
+* every Finding gets a stable fingerprint before filtering;
+* scope configuration is interpreted once, here: a rule receives only the
+  units visible to it (global path exclusion plus rule-scope exclusion),
+  whether it is a UNIT rule (dispatched per visible unit) or a PROJECT /
+  HISTORY rule (reading the same filtered set through ``ctx.units``). A
+  rule must not call configuration exclusion helpers itself; a rule with no
+  visible units runs nothing and requests no capabilities;
+* a configured severity override is applied to the run-local Finding only;
+  the registry keeps the declared rule severity, so a later run in the same
+  process starts from the declared value.
+"""
+
+from __future__ import annotations
+
+import subprocess
+
+from cds_text_sync.analyze import fingerprint as fp
+from cds_text_sync.analyze.capabilities import (
+    Capability,
+    CapabilityError,
+    Scope,
+)
+from cds_text_sync.analyze.model import (
+    AnalysisResult,
+    Diagnostic,
+    Location,
+    severity_rank,
+)
+from cds_text_sync.analyze.registry import load_builtin_rules
+from cds_text_sync.analyze.st import decl, symbols
+
+# ---------------------------------------------------------------------------
+# Git adapter (GIT_BASE capability)
+# ---------------------------------------------------------------------------
+
+
+class GitBase:
+    """Read project-view files at an explicit git base.
+
+    Uses ``subprocess`` against the git binary; the rule never sees git. The
+    base is always explicit: CLI ``--base`` > config ``[analyze] base`` >
+    default ``HEAD``. No implicit "previous commit" guessing.
+    """
+
+    def __init__(self, workspace, base):
+        self.workspace = workspace
+        self.base = base
+        self._ok = None
+        self._error = None
+
+    def _check(self):
+        if self._ok is not None:
+            return
+        root = self.workspace.git_root
+        if not root:
+            self._error = (
+                "no git repository found for history rules; run inside a "
+                "git checkout or pass --workspace inside one"
+            )
+            self._ok = False
+            return
+        try:
+            result = subprocess.run(
+                ["git", "-C", root, "rev-parse", "--verify", "--quiet", self.base],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self._error = f"git unavailable: {exc}"
+            self._ok = False
+            return
+        if result.returncode != 0:
+            self._error = f"git base {self.base!r} does not resolve in {root}"
+            self._ok = False
+            return
+        self._ok = True
+
+    def available(self):
+        self._check()
+        return self._ok
+
+    def error(self):
+        self._check()
+        return self._error
+
+    def read(self, relpath):
+        """Read *relpath* at the base revision, or None if absent there.
+
+        Unit paths are project-view-relative; git paths are repo-relative,
+        so the project-view directory is prepended when the repo root sits
+        above the sync folder.
+        """
+        if not self.available():
+            return None
+        git_path = self._git_path(relpath)
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    self.workspace.git_root,
+                    "show",
+                    f"{self.base}:{git_path}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout
+
+    def _git_path(self, relpath):
+        if not self.workspace.git_root:
+            return relpath
+        import os as _os
+
+        pv_rel = _os.path.relpath(self.workspace.project_view, self.workspace.git_root)
+        pv_rel = pv_rel.replace(_os.sep, "/")
+        if pv_rel == ".":
+            return relpath
+        return f"{pv_rel}/{relpath}"
+
+
+# ---------------------------------------------------------------------------
+# Analysis context
+# ---------------------------------------------------------------------------
+
+
+class AnalysisContext:
+    """Everything a rule may read. Builds capability providers lazily.
+
+    Scope filtering lives here, not in the rules: ``visible_units(rule)``
+    (and the ``units`` property for the active rule) is the one filter both
+    UNIT rules and PROJECT/HISTORY rules consume. A rule must not call
+    ``config.path_excluded``/``rules_excluded_for`` itself.
+    """
+
+    def __init__(self, workspace, snapshot, config, base=None):
+        self.workspace = workspace
+        self.snapshot = snapshot
+        self.config = config
+        self.base = base or config.base
+        self.active_rule = None  # set by the runner before dispatch
+        self._cache = {}
+
+    # -- scope filtering -----------------------------------------------------
+
+    def visible_units(self, rule=None):
+        """Units visible to *rule* after global path exclusion and
+        rule-scope exclusion. ``rule`` defaults to the active rule; with no
+        rule set (tests/selftest) every unit is visible."""
+        rule = rule or self.active_rule
+        if rule is None:
+            return list(self.snapshot.units)
+        return [
+            u for u in self.snapshot.units if self._unit_visible(rule, u.source_path)
+        ]
+
+    def _unit_visible(self, rule, relpath):
+        if self.config.path_excluded(relpath):
+            return False
+        if rule.id in self.config.rules_excluded_for(relpath):
+            return False
+        return True
+
+    @property
+    def units(self):
+        """Units visible to the active rule (see ``visible_units``)."""
+        return self.visible_units()
+
+    # -- capabilities ------------------------------------------------------
+
+    def capability(self, cap):
+        """Return the provider for *cap* or raise CapabilityError."""
+        if cap not in self._cache:
+            self._cache[cap] = self._build(cap)
+        entry = self._cache[cap]
+        if entry.error:
+            raise CapabilityError(cap, entry.error)
+        return entry.value
+
+    def has_capability(self, cap):
+        try:
+            self.capability(cap)
+            return True
+        except CapabilityError:
+            return False
+
+    def _build(self, cap):
+        if cap == Capability.ST_TEXT:
+            return _Entry(self.snapshot, None)
+        if cap == Capability.DECLARATIONS:
+            error = _st_read_errors(self.snapshot)
+            return _Entry(decl, error)
+        if cap == Capability.PROJECT_SYMBOLS:
+            error = _st_read_errors(self.snapshot)
+            return _Entry(symbols.ProjectSymbols(self.snapshot), error)
+        if cap == Capability.VISU_XML:
+            return _Entry(self.snapshot, None)
+        if cap == Capability.TEXT_LISTS:
+            return _Entry(self.snapshot, None)
+        if cap == Capability.TASK_CONFIG:
+            return _Entry(self.snapshot, None)
+        if cap == Capability.GIT_BASE:
+            git = GitBase(self.workspace, self.base)
+            if not git.available():
+                return _Entry(None, git.error())
+            return _Entry(git, None)
+        return _Entry(None, f"unknown capability {cap}")
+
+    # -- conveniences ------------------------------------------------------
+
+    def diagnostics_for(self, kind, message, location=None, rule_id=None, unit_id=None):
+        return Diagnostic(
+            kind, message, location=location, rule_id=rule_id, unit_id=unit_id
+        )
+
+
+class _Entry:
+    def __init__(self, value, error):
+        self.value = value
+        self.error = error
+
+
+def _st_read_errors(snapshot):
+    """Error string if any .st file could not be read (model incomplete)."""
+    bad = [
+        d
+        for d in snapshot.diagnostics
+        if d.kind == "project-read" and d.location.path.endswith(".st")
+    ]
+    if bad:
+        first = bad[0].location.path
+        return (
+            f"cannot read .st file(s) (e.g. {first}); declarations and "
+            "project symbols are incomplete"
+        )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Options + main entry
+# ---------------------------------------------------------------------------
+
+
+class RunOptions:
+    def __init__(self, rule_filter=None, base=None, incomplete=None):
+        self.rule_filter = rule_filter  # set of rule ids or None
+        self.base = base  # CLI override for the git base
+        self.incomplete = incomplete  # CLI override: warn|error|ignore
+
+
+def _select_rules(registry, config, rule_filter):
+    """Enabled rules, filtered by config and the --rule option."""
+    rules = []
+    for rule_id in sorted(registry):
+        rule = registry[rule_id]
+        if not config.enabled_for(rule_id):
+            continue
+        if rule_filter is not None and rule_id not in rule_filter:
+            continue
+        rules.append(rule)
+    return rules
+
+
+def run_analysis(workspace, snapshot, config, options):
+    """Run every enabled rule over the snapshot. Returns AnalysisResult."""
+    result = AnalysisResult()
+    registry = load_builtin_rules()
+    rules = _select_rules(registry, config, options.rule_filter)
+    ctx = AnalysisContext(workspace, snapshot, config, base=options.base)
+
+    result.summary.rules_run = sorted(r.id for r in rules)
+
+    skipped = {}
+    for rule in rules:
+        # A rule with no visible units runs nothing: it requests no
+        # capabilities (a scoped-out history rule must not start git) and
+        # is not dispatched.
+        if not ctx.visible_units(rule):
+            continue
+        ctx.active_rule = rule
+        for cap in sorted(rule.requires, key=str):
+            try:
+                ctx.capability(cap)
+            except CapabilityError as exc:
+                skipped[rule.id] = exc
+                result.complete = False
+                result.diagnostics.append(
+                    Diagnostic(
+                        exc.capability.value,
+                        exc.message,
+                        rule_id=rule.id,
+                    )
+                )
+                break
+
+    for rule in rules:
+        if rule.id in skipped:
+            continue
+        if not ctx.visible_units(rule):
+            continue
+        ctx.active_rule = rule
+        _report_unparsed_units(rule, ctx, result)
+        _report_visu_xml_errors(rule, ctx, result)
+        if rule.scope == Scope.UNIT:
+            for unit in ctx.visible_units(rule):
+                if not rule.applicable_to(unit.kind):
+                    continue
+                _dispatch_unit(rule, unit, ctx, result)
+        else:
+            _dispatch_project(rule, ctx, result)
+
+    _fingerprint_all(result.findings)
+    result.sort()
+    result.summary.diagnostics = len(result.diagnostics)
+    return result
+
+
+def _report_unparsed_units(rule, ctx, result):
+    """A rule that needed declarations/symbols reports UNKNOWN units.
+
+    An unclassifiable ``.st`` file stays in the snapshot as a
+    ``kind=UNKNOWN`` unit. A rule that required DECLARATIONS or
+    PROJECT_SYMBOLS genuinely needed its parse, so it records a Diagnostic
+    instead of silently treating the object as "not applicable". Only units
+    visible to the rule are reported.
+    """
+    from cds_text_sync.analyze.st import kinds as _K
+
+    needed = rule.requires & {
+        Capability.DECLARATIONS,
+        Capability.PROJECT_SYMBOLS,
+    }
+    if not needed:
+        return
+    for unit in ctx.visible_units(rule):
+        if unit.kind != _K.UNKNOWN:
+            continue
+        result.complete = False
+        result.diagnostics.append(
+            Diagnostic(
+                "st-parse",
+                f"cannot parse declarations of {unit.id}",
+                location=Location(unit.source_path),
+                rule_id=rule.id,
+                unit_id=unit.id,
+            )
+        )
+
+
+def _report_visu_xml_errors(rule, ctx, result):
+    """A rule that needed VISU_XML reports unparsable visualization XML.
+
+    A malformed visualization file is a missing piece of the model for the
+    rule, so it is surfaced as a Diagnostic with a project-view-relative
+    location and the rule id - one per rule/object pair (deduplicated) -
+    and the run is marked incomplete. The capability itself stays
+    available: the rule still analyses the objects that did parse.
+    """
+    if Capability.VISU_XML not in rule.requires:
+        return
+    seen = set()
+    for record in ctx.snapshot.source_errors:
+        if record.source_kind != "visualization":
+            continue
+        if not ctx._unit_visible(rule, record.location.path):
+            continue
+        key = (rule.id, record.location.path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.complete = False
+        result.diagnostics.append(
+            Diagnostic(
+                "visu-xml",
+                record.message,
+                location=record.location,
+                rule_id=rule.id,
+                unit_id=record.unit_id,
+            )
+        )
+
+
+def _dispatch_unit(rule, unit, ctx, result):
+    try:
+        found = rule.check(unit, ctx) or []
+    except CapabilityError as exc:
+        result.complete = False
+        result.diagnostics.append(
+            Diagnostic(
+                exc.capability.value, exc.message, rule_id=rule.id, unit_id=unit.id
+            )
+        )
+        return
+    except Exception as exc:  # a rule must never crash a run
+        result.complete = False
+        result.diagnostics.append(
+            Diagnostic(
+                "rule-error",
+                f"{rule.id} failed on {unit.id}: {exc}",
+                location=Location(unit.source_path),
+                rule_id=rule.id,
+                unit_id=unit.id,
+            )
+        )
+        return
+    _collect(rule, found, result, ctx.config)
+
+
+def _dispatch_project(rule, ctx, result):
+    try:
+        found = rule.check(ctx) or []
+    except CapabilityError as exc:
+        result.complete = False
+        result.diagnostics.append(
+            Diagnostic(exc.capability.value, exc.message, rule_id=rule.id)
+        )
+        return
+    except Exception as exc:
+        result.complete = False
+        result.diagnostics.append(
+            Diagnostic(
+                "rule-error",
+                f"{rule.id} failed: {exc}",
+                rule_id=rule.id,
+            )
+        )
+        return
+    _collect(rule, found, result, ctx.config)
+
+
+def _collect(rule, found, result, config):
+    """The single collection point for rule output.
+
+    A configured severity override (``[rules.X] severity``) is resolved
+    here and stored on the run-local Finding only: the registry keeps the
+    declared rule severity, so a later run in the same process starts from
+    the declared value. Fingerprint inputs never include severity, so the
+    identity of the underlying violation is unchanged by policy.
+    """
+    for item in found or []:
+        if isinstance(item, Diagnostic):
+            result.diagnostics.append(item)
+            result.complete = False
+        elif item is not None:
+            if not item.rule_title:
+                item.rule_title = rule.title
+            item.severity = config.severity_for(item.rule_id, item.severity)
+            result.findings.append(item)
+            result.summary.add_finding(item)
+
+
+def _fingerprint_all(findings):
+    for f in findings:
+        if f.fingerprint:
+            continue
+        f.fingerprint = fp.fingerprint(
+            f.rule_id, f.unit_id, f.anchor or f.message, f.context
+        )
+
+
+# ---------------------------------------------------------------------------
+# Filtering: suppressions + baseline
+# ---------------------------------------------------------------------------
+
+
+def filter_result(result, suppressed_fingerprints, baselined_fingerprints):
+    """Remove suppressed/baselined findings and count them.
+
+    Returns (new_result, stale_suppressions) where stale_suppressions are
+    suppression/baseline entries that no longer match any finding.
+    """
+    current = {f.fingerprint for f in result.findings}
+
+    stale_suppressed = sorted({s for s in suppressed_fingerprints if s not in current})
+    stale_baselined = sorted({b for b in baselined_fingerprints if b not in current})
+
+    kept = []
+    suppressed = 0
+    baselined = 0
+    for f in result.findings:
+        if f.fingerprint in suppressed_fingerprints:
+            suppressed += 1
+            continue
+        if f.fingerprint in baselined_fingerprints:
+            baselined += 1
+            continue
+        kept.append(f)
+
+    result.findings = kept
+    result.summary.suppressed = suppressed
+    result.summary.baselined = baselined
+    result.summary.stale_suppressions = stale_suppressed
+    result.summary.stale_baselined = stale_baselined
+    result.summary.total = len(kept)
+    result.summary.by_severity = dict.fromkeys(("danger", "suspicious", "style"), 0)
+    result.summary.by_rule = {}
+    for f in kept:
+        result.summary.by_severity[f.severity] += 1
+        result.summary.by_rule[f.rule_id] = result.summary.by_rule.get(f.rule_id, 0) + 1
+    result.sort()
+    return result
+
+
+def exit_code(result, config, incomplete_override=None):
+    """Exit policy: 0 clean, 1 violations >= fail_on, 3 incomplete."""
+    incomplete = incomplete_override or config.incomplete
+    if incomplete == "error" and not result.complete:
+        return 3
+    threshold = severity_rank(config.fail_on)
+    for f in result.findings:
+        if severity_rank(f.severity) <= threshold:
+            return 1
+    return 0

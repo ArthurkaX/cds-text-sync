@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+  <Single Name="IsRoot" Type="bool">True</Single>
+  <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+    <Single Name="Guid" Type="System.Guid">11111111-1111-1111-1111-111111111111</Single>
+    <Single Name="Name" Type="string">Screen1</Single>
+  </Single>
+  <List Name="VisualElements" Type="System.Collections.ArrayList">
+    <Single Type="{f86c2928-8614-4cca-824b-e819ac4d58c4}" Method="IArchivable">
+      <Single Name="Name" Type="string">StatusLabel</Single>
+      <Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">
+        <List Name="VisualElemMemberList" Type="{a4b83bea-3742-489c-9fe8-d96d68dba7ab}">
+          <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+            <Single Name="Id" Type="long">3729828405</Single>
+            <Single Name="ExplicitColor" Type="int">-1073741824</Single>
+            <Single Name="NamedColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+              <Single Name="Color" Type="int">-1073741824</Single>
+              <Single Name="CanonicalName" Type="string">Font-Default-Color</Single>
+            </Single>
+            <Single Name="FontStyle" Type="int">0</Single>
+            <Single Name="FontSize" Type="int">12</Single>
+          </Single>
+        </List>
+      </Single>
+    </Single>
+    <Single Type="{f86c2928-8614-4cca-824b-e819ac4d58c4}" Method="IArchivable">
+      <Single Name="Name" Type="string">AlarmLabel</Single>
+      <Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">
+        <List Name="VisualElemMemberList" Type="{a4b83bea-3742-489c-9fe8-d96d68dba7ab}">
+          <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
+            <Single Name="Id" Type="long">3729828405</Single>
+            <Single Name="ExplicitColor" Type="int">-65536</Single>
+            <Null Name="NamedColor" />
+            <Single Name="FontStyle" Type="int">1</Single>
+            <Single Name="FontSize" Type="int">14</Single>
+          </Single>
+        </List>
+      </Single>
+    </Single>
+  </List>
+</Single>

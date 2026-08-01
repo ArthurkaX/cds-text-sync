@@ -1,0 +1,7 @@
+ACTION Advance
+
+IMPLEMENTATION
+
+IF THIS.bDirection THEN
+    THIS.bMoving := TRUE;
+END_IF

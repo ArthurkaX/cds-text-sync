@@ -1,0 +1,19 @@
+"""
+CTS0002 - unused VAR_INPUT members.
+Thin rule file: metadata + one check; logic lives in rules/impl.
+"""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.unused_input import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0002",
+    title="Unused input",
+    severity="suspicious",
+    scope=Scope.UNIT,
+    requires={Capability.DECLARATIONS, Capability.PROJECT_SYMBOLS},
+    kinds="CALLABLE",
+    summary="VAR_INPUT members never read by their owner.",
+    check=check,
+)
