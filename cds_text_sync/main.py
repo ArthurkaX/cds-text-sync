@@ -18,8 +18,10 @@ import sys
 from pathlib import Path
 
 try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="backslashreplace")
 except Exception:
     pass
 
@@ -30,49 +32,80 @@ if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
 
 # -- Re-exports from submodules (used by main() and kept accessible) ----------
 
-from cds_text_sync._cli_io import (  # noqa: E402
-    _print_error,
-    _print_info,
-    _print_ok,
-    _format_output,
-    _print_rp_error,
-    _parse_key_value_args,
-    _load_project_config,
-    _find_codesys,
-    _launch_codesys,
-    _project_command,
-    cmd_rp_command,
-    cmd_daemon,
-    cmd_direct,
-    send_command_reverse,
-    ENGINE_CLI,
-    DAEMON_SCRIPT,
-    _CODESYS_CANDIDATES,
-)
-
-from cds_text_sync._cli_parser import build_parser  # noqa: E402
-
-from cds_text_sync._cli_handlers_project import (  # noqa: E402
-    cmd_discover,
-    dispatch_project,
-    dispatch_pou,
-)
+__all__ = [
+    # from cds_text_sync._cli_io
+    "_print_error",
+    "_print_info",
+    "_print_ok",
+    "_format_output",
+    "_print_rp_error",
+    "_parse_key_value_args",
+    "_load_project_config",
+    "_find_codesys",
+    "_launch_codesys",
+    "_project_command",
+    "cmd_rp_command",
+    "cmd_daemon",
+    "cmd_direct",
+    "send_command_reverse",
+    "ENGINE_CLI",
+    "DAEMON_SCRIPT",
+    "_CODESYS_CANDIDATES",
+    # from cds_text_sync._cli_parser
+    "build_parser",
+    # from cds_text_sync._cli_handlers_*
+    "cmd_discover",
+    "dispatch_project",
+    "dispatch_pou",
+    "dispatch_daemon",
+    "dispatch_menu",
+    "_resolve_project_view",
+    "_build_map_rows",
+    "_write_csv",
+    "cmd_read_vars",
+    "cmd_variable_map",
+    "cmd_variable_snapshot",
+    "cmd_variable_restore",
+    "dispatch_visu",
+]
 
 from cds_text_sync._cli_handlers_daemon import dispatch_daemon  # noqa: E402
-
 from cds_text_sync._cli_handlers_menu import dispatch_menu  # noqa: E402
-
+from cds_text_sync._cli_handlers_project import (  # noqa: E402
+    cmd_discover,
+    dispatch_pou,
+    dispatch_project,
+)
 from cds_text_sync._cli_handlers_vars import (  # noqa: E402
-    _resolve_project_view,
     _build_map_rows,
+    _resolve_project_view,
     _write_csv,
     cmd_read_vars,
     cmd_variable_map,
-    cmd_variable_snapshot,
     cmd_variable_restore,
+    cmd_variable_snapshot,
 )
-
 from cds_text_sync._cli_handlers_visu import dispatch_visu  # noqa: E402
+from cds_text_sync._cli_io import (  # noqa: E402
+    _CODESYS_CANDIDATES,
+    DAEMON_SCRIPT,
+    ENGINE_CLI,
+    _find_codesys,
+    _format_output,
+    _launch_codesys,
+    _load_project_config,
+    _parse_key_value_args,
+    _print_error,
+    _print_info,
+    _print_ok,
+    _print_rp_error,
+    _project_command,
+    cmd_daemon,
+    cmd_direct,
+    cmd_rp_command,
+    send_command_reverse,
+)
+from cds_text_sync._cli_parser import build_parser  # noqa: E402
 
 _BATCH_SIZE = 500
 
@@ -170,6 +203,13 @@ def main():
 
     elif args.command == "visu":
         dispatch_visu(args)
+
+    elif args.command == "analyze":
+        from cds_text_sync.analyze import cli as analyze_cli
+
+        code = analyze_cli.dispatch_analyze(args)
+        if code:
+            sys.exit(code)
 
     else:
         parser.print_help()

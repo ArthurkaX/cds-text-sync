@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 _cli_parser.py - Argparse construction for the cds-text-sync CLI.
 
@@ -64,7 +63,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s {0}".format(__version__),
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "--output",
@@ -89,7 +88,7 @@ Examples:
             "--timeout",
             type=float,
             default=default,
-            help="Timeout in seconds (default: {0})".format(default),
+            help=f"Timeout in seconds (default: {default})",
         )
         return p
 
@@ -253,8 +252,9 @@ Examples:
         description="Report the install layout: tool folder, ScriptDir, menu status.",
     )
     p_where.add_argument("--body", default="", help=argparse.SUPPRESS)
-    p_where.add_argument("--script-dir", dest="script_dir", default="",
-                         help=argparse.SUPPRESS)
+    p_where.add_argument(
+        "--script-dir", dest="script_dir", default="", help=argparse.SUPPRESS
+    )
 
     # -- project subcommand --------------------------------------------------
     p_project = subparsers.add_parser(
@@ -602,9 +602,7 @@ from-svg SVG contract:
         help="Set as start visualization (for create-screen)",
     )
     p_visu.add_argument("--screen", default="", help="Screen name or path")
-    p_visu.add_argument(
-        "--visu", default="", help="Sub-visu name (for capture-frame)"
-    )
+    p_visu.add_argument("--visu", default="", help="Sub-visu name (for capture-frame)")
     p_visu.add_argument("--type", default="", help="Element type (for add, describe)")
     p_visu.add_argument("--x", type=int, help="X position (for add)")
     p_visu.add_argument("--y", type=int, help="Y position (for add)")
@@ -717,6 +715,138 @@ from-svg SVG contract:
         action="store_true",
         help="Treat any lint finding as fatal (for lint, from-svg)",
     )
+
+    # -- analyze subcommand (offline static analysis) ----------------------
+    p_analyze = subparsers.add_parser(
+        "analyze",
+        help="Static analysis of the exported project-view (offline)",
+        description=(
+            "Project static analysis over project-view/. Never talks to the "
+            "daemon and never reads .dump/. Works fully offline."
+        ),
+        epilog="""
+Subcommands:
+  cts analyze [options]                    run the analysis
+  cts analyze rules                        list registered rules
+  cts analyze explain CTS0001              rule documentation
+  cts analyze selftest                     run every rule on its own docs
+  cts analyze baseline create|update|check baseline management
+  cts analyze triage --apply decisions.json  scriptable triage
+
+Exit codes:
+  0 - quality policy passed
+  1 - unsuppressed findings at or above --fail-on
+  2 - configuration error or analysis cannot start
+  3 - incomplete analysis with --incomplete=error
+""",
+    )
+
+    def add_analyze_common(parser):
+        parser.add_argument(
+            "--workspace",
+            default="",
+            help="Sync folder containing project-view/ (default: nearest "
+            "ancestor with cts-analyze.toml + project-view)",
+        )
+        parser.add_argument(
+            "--project-view",
+            dest="project_view",
+            default="",
+            help="Explicit project-view directory",
+        )
+        parser.add_argument(
+            "--format",
+            choices=["json", "text", "sarif", "md"],
+            default="json",
+            help="Output format (default: json; --pretty forces text)",
+        )
+        parser.add_argument(
+            "--rule",
+            action="append",
+            default=[],
+            metavar="CTSxxxx",
+            help="Restrict analysis to one rule id (repeatable)",
+        )
+        parser.add_argument(
+            "--fail-on",
+            choices=["danger", "suspicious", "style"],
+            default=None,
+            help="Exit 1 when findings at/above this severity exist "
+            "(default: suspicious)",
+        )
+        parser.add_argument(
+            "--incomplete",
+            choices=["warn", "error", "ignore"],
+            default=None,
+            help="Policy for incomplete analysis (default: warn; error exits 3)",
+        )
+        parser.add_argument(
+            "--base",
+            default="",
+            help="Explicit git base for history rules (default: HEAD)",
+        )
+        parser.add_argument(
+            "--apply",
+            default="",
+            help="decisions.json path for 'triage --apply'",
+        )
+        parser.add_argument(
+            "--pretty",
+            "-p",
+            action="store_true",
+            help="Shortcut for --format text",
+        )
+
+    add_analyze_common(p_analyze)
+
+    # Nested subcommands: run (default, when no subcommand is given),
+    # rules, explain, selftest, baseline, triage.
+    p_analyze_sub = p_analyze.add_subparsers(
+        dest="analyze_action",
+        metavar="SUBCOMMAND",
+    )
+
+    p_analyze_run = p_analyze_sub.add_parser(
+        "run",
+        help="Run the analysis (this is also the default without a subcommand)",
+    )
+    add_analyze_common(p_analyze_run)
+    p_analyze_rules = p_analyze_sub.add_parser(
+        "rules",
+        help="List registered rules",
+    )
+    add_analyze_common(p_analyze_rules)
+    p_analyze_selftest = p_analyze_sub.add_parser(
+        "selftest",
+        help="Run every rule against its own documentation examples",
+    )
+    add_analyze_common(p_analyze_selftest)
+    p_analyze_explain = p_analyze_sub.add_parser(
+        "explain",
+        help="Show one rule's documentation",
+    )
+    add_analyze_common(p_analyze_explain)
+    p_analyze_explain.add_argument(
+        "rule_id",
+        help="Rule id, e.g. CTS0001",
+    )
+    p_analyze_baseline = p_analyze_sub.add_parser(
+        "baseline",
+        help="Baseline management",
+    )
+    add_analyze_common(p_analyze_baseline)
+    p_analyze_baseline.add_argument(
+        "baseline_action",
+        choices=["create", "update", "check"],
+        help="create - snapshot current findings\n"
+        "update - rewrite the baseline\n"
+        "check - report new and stale baseline entries",
+    )
+    p_analyze_triage = p_analyze_sub.add_parser(
+        "triage",
+        help="Convert findings into suppress/fix-later decisions",
+    )
+    add_analyze_common(p_analyze_triage)
 
     subparsers._choices_actions = [
         action

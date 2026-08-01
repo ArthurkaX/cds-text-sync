@@ -34,6 +34,14 @@ jobs:
         shell: pwsh
         run: python -m pytest tests\unit
 
+      - name: Analyze selftest (rules against their own docs)
+        shell: pwsh
+        run: python tools\ci_analyze_checks.py selftest
+
+      - name: Build wheel and verify rule assets ship in the package
+        shell: pwsh
+        run: python tools\ci_analyze_checks.py wheel
+
       - name: Compile Python sources
         shell: pwsh
         run: |

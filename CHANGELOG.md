@@ -4,6 +4,76 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 3.0.0 (2026-08-01)
+
+**`cts analyze` - offline static analysis of the exported project-view.**
+
+`cts analyze` reads only the exported `project-view/` tree: no daemon, no
+`.dump/`, no IDE. It is the first piece of the analyzer planned in
+`static_analyze/imp_plan.md`, delivered as vertical slices: the command
+skeleton, the ST input model, the rule registry, and one rule per data
+source.
+
+**Commands:**
+
+- `cts analyze --workspace <sync-folder> --format json|text|sarif` - run the
+  analysis. Deterministic output sorted by path, position, rule id and
+  fingerprint. The versioned JSON envelope (`schema_version`, `complete`,
+  `findings`, `diagnostics`, `summary`) is stable from day one. A plain run
+  writes nothing.
+- `cts analyze rules` - list registered rules with severity, scope, kinds and
+  required capabilities.
+- `cts analyze explain CTS0001 [--format md]` - rule documentation with the
+  mandatory "why it is dangerous" section.
+- `cts analyze selftest` - runs every rule against the good/bad ST examples
+  in its own documentation; a doc that rots fails the run.
+- `cts analyze baseline create|update|check` - machine-written baseline of
+  current findings (sorted, one entry per line for friendly diffs). `check`
+  reports new findings and stale entries; a new finding is never accepted
+  silently.
+- `cts analyze triage --apply decisions.json` - scriptable triage: suppress
+  (with a mandatory reason), fix-later, or baseline. State is written
+  atomically.
+
+**Exit codes:** `0` policy passed, `1` unsuppressed findings at or above
+`--fail-on`, `2` configuration error or analysis cannot start, `3` incomplete
+analysis with `--incomplete=error`.
+
+**Rule model:**
+
+A rule declares its data dependencies (`Capability`) and its granularity
+(`Scope.UNIT` / `PROJECT` / `HISTORY`) instead of a numeric tier. An
+unavailable capability becomes a `Diagnostic` and the run is marked
+incomplete - analysis never crashes on one bad object, and a missing model
+never looks like "all clean".
+
+First rules, one per source:
+
+- `CTS0001` commented-out code (text rule; ST_TEXT).
+- `CTS0002` unused `VAR_INPUT` member, read across the owner's methods and
+  actions (DECLARATIONS + PROJECT_SYMBOLS).
+- `CTS0003` literal `ExplicitColor` beside a live `NamedColor` in visu XML
+  (VISU_XML).
+- `CTS0004` `PERSISTENT` member order changed against an explicit git base
+  (GIT_BASE via subprocess; no git -> policy-controlled Diagnostic).
+
+**Findings are identified by fingerprint**, not by file:line: schema
+version + rule id + stable unit id + semantic anchor + normalised context.
+Reindentation and line insertion do not change a fingerprint; the baseline
+and suppressions survive reformats.
+
+**Configuration (`cts-analyze.toml`, optional):** `fail_on` / `incomplete`
+policy, git `base`, per-rule `enabled` and `severity` overrides, and
+path-glob `[[rule_scope]]` exclusions. Suppressions live in
+`.cts-analyze/suppressions.toml` next to `project-view/`, never inside it.
+
+**Packaging:** rule files use the `.ctsrule` extension (the CODESYS
+ScriptDir scanner shows every `.py` in the menu); the loader is an explicit
+`SourceFileLoader`. `.ctsrule` and `.md` ship in the wheel; `.gitattributes`
+maps the extension to Python for diffs; ruff covers `*.ctsrule`. CI runs `cts analyze selftest` (no rule ships without executable docs), builds the wheel and asserts the rule assets are in it, and enforces the asset budget: in-repo rule assets are text/SVG only and stay well under 2 MB.
+
+---
+
 ### Version 2.9.0 (2026-07-31)
 
 **Read this before updating.** This release changes where the tool is installed and what the package is called. The installer migrates an existing installation for you, but it moves folders on your disk, so it is worth knowing what it will do.

@@ -1,0 +1,19 @@
+"""
+CTS0001 - commented-out code in CALLABLE units.
+Thin rule file: metadata + one check; logic lives in rules/impl.
+"""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.commented_code import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0001",
+    title="Commented-out code",
+    severity="suspicious",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="ST statements that survive inside comments.",
+    check=check,
+)

@@ -1,0 +1,7 @@
+<Visualization>
+  <Single Name="BrokenScreen" Type="{f86c2928-8614-4cca-824b-e819ac4d58c4}" Method="IArchivable">
+    <Single Name="VisualElemMemberList" Type="{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}" Method="IArchivable">
+      <Single Name="ExplicitColor" Type="int">-1073741824
+    </Single>
+  </Single>
+</Visualization>

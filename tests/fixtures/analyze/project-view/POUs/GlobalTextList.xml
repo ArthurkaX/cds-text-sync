@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextList xmlns="http://www.w3.org/2000/xmlns/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <List Name="TextList">
+    <Single Type="{53da1be7-6d22-4d58-a9b4-ee2c33b4b2c4}" Method="IArchivable">
+      <Single Name="TextID" Type="string">TXT_START</Single>
+      <Single Name="TextDefault" Type="string">Start</Single>
+      <List Name="LanguageTexts" Type="System.Collections.ArrayList" />
+    </Single>
+    <Single Type="{53da1be7-6d22-4d58-a9b4-ee2c33b4b2c4}" Method="IArchivable">
+      <Single Name="TextID" Type="string">TXT_STOP</Single>
+      <Single Name="TextDefault" Type="string">Stop</Single>
+      <List Name="LanguageTexts" Type="System.Collections.ArrayList" />
+    </Single>
+  </List>
+</TextList>
