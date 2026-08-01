@@ -48,6 +48,7 @@ jobs:
           python -m compileall `
             cds_bootstrap.py `
             Project_build.py `
+            Project_analyze_ui.py `
             Project_compare_ui.py `
             Project_directory.py `
             Project_discover.py `
