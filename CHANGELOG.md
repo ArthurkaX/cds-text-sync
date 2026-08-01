@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 skeleton, the ST input model, the rule registry, and one rule per data
 source.
 
+**Optional desktop UI:** `pip install -e ".[ui]"` installs pywebview, then
+`cts ui [--workspace <sync-folder>]` opens a local WebView2 window. The first
+screen selects a workspace, runs the same offline engine as the CLI, filters
+findings by severity/text, shows details, and opens the corresponding source
+file. It is an optional dependency: ordinary CLI and CI installations remain
+dependency-free.
+
 **Commands:**
 
 - `cts analyze --workspace <sync-folder> --format json|text|sarif` - run the

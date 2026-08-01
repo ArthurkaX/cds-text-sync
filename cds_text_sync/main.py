@@ -211,6 +211,13 @@ def main():
         if code:
             sys.exit(code)
 
+    elif args.command == "ui":
+        from cds_text_sync.ui import launch
+
+        code = launch(getattr(args, "workspace", ""))
+        if code:
+            sys.exit(code)
+
     else:
         parser.print_help()
 

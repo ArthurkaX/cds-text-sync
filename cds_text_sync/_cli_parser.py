@@ -234,6 +234,21 @@ Examples:
         help="Accepted for consistency; ignored by the offline engine",
     )
 
+    # -- local desktop UI ---------------------------------------------------
+    p_ui = subparsers.add_parser(
+        "ui",
+        help="Open the local static-analysis desktop interface",
+        description=(
+            "Open the offline static-analysis interface. Requires the optional "
+            "UI dependency: pip install 'cds-text-sync[ui]'."
+        ),
+    )
+    p_ui.add_argument(
+        "--workspace",
+        default="",
+        help="Initial sync folder containing project-view/ (optional)",
+    )
+
     # -- local install commands (no daemon, no CODESYS) ----------------------
     p_menu = subparsers.add_parser(
         "install-menu",
