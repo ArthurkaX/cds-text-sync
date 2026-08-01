@@ -21,6 +21,10 @@ findings by severity/text, shows details, and opens the corresponding source
 file. It is an optional dependency: ordinary CLI and CI installations remain
 dependency-free.
 
+`Project_analyze_ui.py` is installed with the other CODESYS menu stubs. It
+starts that CPython UI for the active project's configured `cds-sync-folder`;
+the ScriptEngine only launches the external process and does not host the UI.
+
 **Commands:**
 
 - `cts analyze --workspace <sync-folder> --format json|text|sarif` - run the
