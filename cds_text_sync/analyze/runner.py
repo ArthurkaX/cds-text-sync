@@ -40,7 +40,7 @@ from cds_text_sync.analyze.model import (
     Location,
     severity_rank,
 )
-from cds_text_sync.analyze.registry import load_builtin_rules
+from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
 from cds_text_sync.analyze.st import decl, symbols
 
 # ---------------------------------------------------------------------------
@@ -270,6 +270,12 @@ class RunOptions:
 
 def _select_rules(registry, config, rule_filter):
     """Enabled rules, filtered by config and the --rule option."""
+    if rule_filter is not None:
+        unknown = sorted(set(rule_filter) - set(registry))
+        if unknown:
+            raise RegistryError(
+                "unknown human-analysis rule(s): " + ", ".join(unknown)
+            )
     rules = []
     for rule_id in sorted(registry):
         rule = registry[rule_id]

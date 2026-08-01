@@ -18,9 +18,9 @@ def cds_text_sync_analyze_path():
     return os.path.dirname(analyze.__file__ or "")
 
 
-def test_all_four_builtin_rules_load():
+def test_all_human_builtin_rules_load():
     rules = load_builtin_rules()
-    assert set(rules) == {"CTS0001", "CTS0002", "CTS0003", "CTS0004"}
+    assert set(rules) == {"CTS0001", "CTS0002", "CTS0004"}
 
 
 def test_rule_metadata_is_valid():

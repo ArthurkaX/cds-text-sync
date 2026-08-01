@@ -218,6 +218,13 @@ def main():
         if code:
             sys.exit(code)
 
+    elif args.command == "visu-lint":
+        from cds_text_sync.visu_lint.cli import cmd_visu_lint
+
+        code = cmd_visu_lint(args)
+        if code:
+            sys.exit(code)
+
     else:
         parser.print_help()
 

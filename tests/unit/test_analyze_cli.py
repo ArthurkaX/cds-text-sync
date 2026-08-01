@@ -29,16 +29,16 @@ def test_sarif_output():
             "--format",
             "sarif",
             "--rule",
-            "CTS0003",
+            "CTS0001",
         ]
     )
-    assert code == 0  # style finding is below fail_on=suspicious
+    assert code == 1  # CTS0001 is suspicious and meets the default threshold.
     doc = json.loads(out)
     assert doc["version"] == "2.1.0"
     run = doc["runs"][0]
     assert run["tool"]["driver"]["name"] == "cts analyze"
-    assert run["results"][0]["ruleId"] == "CTS0003"
-    assert run["results"][0]["level"] == "note"
+    assert run["results"][0]["ruleId"] == "CTS0001"
+    assert run["results"][0]["level"] == "warning"
 
 
 def test_rules_lists_registry():
@@ -46,7 +46,7 @@ def test_rules_lists_registry():
     assert code == 0
     rows = json.loads(out)
     ids = {r["id"] for r in rows}
-    assert ids == {"CTS0001", "CTS0002", "CTS0003", "CTS0004"}
+    assert ids == {"CTS0001", "CTS0002", "CTS0004"}
 
 
 def test_explain_renders_doc():
@@ -83,7 +83,7 @@ def test_fail_on_danger_ignores_suspicious():
     # Fixture has no danger findings; suspicious ones do not fail.
     assert code == 0
     data = json.loads(out)
-    assert data["summary"]["total"] == 5
+    assert data["summary"]["total"] == 4
 
 
 def test_rule_filter_cli():
@@ -100,6 +100,14 @@ def test_rule_filter_cli():
     )
     data = json.loads(out)
     assert {f["rule_id"] for f in data["findings"]} == {"CTS0001"}
+
+
+def test_machine_rule_cannot_be_requested_from_human_analyzer():
+    code, _out, err = run_cli(
+        ["analyze", "--workspace", fixture_project_view(), "--rule", "CTS0003"]
+    )
+    assert code == 2
+    assert "unknown human-analysis rule" in err
 
 
 def test_pretty_shortcut_forces_text():
@@ -134,8 +142,8 @@ def test_package_data_covers_rule_assets():
     rules_dir = os.path.join(analyze_dir, "rules")
     ctsrule = [f for f in os.listdir(rules_dir) if f.endswith(".ctsrule")]
     md = [f for f in os.listdir(rules_dir) if f.endswith(".md")]
-    assert len(ctsrule) == 4
-    assert len(md) == 4
+    assert len(ctsrule) == 3
+    assert len(md) == 3
     stems = {f[:-8] for f in ctsrule}
     assert stems == {f[:-3] for f in md}
 
