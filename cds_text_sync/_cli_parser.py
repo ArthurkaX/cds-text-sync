@@ -249,6 +249,13 @@ Examples:
         help="Initial sync folder containing project-view/ (optional)",
     )
 
+    p_visu_lint = subparsers.add_parser(
+        "visu-lint",
+        help="Machine-only validation of generated visualization XML",
+        description="JSON-only validator for the SVG-to-XML generation pipeline.",
+    )
+    p_visu_lint.add_argument("--xml", required=True, help="Generated visualization XML file")
+
     # -- local install commands (no daemon, no CODESYS) ----------------------
     p_menu = subparsers.add_parser(
         "install-menu",

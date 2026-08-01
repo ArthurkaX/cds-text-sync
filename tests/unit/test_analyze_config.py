@@ -33,7 +33,7 @@ def test_full_config(tmp_path):
                 "[rules.CTS0001]",
                 "enabled = false",
                 "",
-                "[rules.CTS0003]",
+                "[rules.CTS0004]",
                 'severity = "danger"',
                 "",
                 "[[rule_scope]]",
@@ -52,7 +52,7 @@ def test_full_config(tmp_path):
     assert config.base == "origin/main"
     assert config.enabled_for("CTS0001") is False
     assert config.enabled_for("CTS0002") is True
-    assert config.severity_for("CTS0003", "style") == "danger"
+    assert config.severity_for("CTS0004", "style") == "danger"
     assert config.path_excluded("POUs/Generated/Foo.st") is True
     assert config.path_excluded("POUs/Real/Foo.st") is False
     assert "CTS0002" in config.rules_excluded_for("POUs/Sim/Sim.st")

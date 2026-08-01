@@ -52,7 +52,6 @@ def test_fixture_expected_findings(tmp_path):
         by_rule.setdefault(f.rule_id, []).append(f.anchor)
     assert sorted(by_rule["CTS0001"]) == ["y := x + 5;", "y := y + 2;"]
     assert sorted(by_rule["CTS0002"]) == ["nTarget", "sName"]
-    assert len(by_rule["CTS0003"]) == 1
     assert "CTS0004" not in by_rule  # fixture dir has no relevant git delta
     assert result.complete is True
 
@@ -134,7 +133,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 5
+    assert data["summary"]["total"] == 4
 
 
 def test_cli_read_only_no_state_written(tmp_path):
@@ -275,38 +274,6 @@ def test_snapshot_records_unparsable_visualization_xml(tmp_path):
     assert any(u.kind == "visualization" for u in snap.units)
 
 
-def test_malformed_visu_xml_diagnostic_and_completeness(tmp_path):
-    """A damaged required XML input can never masquerade as a clean,
-    complete analysis: CTS0003 gets a located diagnostic, the run is
-    incomplete, and the healthy screen is still analysed."""
-    root = _malformed_visu_workspace(tmp_path)
-    data = run_analyze_json(root, extra=["--rule", "CTS0003"])
-    assert data["complete"] is False
-    visu = [d for d in data["diagnostics"] if d["kind"] == "visu-xml"]
-    assert len(visu) == 1
-    assert visu[0]["rule_id"] == "CTS0003"
-    assert visu[0]["location"]["path"] == _BROKEN_VISU_REL
-    assert any(f["rule_id"] == "CTS0003" for f in data["findings"])
-
-
-def test_malformed_visu_with_incomplete_error_exits_3(tmp_path):
-    root = _malformed_visu_workspace(tmp_path)
-    code, out, _err = run_cli(
-        [
-            "analyze",
-            "--workspace",
-            root,
-            "--format",
-            "json",
-            "--rule",
-            "CTS0003",
-            "--incomplete",
-            "error",
-        ]
-    )
-    assert code == 3
-
-
 def test_malformed_visu_does_not_hurt_st_rules(tmp_path):
     """When the only problem is the broken XML, text/declaration rules stay
     complete and keep reporting their findings."""
@@ -317,12 +284,13 @@ def test_malformed_visu_does_not_hurt_st_rules(tmp_path):
     assert len(data["findings"]) == 4  # 2x CTS0001 + 2x CTS0002
 
 
-def test_malformed_visu_diagnostics_are_deterministic(tmp_path):
+def test_human_analyzer_ignores_malformed_visu_xml(tmp_path):
     root = _malformed_visu_workspace(tmp_path)
-    d1 = run_analyze_json(root)
-    d2 = run_analyze_json(root)
+    d1 = run_analyze_json(root, extra=["--rule", "CTS0001", "--rule", "CTS0002"])
+    d2 = run_analyze_json(root, extra=["--rule", "CTS0001", "--rule", "CTS0002"])
     assert d1["diagnostics"] == d2["diagnostics"]
-    assert d1["complete"] is False
+    assert d1["diagnostics"] == []
+    assert d1["complete"] is True
 
 
 def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
@@ -357,4 +325,4 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    assert len(current) == 5  # nothing silently hidden
+    assert len(current) == 4  # nothing silently hidden

@@ -7,7 +7,6 @@ from cds_text_sync.analyze.config import ResolvedConfig
 from cds_text_sync.analyze.project import ProjectSnapshot
 from cds_text_sync.analyze.rules.impl.commented_code import check as cts0001
 from cds_text_sync.analyze.rules.impl.unused_input import check as cts0002
-from cds_text_sync.analyze.rules.impl.visu_color import check as cts0003
 from cds_text_sync.analyze.runner import AnalysisContext
 from cds_text_sync.analyze.workspace import Workspace
 
@@ -130,61 +129,3 @@ def test_cts0002_location_points_at_member_line():
     assert len(findings) == 1
     assert findings[0].location.line == 4  # the 'b' member line
     assert findings[0].anchor == "b"
-
-
-# ---------------------------------------------------------------------------
-# CTS0003 - dead explicit color
-# ---------------------------------------------------------------------------
-
-
-_VISU_BAD = """<Visualization>
-  <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
-    <Single Name="Id" Type="long">3729828405</Single>
-    <Single Name="ExplicitColor" Type="int">-1073741824</Single>
-    <Single Name="NamedColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
-      <Single Name="Color" Type="int">-1073741824</Single>
-      <Single Name="CanonicalName" Type="string">Font-Default-Color</Single>
-    </Single>
-  </Single>
-</Visualization>
-"""
-
-_VISU_GOOD = """<Visualization>
-  <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
-    <Single Name="Id" Type="long">3729828405</Single>
-    <Single Name="ExplicitColor" Type="int">-65536</Single>
-    <Null Name="NamedColor" />
-  </Single>
-</Visualization>
-"""
-
-
-def test_cts0003_flags_dead_literal_beside_live_named_color():
-    unit = pm._build_xml_unit("screen.xml", _VISU_BAD)
-    findings = list(cts0003(unit, _ctx(ProjectSnapshot(".", [unit]))))
-    assert len(findings) == 1
-    assert findings[0].anchor is not None
-    assert findings[0].anchor.startswith("-1073741824:")
-    assert findings[0].location.line == 4  # the ExplicitColor literal line
-
-
-def test_cts0003_ok_when_named_color_is_null():
-    unit = pm._build_xml_unit("screen.xml", _VISU_GOOD)
-    findings = list(cts0003(unit, _ctx(ProjectSnapshot(".", [unit]))))
-    assert findings == []
-
-
-def test_cts0003_ok_when_no_explicit_color():
-    text = """<Visualization>
-  <Single Type="{c694e3a2-5c0b-4177-ab35-cb06bd5a6a02}" Method="IArchivable">
-    <Single Name="Id" Type="long">3729828405</Single>
-    <Single Name="NamedColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
-      <Single Name="Color" Type="int">-1073741824</Single>
-      <Single Name="CanonicalName" Type="string">Font-Default-Color</Single>
-    </Single>
-  </Single>
-</Visualization>
-"""
-    unit = pm._build_xml_unit("screen.xml", text)
-    findings = list(cts0003(unit, _ctx(ProjectSnapshot(".", [unit]))))
-    assert findings == []

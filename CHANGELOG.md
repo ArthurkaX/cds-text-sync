@@ -63,8 +63,6 @@ First rules, one per source:
 - `CTS0001` commented-out code (text rule; ST_TEXT).
 - `CTS0002` unused `VAR_INPUT` member, read across the owner's methods and
   actions (DECLARATIONS + PROJECT_SYMBOLS).
-- `CTS0003` literal `ExplicitColor` beside a live `NamedColor` in visu XML
-  (VISU_XML).
 - `CTS0004` `PERSISTENT` member order changed against an explicit git base
   (GIT_BASE via subprocess; no git -> policy-controlled Diagnostic).
 
@@ -82,6 +80,11 @@ path-glob `[[rule_scope]]` exclusions. Suppressions live in
 ScriptDir scanner shows every `.py` in the menu); the loader is an explicit
 `SourceFileLoader`. `.ctsrule` and `.md` ship in the wheel; `.gitattributes`
 maps the extension to Python for diffs; ruff covers `*.ctsrule`. CI runs `cts analyze selftest` (no rule ships without executable docs), builds the wheel and asserts the rule assets are in it, and enforces the asset budget: in-repo rule assets are text/SVG only and stay well under 2 MB.
+
+**Separate machine system:** `cts visu-lint --xml <generated.xml>` is the
+JSON-only validator for the SVG-to-XML/LLM pipeline. Its `VISU001` rule is not
+in the human analyzer registry, never appears in `cts ui`, and has no baseline
+or triage semantics.
 
 ---
 

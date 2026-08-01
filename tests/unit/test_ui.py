@@ -16,6 +16,7 @@ def test_ui_adapter_runs_existing_analyzer(tmp_path):
     assert response["workspace"] == root
     assert response["result"]["schema_version"] == 1
     assert response["result"]["findings"]
+    assert all(item["rule_id"] != "VISU001" for item in response["result"]["findings"])
 
 
 def test_ui_adapter_returns_workspace_error_as_data(tmp_path):
