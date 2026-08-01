@@ -67,7 +67,7 @@ def _build_wheel(root, wheel_dir):
 
 
 def check_wheel_assets():
-    """The wheel must ship one .ctsrule + one .md per rule, and no .pyc."""
+    """The wheel must ship rule docs, the UI page, and no leaked bytecode."""
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
     with tempfile.TemporaryDirectory() as wheel_dir:
@@ -80,10 +80,16 @@ def check_wheel_assets():
             raise SystemExit(f"expected 4 .ctsrule in wheel, got {len(ctsrule)}")
         if len(docs) != 4:
             raise SystemExit(f"expected 4 .md in wheel, got {len(docs)}")
+        ui_pages = [n for n in names if n.endswith("cds_text_sync/ui_assets/index.html")]
+        if len(ui_pages) != 1:
+            raise SystemExit("desktop UI page missing from wheel")
         leaked = [n for n in rules if n.endswith(".pyc")]
         if leaked:
             raise SystemExit(f".pyc leaked into wheel rules: {leaked}")
-        print(f"wheel OK: {len(ctsrule)} rules, {len(docs)} docs, no pyc leaked")
+        print(
+            f"wheel OK: {len(ctsrule)} rules, {len(docs)} docs, "
+            "UI page, no pyc leaked"
+        )
 
 
 def _venv_bin(venv_dir):
