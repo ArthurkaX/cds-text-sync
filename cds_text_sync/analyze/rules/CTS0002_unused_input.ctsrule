@@ -15,5 +15,6 @@ RULE = RuleSpec(
     requires={Capability.DECLARATIONS, Capability.PROJECT_SYMBOLS},
     kinds="CALLABLE",
     summary="VAR_INPUT members never read by their owner.",
+    topic="Interfaces",
     check=check,
 )

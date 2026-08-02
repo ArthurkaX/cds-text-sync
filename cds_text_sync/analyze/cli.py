@@ -20,13 +20,11 @@ Exit codes (see imp_plan.md):
 from __future__ import annotations
 
 import json
-import re
 import sys
 import xml.etree.ElementTree as ET
 
 from cds_text_sync.analyze import project as project_mod
 from cds_text_sync.analyze import state as state_mod
-from cds_text_sync.analyze.capabilities import Scope
 from cds_text_sync.analyze.config import ConfigError, ResolvedConfig, load_config
 from cds_text_sync.analyze.project import build_snapshot
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
@@ -34,14 +32,14 @@ from cds_text_sync.analyze.render import json as render_json
 from cds_text_sync.analyze.render import sarif as render_sarif
 from cds_text_sync.analyze.render import terminal as render_terminal
 from cds_text_sync.analyze.runner import (
+    AnalysisContext,
     RunOptions,
     exit_code,
-    filter_result,
     run_analysis,
 )
+from cds_text_sync.analyze.service import analyze_resolved
 from cds_text_sync.analyze.state import (
     baseline_fingerprints,
-    is_expired,
     read_baseline,
     read_suppressions,
     write_baseline,
@@ -102,11 +100,6 @@ class _CliExit(Exception):
 
 def _run_once(workspace, config, args, apply_state=True):
     """Run the analysis, apply suppressions/baseline, return result."""
-    try:
-        snapshot = build_snapshot(workspace.project_view)
-    except OSError as exc:
-        raise _CliExit(2, f"cannot scan project-view: {exc}") from exc
-
     rule_filter = None
     if getattr(args, "rule", None):
         rule_filter = set(args.rule)
@@ -117,16 +110,15 @@ def _run_once(workspace, config, args, apply_state=True):
         incomplete=getattr(args, "incomplete", None),
     )
     try:
-        result = run_analysis(workspace, snapshot, config, options)
+        _workspace, _config, result = analyze_resolved(
+            workspace, config, options, apply_state=apply_state
+        )
+    except OSError as exc:
+        raise _CliExit(2, f"cannot scan project-view: {exc}") from exc
+    except state_mod.StateError as exc:
+        raise _CliExit(2, str(exc)) from exc
     except RegistryError as exc:
         raise _CliExit(2, str(exc)) from exc
-
-    if apply_state:
-        suppressions = _safe_suppressions(workspace)
-        baseline_entries, _ = _safe_baseline(workspace)
-        suppressed = {e["fingerprint"] for e in suppressions if not is_expired(e)}
-        baselined = baseline_fingerprints(baseline_entries)
-        filter_result(result, suppressed, baselined)
     return result
 
 
@@ -251,60 +243,9 @@ def _doc_to_terminal(rule, doc):
     return "\n".join(lines) + "\n"
 
 
-def _extract_st_blocks(doc):
-    """Yield (tag, text) for every ```st good/bad block in a rule doc."""
-    pattern = re.compile(r"```st\s+(good|bad)\s*\n(.*?)```", re.DOTALL)
-    for m in pattern.finditer(doc):
-        yield m.group(1), m.group(2).strip("\n")
-
-
 def cmd_selftest(args, out=None):
-    out = out or _out()
-    try:
-        registry = load_builtin_rules()
-    except RegistryError as exc:
-        raise _CliExit(2, str(exc)) from exc
-
-    failures = []
-    passed = 0
-    for rule_id in sorted(registry):
-        rule = registry[rule_id]
-        with open(rule.doc_path, encoding="utf-8") as fh:
-            doc = fh.read()
-        blocks = list(_extract_st_blocks(doc))
-        if not blocks:
-            failures.append(f"{rule_id}: no ```st good/bad examples in doc")
-            continue
-
-        history = rule.scope == Scope.HISTORY
-        good_text = ""
-        for tag, text in blocks:
-            if tag == "good":
-                good_text = text
-                break
-
-        for tag, text in blocks:
-            expect = tag == "bad"
-            try:
-                if history:
-                    actual = _run_snippet(rule, text, base_text=good_text)
-                else:
-                    actual = _run_snippet(rule, text)
-            except Exception as exc:
-                failures.append(f"{rule_id} ({tag}): crashed: {exc}")
-                continue
-            if expect and not actual:
-                failures.append(f"{rule_id} ({tag}): expected a finding, got none")
-            elif not expect and actual:
-                failures.append(
-                    f"{rule_id} ({tag}): expected clean, got {len(actual)} finding(s)"
-                )
-            else:
-                passed += 1
-    out.write(f"selftest: {passed} blocks passed, {len(failures)} failed\n")
-    for failure in failures:
-        out.write(f"  FAIL {failure}\n")
-    return 1 if failures else 0
+    from cds_text_sync.analyze.selftest import run
+    return run(out or _out())
 
 
 def _run_snippet(rule, text, base_text=None):
@@ -351,29 +292,19 @@ def _run_snippet(rule, text, base_text=None):
     return [f for f in found if isinstance(f, Finding)]
 
 
-class _SnippetContext:
-    """Minimal context for selftest: only what the rule's check touches."""
+class _SnippetContext(AnalysisContext):
+    """Real analysis context with a substituted git provider for selftest."""
 
     def __init__(self, workspace, snapshot, config):
-        self.workspace = workspace
-        self.snapshot = snapshot
-        self.config = config
-        self.base = "HEAD"
+        super().__init__(workspace, snapshot, config, base="HEAD")
         self.base_text = None
 
-    @property
-    def units(self):
-        return list(self.snapshot.units)
-
-    def visible_units(self, rule=None):
-        return list(self.snapshot.units)
-
     def capability(self, cap):
-        from cds_text_sync.analyze.capabilities import Capability, CapabilityError
+        from cds_text_sync.analyze.capabilities import Capability
 
         if cap == Capability.GIT_BASE:
             return _StubGit(self.base_text)
-        raise CapabilityError(cap, "not available in selftest")
+        return super().capability(cap)
 
 
 class _StubGit:
@@ -529,6 +460,8 @@ def dispatch_analyze(args):
     try:
         if action == "":
             return cmd_analyze(args)
+        if action == "run":
+            return cmd_analyze(args)
         if action == "rules":
             cmd_rules(args)
             return 0
@@ -545,5 +478,8 @@ def dispatch_analyze(args):
         if exc.message:
             _print_error(exc.message)
         return exc.code
-    _print_error(f"unknown analyze action: {action}")
+    _print_error(
+        f"unknown analyze action: {action}; available actions: "
+        "rules, explain, selftest, baseline, triage (or omit the action to analyze)"
+    )
     return 2

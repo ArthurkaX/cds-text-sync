@@ -36,6 +36,20 @@ def test_open_file_rejects_path_outside_project_view(tmp_path):
     assert response["error"] == "Invalid source path."
 
 
+def test_open_file_accepts_optional_line(tmp_path, monkeypatch):
+    source = tmp_path / "Main.st"
+    source.write_text("PROGRAM Main\n", encoding="utf-8")
+    api = AnalyzerApi()
+    api._last_project_view = str(tmp_path)
+    calls = []
+    monkeypatch.setattr("cds_text_sync.ui.subprocess.Popen", lambda args, **_: calls.append(args))
+
+    response = api.open_file("Main.st", 7)
+
+    assert response == {"ok": True, "opened_at_line": 7}
+    assert calls and calls[0][0:2] == ["code", "-g"]
+
+
 def test_rules_catalog_contains_only_human_analyzer_rules(tmp_path):
     root = str(tmp_path / "sync")
     copy_fixture(root)
@@ -53,3 +67,38 @@ def test_rule_switch_is_saved_to_project_config(tmp_path):
     config = (tmp_path / "sync" / "cts-analyze.toml").read_text(encoding="utf-8")
     assert "[rules.CTS0001]" in config
     assert "enabled = false" in config
+
+
+def test_suppression_entry_is_copyable_without_writing_state():
+    response = AnalyzerApi().suppression_entry(
+        {"fingerprint": "cts1:abc", "rule_id": "CTS0001", "unit_id": "Main"}
+    )
+    assert response["ok"] is True
+    assert 'fingerprint = "cts1:abc"' in response["text"]
+    assert 'reason = "TODO:' in response["text"]
+
+
+def test_ui_triage_uses_canonical_suppression_state(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    response = analyze_workspace(root)
+    finding = response["result"]["findings"][0]
+
+    applied = AnalyzerApi().triage(root, finding, "suppress", "accepted for legacy code")
+
+    assert applied["ok"] is True
+    text = (tmp_path / "sync" / ".cts-analyze" / "suppressions.toml").read_text(
+        encoding="utf-8"
+    )
+    assert finding["fingerprint"] in text
+
+
+def test_ui_bulk_triage_applies_one_decision_to_group(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    findings = analyze_workspace(root)["result"]["findings"][:2]
+
+    applied = AnalyzerApi().triage_many(root, findings, "fix-later", "group review")
+
+    assert applied["ok"] is True
+    assert applied["summary"]["fix_later"] == 2

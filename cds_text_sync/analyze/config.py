@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 from cds_text_sync.analyze.model import is_valid_severity
 
@@ -33,6 +34,48 @@ VALID_INCOMPLETE = ("warn", "error", "ignore")
 
 class ConfigError(Exception):
     """The config file is malformed or contradictory."""
+
+
+def set_rule_enabled(config_path, rule_id, enabled):
+    """Update one ``[rules.<id>] enabled`` value and validate the result.
+
+    The small text edit intentionally preserves comments and unrelated TOML
+    content.  The resulting file is parsed through :func:`load_config` before
+    it is committed, so the UI cannot leave a syntactically invalid config.
+    """
+    rule_id = str(rule_id or "").strip().upper()
+    if not re.fullmatch(r"CTS\d{4}", rule_id):
+        raise ConfigError(f"invalid rule id: {rule_id!r}")
+    path = Path(config_path)
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    section = re.compile(
+        rf"(?ms)^\[rules\.{re.escape(rule_id)}\]\s*$.*?(?=^\[|\Z)"
+    )
+    value = "true" if bool(enabled) else "false"
+    block = f"[rules.{rule_id}]\nenabled = {value}\n"
+    match = section.search(text)
+    if match:
+        current = match.group(0)
+        if re.search(r"(?m)^enabled\s*=", current):
+            current = re.sub(
+                r"(?m)^enabled\s*=.*$", f"enabled = {value}", current, count=1
+            )
+        else:
+            current = current.rstrip() + f"\nenabled = {value}\n"
+        text = text[: match.start()] + current + text[match.end() :]
+    else:
+        text = text.rstrip() + ("\n\n" if text.strip() else "") + block
+    path.parent.mkdir(parents=True, exist_ok=True)
+    previous = path.read_bytes() if path.is_file() else None
+    path.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        load_config(str(path))
+    except Exception:
+        if previous is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(previous)
+        raise
 
 
 class RuleScope:

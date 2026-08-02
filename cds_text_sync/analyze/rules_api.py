@@ -51,7 +51,9 @@ class RuleSpecError(Exception):
 
 
 class RuleSpec:
-    def __init__(self, id, title, severity, scope, requires, kinds, summary, check):
+    def __init__(
+        self, id, title, severity, scope, requires, kinds, summary, check, topic="General"
+    ):
         self.id = str(id).strip()
         self.title = str(title).strip()
         self.severity = str(severity).strip().lower()
@@ -59,6 +61,7 @@ class RuleSpec:
         self.requires = _normalise_capabilities(requires)
         self.kinds = kinds  # expanded by the registry
         self.summary = str(summary).strip()
+        self.topic = str(topic).strip() or "General"
         self.check = check
 
     def validate(self):
@@ -66,6 +69,8 @@ class RuleSpec:
             raise RuleSpecError(
                 f"{self.id or '<no-id>'}: id/title/summary must be non-empty"
             )
+        if not self.topic:
+            raise RuleSpecError(f"{self.id}: topic must be non-empty")
         from cds_text_sync.analyze.model import is_valid_severity
 
         if not is_valid_severity(self.severity):
