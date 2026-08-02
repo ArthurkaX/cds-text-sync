@@ -97,3 +97,17 @@ def test_unparsable_xml_is_a_source_error(tmp_path):
     assert record.source_kind == K.VISUALIZATION
     assert record.location.path == "HMI/Broken.xml"
     assert "cannot parse" in record.message
+
+
+def test_snapshot_parses_file_directives_once_at_project_boundary(tmp_path):
+    root = str(tmp_path / "project-view")
+    os.makedirs(os.path.join(root, "POUs"))
+    path = os.path.join(root, "POUs", "Main.st")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("// cts:ignore-file cts0001 -- generated example\nPROGRAM Main\n")
+
+    snap = build_snapshot(root)
+
+    directives = snap.file_directives["POUs/Main.st"]
+    assert directives.rules == frozenset({"CTS0001"})
+    assert directives.issues == ()

@@ -42,7 +42,7 @@ from cds_text_sync.analyze.model import (
 )
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
 from cds_text_sync.analyze.st import decl, symbols
-from cds_text_sync.analyze.file_directives import directive_info, is_ignored
+from cds_text_sync.analyze.file_directives import is_ignored
 
 # ---------------------------------------------------------------------------
 # Git adapter (GIT_BASE capability)
@@ -336,6 +336,10 @@ def run_analysis(workspace, snapshot, config, options):
         else:
             _dispatch_project(rule, ctx, result)
 
+    # Keep the complete set for the later state filter.  File directives are
+    # source-level suppression, but stale state entries must still be checked
+    # against findings that were removed by that first stage.
+    result._unfiltered_fingerprints = {f.fingerprint for f in result.findings}
     _apply_file_directives(result, snapshot, rules)
     _fingerprint_all(result.findings)
     result.sort()
@@ -346,33 +350,37 @@ def run_analysis(workspace, snapshot, config, options):
 def _apply_file_directives(result, snapshot, known_rules):
     """Remove findings covered by ``cts:ignore-file`` source directives."""
     ignored_by_path = {
-        unit.source_path: directive_info(unit.text)[0]
-        for unit in snapshot.units
-        if unit.source_path.lower().endswith(".st")
+        path: directives.rules
+        for path, directives in snapshot.file_directives.items()
+        if path.lower().endswith(".st")
     }
     if not ignored_by_path:
         return
+    units_by_path = {}
     for unit in snapshot.units:
-        if not unit.source_path.lower().endswith(".st"):
+        units_by_path.setdefault(unit.source_path, unit)
+    for path, directives in snapshot.file_directives.items():
+        if not path.lower().endswith(".st"):
             continue
-        rules, issues = directive_info(unit.text)
-        for kind, detail, line in issues:
+        unit = units_by_path.get(path)
+        unit_id = unit.id if unit else None
+        for kind, detail, line in directives.issues:
             result.diagnostics.append(
                 Diagnostic(
                     kind,
                     f"{detail} in cts:ignore-file directive",
-                    Location(unit.source_path, line, 1),
-                    unit_id=unit.id,
+                    Location(path, line, 1),
+                    unit_id=unit_id,
                 )
             )
-        for rule_id in sorted(rules - {"*"} - set(known_rules)):
+        for rule_id in sorted(directives.rules - {"*"} - set(known_rules)):
             result.diagnostics.append(
                 Diagnostic(
                     "directive-unknown-rule",
                     f"unknown rule {rule_id} in cts:ignore-file directive",
-                    Location(unit.source_path, 1, 1),
+                    Location(path, 1, 1),
                     rule_id=rule_id,
-                    unit_id=unit.id,
+                    unit_id=unit_id,
                 )
             )
     kept = []
@@ -387,14 +395,7 @@ def _apply_file_directives(result, snapshot, known_rules):
         result.findings = kept
         result.summary.suppressed += ignored
         result.summary.suppressed_by_directive += ignored
-        result.summary.total = len(kept)
-        result.summary.by_severity = dict.fromkeys(("danger", "suspicious", "style"), 0)
-        result.summary.by_rule = {}
-        for finding in kept:
-            result.summary.by_severity[finding.severity] += 1
-            result.summary.by_rule[finding.rule_id] = (
-                result.summary.by_rule.get(finding.rule_id, 0) + 1
-            )
+        _recount_summary(result)
 
 
 def _report_unparsed_units(rule, ctx, result):
@@ -545,13 +546,27 @@ def _fingerprint_all(findings):
 # ---------------------------------------------------------------------------
 
 
+def _recount_summary(result):
+    """Rebuild finding counts after a filtering stage changes the list."""
+    result.summary.total = len(result.findings)
+    result.summary.by_severity = dict.fromkeys(("danger", "suspicious", "style"), 0)
+    result.summary.by_rule = {}
+    for finding in result.findings:
+        result.summary.by_severity[finding.severity] += 1
+        result.summary.by_rule[finding.rule_id] = (
+            result.summary.by_rule.get(finding.rule_id, 0) + 1
+        )
+
+
 def filter_result(result, suppressed_fingerprints, baselined_fingerprints):
     """Remove suppressed/baselined findings and count them.
 
     Returns (new_result, stale_suppressions) where stale_suppressions are
     suppression/baseline entries that no longer match any finding.
     """
-    current = {f.fingerprint for f in result.findings}
+    current = getattr(result, "_unfiltered_fingerprints", None)
+    if current is None:
+        current = {f.fingerprint for f in result.findings}
 
     stale_suppressed = sorted({s for s in suppressed_fingerprints if s not in current})
     stale_baselined = sorted({b for b in baselined_fingerprints if b not in current})
@@ -573,12 +588,7 @@ def filter_result(result, suppressed_fingerprints, baselined_fingerprints):
     result.summary.baselined = baselined
     result.summary.stale_suppressions = stale_suppressed
     result.summary.stale_baselined = stale_baselined
-    result.summary.total = len(kept)
-    result.summary.by_severity = dict.fromkeys(("danger", "suspicious", "style"), 0)
-    result.summary.by_rule = {}
-    for f in kept:
-        result.summary.by_severity[f.severity] += 1
-        result.summary.by_rule[f.rule_id] = result.summary.by_rule.get(f.rule_id, 0) + 1
+    _recount_summary(result)
     result.sort()
     return result
 

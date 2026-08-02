@@ -44,6 +44,7 @@ class Rule:
         self.requires = spec.requires
         self.kinds = expand_kinds(spec.kinds)
         self.summary = spec.summary
+        self.topic = spec.topic
         self.check = spec.check
         self.stem = stem
         self.source_path = source_path

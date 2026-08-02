@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CTS Static Analyzer</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
   <style>
     :root {
       color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif;
@@ -31,7 +33,7 @@
     .notice { min-height:38px; display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:7px; color:var(--muted); background:var(--surface); border:1px solid var(--line); }
     .notice.error { color:#ffd0d0; border-color:#743e47; background:#2b1b20; }
     .notice.success { color:#b8efd1; border-color:#315f49; background:#17271f; }
-    .summary { display:grid; grid-template-columns:repeat(6,minmax(105px,1fr)); gap:10px; margin:14px 0; }
+    .summary { display:grid; grid-template-columns:repeat(7,minmax(105px,1fr)); gap:10px; margin:14px 0; }
     .metric { padding:13px 14px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
     .metric b { display:block; font-size:22px; line-height:1.15; } .metric span { color:var(--muted); font-size:12px; }
     .danger { color:var(--danger); } .suspicious { color:var(--warning); } .style { color:var(--style); }
@@ -93,10 +95,10 @@
   <script>
     let findings = [], diagnostics = [], rules = [], ruleWorkspace = '', selectedFingerprint = '';
     const $ = id => document.getElementById(id);
-    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const esc = window.CTSUi.escapeHtml;
     const severityName = value => ({danger:'Danger', suspicious:'Suspicious', style:'Style'}[value] || value);
     function setNotice(id, text, state='') { const el=$(id); el.textContent=text; el.className=`notice ${state}`.trim(); }
-    function locationText(loc={}) { return `${loc.path || 'Project'}${loc.line ? `:${loc.line}${loc.column ? ':'+loc.column : ''}` : ''}`; }
+    const locationText = window.CTSUi.locationText;
     function filteredFindings() {
       const severity=$('severity').value, q=$('search').value.trim().toLowerCase();
       return findings.filter(f => (!severity || f.severity===severity) && (!q || `${f.rule_id} ${f.rule_title} ${f.location.path} ${f.message}`.toLowerCase().includes(q)));
@@ -106,14 +108,20 @@
       visible.forEach(f => { const key=byRule ? f.rule_id : f.location.path; (grouped[key] ||= []).push(f); });
       $('result-count').textContent=`${visible.length} of ${findings.length}`;
       if (!visible.length) { $('groups').innerHTML='<div class="empty"><strong>No matching findings</strong>Adjust filters or run analysis again.</div>'; return; }
-      $('groups').innerHTML=Object.entries(grouped).map(([key,items],n) => `<section><button class="group-head" data-group="${n}"><span class="chevron">▾</span><span class="${esc(items[0].severity)}">${esc(byRule ? key : severityName(items[0].severity))}</span><strong>${esc(byRule ? items[0].rule_title : key)}</strong><span class="badge">${items.length}</span></button><div data-group-body="${n}">${items.map(f => `<div class="finding-row ${f.fingerprint===selectedFingerprint?'selected':''}" data-fingerprint="${esc(f.fingerprint)}"><span class="location">${esc(locationText(f.location))}</span><span class="${esc(f.severity)}">${esc(severityName(f.severity))}</span><span class="message-text">${esc(f.message)}</span></div>`).join('')}</div></section>`).join('');
+      $('groups').innerHTML=Object.entries(grouped).map(([key,items],n) => `<section><div class="group-head" data-group="${n}"><span class="chevron">▾</span><span class="${esc(items[0].severity)}">${esc(byRule ? key : severityName(items[0].severity))}</span><strong>${esc(byRule ? items[0].rule_title : key)}</strong><span class="badge">${items.length}</span><span class="group-actions"><button type="button" data-group-action="baseline" data-group="${n}">Baseline all</button><button type="button" data-group-action="fix-later" data-group="${n}">Fix all</button><button type="button" data-group-action="suppress" data-group="${n}">Suppress all</button></span></div><div data-group-body="${n}">${items.map(f => `<div class="finding-row ${f.fingerprint===selectedFingerprint?'selected':''}" data-fingerprint="${esc(f.fingerprint)}"><span class="location">${esc(locationText(f.location))}</span><span class="${esc(f.severity)}">${esc(severityName(f.severity))}</span><span class="message-text">${esc(f.message)}</span></div>`).join('')}</div></section>`).join('');
       document.querySelectorAll('.group-head').forEach(head => head.onclick=()=>{ const body=document.querySelector(`[data-group-body="${head.dataset.group}"]`); const closed=body.classList.toggle('hidden'); head.querySelector('.chevron').textContent=closed?'▸':'▾'; });
       document.querySelectorAll('.finding-row').forEach(row => row.onclick=()=>selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint),row));
+      document.querySelectorAll('[data-group-action]').forEach(button=>button.onclick=e=>{e.stopPropagation();const items=Object.values(grouped)[Number(button.dataset.group)]||[];bulkTriage(items,button.dataset.groupAction);});
     }
+    async function bulkTriage(items,action) { let reason=''; if(action==='fix-later'||action==='suppress'){reason=window.prompt(action==='suppress'?'Reason for suppressing this group:':'Fix-later note (optional):','')??'';if(action==='suppress'&&!reason.trim())return;} const r=await window.pywebview.api.triage_many($('workspace').value.trim(),items,action,reason); if(!r.ok){setNotice('message',r.error,'error');return;} setNotice('message',`${action} applied to ${items.length} finding(s). Re-running analysis…`,'success');run(); }
     function selectFinding(f,row) {
       if(!f)return; selectedFingerprint=f.fingerprint; document.querySelectorAll('.finding-row').forEach(x=>x.classList.remove('selected')); row.classList.add('selected');
-      $('details').className='details'; $('details').innerHTML=`<span class="rule">${esc(f.rule_id)} · ${esc(severityName(f.severity))}</span><h2>${esc(f.rule_title || 'Finding')}</h2><p class="lead">${esc(f.message)}</p><div class="meta"><span>Location</span><code>${esc(locationText(f.location))}</code><span>Unit</span><span>${esc(f.unit_id || '—')}</span></div><button id="open-file">Open source file</button>`;
-      $('open-file').onclick=async()=>{ const r=await window.pywebview.api.open_file(f.location.path); if(!r.ok)setNotice('message',r.error,'error'); };
+      $('details').className='details'; $('details').innerHTML=`<span class="rule">${esc(f.rule_id)} · ${esc(severityName(f.severity))}</span><h2>${esc(f.rule_title || 'Finding')}</h2><p class="lead">${esc(f.message)}</p><div class="meta"><span>Location</span><code>${esc(locationText(f.location))}</code><span>Unit</span><span>${esc(f.unit_id || '—')}</span></div><div class="actions"><button id="open-file">Open source file</button><button id="copy-suppression">Copy suppression entry</button></div>`;
+      $('open-file').onclick=async()=>{ const r=await window.pywebview.api.open_file(f.location.path,f.location.line||null); if(!r.ok)setNotice('message',r.error,'error'); };
+      $('copy-suppression').onclick=async()=>{ const r=await window.pywebview.api.suppression_entry(f); if(!r.ok){setNotice('message',r.error,'error');return;} try { await navigator.clipboard.writeText(r.text); setNotice('message','Suppression entry copied. Add it to .cts-analyze/suppressions.toml and replace the TODO reason.','success'); } catch (_) { window.prompt('Copy suppression entry:',r.text); } };
+      $('details').insertAdjacentHTML('beforeend','<div class="actions triage-actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button></div>');
+      const decide=async action=>{ let reason=''; if(action==='suppress'||action==='fix-later'){reason=window.prompt(action==='suppress'?'Reason for suppression:':'Fix-later note (optional):','')??'';if(action==='suppress'&&!reason.trim())return;} const r=await window.pywebview.api.triage($('workspace').value.trim(),f,action,reason); if(!r.ok){setNotice('message',r.error,'error');return;} setNotice('message',`${action} decision applied. Re-running analysis…`,'success');run(); };
+      $('fix-later').onclick=()=>decide('fix-later'); $('baseline').onclick=()=>decide('baseline'); $('suppress').onclick=()=>decide('suppress');
     }
     function renderDiagnostics() {
       $('diagnostics-panel').classList.toggle('hidden',!diagnostics.length);
@@ -139,14 +147,15 @@
       if(!response.ok){setNotice('message',response.error,'error');return;}
       findings=response.result.findings||[]; diagnostics=response.result.diagnostics||[]; selectedFingerprint=''; const s=response.result.summary;
       $('summary').classList.remove('hidden'); $('filters').classList.remove('hidden'); $('results').classList.remove('hidden');
-      $('summary').innerHTML=`<div class="metric"><b>${s.total}</b><span>Active findings</span></div><div class="metric danger"><b>${s.by_severity.danger||0}</b><span>Danger</span></div><div class="metric suspicious"><b>${s.by_severity.suspicious||0}</b><span>Suspicious</span></div><div class="metric style"><b>${s.by_severity.style||0}</b><span>Style</span></div><div class="metric"><b>${s.suppressed||0}</b><span>Ignored</span></div><div class="metric"><b>${s.baselined||0}</b><span>Baselined</span></div>`;
+      $('summary').innerHTML=`<div class="metric"><b>${s.total}</b><span>Active findings</span></div><div class="metric danger"><b>${s.by_severity.danger||0}</b><span>Danger</span></div><div class="metric suspicious"><b>${s.by_severity.suspicious||0}</b><span>Suspicious</span></div><div class="metric style"><b>${s.by_severity.style||0}</b><span>Style</span></div><div class="metric"><b>${s.suppressed||0}</b><span>State ignored</span></div><div class="metric"><b>${s.suppressed_by_directive||0}</b><span>File directives</span></div><div class="metric"><b>${s.baselined||0}</b><span>Baselined</span></div>`;
       $('details').className='details empty'; $('details').innerHTML='<strong>No finding selected</strong>Choose an item to inspect it.';
       setNotice('message',response.result.complete?`Analysis complete · ${response.workspace}`:`Analysis completed with ${diagnostics.length} diagnostic(s).`,response.result.complete?'success':'error'); renderFindings(); renderDiagnostics();
     }
     function showView(name) { document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===name)); $('analysis-view').classList.toggle('hidden',name!=='analysis'); $('rules-view').classList.toggle('hidden',name!=='rules'); if(name==='rules')loadRules(); }
-    $('run').onclick=run; $('workspace').onkeydown=e=>{if(e.key==='Enter')run();}; $('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path)$('workspace').value=path;};
+    $('run').onclick=run; $('workspace').onkeydown=e=>{if(e.key==='Enter')run();}; $('workspace').oninput=()=>{try{localStorage.setItem('cts.workspace',$('workspace').value.trim());}catch(_){}}; $('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path){$('workspace').value=path;try{localStorage.setItem('cts.workspace',path);}catch(_){}}};
     $('severity').onchange=renderFindings; $('grouping').onchange=renderFindings; $('search').oninput=renderFindings; $('rule-search').oninput=renderRules; $('rule-state').onchange=renderRules; document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showView(t.dataset.view));
-    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();if(state.workspace)$('workspace').value=state.workspace;});
+    document.addEventListener('keydown',e=>{ if(e.key==='F5'){e.preventDefault();run();return;} if((e.key==='ArrowDown'||e.key==='ArrowUp')&&findings.length){const visible=filteredFindings();if(!visible.length)return;let i=visible.findIndex(f=>f.fingerprint===selectedFingerprint);i=(i+(e.key==='ArrowDown'?1:-1)+visible.length)%visible.length;const f=visible[i],row=document.querySelector(`[data-fingerprint="${CSS.escape(f.fingerprint)}"]`);if(row)selectFinding(f,row);e.preventDefault();} });
+    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();if(state.workspace)$('workspace').value=state.workspace;else{try{$('workspace').value=localStorage.getItem('cts.workspace')||'';}catch(_){}}});
   </script>
 </body>
 </html>

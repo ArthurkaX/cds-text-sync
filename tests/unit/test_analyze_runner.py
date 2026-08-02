@@ -143,6 +143,19 @@ def test_filter_result_counts_and_stale(tmp_path):
     assert "cts1:ccc" in filtered.summary.stale_baselined
 
 
+def test_filter_result_uses_unfiltered_findings_for_stale_state():
+    result = AnalysisResult()
+    finding = Finding("CTS0001", "suspicious", "m1")
+    finding.fingerprint = "cts1:gone-by-directive"
+    result.findings.append(finding)
+    result.summary.add_finding(finding)
+    result._unfiltered_fingerprints = {finding.fingerprint}
+    # Simulate the source directive stage having removed the finding.
+    result.findings = []
+    filtered = filter_result(result, {finding.fingerprint}, set())
+    assert filtered.summary.stale_suppressions == []
+
+
 def test_capability_gate_skips_rule_with_diagnostic(tmp_path):
     # An unreadable .st makes DECLARATIONS/PROJECT_SYMBOLS unavailable.
     root = str(tmp_path / "sync")

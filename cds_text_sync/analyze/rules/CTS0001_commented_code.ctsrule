@@ -15,5 +15,6 @@ RULE = RuleSpec(
     requires={Capability.ST_TEXT},
     kinds="CALLABLE",
     summary="ST statements that survive inside comments.",
+    topic="Code quality",
     check=check,
 )

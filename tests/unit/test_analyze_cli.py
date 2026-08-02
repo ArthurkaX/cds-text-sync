@@ -20,6 +20,14 @@ def test_json_snapshot_is_deterministic():
     assert out1 == out2
 
 
+def test_explicit_run_alias_executes_analysis():
+    code, out, _ = run_cli(
+        ["analyze", "run", "--workspace", fixture_project_view(), "--format", "json"]
+    )
+    assert code == 1
+    assert json.loads(out)["schema_version"] == 1
+
+
 def test_sarif_output():
     code, out, _ = run_cli(
         [

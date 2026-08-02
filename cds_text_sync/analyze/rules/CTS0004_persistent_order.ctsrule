@@ -15,5 +15,6 @@ RULE = RuleSpec(
     requires={Capability.GIT_BASE},
     kinds="gvl_persistent",
     summary="Order of persistent variables changed against the git base.",
+    topic="Data consistency",
     check=check,
 )

@@ -9,14 +9,15 @@ usable without its optional dependency.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from cds_text_sync.analyze import state as state_mod
-from cds_text_sync.analyze.config import ConfigError, load_config
-from cds_text_sync.analyze.project import build_snapshot
+from cds_text_sync.analyze.config import ConfigError, load_config, set_rule_enabled
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
-from cds_text_sync.analyze.runner import RunOptions, filter_result, run_analysis
-from cds_text_sync.analyze.state import baseline_fingerprints, is_expired
+from cds_text_sync.analyze.runner import RunOptions
+from cds_text_sync.analyze.service import analyze as run_service
+from cds_text_sync.analyze.triage import TriageError, apply_decisions
 from cds_text_sync.analyze.workspace import WorkspaceError, WorkspaceResolver
 
 
@@ -27,20 +28,15 @@ def analyze_workspace(workspace_path: str) -> dict:
     bridge.  This function intentionally performs no baseline/triage writes.
     """
     try:
-        workspace = WorkspaceResolver(workspace=workspace_path).resolve()
-        config = load_config(workspace.config_path)
-        snapshot = build_snapshot(workspace.project_view)
-        result = run_analysis(workspace, snapshot, config, RunOptions())
-        state_mod.validate_baseline_schema(workspace.state_dir)
-        suppressions = state_mod.read_suppressions(workspace.state_dir)
-        baseline, _ = state_mod.read_baseline(workspace.state_dir)
-        suppressed = {row["fingerprint"] for row in suppressions if not is_expired(row)}
-        filter_result(result, suppressed, baseline_fingerprints(baseline))
+        workspace, _config, result = run_service(
+            workspace_path, RunOptions(), apply_state=True
+        )
         return {
             "ok": True,
             "workspace": workspace.root,
             "project_view": workspace.project_view,
             "result": result.to_dict(),
+            "_result_object": result,
         }
     except (WorkspaceError, ConfigError, RegistryError, state_mod.StateError, OSError) as exc:
         return {"ok": False, "error": str(exc)}
@@ -54,6 +50,8 @@ class AnalyzerApi:
     def __init__(self, initial_workspace: str = ""):
         self.initial_workspace = initial_workspace
         self._last_project_view = ""
+        self._last_analysis = None
+        self._last_result = None
 
     def initial_state(self) -> dict:
         return {"workspace": self.initial_workspace}
@@ -62,6 +60,8 @@ class AnalyzerApi:
         response = analyze_workspace(workspace_path)
         if response.get("ok"):
             self._last_project_view = response["project_view"]
+            self._last_analysis = (response["workspace"], response["result"])
+            self._last_result = response.pop("_result_object", None)
         return response
 
     def rules(self, workspace_path: str) -> dict:
@@ -70,7 +70,6 @@ class AnalyzerApi:
             workspace = WorkspaceResolver(workspace=workspace_path).resolve()
             config = load_config(workspace.config_path)
             catalog = []
-            topics = {1: "Code quality", 2: "Interfaces", 4: "Data consistency"}
             for rule_id, rule in sorted(load_builtin_rules().items()):
                 try:
                     documentation = Path(rule.doc_path).read_text(encoding="utf-8")
@@ -78,7 +77,7 @@ class AnalyzerApi:
                     documentation = rule.summary
                 catalog.append({
                     "id": rule.id, "title": rule.title, "summary": rule.summary,
-                    "severity": rule.severity, "topic": topics.get(int(rule_id[3:]), "General"),
+                    "severity": rule.severity, "topic": rule.topic,
                     "enabled": config.enabled_for(rule.id, True),
                     "documentation": documentation,
                 })
@@ -94,22 +93,7 @@ class AnalyzerApi:
                 return {"ok": False, "error": f"Unknown rule: {rule_id}"}
             workspace = WorkspaceResolver(workspace=workspace_path).resolve()
             path = Path(workspace.config_path or Path(workspace.root) / "cts-analyze.toml")
-            text = path.read_text(encoding="utf-8") if path.is_file() else ""
-            import re
-            section = re.compile(rf"(?ms)^\[rules\.{re.escape(rule_id)}\]\s*$.*?(?=^\[|\Z)")
-            value = "true" if enabled else "false"
-            block = f"[rules.{rule_id}]\nenabled = {value}\n"
-            match = section.search(text)
-            if match:
-                current = match.group(0)
-                if re.search(r"(?m)^enabled\s*=", current):
-                    current = re.sub(r"(?m)^enabled\s*=.*$", f"enabled = {value}", current, count=1)
-                else:
-                    current = current.rstrip() + f"\nenabled = {value}\n"
-                text = text[:match.start()] + current + text[match.end():]
-            else:
-                text = text.rstrip() + ("\n\n" if text.strip() else "") + block
-            path.write_text(text, encoding="utf-8", newline="\n")
+            set_rule_enabled(path, rule_id, enabled)
             return {"ok": True}
         except (WorkspaceError, ConfigError, RegistryError, OSError) as exc:
             return {"ok": False, "error": str(exc)}
@@ -121,8 +105,8 @@ class AnalyzerApi:
         folders = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
         return folders[0] if folders else ""
 
-    def open_file(self, relative_path: str) -> dict:
-        """Open an analyzed source file with the Windows file association."""
+    def open_file(self, relative_path: str, line: int | None = None) -> dict:
+        """Open an analyzed source file, preferably at its finding line."""
         if not self._last_project_view:
             return {"ok": False, "error": "Run analysis before opening a file."}
         root = Path(self._last_project_view).resolve()
@@ -133,11 +117,84 @@ class AnalyzerApi:
             return {"ok": False, "error": "Invalid source path."}
         if not target.is_file():
             return {"ok": False, "error": f"Source file no longer exists: {relative_path}"}
+        if line:
+            try:
+                subprocess.Popen(
+                    ["code", "-g", f"{target}:{int(line)}"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return {"ok": True, "opened_at_line": int(line)}
+            except (OSError, ValueError):
+                pass
         try:
             os.startfile(str(target))  # type: ignore[attr-defined]  # Windows only.
         except OSError as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True}
+
+    def suppression_entry(self, finding: dict) -> dict:
+        """Return a ready-to-edit TOML suppression entry for one finding."""
+        if not isinstance(finding, dict) or not str(finding.get("fingerprint", "")).strip():
+            return {"ok": False, "error": "Finding fingerprint is missing."}
+        import json
+
+        lines = [
+            "[[suppress]]",
+            f"fingerprint = {json.dumps(str(finding['fingerprint']))}",
+        ]
+        for key in ("rule_id", "unit_id"):
+            value = str(finding.get(key, "")).strip()
+            if value:
+                lines.append(f"{key} = {json.dumps(value)}")
+        lines.append('reason = "TODO: explain why this finding is accepted"')
+        return {"ok": True, "text": "\n".join(lines) + "\n"}
+
+    def triage(self, workspace_path: str, finding: dict, action: str, reason: str = "") -> dict:
+        """Apply one UI triage decision using the CLI's canonical state format."""
+        return self.triage_many(workspace_path, [finding], action, reason)
+
+    def triage_many(
+        self, workspace_path: str, findings: list[dict], action: str, reason: str = ""
+    ) -> dict:
+        """Apply one decision atomically to several findings."""
+        action = (action or "").strip()
+        if action not in ("suppress", "fix-later", "baseline"):
+            return {"ok": False, "error": f"Unknown triage action: {action}"}
+        findings = findings if isinstance(findings, list) else []
+        if not findings or any(not str((item or {}).get("fingerprint", "")).strip() for item in findings):
+            return {"ok": False, "error": "Finding fingerprint is missing."}
+        if action == "suppress" and not reason.strip():
+            return {"ok": False, "error": "A reason is required for suppression."}
+        try:
+            workspace = WorkspaceResolver(workspace=workspace_path).resolve()
+            if self._last_result is not None and self._last_project_view:
+                workspace = WorkspaceResolver(workspace=workspace_path).resolve()
+                if Path(workspace.project_view).resolve() == Path(self._last_project_view).resolve():
+                    result = self._last_result
+                else:
+                    _workspace, _config, result = run_service(
+                        workspace_path, RunOptions(), apply_state=False
+                    )
+            else:
+                _workspace, _config, result = run_service(
+                    workspace_path, RunOptions(), apply_state=False
+                )
+            decisions = [
+                {
+                    "fingerprint": str(item["fingerprint"]).strip(),
+                    "action": action,
+                    "reason": reason.strip(),
+                    "note": reason.strip() if action == "fix-later" else "",
+                    "rule_id": str(item.get("rule_id", "")),
+                    "unit_id": str(item.get("unit_id", "")),
+                }
+                for item in findings
+            ]
+            summary = apply_decisions(workspace, result, decisions)
+            return {"ok": True, "summary": summary}
+        except (WorkspaceError, ConfigError, RegistryError, TriageError, state_mod.StateError, OSError) as exc:
+            return {"ok": False, "error": str(exc)}
 
 
 def launch(initial_workspace: str = "") -> int:

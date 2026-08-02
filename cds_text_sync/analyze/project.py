@@ -21,7 +21,9 @@ from __future__ import annotations
 import os
 import re
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 
+from cds_text_sync.analyze.file_directives import directive_info
 from cds_text_sync.analyze.model import Diagnostic, Location, line_col_of
 from cds_text_sync.analyze.st import kinds as K
 
@@ -145,6 +147,14 @@ class Unit:
         return f"<Unit {self.id} {self.kind}>"
 
 
+@dataclass(frozen=True)
+class FileDirectives:
+    """Directives parsed once for one source file in a project snapshot."""
+
+    rules: frozenset[str] = frozenset()
+    issues: tuple = ()
+
+
 def _relpath(root, full_path):
     return os.path.relpath(full_path, root).replace(os.sep, "/")
 
@@ -237,11 +247,14 @@ class SourceError:
 class ProjectSnapshot:
     """All analysable units of one project-view tree."""
 
-    def __init__(self, root, units=None, diagnostics=None, source_errors=None):
+    def __init__(
+        self, root, units=None, diagnostics=None, source_errors=None, file_directives=None
+    ):
         self.root = root
         self.units = units or []
         self.diagnostics = diagnostics or []
         self.source_errors = source_errors or []
+        self.file_directives = file_directives or {}
         self._by_id = {}
         self._by_name = {}
         for u in self.units:
@@ -270,6 +283,10 @@ class ProjectSnapshot:
                 }
                 for e in self.source_errors
             ],
+            "file_directives": {
+                path: {"rules": sorted(value.rules), "issues": list(value.issues)}
+                for path, value in sorted(self.file_directives.items())
+            },
         }
 
 
@@ -288,6 +305,7 @@ def build_snapshot(project_view):
     units = []
     diagnostics = []
     source_errors = []
+    file_directives = {}
     by_owner_stem = {}
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -315,6 +333,8 @@ def build_snapshot(project_view):
                 continue
 
             if lower.endswith(".st"):
+                rules, issues = directive_info(text)
+                file_directives[rel] = FileDirectives(rules, issues)
                 unit = _build_st_unit(rel, text)
             else:
                 try:
@@ -340,7 +360,7 @@ def build_snapshot(project_view):
                 u.owner_id = owner.id
 
     units.sort(key=lambda u: u.id)
-    return ProjectSnapshot(root, units, diagnostics, source_errors)
+    return ProjectSnapshot(root, units, diagnostics, source_errors, file_directives)
 
 
 def _xml_parse_error(rel, text, exc):
