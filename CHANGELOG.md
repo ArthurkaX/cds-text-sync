@@ -46,6 +46,11 @@ the ScriptEngine only launches the external process and does not host the UI.
   (with a mandatory reason), fix-later, or baseline. State is written
   atomically.
 
+An ST file can suppress a rule for its complete contents with a standalone
+line such as `// cts:ignore-file CTS0001 -- legacy module` (or
+the equivalent `(* ... *)` comment). Multiple rule IDs and `*` are supported;
+the reason is mandatory.
+
 **Exit codes:** `0` policy passed, `1` unsuppressed findings at or above
 `--fail-on`, `2` configuration error or analysis cannot start, `3` incomplete
 analysis with `--incomplete=error`.

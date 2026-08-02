@@ -42,6 +42,7 @@ from cds_text_sync.analyze.model import (
 )
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
 from cds_text_sync.analyze.st import decl, symbols
+from cds_text_sync.analyze.file_directives import directive_info, is_ignored
 
 # ---------------------------------------------------------------------------
 # Git adapter (GIT_BASE capability)
@@ -335,10 +336,65 @@ def run_analysis(workspace, snapshot, config, options):
         else:
             _dispatch_project(rule, ctx, result)
 
+    _apply_file_directives(result, snapshot, rules)
     _fingerprint_all(result.findings)
     result.sort()
     result.summary.diagnostics = len(result.diagnostics)
     return result
+
+
+def _apply_file_directives(result, snapshot, known_rules):
+    """Remove findings covered by ``cts:ignore-file`` source directives."""
+    ignored_by_path = {
+        unit.source_path: directive_info(unit.text)[0]
+        for unit in snapshot.units
+        if unit.source_path.lower().endswith(".st")
+    }
+    if not ignored_by_path:
+        return
+    for unit in snapshot.units:
+        if not unit.source_path.lower().endswith(".st"):
+            continue
+        rules, issues = directive_info(unit.text)
+        for kind, detail, line in issues:
+            result.diagnostics.append(
+                Diagnostic(
+                    kind,
+                    f"{detail} in cts:ignore-file directive",
+                    Location(unit.source_path, line, 1),
+                    unit_id=unit.id,
+                )
+            )
+        for rule_id in sorted(rules - {"*"} - set(known_rules)):
+            result.diagnostics.append(
+                Diagnostic(
+                    "directive-unknown-rule",
+                    f"unknown rule {rule_id} in cts:ignore-file directive",
+                    Location(unit.source_path, 1, 1),
+                    rule_id=rule_id,
+                    unit_id=unit.id,
+                )
+            )
+    kept = []
+    ignored = 0
+    for finding in result.findings:
+        rules = ignored_by_path.get(finding.location.path, frozenset())
+        if is_ignored(finding.rule_id, rules):
+            ignored += 1
+            continue
+        kept.append(finding)
+    if ignored:
+        result.findings = kept
+        result.summary.suppressed += ignored
+        result.summary.suppressed_by_directive += ignored
+        result.summary.total = len(kept)
+        result.summary.by_severity = dict.fromkeys(("danger", "suspicious", "style"), 0)
+        result.summary.by_rule = {}
+        for finding in kept:
+            result.summary.by_severity[finding.severity] += 1
+            result.summary.by_rule[finding.rule_id] = (
+                result.summary.by_rule.get(finding.rule_id, 0) + 1
+            )
 
 
 def _report_unparsed_units(rule, ctx, result):
@@ -513,7 +569,7 @@ def filter_result(result, suppressed_fingerprints, baselined_fingerprints):
         kept.append(f)
 
     result.findings = kept
-    result.summary.suppressed = suppressed
+    result.summary.suppressed = result.summary.suppressed_by_directive + suppressed
     result.summary.baselined = baselined
     result.summary.stale_suppressions = stale_suppressed
     result.summary.stale_baselined = stale_baselined

@@ -61,6 +61,60 @@ def test_rule_filter(tmp_path):
     assert {f.rule_id for f in result.findings} == {"CTS0002"}
 
 
+def test_file_ignore_directive_suppresses_all_matching_findings(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    main = os.path.join(root, "project-view", "POUs", "Main.st")
+    with open(main, encoding="utf-8") as fh:
+        original = fh.read()
+    with open(main, "w", encoding="utf-8") as fh:
+        fh.write("// cts:ignore-file CTS0001, CTS0002 -- legacy fixture\n" + original)
+    _, _, result = _run(root)
+    assert not any(f.location.path == "POUs/Main.st" for f in result.findings)
+    assert result.summary.suppressed == 4
+
+
+def test_file_ignore_directive_counter_survives_cli_filtering(tmp_path):
+    root = copy_fixture(tmp_path)
+    source = os.path.join(root, "project-view", "POUs", "Main.st")
+    with open(source, "r", encoding="utf-8") as handle:
+        text = handle.read()
+    with open(source, "w", encoding="utf-8", newline="") as handle:
+        handle.write("// cts:ignore-file CTS0001, CTS0002 -- legacy fixture\n" + text)
+
+    data = run_analyze_json(str(root), extra=["--rule", "CTS0001", "--rule", "CTS0002"])
+
+    assert data["_exit"] == 0
+    assert data["summary"]["total"] == 0
+    assert data["summary"]["suppressed"] == 4
+    assert data["summary"]["suppressed_by_directive"] == 4
+
+
+def test_file_ignore_directive_reports_missing_reason(tmp_path):
+    root = copy_fixture(tmp_path)
+    source = os.path.join(root, "project-view", "POUs", "Main.st")
+    with open(source, "r", encoding="utf-8") as handle:
+        text = handle.read()
+    with open(source, "w", encoding="utf-8", newline="") as handle:
+        handle.write("// cts:ignore-file CTS9999\n" + text)
+
+    data = run_analyze_json(str(root))
+    kinds = {item["kind"] for item in data["diagnostics"]}
+    assert "directive-missing-reason" in kinds
+
+
+def test_file_ignore_directive_reports_unknown_rule(tmp_path):
+    root = copy_fixture(tmp_path)
+    source = os.path.join(root, "project-view", "POUs", "Main.st")
+    with open(source, "r", encoding="utf-8") as handle:
+        text = handle.read()
+    with open(source, "w", encoding="utf-8", newline="") as handle:
+        handle.write("// cts:ignore-file CTS9999 -- typo\n" + text)
+
+    data = run_analyze_json(str(root))
+    assert any(item["kind"] == "directive-unknown-rule" for item in data["diagnostics"])
+
+
 def test_exit_codes(tmp_path):
     ws, config, result = _run(fixture_project_view())
     # Default fail_on=suspicious: danger+suspicious present -> 1.

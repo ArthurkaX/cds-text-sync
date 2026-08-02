@@ -217,6 +217,7 @@ class Summary:
         self.by_severity = {DANGER: 0, SUSPICIOUS: 0, STYLE: 0}
         self.by_rule = {}
         self.suppressed = 0
+        self.suppressed_by_directive = 0
         self.baselined = 0
         self.stale_suppressions = []
         self.stale_baselined = []
@@ -236,6 +237,7 @@ class Summary:
             "by_severity": self.by_severity,
             "by_rule": self.by_rule,
             "suppressed": self.suppressed,
+            "suppressed_by_directive": self.suppressed_by_directive,
             "baselined": self.baselined,
             "stale_suppressions": list(self.stale_suppressions),
             "stale_baselined": list(self.stale_baselined),
