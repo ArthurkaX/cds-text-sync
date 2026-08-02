@@ -34,3 +34,22 @@ def test_open_file_rejects_path_outside_project_view(tmp_path):
 
     assert response["ok"] is False
     assert response["error"] == "Invalid source path."
+
+
+def test_rules_catalog_contains_only_human_analyzer_rules(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    response = AnalyzerApi().rules(root)
+    assert response["ok"] is True
+    assert {rule["id"] for rule in response["rules"]} == {"CTS0001", "CTS0002", "CTS0004"}
+    assert all("documentation" in rule for rule in response["rules"])
+
+
+def test_rule_switch_is_saved_to_project_config(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    response = AnalyzerApi().set_rule_enabled(root, "CTS0001", False)
+    assert response["ok"] is True
+    config = (tmp_path / "sync" / "cts-analyze.toml").read_text(encoding="utf-8")
+    assert "[rules.CTS0001]" in config
+    assert "enabled = false" in config

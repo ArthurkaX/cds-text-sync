@@ -3,64 +3,150 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CTS Static Analysis</title>
+  <title>CTS Static Analyzer</title>
   <style>
-    :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; background: #17191d; color: #e6e9ee; }
-    body { margin: 0; min-width: 720px; }
-    header { padding: 18px 24px; background: #22262d; border-bottom: 1px solid #383e49; }
-    h1 { font-size: 19px; margin: 0 0 14px; }
-    .toolbar, .filters { display: flex; gap: 8px; align-items: center; }
-    input, select, button { font: inherit; border-radius: 5px; border: 1px solid #4a5361; padding: 8px 10px; background: #17191d; color: inherit; }
-    input { flex: 1; min-width: 180px; } button { background: #2367a8; cursor: pointer; } button.secondary { background: #303742; }
-    main { padding: 18px 24px; } #message { min-height: 21px; color: #aeb8c7; } #message.error { color: #ff9d9d; }
-    #summary { display: flex; gap: 12px; margin: 14px 0; } .card { border: 1px solid #3b4350; border-radius: 6px; padding: 10px 14px; min-width: 100px; }
-    .danger { color: #ff8181; } .suspicious { color: #ffca70; } .style { color: #8ebdff; }
-    .layout { display: grid; grid-template-columns: minmax(500px, 3fr) minmax(280px, 2fr); gap: 16px; }
-    .panel { border: 1px solid #3b4350; border-radius: 6px; overflow: auto; max-height: 500px; }
-    table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #303640; font-size: 13px; } tr { cursor: pointer; } tr:hover, tr.selected { background: #293546; }
-    .details { padding: 16px; white-space: pre-wrap; font-size: 13px; } .hidden { display: none; }
+    :root {
+      color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif;
+      --bg:#101318; --surface:#171b22; --surface-2:#1d232c; --line:#303846;
+      --text:#edf1f7; --muted:#9da9b8; --accent:#4b9cf5; --accent-2:#287bcf;
+      --danger:#ff7979; --warning:#f5bd63; --style:#7fb5f5; --good:#65c995;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; min-width:680px; background:var(--bg); color:var(--text); font-size:14px; }
+    button,input,select { font:inherit; color:inherit; }
+    button { border:1px solid transparent; border-radius:7px; padding:8px 13px; background:var(--accent-2); cursor:pointer; }
+    button:hover { filter:brightness(1.12); } button:disabled { opacity:.55; cursor:default; }
+    button.secondary { background:var(--surface-2); border-color:var(--line); }
+    input,select { border:1px solid var(--line); border-radius:7px; padding:9px 11px; background:#11151b; outline:none; }
+    input:focus,select:focus { border-color:var(--accent); box-shadow:0 0 0 2px #4b9cf52a; }
+    header { position:sticky; top:0; z-index:10; padding:16px 24px 0; background:#151920f2; backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+    .brand { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+    .brand h1 { margin:0; font-size:19px; letter-spacing:.1px; } .brand small { color:var(--muted); }
+    .workspace-bar { display:flex; gap:8px; margin:14px 0; } #workspace { flex:1; min-width:240px; }
+    nav { display:flex; gap:22px; }
+    .tab { padding:10px 2px 12px; border:0; border-bottom:2px solid transparent; border-radius:0; color:var(--muted); background:transparent; }
+    .tab.active { color:var(--text); border-bottom-color:var(--accent); }
+    main { padding:20px 24px 32px; max-width:1600px; margin:auto; }
+    .hidden { display:none !important; }
+    .notice { min-height:38px; display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:7px; color:var(--muted); background:var(--surface); border:1px solid var(--line); }
+    .notice.error { color:#ffd0d0; border-color:#743e47; background:#2b1b20; }
+    .notice.success { color:#b8efd1; border-color:#315f49; background:#17271f; }
+    .summary { display:grid; grid-template-columns:repeat(6,minmax(105px,1fr)); gap:10px; margin:14px 0; }
+    .metric { padding:13px 14px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
+    .metric b { display:block; font-size:22px; line-height:1.15; } .metric span { color:var(--muted); font-size:12px; }
+    .danger { color:var(--danger); } .suspicious { color:var(--warning); } .style { color:var(--style); }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0; }
+    .controls .search { flex:1; min-width:240px; } .result-count { color:var(--muted); margin-left:auto; }
+    .workspace { display:grid; grid-template-columns:minmax(390px,1.35fr) minmax(300px,1fr); gap:14px; align-items:start; }
+    .panel { border:1px solid var(--line); border-radius:9px; background:var(--surface); overflow:hidden; }
+    .panel-title { margin:0; padding:12px 14px; font-size:13px; color:var(--muted); border-bottom:1px solid var(--line); }
+    .groups { max-height:590px; overflow:auto; }
+    .group-head { width:100%; display:grid; grid-template-columns:auto 90px 1fr auto; gap:10px; align-items:center; text-align:left; padding:12px 14px; border:0; border-bottom:1px solid var(--line); border-radius:0; background:var(--surface-2); }
+    .chevron { color:var(--muted); width:12px; } .badge { justify-self:end; min-width:27px; padding:2px 7px; border-radius:12px; text-align:center; background:#344052; }
+    .finding-row { display:grid; grid-template-columns:1fr auto; gap:6px 14px; padding:11px 14px 11px 38px; border-bottom:1px solid #29313d; cursor:pointer; }
+    .finding-row:hover,.finding-row.selected { background:#233044; } .finding-row .message-text { grid-column:1/-1; color:#cbd3de; }
+    .location { color:var(--muted); font-family:Consolas,monospace; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .details { min-height:250px; padding:18px; } .details h2 { margin:0 0 5px; font-size:18px; } .details .rule { color:var(--accent); font-weight:600; }
+    .details .lead { margin:18px 0; font-size:15px; line-height:1.55; } .meta { display:grid; grid-template-columns:85px 1fr; gap:8px; color:var(--muted); margin:18px 0; }
+    .empty { padding:48px 24px; text-align:center; color:var(--muted); } .empty strong { display:block; color:var(--text); font-size:16px; margin-bottom:7px; }
+    .diagnostics { margin-top:14px; border-color:#684d2c; } .diagnostic { padding:10px 14px; border-bottom:1px solid var(--line); color:#e8c994; }
+    .catalog-head { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; } .catalog-head input { flex:1; min-width:250px; }
+    .topic { margin:20px 0; } .topic-title { display:flex; align-items:baseline; gap:9px; margin:0 0 9px; font-size:17px; } .topic-title small { color:var(--muted); font-weight:400; }
+    .rule-card { border:1px solid var(--line); border-radius:9px; margin:8px 0; background:var(--surface); overflow:hidden; }
+    .rule-card.disabled { opacity:.68; } .rule-summary { display:grid; grid-template-columns:auto 80px minmax(150px,1fr) auto; align-items:center; gap:10px; padding:13px 14px; }
+    .rule-summary button { background:transparent; border:0; padding:0; text-align:left; } .rule-title { font-weight:600; } .rule-description { color:var(--muted); }
+    .switch { position:relative; width:38px; height:22px; } .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; border-radius:20px; background:#46505e; cursor:pointer; transition:.15s; } .slider:before { content:""; position:absolute; width:16px; height:16px; left:3px; top:3px; border-radius:50%; background:white; transition:.15s; }
+    .switch input:checked + .slider { background:var(--accent-2); } .switch input:checked + .slider:before { transform:translateX(16px); }
+    .rule-doc { padding:0 52px 18px 104px; color:#c7d0dc; line-height:1.55; white-space:pre-wrap; }
+    @media (max-width:980px) { .summary{grid-template-columns:repeat(3,1fr)} .workspace{grid-template-columns:1fr} .details{min-height:180px} }
   </style>
 </head>
 <body>
   <header>
-    <h1>CTS Static Analysis</h1>
-    <div class="toolbar"><input id="workspace" placeholder="Sync folder containing project-view/"><button class="secondary" id="browse">Browse…</button><button id="run">Analyze</button></div>
+    <div class="brand"><div><h1>CTS Static Analyzer</h1><small>Human-facing project checks</small></div></div>
+    <div class="workspace-bar"><input id="workspace" aria-label="Project workspace" placeholder="Select the sync project folder"><button class="secondary" id="browse">Browse…</button><button id="run">Run analysis</button></div>
+    <nav><button class="tab active" data-view="analysis">Analysis</button><button class="tab" data-view="rules">Rules</button></nav>
   </header>
   <main>
-    <div id="message">Choose a workspace and run the offline analysis.</div>
-    <div id="summary" class="hidden"></div>
-    <div class="filters hidden" id="filters"><select id="severity"><option value="">All severities</option><option>danger</option><option>suspicious</option><option>style</option></select><input id="search" placeholder="Filter rule, file, or message"></div>
-    <div class="layout"><div class="panel"><table><thead><tr><th>Severity</th><th>Rule</th><th>Location</th><th>Message</th></tr></thead><tbody id="findings"></tbody></table></div><aside class="panel"><div class="details" id="details">Select a finding to see details.</div></aside></div>
+    <section id="analysis-view">
+      <div id="message" class="notice">Select a project folder, then run analysis.</div>
+      <div id="summary" class="summary hidden"></div>
+      <div id="filters" class="controls hidden">
+        <input id="search" class="search" placeholder="Search message, rule, or file">
+        <select id="severity" aria-label="Severity"><option value="">All severities</option><option value="danger">Danger</option><option value="suspicious">Suspicious</option><option value="style">Style</option></select>
+        <select id="grouping" aria-label="Group results"><option value="rule">Group by rule</option><option value="file">Group by file</option></select>
+        <span id="result-count" class="result-count"></span>
+      </div>
+      <div id="results" class="workspace hidden">
+        <section class="panel"><h2 class="panel-title">Findings</h2><div id="groups" class="groups"></div></section>
+        <aside class="panel"><h2 class="panel-title">Details</h2><div id="details" class="details empty"><strong>No finding selected</strong>Choose an item to inspect it.</div></aside>
+      </div>
+      <section id="diagnostics-panel" class="panel diagnostics hidden"><h2 class="panel-title">Analyzer diagnostics</h2><div id="diagnostics"></div></section>
+    </section>
+    <section id="rules-view" class="hidden">
+      <div id="rules-message" class="notice">Select a project folder to view its rule settings.</div>
+      <div id="rule-tools" class="catalog-head hidden"><input id="rule-search" placeholder="Search rule ID, name, or description"><select id="rule-state"><option value="">All rules</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div>
+      <div id="rule-catalog"></div>
+    </section>
   </main>
   <script>
-    let findings = [];
+    let findings = [], diagnostics = [], rules = [], ruleWorkspace = '', selectedFingerprint = '';
     const $ = id => document.getElementById(id);
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    function message(text, error=false) { $('message').textContent = text; $('message').className = error ? 'error' : ''; }
-    function render() {
-      const severity = $('severity').value, query = $('search').value.toLowerCase();
-      const visible = findings.filter(f => !severity || f.severity === severity).filter(f => !query || `${f.rule_id} ${f.location.path} ${f.message}`.toLowerCase().includes(query));
-      $('findings').innerHTML = visible.map((f, i) => `<tr data-index="${findings.indexOf(f)}"><td class="${esc(f.severity)}">${esc(f.severity)}</td><td>${esc(f.rule_id)}</td><td>${esc(f.location.path)}:${esc(f.location.line || '')}</td><td>${esc(f.message)}</td></tr>`).join('');
-      document.querySelectorAll('#findings tr').forEach(row => row.onclick = () => selectFinding(findings[Number(row.dataset.index)], row));
+    const severityName = value => ({danger:'Danger', suspicious:'Suspicious', style:'Style'}[value] || value);
+    function setNotice(id, text, state='') { const el=$(id); el.textContent=text; el.className=`notice ${state}`.trim(); }
+    function locationText(loc={}) { return `${loc.path || 'Project'}${loc.line ? `:${loc.line}${loc.column ? ':'+loc.column : ''}` : ''}`; }
+    function filteredFindings() {
+      const severity=$('severity').value, q=$('search').value.trim().toLowerCase();
+      return findings.filter(f => (!severity || f.severity===severity) && (!q || `${f.rule_id} ${f.rule_title} ${f.location.path} ${f.message}`.toLowerCase().includes(q)));
     }
-    function selectFinding(finding, row) {
-      document.querySelectorAll('#findings tr').forEach(x => x.classList.remove('selected')); row.classList.add('selected');
-      const loc = finding.location;
-      $('details').innerHTML = `<strong>${esc(finding.rule_id)} — ${esc(finding.rule_title || '')}</strong>\n\n${esc(finding.message)}\n\nSeverity: ${esc(finding.severity)}\nLocation: ${esc(loc.path)}:${esc(loc.line || '')}\nFingerprint: ${esc(finding.fingerprint || '')}\n\n<button id="open-file">Open source file</button>`;
-      $('open-file').onclick = async () => { const r = await window.pywebview.api.open_file(loc.path); if (!r.ok) message(r.error, true); };
+    function renderFindings() {
+      const visible=filteredFindings(), byRule=$('grouping').value==='rule', grouped={};
+      visible.forEach(f => { const key=byRule ? f.rule_id : f.location.path; (grouped[key] ||= []).push(f); });
+      $('result-count').textContent=`${visible.length} of ${findings.length}`;
+      if (!visible.length) { $('groups').innerHTML='<div class="empty"><strong>No matching findings</strong>Adjust filters or run analysis again.</div>'; return; }
+      $('groups').innerHTML=Object.entries(grouped).map(([key,items],n) => `<section><button class="group-head" data-group="${n}"><span class="chevron">▾</span><span class="${esc(items[0].severity)}">${esc(byRule ? key : severityName(items[0].severity))}</span><strong>${esc(byRule ? items[0].rule_title : key)}</strong><span class="badge">${items.length}</span></button><div data-group-body="${n}">${items.map(f => `<div class="finding-row ${f.fingerprint===selectedFingerprint?'selected':''}" data-fingerprint="${esc(f.fingerprint)}"><span class="location">${esc(locationText(f.location))}</span><span class="${esc(f.severity)}">${esc(severityName(f.severity))}</span><span class="message-text">${esc(f.message)}</span></div>`).join('')}</div></section>`).join('');
+      document.querySelectorAll('.group-head').forEach(head => head.onclick=()=>{ const body=document.querySelector(`[data-group-body="${head.dataset.group}"]`); const closed=body.classList.toggle('hidden'); head.querySelector('.chevron').textContent=closed?'▸':'▾'; });
+      document.querySelectorAll('.finding-row').forEach(row => row.onclick=()=>selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint),row));
+    }
+    function selectFinding(f,row) {
+      if(!f)return; selectedFingerprint=f.fingerprint; document.querySelectorAll('.finding-row').forEach(x=>x.classList.remove('selected')); row.classList.add('selected');
+      $('details').className='details'; $('details').innerHTML=`<span class="rule">${esc(f.rule_id)} · ${esc(severityName(f.severity))}</span><h2>${esc(f.rule_title || 'Finding')}</h2><p class="lead">${esc(f.message)}</p><div class="meta"><span>Location</span><code>${esc(locationText(f.location))}</code><span>Unit</span><span>${esc(f.unit_id || '—')}</span></div><button id="open-file">Open source file</button>`;
+      $('open-file').onclick=async()=>{ const r=await window.pywebview.api.open_file(f.location.path); if(!r.ok)setNotice('message',r.error,'error'); };
+    }
+    function renderDiagnostics() {
+      $('diagnostics-panel').classList.toggle('hidden',!diagnostics.length);
+      $('diagnostics').innerHTML=diagnostics.map(d=>`<div class="diagnostic"><strong>${esc(d.kind)}</strong> · ${esc(locationText(d.location))}<br>${esc(d.message)}</div>`).join('');
+    }
+    function renderRules() {
+      const q=$('rule-search').value.trim().toLowerCase(), state=$('rule-state').value;
+      const visible=rules.filter(r=>(!q||`${r.id} ${r.title} ${r.summary} ${r.topic}`.toLowerCase().includes(q))&&(!state||(state==='enabled')===r.enabled)); const groups={};
+      visible.forEach(r=>(groups[r.topic]||=[]).push(r));
+      $('rule-catalog').innerHTML=Object.entries(groups).map(([topic,items])=>`<section class="topic"><h2 class="topic-title">${esc(topic)} <small>${items.length} rule(s)</small></h2>${items.map(r=>`<article class="rule-card ${r.enabled?'':'disabled'}"><div class="rule-summary"><label class="switch" title="Enable or disable for this project"><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled?'checked':''}><span class="slider"></span></label><strong class="${esc(r.severity)}">${esc(r.id)}</strong><div><div class="rule-title">${esc(r.title)}</div><div class="rule-description">${esc(r.summary)}</div></div><button class="doc-toggle" aria-label="Show documentation">Details ▾</button></div><div class="rule-doc hidden">${esc(r.documentation)}</div></article>`).join('')}</section>`).join('') || '<div class="empty"><strong>No matching rules</strong>Adjust the search or status filter.</div>';
+      document.querySelectorAll('.doc-toggle').forEach(btn=>btn.onclick=()=>{ const doc=btn.closest('.rule-card').querySelector('.rule-doc'); const open=doc.classList.toggle('hidden'); btn.textContent=open?'Details ▾':'Hide ▴'; });
+      document.querySelectorAll('[data-rule]').forEach(box=>box.onchange=async()=>{ box.disabled=true; const r=await window.pywebview.api.set_rule_enabled(ruleWorkspace,box.dataset.rule,box.checked); box.disabled=false; if(!r.ok){box.checked=!box.checked;setNotice('rules-message',r.error,'error');return;} const rule=rules.find(x=>x.id===box.dataset.rule); rule.enabled=box.checked; setNotice('rules-message',`${rule.id} ${box.checked?'enabled':'disabled'} for this project.`,'success'); renderRules(); });
+    }
+    async function loadRules() {
+      ruleWorkspace=$('workspace').value.trim(); if(!ruleWorkspace){setNotice('rules-message','Select a project folder first.','error');return;}
+      setNotice('rules-message','Loading rule catalog…'); const response=await window.pywebview.api.rules(ruleWorkspace);
+      if(!response.ok){setNotice('rules-message',response.error,'error');return;} rules=response.rules||[]; $('rule-tools').classList.remove('hidden'); setNotice('rules-message',`${rules.filter(r=>r.enabled).length} of ${rules.length} rules enabled · ${response.config_path||'default settings'}`); renderRules();
     }
     async function run() {
-      const workspace = $('workspace').value.trim(); if (!workspace) return message('Choose a workspace first.', true);
-      message('Analyzing…'); $('run').disabled = true;
-      const response = await window.pywebview.api.analyze(workspace); $('run').disabled = false;
-      if (!response.ok) return message(response.error, true);
-      findings = response.result.findings || []; const s = response.result.summary;
-      $('summary').classList.remove('hidden'); $('filters').classList.remove('hidden');
-      $('summary').innerHTML = `<div class="card"><b>${s.total}</b><br>findings</div><div class="card danger"><b>${s.by_severity.danger}</b><br>danger</div><div class="card suspicious"><b>${s.by_severity.suspicious}</b><br>suspicious</div><div class="card style"><b>${s.by_severity.style}</b><br>style</div><div class="card"><b>${s.diagnostics}</b><br>diagnostics</div>`;
-      message(response.result.complete ? `Analysis complete: ${response.workspace}` : `Analysis incomplete: ${response.result.diagnostics.length} diagnostic(s).`, !response.result.complete); render();
+      const workspace=$('workspace').value.trim(); if(!workspace){setNotice('message','Select a project folder first.','error');return;}
+      $('run').disabled=true; $('run').textContent='Analyzing…'; setNotice('message','Reading project and running enabled rules…');
+      const response=await window.pywebview.api.analyze(workspace); $('run').disabled=false; $('run').textContent='Run analysis';
+      if(!response.ok){setNotice('message',response.error,'error');return;}
+      findings=response.result.findings||[]; diagnostics=response.result.diagnostics||[]; selectedFingerprint=''; const s=response.result.summary;
+      $('summary').classList.remove('hidden'); $('filters').classList.remove('hidden'); $('results').classList.remove('hidden');
+      $('summary').innerHTML=`<div class="metric"><b>${s.total}</b><span>Active findings</span></div><div class="metric danger"><b>${s.by_severity.danger||0}</b><span>Danger</span></div><div class="metric suspicious"><b>${s.by_severity.suspicious||0}</b><span>Suspicious</span></div><div class="metric style"><b>${s.by_severity.style||0}</b><span>Style</span></div><div class="metric"><b>${s.suppressed||0}</b><span>Ignored</span></div><div class="metric"><b>${s.baselined||0}</b><span>Baselined</span></div>`;
+      $('details').className='details empty'; $('details').innerHTML='<strong>No finding selected</strong>Choose an item to inspect it.';
+      setNotice('message',response.result.complete?`Analysis complete · ${response.workspace}`:`Analysis completed with ${diagnostics.length} diagnostic(s).`,response.result.complete?'success':'error'); renderFindings(); renderDiagnostics();
     }
-    $('run').onclick = run; $('browse').onclick = async () => { const path = await window.pywebview.api.choose_workspace(); if (path) $('workspace').value = path; }; $('severity').onchange = render; $('search').oninput = render;
-    window.addEventListener('pywebviewready', async () => { const state = await window.pywebview.api.initial_state(); if (state.workspace) $('workspace').value = state.workspace; });
+    function showView(name) { document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===name)); $('analysis-view').classList.toggle('hidden',name!=='analysis'); $('rules-view').classList.toggle('hidden',name!=='rules'); if(name==='rules')loadRules(); }
+    $('run').onclick=run; $('workspace').onkeydown=e=>{if(e.key==='Enter')run();}; $('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path)$('workspace').value=path;};
+    $('severity').onchange=renderFindings; $('grouping').onchange=renderFindings; $('search').oninput=renderFindings; $('rule-search').oninput=renderRules; $('rule-state').onchange=renderRules; document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showView(t.dataset.view));
+    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();if(state.workspace)$('workspace').value=state.workspace;});
   </script>
 </body>
 </html>
