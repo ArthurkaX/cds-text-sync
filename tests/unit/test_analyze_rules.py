@@ -16,6 +16,7 @@ from cds_text_sync.analyze.rules.impl.output_not_assigned import check as cts000
 from cds_text_sync.analyze.rules.impl.redundant_boolean_if import check as cts0010
 from cds_text_sync.analyze.rules.impl.assigned_not_read import check as cts0011
 from cds_text_sync.analyze.rules.impl.overwrite_without_read import check as cts0012
+from cds_text_sync.analyze.rules.impl.dead_symbol import check as cts0013
 from cds_text_sync.analyze.runner import AnalysisContext
 from cds_text_sync.analyze.workspace import Workspace
 
@@ -27,6 +28,10 @@ def _ctx(snapshot):
 
 def _st_unit(text):
     return pm._build_st_unit("snippet.st", text)
+
+
+def _st_unit_named(path, text):
+    return pm._build_st_unit(path, text)
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +483,39 @@ def test_cts0012_accepts_accumulation_in_the_next_expression():
     assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
 
 
+def test_cts0012_accepts_arithmetic_self_updates():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "counter := counter + 1;\n"
+        "counter := counter - step;\n"
+    )
+    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+
+
+def test_cts0012_does_not_treat_arbitrary_self_read_as_accumulation():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "value := CalculateA();\nvalue := Normalize(value);\n"
+    )
+    findings = list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    assert len(findings) == 1
+
+
+def test_cts0012_ignores_self_updates_inside_control_flow():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF condition THEN\n"
+        "    counter := counter + 1;\n"
+        "ELSE\n"
+        "    counter := counter - 1;\n"
+        "END_IF;\n"
+        "FOR index := 1 TO 3 DO\n"
+        "    total := total + value;\n"
+        "END_FOR;\n"
+    )
+    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+
+
 def test_cts0012_ignores_comments_strings_and_qualified_fields():
     unit = _st_unit(
         "PROGRAM P\nIMPLEMENTATION\n"
@@ -486,3 +524,58 @@ def test_cts0012_ignores_comments_strings_and_qualified_fields():
         "value := CalculateD();\n"
     )
     assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0013 - declared symbol not referenced
+# ---------------------------------------------------------------------------
+
+
+def test_cts0013_flags_unreferenced_local_and_ignores_placeholders():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    forgotten : INT;\n"
+        "    spare_1 : INT;\n"
+        "    used_value : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "used_value := 1;\n"
+    )
+    findings = list(cts0013(_ctx(ProjectSnapshot(".", [unit]))))
+    assert [finding.anchor for finding in findings] == ["forgotten"]
+
+
+def test_cts0013_finds_global_used_by_another_unit():
+    gvl = _st_unit_named(
+        "GVL.st",
+        "VAR_GLOBAL\n    global_value : INT;\n    forgotten_global : INT;\nEND_VAR\n",
+    )
+    program = _st_unit_named(
+        "P.st",
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "global_value := 1;\n",
+    )
+    findings = list(cts0013(_ctx(ProjectSnapshot(".", [gvl, program]))))
+    assert [finding.anchor for finding in findings] == ["forgotten_global"]
+
+
+def test_cts0013_counts_references_from_owned_methods():
+    owner = _st_unit_named(
+        "FB.st",
+        "FUNCTION_BLOCK FB\nVAR\n    field_value : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\n",
+    )
+    method = _st_unit_named(
+        "FB.Update.st",
+        "METHOD Update\nIMPLEMENTATION\nfield_value := 1;\n",
+    )
+    findings = list(cts0013(_ctx(ProjectSnapshot(".", [owner, method]))))
+    assert findings == []
+
+
+def test_cts0013_does_not_count_comments_or_strings_as_references():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n    forgotten : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "// forgotten\nmessage := 'forgotten';\n"
+    )
+    findings = list(cts0013(_ctx(ProjectSnapshot(".", [unit]))))
+    assert [finding.anchor for finding in findings] == ["forgotten"]

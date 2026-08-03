@@ -36,6 +36,10 @@ END_PROGRAM
 
 ## When ignoring is legitimate
 
+- The second assignment is an explicit self-update, such as
+  `counter := counter + 1` or `text := CONCAT(text, suffix)`.
+- Self-updates inside `IF`, `CASE`, or loop bodies are also intentional; the
+  rule does not compare assignments across control-flow boundaries.
 - The first expression is intentionally evaluated for its side effect.
 - The code is generated or follows a vendor-specific convention.
 - The assignments are placeholders during development.

@@ -21,7 +21,7 @@ def cds_text_sync_analyze_path():
 def test_all_human_builtin_rules_load():
     rules = load_builtin_rules()
     assert set(rules) == {
-        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012"
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013"
     }
 
 

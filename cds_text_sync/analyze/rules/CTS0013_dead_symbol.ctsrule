@@ -1,0 +1,17 @@
+"""CTS0013 - declared symbols without explicit source references."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.dead_symbol import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0013",
+    title="Declared symbol not referenced",
+    severity="suspicious",
+    scope=Scope.PROJECT,
+    requires={Capability.DECLARATIONS, Capability.ST_TEXT},
+    kinds="ANY",
+    summary="Declared variables with no explicit reference in analyzed ST.",
+    topic="Dead code",
+    check=check,
+)
