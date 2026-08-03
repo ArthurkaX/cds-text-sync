@@ -1,6 +1,5 @@
 ---
 title: Redundant boolean IF
-tags: [boolean, simplification]
 since: 3.0.0
 related: [CTS0007, CTS0008]
 ---
@@ -19,8 +18,8 @@ logic that is not actually present.
 
 ## Example
 
-```st bad
-IF (AutoMode AND NOT ErrorActive) OR ForceStart THEN
+```st bad 1
+IF (AutoMode AND NOT ErrorActive) OR ForceStart THEN  // cts:here
     CanStart := TRUE;
 ELSE
     CanStart := FALSE;

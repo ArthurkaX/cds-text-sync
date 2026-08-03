@@ -6,6 +6,7 @@ Configuration is data (rules stay code). The config file may:
 * set the quality policy (``fail_on``, ``incomplete``);
 * pick the git base for history rules;
 * override per-rule severity and enabled state;
+* tune per-rule options (``[rules.<id>] options.<name> = ...``);
 * scope rules to path globs (``[[rule_scope]]``).
 
 TOML is parsed with ``tomllib`` (3.11+); on older Pythons a config file is
@@ -95,7 +96,7 @@ class ResolvedConfig:
     def __init__(self):
         self.fail_on = DEFAULT_FAIL_ON
         self.incomplete = DEFAULT_INCOMPLETE
-        self.rule_overrides = {}  # rule_id -> {"enabled": bool, "severity": str}
+        self.rule_overrides = {}  # rule_id -> {"enabled": bool, "severity": str, "options": {name: value}}
         self.scopes = []  # list[RuleScope]
         self.config_path = None
 
@@ -108,6 +109,15 @@ class ResolvedConfig:
     def enabled_for(self, rule_id, default=True):
         override = self.rule_overrides.get(rule_id, {})
         return override.get("enabled", default)
+
+    def options_for(self, rule_id):
+        """Raw configured options for *rule_id* (empty dict when unset).
+
+        Values are unvalidated: unknown keys and type mismatches are surfaced
+        per-run as ``rule-option`` Diagnostics, never a config-load error, so
+        a typo cannot stop the analyzer from starting.
+        """
+        return dict(self.rule_overrides.get(rule_id, {}).get("options", {}))
 
     # -- unit level --------------------------------------------------------
 
@@ -214,6 +224,13 @@ def load_config(config_path):
                     f"danger|suspicious|style, got {sev!r}"
                 )
             entry["severity"] = sev
+        if "options" in override:
+            opts = override["options"]
+            if not isinstance(opts, dict):
+                raise ConfigError(f"[rules.{rule_id}] options must be a table")
+            # Values are stored raw; per-rule validation/coercion happens in
+            # the runner so a typo here never prevents the analyzer starting.
+            entry["options"] = dict(opts)
         config.rule_overrides[rule_id] = entry
 
     # Validate config IDs against the built-in catalog so typos do not become

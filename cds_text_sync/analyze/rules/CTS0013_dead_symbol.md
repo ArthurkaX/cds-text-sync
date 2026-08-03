@@ -1,6 +1,5 @@
 ---
 title: Declared symbol not referenced
-tags: [dead-code, suspicious]
 since: 3.0.0
 related: [CTS0002, CTS0009, CTS0011]
 ---
@@ -23,10 +22,10 @@ and historical interfaces may use a symbol outside the analyzed ST.
 
 ## Example
 
-```st bad
+```st bad 1
 PROGRAM P
 VAR
-    forgotten : INT;
+    forgotten : INT;  // cts:here
     result : INT;
 END_VAR
 IMPLEMENTATION

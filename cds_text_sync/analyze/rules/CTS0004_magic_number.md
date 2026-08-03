@@ -1,6 +1,5 @@
 ---
 title: Magic numeric literal
-tags: [style, maintainability]
 since: 3.0.0
 related: [CTS0002]
 ---
@@ -18,7 +17,7 @@ Two occurrences can drift apart when one is updated and the other is missed.
 
 ## Example
 
-```st bad
+```st bad 2
 PROGRAM Main
 VAR
     value : INT;
@@ -26,8 +25,8 @@ END_VAR
 
 IMPLEMENTATION
 
-IF value > 75 THEN
-    value := value - 75;
+IF value > 75 THEN  // cts:here
+    value := value - 75;  // cts:here
 END_IF;
 ```
 

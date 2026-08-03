@@ -1,6 +1,5 @@
 ---
 title: Output not assigned
-tags: [dead-code, interface]
 since: 3.0.0
 related: [CTS0002, CTS0003]
 ---
@@ -19,10 +18,10 @@ forgotten during implementation.
 
 ## Example
 
-```st bad
+```st bad 1
 FUNCTION_BLOCK FB_Heater
 VAR_OUTPUT
-    ready : BOOL;
+    ready : BOOL;  // cts:here
 END_VAR
 
 IMPLEMENTATION

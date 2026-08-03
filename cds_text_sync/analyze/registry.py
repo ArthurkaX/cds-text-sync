@@ -1,16 +1,32 @@
 """
 registry.py - Loading and validating the built-in rules.
 
-Rules live in ``cds_text_sync/analyze/rules/*.ctsrule``. The suffix exists so
-the CODESYS ScriptDir scanner (which shows every ``.py`` in its menu) never
-picks the rules up; the loader is an explicit ``SourceFileLoader`` because the
-suffix is unknown to the import machinery.
+Rules live in ``cds_text_sync/analyze/rules/*.ctsrule`` — one self-contained
+file per rule, holding its ``check`` and the ``RULE`` manifest that describes
+it. The suffix exists to keep those files out of the normal import graph: they
+are data-plus-``check`` units loaded explicitly by ``_load_module``, never
+discovered by package scanning. As a secondary benefit, the suffix also keeps
+them out of the CODESYS ScriptDir menu for hand-installed trees.
+
+Numbering policy: rule ids match ``CTS\\d{4}``, are assigned in ascending
+order, are never reused, and gaps in the numbering are permanent. The live id
+set is whatever the rules directory contains; nothing in this module needs
+editing to add a rule.
+
+History: ``CTS0003`` and ``CTS0004`` were recycled before this policy was
+enforced - ``CTS0003`` was ``dead_explicit_color`` until commit ``7535712``
+("refactor: separate human analysis from visu lint"), and ``CTS0004`` was
+``persistent_order`` until commit ``46965ce`` ("Add boolean IF simplification
+analysis rule"). Those ids stay live; a baseline or suppression written
+against a pre-recycling checkout points at a different rule and must be
+re-resolved.
 
 Registry invariants (fatal on violation - a broken registry is a broken tool):
 
 * one stem == exactly one ``RULE``;
 * one rule id == exactly one file and exactly one Markdown document;
 * metadata (id, severity, scope, kinds, capabilities) validates;
+* a loaded rule's id is not retired (see ``_RETIRED_IDS``);
 * duplicate ids / broken metadata / import errors abort the run.
 """
 
@@ -28,20 +44,14 @@ from cds_text_sync.analyze.st.kinds import expand_kinds
 RULE_SUFFIX = ".ctsrule"
 _RULE_ID_RE = re.compile(r"^CTS\d{4}$")
 _REGISTRY_CACHE = {}
-_RULE_ID_ASSIGNMENTS = {
-    "CTS0001": "CTS0001_commented_code",
-    "CTS0002": "CTS0002_unused_input",
-    "CTS0003": "CTS0003_case_without_else",
-    "CTS0004": "CTS0004_magic_number",
-    "CTS0006": "CTS0006_array_bounds",
-    "CTS0007": "CTS0007_indentation",
-    "CTS0008": "CTS0008_variable_alignment",
-    "CTS0009": "CTS0009_output_not_assigned",
-    "CTS0010": "CTS0010_redundant_boolean_if",
-    "CTS0011": "CTS0011_assigned_not_read",
-    "CTS0012": "CTS0012_overwrite_without_read",
-    "CTS0013": "CTS0013_dead_symbol",
-}
+# Rule ids are opaque and permanent. A deleted rule's id is recorded here
+# and never reused: fingerprints, baselines and user suppressions in the
+# field are keyed by rule id, so recycling one would silently re-target
+# them. Gaps in the numbering (CTS0005) are permanent and expected.
+#
+# CTS0003 and CTS0004 were recycled before this guard existed -- see the
+# module docstring. They stay live; the rule is enforced from here on.
+_RETIRED_IDS = frozenset()
 
 
 class RegistryError(Exception):
@@ -60,6 +70,7 @@ class Rule:
         self.kinds = expand_kinds(spec.kinds)
         self.summary = spec.summary
         self.topic = spec.topic
+        self.options = spec.options or {}
         self.check = spec.check
         self.stem = stem
         self.source_path = source_path
@@ -127,11 +138,9 @@ def load_builtin_rules():
             raise RegistryError(
                 f"{filename}: stem must start with the rule id ({rule_id})"
             )
-        assigned_stem = _RULE_ID_ASSIGNMENTS.get(rule_id)
-        if assigned_stem is not None and stem != assigned_stem:
+        if rule_id in _RETIRED_IDS:
             raise RegistryError(
-                f"{filename}: rule id {rule_id} is already assigned to "
-                f"{assigned_stem}; IDs must not be recycled"
+                f"{filename}: rule id {rule_id} is retired; ids are never reused"
             )
         if rule_id in rules:
             raise RegistryError(f"duplicate rule id: {rule_id}")

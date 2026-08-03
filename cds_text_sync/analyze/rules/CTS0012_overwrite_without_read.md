@@ -1,6 +1,5 @@
 ---
 title: Overwrite without read
-tags: [dead-code, suspicious]
 since: 3.0.0
 related: [CTS0011]
 ---
@@ -17,10 +16,10 @@ wrong place. This often hides an ordering mistake during refactoring.
 
 ## Example
 
-```st bad
+```st bad 1
 PROGRAM P
 IMPLEMENTATION
-value := CalculateA();
+value := CalculateA();  // cts:here
 value := CalculateB();
 END_PROGRAM
 ```

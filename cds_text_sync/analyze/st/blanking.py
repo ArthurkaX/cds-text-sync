@@ -1,9 +1,10 @@
 """
-engine_blank.py - Comment/string blanking helpers reused by rules.
+blanking.py - Comment/string blanking helpers for the analyzer.
 
 These mirror the engine's ``variable_map._blank_noise`` and
 ``call_tree._trim_string_literals`` without dragging the flat-import engine
-modules into the analyzer. Kept here so text rules share one implementation.
+modules into the analyzer. ``Section`` (st/body.py) applies them once per
+section; only a rule that must inspect comment content imports them directly.
 """
 
 from __future__ import annotations
@@ -47,7 +48,9 @@ def blank_noise(text):
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
             if i < n:
-                out.append(" ")
+                # "*)": two characters, so two spaces keep the blanked text
+                # the same length as the raw text (offsets stay 1:1).
+                out.append("  ")
                 i += 2
             continue
         if c == "{":

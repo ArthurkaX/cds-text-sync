@@ -1,6 +1,5 @@
 ---
 title: CASE without ELSE
-tags: [correctness, control-flow]
 since: 3.0.0
 related: [CTS0001]
 ---
@@ -18,8 +17,8 @@ report, reject, recover from, or deliberately ignore that value.
 
 ## Example
 
-```st bad
-CASE state OF
+```st bad 1
+CASE state OF  // cts:here
     1: Start();
     2: Stop();
 END_CASE;

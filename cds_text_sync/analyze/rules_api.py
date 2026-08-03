@@ -1,9 +1,9 @@
 """
 rules_api.py - The contract a ``.ctsrule`` file implements.
 
-A rule file is deliberately thin: metadata plus one ``check``. All real
-logic lives in the analyzer package (``st/``, ``rules/impl/``) where there
-are types and tests. The rule module defines a module-level ``RULE`` object:
+A rule is one file: its ``check`` plus the metadata describing it. Anything
+shared by several rules lives in the analyzer package (``st/``) where there
+are types and tests. The rule file defines a module-level ``RULE`` object:
 
     from cds_text_sync.analyze.rules_api import RuleSpec
     from cds_text_sync.analyze.capabilities import Capability, Scope
@@ -20,7 +20,14 @@ are types and tests. The rule module defines a module-level ``RULE`` object:
         kinds="CALLABLE",
         summary="...",
         check=check,
+        options={"min_tokens": 4},
     )
+
+Options are per-rule tunables whose defaults live here and whose overrides
+come from ``[rules.<id>] options.<name>`` in ``cts-analyze.toml``. Defaults
+must be ``int``/``float``/``str``/``bool`` (the type is inferred from them)
+and names must not collide with the reserved ``enabled``/``severity``/
+``exclude`` keys. A rule reads one via ``ctx.option("name")``.
 
 Signature by scope:
 
@@ -36,12 +43,34 @@ Scope filtering is the runner's job, not the rule's. ``ctx.units`` (and
 by the runner, identically for UNIT and PROJECT rules. A rule must
 not call configuration exclusion helpers itself, and a fully scoped-out
 rule never runs when all of its units are scoped out.
+
+Identity is stamped by the runner, not by a rule. ``finding_in`` returns a
+Finding with empty ``rule_id``/``severity``/``rule_title``; ``_collect`` in
+runner.py fills them from the registry ``Rule`` so a rule can never drift
+from its manifest.
 """
 
 from __future__ import annotations
 
+import re
+
 from cds_text_sync.analyze.capabilities import Capability, Scope
 from cds_text_sync.analyze.model import Finding, Location, line_col_of
+
+# Reserved option names: they already have a meaning on the [rules.<id>] table.
+_RESERVED_OPTIONS = frozenset({"enabled", "severity", "exclude"})
+# The only value types a rule option may declare. Inferred from the default.
+_OPTION_TYPES = (int, float, str, bool)
+_IDENT_RE = re.compile(r"^[A-Za-z_]\w*$")
+# Allowed topics for rule taxonomy. All rules must declare one.
+ALLOWED_TOPICS = frozenset({
+    "Code quality",
+    "Interfaces",
+    "Correctness",
+    "Style",
+    "Dead code",
+    "Data consistency",
+})
 
 
 class RuleSpecError(Exception):
@@ -50,7 +79,17 @@ class RuleSpecError(Exception):
 
 class RuleSpec:
     def __init__(
-        self, id, title, severity, scope, requires, kinds, summary, check, topic="General"
+        self,
+        id,
+        title,
+        severity,
+        scope,
+        requires,
+        kinds,
+        summary,
+        check,
+        topic,
+        options=None,
     ):
         self.id = str(id).strip()
         self.title = str(title).strip()
@@ -59,8 +98,9 @@ class RuleSpec:
         self.requires = _normalise_capabilities(requires)
         self.kinds = kinds  # expanded by the registry
         self.summary = str(summary).strip()
-        self.topic = str(topic).strip() or "General"
+        self.topic = str(topic).strip()
         self.check = check
+        self.options = {k: v for k, v in (options or {}).items()}
 
     def validate(self):
         if not self.id or not self.title or not self.summary:
@@ -69,12 +109,32 @@ class RuleSpec:
             )
         if not self.topic:
             raise RuleSpecError(f"{self.id}: topic must be non-empty")
+        if self.topic not in ALLOWED_TOPICS:
+            raise RuleSpecError(
+                f"{self.id}: topic {self.topic!r} not in allowed set: "
+                f"{', '.join(sorted(ALLOWED_TOPICS))}"
+            )
         from cds_text_sync.analyze.model import is_valid_severity
 
         if not is_valid_severity(self.severity):
             raise RuleSpecError(f"{self.id}: bad severity {self.severity!r}")
         if not callable(self.check):
             raise RuleSpecError(f"{self.id}: check must be callable")
+        for name, default in self.options.items():
+            if name in _RESERVED_OPTIONS:
+                raise RuleSpecError(
+                    f"{self.id}: option {name!r} collides with a reserved key"
+                )
+            if not _IDENT_RE.match(name):
+                raise RuleSpecError(
+                    f"{self.id}: option {name!r} is not a valid identifier"
+                )
+            if not isinstance(default, _OPTION_TYPES):
+                raise RuleSpecError(
+                    f"{self.id}: option {name!r} default type "
+                    f"{type(default).__name__} not allowed "
+                    f"(int/float/str/bool only)"
+                )
 
 
 def _normalise_capabilities(requires):
@@ -105,25 +165,19 @@ def location_in(unit, offset=None, end_offset=None):
     )
 
 
-def finding_in(
-    rule_id,
-    severity,
-    message,
-    unit,
-    offset=None,
-    end_offset=None,
-    anchor=None,
-    context=None,
-    rule_title="",
-):
-    """Build a Finding located in a unit."""
+def finding_in(message, unit, offset=None, end_offset=None, anchor=None, context=None):
+    """Build a Finding located in a unit.
+
+    Identity (rule id, title, severity) is stamped by the runner from the
+    registry Rule and must not be set by a rule.
+    """
     return Finding(
-        rule_id=rule_id,
-        severity=severity,
+        rule_id="",
+        severity="",
         message=message,
         location=location_in(unit, offset, end_offset),
         unit_id=unit.id,
         anchor=anchor,
         context=context,
-        rule_title=rule_title,
+        rule_title="",
     )

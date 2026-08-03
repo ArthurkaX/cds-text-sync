@@ -1,6 +1,5 @@
 ---
 title: Array index outside bounds
-tags: [correctness, arrays]
 since: 3.0.0
 related: [CTS0003]
 ---
@@ -18,7 +17,7 @@ checks.
 
 ## Example
 
-```st bad
+```st bad 2
 PROGRAM Main
 VAR
     values : ARRAY[1..10] OF INT;
@@ -26,8 +25,8 @@ END_VAR
 
 IMPLEMENTATION
 
-values[0] := 1;
-values[11] := 2;
+values[0] := 1;  // cts:here
+values[11] := 2;  // cts:here
 ```
 
 ```st good

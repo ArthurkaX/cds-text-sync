@@ -15,9 +15,15 @@ from cds_text_sync.analyze.workspace import Workspace
 
 
 def extract_st_blocks(doc):
-    pattern = re.compile(r"```st\s+(good|bad)\s*\n(.*?)```", re.DOTALL)
+    # Fence grammar: ```st good|bad [count]
+    # bad: at least one (if no count) or exactly count findings
+    # good: zero findings (count not allowed)
+    pattern = re.compile(r"```st\s+(good|bad)(?:\s+(\d+))?\s*\n(.*?)```", re.DOTALL)
     for match in pattern.finditer(doc):
-        yield match.group(1), match.group(2).strip("\n")
+        tag, count_str, text = match.group(1), match.group(2), match.group(3)
+        count = int(count_str) if count_str else None
+        text = text.strip("\n")
+        yield tag, count, text
 
 
 def run(out):
@@ -36,25 +42,82 @@ def run(out):
         if not blocks:
             failures.append(f"{rule_id}: no ```st good/bad examples in doc")
             continue
-        for tag, text in blocks:
+        for tag, expect_count, text in blocks:
+            # Validate fence grammar: count on good is an error
+            if tag == "good" and expect_count is not None:
+                failures.append(f"{rule_id} ({tag}): count not allowed on good blocks")
+                continue
+
+            # Strip // cts:here markers with spaces to preserve columns
+            text, marker_lines = _strip_markers(text)
+
             try:
                 actual = run_snippet(rule, text)
             except Exception as exc:
                 failures.append(f"{rule_id} ({tag}): crashed: {exc}")
                 continue
-            expect = tag == "bad"
-            if expect and not actual:
-                failures.append(f"{rule_id} ({tag}): expected a finding, got none")
-            elif not expect and actual:
-                failures.append(
-                    f"{rule_id} ({tag}): expected clean, got {len(actual)} finding(s)"
-                )
-            else:
-                passed += 1
+
+            # Check count
+            actual_count = len(actual)
+            if tag == "bad":
+                if expect_count is None:
+                    # No count specified: at least 1
+                    if not actual:
+                        failures.append(
+                            f"{rule_id} ({tag}): expected >= 1 finding, got {actual_count}"
+                        )
+                        continue
+                else:
+                    # Count specified: must match exactly
+                    if actual_count != expect_count:
+                        failures.append(
+                            f"{rule_id} ({tag}): expected {expect_count} finding(s), "
+                            f"got {actual_count}"
+                        )
+                        continue
+
+                # Check line anchoring if markers present
+                if marker_lines:
+                    actual_lines = {f.location.line for f in actual if f.location}
+                    if actual_lines != marker_lines:
+                        failures.append(
+                            f"{rule_id} ({tag}): expected findings on lines {sorted(marker_lines)}, "
+                            f"got {sorted(actual_lines)}"
+                        )
+                        continue
+            else:  # tag == "good"
+                if actual:
+                    failures.append(
+                        f"{rule_id} ({tag}): expected clean, got {actual_count} finding(s)"
+                    )
+                    continue
+
+            passed += 1
     out.write(f"selftest: {passed} blocks passed, {len(failures)} failed\n")
     for failure in failures:
         out.write(f"  FAIL {failure}\n")
     return 1 if failures else 0
+
+
+def _strip_markers(text):
+    """Strip // cts:here markers with spaces, preserving column offsets.
+
+    Returns (stripped_text, marker_lines_set).
+    Marker lines are 1-based line numbers.
+    """
+    lines = text.split("\n")
+    marker_lines = set()
+    marker_pattern = re.compile(r"//\s*cts:here")
+
+    for i, line in enumerate(lines, 1):
+        if marker_pattern.search(line):
+            marker_lines.add(i)
+            # Replace marker with spaces (same number of chars) to preserve columns
+            lines[i - 1] = marker_pattern.sub(
+                lambda m: " " * len(m.group(0)), line
+            )
+
+    return "\n".join(lines), marker_lines
 
 
 def run_snippet(rule, text):
@@ -82,5 +145,6 @@ def run_snippet(rule, text):
     snapshot = project_mod.ProjectSnapshot(".", [unit])
     workspace = Workspace(root=".", project_view=".", state_dir=".cts-analyze")
     ctx = AnalysisContext(workspace, snapshot, ResolvedConfig())
+    ctx.active_rule = rule
     found = rule.check(unit, ctx) if rule.scope == Scope.UNIT else rule.check(ctx)
     return [item for item in (found or []) if isinstance(item, Finding)]

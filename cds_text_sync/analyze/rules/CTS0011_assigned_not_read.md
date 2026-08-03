@@ -1,6 +1,5 @@
 ---
 title: Assigned local not read
-tags: [dead-code, suspicious]
 since: 3.0.0
 related: [CTS0002, CTS0009]
 ---
@@ -18,10 +17,10 @@ can hide a missing output assignment or an incomplete control path.
 
 ## Example
 
-```st bad
+```st bad 1
 PROGRAM P
 VAR
-    calculated : INT;
+    calculated : INT;  // cts:here
 END_VAR
 IMPLEMENTATION
 calculated := limit + offset;

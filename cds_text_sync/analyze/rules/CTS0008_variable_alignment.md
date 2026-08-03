@@ -1,6 +1,5 @@
 ---
 title: Variable declaration alignment
-tags: [style, formatting]
 since: 3.0.0
 ---
 
@@ -17,10 +16,10 @@ initializer during maintenance.
 
 ## Example
 
-```st bad
+```st bad 1
 PROGRAM P
 VAR
-    short_name : INT;
+    short_name : INT;  // cts:here
     much_longer_name: BOOL;
 END_VAR
 IMPLEMENTATION

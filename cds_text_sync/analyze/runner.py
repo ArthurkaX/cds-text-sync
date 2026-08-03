@@ -39,7 +39,7 @@ from cds_text_sync.analyze.model import (
     severity_rank,
 )
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
-from cds_text_sync.analyze.st import decl, symbols
+from cds_text_sync.analyze.st import blocks, decl, symbols
 from cds_text_sync.analyze.file_directives import is_ignored
 
 # ---------------------------------------------------------------------------
@@ -119,6 +119,9 @@ class AnalysisContext:
         if cap == Capability.DECLARATIONS:
             error = _st_read_errors(self.snapshot)
             return _Entry(decl, error)
+        if cap == Capability.BLOCK_STRUCTURE:
+            error = _st_read_errors(self.snapshot)
+            return _Entry(blocks, error)
         if cap == Capability.PROJECT_SYMBOLS:
             error = _st_read_errors(self.snapshot)
             return _Entry(symbols.ProjectSymbols(self.snapshot), error)
@@ -132,6 +135,26 @@ class AnalysisContext:
 
     # -- conveniences ------------------------------------------------------
 
+    def option(self, name):
+        """Resolve a per-rule option against the active rule.
+
+        ``name`` must be declared by the active rule's ``RuleSpec`` or this
+        raises ``KeyError`` (a rule bug; the dispatch handler converts it to
+        a ``rule-error`` Diagnostic). A configured value that cannot be
+        coerced to the declared type falls back to the declared default -
+        the mismatch was already reported as a ``rule-option`` Diagnostic
+        when the rule's options were pre-validated in ``run_analysis``.
+        """
+        declared = self.active_rule.options
+        if name not in declared:
+            raise KeyError(name)
+        default = declared[name]
+        configured = self.config.options_for(self.active_rule.id).get(name)
+        if configured is None:
+            return default
+        coerced = _coerce_option(name, configured, default)
+        return default if coerced is None else coerced
+
     def diagnostics_for(self, kind, message, location=None, rule_id=None, unit_id=None):
         return Diagnostic(
             kind, message, location=location, rule_id=rule_id, unit_id=unit_id
@@ -142,6 +165,60 @@ class _Entry:
     def __init__(self, value, error):
         self.value = value
         self.error = error
+
+
+def _coerce_option(name, value, default):
+    """Coerce a configured option to the declared type, or None on mismatch.
+
+    A scalar of the wrong type is ``RuleSpec.validate``'s contract violation
+    at declaration time; here we only need the configured value to be
+    assignment-compatible with the declared default.
+    """
+    if isinstance(default, bool):
+        return value if isinstance(value, bool) else None
+    if isinstance(default, int) and not isinstance(default, bool):
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+    if isinstance(default, float):
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    if isinstance(default, str):
+        return value if isinstance(value, str) else None
+    return None
+
+
+def _validate_rule_options(rule, ctx, result):
+    """Report per-run option problems for one rule, once.
+
+    Runs in the pre-dispatch loop so a bad option yields exactly one
+    ``rule-option`` Diagnostic per rule rather than one per unit, and so a
+    typo in a config never stops the analyzer from starting. Unknown keys
+    and type mismatches are reported; neither aborts the rule.
+    """
+    configured = ctx.config.options_for(rule.id)
+    for name in sorted(configured):
+        if name not in rule.options:
+            result.complete = False
+            result.diagnostics.append(
+                Diagnostic(
+                    "rule-option",
+                    f"{rule.id}: unknown option {name!r} (declared: "
+                    f"{', '.join(sorted(rule.options)) or 'none'})",
+                    rule_id=rule.id,
+                )
+            )
+            continue
+        default = rule.options[name]
+        if _coerce_option(name, configured[name], default) is None:
+            result.complete = False
+            result.diagnostics.append(
+                Diagnostic(
+                    "rule-option",
+                    f"{rule.id}: option {name!r} has type "
+                    f"{type(configured[name]).__name__}, expected "
+                    f"{type(default).__name__}; using default "
+                    f"{default!r}",
+                    rule_id=rule.id,
+                )
+            )
 
 
 def _st_read_errors(snapshot):
@@ -207,6 +284,9 @@ def run_analysis(workspace, snapshot, config, options):
         if not ctx.visible_units(rule):
             continue
         ctx.active_rule = rule
+        # Per-rule options are validated once here, not per unit, so a bad
+        # option produces exactly one Diagnostic per rule per run.
+        _validate_rule_options(rule, ctx, result)
         for cap in sorted(rule.requires, key=str):
             try:
                 ctx.capability(cap)
@@ -416,20 +496,22 @@ def _dispatch_project(rule, ctx, result):
 def _collect(rule, found, result, config):
     """The single collection point for rule output.
 
-    A configured severity override (``[rules.X] severity``) is resolved
-    here and stored on the run-local Finding only: the registry keeps the
-    declared rule severity, so a later run in the same process starts from
-    the declared value. Fingerprint inputs never include severity, so the
-    identity of the underlying violation is unchanged by policy.
+    Identity (id, title, severity) is stamped here from the registry Rule;
+    a rule impl must not carry it. The declared severity feeds the config
+    override and is stored on the run-local Finding only: the registry
+    keeps the declared rule severity, so a later run in the same process
+    starts from the declared value. Fingerprint inputs never include
+    severity, so the identity of the underlying violation is unchanged by
+    policy.
     """
     for item in found or []:
         if isinstance(item, Diagnostic):
             result.diagnostics.append(item)
             result.complete = False
         elif item is not None:
-            if not item.rule_title:
-                item.rule_title = rule.title
-            item.severity = config.severity_for(item.rule_id, item.severity)
+            item.rule_id = rule.id
+            item.rule_title = rule.title
+            item.severity = config.severity_for(rule.id, rule.severity)
             result.findings.append(item)
             result.summary.add_finding(item)
 
