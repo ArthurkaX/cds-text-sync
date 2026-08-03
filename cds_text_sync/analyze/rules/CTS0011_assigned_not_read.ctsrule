@@ -1,0 +1,17 @@
+"""CTS0011 - local variables assigned but never read."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.assigned_not_read import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0011",
+    title="Assigned local not read",
+    severity="suspicious",
+    scope=Scope.UNIT,
+    requires={Capability.DECLARATIONS, Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="Local variables that are assigned but never read.",
+    topic="Dead code",
+    check=check,
+)
