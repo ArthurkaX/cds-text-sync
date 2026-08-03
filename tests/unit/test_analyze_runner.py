@@ -63,6 +63,17 @@ def test_fixture_expected_findings(tmp_path):
     assert result.complete is True
 
 
+def test_fixture_block_comment_columns_are_1_to_1(tmp_path):
+    """PB.st carries a block comment before a CTS0004 violation in the same
+    section. Its reported columns are the real character columns: the
+    blanking off-by-one used to shift every such finding one byte left per
+    block comment."""
+    _, _, result = _run(fixture_project_view())
+    pb = [f for f in result.findings if f.location.path == "POUs/PB.st"]
+    assert [(f.location.line, f.location.column) for f in pb] == [(9, 27), (10, 10)]
+    assert {f.rule_id for f in pb} == {"CTS0004"}
+
+
 def test_rule_filter(tmp_path):
     _, _, result = _run(fixture_project_view(), rule_filter={"CTS0002"})
     assert {f.rule_id for f in result.findings} == {"CTS0002"}
@@ -207,7 +218,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 20
+    assert data["summary"]["total"] == 22
 
 
 def test_cli_read_only_no_state_written(tmp_path):
@@ -367,6 +378,80 @@ def test_human_analyzer_ignores_malformed_visu_xml(tmp_path):
     assert d1["complete"] is True
 
 
+def test_rule_option_reaches_rule_and_changes_output(tmp_path):
+    """A configured option reaches the rule and changes its output.
+
+    CTS0004 min_occurrences defaults to 2. PB.st has two 4095 literals at
+    (9,27) and (10,10) - they occur exactly twice. With min_occurrences=3
+    both should disappear (not enough occurrences).
+    """
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    cfg_path = os.path.join(root, "cts-analyze.toml")
+    with open(cfg_path, "w", encoding="utf-8") as fh:
+        fh.write('[rules.CTS0004]\noptions.min_occurrences = 3\n')
+
+    ws = WorkspaceResolver(workspace=root).resolve()
+    config = load_config(ws.config_path)
+    snap = build_snapshot(ws.project_view)
+    result = run_analysis(ws, snap, config, RunOptions(rule_filter={"CTS0004"}))
+
+    pb = [f for f in result.findings if f.location.path == "POUs/PB.st"]
+    # Both 4095 findings should be gone (they occur exactly twice)
+    assert pb == []
+    # Verify the default config would find them
+    default_result = run_analysis(ws, snap, ResolvedConfig(), RunOptions(rule_filter={"CTS0004"}))
+    pb_default = [f for f in default_result.findings if f.location.path == "POUs/PB.st"]
+    assert len(pb_default) == 2
+
+
+def test_undeclared_option_key_yields_one_diagnostic(tmp_path):
+    """An unknown option key yields exactly one ``rule-option`` Diagnostic
+    per rule per run, not one per unit."""
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    cfg_path = os.path.join(root, "cts-analyze.toml")
+    with open(cfg_path, "w", encoding="utf-8") as fh:
+        fh.write('[rules.CTS0001]\noptions.typo_min_tokens = 6\n')
+
+    ws = WorkspaceResolver(workspace=root).resolve()
+    config = load_config(ws.config_path)
+    snap = build_snapshot(ws.project_view)
+    result = run_analysis(ws, snap, config, RunOptions(rule_filter={"CTS0001"}))
+
+    # One and only one ``rule-option`` Diagnostic for the typo.
+    diags = [d for d in result.diagnostics if d.kind == "rule-option"]
+    assert len(diags) == 1
+    assert "typo_min_tokens" in diags[0].message
+    assert result.complete is False
+    # The rule still ran and found its findings (fallback to defaults).
+    assert len(result.findings) > 0
+
+
+def test_type_mismatched_option_falls_back_to_default(tmp_path):
+    """A configured option with the wrong type falls back to the declared
+    default and yields one ``rule-option`` Diagnostic."""
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    cfg_path = os.path.join(root, "cts-analyze.toml")
+    with open(cfg_path, "w", encoding="utf-8") as fh:
+        # min_tokens should be an int, not a string
+        fh.write('[rules.CTS0001]\noptions.min_tokens = "not_a_number"\n')
+
+    ws = WorkspaceResolver(workspace=root).resolve()
+    config = load_config(ws.config_path)
+    snap = build_snapshot(ws.project_view)
+    result = run_analysis(ws, snap, config, RunOptions(rule_filter={"CTS0001"}))
+
+    # One ``rule-option`` Diagnostic for the type mismatch.
+    diags = [d for d in result.diagnostics if d.kind == "rule-option"]
+    assert len(diags) == 1
+    assert "str" in diags[0].message and "int" in diags[0].message
+    assert result.complete is False
+    # The rule still ran with the default (min_tokens=4), finding the comment.
+    assert len(result.findings) > 0
+
+
 def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
     """A baseline recorded under a different fingerprint schema must not
     silently match: every current finding surfaces as new."""
@@ -399,4 +484,6 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    assert len(current) == 20  # nothing silently hidden
+    # 22 findings; the two same-value CTS0004 hits on PB.st share a
+    # fingerprint (location is not a fingerprint input), so 21 distinct ones.
+    assert len(current) == 21  # nothing silently hidden

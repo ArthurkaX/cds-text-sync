@@ -101,3 +101,40 @@ def test_glob_semantics():
     assert _glob_match("POUs/Generated/**", "POUs/Generated/A.st")
     assert _glob_match("POUs/Generated/**", "POUs/Generated/Deep/B.st")
     assert not _glob_match("POUs/*.st", "POUs/Deep/B.st")
+
+
+def test_rule_options_parsed_and_available(tmp_path):
+    path = _write_config(
+        tmp_path,
+        "\n".join(
+            [
+                "[rules.CTS0001]",
+                "options.min_tokens = 6",
+                "",
+                "[rules.CTS0004]",
+                "options.min_occurrences = 3",
+                "options.max_trivial_integer = 20",
+            ]
+        ),
+    )
+    config = load_config(path)
+    assert config.options_for("CTS0001") == {"min_tokens": 6}
+    assert config.options_for("CTS0004") == {"min_occurrences": 3, "max_trivial_integer": 20}
+    assert config.options_for("CTS0002") == {}
+
+
+def test_unknown_rule_option_not_rejected_at_load(tmp_path):
+    """A typo in an option name must not fail config load: typos are
+    surfaced per-run as ``rule-option`` Diagnostics, never config errors."""
+    path = _write_config(
+        tmp_path,
+        "\n".join(
+            [
+                "[rules.CTS0001]",
+                "options.typo_option = 5",
+            ]
+        ),
+    )
+    config = load_config(path)
+    # Unknown key is stored as-is; validation happens at dispatch time.
+    assert "typo_option" in config.options_for("CTS0001")

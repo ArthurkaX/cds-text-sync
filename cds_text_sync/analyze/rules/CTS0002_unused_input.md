@@ -1,6 +1,5 @@
 ---
 title: Unused input
-tags: [dead-code, interface]
 since: 3.0.0
 related: [CTS0001]
 ---
@@ -22,11 +21,11 @@ classic source of "I set the value but nothing happens".
 
 ## Example
 
-```st bad
+```st bad 1
 FUNCTION_BLOCK FB_Heater
 VAR_INPUT
     setpoint : INT;
-    alarm_limit : INT;   (* never read *)
+    alarm_limit : INT;   (* never read *)  // cts:here
 END_VAR
 VAR_OUTPUT
     heating : BOOL;

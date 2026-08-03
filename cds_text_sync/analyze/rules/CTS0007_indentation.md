@@ -1,6 +1,5 @@
 ---
 title: Structural indentation
-tags: [style, formatting]
 since: 3.0.0
 ---
 
@@ -25,13 +24,13 @@ especially misleading when reading ST with experience from Python.
 
 ## Example
 
-```st bad
+```st bad 1
 PROGRAM P
 IMPLEMENTATION
 IF ready THEN
     FOR i := 1 TO 10 DO
         value := i;
-            total := total + value;
+            total := total + value;  // cts:here
     END_FOR
 END_IF;
 END_PROGRAM

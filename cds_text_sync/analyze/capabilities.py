@@ -19,7 +19,7 @@ class Capability(str, enum.Enum):
     ST_TEXT = "st-text"  # raw .st text of a unit (always available)
     DECLARATIONS = "declarations"  # parsed VAR_* blocks of a unit
     PROJECT_SYMBOLS = "project-symbols"  # cross-file symbol table
-    STATEMENT_AST = "statement-ast"  # parsed ST statements (not yet shipped)
+    BLOCK_STRUCTURE = "block-structure"  # control-flow nesting tree of a unit
     VISU_XML = "visu-xml"  # native visu screen XML in project-view
     TEXT_LISTS = "text-lists"  # GlobalTextList XML/CSV
     TASK_CONFIG = "task-config"  # task configuration projection

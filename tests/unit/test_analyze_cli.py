@@ -55,7 +55,7 @@ def test_rules_lists_registry():
     rows = json.loads(out)
     ids = {r["id"] for r in rows}
     assert ids == {
-        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013"
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015"
     }
 
 
@@ -93,7 +93,7 @@ def test_fail_on_danger_ignores_suspicious():
     # Fixture has no danger findings; suspicious ones do not fail.
     assert code == 0
     data = json.loads(out)
-    assert data["summary"]["total"] == 20
+    assert data["summary"]["total"] == 22
 
 
 def test_rule_filter_cli():
@@ -152,8 +152,8 @@ def test_package_data_covers_rule_assets():
     rules_dir = os.path.join(analyze_dir, "rules")
     ctsrule = [f for f in os.listdir(rules_dir) if f.endswith(".ctsrule")]
     md = [f for f in os.listdir(rules_dir) if f.endswith(".md")]
-    assert len(ctsrule) == 12
-    assert len(md) == 12
+    assert len(ctsrule) == 14
+    assert len(md) == 14
     stems = {f[:-8] for f in ctsrule}
     assert stems == {f[:-3] for f in md}
 

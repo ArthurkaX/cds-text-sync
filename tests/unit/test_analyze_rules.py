@@ -3,27 +3,9 @@ test_analyze_rules.py - Unit tests for the built-in rules on small snippets.
 """
 
 from cds_text_sync.analyze import project as pm
-from cds_text_sync.analyze.config import ResolvedConfig
 from cds_text_sync.analyze.project import ProjectSnapshot
-from cds_text_sync.analyze.rules.impl.commented_code import check as cts0001
-from cds_text_sync.analyze.rules.impl.unused_input import check as cts0002
-from cds_text_sync.analyze.rules.impl.magic_number import check as cts0004
-from cds_text_sync.analyze.rules.impl.case_without_else import check as cts0003
-from cds_text_sync.analyze.rules.impl.array_bounds import check as cts0006
-from cds_text_sync.analyze.rules.impl.indentation import check as cts0007
-from cds_text_sync.analyze.rules.impl.variable_alignment import check as cts0008
-from cds_text_sync.analyze.rules.impl.output_not_assigned import check as cts0009
-from cds_text_sync.analyze.rules.impl.redundant_boolean_if import check as cts0010
-from cds_text_sync.analyze.rules.impl.assigned_not_read import check as cts0011
-from cds_text_sync.analyze.rules.impl.overwrite_without_read import check as cts0012
-from cds_text_sync.analyze.rules.impl.dead_symbol import check as cts0013
-from cds_text_sync.analyze.runner import AnalysisContext
-from cds_text_sync.analyze.workspace import Workspace
 
-
-def _ctx(snapshot):
-    workspace = Workspace(root=".", project_view=".", state_dir=".")
-    return AnalysisContext(workspace, snapshot, ResolvedConfig())
+from analyze_helpers import run_rule
 
 
 def _st_unit(text):
@@ -43,7 +25,7 @@ def test_cts0001_flags_assignment_in_comment():
     unit = _st_unit(
         "PROGRAM P\nVAR\n x : INT;\nEND_VAR\n\nIMPLEMENTATION\n\n// x := 1;\nx := 2;\n"
     )
-    findings = list(cts0001(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0001", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0001"
     assert findings[0].location.line == 8
@@ -53,7 +35,7 @@ def test_cts0001_flags_call_in_comment():
     unit = _st_unit(
         "PROGRAM P\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n(* MyFunc(a, b); *)\n"
     )
-    findings = list(cts0001(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0001", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
 
 
@@ -63,7 +45,7 @@ def test_cts0001_ignores_prose_comments():
         "// disabled for TICKET-482\n(* this input is never read *)\n"
         "x := 1;\n"
     )
-    findings = list(cts0001(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0001", ProjectSnapshot(".", [unit]))
     assert findings == []
 
 
@@ -72,7 +54,7 @@ def test_cts0001_does_not_see_comment_markers_in_strings():
         "PROGRAM P\nVAR\n s : STRING;\nEND_VAR\n\nIMPLEMENTATION\n\n"
         "s := '// not a comment';\n"
     )
-    findings = list(cts0001(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0001", ProjectSnapshot(".", [unit]))
     assert findings == []
 
 
@@ -87,7 +69,7 @@ def test_cts0002_flags_unused_input():
         "VAR_OUTPUT\n out : BOOL;\nEND_VAR\n\nIMPLEMENTATION\n\n"
         "out := used > 0;\n"
     )
-    findings = list(cts0002(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0002", ProjectSnapshot(".", [unit]))
     assert [f.anchor for f in findings] == ["dead"]
 
 
@@ -105,7 +87,7 @@ def test_cts0002_reads_via_owned_units():
     fb.qualified_name = "FB"
     method.owner_name = "FB"
     snap = ProjectSnapshot(".", [fb, method])
-    findings = list(cts0002(fb, _ctx(snap)))
+    findings = run_rule("CTS0002", snap)
     assert findings == []  # speed is read by the owned method
 
 
@@ -114,7 +96,7 @@ def test_cts0002_qualified_access_counts_as_read():
         "METHOD M\nVAR_INPUT\n a : INT;\nEND_VAR\n\nIMPLEMENTATION\n\n"
         "THIS.a := THIS.a + 1;\n"
     )
-    findings = list(cts0002(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0002", ProjectSnapshot(".", [unit]))
     assert findings == []
 
 
@@ -122,7 +104,7 @@ def test_cts0002_super_access_counts_as_read():
     unit = _st_unit(
         "METHOD M\nVAR_INPUT\n a : INT;\nEND_VAR\n\nIMPLEMENTATION\n\nSUPER^.a := 0;\n"
     )
-    findings = list(cts0002(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0002", ProjectSnapshot(".", [unit]))
     assert findings == []
 
 
@@ -130,7 +112,7 @@ def test_cts0002_no_findings_without_inputs():
     unit = _st_unit(
         "FUNCTION F : INT\nVAR\n x : INT;\nEND_VAR\n\nIMPLEMENTATION\n\nF := x;\n"
     )
-    findings = list(cts0002(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0002", ProjectSnapshot(".", [unit]))
     assert findings == []
 
 
@@ -139,7 +121,7 @@ def test_cts0002_location_points_at_member_line():
         "FUNCTION_BLOCK FB\nVAR_INPUT\n a : INT;\n b : INT;\nEND_VAR\n"
         "VAR_OUTPUT\n out : BOOL;\nEND_VAR\n\nIMPLEMENTATION\n\nout := a > 0;\n"
     )
-    findings = list(cts0002(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0002", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].location.line == 4  # the 'b' member line
     assert findings[0].anchor == "b"
@@ -155,7 +137,7 @@ def test_cts0003_flags_case_without_else():
         "PROGRAM P\nVAR\n state : INT;\nEND_VAR\n\nIMPLEMENTATION\n\n"
         "CASE state OF\n  1: state := 2;\nEND_CASE;\n"
     )
-    findings = list(cts0003(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0003", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0003"
     assert findings[0].severity == "suspicious"
@@ -167,7 +149,7 @@ def test_cts0003_accepts_case_with_else():
         "PROGRAM P\nVAR\n state : INT;\nEND_VAR\n\nIMPLEMENTATION\n\n"
         "CASE state OF\n  1: state := 2;\nELSE\n  state := 0;\nEND_CASE;\n"
     )
-    assert list(cts0003(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0003", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0003_does_not_count_nested_if_else_for_case():
@@ -176,7 +158,7 @@ def test_cts0003_does_not_count_nested_if_else_for_case():
         "CASE state OF\n  1: IF state > 0 THEN state := 2; ELSE state := 0; END_IF;\n"
         "END_CASE;\n"
     )
-    findings = list(cts0003(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0003", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
 
 
@@ -190,7 +172,7 @@ def test_cts0004_flags_repeated_nontrivial_numbers():
         "PROGRAM P\nIMPLEMENTATION\n\n"
         "IF value > 75 THEN result := 75; END_IF;\n"
     )
-    findings = list(cts0004(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0004", ProjectSnapshot(".", [unit]))
     assert len(findings) == 2
     assert all(f.rule_id == "CTS0004" for f in findings)
     assert all(f.severity == "style" for f in findings)
@@ -203,7 +185,7 @@ def test_cts0004_ignores_trivial_numbers_comments_and_strings():
         "value := 0; other := 1; third := -1; small := 2;\n"
         "(* 75 75 *) value := '75 75';\n"
     )
-    assert list(cts0004(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0004", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0004_ignores_array_indexes_and_bit_selectors():
@@ -211,12 +193,12 @@ def test_cts0004_ignores_array_indexes_and_bit_selectors():
         "PROGRAM P\nIMPLEMENTATION\n\n"
         "data[25] := 1; data[25] := 2; flags[25].3 := TRUE; flags[25].3 := FALSE;\n"
     )
-    assert list(cts0004(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0004", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0004_does_not_flag_single_occurrence():
     unit = _st_unit("PROGRAM P\nIMPLEMENTATION\n\nvalue := 75;\n")
-    assert list(cts0004(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0004", ProjectSnapshot(".", [unit])) == []
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +211,7 @@ def test_cts0006_flags_constant_indexes_outside_declared_bounds():
         "PROGRAM P\nVAR\n values : ARRAY[1..10] OF INT;\nEND_VAR\n\n"
         "IMPLEMENTATION\n\nvalues[0] := 1; values[11] := 2;\n"
     )
-    findings = list(cts0006(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0006", ProjectSnapshot(".", [unit]))
     assert len(findings) == 2
     assert all(f.rule_id == "CTS0006" for f in findings)
     assert all(f.severity == "danger" for f in findings)
@@ -241,7 +223,7 @@ def test_cts0006_accepts_nonzero_lower_bound_and_valid_indexes():
         "PROGRAM P\nVAR\n values : ARRAY[-2..5] OF INT;\nEND_VAR\n\n"
         "IMPLEMENTATION\n\nvalues[-2] := 1; values[5] := 2;\n"
     )
-    assert list(cts0006(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0006", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0006_does_not_judge_variable_or_multidimensional_indexes():
@@ -249,7 +231,7 @@ def test_cts0006_does_not_judge_variable_or_multidimensional_indexes():
         "PROGRAM P\nVAR\n values : ARRAY[1..10] OF INT;\n grid : ARRAY[1..2, 1..2] OF INT;\n i : INT;\nEND_VAR\n\n"
         "IMPLEMENTATION\n\nvalues[i] := 1; grid[3, 3] := 2;\n"
     )
-    assert list(cts0006(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0006", ProjectSnapshot(".", [unit])) == []
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +249,7 @@ def test_cts0007_flags_indentation_that_is_deeper_than_the_real_nesting():
         "\tEND_FOR\n"
         "END_IF;\n"
     )
-    findings = list(cts0007(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0007", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0007"
     assert findings[0].severity == "style"
@@ -285,7 +267,7 @@ def test_cts0007_ignores_declaration_table_and_continuation_alignment():
         "\tx := 1;\n"
         "END_IF;\n"
     )
-    assert list(cts0007(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0007", ProjectSnapshot(".", [unit])) == []
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +282,7 @@ def test_cts0008_flags_misaligned_declaration_colons():
         "    much_longer_name: BOOL;\n"
         "END_VAR\nIMPLEMENTATION\nEND_PROGRAM\n"
     )
-    findings = list(cts0008(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0008", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0008"
     assert findings[0].location.line == 3
@@ -314,7 +296,7 @@ def test_cts0008_allows_separate_groups_and_preserves_comments():
         "    isolated : BYTE;\n"
         "END_VAR\nIMPLEMENTATION\nEND_PROGRAM\n"
     )
-    findings = list(cts0008(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0008", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
 
 
@@ -330,7 +312,7 @@ def test_cts0009_flags_output_that_is_never_assigned():
         "    value : INT;\n"
         "END_VAR\nIMPLEMENTATION\nready := TRUE;\nEND_FUNCTION_BLOCK\n"
     )
-    findings = list(cts0009(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0009", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0009"
     assert findings[0].severity == "suspicious"
@@ -346,7 +328,7 @@ def test_cts0009_accepts_qualified_and_owned_method_assignments():
     method = _st_unit("METHOD Update\nIMPLEMENTATION\nTHIS.ready := TRUE;\n")
     fb.qualified_name = "FB"
     method.owner_name = "FB"
-    findings = list(cts0009(fb, _ctx(ProjectSnapshot(".", [fb, method]))))
+    findings = run_rule("CTS0009", ProjectSnapshot(".", [fb, method]))
     assert findings == []
 
 
@@ -356,7 +338,7 @@ def test_cts0009_ignores_comments_and_strings():
         "    ready : BOOL;\nEND_VAR\nIMPLEMENTATION\n"
         "// ready := TRUE;\nmessage := 'ready := TRUE;';\n"
     )
-    findings = list(cts0009(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0009", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
 
 
@@ -374,7 +356,7 @@ def test_cts0010_flags_complex_boolean_assignment():
         "    CanStart := FALSE;\n"
         "END_IF;\n"
     )
-    findings = list(cts0010(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0010", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0010"
     assert "CanStart := (AutoMode AND NOT ErrorActive) OR ForceStart;" in findings[0].message
@@ -386,7 +368,7 @@ def test_cts0010_handles_reversed_values_and_multiline_condition():
         "IF A AND\n    (B OR C) THEN\n"
         "    Result := FALSE;\nELSE\n    Result := TRUE;\nEND_IF;\n"
     )
-    findings = list(cts0010(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0010", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert "Result := NOT (A AND (B OR C));" in findings[0].message
 
@@ -400,7 +382,7 @@ def test_cts0010_ignores_elsif_nested_and_extra_statements():
         "IF E THEN IF F THEN Result := TRUE; ELSE Result := FALSE; END_IF;"
         " ELSE Result := FALSE; END_IF;\n"
     )
-    findings = list(cts0010(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0010", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
 
 
@@ -419,7 +401,7 @@ def test_cts0011_flags_assigned_local_that_is_never_read():
         "calculated := input + 1;\n"
         "used_value := input;\n"
     )
-    findings = list(cts0011(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0011", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0011"
     assert findings[0].anchor == "calculated"
@@ -435,7 +417,7 @@ def test_cts0011_accepts_reads_and_ignores_interfaces_comments_strings_and_field
         "temp := input;\noutput := temp;\n"
         "// temp := 99;\nmessage := 'temp := 100;';\nobj.temp := 1;\n"
     )
-    assert list(cts0011(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0011", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0011_checks_only_local_variable_scopes():
@@ -445,7 +427,7 @@ def test_cts0011_checks_only_local_variable_scopes():
         "VAR_TEMP\n    scratch : INT;\nEND_VAR\nIMPLEMENTATION\n"
         "incoming := 1;\noutgoing := incoming;\nscratch := 2;\n"
     )
-    findings = list(cts0011(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0011", ProjectSnapshot(".", [unit]))
     assert [finding.anchor for finding in findings] == ["scratch"]
 
 
@@ -459,7 +441,7 @@ def test_cts0012_flags_sequential_overwrite():
         "PROGRAM P\nIMPLEMENTATION\n"
         "value := CalculateA();\nvalue := CalculateB();\n"
     )
-    findings = list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0012", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].rule_id == "CTS0012"
     assert findings[0].anchor == "value"
@@ -472,7 +454,7 @@ def test_cts0012_ignores_reads_and_control_flow_boundaries():
         "IF condition THEN\n    value := CalculateC();\nEND_IF;\n"
         "value := CalculateD();\n"
     )
-    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0012", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0012_accepts_accumulation_in_the_next_expression():
@@ -480,7 +462,7 @@ def test_cts0012_accepts_accumulation_in_the_next_expression():
         "PROGRAM P\nIMPLEMENTATION\n"
         "text := StartText();\ntext := CONCAT(text, suffix);\n"
     )
-    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0012", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0012_accepts_arithmetic_self_updates():
@@ -489,7 +471,7 @@ def test_cts0012_accepts_arithmetic_self_updates():
         "counter := counter + 1;\n"
         "counter := counter - step;\n"
     )
-    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0012", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0012_does_not_treat_arbitrary_self_read_as_accumulation():
@@ -497,7 +479,7 @@ def test_cts0012_does_not_treat_arbitrary_self_read_as_accumulation():
         "PROGRAM P\nIMPLEMENTATION\n"
         "value := CalculateA();\nvalue := Normalize(value);\n"
     )
-    findings = list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0012", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
 
 
@@ -513,7 +495,7 @@ def test_cts0012_ignores_self_updates_inside_control_flow():
         "    total := total + value;\n"
         "END_FOR;\n"
     )
-    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0012", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0012_ignores_comments_strings_and_qualified_fields():
@@ -523,7 +505,7 @@ def test_cts0012_ignores_comments_strings_and_qualified_fields():
         "// value := CalculateB();\nmessage := 'value := CalculateC();';\n"
         "value := CalculateD();\n"
     )
-    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+    assert run_rule("CTS0012", ProjectSnapshot(".", [unit])) == []
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +522,7 @@ def test_cts0013_flags_unreferenced_local_and_ignores_placeholders():
         "END_VAR\nIMPLEMENTATION\n"
         "used_value := 1;\n"
     )
-    findings = list(cts0013(_ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0013", ProjectSnapshot(".", [unit]))
     assert [finding.anchor for finding in findings] == ["forgotten"]
 
 
@@ -554,7 +536,7 @@ def test_cts0013_finds_global_used_by_another_unit():
         "PROGRAM P\nIMPLEMENTATION\n"
         "global_value := 1;\n",
     )
-    findings = list(cts0013(_ctx(ProjectSnapshot(".", [gvl, program]))))
+    findings = run_rule("CTS0013", ProjectSnapshot(".", [gvl, program]))
     assert [finding.anchor for finding in findings] == ["forgotten_global"]
 
 
@@ -568,7 +550,7 @@ def test_cts0013_counts_references_from_owned_methods():
         "FB.Update.st",
         "METHOD Update\nIMPLEMENTATION\nfield_value := 1;\n",
     )
-    findings = list(cts0013(_ctx(ProjectSnapshot(".", [owner, method]))))
+    findings = run_rule("CTS0013", ProjectSnapshot(".", [owner, method]))
     assert findings == []
 
 
@@ -577,5 +559,5 @@ def test_cts0013_does_not_count_comments_or_strings_as_references():
         "PROGRAM P\nVAR\n    forgotten : INT;\nEND_VAR\nIMPLEMENTATION\n"
         "// forgotten\nmessage := 'forgotten';\n"
     )
-    findings = list(cts0013(_ctx(ProjectSnapshot(".", [unit]))))
+    findings = run_rule("CTS0013", ProjectSnapshot(".", [unit]))
     assert [finding.anchor for finding in findings] == ["forgotten"]

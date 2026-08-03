@@ -65,3 +65,24 @@ def run_analyze_json(workspace, extra=None):
     data["_exit"] = code
     data["_stderr"] = err
     return data
+
+
+def run_rule(rule_id, snapshot):
+    """Run one registry rule over a snapshot through the production
+    dispatch, returning its findings.
+
+    Findings come back stamped by ``_collect`` (rule id, title, severity
+    from the registry) with fingerprints computed, exactly as a real run
+    would produce them.
+    """
+    from cds_text_sync.analyze.config import ResolvedConfig
+    from cds_text_sync.analyze.runner import RunOptions, run_analysis
+    from cds_text_sync.analyze.workspace import Workspace
+
+    result = run_analysis(
+        Workspace(root=".", project_view=".", state_dir="."),
+        snapshot,
+        ResolvedConfig(),
+        RunOptions(rule_filter={rule_id}),
+    )
+    return result.findings

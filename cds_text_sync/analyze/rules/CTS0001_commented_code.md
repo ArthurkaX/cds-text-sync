@@ -1,6 +1,5 @@
 ---
 title: Commented-out code
-tags: [dead-code, maintenance]
 since: 3.0.0
 related: [CTS0002]
 ---
@@ -22,7 +21,7 @@ git has the history.
 
 ## Example
 
-```st bad
+```st bad 2
 PROGRAM Main
 VAR
     x : INT;
@@ -31,8 +30,8 @@ END_VAR
 IMPLEMENTATION
 
 x := 10;
-// x := x + 5;
-(* x := x * 2; *)
+// x := x + 5;  // cts:here
+(* x := x * 2; *)  // cts:here
 ```
 
 ```st good
