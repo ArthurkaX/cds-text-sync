@@ -1,0 +1,17 @@
+"""CTS0004 - repeated numeric literals in CALLABLE implementations."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.magic_number import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0004",
+    title="Magic numeric literal",
+    severity="style",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="Repeated non-trivial numeric literals should be named constants or parameters.",
+    topic="Code quality",
+    check=check,
+)

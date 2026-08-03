@@ -111,3 +111,19 @@ def test_snapshot_parses_file_directives_once_at_project_boundary(tmp_path):
     directives = snap.file_directives["POUs/Main.st"]
     assert directives.rules == frozenset({"CTS0001"})
     assert directives.issues == ()
+
+
+def test_st_snapshot_normalizes_bom_and_crlf_offsets(tmp_path):
+    root = str(tmp_path / "project-view")
+    os.makedirs(os.path.join(root, "POUs"))
+    path = os.path.join(root, "POUs", "Main.st")
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write("\ufeffPROGRAM Main\r\nIMPLEMENTATION\r\nx := 1;\r\n")
+
+    snap = build_snapshot(root)
+    unit = snap.find_unit("POUs/Main.st#Main")
+    assert unit is not None
+    assert unit.kind == K.PROGRAM
+    assert "\ufeff" not in unit.text
+    assert "\r" not in unit.text
+    assert unit.implementation.startswith("x := 1;")

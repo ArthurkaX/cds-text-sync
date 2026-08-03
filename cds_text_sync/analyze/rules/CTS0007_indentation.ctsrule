@@ -1,0 +1,17 @@
+"""CTS0007 - structural indentation drift in ST implementations."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.indentation import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0007",
+    title="Structural indentation",
+    severity="style",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="Implementation indentation must reflect actual ST block nesting.",
+    topic="Style",
+    check=check,
+)

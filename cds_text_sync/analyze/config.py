@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from cds_text_sync.analyze.model import is_valid_severity
@@ -27,7 +28,6 @@ except ImportError:  # pragma: no cover - Python < 3.11
 
 DEFAULT_FAIL_ON = "suspicious"
 DEFAULT_INCOMPLETE = "warn"
-DEFAULT_BASE = "HEAD"
 
 VALID_INCOMPLETE = ("warn", "error", "ignore")
 
@@ -95,7 +95,6 @@ class ResolvedConfig:
     def __init__(self):
         self.fail_on = DEFAULT_FAIL_ON
         self.incomplete = DEFAULT_INCOMPLETE
-        self.base = DEFAULT_BASE
         self.rule_overrides = {}  # rule_id -> {"enabled": bool, "severity": str}
         self.scopes = []  # list[RuleScope]
         self.config_path = None
@@ -134,6 +133,7 @@ def _glob_match(pattern, relpath):
     return re.match(regex, relpath) is not None
 
 
+@lru_cache(maxsize=256)
 def _glob_to_regex(pattern):
     out = []
     i = 0
@@ -194,14 +194,13 @@ def load_config(config_path):
         )
     config.incomplete = incomplete
 
-    base = str(analyze.get("base", DEFAULT_BASE)).strip()
-    if base:
-        config.base = base
-
     rules = data.get("rules", {}) or {}
     if not isinstance(rules, dict):
         raise ConfigError("[rules] must be a table")
     for rule_id, override in rules.items():
+        rule_id = str(rule_id).strip().upper()
+        if not re.fullmatch(r"CTS\d{4}", rule_id):
+            raise ConfigError(f"[rules.{rule_id}] has an invalid rule id")
         if not isinstance(override, dict):
             raise ConfigError(f"[rules.{rule_id}] must be a table")
         entry = {}
@@ -217,13 +216,27 @@ def load_config(config_path):
             entry["severity"] = sev
         config.rule_overrides[rule_id] = entry
 
+    # Validate config IDs against the built-in catalog so typos do not become
+    # silent no-ops. The import is lazy to keep registry independent of config.
+    if config.rule_overrides:
+        from cds_text_sync.analyze.registry import load_builtin_rules
+
+        unknown = sorted(set(config.rule_overrides) - set(load_builtin_rules()))
+        if unknown:
+            raise ConfigError(
+                "unknown rule id(s) in [rules]: " + ", ".join(unknown)
+            )
+
     for idx, raw in enumerate(data.get("rule_scope", []) or []):
         if not isinstance(raw, dict) or not raw.get("path"):
             raise ConfigError(f"rule_scope[{idx}] needs a 'path' glob")
         scope = RuleScope(
             path_glob=str(raw["path"]),
             enabled=bool(raw.get("enabled", True)),
-            exclude=raw.get("exclude", []) or [],
+            exclude=[
+                str(rule_id).strip().upper()
+                for rule_id in (raw.get("exclude", []) or [])
+            ],
         )
         config.scopes.append(scope)
 

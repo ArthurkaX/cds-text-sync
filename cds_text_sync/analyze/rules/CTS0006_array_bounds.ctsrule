@@ -1,0 +1,17 @@
+"""CTS0006 - constant array indexes outside declared bounds."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.array_bounds import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0006",
+    title="Array index outside bounds",
+    severity="danger",
+    scope=Scope.UNIT,
+    requires={Capability.DECLARATIONS, Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="Constant array indexes must stay within their declared bounds.",
+    topic="Correctness",
+    check=check,
+)

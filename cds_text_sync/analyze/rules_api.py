@@ -26,7 +26,6 @@ Signature by scope:
 
 * ``Scope.UNIT``:    ``check(unit, ctx)``  -- called once per matching unit
 * ``Scope.PROJECT``: ``check(ctx)``        -- called once, full snapshot
-* ``Scope.HISTORY``: ``check(ctx)``        -- called once, git available
 
 ``ctx`` is an ``AnalysisContext`` (see runner.py): rules read data only
 through it and never open files themselves.
@@ -34,10 +33,9 @@ through it and never open files themselves.
 Scope filtering is the runner's job, not the rule's. ``ctx.units`` (and
 ``ctx.visible_units(rule)``) is the single filtered unit set: global path
 ``enabled = false`` scopes and per-rule ``exclude`` lists are applied once
-by the runner, identically for UNIT and PROJECT/HISTORY rules. A rule must
+by the runner, identically for UNIT and PROJECT rules. A rule must
 not call configuration exclusion helpers itself, and a fully scoped-out
-rule never runs (it requests no capabilities, so a scoped-out HISTORY rule
-never starts git).
+rule never runs when all of its units are scoped out.
 """
 
 from __future__ import annotations

@@ -82,12 +82,3 @@ def test_config_path_is_detected(tmp_path):
     root = _make_workspace(tmp_path, with_config=True)
     ws = WorkspaceResolver(workspace=root).resolve()
     assert ws.config_path == os.path.join(root, "cts-analyze.toml")
-
-
-def test_git_root_walk_up(tmp_path):
-    git_root = tmp_path / "repo"
-    (git_root / ".git").mkdir(parents=True)
-    sync = git_root / "sub" / "sync"
-    (sync / "project-view").mkdir(parents=True)
-    ws = WorkspaceResolver(workspace=str(sync)).resolve()
-    assert ws.git_root == os.path.abspath(str(git_root))

@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import re
 
+from cds_text_sync.analyze.capabilities import Capability
 from cds_text_sync.analyze.rules.impl.engine_blank import blank_noise, trim_strings
 from cds_text_sync.analyze.rules_api import finding_in
-from cds_text_sync.analyze.st import decl
 
 RULE_ID = "CTS0002"
 SEVERITY = "suspicious"
@@ -75,7 +75,8 @@ def _member_offset(unit, member):
 
 def check(unit, ctx):
     """Flag unused VAR_INPUT members of CALLABLE units."""
-    inputs = decl.input_members(unit)
+    declarations = ctx.capability(Capability.DECLARATIONS)
+    inputs = declarations.input_members(unit)
     if not inputs:
         return
     read = _read_tokens(ctx.snapshot, unit)

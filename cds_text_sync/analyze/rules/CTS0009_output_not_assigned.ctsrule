@@ -1,20 +1,17 @@
-"""
-CTS0002 - unused VAR_INPUT members.
-Thin rule file: metadata + one check; logic lives in rules/impl.
-"""
+"""CTS0009 - VAR_OUTPUT members that are never assigned."""
 
 from cds_text_sync.analyze.capabilities import Capability, Scope
-from cds_text_sync.analyze.rules.impl.unused_input import check
+from cds_text_sync.analyze.rules.impl.output_not_assigned import check
 from cds_text_sync.analyze.rules_api import RuleSpec
 
 RULE = RuleSpec(
-    id="CTS0002",
-    title="Unused input",
+    id="CTS0009",
+    title="Output not assigned",
     severity="suspicious",
     scope=Scope.UNIT,
     requires={Capability.DECLARATIONS},
     kinds="CALLABLE",
-    summary="VAR_INPUT members never read by their owner.",
+    summary="VAR_OUTPUT members that are never assigned by their callable.",
     topic="Interfaces",
     check=check,
 )

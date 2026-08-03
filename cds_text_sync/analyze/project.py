@@ -160,8 +160,9 @@ def _relpath(root, full_path):
 
 
 def _read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as fh:
-        return fh.read()
+    with open(path, encoding="utf-8-sig", errors="replace", newline="") as fh:
+        text = fh.read()
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _split_st_with_offsets(text):
@@ -376,6 +377,9 @@ def _xml_parse_error(rel, text, exc):
 
 
 def _build_st_unit(rel, text):
+    # Keep offsets, spans, and rule locations in the same normalized text
+    # coordinate system even when callers bypass build_snapshot in tests.
+    text = (text or "").lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
     decl, decl_span, impl, impl_span = _split_st_with_offsets(text)
     kind = K.classify_st_decl(decl)
 

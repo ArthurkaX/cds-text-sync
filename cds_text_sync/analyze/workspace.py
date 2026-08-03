@@ -29,27 +29,14 @@ class WorkspaceError(Exception):
 class Workspace:
     """Strictly defined paths of one analysis workspace."""
 
-    def __init__(self, root, project_view, state_dir, config_path=None, git_root=None):
+    def __init__(self, root, project_view, state_dir, config_path=None):
         self.root = root  # sync folder
         self.project_view = project_view
         self.state_dir = state_dir
         self.config_path = config_path
-        self.git_root = git_root  # may be None; only history rules need it
 
     def __repr__(self):
         return f"<Workspace root={self.root} project_view={self.project_view}>"
-
-
-def _find_git_root(path):
-    """Walk up from *path* looking for a ``.git`` entry."""
-    current = os.path.abspath(path)
-    while True:
-        if os.path.isdir(os.path.join(current, ".git")):
-            return current
-        parent = os.path.dirname(current)
-        if parent == current:
-            return None
-        current = parent
 
 
 class WorkspaceResolver:
@@ -79,7 +66,6 @@ class WorkspaceResolver:
                 project_view=pv,
                 state_dir=os.path.join(root, STATE_DIRNAME),
                 config_path=config,
-                git_root=_find_git_root(root),
             )
 
         # 1. Explicit --workspace (a sync folder, or a project-view dir
@@ -95,7 +81,6 @@ class WorkspaceResolver:
                     project_view=base,
                     state_dir=os.path.join(os.path.dirname(base), STATE_DIRNAME),
                     config_path=config,
-                    git_root=_find_git_root(base),
                 )
             return self._from_base(base)
 
@@ -117,7 +102,6 @@ class WorkspaceResolver:
                 project_view=pv,
                 state_dir=os.path.join(root, STATE_DIRNAME),
                 config_path=config,
-                git_root=_find_git_root(root),
             )
 
         raise WorkspaceError(
@@ -136,7 +120,6 @@ class WorkspaceResolver:
             project_view=pv,
             state_dir=os.path.join(base, STATE_DIRNAME),
             config_path=config,
-            git_root=_find_git_root(base),
         )
 
     @staticmethod

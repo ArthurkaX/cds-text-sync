@@ -10,8 +10,9 @@ sync engine). It lives in ``<sync-folder>/.cts-analyze/``:
                           mandatory ``reason``
 * ``session.json``      - resumable triage session; written atomically
 
-All writes are atomic (temp file + ``os.replace``): a crash on finding N must
-not lose N-1 decisions.
+Each individual file write is atomic (temp file + ``os.replace``). Triage
+validates the complete decision set before writing its separate state files;
+multi-file recovery is intentionally left to a future transaction journal.
 """
 
 from __future__ import annotations
@@ -44,8 +45,16 @@ def write_json_atomic(path, data, pretty=True):
     if directory:
         os.makedirs(directory, exist_ok=True)
     text = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    write_text_atomic(path, text)
+
+
+def write_text_atomic(path, text):
+    """Write UTF-8 text through the common temp-file/replace path."""
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
     os.replace(tmp, path)
 
@@ -90,6 +99,14 @@ def read_baseline(state_dir):
                 f"{baseline_path(state_dir)}: bad fingerprint_schema {raw_schema!r}"
             ) from None
     return entries, schema
+
+
+def baseline_created(state_dir):
+    """Return the existing baseline creation timestamp, if present."""
+    data = read_json(baseline_path(state_dir), default=None)
+    if isinstance(data, dict):
+        return data.get("created")
+    return None
 
 
 def validate_baseline_schema(state_dir):
@@ -149,13 +166,7 @@ def write_baseline(state_dir, entries, created=None, updated=None):
             "    " + json.dumps(entry, sort_keys=True, ensure_ascii=False) + comma
         )
     lines.extend(["  ]", "}"])
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines) + "\n")
-    os.replace(tmp, path)
+    write_text_atomic(path, "\n".join(lines) + "\n")
     return data
 
 
@@ -222,13 +233,7 @@ def write_suppressions(state_dir, entries):
         if e.get("until"):
             lines.append(f"until = {json.dumps(e['until'])}")
         lines.append("")
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines))
-    os.replace(tmp, path)
+    write_text_atomic(path, "\n".join(lines))
 
 
 def suppression_fingerprints(entries):

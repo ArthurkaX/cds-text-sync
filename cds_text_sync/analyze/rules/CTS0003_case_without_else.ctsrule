@@ -1,0 +1,19 @@
+"""
+CTS0003 - CASE statements without a fallback ELSE branch.
+"""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.case_without_else import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0003",
+    title="CASE without ELSE",
+    severity="suspicious",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="CASE statements must explicitly handle unexpected values.",
+    topic="Correctness",
+    check=check,
+)

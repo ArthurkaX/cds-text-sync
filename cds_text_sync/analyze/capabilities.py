@@ -23,7 +23,6 @@ class Capability(str, enum.Enum):
     VISU_XML = "visu-xml"  # native visu screen XML in project-view
     TEXT_LISTS = "text-lists"  # GlobalTextList XML/CSV
     TASK_CONFIG = "task-config"  # task configuration projection
-    GIT_BASE = "git-base"  # explicit git base for history rules
 
     def __str__(self):  # pragma: no cover - cosmetic
         return self.value
@@ -32,7 +31,6 @@ class Capability(str, enum.Enum):
 class Scope(str, enum.Enum):
     UNIT = "unit"  # rule runs per unit; cacheable
     PROJECT = "project"  # rule needs the whole snapshot once
-    HISTORY = "history"  # rule needs git
 
     def __str__(self):  # pragma: no cover - cosmetic
         return self.value
