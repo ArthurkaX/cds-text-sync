@@ -76,10 +76,10 @@ def check_wheel_assets():
         rules = [n for n in names if "/analyze/rules/" in n]
         ctsrule = [n for n in rules if n.endswith(".ctsrule")]
         docs = [n for n in rules if n.endswith(".md")]
-        if len(ctsrule) != 11:
-            raise SystemExit(f"expected 11 .ctsrule in wheel, got {len(ctsrule)}")
-        if len(docs) != 11:
-            raise SystemExit(f"expected 11 .md in wheel, got {len(docs)}")
+        if len(ctsrule) != 12:
+            raise SystemExit(f"expected 12 .ctsrule in wheel, got {len(ctsrule)}")
+        if len(docs) != 12:
+            raise SystemExit(f"expected 12 .md in wheel, got {len(docs)}")
         ui_pages = [n for n in names if n.endswith("cds_text_sync/ui_assets/index.html")]
         if len(ui_pages) != 1:
             raise SystemExit("desktop UI page missing from wheel")
@@ -156,10 +156,10 @@ def check_wheel_install():
                 f"{exc}\n{proc.stdout[:500]}"
             ) from exc
         ids = {row.get("id") for row in rows}
-        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012"}:
+        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013"}:
             raise SystemExit(
                 f"installed registry reports {sorted(ids)}; "
-                "expected the eleven human-analysis rules"
+                "expected the twelve human-analysis rules"
             )
 
         proc = subprocess.run(
@@ -173,7 +173,7 @@ def check_wheel_install():
                 f"installed 'cts analyze selftest' failed ({proc.returncode}):\n"
                 f"{proc.stdout[-500:]}\n{proc.stderr[-500:]}"
             )
-        print("wheel install OK: venv entry point lists 11 human rules, selftest passes")
+        print("wheel install OK: venv entry point lists 12 human rules, selftest passes")
 
 
 def main():

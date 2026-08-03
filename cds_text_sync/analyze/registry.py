@@ -40,6 +40,7 @@ _RULE_ID_ASSIGNMENTS = {
     "CTS0010": "CTS0010_redundant_boolean_if",
     "CTS0011": "CTS0011_assigned_not_read",
     "CTS0012": "CTS0012_overwrite_without_read",
+    "CTS0013": "CTS0013_dead_symbol",
 }
 
 

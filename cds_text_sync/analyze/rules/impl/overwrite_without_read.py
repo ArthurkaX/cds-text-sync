@@ -14,6 +14,13 @@ SEVERITY = "suspicious"
 _SIMPLE_ASSIGNMENT = re.compile(
     r"(?s)^\s*(?P<name>[A-Za-z_]\w*)\s*:=\s*(?P<expression>.+?)\s*$"
 )
+_SELF_UPDATE = re.compile(
+    r"(?is)^\s*(?P<name>[A-Za-z_]\w*)\s*"
+    r"(?:\+|-|\*|/|MOD|AND|OR|XOR)\s*.+$"
+)
+_CONCAT_UPDATE = re.compile(
+    r"(?is)^\s*CONCAT\s*\(\s*(?P<name>[A-Za-z_]\w*)\s*,"
+)
 
 
 def _simple_statements(text):
@@ -26,6 +33,16 @@ def _simple_statements(text):
         if statement:
             yield start + leading, statement[:-1]
         start = match.end()
+
+
+def _is_self_update(name, expression):
+    """Return whether an expression intentionally derives its value from itself."""
+    self_update = _SELF_UPDATE.fullmatch(expression)
+    if self_update and self_update.group("name").lower() == name.lower():
+        return True
+
+    concat_update = _CONCAT_UPDATE.match(expression)
+    return bool(concat_update and concat_update.group("name").lower() == name.lower())
 
 
 def check(unit, ctx):
@@ -48,15 +65,10 @@ def check(unit, ctx):
             continue
         name = match.group("name")
         expression = match.group("expression")
-        reads_previous = re.search(
-            rf"(?<![A-Za-z0-9_.^]){re.escape(name)}(?![A-Za-z0-9_])",
-            expression,
-            re.IGNORECASE,
-        )
         if (
             previous is not None
             and previous["name"].lower() == name.lower()
-            and not reads_previous
+            and not _is_self_update(name, expression)
         ):
             old = previous
             yield finding_in(

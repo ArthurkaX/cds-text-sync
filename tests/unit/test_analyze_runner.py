@@ -75,10 +75,10 @@ def test_file_ignore_directive_suppresses_all_matching_findings(tmp_path):
     with open(main, encoding="utf-8") as fh:
         original = fh.read()
     with open(main, "w", encoding="utf-8") as fh:
-            fh.write("// cts:ignore-file CTS0001, CTS0002, CTS0007, CTS0008 -- legacy fixture\n" + original)
+            fh.write("// cts:ignore-file CTS0001, CTS0002, CTS0007, CTS0008, CTS0013 -- legacy fixture\n" + original)
     _, _, result = _run(root)
     assert not any(f.location.path == "POUs/Main.st" for f in result.findings)
-    assert result.summary.suppressed == 5
+    assert result.summary.suppressed == 6
 
 
 def test_file_ignore_directive_counter_survives_cli_filtering(tmp_path):
@@ -207,7 +207,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 12
+    assert data["summary"]["total"] == 20
 
 
 def test_cli_read_only_no_state_written(tmp_path):
@@ -399,4 +399,4 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    assert len(current) == 12  # nothing silently hidden
+    assert len(current) == 20  # nothing silently hidden
