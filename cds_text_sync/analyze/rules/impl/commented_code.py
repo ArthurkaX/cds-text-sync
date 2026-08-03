@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import re
 
+from cds_text_sync.analyze.capabilities import Capability
 from cds_text_sync.analyze.model import normalize_context
+from cds_text_sync.analyze.rules.impl.engine_blank import comment_spans
 from cds_text_sync.analyze.rules_api import finding_in
 
 RULE_ID = "CTS0001"
@@ -54,49 +56,6 @@ _STRONG_KEYWORD_RE = re.compile(
 _MIN_SIGNIFICANT = 4
 
 
-def _comment_spans(text):
-    """Yield (start, end, content) of every // and (* *) comment.
-
-    String literals are respected so a comment marker inside a string is not
-    treated as a comment.
-    """
-    out = []
-    i = 0
-    n = len(text)
-    while i < n:
-        c = text[i]
-        nxt = text[i + 1] if i + 1 < n else ""
-        if c in ("'", '"'):
-            quote = c
-            i += 1
-            while i < n:
-                if text[i] == quote:
-                    if i + 1 < n and text[i + 1] == quote:
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                i += 1
-            continue
-        if c == "/" and nxt == "/":
-            start = i
-            while i < n and text[i] != "\n":
-                i += 1
-            out.append((start, i, text[start + 2 : i]))
-            continue
-        if c == "(" and nxt == "*":
-            start = i
-            i += 2
-            while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == ")"):
-                i += 1
-            if i < n:
-                i += 2
-            out.append((start, i, text[start + 2 : i - 2]))
-            continue
-        i += 1
-    return out
-
-
 def _looks_like_code(content):
     stripped = content.strip()
     if not stripped:
@@ -113,7 +72,8 @@ def _looks_like_code(content):
 
 def check(unit, ctx):
     """Flag CALLABLE units whose comments still carry executable ST."""
-    for start, _end, content in _comment_spans(unit.text or ""):
+    ctx.capability(Capability.ST_TEXT)
+    for start, _end, content in comment_spans(unit.text or ""):
         if not _looks_like_code(content):
             continue
         yield finding_in(

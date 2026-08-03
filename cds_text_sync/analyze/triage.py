@@ -3,8 +3,9 @@ triage.py - Converting findings into suppress / fix-later decisions.
 
 ``cts analyze triage --apply decisions.json`` is the scriptable half of
 triage: an agent prepares decisions, a human approves, the tool applies them
-atomically. The interactive TUI comes later; this batch mode is the part that
-is testable and CI-usable.
+after validating the complete decision batch. Each resulting state file is
+written atomically. The interactive TUI comes later; this batch mode is the
+part that is testable and CI-usable.
 
 A decision is one object in a JSON list:
 
@@ -29,6 +30,7 @@ import os
 
 from cds_text_sync.analyze.state import (
     baseline_fingerprints,
+    baseline_created,
     read_baseline,
     read_session,
     read_suppressions,
@@ -143,11 +145,15 @@ def apply_decisions(workspace, result, decisions):
             )
             existing_session.add(fingerprint)
 
-    # Write everything only after all decisions validated.
+    # Write only after every decision has been validated and applied in memory.
     if suppressions or os.path.isfile(suppressions_path(state_dir)):
         write_suppressions(state_dir, suppressions)
     if baseline_entries:
-        write_baseline(state_dir, baseline_entries)
+        write_baseline(
+            state_dir,
+            baseline_entries,
+            created=baseline_created(state_dir),
+        )
     write_session(state_dir, session.get("decisions", []))
     return {
         "suppressed": _count(decisions, "suppress"),

@@ -28,11 +28,11 @@ from analyze_helpers import (
 )
 
 
-def _run(workspace, rule_filter=None, base=None, incomplete=None):
+def _run(workspace, rule_filter=None, incomplete=None):
     ws = WorkspaceResolver(workspace=workspace).resolve()
     config = load_config(ws.config_path)
     snap = build_snapshot(ws.project_view)
-    options = RunOptions(rule_filter=rule_filter, base=base, incomplete=incomplete)
+    options = RunOptions(rule_filter=rule_filter, incomplete=incomplete)
     result = run_analysis(ws, snap, config, options)
     return ws, config, result
 
@@ -45,6 +45,14 @@ def test_fixture_findings_are_deterministic(tmp_path):
     )
 
 
+def test_run_populates_unfiltered_fingerprints_before_state_filter(tmp_path):
+    _, _, result = _run(fixture_project_view(), rule_filter={"CTS0001"})
+    fingerprint = result.findings[0].fingerprint
+    filtered = filter_result(result, {fingerprint}, set())
+    assert filtered.summary.stale_suppressions == []
+    assert filtered.summary.suppressed == 1
+
+
 def test_fixture_expected_findings(tmp_path):
     _, _, result = _run(fixture_project_view())
     by_rule = {}
@@ -52,7 +60,6 @@ def test_fixture_expected_findings(tmp_path):
         by_rule.setdefault(f.rule_id, []).append(f.anchor)
     assert sorted(by_rule["CTS0001"]) == ["y := x + 5;", "y := y + 2;"]
     assert sorted(by_rule["CTS0002"]) == ["nTarget", "sName"]
-    assert "CTS0004" not in by_rule  # fixture dir has no relevant git delta
     assert result.complete is True
 
 
@@ -68,10 +75,10 @@ def test_file_ignore_directive_suppresses_all_matching_findings(tmp_path):
     with open(main, encoding="utf-8") as fh:
         original = fh.read()
     with open(main, "w", encoding="utf-8") as fh:
-        fh.write("// cts:ignore-file CTS0001, CTS0002 -- legacy fixture\n" + original)
+            fh.write("// cts:ignore-file CTS0001, CTS0002, CTS0007, CTS0008 -- legacy fixture\n" + original)
     _, _, result = _run(root)
     assert not any(f.location.path == "POUs/Main.st" for f in result.findings)
-    assert result.summary.suppressed == 4
+    assert result.summary.suppressed == 5
 
 
 def test_file_ignore_directive_counter_survives_cli_filtering(tmp_path):
@@ -200,7 +207,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 4
+    assert data["summary"]["total"] == 11
 
 
 def test_cli_read_only_no_state_written(tmp_path):
@@ -392,4 +399,4 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    assert len(current) == 4  # nothing silently hidden
+    assert len(current) == 11  # nothing silently hidden

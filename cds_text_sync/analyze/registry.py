@@ -27,6 +27,18 @@ from cds_text_sync.analyze.st.kinds import expand_kinds
 
 RULE_SUFFIX = ".ctsrule"
 _RULE_ID_RE = re.compile(r"^CTS\d{4}$")
+_REGISTRY_CACHE = {}
+_RULE_ID_ASSIGNMENTS = {
+    "CTS0001": "CTS0001_commented_code",
+    "CTS0002": "CTS0002_unused_input",
+    "CTS0003": "CTS0003_case_without_else",
+    "CTS0004": "CTS0004_magic_number",
+    "CTS0006": "CTS0006_array_bounds",
+    "CTS0007": "CTS0007_indentation",
+    "CTS0008": "CTS0008_variable_alignment",
+    "CTS0009": "CTS0009_output_not_assigned",
+    "CTS0010": "CTS0010_redundant_boolean_if",
+}
 
 
 class RegistryError(Exception):
@@ -79,6 +91,10 @@ def _load_module(path):
 def load_builtin_rules():
     """Load every built-in rule. Returns a dict {rule_id: Rule}."""
     root = rules_dir()
+    cache_key = os.path.abspath(root)
+    cached = _REGISTRY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     rules = {}
     stems = set()
     for filename in sorted(os.listdir(root)):
@@ -108,6 +124,12 @@ def load_builtin_rules():
             raise RegistryError(
                 f"{filename}: stem must start with the rule id ({rule_id})"
             )
+        assigned_stem = _RULE_ID_ASSIGNMENTS.get(rule_id)
+        if assigned_stem is not None and stem != assigned_stem:
+            raise RegistryError(
+                f"{filename}: rule id {rule_id} is already assigned to "
+                f"{assigned_stem}; IDs must not be recycled"
+            )
         if rule_id in rules:
             raise RegistryError(f"duplicate rule id: {rule_id}")
 
@@ -121,7 +143,13 @@ def load_builtin_rules():
 
     if not rules:
         raise RegistryError("no rules found in the built-in rules directory")
+    _REGISTRY_CACHE[cache_key] = rules
     return rules
+
+
+def clear_registry_cache():
+    """Clear the process-local registry cache (primarily for tests/tools)."""
+    _REGISTRY_CACHE.clear()
 
 
 def doc_asset_paths(rule):

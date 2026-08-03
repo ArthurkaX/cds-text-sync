@@ -36,12 +36,9 @@ def run(out):
         if not blocks:
             failures.append(f"{rule_id}: no ```st good/bad examples in doc")
             continue
-        good_text = next((text for tag, text in blocks if tag == "good"), "")
         for tag, text in blocks:
             try:
-                actual = run_snippet(
-                    rule, text, base_text=good_text if rule.scope == Scope.HISTORY else None
-                )
+                actual = run_snippet(rule, text)
             except Exception as exc:
                 failures.append(f"{rule_id} ({tag}): crashed: {exc}")
                 continue
@@ -60,7 +57,7 @@ def run(out):
     return 1 if failures else 0
 
 
-def run_snippet(rule, text, base_text=None):
+def run_snippet(rule, text):
     lower = text.lower()
     if "<single" in lower or "<?xml" in lower or "<visual" in lower:
         try:
@@ -84,27 +81,6 @@ def run_snippet(rule, text, base_text=None):
         raise ValueError("cannot classify snippet as ST or XML")
     snapshot = project_mod.ProjectSnapshot(".", [unit])
     workspace = Workspace(root=".", project_view=".", state_dir=".cts-analyze")
-    ctx = _SnippetContext(workspace, snapshot, ResolvedConfig())
-    ctx.base_text = base_text
+    ctx = AnalysisContext(workspace, snapshot, ResolvedConfig())
     found = rule.check(unit, ctx) if rule.scope == Scope.UNIT else rule.check(ctx)
     return [item for item in (found or []) if isinstance(item, Finding)]
-
-
-class _SnippetContext(AnalysisContext):
-    def __init__(self, workspace, snapshot, config):
-        super().__init__(workspace, snapshot, config, base="HEAD")
-        self.base_text = None
-
-    def capability(self, cap):
-        from cds_text_sync.analyze.capabilities import Capability
-        if cap == Capability.GIT_BASE:
-            return _StubGit(self.base_text)
-        return super().capability(cap)
-
-
-class _StubGit:
-    def __init__(self, base_text):
-        self.base_text = base_text
-
-    def read(self, relpath):
-        return self.base_text

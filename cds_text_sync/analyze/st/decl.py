@@ -54,6 +54,10 @@ def input_members(unit):
     return members_in_scope(unit, ("VAR_INPUT",))
 
 
+def output_members(unit):
+    return members_in_scope(unit, ("VAR_OUTPUT",))
+
+
 def all_members(unit):
     out = []
     for block in var_blocks(unit):

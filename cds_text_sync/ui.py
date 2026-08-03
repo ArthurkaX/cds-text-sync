@@ -28,15 +28,12 @@ def analyze_workspace(workspace_path: str) -> dict:
     bridge.  This function intentionally performs no baseline/triage writes.
     """
     try:
-        workspace, _config, result = run_service(
-            workspace_path, RunOptions(), apply_state=True
-        )
+        workspace, _config, result = run_service(workspace_path, RunOptions(), apply_state=True)
         return {
             "ok": True,
             "workspace": workspace.root,
             "project_view": workspace.project_view,
             "result": result.to_dict(),
-            "_result_object": result,
         }
     except (WorkspaceError, ConfigError, RegistryError, state_mod.StateError, OSError) as exc:
         return {"ok": False, "error": str(exc)}
@@ -57,12 +54,24 @@ class AnalyzerApi:
         return {"workspace": self.initial_workspace}
 
     def analyze(self, workspace_path: str) -> dict:
-        response = analyze_workspace(workspace_path)
-        if response.get("ok"):
-            self._last_project_view = response["project_view"]
-            self._last_analysis = (response["workspace"], response["result"])
-            self._last_result = response.pop("_result_object", None)
-        return response
+        try:
+            workspace, _config, result = run_service(
+                workspace_path, RunOptions(), apply_state=True
+            )
+            response = {
+                "ok": True,
+                "workspace": workspace.root,
+                "project_view": workspace.project_view,
+                "result": result.to_dict(),
+            }
+            self._last_project_view = workspace.project_view
+            self._last_analysis = (workspace.root, response["result"])
+            self._last_result = result
+            return response
+        except (WorkspaceError, ConfigError, RegistryError, state_mod.StateError, OSError) as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return {"ok": False, "error": f"Analysis failed unexpectedly: {exc}"}
 
     def rules(self, workspace_path: str) -> dict:
         """Return the human-analyzer rule catalog and project settings."""
@@ -169,7 +178,6 @@ class AnalyzerApi:
         try:
             workspace = WorkspaceResolver(workspace=workspace_path).resolve()
             if self._last_result is not None and self._last_project_view:
-                workspace = WorkspaceResolver(workspace=workspace_path).resolve()
                 if Path(workspace.project_view).resolve() == Path(self._last_project_view).resolve():
                     result = self._last_result
                 else:

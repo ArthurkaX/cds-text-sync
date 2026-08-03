@@ -17,7 +17,6 @@ def test_defaults_without_config(tmp_path):
     config = load_config(str(tmp_path / "missing.toml"))
     assert config.fail_on == "suspicious"
     assert config.incomplete == "warn"
-    assert config.base == "HEAD"
 
 
 def test_full_config(tmp_path):
@@ -28,7 +27,6 @@ def test_full_config(tmp_path):
                 "[analyze]",
                 'fail_on = "danger"',
                 'incomplete = "error"',
-                'base = "origin/main"',
                 "",
                 "[rules.CTS0001]",
                 "enabled = false",
@@ -49,7 +47,6 @@ def test_full_config(tmp_path):
     config = load_config(path)
     assert config.fail_on == "danger"
     assert config.incomplete == "error"
-    assert config.base == "origin/main"
     assert config.enabled_for("CTS0001") is False
     assert config.enabled_for("CTS0002") is True
     assert config.severity_for("CTS0004", "style") == "danger"
@@ -74,6 +71,16 @@ def test_bad_incomplete(tmp_path):
 def test_bad_severity_override(tmp_path):
     path = _write_config(tmp_path, '[rules.CTS0001]\nseverity = "loud"\n')
     with pytest.raises(ConfigError):
+        load_config(path)
+
+
+def test_rule_ids_are_case_normalized_and_unknown_ids_rejected(tmp_path):
+    path = _write_config(tmp_path, '[rules.cts0001]\nenabled = false\n')
+    config = load_config(path)
+    assert config.enabled_for("CTS0001") is False
+
+    path = _write_config(tmp_path, '[rules.CTS9999]\nenabled = false\n')
+    with pytest.raises(ConfigError, match="unknown rule"):
         load_config(path)
 
 

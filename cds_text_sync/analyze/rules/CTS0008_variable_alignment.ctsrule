@@ -1,0 +1,17 @@
+"""CTS0008 - table-like alignment of variable declarations."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.variable_alignment import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0008",
+    title="Variable declaration alignment",
+    severity="style",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="ANY",
+    summary="Variable declarations in one group should form a readable aligned table.",
+    topic="Style",
+    check=check,
+)

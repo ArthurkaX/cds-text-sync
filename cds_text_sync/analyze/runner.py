@@ -16,7 +16,7 @@ The runner guarantees:
 * scope configuration is interpreted once, here: a rule receives only the
   units visible to it (global path exclusion plus rule-scope exclusion),
   whether it is a UNIT rule (dispatched per visible unit) or a PROJECT /
-  HISTORY rule (reading the same filtered set through ``ctx.units``). A
+  PROJECT rule (reading the same filtered set through ``ctx.units``). A
   rule must not call configuration exclusion helpers itself; a rule with no
   visible units runs nothing and requests no capabilities;
 * a configured severity override is applied to the run-local Finding only;
@@ -25,8 +25,6 @@ The runner guarantees:
 """
 
 from __future__ import annotations
-
-import subprocess
 
 from cds_text_sync.analyze import fingerprint as fp
 from cds_text_sync.analyze.capabilities import (
@@ -45,102 +43,6 @@ from cds_text_sync.analyze.st import decl, symbols
 from cds_text_sync.analyze.file_directives import is_ignored
 
 # ---------------------------------------------------------------------------
-# Git adapter (GIT_BASE capability)
-# ---------------------------------------------------------------------------
-
-
-class GitBase:
-    """Read project-view files at an explicit git base.
-
-    Uses ``subprocess`` against the git binary; the rule never sees git. The
-    base is always explicit: CLI ``--base`` > config ``[analyze] base`` >
-    default ``HEAD``. No implicit "previous commit" guessing.
-    """
-
-    def __init__(self, workspace, base):
-        self.workspace = workspace
-        self.base = base
-        self._ok = None
-        self._error = None
-
-    def _check(self):
-        if self._ok is not None:
-            return
-        root = self.workspace.git_root
-        if not root:
-            self._error = (
-                "no git repository found for history rules; run inside a "
-                "git checkout or pass --workspace inside one"
-            )
-            self._ok = False
-            return
-        try:
-            result = subprocess.run(
-                ["git", "-C", root, "rev-parse", "--verify", "--quiet", self.base],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            self._error = f"git unavailable: {exc}"
-            self._ok = False
-            return
-        if result.returncode != 0:
-            self._error = f"git base {self.base!r} does not resolve in {root}"
-            self._ok = False
-            return
-        self._ok = True
-
-    def available(self):
-        self._check()
-        return self._ok
-
-    def error(self):
-        self._check()
-        return self._error
-
-    def read(self, relpath):
-        """Read *relpath* at the base revision, or None if absent there.
-
-        Unit paths are project-view-relative; git paths are repo-relative,
-        so the project-view directory is prepended when the repo root sits
-        above the sync folder.
-        """
-        if not self.available():
-            return None
-        git_path = self._git_path(relpath)
-        try:
-            result = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    self.workspace.git_root,
-                    "show",
-                    f"{self.base}:{git_path}",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        if result.returncode != 0:
-            return None
-        return result.stdout
-
-    def _git_path(self, relpath):
-        if not self.workspace.git_root:
-            return relpath
-        import os as _os
-
-        pv_rel = _os.path.relpath(self.workspace.project_view, self.workspace.git_root)
-        pv_rel = pv_rel.replace(_os.sep, "/")
-        if pv_rel == ".":
-            return relpath
-        return f"{pv_rel}/{relpath}"
-
-
-# ---------------------------------------------------------------------------
 # Analysis context
 # ---------------------------------------------------------------------------
 
@@ -150,17 +52,17 @@ class AnalysisContext:
 
     Scope filtering lives here, not in the rules: ``visible_units(rule)``
     (and the ``units`` property for the active rule) is the one filter both
-    UNIT rules and PROJECT/HISTORY rules consume. A rule must not call
+    UNIT and PROJECT rules consume. A rule must not call
     ``config.path_excluded``/``rules_excluded_for`` itself.
     """
 
-    def __init__(self, workspace, snapshot, config, base=None):
+    def __init__(self, workspace, snapshot, config):
         self.workspace = workspace
         self.snapshot = snapshot
         self.config = config
-        self.base = base or config.base
         self.active_rule = None  # set by the runner before dispatch
         self._cache = {}
+        self._visible_cache = {}
 
     # -- scope filtering -----------------------------------------------------
 
@@ -169,11 +71,17 @@ class AnalysisContext:
         rule-scope exclusion. ``rule`` defaults to the active rule; with no
         rule set (tests/selftest) every unit is visible."""
         rule = rule or self.active_rule
+        cache_key = rule.id if rule is not None else None
+        if cache_key in self._visible_cache:
+            return self._visible_cache[cache_key]
         if rule is None:
-            return list(self.snapshot.units)
-        return [
+            visible = list(self.snapshot.units)
+        else:
+            visible = [
             u for u in self.snapshot.units if self._unit_visible(rule, u.source_path)
-        ]
+            ]
+        self._visible_cache[cache_key] = visible
+        return visible
 
     def _unit_visible(self, rule, relpath):
         if self.config.path_excluded(relpath):
@@ -220,11 +128,6 @@ class AnalysisContext:
             return _Entry(self.snapshot, None)
         if cap == Capability.TASK_CONFIG:
             return _Entry(self.snapshot, None)
-        if cap == Capability.GIT_BASE:
-            git = GitBase(self.workspace, self.base)
-            if not git.available():
-                return _Entry(None, git.error())
-            return _Entry(git, None)
         return _Entry(None, f"unknown capability {cap}")
 
     # -- conveniences ------------------------------------------------------
@@ -263,9 +166,8 @@ def _st_read_errors(snapshot):
 
 
 class RunOptions:
-    def __init__(self, rule_filter=None, base=None, incomplete=None):
+    def __init__(self, rule_filter=None, incomplete=None):
         self.rule_filter = rule_filter  # set of rule ids or None
-        self.base = base  # CLI override for the git base
         self.incomplete = incomplete  # CLI override: warn|error|ignore
 
 
@@ -293,7 +195,7 @@ def run_analysis(workspace, snapshot, config, options):
     result = AnalysisResult()
     registry = load_builtin_rules()
     rules = _select_rules(registry, config, options.rule_filter)
-    ctx = AnalysisContext(workspace, snapshot, config, base=options.base)
+    ctx = AnalysisContext(workspace, snapshot, config)
 
     result.summary.rules_run = sorted(r.id for r in rules)
 
@@ -336,12 +238,12 @@ def run_analysis(workspace, snapshot, config, options):
         else:
             _dispatch_project(rule, ctx, result)
 
-    # Keep the complete set for the later state filter.  File directives are
-    # source-level suppression, but stale state entries must still be checked
-    # against findings that were removed by that first stage.
+    # Fingerprints must exist before the later state filter.  File directives
+    # are source-level suppression, but stale state entries must still be
+    # checked against findings that were removed by that first stage.
+    _fingerprint_all(result.findings)
     result._unfiltered_fingerprints = {f.fingerprint for f in result.findings}
     _apply_file_directives(result, snapshot, rules)
-    _fingerprint_all(result.findings)
     result.sort()
     result.summary.diagnostics = len(result.diagnostics)
     return result

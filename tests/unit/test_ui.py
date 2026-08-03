@@ -55,7 +55,9 @@ def test_rules_catalog_contains_only_human_analyzer_rules(tmp_path):
     copy_fixture(root)
     response = AnalyzerApi().rules(root)
     assert response["ok"] is True
-    assert {rule["id"] for rule in response["rules"]} == {"CTS0001", "CTS0002", "CTS0004"}
+    assert {rule["id"] for rule in response["rules"]} == {
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010"
+    }
     assert all("documentation" in rule for rule in response["rules"])
 
 

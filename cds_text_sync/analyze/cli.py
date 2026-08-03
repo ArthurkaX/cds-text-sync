@@ -21,22 +21,17 @@ from __future__ import annotations
 
 import json
 import sys
-import xml.etree.ElementTree as ET
-
-from cds_text_sync.analyze import project as project_mod
 from cds_text_sync.analyze import state as state_mod
-from cds_text_sync.analyze.config import ConfigError, ResolvedConfig, load_config
-from cds_text_sync.analyze.project import build_snapshot
+from cds_text_sync.analyze.config import ConfigError, load_config
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
 from cds_text_sync.analyze.render import json as render_json
 from cds_text_sync.analyze.render import sarif as render_sarif
 from cds_text_sync.analyze.render import terminal as render_terminal
 from cds_text_sync.analyze.runner import (
-    AnalysisContext,
     RunOptions,
     exit_code,
-    run_analysis,
 )
+from cds_text_sync.analyze.model import severity_rank
 from cds_text_sync.analyze.service import analyze_resolved
 from cds_text_sync.analyze.state import (
     baseline_fingerprints,
@@ -86,8 +81,6 @@ def _load_workspace(args):
         config.fail_on = args.fail_on
     if getattr(args, "incomplete", None):
         config.incomplete = args.incomplete
-    if getattr(args, "base", ""):
-        config.base = args.base
     return workspace, config
 
 
@@ -106,7 +99,6 @@ def _run_once(workspace, config, args, apply_state=True):
 
     options = RunOptions(
         rule_filter=rule_filter,
-        base=getattr(args, "base", "") or None,
         incomplete=getattr(args, "incomplete", None),
     )
     try:
@@ -248,75 +240,6 @@ def cmd_selftest(args, out=None):
     return run(out or _out())
 
 
-def _run_snippet(rule, text, base_text=None):
-    """Run a rule against a standalone snippet (no git, no project)."""
-    from cds_text_sync.analyze.capabilities import Scope as ScopeEnum
-    from cds_text_sync.analyze.model import Finding
-    from cds_text_sync.analyze.workspace import Workspace
-
-    lower = text.lower()
-    if "<single" in lower or "<?xml" in lower or "<visual" in lower:
-        try:
-            unit = project_mod._build_xml_unit("snippet.xml", text)
-        except ET.ParseError:
-            unit = None
-        if unit is None:
-            wrapped = f"<Visualization>\n{text}\n</Visualization>"
-            try:
-                unit = project_mod._build_xml_unit("snippet.xml", wrapped)
-            except ET.ParseError:
-                unit = None
-    else:
-        unit = project_mod._build_st_unit("snippet.st", text)
-        if unit is None:
-            unit = project_mod._build_st_unit(
-                "snippet.st",
-                "PROGRAM Snippet\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n" + text,
-            )
-    if unit is None:
-        raise ValueError("cannot classify snippet as ST or XML")
-
-    snapshot = project_mod.ProjectSnapshot(".", [unit])
-    workspace = Workspace(
-        root=".",
-        project_view=".",
-        state_dir=".cts-analyze",
-    )
-    ctx = _SnippetContext(workspace, snapshot, ResolvedConfig())
-    ctx.base_text = base_text
-
-    if rule.scope == ScopeEnum.UNIT:
-        found = rule.check(unit, ctx) or []
-    else:
-        found = rule.check(ctx) or []
-    return [f for f in found if isinstance(f, Finding)]
-
-
-class _SnippetContext(AnalysisContext):
-    """Real analysis context with a substituted git provider for selftest."""
-
-    def __init__(self, workspace, snapshot, config):
-        super().__init__(workspace, snapshot, config, base="HEAD")
-        self.base_text = None
-
-    def capability(self, cap):
-        from cds_text_sync.analyze.capabilities import Capability
-
-        if cap == Capability.GIT_BASE:
-            return _StubGit(self.base_text)
-        return super().capability(cap)
-
-
-class _StubGit:
-    """Git stub for selftest: the base text is the doc's 'good' block."""
-
-    def __init__(self, base_text):
-        self.base_text = base_text
-
-    def read(self, relpath):
-        return self.base_text
-
-
 # ---------------------------------------------------------------------------
 # Baseline
 # ---------------------------------------------------------------------------
@@ -328,16 +251,15 @@ def cmd_baseline(args):
         raise _CliExit(2, "baseline needs an action: create|update|check")
 
     workspace, config = _load_workspace(args)
-    snapshot = build_snapshot(workspace.project_view)
     try:
-        result = run_analysis(
+        _workspace, _config, result = analyze_resolved(
             workspace,
-            snapshot,
             config,
             RunOptions(
                 rule_filter=set(args.rule) if getattr(args, "rule", None) else None,
-                base=getattr(args, "base", "") or None,
+                incomplete=getattr(args, "incomplete", None),
             ),
+            apply_state=False,
         )
     except RegistryError as exc:
         raise _CliExit(2, str(exc)) from exc
@@ -411,9 +333,7 @@ def cmd_baseline(args):
         for fp in stale:
             _out().write(f"  STALE {fp}\n")
     # New findings at/above fail-on make the check fail (nothing silent).
-    threshold = {"danger": 0, "suspicious": 1, "style": 2}[config.fail_on]
-    from cds_text_sync.analyze.model import severity_rank
-
+    threshold = severity_rank(config.fail_on)
     bad = [f for f in new_findings if severity_rank(f.severity) <= threshold]
     return 1 if bad else 0
 

@@ -1,0 +1,17 @@
+"""CTS0010 - IF/ELSE blocks that select between TRUE and FALSE."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.redundant_boolean_if import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0010",
+    title="Redundant boolean IF",
+    severity="suspicious",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="Boolean IF/ELSE assignments that can be written as one expression.",
+    topic="Style",
+    check=check,
+)

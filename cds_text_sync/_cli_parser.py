@@ -803,11 +803,6 @@ Exit codes:
             help="Policy for incomplete analysis (default: warn; error exits 3)",
         )
         parser.add_argument(
-            "--base",
-            default="",
-            help="Explicit git base for history rules (default: HEAD)",
-        )
-        parser.add_argument(
             "--apply",
             default="",
             help="decisions.json path for 'triage --apply'",

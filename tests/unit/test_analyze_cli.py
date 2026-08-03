@@ -54,7 +54,9 @@ def test_rules_lists_registry():
     assert code == 0
     rows = json.loads(out)
     ids = {r["id"] for r in rows}
-    assert ids == {"CTS0001", "CTS0002", "CTS0004"}
+    assert ids == {
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010"
+    }
 
 
 def test_explain_renders_doc():
@@ -91,7 +93,7 @@ def test_fail_on_danger_ignores_suspicious():
     # Fixture has no danger findings; suspicious ones do not fail.
     assert code == 0
     data = json.loads(out)
-    assert data["summary"]["total"] == 4
+    assert data["summary"]["total"] == 11
 
 
 def test_rule_filter_cli():
@@ -112,7 +114,7 @@ def test_rule_filter_cli():
 
 def test_machine_rule_cannot_be_requested_from_human_analyzer():
     code, _out, err = run_cli(
-        ["analyze", "--workspace", fixture_project_view(), "--rule", "CTS0003"]
+        ["analyze", "--workspace", fixture_project_view(), "--rule", "CTS9999"]
     )
     assert code == 2
     assert "unknown human-analysis rule" in err
@@ -150,8 +152,8 @@ def test_package_data_covers_rule_assets():
     rules_dir = os.path.join(analyze_dir, "rules")
     ctsrule = [f for f in os.listdir(rules_dir) if f.endswith(".ctsrule")]
     md = [f for f in os.listdir(rules_dir) if f.endswith(".md")]
-    assert len(ctsrule) == 3
-    assert len(md) == 3
+    assert len(ctsrule) == 9
+    assert len(md) == 9
     stems = {f[:-8] for f in ctsrule}
     assert stems == {f[:-3] for f in md}
 
