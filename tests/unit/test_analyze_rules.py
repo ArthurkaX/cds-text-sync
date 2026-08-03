@@ -14,6 +14,8 @@ from cds_text_sync.analyze.rules.impl.indentation import check as cts0007
 from cds_text_sync.analyze.rules.impl.variable_alignment import check as cts0008
 from cds_text_sync.analyze.rules.impl.output_not_assigned import check as cts0009
 from cds_text_sync.analyze.rules.impl.redundant_boolean_if import check as cts0010
+from cds_text_sync.analyze.rules.impl.assigned_not_read import check as cts0011
+from cds_text_sync.analyze.rules.impl.overwrite_without_read import check as cts0012
 from cds_text_sync.analyze.runner import AnalysisContext
 from cds_text_sync.analyze.workspace import Workspace
 
@@ -395,3 +397,92 @@ def test_cts0010_ignores_elsif_nested_and_extra_statements():
     )
     findings = list(cts0010(unit, _ctx(ProjectSnapshot(".", [unit]))))
     assert len(findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# CTS0011 - assigned local not read
+# ---------------------------------------------------------------------------
+
+
+def test_cts0011_flags_assigned_local_that_is_never_read():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    calculated : INT;\n"
+        "END_VAR\nVAR_OUTPUT\n"
+        "    used_value : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "calculated := input + 1;\n"
+        "used_value := input;\n"
+    )
+    findings = list(cts0011(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0011"
+    assert findings[0].anchor == "calculated"
+
+
+def test_cts0011_accepts_reads_and_ignores_interfaces_comments_strings_and_fields():
+    unit = _st_unit(
+        "FUNCTION_BLOCK FB\nVAR\n"
+        "    temp : INT;\n"
+        "END_VAR\nVAR_OUTPUT\n"
+        "    output : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "temp := input;\noutput := temp;\n"
+        "// temp := 99;\nmessage := 'temp := 100;';\nobj.temp := 1;\n"
+    )
+    assert list(cts0011(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+
+
+def test_cts0011_checks_only_local_variable_scopes():
+    unit = _st_unit(
+        "PROGRAM P\nVAR_INPUT\n    incoming : INT;\nEND_VAR\n"
+        "VAR_OUTPUT\n    outgoing : INT;\nEND_VAR\n"
+        "VAR_TEMP\n    scratch : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "incoming := 1;\noutgoing := incoming;\nscratch := 2;\n"
+    )
+    findings = list(cts0011(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    assert [finding.anchor for finding in findings] == ["scratch"]
+
+
+# ---------------------------------------------------------------------------
+# CTS0012 - overwrite without read
+# ---------------------------------------------------------------------------
+
+
+def test_cts0012_flags_sequential_overwrite():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "value := CalculateA();\nvalue := CalculateB();\n"
+    )
+    findings = list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit]))))
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0012"
+    assert findings[0].anchor == "value"
+
+
+def test_cts0012_ignores_reads_and_control_flow_boundaries():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "value := CalculateA();\nUse(value);\nvalue := CalculateB();\n"
+        "IF condition THEN\n    value := CalculateC();\nEND_IF;\n"
+        "value := CalculateD();\n"
+    )
+    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+
+
+def test_cts0012_accepts_accumulation_in_the_next_expression():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "text := StartText();\ntext := CONCAT(text, suffix);\n"
+    )
+    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []
+
+
+def test_cts0012_ignores_comments_strings_and_qualified_fields():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "obj.value := CalculateA();\n"
+        "// value := CalculateB();\nmessage := 'value := CalculateC();';\n"
+        "value := CalculateD();\n"
+    )
+    assert list(cts0012(unit, _ctx(ProjectSnapshot(".", [unit])))) == []

@@ -207,7 +207,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 11
+    assert data["summary"]["total"] == 12
 
 
 def test_cli_read_only_no_state_written(tmp_path):
@@ -399,4 +399,4 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    assert len(current) == 11  # nothing silently hidden
+    assert len(current) == 12  # nothing silently hidden

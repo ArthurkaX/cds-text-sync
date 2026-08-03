@@ -1,0 +1,17 @@
+"""CTS0012 - assignments overwritten before their value is read."""
+
+from cds_text_sync.analyze.capabilities import Capability, Scope
+from cds_text_sync.analyze.rules.impl.overwrite_without_read import check
+from cds_text_sync.analyze.rules_api import RuleSpec
+
+RULE = RuleSpec(
+    id="CTS0012",
+    title="Overwrite without read",
+    severity="suspicious",
+    scope=Scope.UNIT,
+    requires={Capability.ST_TEXT},
+    kinds="CALLABLE",
+    summary="Assignments that are immediately overwritten before being read.",
+    topic="Dead code",
+    check=check,
+)
