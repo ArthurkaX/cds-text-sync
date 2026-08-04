@@ -385,6 +385,16 @@ def _build_st_unit(rel, text):
 
     base = os.path.basename(rel)
     stem = os.path.splitext(base)[0]
+    # CODESYS exports property accessors without a PROPERTY header.  The
+    # declaration projection is only ``VAR\nEND_VAR`` and the accessor kind
+    # is carried by the filename (``Owner.Property.Get.st`` / ``Set.st``).
+    # Treat these as valid property units instead of unknown/unparsed ST.
+    if kind == K.UNKNOWN:
+        suffix = stem.rsplit(".", 1)[-1].casefold() if "." in stem else ""
+        if suffix == "get":
+            kind = K.PROPERTY_GET
+        elif suffix == "set":
+            kind = K.PROPERTY_SET
     owner_name = None
     qualified = stem
     if "." in stem:
