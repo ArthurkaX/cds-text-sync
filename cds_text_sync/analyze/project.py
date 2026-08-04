@@ -217,6 +217,18 @@ def _classify_xml(relpath, text):
     local = _local_tag(root.tag)
     if local == "TaskConfiguration":
         return K.TASK_CONFIG
+    # CODESYS exports task configuration objects as its native ``Single``
+    # archive format.  Individual task files contain ``PouList``; the
+    # container contains ``TaskConfigurationList``.  Recognise the shape,
+    # not the folder name, so this also works with renamed applications.
+    if local == "Single":
+        names = {
+            element.attrib.get("Name")
+            for element in root.iter()
+            if element.attrib.get("Name")
+        }
+        if {"PouList", "TaskConfigurationList"} & names:
+            return K.TASK_CONFIG
     if local == "Visualization":
         return K.VISUALIZATION
     if (
