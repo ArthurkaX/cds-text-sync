@@ -614,15 +614,59 @@ def test_cts0018_accepts_assignment_before_read():
     assert run_rule("CTS0018", ProjectSnapshot(".", [unit])) == []
 
 
+def test_cts0018_accepts_output_arguments_and_field_writes():
+    unit = _st_unit(
+        "FUNCTION F : INT\nVAR\n"
+        "    result : INT;\n"
+        "    packet : Packet;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "MakePacket(value => result);\n"
+        "packet.value := result;\n"
+        "F := packet.value;\n"
+    )
+    assert run_rule("CTS0018", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0018_accepts_address_outputs_and_bit_writes():
+    unit = _st_unit(
+        "FUNCTION F : BOOL\nVAR\n"
+        "    reply : DINT;\n"
+        "    buffer : ARRAY[0..3] OF BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "SysCall(pReply := ADR(reply));\n"
+        "buffer[0].0 := TRUE;\n"
+        "F := reply <> 0;\n"
+    )
+    assert run_rule("CTS0018", ProjectSnapshot(".", [unit])) == []
+
+
 def test_cts0019_requires_output_assignment_on_each_if_branch():
     partial = _st_unit(
-        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
         "IMPLEMENTATION\nIF Ready THEN\n    Done := TRUE;\nEND_IF;\n"
     )
     complete = _st_unit(
-        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
         "IMPLEMENTATION\nIF Ready THEN\n    Done := TRUE;\n"
         "ELSE\n    Done := FALSE;\nEND_IF;\n"
     )
     assert len(run_rule("CTS0019", ProjectSnapshot(".", [partial]))) == 1
     assert run_rule("CTS0019", ProjectSnapshot(".", [complete])) == []
+
+
+def test_cts0019_ignores_stateful_function_block_outputs():
+    unit = _st_unit(
+        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Ready THEN\n    Done := TRUE;\nEND_IF;\n"
+    )
+    assert run_rule("CTS0019", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0019_accepts_default_before_case():
+    unit = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nDone := FALSE;\nCASE State OF\n"
+        "    1: Done := TRUE;\n"
+        "END_CASE;\n"
+    )
+    assert run_rule("CTS0019", ProjectSnapshot(".", [unit])) == []

@@ -6,17 +6,18 @@ related: [CTS0009]
 
 ## What it is
 
-A `VAR_OUTPUT` is assigned in a conditional branch but not on every branch.
+A `VAR_OUTPUT` of a `FUNCTION` or `METHOD` is assigned in a conditional branch
+but not on every branch. `FUNCTION_BLOCK` outputs are excluded because they
+commonly retain their previous value between cycles.
 
 ## Why it is dangerous
 
-Callers can observe an old or undefined value when the condition is false.
-This is especially risky for status, command, and handshake outputs.
+Callers can observe an undefined value when the condition is false.
 
 ## Example
 
 ```st bad 1
-FUNCTION_BLOCK FB
+FUNCTION F : BOOL
 VAR_OUTPUT
     Done : BOOL;
 END_VAR
@@ -27,7 +28,7 @@ END_IF;
 ```
 
 ```st good
-FUNCTION_BLOCK FB
+FUNCTION F : BOOL
 VAR_OUTPUT
     Done : BOOL;
 END_VAR
