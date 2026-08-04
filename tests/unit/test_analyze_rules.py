@@ -976,3 +976,30 @@ def test_cts0028_ignores_normal_string_use_other_types_and_ascii():
         "Build := CONCAT('A', Part);\nPart := 'ABC';\nBytes[2] := 1;\n"
     )
     assert run_rule("CTS0028", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0029 - multiple calls to one function-block instance
+# ---------------------------------------------------------------------------
+
+
+def test_cts0029_flags_repeated_instance_call_on_one_path():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    function = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nVAR\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nTimer(IN := TRUE);\nTimer(IN := FALSE);\n"
+        "Run := Timer.Q;\n",
+    )
+    findings = run_rule("CTS0029", ProjectSnapshot(".", [fb, function]))
+    assert [finding.anchor for finding in findings] == ["Timer"]
+
+
+def test_cts0029_separates_exclusive_branches_and_instances():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    function = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nVAR\n    First : TON;\n    Second : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Enabled THEN\n    First();\nELSE\n    First();\nEND_IF;\nSecond();\nRun := TRUE;\n",
+    )
+    assert run_rule("CTS0029", ProjectSnapshot(".", [fb, function])) == []

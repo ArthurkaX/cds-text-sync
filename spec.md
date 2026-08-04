@@ -163,6 +163,8 @@ supports the following rules:
   method is recreated on every call, so its internal state does not persist.
 * **CTS0028 — suspicious `STRING` operation.** Byte-oriented indexing, address
   access, and non-ASCII literals can depend on the configured encoding.
+* **CTS0029 — multiple calls to one function-block instance.** Calling an FB
+  twice along one path may advance its state twice in one cycle.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.
