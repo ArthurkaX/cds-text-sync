@@ -157,6 +157,8 @@ supports the following rules:
 * **CTS0025 — concurrent writes to shared data.** Qualified project data
   written by programs associated with different execution contexts may have a
   scheduling-dependent final value.
+* **CTS0026 — overlapping `AT` memory areas.** Explicit scalar declarations
+  must not claim overlapping bits in the same input, output, or marker area.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.
