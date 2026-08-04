@@ -143,6 +143,10 @@ supports the following rules:
   assignment in the implementation.
 * **CTS0019 — output not assigned on all paths.** A conditional output write
   must cover every branch when no unconditional write exists.
+* **CTS0020 — write to `VAR_INPUT`.** An input parameter must not be modified
+  by its owning POU, including through a field or array element.
+* **CTS0021 — self-assignment.** A simple assignment such as `x := x` has no
+  observable effect and is usually leftover or erroneous code.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.
