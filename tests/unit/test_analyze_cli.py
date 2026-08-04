@@ -55,7 +55,7 @@ def test_rules_lists_registry():
     rows = json.loads(out)
     ids = {r["id"] for r in rows}
     assert ids == {
-        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023"
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025"
     }
 
 
@@ -152,8 +152,8 @@ def test_package_data_covers_rule_assets():
     rules_dir = os.path.join(analyze_dir, "rules")
     rule_py = [f for f in os.listdir(rules_dir) if f.endswith(".py") and f != "__init__.py"]
     md = [f for f in os.listdir(rules_dir) if f.endswith(".md")]
-    assert len(rule_py) == 22
-    assert len(md) == 22
+    assert len(rule_py) == 24
+    assert len(md) == 24
     stems = {f[:-3] for f in rule_py}
     assert stems == {f[:-3] for f in md}
 
