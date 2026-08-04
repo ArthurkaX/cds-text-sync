@@ -147,6 +147,10 @@ supports the following rules:
   by its owning POU, including through a field or array element.
 * **CTS0021 — self-assignment.** A simple assignment such as `x := x` has no
   observable effect and is usually leftover or erroneous code.
+* **CTS0022 — output read before assignment.** A function or method must not
+  read a `VAR_OUTPUT` before assigning its value for the current call.
+* **CTS0023 — empty statement.** Standalone or duplicate semicolons add no
+  behavior and usually indicate leftover editing artifacts.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.
