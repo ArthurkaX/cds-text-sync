@@ -27,6 +27,7 @@ The runner guarantees:
 from __future__ import annotations
 
 from cds_text_sync.analyze import fingerprint as fp
+from cds_text_sync.analyze.execution import ExecutionGraph
 from cds_text_sync.analyze.capabilities import (
     Capability,
     CapabilityError,
@@ -131,6 +132,9 @@ class AnalysisContext:
             return _Entry(self.snapshot, None)
         if cap == Capability.TASK_CONFIG:
             return _Entry(self.snapshot, None)
+        if cap == Capability.EXECUTION_GRAPH:
+            error = _st_read_errors(self.snapshot)
+            return _Entry(ExecutionGraph(self.snapshot), error)
         return _Entry(None, f"unknown capability {cap}")
 
     # -- conveniences ------------------------------------------------------
