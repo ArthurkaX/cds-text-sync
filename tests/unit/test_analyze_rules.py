@@ -1144,3 +1144,39 @@ def test_cts0032_ignores_function_block_with_state():
         "IMPLEMENTATION\nCount := Count + 1;\nEND_FUNCTION_BLOCK\n",
     )
     assert run_rule("CTS0032", ProjectSnapshot(".", [fb])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0033 - variable could be declared CONSTANT
+# ---------------------------------------------------------------------------
+
+
+def test_cts0033_flags_constant_initialized_local_variable():
+    unit = _st_unit(
+        "FUNCTION Calculate : INT\nVAR\n"
+        "    MaxRetries : INT := 3;\n    Result : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nResult := MaxRetries + 1;\nCalculate := Result;\n"
+    )
+    findings = run_rule("CTS0033", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["MaxRetries"]
+    assert findings[0].severity == "style"
+
+
+def test_cts0033_ignores_mutations_aliases_and_nonconstant_initializers():
+    unit = _st_unit(
+        "FUNCTION Calculate : INT\nVAR\n"
+        "    Changed : INT := 3;\n    Passed : INT := 4;\n"
+        "    Dynamic : INT := InputValue;\n    Data : ARRAY[0..2] OF INT := [1, 2, 3];\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "Changed := Changed + 1;\nConsume(Passed);\nCalculate := Dynamic + Data[0];\n"
+    )
+    assert run_rule("CTS0033", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0033_ignores_existing_constant_and_at_declarations():
+    unit = _st_unit(
+        "FUNCTION Calculate : INT\nVAR CONSTANT\n    Limit : INT := 3;\nEND_VAR\n"
+        "VAR\n    Addressed AT %MW0 : INT := 4;\nEND_VAR\nIMPLEMENTATION\n"
+        "Calculate := Limit + Addressed;\n"
+    )
+    assert run_rule("CTS0033", ProjectSnapshot(".", [unit])) == []
