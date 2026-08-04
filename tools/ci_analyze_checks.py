@@ -76,9 +76,9 @@ def check_wheel_assets():
         rules = [n for n in names if "/analyze/rules/" in n]
         rule_py = [n for n in rules if n.endswith(".py")]
         docs = [n for n in rules if n.endswith(".md")]
-        if len(rule_py) != 24:
+        if len(rule_py) != 25:
             raise SystemExit(f"expected 24 rule .py files in wheel, got {len(rule_py)}")
-        if len(docs) != 24:
+        if len(docs) != 25:
             raise SystemExit(f"expected 24 .md in wheel, got {len(docs)}")
         ui_pages = [n for n in names if n.endswith("cds_text_sync/ui_assets/index.html")]
         if len(ui_pages) != 1:
@@ -156,7 +156,7 @@ def check_wheel_install():
                 f"{exc}\n{proc.stdout[:500]}"
             ) from exc
         ids = {row.get("id") for row in rows}
-        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025"}:
+        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026"}:
             raise SystemExit(
                 f"installed registry reports {sorted(ids)}; "
                 "expected the eighteen human-analysis rules"
@@ -173,7 +173,7 @@ def check_wheel_install():
                 f"installed 'cts analyze selftest' failed ({proc.returncode}):\n"
                 f"{proc.stdout[-500:]}\n{proc.stderr[-500:]}"
             )
-        print("wheel install OK: venv entry point lists 24 human rules, selftest passes")
+        print("wheel install OK: venv entry point lists 25 human rules, selftest passes")
 
 
 def main():

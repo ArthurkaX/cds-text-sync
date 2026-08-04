@@ -868,3 +868,47 @@ def test_cts0025_ignores_local_and_single_context_writes():
     )
     snapshot = ProjectSnapshot(".", [gvl, program, _task_unit("Fast", "Main")])
     assert run_rule("CTS0025", snapshot) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0026 - overlapping AT memory areas
+# ---------------------------------------------------------------------------
+
+
+def test_cts0026_flags_overlapping_byte_and_dword_addresses():
+    unit = _st_unit_named(
+        "GVL.st",
+        "VAR_GLOBAL\n"
+        "    Status AT %QB21 : BYTE;\n"
+        "    Count AT %QD5 : DWORD;\n"
+        "END_VAR\n",
+    )
+    findings = run_rule("CTS0026", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Count"]
+
+
+def test_cts0026_handles_bits_and_ignores_unknown_or_nonoverlapping_types():
+    unit = _st_unit_named(
+        "GVL.st",
+        "VAR_GLOBAL\n"
+        "    Ready AT %IX0.6 : BOOL;\n"
+        "    Other AT %IX0.7 : BOOL;\n"
+        "    WordValue AT %IW2 : WORD;\n"
+        "    StructValue AT %IB3 : MyStruct;\n"
+        "END_VAR\n",
+    )
+    assert run_rule("CTS0026", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0026_reports_overlap_across_units_and_separates_memory_areas():
+    first = _st_unit_named(
+        "First.st", "VAR_GLOBAL\n    A AT %MB10 : WORD;\nEND_VAR\n"
+    )
+    second = _st_unit_named(
+        "Second.st", "VAR_GLOBAL\n    B AT %MB11 : BYTE;\nEND_VAR\n"
+    )
+    output = _st_unit_named(
+        "Output.st", "VAR_GLOBAL\n    Q AT %QB10 : WORD;\nEND_VAR\n"
+    )
+    findings = run_rule("CTS0026", ProjectSnapshot(".", [first, second, output]))
+    assert [(f.anchor, f.unit_id) for f in findings] == [("B", "Second.st#Second")]
