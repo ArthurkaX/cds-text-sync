@@ -721,3 +721,58 @@ def test_cts0021_ignores_fields_expressions_and_comments():
         "// Value := Value;\n"
     )
     assert run_rule("CTS0021", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0022 - output read before assignment
+# ---------------------------------------------------------------------------
+
+
+def test_cts0022_flags_output_read_before_write():
+    unit = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Done THEN\n    F := TRUE;\nEND_IF;\nDone := TRUE;\n"
+    )
+    findings = run_rule("CTS0022", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Done"]
+
+
+def test_cts0022_accepts_default_and_ignores_fb_and_output_arguments():
+    function = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nDone := FALSE;\nIF Done THEN F := TRUE; END_IF;\n"
+    )
+    fb = _st_unit(
+        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Done THEN Done := FALSE; END_IF;\n"
+    )
+    argument = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nUse(Done => Done);\nF := TRUE;\n"
+    )
+    snapshot = ProjectSnapshot(".", [function, fb, argument])
+    assert run_rule("CTS0022", snapshot) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0023 - empty statement
+# ---------------------------------------------------------------------------
+
+
+def test_cts0023_flags_standalone_and_duplicate_semicolons():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        ";\nDoWork();;\nEND_IF;\n"
+    )
+    findings = run_rule("CTS0023", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert all(finding.anchor == ";" for finding in findings)
+
+
+def test_cts0023_ignores_normal_statement_terminators_and_comments():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "DoWork();\nIF Ready THEN\n    DoWork();\nEND_IF;\n"
+        "// ;\n"
+    )
+    assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
