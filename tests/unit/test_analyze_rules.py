@@ -870,6 +870,54 @@ def test_cts0025_ignores_local_and_single_context_writes():
     assert run_rule("CTS0025", snapshot) == []
 
 
+def test_cts0025_follows_calls_into_functions():
+    gvl = _st_unit_named(
+        "GVL.st", "VAR_GLOBAL\n    Shared : INT;\nEND_VAR\n"
+    )
+    main = _st_unit_named(
+        "Main.st", "PROGRAM Main\nIMPLEMENTATION\nWriteShared();\nEND_PROGRAM\n"
+    )
+    helper = _st_unit_named(
+        "WriteShared.st",
+        "FUNCTION WriteShared\nIMPLEMENTATION\nGVL.Shared := 1;\nEND_FUNCTION\n",
+    )
+    snapshot = ProjectSnapshot(
+        ".",
+        [
+            gvl,
+            main,
+            helper,
+            _task_unit("Fast", "Main"),
+            _task_unit("Slow", "Main"),
+        ],
+    )
+    findings = run_rule("CTS0025", snapshot)
+    assert len(findings) == 1
+    assert findings[0].anchor == "GVL.Shared"
+    assert findings[0].location.path == "WriteShared.st"
+
+
+def test_cts0025_flags_read_write_between_tasks():
+    gvl = _st_unit_named(
+        "GVL.st", "VAR_GLOBAL\n    Shared : INT;\nEND_VAR\n"
+    )
+    writer = _st_unit_named(
+        "Writer.st",
+        "PROGRAM Writer\nIMPLEMENTATION\nGVL.Shared := 1;\nEND_PROGRAM\n",
+    )
+    reader = _st_unit_named(
+        "Reader.st",
+        "PROGRAM Reader\nIMPLEMENTATION\nIF GVL.Shared > 0 THEN\nEND_IF;\nEND_PROGRAM\n",
+    )
+    snapshot = ProjectSnapshot(
+        ".",
+        [gvl, writer, reader, _task_unit("Fast", "Writer"), _task_unit("Slow", "Reader")],
+    )
+    findings = run_rule("CTS0025", snapshot)
+    assert len(findings) == 1
+    assert "written in task 'Fast' and read in task 'Slow'" in findings[0].message
+
+
 # ---------------------------------------------------------------------------
 # CTS0026 - overlapping AT memory areas
 # ---------------------------------------------------------------------------
