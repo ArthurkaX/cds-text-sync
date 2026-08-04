@@ -776,3 +776,95 @@ def test_cts0023_ignores_normal_statement_terminators_and_comments():
         "// ;\n"
     )
     assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0024 - multiple output writes
+# ---------------------------------------------------------------------------
+
+
+def test_cts0024_flags_sequential_output_writes():
+    unit = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nDone := FALSE;\nDone := TRUE;\n"
+    )
+    findings = run_rule("CTS0024", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Done"]
+
+
+def test_cts0024_ignores_mutually_exclusive_arms_and_function_blocks():
+    function = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Ready THEN\n    Done := TRUE;\n"
+        "ELSE\n    Done := FALSE;\nEND_IF;\n"
+    )
+    fb = _st_unit(
+        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nDone := FALSE;\nDone := TRUE;\n"
+    )
+    assert run_rule("CTS0024", ProjectSnapshot(".", [function, fb])) == []
+
+
+def test_cts0024_ignores_output_fields_and_elements():
+    unit = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n"
+        "    Packet : Packet;\n    Items : ARRAY[0..2] OF INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "Packet.Value := 1;\nPacket.Value := 2;\n"
+        "Items[0] := 1;\nItems[1] := 2;\nF := TRUE;\n"
+    )
+    assert run_rule("CTS0024", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0024_ignores_accumulator_writes_that_read_the_output():
+    unit = _st_unit(
+        "FUNCTION F : BOOL\nVAR_OUTPUT\n    Text : STRING;\nEND_VAR\n"
+        "IMPLEMENTATION\nText := 'a';\n"
+        "Text := CONCAT(Text, 'b');\nText := CONCAT(Text, 'c');\n"
+        "F := TRUE;\n"
+    )
+    assert run_rule("CTS0024", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0025 - concurrent writes to shared data
+# ---------------------------------------------------------------------------
+
+
+def _task_unit(name, pou):
+    xml = (
+        '<Single><List Name="PouList"><Single>'
+        f'<Single Name="Name">{pou}</Single>'
+        "</Single></List></Single>"
+    )
+    return pm.Unit(
+        f"{name}.xml#{name}", "task_config", name, f"{name}.xml", xml
+    )
+
+
+def test_cts0025_flags_shared_gvl_write_from_two_contexts():
+    gvl = _st_unit_named(
+        "GVL.st", "VAR_GLOBAL\n    Shared : INT;\nEND_VAR\n"
+    )
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nIMPLEMENTATION\nGVL.Shared := 1; // cts:here\nEND_PROGRAM\n",
+    )
+    snapshot = ProjectSnapshot(
+        ".", [gvl, program, _task_unit("Fast", "Main"), _task_unit("Slow", "Main")]
+    )
+    findings = run_rule("CTS0025", snapshot)
+    assert [finding.anchor for finding in findings] == ["GVL.Shared"]
+
+
+def test_cts0025_ignores_local_and_single_context_writes():
+    gvl = _st_unit_named(
+        "GVL.st", "VAR_GLOBAL\n    Shared : INT;\nEND_VAR\n"
+    )
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n    Local : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nLocal := 1;\nGVL.Shared := 1;\nEND_PROGRAM\n",
+    )
+    snapshot = ProjectSnapshot(".", [gvl, program, _task_unit("Fast", "Main")])
+    assert run_rule("CTS0025", snapshot) == []

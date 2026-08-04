@@ -151,6 +151,12 @@ supports the following rules:
   read a `VAR_OUTPUT` before assigning its value for the current call.
 * **CTS0023 — empty statement.** Standalone or duplicate semicolons add no
   behavior and usually indicate leftover editing artifacts.
+* **CTS0024 — multiple output writes.** A `VAR_OUTPUT` written more than once
+  along the same control-flow path may hide an accidental overwrite. Mutually
+  exclusive `IF`/`ELSE` and `CASE` arms are analyzed separately.
+* **CTS0025 — concurrent writes to shared data.** Qualified project data
+  written by programs associated with different execution contexts may have a
+  scheduling-dependent final value.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.

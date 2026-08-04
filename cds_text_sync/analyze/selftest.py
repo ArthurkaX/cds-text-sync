@@ -11,6 +11,7 @@ from cds_text_sync.analyze.config import ResolvedConfig
 from cds_text_sync.analyze.model import Finding
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
 from cds_text_sync.analyze.runner import AnalysisContext
+from cds_text_sync.analyze.st import kinds as K
 from cds_text_sync.analyze.workspace import Workspace
 
 
@@ -142,7 +143,39 @@ def run_snippet(rule, text):
             )
     if unit is None:
         raise ValueError("cannot classify snippet as ST or XML")
-    snapshot = project_mod.ProjectSnapshot(".", [unit])
+    units = [unit]
+    if rule.scope.value == "project":
+        gvl_pattern = re.compile(r"//\s*cts:gvl\s+([^:]+):\s*([^\s]+)", re.IGNORECASE)
+        for index, match in enumerate(gvl_pattern.finditer(text), 1):
+            gvl, member = match.group(1).strip(), match.group(2).strip()
+            units.append(
+                project_mod._build_st_unit(
+                    f"{gvl}.st",
+                    f"VAR_GLOBAL\n    {member} : INT;\nEND_VAR\n",
+                )
+            )
+        task_pattern = re.compile(r"//\s*cts:task\s+([^:]+):\s*([^\s]+)", re.IGNORECASE)
+        for index, match in enumerate(task_pattern.finditer(text), 1):
+            task = match.group(1).strip()
+            # The one ST snippet is stored under ``snippet``; the second
+            # token documents the intended POU name but production paths are
+            # not available to the selftest harness.
+            pou = unit.qualified_name
+            xml = (
+                '<Single><List Name="PouList"><Single>'
+                f'<Single Name="Name">{pou}</Single>'
+                "</Single></List></Single>"
+            )
+            units.append(
+                project_mod.Unit(
+                    f"task{index}.xml#{task}",
+                    K.TASK_CONFIG,
+                    task,
+                    f"task{index}.xml",
+                    xml,
+                )
+            )
+    snapshot = project_mod.ProjectSnapshot(".", units)
     workspace = Workspace(root=".", project_view=".", state_dir=".cts-analyze")
     ctx = AnalysisContext(workspace, snapshot, ResolvedConfig())
     ctx.active_rule = rule
