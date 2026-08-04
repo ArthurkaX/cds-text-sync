@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
-
 from cds_text_sync.analyze.capabilities import Capability, Scope
 from cds_text_sync.analyze.rules_api import RuleSpec, finding_in
 from cds_text_sync.analyze.st import kinds as K
@@ -14,21 +12,6 @@ from cds_text_sync.analyze.st.decl import all_members
 _TARGET = re.compile(
     r"^\s*(?P<name>[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*)\s*:="
 )
-
-
-def _task_pous(unit):
-    try:
-        root = ET.fromstring(unit.text)
-    except (ET.ParseError, TypeError):
-        return set()
-    names = set()
-    for element in root.iter():
-        if element.attrib.get("Name") != "PouList":
-            continue
-        for child in element.iter():
-            if child.attrib.get("Name") == "Name" and child.text:
-                names.add(child.text.strip().casefold())
-    return names
 
 
 def _global_members(ctx):
@@ -44,29 +27,19 @@ def _global_members(ctx):
 
 
 def check(ctx):
-    ctx.capability(Capability.TASK_CONFIG)
+    execution = ctx.capability(Capability.EXECUTION_GRAPH)
     ctx.capability(Capability.DECLARATIONS)
     globals_by_name = _global_members(ctx)
     if not globals_by_name:
         return
 
-    task_pous = {}
-    for unit in ctx.units:
-        if unit.kind == K.TASK_CONFIG:
-            task_pous[unit.qualified_name.casefold()] = _task_pous(unit)
-    if not task_pous:
-        return
-
-    pou_tasks = {}
-    for task, pous in task_pous.items():
-        for pou in pous:
-            pou_tasks.setdefault(pou, set()).add(task)
-
     writes = {}
     for unit in ctx.units:
-        if unit.kind != K.PROGRAM or unit.qualified_name.casefold() not in pou_tasks:
+        if unit.kind != K.PROGRAM:
             continue
-        tasks = pou_tasks[unit.qualified_name.casefold()]
+        tasks = execution.tasks_for(unit.qualified_name)
+        if not tasks:
+            continue
         section = body(unit)
         if not section:
             continue
@@ -106,7 +79,7 @@ RULE = RuleSpec(
     title="Concurrent writes to shared data",
     severity="suspicious",
     scope=Scope.PROJECT,
-    requires={Capability.DECLARATIONS, Capability.TASK_CONFIG},
+    requires={Capability.DECLARATIONS, Capability.EXECUTION_GRAPH},
     kinds="ANY",
     summary="Shared project data written by programs running in different contexts.",
     topic="Data consistency",

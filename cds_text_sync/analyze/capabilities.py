@@ -23,6 +23,7 @@ class Capability(str, enum.Enum):
     VISU_XML = "visu-xml"  # native visu screen XML in project-view
     TEXT_LISTS = "text-lists"  # GlobalTextList XML/CSV
     TASK_CONFIG = "task-config"  # task configuration projection
+    EXECUTION_GRAPH = "execution-graph"  # task roots and reachable POU calls
 
     def __str__(self):  # pragma: no cover - cosmetic
         return self.value
