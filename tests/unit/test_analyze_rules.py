@@ -561,3 +561,68 @@ def test_cts0013_does_not_count_comments_or_strings_as_references():
     )
     findings = run_rule("CTS0013", ProjectSnapshot(".", [unit]))
     assert [finding.anchor for finding in findings] == ["forgotten"]
+
+
+# ---------------------------------------------------------------------------
+# CTS0016-CTS0019 - control-flow and initialization checks
+# ---------------------------------------------------------------------------
+
+
+def test_cts0016_flags_code_after_return_but_not_block_boundary():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF Ready THEN\n"
+        "    RETURN;\n"
+        "    DoWork();\n"
+        "END_IF;\n"
+    )
+    findings = run_rule("CTS0016", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["DoWork"]
+
+
+def test_cts0017_flags_literal_stub_conditions_and_ignores_prose():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF FALSE THEN\n"
+        "    DoWork();\n"
+        "END_IF;\n"
+        "// IF TRUE THEN is only documentation\n"
+    )
+    findings = run_rule("CTS0017", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["FALSE"]
+
+
+def test_cts0018_flags_read_before_assignment_and_accepts_initial_value():
+    unit = _st_unit(
+        "FUNCTION F : INT\nVAR\n"
+        "    temp : INT;\n"
+        "    ready : BOOL := TRUE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "F := temp + 1;\n"
+        "ready := FALSE;\n"
+    )
+    findings = run_rule("CTS0018", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["temp"]
+
+
+def test_cts0018_accepts_assignment_before_read():
+    unit = _st_unit(
+        "FUNCTION F : INT\nVAR\n    temp : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "temp := 0;\n"
+        "F := temp + 1;\n"
+    )
+    assert run_rule("CTS0018", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0019_requires_output_assignment_on_each_if_branch():
+    partial = _st_unit(
+        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Ready THEN\n    Done := TRUE;\nEND_IF;\n"
+    )
+    complete = _st_unit(
+        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n    Done : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Ready THEN\n    Done := TRUE;\n"
+        "ELSE\n    Done := FALSE;\nEND_IF;\n"
+    )
+    assert len(run_rule("CTS0019", ProjectSnapshot(".", [partial]))) == 1
+    assert run_rule("CTS0019", ProjectSnapshot(".", [complete])) == []

@@ -116,12 +116,11 @@ artifacts was outside the scope authorised for this refactor.
 
 ---
 
-# C — Next rules: CTS0014, CTS0015
+# C — Implemented and next rules: CTS0014–CTS0019
 
 Item 7 added `st/blocks.py`, a nesting scanner over blanked text, as the
-replacement for the never-implemented `Capability.STATEMENT_AST`. It currently
-has **no consumer other than its own tests**. Two rules would exercise it and
-are both well-defined:
+replacement for the never-implemented `Capability.STATEMENT_AST`. It now
+supports the following rules:
 
 * **CTS0014 — equality comparison on REAL/LREAL.** `IF x = 0.5 THEN` is a
   correctness defect in IEC 61131-3 as much as anywhere else. Severity
@@ -136,8 +135,17 @@ are both well-defined:
   statements, which is exactly what the scanner provides and what CTS0003's
   hand-rolled token stack does not generalise to.
 
-Ids must be 14 and 15: ids are opaque, assigned in ascending order, never
-reused, and the CTS0005 gap is permanent.
+* **CTS0016 — unreachable code after control-flow exit.** Statements after
+  `RETURN`, `EXIT`, or `CONTINUE` are unreachable on that path.
+* **CTS0017 — constant control-flow condition.** Literal `TRUE`/`FALSE`
+  conditions are reported as likely temporary stubs.
+* **CTS0018 — read before assignment.** A local is read before its first
+  assignment in the implementation.
+* **CTS0019 — output not assigned on all paths.** A conditional output write
+  must cover every branch when no unconditional write exists.
+
+Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
+is permanent.
 
 Both rules follow the post-refactor shape with no exceptions: one `.py`
 file holding `check` plus `RULE = RuleSpec(...)`, one `.md` alongside it with
