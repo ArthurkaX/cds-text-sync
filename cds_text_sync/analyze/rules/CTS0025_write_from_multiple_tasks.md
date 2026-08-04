@@ -4,13 +4,16 @@ title: Concurrent writes to shared data
 
 ## What it is
 
-Reports qualified project data written by programs associated with different
-execution contexts in the exported project model.
+Reports qualified project data accessed from different execution contexts in
+the exported project model. The analysis follows calls from task roots into
+project functions, function blocks, and methods, and reports both competing
+writes and a write in one task paired with a read in another.
 
 ## Why it is dangerous
 
-The final value can depend on execution order. This can create races or values
-that are overwritten before another execution context reads them.
+The final value can depend on execution order. This can create races, values
+that are overwritten before another execution context reads them, or readers
+that observe partially updated state.
 
 ## Example
 
@@ -32,7 +35,8 @@ END_PROGRAM
 ```
 
 The bad example is reported when the same program is associated with two
-different execution contexts in the project model.
+different execution contexts in the project model. The same applies when the
+access is inside a function or function block reachable from those contexts.
 
 ## When ignoring is legitimate
 
