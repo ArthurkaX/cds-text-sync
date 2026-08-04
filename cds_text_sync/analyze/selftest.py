@@ -144,6 +144,15 @@ def run_snippet(rule, text):
     if unit is None:
         raise ValueError("cannot classify snippet as ST or XML")
     units = [unit]
+    fb_pattern = re.compile(r"//\s*cts:fb\s+([^\s]+)", re.IGNORECASE)
+    for match in fb_pattern.finditer(text):
+        name = match.group(1).strip()
+        units.append(
+            project_mod._build_st_unit(
+                f"{name}.st",
+                f"FUNCTION_BLOCK {name}\nVAR\nEND_VAR\n",
+            )
+        )
     if rule.scope.value == "project":
         gvl_pattern = re.compile(r"//\s*cts:gvl\s+([^:]+):\s*([^\s]+)", re.IGNORECASE)
         for index, match in enumerate(gvl_pattern.finditer(text), 1):

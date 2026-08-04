@@ -912,3 +912,42 @@ def test_cts0026_reports_overlap_across_units_and_separates_memory_areas():
     )
     findings = run_rule("CTS0026", ProjectSnapshot(".", [first, second, output]))
     assert [(f.anchor, f.unit_id) for f in findings] == [("B", "Second.st#Second")]
+
+
+# ---------------------------------------------------------------------------
+# CTS0027 - temporary function-block instance
+# ---------------------------------------------------------------------------
+
+
+def test_cts0027_flags_local_function_block_in_function_and_method():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    function = _st_unit_named(
+        "Calculate.st",
+        "FUNCTION Calculate : BOOL\nVAR\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nCalculate := Timer.Q;\n",
+    )
+    method = _st_unit_named(
+        "Controller.Step.st",
+        "METHOD Step : BOOL\nVAR_TEMP\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nStep := Timer.Q;\n",
+    )
+    findings = run_rule("CTS0027", ProjectSnapshot(".", [fb, function, method]))
+    assert [(f.anchor, f.unit_id) for f in findings] == [
+        ("Timer", "Calculate.st#Calculate"),
+        ("Timer", "Controller.Step.st#Controller.Step"),
+    ]
+
+
+def test_cts0027_ignores_persistent_instances_and_unknown_types():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n    Timer : TON;\n    Custom : UnknownFB;\nEND_VAR\n"
+        "IMPLEMENTATION\n",
+    )
+    function = _st_unit_named(
+        "F.st",
+        "FUNCTION F : BOOL\nVAR_STAT\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\n",
+    )
+    assert run_rule("CTS0027", ProjectSnapshot(".", [fb, program, function])) == []
