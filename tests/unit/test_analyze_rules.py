@@ -1081,3 +1081,40 @@ def test_cts0030_ignores_reads_and_named_call_arguments():
         "END_FOR;\n"
     )
     assert run_rule("CTS0030", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0031 - conditional function-block call
+# ---------------------------------------------------------------------------
+
+
+def test_cts0031_flags_stateful_fb_call_inside_if():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    function = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nVAR\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Enabled THEN\n    Timer(IN := TRUE);\nEND_IF;\n",
+    )
+    findings = run_rule("CTS0031", ProjectSnapshot(".", [fb, function]))
+    assert [finding.anchor for finding in findings] == ["Timer"]
+
+
+def test_cts0031_flags_stateful_fb_call_inside_case():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    function = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nVAR\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nCASE State OF\n1: Timer(IN := TRUE);\nEND_CASE;\n",
+    )
+    findings = run_rule("CTS0031", ProjectSnapshot(".", [fb, function]))
+    assert [finding.anchor for finding in findings] == ["Timer"]
+
+
+def test_cts0031_ignores_unconditional_call():
+    fb = _st_unit_named("TON.st", "FUNCTION_BLOCK TON\nEND_FUNCTION_BLOCK\n")
+    function = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nVAR\n    Timer : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nTimer(IN := Enabled);\n",
+    )
+    assert run_rule("CTS0031", ProjectSnapshot(".", [fb, function])) == []
