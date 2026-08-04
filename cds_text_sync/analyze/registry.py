@@ -1,12 +1,10 @@
 """
 registry.py - Loading and validating the built-in rules.
 
-Rules live in ``cds_text_sync/analyze/rules/*.ctsrule`` — one self-contained
+Rules live in ``cds_text_sync/analyze/rules/*.py`` — one self-contained
 file per rule, holding its ``check`` and the ``RULE`` manifest that describes
-it. The suffix exists to keep those files out of the normal import graph: they
-are data-plus-``check`` units loaded explicitly by ``_load_module``, never
-discovered by package scanning. As a secondary benefit, the suffix also keeps
-them out of the CODESYS ScriptDir menu for hand-installed trees.
+it. They are data-plus-``check`` units loaded explicitly by ``_load_module``,
+never discovered by package scanning.
 
 Numbering policy: rule ids match ``CTS\\d{4}``, are assigned in ascending
 order, are never reused, and gaps in the numbering are permanent. The live id
@@ -41,7 +39,7 @@ import sys
 from cds_text_sync.analyze.rules_api import RuleSpec, RuleSpecError
 from cds_text_sync.analyze.st.kinds import expand_kinds
 
-RULE_SUFFIX = ".ctsrule"
+RULE_SUFFIX = ".py"
 _RULE_ID_RE = re.compile(r"^CTS\d{4}$")
 _REGISTRY_CACHE = {}
 # Rule ids are opaque and permanent. A deleted rule's id is recorded here

@@ -40,7 +40,6 @@ cds_text_sync = ["CLI.md", "TEST_FORMAT.md", "ui_assets/*"]
   "stylesheet.css",
   "DESIGN.md",
 ]
-"cds_text_sync.analyze" = ["rules/*.ctsrule", "rules/*.md"]
+"cds_text_sync.analyze" = ["rules/*.py", "rules/*.md"]
 
 [tool.ruff]
-extend-include = ["*.ctsrule"]

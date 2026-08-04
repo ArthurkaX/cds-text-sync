@@ -56,7 +56,7 @@ def test_every_rule_has_a_doc_with_mandatory_sections():
 
 
 def test_front_matter_has_no_behavior_metadata():
-    """Behavior metadata (severity, kinds, tier) lives only in .ctsrule.
+    """Behavior metadata (severity, kinds, tier) lives only in rule .py files.
 
     The docs' ``applies to`` line is generated from rule.kinds (see
     ``cts analyze explain``); a hand-written copy would drift.
@@ -96,7 +96,7 @@ def test_stem_matches_rule_id():
         assert os.path.basename(rule.source_path).startswith(rule.id + "_")
 
 
-def test_rule_files_use_ctsrule_suffix():
+def test_rule_files_use_py_suffix():
     rules = load_builtin_rules()
     for rule in rules.values():
         assert rule.source_path.endswith(RULE_SUFFIX)
@@ -144,7 +144,7 @@ def test_rule_asset_budget():
             d for d in dirnames if d != "__pycache__" and not d.startswith(".")
         ]
         for filename in filenames:
-            if filename.endswith((".ctsrule", ".md", ".py", ".pyc")):
+            if filename.endswith((".md", ".py", ".pyc")):
                 continue  # code and docs are not "assets"
             ext = os.path.splitext(filename)[1].lower()
             assert ext in allowed_extensions, (
@@ -155,21 +155,21 @@ def test_rule_asset_budget():
 
 
 def test_one_file_per_rule():
-    """``rules/`` holds exactly one ``.ctsrule`` and one ``.md`` per rule.
+    """``rules/`` holds exactly one ``.py`` and one ``.md`` per rule.
 
-    No ``.py`` modules and no sub-packages: a rule that is split across a
+    No extra modules and no sub-packages: a rule that is split across a
     manifest and an implementation module duplicates its id, and the split
     has bitten us before (a merge that pasted a stale implementation body
     back into the manifest went unnoticed because the two could disagree).
     """
     rules_root = os.path.join(cds_text_sync_analyze_path(), "rules")
     entries = [e for e in sorted(os.listdir(rules_root)) if e != "__pycache__"]
-    stray = [e for e in entries if not e.endswith((".ctsrule", ".md"))]
-    assert stray == [], f"rules/ must hold only .ctsrule and .md files: {stray}"
+    stray = [e for e in entries if not e.endswith((".py", ".md"))]
+    assert stray == [], f"rules/ must hold only .py and .md files: {stray}"
 
     rules = load_builtin_rules()
     assert len(entries) == 2 * len(rules), (
-        f"expected one .ctsrule + one .md per rule ({len(rules)} rules), "
+        f"expected one .py + one .md per rule ({len(rules)} rules), "
         f"got {len(entries)} files"
     )
 
@@ -200,7 +200,7 @@ def test_runner_stamps_registry_identity():
     """The runner stamps registry identity onto every finding.
 
     rule_id/title/severity on a finding come from the registry Rule, so
-    editing a ``.ctsrule`` manifest reaches the findings and the two
+    editing a rule ``.py`` manifest reaches the findings and the two
     cannot drift.
     """
     from cds_text_sync.analyze.config import ResolvedConfig
@@ -231,7 +231,7 @@ def test_registry_duplicate_stem_is_fatal(tmp_path, monkeypatch):
 
     rules_dir = tmp_path / "rules"
     rules_dir.mkdir()
-    (rules_dir / "CTS0001_a.ctsrule").write_text(
+    (rules_dir / "CTS0001_a.py").write_text(
         "from cds_text_sync.analyze.rules_api import RuleSpec\n"
         "RULE = RuleSpec(id='CTS0001', title='x', severity='style', "
         "scope='unit', requires=[], kinds='ANY', summary='s', check=check)\n"

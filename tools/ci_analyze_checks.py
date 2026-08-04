@@ -74,12 +74,12 @@ def check_wheel_assets():
         wheel = _build_wheel(root, wheel_dir)
         names = zipfile.ZipFile(wheel).namelist()
         rules = [n for n in names if "/analyze/rules/" in n]
-        ctsrule = [n for n in rules if n.endswith(".ctsrule")]
+        rule_py = [n for n in rules if n.endswith(".py")]
         docs = [n for n in rules if n.endswith(".md")]
-        if len(ctsrule) != 12:
-            raise SystemExit(f"expected 12 .ctsrule in wheel, got {len(ctsrule)}")
-        if len(docs) != 12:
-            raise SystemExit(f"expected 12 .md in wheel, got {len(docs)}")
+        if len(rule_py) != 14:
+            raise SystemExit(f"expected 14 rule .py files in wheel, got {len(rule_py)}")
+        if len(docs) != 14:
+            raise SystemExit(f"expected 14 .md in wheel, got {len(docs)}")
         ui_pages = [n for n in names if n.endswith("cds_text_sync/ui_assets/index.html")]
         if len(ui_pages) != 1:
             raise SystemExit("desktop UI page missing from wheel")
@@ -87,7 +87,7 @@ def check_wheel_assets():
         if leaked:
             raise SystemExit(f".pyc leaked into wheel rules: {leaked}")
         print(
-            f"wheel OK: {len(ctsrule)} human rules, {len(docs)} docs, "
+            f"wheel OK: {len(rule_py)} human rules, {len(docs)} docs, "
             "UI page, no pyc leaked"
         )
 
@@ -156,10 +156,10 @@ def check_wheel_install():
                 f"{exc}\n{proc.stdout[:500]}"
             ) from exc
         ids = {row.get("id") for row in rows}
-        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013"}:
+        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015"}:
             raise SystemExit(
                 f"installed registry reports {sorted(ids)}; "
-                "expected the twelve human-analysis rules"
+                "expected the fourteen human-analysis rules"
             )
 
         proc = subprocess.run(
@@ -173,7 +173,7 @@ def check_wheel_install():
                 f"installed 'cts analyze selftest' failed ({proc.returncode}):\n"
                 f"{proc.stdout[-500:]}\n{proc.stderr[-500:]}"
             )
-        print("wheel install OK: venv entry point lists 12 human rules, selftest passes")
+        print("wheel install OK: venv entry point lists 14 human rules, selftest passes")
 
 
 def main():
