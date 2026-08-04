@@ -81,10 +81,11 @@ policy, git `base`, per-rule `enabled` and `severity` overrides, and
 path-glob `[[rule_scope]]` exclusions. Suppressions live in
 `.cts-analyze/suppressions.toml` next to `project-view/`, never inside it.
 
-**Packaging:** rule files use the `.ctsrule` extension (the CODESYS
-ScriptDir scanner shows every `.py` in the menu); the loader is an explicit
-`SourceFileLoader`. `.ctsrule` and `.md` ship in the wheel; `.gitattributes`
-maps the extension to Python for diffs; ruff covers `*.ctsrule`. CI runs `cts analyze selftest` (no rule ships without executable docs), builds the wheel and asserts the rule assets are in it, and enforces the asset budget: in-repo rule assets are text/SVG only and stay well under 2 MB.
+**Packaging:** rule files use the `.py` extension and are loaded explicitly by
+`SourceFileLoader`. `.py` and `.md` ship in the wheel. CI runs `cts analyze
+selftest` (no rule ships without executable docs), builds the wheel and asserts
+the rule assets are in it, and enforces the asset budget: in-repo rule assets
+are text/SVG only and stay well under 2 MB.
 
 **Separate machine system:** `cts visu-lint --xml <generated.xml>` is the
 JSON-only validator for the SVG-to-XML/LLM pipeline. Its `VISU001` rule is not

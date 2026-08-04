@@ -1,5 +1,5 @@
 """
-rules_api.py - The contract a ``.ctsrule`` file implements.
+rules_api.py - The contract a ``rules/*.py`` file implements.
 
 A rule is one file: its ``check`` plus the metadata describing it. Anything
 shared by several rules lives in the analyzer package (``st/``) where there

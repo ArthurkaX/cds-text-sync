@@ -49,18 +49,18 @@ reverted rule bodies, so keep it until the deletion is committed.
 red *only* because this directory exists —
 
 ```
-AssertionError: rules/ must hold only .ctsrule and .md files: ['impl']
+AssertionError: rules/ must hold only .py and .md files: ['impl']
 ```
 
 — and goes green on deletion, taking the suite to 997 passed, 3 skipped. That
 test is the item-8 acceptance guard: it asserts `rules/` holds exactly one
-`.ctsrule` and one `.md` per rule and nothing else, so the two-file split
+`.py` and one `.md` per rule and nothing else, so the two-file split
 cannot come back unnoticed.
 
 ## A2. Re-verify packaging after the deletion
 
 Packaging itself needs no edit: `pyproject.toml:43` already ships
-`rules/*.ctsrule` and `rules/*.md`, and `[tool.setuptools.packages.find]` is
+`rules/*.py` and `rules/*.md`, and `[tool.setuptools.packages.find]` is
 auto-discovery, so the vanished package drops out on its own.
 
 What is left is the confirmation, and it must **not** be run in this checkout —
@@ -73,7 +73,7 @@ python -m pip wheel . --no-deps --no-cache-dir -w <tmp>
 ```
 
 then assert the wheel contains 24 entries under `cds_text_sync/analyze/rules/`
-(12 `.ctsrule` + 12 `.md`) and **no** `rules/impl/` entry.
+(12 `.py` + 12 `.md`) and **no** `rules/impl/` entry.
 
 ## A3. Scratchpad cleanup
 
@@ -139,7 +139,7 @@ are both well-defined:
 Ids must be 14 and 15: ids are opaque, assigned in ascending order, never
 reused, and the CTS0005 gap is permanent.
 
-Both rules follow the post-refactor shape with no exceptions: one `.ctsrule`
+Both rules follow the post-refactor shape with no exceptions: one `.py`
 file holding `check` plus `RULE = RuleSpec(...)`, one `.md` alongside it with
 `## What it is` / `## Why it is dangerous` / `## Example` / `## When ignoring is
 legitimate` / `## How to fix`, front matter carrying **no** behaviour metadata,
