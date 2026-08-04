@@ -159,6 +159,8 @@ supports the following rules:
   scheduling-dependent final value.
 * **CTS0026 — overlapping `AT` memory areas.** Explicit scalar declarations
   must not claim overlapping bits in the same input, output, or marker area.
+* **CTS0027 — temporary function-block instance.** A local FB in a function or
+  method is recreated on every call, so its internal state does not persist.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.
