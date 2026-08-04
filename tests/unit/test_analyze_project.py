@@ -100,6 +100,24 @@ def test_unknown_but_parseable_xml_is_not_an_error(tmp_path):
     assert not any(u.kind == K.VISUALIZATION for u in snap.units)
 
 
+def test_codesys_native_task_archives_are_classified_as_task_config(tmp_path):
+    root = str(tmp_path / "project-view")
+    task_dir = os.path.join(root, "Application", "Task Configuration")
+    os.makedirs(task_dir)
+    with open(os.path.join(task_dir, "Fast.xml"), "w", encoding="utf-8") as fh:
+        fh.write(
+            '<Single Type="{task}">'
+            '<Single Name="Object">'
+            '<List Name="PouList"><Single Name="Name" Type="string">Main</Single></List>'
+            "</Single></Single>"
+        )
+
+    snap = build_snapshot(root)
+    task = snap.find_unit("Application/Task Configuration/Fast.xml#Fast")
+    assert task is not None
+    assert task.kind == K.TASK_CONFIG
+
+
 def test_unparsable_xml_is_a_source_error(tmp_path):
     root = str(tmp_path / "project-view")
     os.makedirs(os.path.join(root, "HMI"))
