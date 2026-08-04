@@ -1003,3 +1003,33 @@ def test_cts0029_separates_exclusive_branches_and_instances():
         "IMPLEMENTATION\nIF Enabled THEN\n    First();\nELSE\n    First();\nEND_IF;\nSecond();\nRun := TRUE;\n",
     )
     assert run_rule("CTS0029", ProjectSnapshot(".", [fb, function])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0030 - FOR counter modified inside the loop
+# ---------------------------------------------------------------------------
+
+
+def test_cts0030_flags_direct_for_counter_assignment():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "FOR i := 0 TO 10 DO\n"
+        "    IF Values[i] = 0 THEN\n"
+        "        i := i + 1;\n"
+        "    END_IF;\n"
+        "END_FOR;\n"
+    )
+    findings = run_rule("CTS0030", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].message == "FOR loop control variable 'i' is modified inside the loop"
+
+
+def test_cts0030_ignores_reads_and_named_call_arguments():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "FOR i := 0 TO 10 DO\n"
+        "    Values[i] := i;\n"
+        "    Timer(IN := TRUE);\n"
+        "END_FOR;\n"
+    )
+    assert run_rule("CTS0030", ProjectSnapshot(".", [unit])) == []
