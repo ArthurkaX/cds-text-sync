@@ -670,3 +670,54 @@ def test_cts0019_accepts_default_before_case():
         "END_CASE;\n"
     )
     assert run_rule("CTS0019", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0020 - write to VAR_INPUT
+# ---------------------------------------------------------------------------
+
+
+def test_cts0020_flags_writes_to_input_and_its_fields():
+    unit = _st_unit(
+        "FUNCTION F : INT\nVAR_INPUT\n"
+        "    Value : INT;\n    Packet : Packet;\nEND_VAR\n"
+        "IMPLEMENTATION\nValue := 0;\nPacket.Value := Value;\nF := Value;\n"
+    )
+    findings = run_rule("CTS0020", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Value", "Packet"]
+
+
+def test_cts0020_ignores_locals_in_out_and_output_arguments():
+    unit = _st_unit(
+        "FUNCTION F : INT\nVAR_INPUT\n    Value : INT;\nEND_VAR\n"
+        "VAR_IN_OUT\n    Shared : INT;\nEND_VAR\n"
+        "VAR_OUTPUT\n    Result : INT;\nEND_VAR\n"
+        "VAR\n    Local : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "Shared := Value;\nLocal := Value;\nResult := Value;\n"
+        "Use(Value => Result);\nF := Result;\n"
+    )
+    assert run_rule("CTS0020", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0021 - self-assignment
+# ---------------------------------------------------------------------------
+
+
+def test_cts0021_flags_simple_self_assignment_case_insensitively():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "Value := Value;\nvalue := VALUE;\nother := Value;\n"
+    )
+    findings = run_rule("CTS0021", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Value", "value"]
+
+
+def test_cts0021_ignores_fields_expressions_and_comments():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "Packet.Value := Packet.Value;\n"
+        "Value := Value + 0;\n"
+        "// Value := Value;\n"
+    )
+    assert run_rule("CTS0021", ProjectSnapshot(".", [unit])) == []
