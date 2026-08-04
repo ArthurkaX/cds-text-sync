@@ -951,3 +951,28 @@ def test_cts0027_ignores_persistent_instances_and_unknown_types():
         "IMPLEMENTATION\n",
     )
     assert run_rule("CTS0027", ProjectSnapshot(".", [fb, program, function])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0028 - suspicious STRING operation
+# ---------------------------------------------------------------------------
+
+
+def test_cts0028_flags_index_address_and_non_ascii_literal():
+    unit = _st_unit(
+        "FUNCTION Inspect : BOOL\nVAR\n"
+        "    Text : STRING(80);\n    Code : BYTE;\nEND_VAR\n"
+        "IMPLEMENTATION\nCode := Text[2];\nADR(Text);\nText := 'Ä';\n"
+        "Inspect := TRUE;\n"
+    )
+    findings = run_rule("CTS0028", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Text", "Text", "Text"]
+
+
+def test_cts0028_ignores_normal_string_use_other_types_and_ascii():
+    unit = _st_unit(
+        "FUNCTION Build : STRING\nVAR_INPUT\n    Part : STRING;\nEND_VAR\n"
+        "VAR\n    Bytes : ARRAY[0..3] OF BYTE;\nEND_VAR\nIMPLEMENTATION\n"
+        "Build := CONCAT('A', Part);\nPart := 'ABC';\nBytes[2] := 1;\n"
+    )
+    assert run_rule("CTS0028", ProjectSnapshot(".", [unit])) == []

@@ -161,6 +161,8 @@ supports the following rules:
   must not claim overlapping bits in the same input, output, or marker area.
 * **CTS0027 — temporary function-block instance.** A local FB in a function or
   method is recreated on every call, so its internal state does not persist.
+* **CTS0028 — suspicious `STRING` operation.** Byte-oriented indexing, address
+  access, and non-ASCII literals can depend on the configured encoding.
 
 Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
 is permanent.
