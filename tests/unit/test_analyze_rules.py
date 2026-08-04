@@ -1118,3 +1118,29 @@ def test_cts0031_ignores_unconditional_call():
         "IMPLEMENTATION\nTimer(IN := Enabled);\n",
     )
     assert run_rule("CTS0031", ProjectSnapshot(".", [fb, function])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0032 - stateless function block
+# ---------------------------------------------------------------------------
+
+
+def test_cts0032_flags_stateless_function_block():
+    fb = _st_unit_named(
+        "Calculate.st",
+        "FUNCTION_BLOCK Calculate\nVAR_INPUT\n    Value : INT;\nEND_VAR\n"
+        "VAR_OUTPUT\n    Result : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nResult := Value + 1;\nEND_FUNCTION_BLOCK\n",
+    )
+    findings = run_rule("CTS0032", ProjectSnapshot(".", [fb]))
+    assert [finding.anchor for finding in findings] == ["Calculate"]
+    assert findings[0].severity == "style"
+
+
+def test_cts0032_ignores_function_block_with_state():
+    fb = _st_unit_named(
+        "Controller.st",
+        "FUNCTION_BLOCK Controller\nVAR\n    Count : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nCount := Count + 1;\nEND_FUNCTION_BLOCK\n",
+    )
+    assert run_rule("CTS0032", ProjectSnapshot(".", [fb])) == []
