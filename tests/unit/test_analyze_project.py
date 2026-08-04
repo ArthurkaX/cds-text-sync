@@ -65,6 +65,20 @@ def test_action_has_no_declaration():
     assert "bDirection" in (action.implementation or "")
 
 
+def test_codedys_property_accessors_are_classified_from_filename(tmp_path):
+    root = str(tmp_path / "project-view")
+    os.makedirs(os.path.join(root, "POUs"))
+    for suffix, expected in (("Get", K.PROPERTY_GET), ("Set", K.PROPERTY_SET)):
+        path = os.path.join(root, "POUs", f"FB_Conveyor.Speed.{suffix}.st")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("VAR\nEND_VAR\n\n// --- implementation ---\nvalue := 1;\n")
+
+    snap = build_snapshot(root)
+    assert snap.diagnostics == []
+    assert snap.find_unit("POUs/FB_Conveyor.Speed.Get.st#FB_Conveyor.Speed.Get").kind == K.PROPERTY_GET
+    assert snap.find_unit("POUs/FB_Conveyor.Speed.Set.st#FB_Conveyor.Speed.Set").kind == K.PROPERTY_SET
+
+
 def test_unit_ids_are_stable():
     snap = build_snapshot(fixture_project_view())
     ids = [u.id for u in snap.units]
