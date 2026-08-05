@@ -21,7 +21,12 @@ The runner guarantees:
   visible units runs nothing and requests no capabilities;
 * a configured severity override is applied to the run-local Finding only;
   the registry keeps the declared rule severity, so a later run in the same
-  process starts from the declared value.
+  process starts from the declared value;
+* the exported text can lag behind the IDE: when the ``.dump`` XML mirror is
+  newer than a ``project-view`` projection, the run is marked incomplete and
+  reports a single ``project-stale`` Diagnostic telling the user to re-export.
+  The reverse (a locally edited ``.st``) is the normal text-first workflow and
+  is never reported. The probe is best-effort and never fails a run.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from cds_text_sync.analyze.model import (
 from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
 from cds_text_sync.analyze.st import blocks, decl, symbols
 from cds_text_sync.analyze.file_directives import is_ignored
+from cds_text_sync.analyze.staleness import staleness_diagnostic
 
 # ---------------------------------------------------------------------------
 # Analysis context
@@ -279,6 +285,19 @@ def _select_rules(registry, config, rule_filter):
 def run_analysis(workspace, snapshot, config, options):
     """Run every enabled rule over the snapshot. Returns AnalysisResult."""
     result = AnalysisResult()
+
+    # Staleness is checked first so its Diagnostic is counted by the
+    # `result.summary.diagnostics` total at the bottom. It is best-effort: a
+    # missing/malformed manifest, or any filesystem surprise, must never break
+    # an analysis run, so the whole probe is fenced off.
+    try:
+        stale = staleness_diagnostic(workspace)
+    except Exception:
+        stale = None
+    if stale is not None:
+        result.diagnostics.append(stale)
+        result.complete = False
+
     registry = load_builtin_rules()
     rules = _select_rules(registry, config, options.rule_filter)
     ctx = AnalysisContext(workspace, snapshot, config)

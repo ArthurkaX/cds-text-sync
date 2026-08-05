@@ -192,6 +192,16 @@ analysis itself could not provide a declared capability, for example a file it
 could not read); a run that is only partially complete is never silently
 "clean".
 
+One diagnostic is worth calling out: `project-stale`. The analyzer compares the
+XML recorded in `.dump/manifest.json` against the `project-view/` projections
+and reports it when the XML is newer — that is, the project moved forward and
+nobody re-exported, so the analysis would otherwise describe code that no longer
+exists. Run `cts export` and analyse again. The reverse (a locally edited `.st`
+newer than its XML) is the normal text-first workflow and is never reported. The
+check is best-effort and stays silent when there is no sync state; if a
+`git checkout` shuffles timestamps into a false alarm, `--incomplete ignore`
+keeps it out of the exit code.
+
 Exit codes:
 
 | Code | Meaning |
