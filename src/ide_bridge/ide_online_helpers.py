@@ -6,7 +6,6 @@ Reusable by ide_reverse_pipe_loop.py.
 """
 
 from __future__ import print_function
-import traceback
 import os
 import re
 import sys
@@ -24,7 +23,6 @@ def atomic_write(file_path, content):
         file_path: Target file path (str)
         content: File content (bytes or unicode str)
     """
-    import os
     import time
     
     tmp_path = file_path + ".tmp"
@@ -74,7 +72,7 @@ class OutputCapture:
         self._buffer.append(str(s))
     
     def writelines(self, lines):
-        self._buffer.extend([str(l) for l in lines])
+        self._buffer.extend([str(line) for line in lines])
     
     def flush(self):
         pass
@@ -339,7 +337,6 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
                 continue
             seen.add(key)
             try:
-                dev_name = getattr(cand, 'get_name', lambda: '?')()
                 cand.set_gateway_and_address(gateway_name, ip_address)
                 device = cand
                 break

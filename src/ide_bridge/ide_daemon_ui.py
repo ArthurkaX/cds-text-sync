@@ -450,7 +450,6 @@ class DaemonForm(Form):
                 summary = data.get("summary", {})
                 pass_count = int(summary.get("ok", 0))
                 fail_count = int(summary.get("not_ok", 0))
-                status = data.get("status", "FAIL")
 
                 for item in data.get("files", []):
                     label = item.get("file") or item.get("plan") or "test"

@@ -521,7 +521,7 @@ def main():
     )
 
     # validate
-    parser_validate = subparsers.add_parser("validate", parents=[parent_parser])
+    subparsers.add_parser("validate", parents=[parent_parser])
 
     # resources
     parser_resources = subparsers.add_parser("resources", parents=[parent_parser])

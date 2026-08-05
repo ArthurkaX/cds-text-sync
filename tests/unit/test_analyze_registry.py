@@ -274,7 +274,7 @@ def test_topic_is_from_the_allowed_set():
 
 def test_rulespec_validate_rejects_bad_topic():
     """RuleSpec.validate rejects topics not in the allowed set."""
-    from cds_text_sync.analyze.rules_api import RuleSpec, RuleSpecError, ALLOWED_TOPICS
+    from cds_text_sync.analyze.rules_api import RuleSpec, RuleSpecError
     from cds_text_sync.analyze.capabilities import Scope, Capability
 
     def dummy_check(unit, ctx):

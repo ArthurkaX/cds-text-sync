@@ -43,3 +43,11 @@ cds_text_sync = ["CLI.md", "TEST_FORMAT.md", "ui_assets/*"]
 "cds_text_sync.analyze" = ["rules/*.py", "rules/*.md"]
 
 [tool.ruff]
+
+[tool.ruff.lint.per-file-ignores]
+# These modules deliberately modify sys.path or load CLR namespaces before
+# importing runtime-only modules. Moving those imports would break IronPython
+# and CODESYS-hosted execution.
+"cds_text_sync/_cli_io.py" = ["E402"]
+"src/ide_bridge/*.py" = ["E402"]
+"tests/unit/*.py" = ["E402"]

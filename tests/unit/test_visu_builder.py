@@ -8,7 +8,6 @@ and that invariants are enforced.
 """
 
 import os
-import re
 import sys
 
 import pytest

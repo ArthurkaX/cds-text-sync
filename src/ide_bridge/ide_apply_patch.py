@@ -383,10 +383,6 @@ def _ensure_container_path_with_chain(project, rel_path):
 def _find_pou_type_enum():
     candidates = []
     try:
-        candidates.append(PouType)
-    except Exception:
-        pass
-    try:
         import __main__
 
         if hasattr(__main__, "PouType"):

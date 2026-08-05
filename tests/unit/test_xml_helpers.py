@@ -9,7 +9,6 @@ import xml.etree.ElementTree as ET
 
 import pytest
 from xml_helpers import (
-    IMPORT_SAFE_CSV_EXTRACTORS,
     ST_IMPLEMENTATION_MARKER,
     ProjectionValidationError,
     extract_bool_property,

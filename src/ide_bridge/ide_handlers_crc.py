@@ -196,8 +196,6 @@ def _cmd_app_info():
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
 
     try:
-        import System
-        import System.Reflection
 
         info = {}
 

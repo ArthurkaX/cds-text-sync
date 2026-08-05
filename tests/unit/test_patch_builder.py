@@ -10,7 +10,6 @@ import os
 import tempfile
 import xml.etree.ElementTree as ET
 
-import pytest
 from _patch_builder import PatchBuilder
 from _project_model import ProjectModel, ProjectNode
 

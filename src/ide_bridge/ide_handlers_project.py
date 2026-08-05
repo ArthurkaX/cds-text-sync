@@ -21,7 +21,6 @@ from ide_daemon_state import (
     _require_param,
     _obj_name,
     _build_path,
-    _read_online_attr,
     _bool_or_none,
     _get_plc_status_snapshot,
     _project_file_path,
@@ -479,7 +478,6 @@ def _cmd_help():
 
 def _cmd_probe_oa(params):
     """Probe OnlineApplication for variable/symbol-related APIs."""
-    import scriptengine as se
     import System
     import System.Reflection
 
