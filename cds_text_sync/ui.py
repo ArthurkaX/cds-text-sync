@@ -87,7 +87,7 @@ class AnalyzerApi:
                 catalog.append({
                     "id": rule.id, "title": rule.title, "summary": rule.summary,
                     "severity": rule.severity, "topic": rule.topic,
-                    "enabled": config.enabled_for(rule.id, True),
+                    "enabled": config.enabled_for(rule.id),
                     "documentation": documentation,
                 })
             return {"ok": True, "rules": catalog, "config_path": workspace.config_path or ""}

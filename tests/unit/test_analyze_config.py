@@ -4,7 +4,11 @@ test_analyze_config.py - cts-analyze.toml parsing, overrides, path scopes.
 
 import pytest
 
-from cds_text_sync.analyze.config import ConfigError, _glob_match, load_config
+from cds_text_sync.analyze.config import (
+    ConfigError,
+    _glob_match,
+    load_config,
+)
 
 
 def _write_config(tmp_path, text):
@@ -17,6 +21,8 @@ def test_defaults_without_config(tmp_path):
     config = load_config(str(tmp_path / "missing.toml"))
     assert config.fail_on == "suspicious"
     assert config.incomplete == "warn"
+    assert config.enabled_for("CTS0034") is False
+    assert config.enabled_for("CTS0001") is True
 
 
 def test_full_config(tmp_path):

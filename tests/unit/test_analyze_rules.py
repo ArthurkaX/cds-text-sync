@@ -1180,3 +1180,36 @@ def test_cts0033_ignores_existing_constant_and_at_declarations():
         "Calculate := Limit + Addressed;\n"
     )
     assert run_rule("CTS0033", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0034 - ignored function return value
+# ---------------------------------------------------------------------------
+
+
+def test_cts0034_flags_standalone_project_function_call():
+    function = _st_unit_named(
+        "Check.st",
+        "FUNCTION Check : BOOL\nVAR_INPUT\n    Value : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nCheck := Value > 0;\n",
+    )
+    caller = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nIMPLEMENTATION\nCheck(10);\nRun := TRUE;\n",
+    )
+    findings = run_rule("CTS0034", ProjectSnapshot(".", [function, caller]))
+    assert [finding.anchor for finding in findings] == ["Check"]
+
+
+def test_cts0034_ignores_used_returns_unknown_calls_and_fb_calls():
+    function = _st_unit_named(
+        "Check.st",
+        "FUNCTION Check : BOOL\nIMPLEMENTATION\nCheck := TRUE;\n",
+    )
+    fb = _st_unit_named("Timer.st", "FUNCTION_BLOCK Timer\nEND_FUNCTION_BLOCK\n")
+    caller = _st_unit_named(
+        "Run.st",
+        "FUNCTION Run : BOOL\nVAR\n    T : Timer;\n    Ok : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nOk := Check();\nUnknown();\nT();\nRun := Ok;\n",
+    )
+    assert run_rule("CTS0034", ProjectSnapshot(".", [function, fb, caller])) == []

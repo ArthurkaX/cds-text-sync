@@ -263,9 +263,14 @@ def _select_rules(registry, config, rule_filter):
     rules = []
     for rule_id in sorted(registry):
         rule = registry[rule_id]
-        if not config.enabled_for(rule_id):
-            continue
-        if rule_filter is not None and rule_id not in rule_filter:
+        if rule_filter is not None:
+            if rule_id not in rule_filter:
+                continue
+            # An explicit --rule selection is an opt-in for rules which are
+            # disabled by default. A project config can still disable it.
+            if not config.enabled_for(rule_id, default=True):
+                continue
+        elif not config.enabled_for(rule_id):
             continue
         rules.append(rule)
     return rules
