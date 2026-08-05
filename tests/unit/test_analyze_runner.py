@@ -9,7 +9,7 @@ import shutil
 
 from cds_static_analyzer.config import ResolvedConfig, load_config
 from cds_static_analyzer.model import AnalysisResult, Diagnostic, Finding
-from cds_static_analyzer.project_compat import build_compat_snapshot
+from cds_text_sync.analyze_compat import build_compat_snapshot
 from cds_static_analyzer.registry import load_builtin_rules
 from cds_static_analyzer.runner import (
     RunOptions,

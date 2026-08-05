@@ -4,10 +4,15 @@ test_analyze_project.py - ProjectSnapshot built from the analyze fixture.
 
 import os
 
-from cds_static_analyzer.project_compat import build_compat_snapshot
+from cds_text_sync import analyze_compat
+from cds_text_sync.analyze_compat import build_compat_snapshot
 from cds_static_analyzer.st import kinds as K
 
 from analyze_helpers import fixture_project_view
+
+
+def test_xml_compatibility_adapter_has_explicit_public_api():
+    assert analyze_compat.__all__ == ["build_compat_snapshot"]
 
 
 def test_fixture_has_expected_units():

@@ -1,7 +1,7 @@
 """Section access layer for analyzer rule text."""
 
 from cds_static_analyzer import project as pm
-from cds_static_analyzer import project_compat as compat
+from cds_text_sync import analyze_compat as compat
 from cds_static_analyzer.st.body import body, declaration
 
 _SNIPPET = (
