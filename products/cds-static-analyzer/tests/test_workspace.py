@@ -11,7 +11,7 @@ from cds_static_analyzer.workspace import (
     WorkspaceResolver,
 )
 
-from analyze_helpers import fixture_project_view
+from st_helpers import fixture_project_view
 
 
 def _make_workspace(tmp_path, with_config=False):
@@ -82,3 +82,5 @@ def test_config_path_is_detected(tmp_path):
     root = _make_workspace(tmp_path, with_config=True)
     ws = WorkspaceResolver(workspace=root).resolve()
     assert ws.config_path == os.path.join(root, "cts-analyze.toml")
+
+
