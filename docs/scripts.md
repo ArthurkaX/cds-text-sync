@@ -3,7 +3,7 @@
 The CODESYS-side entry points, in the order you use them. All of them appear
 under **Tools > Scripting > Scripts > P** after [installation](install.md) —
 and they are the only thing this tool puts in that menu. Every one of them has
-a `cts` equivalent for shell and CI use — see [`cds_text_sync/CLI.md`](../cds_text_sync/CLI.md).
+a `cts` equivalent for shell and CI use — see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 
 ## 1. `Project_directory.py` (Setup)
 
@@ -117,7 +117,7 @@ and lets you act on it.
   applied selectively when the external engine can resolve them by GUID.
 
 For a compare without any dialog — in a shell, in CI, or from the daemon — use
-[`cts compare`](../cds_text_sync/CLI.md).
+[`cts compare`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 
 ## 7. Optional projections
 
@@ -159,7 +159,7 @@ safety rules unless a safe textual representation is available.
   the current project. It is a thin adapter over the same analysis engine as
   `cts analyze` — it never talks to CODESYS or the daemon. Requires the optional
   UI dependency (`pip install 'cds-text-sync[ui]'`); the command-line equivalent
-  is [`cts analyze`](../cds_text_sync/CLI.md#static-analysis-cts-analyze).
+  is [`cts analyze`](../products/cds-text-sync/src/cds_text_sync/CLI.md#static-analysis-cts-analyze).
 - **`Project_snapshooter.py`**: PLC variable preset snapshots. Runs a small
   interactive wizard that takes, compares, and restores named presets of online
   variable values (for example
@@ -169,5 +169,5 @@ safety rules unless a safe textual representation is available.
   (`snapshooter-map`). The CLI equivalents for capturing and applying live
   values are `cts variable-snapshot` and `cts variable-restore`.
 - **`Project_daemon.py`**: Starts the reverse-pipe daemon so the `cts` CLI can
-  drive the open IDE. See [`cds_text_sync/CLI.md`](../cds_text_sync/CLI.md).
+  drive the open IDE. See [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 - Offline static call graph via `cts engine call-tree`. See `--help` for options.

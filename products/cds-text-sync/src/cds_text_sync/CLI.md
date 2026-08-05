@@ -432,11 +432,11 @@ Common failures:
 Use Windows Python when calling from WSL:
 
 ```bash
-python.exe cds_text_sync/main.py status --timeout 10
+python.exe -m cds_text_sync.main status --timeout 10
 ```
 
 If the installed command is not found, use the source form:
 
 ```bash
-python cds_text_sync/main.py status --timeout 10
+python -m cds_text_sync.main status --timeout 10
 ```

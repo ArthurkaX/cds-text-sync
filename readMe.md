@@ -6,7 +6,7 @@
 [![Issues](https://img.shields.io/github/issues/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/issues)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
 
-**Version**: `2.8.3`
+**Version**: `3.0.0`
 
 > [!IMPORTANT]
 > **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
@@ -32,11 +32,11 @@ CODESYS project  ──export──►  project-view/ on disk  ──►  git co
 
 That is the core, and everything else in the tool is built on top of it. Once
 the project is text on disk, things that were impossible become ordinary — which
-is where the other two layers come from.
+is where the other products come from.
 
 ---
 
-## The three layers
+## The user-facing products
 
 ### 1. Git outside CODESYS — the core
 
@@ -79,9 +79,25 @@ JSON or text output on every command.
 
 This is the layer that makes autonomous work possible: an agent can read the
 project, change it, build it, check the result, and iterate — without a person
-in the loop clicking dialogs. See the **[CLI reference](cds_text_sync/CLI.md)**.
+in the loop clicking dialogs. See the **[CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md)**.
 
-### 3. `cts visu` — HMI screens authored by an LLM
+### 3. `cts analyze` — static analysis for people and CI
+
+The static analyzer reads exported CODESYS Structured Text (`.st`) without
+opening CODESYS or inspecting project XML. It reports correctness, data-flow,
+control-flow, and project-structure findings for developers and CI:
+
+```powershell
+cts analyze --help
+cts analyze project-view
+cts analyze rules
+cts analyze selftest
+```
+
+The analyzer is a separate product from the sync engine and from visualization
+linting; its public package is `cds_static_analyzer`.
+
+### 4. `cts visu` — HMI screens authored by an LLM
 
 The last thing in a CODESYS project that resisted text was the visualization.
 `cts visu` closes that: you author the screen as an **SVG sketch** — text, so it
@@ -134,7 +150,8 @@ Then, in CODESYS, from **Tools > Scripting > Scripts > P**:
 4. **Edit** the files in `project-view/` in any editor, and commit them.
 5. **`Project_import.py`** — apply the disk edits back into CODESYS.
 
-For layers 2 and 3, install the CLI and start the daemon:
+For the CLI, analyzer, and visualization workflows, install the package and
+start the daemon when a live CODESYS project is needed:
 
 ```powershell
 python -m pip install -e <program-folder>
@@ -142,7 +159,7 @@ cts --help
 ```
 
 Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) ·
-[Project layout](docs/project-layout.md) · [CLI reference](cds_text_sync/CLI.md)
+[Project layout](docs/project-layout.md) · [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md)
 
 ![CLI daemon demo](img/cli_demo.gif)
 
@@ -156,7 +173,8 @@ Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) �
 | [Sync modes](docs/sync-modes.md) | XML-first vs text-first, and overwrite protection |
 | [Script overview](docs/scripts.md) | What each `Project_*.py` does, and the optional projections |
 | [Project layout](docs/project-layout.md) | On-disk structure, `.gitignore`, the day-to-day cycle, Git LFS |
-| [CLI reference](cds_text_sync/CLI.md) | Every `cts` command, flag, timeout and error mode |
+| [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md) | Every `cts` command, flag, timeout and error mode |
+| [Static analyzer](products/cds-static-analyzer/README.md) | Human-facing `.st` analysis and rule boundaries |
 | [HMI screens from SVG](docs/visu.md) | `cts visu` end to end, including PLC variable binding |
 | [Team workflow](docs/workflow.md) | Branches and PRs for HMI/hardware engineers and developers |
 | [Alternative installations](docs/alternative-installations.md) | Forks and non-standard CODESYS environments |
