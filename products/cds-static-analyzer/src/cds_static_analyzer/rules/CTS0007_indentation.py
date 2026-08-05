@@ -43,6 +43,13 @@ def check(unit, ctx):
     previous_code = ""
 
     for lineno, line_start, line in section.lines():
+        # A malformed or partially reconstructed source section must not make
+        # a style rule crash the whole analysis.  ``Section.lines()`` is based
+        # on the raw text while ``clean_lines`` is based on the blanked text;
+        # normally they are 1:1, but preserve analyzer resilience if a parser
+        # adapter ever violates that assumption.
+        if lineno < 1 or lineno > len(clean_lines):
+            continue
         code = clean_lines[lineno - 1].strip()
         prefix = line[: len(line) - len(line.lstrip(" \t"))]
         upper = code.upper()
