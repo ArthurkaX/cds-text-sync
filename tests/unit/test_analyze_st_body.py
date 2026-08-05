@@ -2,8 +2,8 @@
 test_analyze_st_body.py - Section access layer for rule text (Item 3).
 """
 
-from cds_text_sync.analyze import project as pm
-from cds_text_sync.analyze.st.body import body, declaration
+from cds_static_analyzer import project as pm
+from cds_static_analyzer.st.body import body, declaration
 
 # The implementation body starts after the IMPLEMENTATION marker plus a blank
 # line, so a naive "body starts at 0" assumption lands in the VAR block.

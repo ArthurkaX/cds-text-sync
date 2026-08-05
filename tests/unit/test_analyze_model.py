@@ -3,7 +3,7 @@ test_analyze_model.py - Result model: finding/diagnostic separation,
 deterministic sorting, severity ranks, envelope.
 """
 
-from cds_text_sync.analyze.model import (
+from cds_static_analyzer.model import (
     AnalysisResult,
     Diagnostic,
     Finding,

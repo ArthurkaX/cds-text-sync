@@ -1,4 +1,4 @@
-from cds_text_sync.analyze.file_directives import (
+from cds_static_analyzer.file_directives import (
     directive_info,
     ignored_rules,
     is_ignored,

@@ -1,8 +1,8 @@
 """Tests for the analyzer's task and POU execution graph."""
 
-from cds_text_sync.analyze import execution
-from cds_text_sync.analyze import project as pm
-from cds_text_sync.analyze.project import ProjectSnapshot
+from cds_static_analyzer import execution
+from cds_static_analyzer import project as pm
+from cds_static_analyzer.project import ProjectSnapshot
 
 
 def _st(path, text):

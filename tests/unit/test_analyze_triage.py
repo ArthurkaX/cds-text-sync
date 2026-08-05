@@ -8,7 +8,7 @@ import os
 
 import pytest
 
-from cds_text_sync.analyze.triage import TriageError, load_decisions
+from cds_static_analyzer.triage import TriageError, load_decisions
 
 from analyze_helpers import copy_fixture, run_analyze_json, run_cli
 

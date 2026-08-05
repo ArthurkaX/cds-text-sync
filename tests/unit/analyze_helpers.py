@@ -75,9 +75,9 @@ def run_rule(rule_id, snapshot):
     from the registry) with fingerprints computed, exactly as a real run
     would produce them.
     """
-    from cds_text_sync.analyze.config import ResolvedConfig
-    from cds_text_sync.analyze.runner import RunOptions, run_analysis
-    from cds_text_sync.analyze.workspace import Workspace
+    from cds_static_analyzer.config import ResolvedConfig
+    from cds_static_analyzer.runner import RunOptions, run_analysis
+    from cds_static_analyzer.workspace import Workspace
 
     result = run_analysis(
         Workspace(root=".", project_view=".", state_dir="."),

@@ -12,13 +12,13 @@ import os
 import subprocess
 from pathlib import Path
 
-from cds_text_sync.analyze import state as state_mod
-from cds_text_sync.analyze.config import ConfigError, load_config, set_rule_enabled
-from cds_text_sync.analyze.registry import RegistryError, load_builtin_rules
-from cds_text_sync.analyze.runner import RunOptions
-from cds_text_sync.analyze.service import analyze as run_service
-from cds_text_sync.analyze.triage import TriageError, apply_decisions
-from cds_text_sync.analyze.workspace import WorkspaceError, WorkspaceResolver
+from cds_static_analyzer import state as state_mod
+from cds_static_analyzer.config import ConfigError, load_config, set_rule_enabled
+from cds_static_analyzer.registry import RegistryError, load_builtin_rules
+from cds_static_analyzer.runner import RunOptions
+from cds_static_analyzer.service import analyze as run_service
+from cds_static_analyzer.triage import TriageError, apply_decisions
+from cds_static_analyzer.workspace import WorkspaceError, WorkspaceResolver
 
 
 def analyze_workspace(workspace_path: str) -> dict:

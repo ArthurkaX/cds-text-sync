@@ -24,7 +24,8 @@ ui = ["pywebview>=5,<6"]
 version = { attr = "cds_text_sync.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["cds_text_sync", "cds_text_sync.*"]
+include = ["cds_text_sync", "cds_text_sync.*", "cds_static_analyzer", "cds_static_analyzer.*"]
+where = [".", "products/cds-static-analyzer/src"]
 
 [tool.setuptools]
 include-package-data = true
@@ -40,7 +41,7 @@ cds_text_sync = ["CLI.md", "TEST_FORMAT.md", "ui_assets/*"]
   "stylesheet.css",
   "DESIGN.md",
 ]
-"cds_text_sync.analyze" = ["rules/*.py", "rules/*.md"]
+"cds_static_analyzer" = ["rules/*.py", "rules/*.md"]
 
 [tool.ruff]
 

@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from cds_text_sync.analyze import state as st
+from cds_static_analyzer import state as st
 
 
 @pytest.fixture
@@ -149,7 +149,7 @@ def test_validate_baseline_schema_bad_field_rejected(state_dir):
 
 
 def test_write_baseline_uses_supported_schema_constant(state_dir):
-    from cds_text_sync.analyze.fingerprint import FINGERPRINT_SCHEMA
+    from cds_static_analyzer.fingerprint import FINGERPRINT_SCHEMA
 
     st.write_baseline(state_dir, [])
     entries, schema = st.read_baseline(state_dir)

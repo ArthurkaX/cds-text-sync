@@ -7,7 +7,7 @@ left per dropped byte. The length invariant below is stronger than testing
 any one rule.
 """
 
-from cds_text_sync.analyze.st.blanking import blank_noise, trim_strings
+from cds_static_analyzer.st.blanking import blank_noise, trim_strings
 
 _CORPUS = [
     "a := 1; // line comment\nb := 2;",
