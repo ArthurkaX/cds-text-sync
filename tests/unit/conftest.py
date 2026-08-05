@@ -30,8 +30,22 @@ _ANALYZER_SRC_DIR = os.path.normpath(
     )
 )
 
+_VISU_LINT_SRC_DIR = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "products",
+        "visu-lint",
+        "src",
+    )
+)
+
 if _ANALYZER_SRC_DIR not in sys.path:
     sys.path.insert(0, _ANALYZER_SRC_DIR)
+
+if _VISU_LINT_SRC_DIR not in sys.path:
+    sys.path.insert(0, _VISU_LINT_SRC_DIR)
 
 if _EXTERNAL_ENGINE_DIR not in sys.path:
     sys.path.insert(0, _EXTERNAL_ENGINE_DIR)

@@ -31,8 +31,15 @@ include = [
   "cds_static_analyzer.*",
   "cds_cli",
   "cds_cli.*",
+  "visu_lint",
+  "visu_lint.*",
 ]
-where = [".", "products/cds-static-analyzer/src", "products/cds-cli/src"]
+where = [
+  ".",
+  "products/cds-static-analyzer/src",
+  "products/cds-cli/src",
+  "products/visu-lint/src",
+]
 
 [tool.setuptools]
 include-package-data = true

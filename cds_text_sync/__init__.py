@@ -21,4 +21,10 @@ _CLI_SRC = (
 if _CLI_SRC.is_dir() and str(_CLI_SRC) not in sys.path:
     sys.path.insert(0, str(_CLI_SRC))
 
+_VISU_LINT_SRC = (
+    Path(__file__).resolve().parent.parent / "products" / "visu-lint" / "src"
+)
+if _VISU_LINT_SRC.is_dir() and str(_VISU_LINT_SRC) not in sys.path:
+    sys.path.insert(0, str(_VISU_LINT_SRC))
+
 __version__ = "3.0.0"

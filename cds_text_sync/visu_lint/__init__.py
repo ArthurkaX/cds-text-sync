@@ -1,6 +1,8 @@
-"""Machine-only validation for generated CODESYS visualization XML.
+"""Compatibility package for the product now provided by :mod:`visu_lint`."""
 
-This package is intentionally independent from ``cds_static_analyzer``.
-It is consumed by the SVG-to-XML generation pipeline, not by the human
-project-analysis UI.
-"""
+import sys
+
+from visu_lint import __name__ as _name  # noqa: F401
+
+__path__ = []
+sys.modules[__name__] = sys.modules["visu_lint"]

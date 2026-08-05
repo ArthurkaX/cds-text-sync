@@ -3,7 +3,7 @@
 import json
 
 from analyze_helpers import fixture_path, run_cli
-from cds_text_sync.visu_lint.dead_explicit_color import lint
+from visu_lint.dead_explicit_color import lint
 
 
 def test_visu_lint_flags_generated_dead_explicit_color():
@@ -24,7 +24,7 @@ def test_visu_lint_cli_is_json_only_machine_contract():
 
 
 def test_machine_linter_has_no_dependency_on_human_analyzer():
-    import cds_text_sync.visu_lint.dead_explicit_color as module
+    import visu_lint.dead_explicit_color as module
 
     source = open(module.__file__, encoding="utf-8").read()
     assert "cds_static_analyzer" not in source
