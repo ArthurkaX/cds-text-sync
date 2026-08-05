@@ -42,6 +42,10 @@ jobs:
         shell: pwsh
         run: python tools\ci_analyze_checks.py wheel
 
+      - name: Verify product manifests and package boundaries
+        shell: pwsh
+        run: python tools\ci_product_checks.py manifests; python tools\ci_product_checks.py wheels
+
       - name: Compile Python sources
         shell: pwsh
         run: |
@@ -64,3 +68,7 @@ jobs:
       - name: Run local regression suite
         shell: pwsh
         run: python tests\regression\regression_suite.py
+
+      - name: Verify clean-tree packaging state
+        shell: pwsh
+        run: python tools\ci_product_checks.py clean

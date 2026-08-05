@@ -1,0 +1,15 @@
+[product]
+name = "codesys-host"
+runtime = "codesys-ironpython"
+artifact = "flat-deployment-tree"
+test_paths = [
+  "../../tests/unit/test_bridge_import_order.py",
+  "../../tests/unit/test_cli_daemon_protocol.py",
+  "../../tests/regression/ide_backup_regression.py",
+]
+
+[entrypoints]
+directory = "."
+pattern = "Project_*.py"
+bootstrap = "cds_bootstrap.py"
+bridge_directory = "src/ide_bridge"

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cds-static-analyzer"
+version = "3.0.0"
+description = "Human-facing static analysis for CODESYS Structured Text"
+requires-python = ">=3.11"
+dependencies = ["cds-text-sync==3.0.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cds_static_analyzer = ["rules/*.py", "rules/*.md"]
+
+[tool.cds_product]
+runtime = "cpython"
+test_paths = ["../../tests/unit/test_analyze_*.py"]
