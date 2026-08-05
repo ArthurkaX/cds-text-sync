@@ -20,7 +20,7 @@ from cds_static_analyzer.staleness import (
 )
 from cds_static_analyzer.workspace import Workspace
 
-from analyze_helpers import copy_fixture
+from st_helpers import copy_fixture
 
 
 def _workspace(tmp_path):
@@ -235,3 +235,5 @@ def test_run_analysis_surfaces_diagnostic_and_sets_complete_false(tmp_path):
     assert result.complete is False
     # The aggregate Diagnostic is counted in the summary total.
     assert result.summary.diagnostics == len(result.diagnostics)
+
+
