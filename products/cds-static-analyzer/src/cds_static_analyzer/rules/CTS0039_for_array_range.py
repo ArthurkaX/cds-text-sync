@@ -9,7 +9,7 @@ from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st import decl
 from cds_static_analyzer.st.blocks import tree
 from cds_static_analyzer.st.body import body
-from cds_text_sync.engine.variable_map import classify_type
+from cds_static_analyzer.st.declarations import classify_type
 
 
 _HEADER = re.compile(r"\bFOR\b(?P<header>.*?)(?P<do>\bDO\b)", re.IGNORECASE | re.DOTALL)
