@@ -21,4 +21,7 @@ cds_static_analyzer = ["rules/*.py", "rules/*.md"]
 
 [tool.cds_product]
 runtime = "cpython"
-test_paths = ["../../tests/unit/test_analyze_*.py"]
+test_paths = [
+    "tests/test_*.py",
+    "../../tests/unit/test_analyze_*.py",
+]
