@@ -55,7 +55,7 @@ def test_rules_lists_registry():
     rows = json.loads(out)
     ids = {r["id"] for r in rows}
     assert ids == {
-        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029", "CTS0030", "CTS0031", "CTS0032", "CTS0033", "CTS0034"
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029", "CTS0030", "CTS0031", "CTS0032", "CTS0033", "CTS0034", "CTS0035", "CTS0036", "CTS0037", "CTS0038", "CTS0039", "CTS0040", "CTS0041", "CTS0042", "CTS0043"
     }
 
 
@@ -152,10 +152,11 @@ def test_package_data_covers_rule_assets():
     rules_dir = os.path.join(analyze_dir, "rules")
     rule_py = [f for f in os.listdir(rules_dir) if f.endswith(".py") and f != "__init__.py"]
     md = [f for f in os.listdir(rules_dir) if f.endswith(".md")]
-    assert len(rule_py) == 33
-    assert len(md) == 33
+    assert len(rule_py) == 42
+    # implemented_rules.md is the catalog, not a per-rule document.
+    assert len(md) == 43
     stems = {f[:-3] for f in rule_py}
-    assert stems == {f[:-3] for f in md}
+    assert stems == {f[:-3] for f in md if f != "implemented_rules.md"}
 
 
 def _write_config(root, text):

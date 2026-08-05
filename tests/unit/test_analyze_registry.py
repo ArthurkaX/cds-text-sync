@@ -21,7 +21,7 @@ def cds_text_sync_analyze_path():
 def test_all_human_builtin_rules_load():
     rules = load_builtin_rules()
     assert set(rules) == {
-        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029", "CTS0030", "CTS0031", "CTS0032", "CTS0033", "CTS0034"
+        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029", "CTS0030", "CTS0031", "CTS0032", "CTS0033", "CTS0034", "CTS0035", "CTS0036", "CTS0037", "CTS0038", "CTS0039", "CTS0040", "CTS0041", "CTS0042", "CTS0043"
     }
 
 
@@ -168,8 +168,8 @@ def test_one_file_per_rule():
     assert stray == [], f"rules/ must hold only .py and .md files: {stray}"
 
     rules = load_builtin_rules()
-    assert len(entries) == 2 * len(rules), (
-        f"expected one .py + one .md per rule ({len(rules)} rules), "
+    assert len(entries) == 2 * len(rules) + 1, (
+        f"expected one .py + one .md per rule ({len(rules)} rules) plus catalog, "
         f"got {len(entries)} files"
     )
 
