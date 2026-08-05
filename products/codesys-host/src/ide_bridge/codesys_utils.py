@@ -28,11 +28,16 @@ def log_error(message, critical=False):
 
 
 def _utility_root():
-    """Repo root. This module lives at ``<root>/src/ide_bridge/``, so the root
-    is three directories up. (The historical two-level form pointed one level
-    short after the ``.runtime`` -> ``src/ide_bridge`` move.)
-    """
+    """Repository root containing the CPython ``cds_text_sync`` package."""
     here = os.path.dirname(os.path.abspath(__file__))
+    current = here
+    while True:
+        if os.path.isdir(os.path.join(current, "cds_text_sync", "engine")):
+            return current
+        parent = os.path.dirname(current)
+        if not parent or parent == current:
+            break
+        current = parent
     return os.path.dirname(os.path.dirname(here))
 
 

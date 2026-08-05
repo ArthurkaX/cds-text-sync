@@ -17,9 +17,13 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Try new path first (cds_text_sync/engine/), fall back to old (src/external_engine/)
-_ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "..", "cds_text_sync", "engine"))
+_ENGINE_DIR = os.path.normpath(os.path.join(
+    _BRIDGE_DIR, "..", "..", "..", "..", "cds_text_sync", "engine"
+))
 if not os.path.isdir(_ENGINE_DIR):
-    _ENGINE_DIR = os.path.normpath(os.path.join(_BRIDGE_DIR, "..", "external_engine"))
+    _ENGINE_DIR = os.path.normpath(os.path.join(
+        _BRIDGE_DIR, "..", "..", "src", "external_engine"
+    ))
 if _ENGINE_DIR not in sys.path:
     sys.path.insert(0, _ENGINE_DIR)
 
@@ -47,18 +51,21 @@ def object_name(obj):
 
 
 def get_workspace_dir(script_file=None):
-    # Find the root by looking for src/ide_bridge or cds_text_sync/engine
+    # Prefer the repository root for the external engine. Fall back to the
+    # host product root when this tree is deployed without the repository.
     path = os.path.abspath(script_file or __file__)
     current = os.path.dirname(path)
+    fallback = None
     while True:
-        if (os.path.isdir(os.path.join(current, "src", "ide_bridge"))
-                or os.path.isdir(os.path.join(current, "cds_text_sync", "engine"))):
+        if os.path.isdir(os.path.join(current, "src", "ide_bridge")):
+            fallback = fallback or current
+        if os.path.isdir(os.path.join(current, "cds_text_sync", "engine")):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:
             break
         current = parent
-    return os.path.dirname(os.path.abspath(__file__))
+    return fallback or os.path.dirname(os.path.abspath(__file__))
 
 
 def _timestamp():

@@ -21,7 +21,13 @@ from pathlib import Path
 
 import pytest
 
-BRIDGE_DIR = Path(__file__).parent.parent.parent / "src" / "ide_bridge"
+BRIDGE_DIR = (
+    Path(__file__).parent.parent.parent
+    / "products"
+    / "codesys-host"
+    / "src"
+    / "ide_bridge"
+)
 
 
 @pytest.fixture(scope="module")

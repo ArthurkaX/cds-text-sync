@@ -25,13 +25,19 @@ import sys
 
 def _engine_dir():
     """Locate cds_text_sync/engine relative to this file (src/ide_bridge/)."""
-    root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    engine = os.path.join(root, "cds_text_sync", "engine")
-    if not os.path.isdir(engine):
-        engine = os.path.join(root, "src", "external_engine")
-    return engine
+    current = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        engine = os.path.join(current, "cds_text_sync", "engine")
+        if os.path.isdir(engine):
+            return engine
+        legacy = os.path.join(current, "src", "external_engine")
+        if os.path.isdir(legacy):
+            return legacy
+        parent = os.path.dirname(current)
+        if not parent or parent == current:
+            break
+        current = parent
+    return os.path.join(current, "cds_text_sync", "engine")
 
 
 def _ensure_engine_path():

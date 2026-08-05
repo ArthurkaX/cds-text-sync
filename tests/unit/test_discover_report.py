@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 test_discover_report.py -- CPython coverage for the shared discovery report
-builder (src/ide_bridge/discover_report.py).
+ builder (products/codesys-host/src/ide_bridge/discover_report.py).
 
 The builder is pure duck-typed logic over a CODESYS project's get_children()
 and the on-disk sync settings/profile, so it runs under CPython with a fake
@@ -14,7 +14,8 @@ import os
 import sys
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-for _p in (os.path.join(_ROOT, "src", "ide_bridge"), os.path.join(_ROOT, "cds_text_sync", "engine")):
+_HOST = os.path.join(_ROOT, "products", "codesys-host")
+for _p in (os.path.join(_HOST, "src", "ide_bridge"), os.path.join(_ROOT, "cds_text_sync", "engine")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

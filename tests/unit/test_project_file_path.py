@@ -16,7 +16,10 @@ import os
 import sys
 
 _IDE_BRIDGE = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "src", "ide_bridge")
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "products", "codesys-host",
+        "src", "ide_bridge",
+    )
 )
 if _IDE_BRIDGE not in sys.path:
     sys.path.insert(0, _IDE_BRIDGE)

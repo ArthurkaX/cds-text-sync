@@ -34,7 +34,13 @@ import pytest
 # Locate ide_bridge directory and project root
 # ---------------------------------------------------------------------------
 
-_IDE_BRIDGE = Path(__file__).parent.parent.parent / "src" / "ide_bridge"
+_IDE_BRIDGE = (
+    Path(__file__).parent.parent.parent
+    / "products"
+    / "codesys-host"
+    / "src"
+    / "ide_bridge"
+)
 assert _IDE_BRIDGE.is_dir(), f"ide_bridge not found at {_IDE_BRIDGE}"
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
