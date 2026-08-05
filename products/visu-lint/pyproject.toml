@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visu-lint"
+version = "3.0.0"
+description = "Machine-facing validation for CODESYS visualization XML"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.cds_product]
+runtime = "cpython"
+test_paths = ["../../tests/unit/test_visu_lint.py"]

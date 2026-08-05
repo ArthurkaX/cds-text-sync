@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cds-cli"
+version = "3.0.0"
+description = "Command-line composition layer for cds-text-sync products"
+requires-python = ">=3.11"
+dependencies = [
+  "cds-text-sync==3.0.0",
+  "cds-static-analyzer==3.0.0",
+  "visu-lint==3.0.0",
+]
+
+[project.scripts]
+cts = "cds_cli.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.cds_product]
+runtime = "cpython"
+test_paths = [
+  "../../tests/unit/test_cli_*.py",
+  "../../tests/unit/test_daemon_*.py",
+  "../../tests/unit/test_engine_cli_helpers.py",
+]

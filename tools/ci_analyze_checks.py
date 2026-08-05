@@ -75,11 +75,16 @@ def check_wheel_assets():
         names = zipfile.ZipFile(wheel).namelist()
         rules = [n for n in names if "cds_static_analyzer/rules/" in n]
         rule_py = [n for n in rules if n.endswith(".py")]
-        docs = [n for n in rules if n.endswith(".md")]
-        if len(rule_py) != 43:
-            raise SystemExit(f"expected 43 rule .py files in wheel, got {len(rule_py)}")
-        if len(docs) != 43:
-            raise SystemExit(f"expected 43 .md in wheel, got {len(docs)}")
+        docs = [
+            n
+            for n in rules
+            if n.endswith(".md") and not n.endswith("implemented_rules.md")
+        ]
+        if len(rule_py) != len(docs):
+            raise SystemExit(
+                f"rule implementation/docs count mismatch: {len(rule_py)} .py, "
+                f"{len(docs)} .md"
+            )
         ui_pages = [n for n in names if n.endswith("cds_text_sync/ui_assets/index.html")]
         if len(ui_pages) != 1:
             raise SystemExit("desktop UI page missing from wheel")
@@ -156,10 +161,10 @@ def check_wheel_install():
                 f"{exc}\n{proc.stdout[:500]}"
             ) from exc
         ids = {row.get("id") for row in rows}
-        if ids != {"CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029"}:
+        expected_ids = {f"CTS{number:04d}" for number in range(1, 44)} - {"CTS0005"}
+        if ids != expected_ids:
             raise SystemExit(
-                f"installed registry reports {sorted(ids)}; "
-                "expected the eighteen human-analysis rules"
+                f"installed registry reports unexpected rule ids: {sorted(ids)}"
             )
 
         proc = subprocess.run(
@@ -173,7 +178,7 @@ def check_wheel_install():
                 f"installed 'cts analyze selftest' failed ({proc.returncode}):\n"
                 f"{proc.stdout[-500:]}\n{proc.stderr[-500:]}"
             )
-        print("wheel install OK: venv entry point lists 43 human rules, selftest passes")
+        print(f"wheel install OK: venv entry point lists {len(ids)} human rules, selftest passes")
 
 
 def main():
