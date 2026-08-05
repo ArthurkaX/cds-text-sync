@@ -160,6 +160,9 @@ def test_default_retention_matches_the_backup_limit(sync_handlers):
     """Two retention knobs that disagree would only confuse."""
     settings = (
         Path(__file__).parent.parent.parent
+        / "products"
+        / "cds-text-sync"
+        / "src"
         / "cds_text_sync"
         / "engine"
         / "_project_settings.py"

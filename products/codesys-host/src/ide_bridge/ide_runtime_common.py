@@ -18,7 +18,16 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Try new path first (cds_text_sync/engine/), fall back to old (src/external_engine/)
 _ENGINE_DIR = os.path.normpath(os.path.join(
-    _BRIDGE_DIR, "..", "..", "..", "..", "cds_text_sync", "engine"
+    _BRIDGE_DIR,
+    "..",
+    "..",
+    "..",
+    "..",
+    "products",
+    "cds-text-sync",
+    "src",
+    "cds_text_sync",
+    "engine",
 ))
 if not os.path.isdir(_ENGINE_DIR):
     _ENGINE_DIR = os.path.normpath(os.path.join(
@@ -29,6 +38,13 @@ if _ENGINE_DIR not in sys.path:
 
 from _project_layout import resolve_layout
 from _project_settings import load_project_settings
+
+
+def normalize_guid(value):
+    """Return the canonical lowercase GUID text used by bridge comparisons."""
+    if value is None:
+        return ""
+    return str(value).strip().strip("{}").lower()
 
 
 def dump_path(project_root):
@@ -59,7 +75,11 @@ def get_workspace_dir(script_file=None):
     while True:
         if os.path.isdir(os.path.join(current, "src", "ide_bridge")):
             fallback = fallback or current
-        if os.path.isdir(os.path.join(current, "cds_text_sync", "engine")):
+        if os.path.isdir(
+            os.path.join(
+                current, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+            )
+        ):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:
@@ -140,7 +160,15 @@ def _external_notice_lines(stdout_text, stderr_text):
 def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None):
     root_dir = get_workspace_dir(script_file)
     # Try new path first (cds_text_sync/engine/), fall back to old path
-    engine_cli = os.path.join(root_dir, "cds_text_sync", "engine", "engine_cli.py")
+    engine_cli = os.path.join(
+        root_dir,
+        "products",
+        "cds-text-sync",
+        "src",
+        "cds_text_sync",
+        "engine",
+        "engine_cli.py",
+    )
     if not os.path.exists(engine_cli):
         engine_cli = os.path.join(root_dir, "src", "external_engine", "engine_cli.py")
     if not os.path.exists(engine_cli):

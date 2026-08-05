@@ -207,7 +207,9 @@ class TuiNode(object):
 def _ensure_engine_path():
     here = os.path.dirname(os.path.abspath(__file__))
     repo = os.path.dirname(os.path.dirname(here))
-    engine = os.path.join(repo, "cds_text_sync", "engine")
+    engine = os.path.join(
+        repo, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+    )
     if os.path.isdir(engine) and engine not in sys.path:
         sys.path.insert(0, engine)
 

@@ -8,7 +8,11 @@ from __future__ import print_function
 import json
 import os
 
-ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+ROOT_DIR = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..", ".."
+    )
+)
 PROFILES_DIR = os.path.join(ROOT_DIR, "profiles")
 
 

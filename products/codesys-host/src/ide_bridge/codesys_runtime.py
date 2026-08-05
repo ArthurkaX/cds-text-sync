@@ -119,7 +119,9 @@ def _find_engine_dir(root_dir):
     """Find the CPython engine from a host product checkout or installation."""
     current = os.path.abspath(root_dir)
     while True:
-        candidate = os.path.join(current, "cds_text_sync", "engine")
+        candidate = os.path.join(
+            current, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+        )
         if os.path.isdir(candidate):
             return candidate
         legacy = os.path.join(current, "src", "external_engine")
@@ -129,7 +131,9 @@ def _find_engine_dir(root_dir):
         if not parent or parent == current:
             break
         current = parent
-    return os.path.join(root_dir, "cds_text_sync", "engine")
+    return os.path.join(
+        root_dir, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+    )
 
 
 def _module_file_exists(root_dir, name):

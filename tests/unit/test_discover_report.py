@@ -15,7 +15,12 @@ import sys
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _HOST = os.path.join(_ROOT, "products", "codesys-host")
-for _p in (os.path.join(_HOST, "src", "ide_bridge"), os.path.join(_ROOT, "cds_text_sync", "engine")):
+for _p in (
+    os.path.join(_HOST, "src", "ide_bridge"),
+    os.path.join(
+        _ROOT, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+    ),
+):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

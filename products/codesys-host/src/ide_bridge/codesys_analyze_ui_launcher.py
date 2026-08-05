@@ -66,6 +66,16 @@ def _body_root():
     """The repository/package body containing the CPython package."""
     current = os.path.dirname(os.path.abspath(__file__))
     while True:
+        if os.path.isdir(
+            os.path.join(
+                current,
+                "products",
+                "cds-text-sync",
+                "src",
+                "cds_text_sync",
+            )
+        ):
+            return current
         if os.path.isdir(os.path.join(current, "cds_text_sync")):
             return current
         parent = os.path.dirname(current)
