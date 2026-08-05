@@ -5,7 +5,7 @@ engine/analyze import boundary.
 
 import os
 
-from cds_text_sync.analyze.registry import (
+from cds_static_analyzer.registry import (
     RULE_SUFFIX,
     RegistryError,
     load_builtin_rules,
@@ -13,7 +13,7 @@ from cds_text_sync.analyze.registry import (
 
 
 def cds_text_sync_analyze_path():
-    import cds_text_sync.analyze as analyze
+    import cds_static_analyzer as analyze
 
     return os.path.dirname(analyze.__file__ or "")
 
@@ -62,7 +62,7 @@ def test_front_matter_has_no_behavior_metadata():
     ``cts analyze explain``); a hand-written copy would drift.
     Also ensure no front matter carries tags: or restates severity/topic values.
     """
-    from cds_text_sync.analyze.rules_api import ALLOWED_TOPICS
+    from cds_static_analyzer.rules_api import ALLOWED_TOPICS
 
     rules = load_builtin_rules()
     forbidden = ("applies_to", "severity", "tier", "scope", "requires", "tags")
@@ -106,7 +106,8 @@ def test_engine_does_not_import_analyze():
     """The dependency arrow is analyze -> engine, never the reverse."""
     import ast
 
-    engine_dir = os.path.join(os.path.dirname(cds_text_sync_analyze_path()), "engine")
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    engine_dir = os.path.join(repo_root, "cds_text_sync", "engine")
     offenders = []
     for filename in os.listdir(engine_dir):
         if not filename.endswith(".py"):
@@ -118,12 +119,12 @@ def test_engine_does_not_import_analyze():
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name.startswith(
-                        "cds_text_sync.analyze"
+                        "cds_static_analyzer"
                     ) or alias.name.startswith("analyze"):
                         offenders.append((filename, alias.name))
             elif isinstance(node, ast.ImportFrom) and node.module:
                 if node.module.startswith(
-                    "cds_text_sync.analyze"
+                    "cds_static_analyzer"
                 ) or node.module.startswith("analyze"):
                     offenders.append((filename, node.module))
     assert offenders == [], f"engine must not import analyze: {offenders}"
@@ -203,10 +204,10 @@ def test_runner_stamps_registry_identity():
     editing a rule ``.py`` manifest reaches the findings and the two
     cannot drift.
     """
-    from cds_text_sync.analyze.config import ResolvedConfig
-    from cds_text_sync.analyze.project import build_snapshot
-    from cds_text_sync.analyze.runner import RunOptions, run_analysis
-    from cds_text_sync.analyze.workspace import WorkspaceResolver
+    from cds_static_analyzer.config import ResolvedConfig
+    from cds_static_analyzer.project import build_snapshot
+    from cds_static_analyzer.runner import RunOptions, run_analysis
+    from cds_static_analyzer.workspace import WorkspaceResolver
 
     from analyze_helpers import fixture_project_view
 
@@ -227,12 +228,12 @@ def test_runner_stamps_registry_identity():
 
 
 def test_registry_duplicate_stem_is_fatal(tmp_path, monkeypatch):
-    import cds_text_sync.analyze.registry as registry
+    import cds_static_analyzer.registry as registry
 
     rules_dir = tmp_path / "rules"
     rules_dir.mkdir()
     (rules_dir / "CTS0001_a.py").write_text(
-        "from cds_text_sync.analyze.rules_api import RuleSpec\n"
+        "from cds_static_analyzer.rules_api import RuleSpec\n"
         "RULE = RuleSpec(id='CTS0001', title='x', severity='style', "
         "scope='unit', requires=[], kinds='ANY', summary='s', check=check)\n"
         "def check(unit, ctx): return []\n",
@@ -248,7 +249,7 @@ def test_retired_rule_id_cannot_be_reintroduced(monkeypatch):
     """A retired id is fatal on load: fingerprints, baselines and user
     suppressions in the field are keyed by rule id, so recycling one would
     silently re-target them."""
-    import cds_text_sync.analyze.registry as registry
+    import cds_static_analyzer.registry as registry
 
     registry.clear_registry_cache()  # clear the cached rules
     monkeypatch.setattr(registry, "_RETIRED_IDS", frozenset({"CTS0001"}))
@@ -262,7 +263,7 @@ def test_topic_is_from_the_allowed_set():
 
     Topics are read from the registry and used for grouping in the UI.
     """
-    from cds_text_sync.analyze.rules_api import ALLOWED_TOPICS
+    from cds_static_analyzer.rules_api import ALLOWED_TOPICS
 
     rules = load_builtin_rules()
     for rule in rules.values():
@@ -274,8 +275,8 @@ def test_topic_is_from_the_allowed_set():
 
 def test_rulespec_validate_rejects_bad_topic():
     """RuleSpec.validate rejects topics not in the allowed set."""
-    from cds_text_sync.analyze.rules_api import RuleSpec, RuleSpecError
-    from cds_text_sync.analyze.capabilities import Scope, Capability
+    from cds_static_analyzer.rules_api import RuleSpec, RuleSpecError
+    from cds_static_analyzer.capabilities import Scope, Capability
 
     def dummy_check(unit, ctx):
         pass
@@ -312,8 +313,8 @@ def test_rulespec_validate_rejects_bad_topic():
 
 def test_rulespec_options_validate_type_and_names():
     """RuleSpec.validate rejects invalid option defaults and reserved names."""
-    from cds_text_sync.analyze.rules_api import RuleSpec, RuleSpecError
-    from cds_text_sync.analyze.capabilities import Scope, Capability
+    from cds_static_analyzer.rules_api import RuleSpec, RuleSpecError
+    from cds_static_analyzer.capabilities import Scope, Capability
 
     def dummy_check(unit, ctx):
         pass

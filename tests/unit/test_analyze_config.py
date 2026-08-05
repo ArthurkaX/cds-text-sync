@@ -4,7 +4,7 @@ test_analyze_config.py - cts-analyze.toml parsing, overrides, path scopes.
 
 import pytest
 
-from cds_text_sync.analyze.config import (
+from cds_static_analyzer.config import (
     ConfigError,
     _glob_match,
     load_config,

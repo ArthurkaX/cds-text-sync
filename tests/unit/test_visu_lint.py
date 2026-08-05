@@ -27,4 +27,4 @@ def test_machine_linter_has_no_dependency_on_human_analyzer():
     import cds_text_sync.visu_lint.dead_explicit_color as module
 
     source = open(module.__file__, encoding="utf-8").read()
-    assert "cds_text_sync.analyze" not in source
+    assert "cds_static_analyzer" not in source

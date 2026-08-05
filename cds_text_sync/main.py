@@ -205,7 +205,7 @@ def main():
         dispatch_visu(args)
 
     elif args.command == "analyze":
-        from cds_text_sync.analyze import cli as analyze_cli
+        from cds_static_analyzer import cli as analyze_cli
 
         code = analyze_cli.dispatch_analyze(args)
         if code:

@@ -10,15 +10,15 @@ reported. Detection is best-effort and must never break a run.
 import json
 import os
 
-from cds_text_sync.analyze.config import ResolvedConfig
-from cds_text_sync.analyze.project import build_snapshot
-from cds_text_sync.analyze.runner import RunOptions, run_analysis
-from cds_text_sync.analyze.staleness import (
+from cds_static_analyzer.config import ResolvedConfig
+from cds_static_analyzer.project import build_snapshot
+from cds_static_analyzer.runner import RunOptions, run_analysis
+from cds_static_analyzer.staleness import (
     MTIME_TOLERANCE_SECONDS,
     stale_projections,
     staleness_diagnostic,
 )
-from cds_text_sync.analyze.workspace import Workspace
+from cds_static_analyzer.workspace import Workspace
 
 from analyze_helpers import copy_fixture
 

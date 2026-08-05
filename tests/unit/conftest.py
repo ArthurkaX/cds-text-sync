@@ -19,6 +19,20 @@ _EXTERNAL_ENGINE_DIR = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "cds_text_sync", "engine")
 )
 
+_ANALYZER_SRC_DIR = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "products",
+        "cds-static-analyzer",
+        "src",
+    )
+)
+
+if _ANALYZER_SRC_DIR not in sys.path:
+    sys.path.insert(0, _ANALYZER_SRC_DIR)
+
 if _EXTERNAL_ENGINE_DIR not in sys.path:
     sys.path.insert(0, _EXTERNAL_ENGINE_DIR)
 

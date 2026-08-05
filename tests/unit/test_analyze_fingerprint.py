@@ -3,7 +3,7 @@ test_analyze_fingerprint.py - Fingerprints are stable under reindentation
 and line insertion; they change with the semantic anchor.
 """
 
-from cds_text_sync.analyze.fingerprint import fingerprint
+from cds_static_analyzer.fingerprint import fingerprint
 
 
 def test_same_fingerprint_for_identical_input():

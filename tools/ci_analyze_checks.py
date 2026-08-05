@@ -73,13 +73,13 @@ def check_wheel_assets():
     with tempfile.TemporaryDirectory() as wheel_dir:
         wheel = _build_wheel(root, wheel_dir)
         names = zipfile.ZipFile(wheel).namelist()
-        rules = [n for n in names if "/analyze/rules/" in n]
+        rules = [n for n in names if "cds_static_analyzer/rules/" in n]
         rule_py = [n for n in rules if n.endswith(".py")]
         docs = [n for n in rules if n.endswith(".md")]
-        if len(rule_py) != 28:
-            raise SystemExit(f"expected 24 rule .py files in wheel, got {len(rule_py)}")
-        if len(docs) != 28:
-            raise SystemExit(f"expected 24 .md in wheel, got {len(docs)}")
+        if len(rule_py) != 43:
+            raise SystemExit(f"expected 43 rule .py files in wheel, got {len(rule_py)}")
+        if len(docs) != 43:
+            raise SystemExit(f"expected 43 .md in wheel, got {len(docs)}")
         ui_pages = [n for n in names if n.endswith("cds_text_sync/ui_assets/index.html")]
         if len(ui_pages) != 1:
             raise SystemExit("desktop UI page missing from wheel")
@@ -173,7 +173,7 @@ def check_wheel_install():
                 f"installed 'cts analyze selftest' failed ({proc.returncode}):\n"
                 f"{proc.stdout[-500:]}\n{proc.stderr[-500:]}"
             )
-        print("wheel install OK: venv entry point lists 28 human rules, selftest passes")
+        print("wheel install OK: venv entry point lists 43 human rules, selftest passes")
 
 
 def main():

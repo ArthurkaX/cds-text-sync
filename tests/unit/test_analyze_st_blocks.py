@@ -6,8 +6,8 @@ already handled; these tests pin the pipeline (body + blanking + scanner)
 against regressions. Offsets are absolute into ``unit.text``.
 """
 
-from cds_text_sync.analyze import project as pm
-from cds_text_sync.analyze.st.blocks import tree
+from cds_static_analyzer import project as pm
+from cds_static_analyzer.st.blocks import tree
 
 from analyze_helpers import fixture_project_view
 

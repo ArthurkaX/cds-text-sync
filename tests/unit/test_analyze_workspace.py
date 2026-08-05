@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from cds_text_sync.analyze.workspace import (
+from cds_static_analyzer.workspace import (
     WorkspaceError,
     WorkspaceResolver,
 )

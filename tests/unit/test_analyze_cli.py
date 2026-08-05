@@ -146,7 +146,7 @@ def test_broken_config_exits_2(tmp_path):
 
 def test_package_data_covers_rule_assets():
     """The wheel must ship rule .py + .md + asset folders."""
-    import cds_text_sync.analyze as analyze
+    import cds_static_analyzer as analyze
 
     analyze_dir = os.path.dirname(analyze.__file__ or "")
     rules_dir = os.path.join(analyze_dir, "rules")

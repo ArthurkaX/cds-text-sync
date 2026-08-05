@@ -77,7 +77,7 @@ Acceptance criteria:
 * the normal CPython package does not depend on the host directory being on
   `sys.path`.
 
-### Stage 2 — extract `cds-static-analyzer`
+### Stage 2 — extract `cds-static-analyzer` — done
 
 Move `cds_text_sync.analyze` and its rule resources into a dedicated
 `cds_static_analyzer` package. Preserve rule IDs, finding JSON, suppressions,
@@ -113,6 +113,11 @@ Stage 1 is complete. The CODESYS host product now lives under
 menu installation, engine discovery, CLI daemon launching, CI compilation, and
 tests were updated accordingly.
 
-The next implementation task is Stage 2: extract the static analyzer into a
-dedicated `cds_static_analyzer` package while preserving its `.st`-only scope,
-rule IDs, finding contract, suppressions, baselines, and CLI output.
+Stage 2 is complete. The analyzer source and rule resources now live under
+`products/cds-static-analyzer/src/cds_static_analyzer/`; `cts analyze` and the
+desktop analyzer UI use that package. Source-checkout path setup and wheel
+package discovery keep the migration compatible with the existing CLI.
+
+Clean-wheel installation, analyzer selftest, full unit tests, Ruff, and the
+legacy-reference scan all pass. The next implementation task is Stage 3:
+extract the CLI composition layer into `cds-cli`.

@@ -7,17 +7,17 @@ import json
 import os
 import shutil
 
-from cds_text_sync.analyze.config import ResolvedConfig, load_config
-from cds_text_sync.analyze.model import AnalysisResult, Diagnostic, Finding
-from cds_text_sync.analyze.project import build_snapshot
-from cds_text_sync.analyze.registry import load_builtin_rules
-from cds_text_sync.analyze.runner import (
+from cds_static_analyzer.config import ResolvedConfig, load_config
+from cds_static_analyzer.model import AnalysisResult, Diagnostic, Finding
+from cds_static_analyzer.project import build_snapshot
+from cds_static_analyzer.registry import load_builtin_rules
+from cds_static_analyzer.runner import (
     RunOptions,
     exit_code,
     filter_result,
     run_analysis,
 )
-from cds_text_sync.analyze.workspace import WorkspaceResolver
+from cds_static_analyzer.workspace import WorkspaceResolver
 
 from analyze_helpers import (
     copy_fixture,
@@ -192,7 +192,7 @@ def test_capability_gate_skips_rule_with_diagnostic(tmp_path):
     snap = build_snapshot(ws.project_view)
     # Simulate the read failure exactly as build_snapshot would record it.
     if not any(d.kind == "project-read" for d in snap.diagnostics):
-        from cds_text_sync.analyze.model import Location
+        from cds_static_analyzer.model import Location
 
         snap.diagnostics.append(
             Diagnostic(
@@ -244,7 +244,7 @@ def test_analyze_depends_on_engine_but_not_vice_versa():
         [
             sys.executable,
             "-c",
-            "import cds_text_sync.engine; import cds_text_sync.analyze; print('ok')",
+            "import cds_text_sync.engine; import cds_static_analyzer; print('ok')",
         ],
         capture_output=True,
         text=True,
@@ -455,8 +455,8 @@ def test_type_mismatched_option_falls_back_to_default(tmp_path):
 def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
     """A baseline recorded under a different fingerprint schema must not
     silently match: every current finding surfaces as new."""
-    from cds_text_sync.analyze import state as st
-    from cds_text_sync.analyze.state import baseline_fingerprints
+    from cds_static_analyzer import state as st
+    from cds_static_analyzer.state import baseline_fingerprints
 
     root = str(tmp_path / "sync")
     copy_fixture(root)

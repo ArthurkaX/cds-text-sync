@@ -4,8 +4,8 @@ test_analyze_project.py - ProjectSnapshot built from the analyze fixture.
 
 import os
 
-from cds_text_sync.analyze.project import build_snapshot
-from cds_text_sync.analyze.st import kinds as K
+from cds_static_analyzer.project import build_snapshot
+from cds_static_analyzer.st import kinds as K
 
 from analyze_helpers import fixture_project_view
 
