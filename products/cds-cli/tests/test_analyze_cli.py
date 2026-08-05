@@ -274,3 +274,4 @@ def test_baseline_update_recovers_from_incompatible_schema(tmp_path):
 
     code, _out, _err = run_cli(["analyze", "--workspace", root, "--format", "json"])
     assert code != 2  # schema policy satisfied; findings decide the exit code
+

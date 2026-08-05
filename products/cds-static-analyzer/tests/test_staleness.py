@@ -11,7 +11,7 @@ import json
 import os
 
 from cds_static_analyzer.config import ResolvedConfig
-from cds_static_analyzer.project import build_snapshot
+from cds_static_analyzer.project import build_st_snapshot
 from cds_static_analyzer.runner import RunOptions, run_analysis
 from cds_static_analyzer.staleness import (
     MTIME_TOLERANCE_SECONDS,
@@ -226,7 +226,7 @@ def test_run_analysis_surfaces_diagnostic_and_sets_complete_false(tmp_path):
             }
         ],
     )
-    snap = build_snapshot(ws.project_view)
+    snap = build_st_snapshot(ws.project_view)
     config = ResolvedConfig()
     result = run_analysis(ws, snap, config, RunOptions())
     stale = [d for d in result.diagnostics if d.kind == "project-stale"]
@@ -235,5 +235,4 @@ def test_run_analysis_surfaces_diagnostic_and_sets_complete_false(tmp_path):
     assert result.complete is False
     # The aggregate Diagnostic is counted in the summary total.
     assert result.summary.diagnostics == len(result.diagnostics)
-
 

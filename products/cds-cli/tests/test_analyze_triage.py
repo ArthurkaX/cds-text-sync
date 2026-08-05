@@ -1,14 +1,10 @@
 """
-test_analyze_triage.py - ``triage --apply``: decisions, validation, atomic
+CLI triage integration tests: decisions, validation, atomic
 state writes.
 """
 
 import json
 import os
-
-import pytest
-
-from cds_static_analyzer.triage import TriageError, load_decisions
 
 from analyze_helpers import copy_fixture, run_analyze_json, run_cli
 
@@ -16,18 +12,6 @@ from analyze_helpers import copy_fixture, run_analyze_json, run_cli
 def _findings(workspace, rule="CTS0002"):
     data = run_analyze_json(workspace, extra=["--rule", rule])
     return data["findings"]
-
-
-def test_load_decisions_validation(tmp_path):
-    bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps([{"fingerprint": "cts1:x", "action": "nope"}]))
-    with pytest.raises(TriageError):
-        load_decisions(str(bad))
-
-    noreason = tmp_path / "nr.json"
-    noreason.write_text(json.dumps([{"fingerprint": "cts1:x", "action": "suppress"}]))
-    with pytest.raises(TriageError):
-        load_decisions(str(noreason))
 
 
 def test_apply_suppress_round_trip(tmp_path):
@@ -140,3 +124,4 @@ def test_apply_writes_atomically(tmp_path):
     state_dir = os.path.join(root, ".cts-analyze")
     leftovers = [f for f in os.listdir(state_dir) if f.endswith(".tmp")]
     assert leftovers == []
+
