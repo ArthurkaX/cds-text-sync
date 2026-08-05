@@ -10,6 +10,8 @@ from cds_static_analyzer import project
 from cds_static_analyzer.model import Diagnostic, Location
 from cds_static_analyzer.st import kinds as K
 
+__all__ = ["build_compat_snapshot"]
+
 _VISU_ROOT_TYPE = "{6198ad31-4b98-445c-927f-3258a0e82fe3}"
 _TEXTLIST_FILENAME = "GlobalTextList.xml"
 _ROOT_TAG_RE = re.compile(r"<([A-Za-z_][\w.:-]*)((?:\s[^<>]*?)?)>")
