@@ -8,7 +8,7 @@ ScriptDir so the Script Engine shows exactly the public menu commands while
 the real tree ("the body") stays outside the scan. These tests pin down that
 contract:
 
-  * the manifest is a bijection with the root-level ``Project_*.py`` files;
+  * the manifest is a bijection with the host-level ``Project_*.py`` files;
   * every ``command`` entry resolves inside ``codesys_runtime.OPERATION_MODULES``
     (one-way: extra aliases such as ``extract``/``inject`` are allowed);
   * CI compiles every entry point;
@@ -38,6 +38,7 @@ import pytest
 from cds_text_sync import install_menu  # noqa: E402
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
+_HOST_ROOT = _PROJECT_ROOT / "products" / "codesys-host"
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +49,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 def _load_bootstrap():
     spec = importlib.util.spec_from_file_location(
-        "_cds_bootstrap_menu_layout", str(_PROJECT_ROOT / "cds_bootstrap.py")
+        "_cds_bootstrap_menu_layout", str(_HOST_ROOT / "cds_bootstrap.py")
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -71,7 +72,7 @@ def _operation_modules():
     CPython. The literal is a flat dict of string->string with no nested
     braces, so literal_eval'ing the brace-delimited block is reliable.
     """
-    runtime = _PROJECT_ROOT / "src" / "ide_bridge" / "codesys_runtime.py"
+    runtime = _HOST_ROOT / "src" / "ide_bridge" / "codesys_runtime.py"
     text = runtime.read_text(encoding="utf-8")
     start = text.index("OPERATION_MODULES")
     brace = text.index("{", start)
@@ -98,7 +99,7 @@ _COMMAND_ENTRIES = [spec for spec in ENTRYPOINTS if spec.get("kind") == "command
 def _populate_body(body: Path) -> None:
     """Turn *body* into something body_is_valid() accepts."""
     (body / "src" / "ide_bridge").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(_PROJECT_ROOT / "cds_bootstrap.py"), str(body / "cds_bootstrap.py"))
+    shutil.copy2(str(_HOST_ROOT / "cds_bootstrap.py"), str(body / "cds_bootstrap.py"))
 
 
 def _make_body(root: Path) -> Path:
@@ -114,12 +115,12 @@ def _norm(path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. Manifest <-> files: the bijection with root-level Project_*.py scripts
+# 1. Manifest <-> files: the bijection with host-level Project_*.py scripts
 # ---------------------------------------------------------------------------
 
 
 def test_manifest_names_match_project_files():
-    actual = {p.stem for p in _PROJECT_ROOT.glob("Project_*.py") if p.is_file()}
+    actual = {p.stem for p in _HOST_ROOT.glob("Project_*.py") if p.is_file()}
     expected = {spec["name"] for spec in ENTRYPOINTS}
     assert expected, "the entrypoint manifest is empty"
     assert len(ENTRYPOINTS) == len(expected), "duplicate name in the manifest"

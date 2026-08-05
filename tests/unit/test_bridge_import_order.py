@@ -26,7 +26,8 @@ from pathlib import Path
 import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_IDE_BRIDGE = _PROJECT_ROOT / "src" / "ide_bridge"
+_HOST_ROOT = _PROJECT_ROOT / "products" / "codesys-host"
+_IDE_BRIDGE = _HOST_ROOT / "src" / "ide_bridge"
 
 
 def _load_by_path(name, path):
@@ -38,7 +39,7 @@ def _load_by_path(name, path):
 
 @pytest.fixture
 def cds_bootstrap():
-    return _load_by_path("_cds_bootstrap_under_test", _PROJECT_ROOT / "cds_bootstrap.py")
+    return _load_by_path("_cds_bootstrap_under_test", _HOST_ROOT / "cds_bootstrap.py")
 
 
 def _index_of(paths, target):
@@ -51,15 +52,15 @@ def _index_of(paths, target):
 
 def test_ensure_runtime_path_puts_bridge_ahead_of_root(cds_bootstrap, monkeypatch):
     monkeypatch.setattr(sys, "path", [])
-    cds_bootstrap.ensure_runtime_path(str(_PROJECT_ROOT / "Project_export.py"))
+    cds_bootstrap.ensure_runtime_path(str(_HOST_ROOT / "Project_export.py"))
 
     bridge_at = _index_of(sys.path, _IDE_BRIDGE)
-    root_at = _index_of(sys.path, _PROJECT_ROOT)
+    root_at = _index_of(sys.path, _HOST_ROOT)
 
-    assert bridge_at is not None, "src/ide_bridge was never added to sys.path"
-    assert root_at is not None, "the body root was never added to sys.path"
+    assert bridge_at is not None, "the host bridge was never added to sys.path"
+    assert root_at is not None, "the host body root was never added to sys.path"
     assert bridge_at < root_at, (
-        "src/ide_bridge must outrank the body root on sys.path, "
+        "the host bridge must outrank the body root on sys.path, "
         "otherwise `import project_snapshooter` can reach the root's "
         "Project_snapshooter.py on a case-insensitive filesystem"
     )
@@ -70,10 +71,10 @@ def test_runtime_ensure_sys_path_puts_bridge_ahead_of_root(monkeypatch):
         "_codesys_runtime_under_test", _IDE_BRIDGE / "codesys_runtime.py"
     )
     monkeypatch.setattr(sys, "path", [])
-    runtime._ensure_sys_path(str(_PROJECT_ROOT))
+    runtime._ensure_sys_path(str(_HOST_ROOT))
 
     bridge_at = _index_of(sys.path, _IDE_BRIDGE)
-    root_at = _index_of(sys.path, _PROJECT_ROOT)
+    root_at = _index_of(sys.path, _HOST_ROOT)
 
     assert bridge_at is not None and root_at is not None
     assert bridge_at < root_at
@@ -91,7 +92,7 @@ def test_no_bridge_module_collides_with_a_root_script():
 
     root_stems = {
         path.stem.lower(): path.name
-        for path in _PROJECT_ROOT.glob("*.py")
+        for path in _HOST_ROOT.glob("*.py")
     }
     collisions = {}
     for module in _IDE_BRIDGE.glob("*.py"):
@@ -116,7 +117,7 @@ def fake_body(tmp_path, monkeypatch):
     body = tmp_path / "body"
     bridge = body / "src" / "ide_bridge"
     bridge.mkdir(parents=True)
-    shutil.copy(str(_PROJECT_ROOT / "cds_bootstrap.py"), str(body / "cds_bootstrap.py"))
+    shutil.copy(str(_HOST_ROOT / "cds_bootstrap.py"), str(body / "cds_bootstrap.py"))
 
     (bridge / "codesys_fine.py").write_text("VALUE = 'fine'\n", encoding="utf-8")
     (bridge / "codesys_broken.py").write_text(

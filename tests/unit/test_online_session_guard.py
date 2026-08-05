@@ -24,7 +24,13 @@ from pathlib import Path
 
 import pytest
 
-BRIDGE_DIR = Path(__file__).parent.parent.parent / "src" / "ide_bridge"
+BRIDGE_DIR = (
+    Path(__file__).parent.parent.parent
+    / "products"
+    / "codesys-host"
+    / "src"
+    / "ide_bridge"
+)
 STATE_KEY = "_codesys_daemon_loop"
 
 # Variable read/write. These run on every `cts read` / `cts write` and must not

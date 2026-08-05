@@ -1,221 +1,118 @@
-# Analyzer — remaining work
+# Product boundaries and staged repository refactor
 
-Status: written 2026-08-04, after items 1–9 of `static_analyze/spec.md` landed.
-That document is the *consolidation* spec and is untouched; this one lists only
-what is **still open**.
+The repository contains several products with different runtimes and users.
+They must be separated by directory and package boundaries without changing
+their observable behaviour during the migration.
 
-## Verified state at authoring time
+## Current product boundaries
 
-Everything below was run against the working tree on 2026-08-04:
+The intended top-level structure is:
 
-| Check | Result |
-| --- | --- |
-| `python -m pytest tests/unit -q` | 996 passed, 3 skipped, **1 failed** (see A1 — the failure is intentional) |
-| rule selftest | 24 blocks passed, 0 failed |
-| fixture findings vs `static_analyze/baseline_findings.json` | 22 findings, **identical** on `(rule_id, unit_id, line, column, message)` |
-| `cts analyze rules` vs the same command in a detached worktree at `HEAD` | **identical** for all 12 rules (ignoring the absolute `doc` path, which differs only by checkout root) |
-| `ruff check cds_text_sync/analyze` | clean |
-| `cts analyze rules` from a non-repo working directory | loads, identical output |
+```text
+products/
+  cds-text-sync/
+    src/cds_text_sync/
 
-The consolidation spec's global constraint — *no rule may change its observable
-behaviour* — therefore holds. The one open item is a deletion, not a behaviour
-change.
+  cds-static-analyzer/
+    src/cds_static_analyzer/
 
----
+  cds-cli/
+    src/cds_cli/
 
-# A — Finish item 8 (one file per rule)
-
-Everything in item 8 is done except the deletion of the now-empty package.
-
-## A1. Delete `cds_text_sync/analyze/rules/impl/`
-
-**Blocked: two deletion attempts were denied. This needs an explicit go-ahead
-or a manual `rm`.**
-
-The directory holds no live code:
-
-* `__init__.py` — empty package marker.
-* `engine_blank.py` — dead. Superseded by `st/blanking.py` in item 3; nothing
-  imports it. A tree-wide grep for `rules.impl` / `rules/impl` (excluding
-  `build/` and `static_analyze/`) returns **zero hits**.
-* `__pycache__/` — compiled copies of the 12 deleted implementation modules.
-
-A full backup, `__pycache__` included, is at
-`…/scratchpad/impl_backup/`. The `__pycache__` in that backup is not
-incidental: it was the recovery source when the working tree was found holding
-reverted rule bodies, so keep it until the deletion is committed.
-
-**Effect:** `tests/unit/test_analyze_registry.py::test_one_file_per_rule` is
-red *only* because this directory exists —
-
-```
-AssertionError: rules/ must hold only .py and .md files: ['impl']
+  codesys-host/
+    entrypoints/
+      Project_*.py
+    ide_bridge/
 ```
 
-— and goes green on deletion, taking the suite to 997 passed, 3 skipped. That
-test is the item-8 acceptance guard: it asserts `rules/` holds exactly one
-`.py` and one `.md` per rule and nothing else, so the two-file split
-cannot come back unnoticed.
+The products have these responsibilities:
 
-## A2. Re-verify packaging after the deletion
+* `cds-text-sync` — synchronization libraries for Structured Text, project
+  folders, XML projections, manifests, diffs, and the external engine.
+* `cds-static-analyzer` — the human-facing analyzer for `.st` files only. It
+  must not depend on CODESYS XML or `ide_bridge`.
+* `cds-cli` — the user-facing command-line composition layer. It may depend on
+  product libraries but should contain little domain logic.
+* `codesys-host` — code executed inside CODESYS, including `Project_*.py`,
+  `ide_bridge`, and the bootstrap/runtime compatibility layer. It must remain
+  isolated from the normal CPython CLI and analyzer runtime.
+* `visu-lint` — a separate machine/LLM feedback product for visualization XML;
+  it must not be registered as a static-analyzer rule or merged into the `.st`
+  analyzer contract.
 
-Packaging itself needs no edit: `pyproject.toml:43` already ships
-`rules/*.py` and `rules/*.md`, and `[tool.setuptools.packages.find]` is
-auto-discovery, so the vanished package drops out on its own.
+Directory names may use hyphens for products; Python import packages use
+underscores. A product does not have to become independently publishable on
+the first migration step, but its source and dependency boundary must be
+visible in the tree.
 
-What is left is the confirmation, and it must **not** be run in this checkout —
-see part B. A rehearsal on a clean copy (`scratchpad/clean_src/`, `impl`
-removed there only) has already been built; once A1 lands, redo it against the
-real tree:
+## Migration rules
 
-```
-python -m pip wheel . --no-deps --no-cache-dir -w <tmp>
-```
+The refactor is staged. Each stage must preserve the existing CLI entrypoints,
+CODESYS deployment names, analyzer finding contracts, and test behaviour.
 
-then assert the wheel contains 24 entries under `cds_text_sync/analyze/rules/`
-(12 `.py` + 12 `.md`) and **no** `rules/impl/` entry.
+Do not begin by rewriting imports globally. First move files with compatibility
+shims or explicit path configuration, then change imports after the new
+boundary is covered by tests.
 
-## A3. Scratchpad cleanup
+The CODESYS host tree is a special runtime boundary: it is loaded by CODESYS/
+IronPython and may not import ordinary CPython-only packages. Existing root
+discovery and bridge import behaviour must either be preserved or replaced by
+an explicitly tested equivalent.
 
-A real git worktree was created for the `HEAD` comparison and is still
-registered:
+## Staged implementation
 
-```
-git worktree remove <scratchpad>/head_tree
-```
+### Stage 1 — isolate CODESYS host files — done
 
-The rest of the scratchpad (`clean_src/`, `wheel_out/`, `wheel_clean/`,
-`impl_backup/`) is outside the repo and needs no git action — but keep
-`impl_backup/` until A1 is committed.
+Move `Project_*.py`, `cds_bootstrap.py`, and `src/ide_bridge/` under
+`products/codesys-host/`. Preserve the deployable `Project_*.py` names and add
+a packaging/deployment mechanism if CODESYS requires them at a flat location.
+Update root discovery, bridge import tests, regression paths, and
+documentation.
 
----
+Acceptance criteria:
 
-# B — The stale `build/` directory
+* all existing unit and regression tests pass;
+* every CODESYS entrypoint remains discoverable under its original name;
+* no host module imports `cds-cli` or the static analyzer;
+* the normal CPython package does not depend on the host directory being on
+  `sys.path`.
 
-**Found while running A2. Not part of any spec item; new.**
+### Stage 2 — extract `cds-static-analyzer`
 
-`build/lib/cds_text_sync/…` is a pre-refactor copy of the tree. It still
-contains `rules/impl/*.py` — including `persistent_order.py`, a rule that no
-longer exists anywhere else in the repo, its id long since recycled.
+Move `cds_text_sync.analyze` and its rule resources into a dedicated
+`cds_static_analyzer` package. Preserve rule IDs, finding JSON, suppressions,
+baselines, CLI output, and `.st`-only scope. The analyzer must not import
+visualization or CODESYS-host modules.
 
-setuptools reuses that directory, so **a wheel built in this checkout silently
-ships dead code**: the first wheel built during verification contained 16
-`rules/impl/*.py` entries drawn entirely from `build/`, none of which exist in
-the source tree.
+### Stage 3 — extract `cds-cli`
 
-The consolidation spec says "do not touch `build/` — it is a stale copy of the
-tree, not a source", which was the right instruction *during* the refactor. It
-is now the thing that makes the packaging check lie.
+Move command parsing and dispatch into `cds_cli`. Keep `cts` and
+`cds-text-sync` command entrypoints working through compatibility wrappers while
+the migration is in progress. CLI handlers delegate to product APIs instead of
+becoming a new location for synchronization or analyzer logic.
 
-`build/` is already in `.gitignore:21` and is not tracked (`git ls-files build`
-→ 0 files), so removing it is local and reversible by rebuilding.
+### Stage 4 — separate visualization tooling
 
-**Recommended:** delete `build/` before A2, and add a note to the release
-procedure that the wheel is built from a clean tree. Not done — deleting build
-artifacts was outside the scope authorised for this refactor.
+Define the boundary between visualization support used by text synchronization
+and the independent `visu-lint` product. Low-level XML helpers may be shared
+when runtime-neutral. Analyzer registries, finding schemas, suppressions, and
+baselines must not be shared with `visu-lint`.
 
----
+### Stage 5 — packaging and test topology
 
-# C — Implemented and next rules: CTS0014–CTS0019
+Give each product an explicit build configuration and test ownership. Verify
+that a distribution for one product does not accidentally include another
+product's runtime files. Add a clean-tree packaging check to the release
+procedure.
 
-Item 7 added `st/blocks.py`, a nesting scanner over blanked text, as the
-replacement for the never-implemented `Capability.STATEMENT_AST`. It now
-supports the following rules:
+## Status
 
-* **CTS0014 — equality comparison on REAL/LREAL.** `IF x = 0.5 THEN` is a
-  correctness defect in IEC 61131-3 as much as anywhere else. Severity
-  `danger`, topic `Correctness`, scope `UNIT`, requires
-  `{ST_TEXT, DECLARATIONS}` — the declarations are needed to know the operand
-  is a float rather than an INT. Option: a tolerance-comparison whitelist, so
-  `ABS(a - b) < eps` is not flagged.
-* **CTS0015 — duplicate `CASE` label.** A label repeated in one `CASE` makes
-  the second branch unreachable. Severity `danger`, topic `Correctness`, scope
-  `UNIT`, requires `{ST_TEXT, BLOCK_STRUCTURE}`. This is the one that actually
-  needs `st/blocks.py`: label collection has to respect nested `CASE`
-  statements, which is exactly what the scanner provides and what CTS0003's
-  hand-rolled token stack does not generalise to.
+Stage 1 is complete. The CODESYS host product now lives under
+`products/codesys-host/` with the original `Project_*.py` names and the
+`src/ide_bridge` flat-module layout preserved inside that product. Bootstrap,
+menu installation, engine discovery, CLI daemon launching, CI compilation, and
+tests were updated accordingly.
 
-* **CTS0016 — unreachable code after control-flow exit.** Statements after
-  `RETURN`, `EXIT`, or `CONTINUE` are unreachable on that path.
-* **CTS0017 — constant control-flow condition.** Literal `TRUE`/`FALSE`
-  conditions are reported as likely temporary stubs.
-* **CTS0018 — read before assignment.** A local is read before its first
-  assignment in the implementation.
-* **CTS0019 — output not assigned on all paths.** A conditional output write
-  must cover every branch when no unconditional write exists.
-* **CTS0020 — write to `VAR_INPUT`.** An input parameter must not be modified
-  by its owning POU, including through a field or array element.
-* **CTS0021 — self-assignment.** A simple assignment such as `x := x` has no
-  observable effect and is usually leftover or erroneous code.
-* **CTS0022 — output read before assignment.** A function or method must not
-  read a `VAR_OUTPUT` before assigning its value for the current call.
-* **CTS0023 — empty statement.** Standalone or duplicate semicolons add no
-  behavior and usually indicate leftover editing artifacts.
-* **CTS0024 — multiple output writes.** A `VAR_OUTPUT` written more than once
-  along the same control-flow path may hide an accidental overwrite. Mutually
-  exclusive `IF`/`ELSE` and `CASE` arms are analyzed separately.
-* **CTS0025 — concurrent writes to shared data.** Qualified project data
-  written by programs associated with different execution contexts may have a
-  scheduling-dependent final value.
-* **CTS0026 — overlapping `AT` memory areas.** Explicit scalar declarations
-  must not claim overlapping bits in the same input, output, or marker area.
-* **CTS0027 — temporary function-block instance.** A local FB in a function or
-  method is recreated on every call, so its internal state does not persist.
-* **CTS0028 — suspicious `STRING` operation.** Byte-oriented indexing, address
-  access, and non-ASCII literals can depend on the configured encoding.
-* **CTS0029 — multiple calls to one function-block instance.** Calling an FB
-  twice along one path may advance its state twice in one cycle.
-
-Ids are opaque, assigned in ascending order, never reused, and the CTS0005 gap
-is permanent.
-
-Both rules follow the post-refactor shape with no exceptions: one `.py`
-file holding `check` plus `RULE = RuleSpec(...)`, one `.md` alongside it with
-`## What it is` / `## Why it is dangerous` / `## Example` / `## When ignoring is
-legitimate` / `## How to fix`, front matter carrying **no** behaviour metadata,
-and every ```` ```st bad ```` fence carrying an explicit count and at least one
-`// cts:here` marker. Read the body through `body(unit)` and report offsets via
-`section.at(...)`; never recompute `impl_start` or call `blank_noise` directly.
-
----
-
-# D — Open observations (not scheduled)
-
-These were found during the refactor and are recorded so they are not
-rediscovered later. Neither is a regression.
-
-## D1. `visu_lint/` is intentionally separate — decided
-
-`visu_lint/` implements `VISU001` with its own CLI and JSON finding shape.
-This is intentional, not a second implementation of the human-facing static
-analyzer:
-
-* `cts analyze` is for users and analyzes Structured Text (`.st`) code;
-* `cts visu-lint` is a narrow machine/LLM feedback loop for generated
-  visualization XML;
-* the two tools do not share a rule registry, suppression model, baseline, or
-  finding contract;
-* low-level XML helpers may be shared, but visualization checks must not be
-  registered as CTS analyzer rules.
-
-The separate CLI and finding shape are therefore part of the public boundary.
-Do not fold `VISU001` into the analyze registry.
-
-## D2. CTS0004 fingerprint aggregation — decided
-
-The fixture run produces 22 findings but only 21 distinct fingerprints: the two
-`4095` magic-number hits in `PB.st` share one fingerprint. This is intentional.
-
-CTS0004 diagnoses a repeated literal as one unit-level refactoring issue, not
-two independent defects. One suppression therefore silences all occurrences of
-that normalized literal in the same POU. Adding an occurrence discriminator
-would make suppressions noisier and invalidate existing baselines without
-improving the rule's intended semantics.
-
-## D3. Repo-wide ruff debt — done
-
-The repo-wide Ruff debt has been removed. `python -m ruff check .` now passes
-with no findings. Safe unused-import and unused-variable fixes were applied;
-the remaining E402 cases are intentional imports after `sys.path`/CLR setup in
-CODESYS and IronPython host modules, and are documented as per-file ignores in
-`pyproject.toml`.
+The next implementation task is Stage 2: extract the static analyzer into a
+dedicated `cds_static_analyzer` package while preserving its `.st`-only scope,
+rule IDs, finding contract, suppressions, baselines, and CLI output.

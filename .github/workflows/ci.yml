@@ -46,18 +46,18 @@ jobs:
         shell: pwsh
         run: |
           python -m compileall `
-            cds_bootstrap.py `
-            Project_build.py `
-            Project_analyze_ui.py `
-            Project_compare_ui.py `
-            Project_directory.py `
-            Project_discover.py `
-            Project_export.py `
-            Project_import.py `
-            Project_options.py `
-            Project_resources.py `
-            Project_snapshooter.py `
-            Project_daemon.py `
+            products/codesys-host/cds_bootstrap.py `
+            products/codesys-host/Project_build.py `
+            products/codesys-host/Project_analyze_ui.py `
+            products/codesys-host/Project_compare_ui.py `
+            products/codesys-host/Project_directory.py `
+            products/codesys-host/Project_discover.py `
+            products/codesys-host/Project_export.py `
+            products/codesys-host/Project_import.py `
+            products/codesys-host/Project_options.py `
+            products/codesys-host/Project_resources.py `
+            products/codesys-host/Project_snapshooter.py `
+            products/codesys-host/Project_daemon.py `
             cds_text_sync `
             src
 

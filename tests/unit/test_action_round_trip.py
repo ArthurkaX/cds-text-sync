@@ -31,7 +31,10 @@ import folder_reader
 
 
 _BRIDGE = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "src", "ide_bridge")
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "products", "codesys-host",
+        "src", "ide_bridge",
+    )
 )
 if _BRIDGE not in sys.path:
     sys.path.insert(0, _BRIDGE)

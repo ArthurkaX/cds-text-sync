@@ -63,8 +63,16 @@ def _project_sync_folder(project):
 
 
 def _body_root():
-    """The repository/package body, two levels above src/ide_bridge."""
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    """The repository/package body containing the CPython package."""
+    current = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        if os.path.isdir(os.path.join(current, "cds_text_sync")):
+            return current
+        parent = os.path.dirname(current)
+        if not parent or parent == current:
+            break
+        current = parent
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _python_command():

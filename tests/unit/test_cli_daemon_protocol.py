@@ -5,7 +5,7 @@ test_cli_daemon_protocol.py -- CLI <-> daemon method-parity contract.
 Every daemon method the top-level CLI sends must be handled by the reverse-pipe
 daemon. Command name, CLI->method mapping, and the daemon's handler table live in
 three different files (cds_text_sync/_cli_parser.py, cds_text_sync/_cli_handlers_daemon.py,
-src/ide_bridge/ide_reverse_pipe_loop.py); nothing enforces that they agree, so a
+products/codesys-host/src/ide_bridge/ide_reverse_pipe_loop.py); nothing enforces that they agree, so a
 renamed daemon handler or a typo'd method name is a silent runtime failure
 ("Unknown method: X") that no unit test would otherwise catch. These contract
 tests close that gap.
@@ -34,7 +34,7 @@ from types import ModuleType
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
-_IDE_BRIDGE = _ROOT / "src" / "ide_bridge"
+_IDE_BRIDGE = _ROOT / "products" / "codesys-host" / "src" / "ide_bridge"
 _CLI = _ROOT / "cds_text_sync"
 
 if str(_ROOT) not in sys.path:

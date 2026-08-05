@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Shared bootstrap helpers for root-level CODESYS scripts."""
+"""Shared bootstrap helpers for the CODESYS-host product entrypoints."""
 import os
 import sys
 

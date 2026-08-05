@@ -11,7 +11,10 @@ import xml.sax.saxutils as saxutils
 
 sys.path.insert(
     0,
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "ide_bridge"),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "products", "codesys-host", "src", "ide_bridge",
+    ),
 )
 from ide_apply_patch import apply_patch  # noqa: E402
 

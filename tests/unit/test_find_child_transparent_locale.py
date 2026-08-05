@@ -17,7 +17,10 @@ import sys
 import pytest
 
 _BRIDGE_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "src", "ide_bridge")
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "products", "codesys-host",
+        "src", "ide_bridge",
+    )
 )
 if _BRIDGE_DIR not in sys.path:
     sys.path.insert(0, _BRIDGE_DIR)

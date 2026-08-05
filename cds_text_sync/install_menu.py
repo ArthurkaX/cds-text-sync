@@ -33,6 +33,7 @@ MENU_FOLDER = "cds-text-sync"
 _DISPOSABLE_DIRS = frozenset(["__pycache__"])
 
 _SENTINEL_DIR = Path("src") / "ide_bridge"
+_HOST_DIR = Path("products") / "codesys-host"
 
 
 # -- locating things ---------------------------------------------------------
@@ -46,11 +47,20 @@ def default_body_root():
     return Path.home() / "cds-text-sync"
 
 
+def host_body_root(body):
+    """Return the CODESYS host body inside a repository or standalone body."""
+    body = Path(body)
+    nested = body / _HOST_DIR
+    if (nested / _SENTINEL_DIR).is_dir() and (nested / "cds_bootstrap.py").is_file():
+        return nested
+    return body
+
+
 def body_is_valid(body):
     """True when *body* looks like a cds-text-sync tree."""
     if not body:
         return False
-    body = Path(body)
+    body = host_body_root(body)
     return (body / _SENTINEL_DIR).is_dir() and (body / "cds_bootstrap.py").is_file()
 
 
@@ -161,7 +171,7 @@ def load_manifest(body_root):
     Loaded by path rather than imported: an editable install only exposes the
     ``cds_text_sync`` package, and the body may not be on sys.path at all.
     """
-    bootstrap = Path(body_root) / "cds_bootstrap.py"
+    bootstrap = host_body_root(body_root) / "cds_bootstrap.py"
     if not bootstrap.is_file():
         raise FileNotFoundError(str(bootstrap))
     spec = importlib.util.spec_from_file_location("_cds_manifest", str(bootstrap))
@@ -244,7 +254,7 @@ def render_stub(spec, body_root):
         marker=MARKER,
         name=spec["name"],
         summary=spec.get("summary", "See docs/scripts.md."),
-        home=encode_path_literal(body_root),
+        home=encode_path_literal(host_body_root(body_root)),
         alias=alias_block,
     )
 
@@ -310,7 +320,7 @@ def verify_menu(menu_dir, body_root):
     for name in sorted(actual - expected):
         problems.append("unexpected file in the menu folder: " + name)
 
-    home_literal = encode_path_literal(body_root)
+    home_literal = encode_path_literal(host_body_root(body_root))
     for name in sorted(expected & actual):
         path = menu_dir / name
         try:

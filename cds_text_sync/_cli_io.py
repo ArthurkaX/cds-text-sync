@@ -25,7 +25,10 @@ from reverse_pipe_client import send_command_reverse
 # -- Config ------------------------------------------------------------------
 
 ENGINE_CLI = _ENGINE_DIR / "engine_cli.py"
-DAEMON_SCRIPT = _SCRIPT_DIR.parent / "Project_daemon.py"
+_REPO_ROOT = _SCRIPT_DIR.parent
+_HOST_DAEMON = _REPO_ROOT / "products" / "codesys-host" / "Project_daemon.py"
+_LEGACY_DAEMON = _REPO_ROOT / "Project_daemon.py"
+DAEMON_SCRIPT = _HOST_DAEMON if _HOST_DAEMON.is_file() else _LEGACY_DAEMON
 
 _CODESYS_CANDIDATES = [
     r"C:\Program Files\CODESYS 3.5.22.10\CODESYS\Common\CODESYS.exe",
