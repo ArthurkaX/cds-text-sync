@@ -39,7 +39,13 @@ function Test-PythonCommandName {
         }
 
         $versionText = [string]($versionOutput -join " ")
-        if ($versionText -notmatch "Python\s+3\.") {
+        # cds-text-sync requires 3.11+ (the analyzer reads TOML via stdlib
+        # tomllib). Accepting any 3.x here would let the install succeed and
+        # then fail inside pip with an opaque requires-python error.
+        if ($versionText -notmatch "Python\s+3\.(\d+)") {
+            return $false
+        }
+        if ([int]$Matches[1] -lt 11) {
             return $false
         }
 
@@ -64,7 +70,7 @@ function Get-PythonCommandName {
 }
 
 function Show-PythonConfigurationHelp {
-    Write-Host "`nPython was found only partially, or it is not reachable as a working Python 3 command." -ForegroundColor Yellow
+    Write-Host "`nPython was found only partially, or it is not reachable as a working Python 3.11+ command." -ForegroundColor Yellow
     Write-Host "cds-text-sync expects this command to work from a new PowerShell/CMD window:" -ForegroundColor Yellow
     Write-Host "    python --version" -ForegroundColor Cyan
     Write-Host "`nRecommended fixes:" -ForegroundColor Cyan
@@ -76,8 +82,8 @@ function Show-PythonConfigurationHelp {
 }
 
 function Offer-PythonInstall {
-    Write-Host "`n[!] A working Python 3 command was not found." -ForegroundColor Yellow
-    Write-Host '    cds-text-sync needs `python --version` to work from PowerShell/CMD.' -ForegroundColor Yellow
+    Write-Host "`n[!] A working Python 3.11+ command was not found." -ForegroundColor Yellow
+    Write-Host '    cds-text-sync needs `python --version` to report Python 3.11 or newer from PowerShell/CMD.' -ForegroundColor Yellow
     Write-Host "`nChoose an option:" -ForegroundColor Cyan
     Write-Host "[W] Install with winget" -ForegroundColor Green
     Write-Host "[M] Open manual download page" -ForegroundColor Green

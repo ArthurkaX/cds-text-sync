@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "cds-text-sync"
 dynamic = ["version"]
 description = "CODESYS CLI + reverse-pipe daemon"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 authors = [{ name = "cds-text-sync contributors" }]
 
 [project.urls]
