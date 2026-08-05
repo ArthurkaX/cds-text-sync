@@ -1,5 +1,5 @@
 """
-test_analyze_config.py - cts-analyze.toml parsing, overrides, path scopes.
+test_config.py - cts-analyze.toml parsing, overrides, path scopes.
 """
 
 import pytest
@@ -130,8 +130,7 @@ def test_rule_options_parsed_and_available(tmp_path):
 
 
 def test_unknown_rule_option_not_rejected_at_load(tmp_path):
-    """A typo in an option name must not fail config load: typos are
-    surfaced per-run as ``rule-option`` Diagnostics, never config errors."""
+    """Unknown options are diagnosed at dispatch time, not config load."""
     path = _write_config(
         tmp_path,
         "\n".join(
@@ -142,5 +141,4 @@ def test_unknown_rule_option_not_rejected_at_load(tmp_path):
         ),
     )
     config = load_config(path)
-    # Unknown key is stored as-is; validation happens at dispatch time.
     assert "typo_option" in config.options_for("CTS0001")

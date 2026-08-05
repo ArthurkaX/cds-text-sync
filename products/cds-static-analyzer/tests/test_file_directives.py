@@ -36,3 +36,4 @@ def test_directive_info_accepts_em_dash_but_reports_portability_hint():
     rules, issues = directive_info("// cts:ignore-file CTS0001 — legacy\n")
     assert rules == frozenset({"CTS0001"})
     assert issues[0][0] == "directive-em-dash"
+
