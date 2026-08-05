@@ -155,6 +155,19 @@ safety rules unless a safe textual representation is available.
   resolution into `.dump/discover_tree.log` and `.dump/discover_report.json`.
 - **`Project_resources.py`**: Analyzes snapshot object sizes and categories,
   writing `.dump/resources_report.json` and `.dump/resources_top.log`.
+- **`Project_analyze_ui.py`**: Opens the offline static-analysis desktop UI for
+  the current project. It is a thin adapter over the same analysis engine as
+  `cts analyze` — it never talks to CODESYS or the daemon. Requires the optional
+  UI dependency (`pip install 'cds-text-sync[ui]'`); the command-line equivalent
+  is [`cts analyze`](../cds_text_sync/CLI.md#static-analysis-cts-analyze).
+- **`Project_snapshooter.py`**: PLC variable preset snapshots. Runs a small
+  interactive wizard that takes, compares, and restores named presets of online
+  variable values (for example
+  `snapshooter.take(paths=["GVL_Routing.partCount"], label="speed")`). It shares
+  its backend with the future `cts snapshooter` CLI; the offline variable tree
+  it maps is built from `.dump/IDE.xml` by the external engine
+  (`snapshooter-map`). The CLI equivalents for capturing and applying live
+  values are `cts variable-snapshot` and `cts variable-restore`.
 - **`Project_daemon.py`**: Starts the reverse-pipe daemon so the `cts` CLI can
   drive the open IDE. See [`cds_text_sync/CLI.md`](../cds_text_sync/CLI.md).
 - Offline static call graph via `cts engine call-tree`. See `--help` for options.

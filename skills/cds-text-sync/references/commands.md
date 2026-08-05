@@ -61,6 +61,28 @@ Check the installed command help for whether download also starts the applicatio
 
 Keep restore in dry-run mode unless the user explicitly requests application.
 
+## Static Analysis
+
+| Goal | Command |
+|---|---|
+| Run the offline analysis | `cts analyze` |
+| List rules | `cts analyze rules` |
+| Show one rule's docs | `cts analyze explain CTS0001` |
+| Self-test rules | `cts analyze selftest` |
+| Manage the baseline | `cts analyze baseline create\|update\|check` |
+| Apply suppress/fix-later decisions | `cts analyze triage --apply decisions.json` |
+| Validate generated visu XML | `cts visu-lint --xml file.xml` |
+
+`cts analyze` runs offline over `project-view/` — it never talks to the daemon.
+`--rule CTSxxxx` restricts to one rule (repeatable); `--fail-on` sets the exit-1
+threshold (`danger`/`suspicious`/`style`); `--incomplete error` makes partial
+runs exit 3. Exit codes: 0 passed, 1 findings at/above `--fail-on`, 2 config or
+startup error, 3 incomplete. Some rules are opt-in and disabled by default. The
+`cts-analyze.toml` config sets `[analyze] fail_on`/`incomplete`, `[rules.<ID>]
+enabled`/`severity`/`options`, and `[[rule_scope]]`. State lives in
+`.cts-analyze/` (baseline.json, suppressions.toml, session.json); source files
+opt out with `// cts:ignore-file CTS0001 -- reason`.
+
 ## Tests, Offline Engine, and Escape Hatch
 
 | Goal | Command |

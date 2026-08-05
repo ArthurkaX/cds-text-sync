@@ -159,6 +159,103 @@ Plans live in `<sync-folder>/.test/`. If `--file` is omitted, all `*.json`
 plans are executed in sorted order. See [TEST_FORMAT.md](TEST_FORMAT.md) for the
 JSON schema and examples.
 
+## Static Analysis (`cts analyze`)
+
+`cts analyze` runs offline static analysis over the exported `project-view/`
+tree. It never talks to the daemon and never reads `.dump/`, so it works with no
+CODESYS running.
+
+| Subcommand | Meaning |
+| --- | --- |
+| `analyze [options]` (or `analyze run`) | Run the analysis. |
+| `analyze rules` | List the registered rules and their severities. |
+| `analyze explain CTS0001` | Show one rule's documentation. |
+| `analyze selftest` | Run every rule against its own documentation examples. |
+| `analyze baseline create\|update\|check` | Manage the finding baseline. |
+| `analyze triage --apply decisions.json` | Apply pre-approved suppress / fix-later decisions. |
+
+Key flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--workspace DIR` | Sync folder containing `project-view/` (default: nearest ancestor with `cts-analyze.toml` + `project-view`). |
+| `--project-view DIR` | Explicit project-view directory. Mutually exclusive with `--workspace`. |
+| `--rule CTS0001` | Restrict the run to one rule id (repeatable). |
+| `--fail-on danger\|suspicious\|style` | Exit 1 when findings at/above this severity exist (default: `suspicious`). |
+| `--incomplete warn\|error\|ignore` | Policy for incomplete analysis (default: `warn`; `error` exits 3). |
+| `--format json\|text\|sarif\|md` | Output format (default: `json`). |
+| `--pretty`, `-p` | Shortcut for `--format text`. |
+
+Severities are `danger`, `suspicious`, and `style`. A run distinguishes
+*findings* (a rule fired — a problem in the project) from *diagnostics* (the
+analysis itself could not provide a declared capability, for example a file it
+could not read); a run that is only partially complete is never silently
+"clean".
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Quality policy passed. |
+| `1` | Unsuppressed findings at or above `--fail-on`. |
+| `2` | Configuration error or analysis cannot start. |
+| `3` | Incomplete analysis with `--incomplete=error`. |
+
+The workspace is resolved in this order: an explicit `--workspace`; the nearest
+ancestor directory that contains both a `cts-analyze.toml` and a
+`project-view/`; or an explicit `--project-view`. There is no daemon lookup, and
+passing both `--workspace` and `--project-view` is an error.
+
+### `cts-analyze.toml`
+
+Configuration lives in a `cts-analyze.toml` next to `project-view/`. It sets
+the quality policy, overrides per-rule severity and enabled state, tunes
+per-rule options, and scopes rules to path globs:
+
+```toml
+[analyze]
+fail_on = "suspicious"
+incomplete = "warn"
+
+[rules.CTS0006]        # rule-level override
+enabled = true
+severity = "danger"
+
+[rules.CTS0004]
+enabled = true
+options.min_occurrences = 2
+
+[[rule_scope]]
+path = "POUs/**"
+enabled = true
+exclude = ["CTS0004", "CTS0007"]
+```
+
+Some rules are opt-in and disabled by default: they run only when selected
+explicitly with `--rule CTSxxxx` or enabled in the config with
+`[rules.CTSxxxx] enabled = true`.
+
+### State and directives
+
+The analyzer keeps its state in `<sync-folder>/.cts-analyze/`, never inside
+`project-view/` (that tree is owned by the sync engine):
+
+- `baseline.json` — machine-written lock file, one entry per finding.
+- `suppressions.toml` — human + triage written; every entry carries a mandatory
+  `reason`.
+- `session.json` — resumable triage session.
+
+Individual source files can disable rules with an inline directive. The text
+before `--` is the rule list, the remainder is a mandatory human-readable
+reason:
+
+```st
+// cts:ignore-file CTS0001 -- legacy pattern kept for cross-revision compat
+```
+
+`cts ui` opens the same offline analysis in a local desktop interface. It
+requires the optional UI dependency (`pip install 'cds-text-sync[ui]'`).
+
 ## Project And Object Tools
 
 These commands are useful for diagnostics and targeted maintenance, but they
@@ -220,6 +317,24 @@ Colours are never written into a sketch. Elements carry a semantic
 project-view directory. See `skills/cds-visu-svg/SKILL.md` for the authoring
 contract.
 
+### `cts visu-lint`
+
+A small machine-only validator for generated visualization XML:
+
+```bash
+cts visu-lint --xml screen.xml
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--xml FILE` | Generated visualization XML file to validate (required). |
+
+It reports rule `VISU001`: an `ExplicitColor` literal in a colour member is
+dead when a live `NamedColor` takes precedence — generated XML must not carry
+both. Output is a single JSON object on `stdout` (`schema_version`, `ok`,
+`findings`); exit code is `0` when clean, `1` when findings exist, `2` on an
+unreadable input file.
+
 ## Raw And Engine Escape Hatches
 
 The normal CLI should cover everyday use. These commands exist for compatibility
@@ -267,6 +382,8 @@ The simplified CLI maps to daemon methods as follows:
 | `read` | `read_variable` |
 | `write` | `write_variable` |
 | `test` | `cicd` |
+| `analyze` | offline — no daemon method |
+| `visu-lint` | offline — no daemon method |
 
 ## Timeouts
 
