@@ -4,6 +4,7 @@ build_config = "../../pyproject.toml"
 runtime = "cpython"
 artifact = "wheel"
 test_paths = [
+  "tests/test_*.py",
   "../../tests/unit/test_*.py",
   "../../tests/regression/offline_regression.py",
 ]
