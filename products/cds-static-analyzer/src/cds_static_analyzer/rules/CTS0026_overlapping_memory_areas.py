@@ -33,7 +33,10 @@ _TYPE_BITS = {
     "ULINT": 64,
     "LREAL": 64,
 }
-_ADDRESS_BITS = {"X": 1, "B": 8, "W": 16, "D": 32, "L": 64}
+# Byte-indexed IEC addresses advance by eight bits.  ``%IX1.0`` is therefore
+# bit 8, not bit 1; treating X like a one-bit address produces false overlaps
+# between every adjacent input/output byte.
+_ADDRESS_BITS = {"X": 8, "B": 8, "W": 16, "D": 32, "L": 64}
 
 
 def _declarations(ctx):
