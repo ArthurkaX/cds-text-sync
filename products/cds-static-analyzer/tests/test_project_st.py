@@ -2,6 +2,7 @@
 
 import os
 
+import cds_static_analyzer as analyzer
 from cds_static_analyzer.project import build_st_snapshot
 from cds_static_analyzer.st import kinds as K
 
@@ -61,3 +62,8 @@ def test_public_st_snapshot_ignores_xml_files(tmp_path):
 
     assert [unit.source_path for unit in snap.units] == ["POUs/Main.st"]
     assert snap.source_errors == []
+
+
+def test_package_public_api_exposes_st_builder_only():
+    assert analyzer.build_st_snapshot is build_st_snapshot
+    assert not hasattr(analyzer, "build_snapshot")

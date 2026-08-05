@@ -1,6 +1,7 @@
 """Section access layer for analyzer rule text."""
 
 from cds_static_analyzer import project as pm
+from cds_static_analyzer import project_compat as compat
 from cds_static_analyzer.st.body import body, declaration
 
 _SNIPPET = (
@@ -63,7 +64,7 @@ def test_body_is_falsy_when_text_is_empty():
 
 
 def test_declaration_is_falsy_when_absent():
-    unit = pm._build_xml_unit("snippet.xml", "<Visualization></Visualization>")
+    unit = compat._build_xml_unit("snippet.xml", "<Visualization></Visualization>")
     assert not declaration(unit)
 
 

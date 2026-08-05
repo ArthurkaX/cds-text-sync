@@ -6,6 +6,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from cds_static_analyzer import project as project_mod
+from cds_static_analyzer import project_compat
 from cds_static_analyzer.capabilities import Scope
 from cds_static_analyzer.config import ResolvedConfig
 from cds_static_analyzer.model import Finding
@@ -125,12 +126,12 @@ def run_snippet(rule, text):
     lower = text.lower()
     if "<single" in lower or "<?xml" in lower or "<visual" in lower:
         try:
-            unit = project_mod._build_xml_unit("snippet.xml", text)
+            unit = project_compat._build_xml_unit("snippet.xml", text)
         except ET.ParseError:
             unit = None
         if unit is None:
             try:
-                unit = project_mod._build_xml_unit(
+                unit = project_compat._build_xml_unit(
                     "snippet.xml", f"<Visualization>\n{text}\n</Visualization>"
                 )
             except ET.ParseError:
