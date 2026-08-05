@@ -1,4 +1,4 @@
-# Реализованные правила
+# Implemented rules
 
 - CTS0001 — Commented-out code
 - CTS0002 — Unused input
