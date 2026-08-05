@@ -1160,7 +1160,6 @@ def _run_winforms_interactive(app="Application", save_to=""):
         )
         return None
     root_model = build_tui_tree(rows, app=app)
-    leaf_rows = dict((r.get("path"), r) for r in rows if r.get("path") and r.get("leaf"))
 
     class SnapshooterForm(Form):
         def __init__(self):

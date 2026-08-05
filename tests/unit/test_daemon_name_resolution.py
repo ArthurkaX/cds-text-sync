@@ -23,7 +23,6 @@ import dis
 import importlib
 import importlib.util
 import inspect
-import os
 import sys
 import types
 from pathlib import Path

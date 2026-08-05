@@ -5,7 +5,6 @@ codesys_ui_diff.py - Side-by-side diff viewer for compare UI.
 from __future__ import print_function
 
 import difflib
-import os
 
 try:
     import clr

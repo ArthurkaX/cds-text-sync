@@ -11,7 +11,6 @@ import json
 import os
 import sys
 import time
-import traceback
 
 from ide_daemon_state import (
     _log,

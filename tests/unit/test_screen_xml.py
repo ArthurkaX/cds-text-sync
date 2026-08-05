@@ -7,7 +7,6 @@ independently of the element builder.
 """
 
 import os
-import re
 import sys
 
 import pytest
@@ -123,7 +122,6 @@ class TestResizeScreen:
 
     def test_resize_preserves_rest(self, screen_xml_text):
         """Resize should not affect unrelated structure."""
-        original_len = len(screen_xml_text)
         resized = screen_xml.resize_screen(screen_xml_text, 1024, 600)
         # The file should still have all structural markers.
         assert resized.count("</Single>") == screen_xml_text.count("</Single>")

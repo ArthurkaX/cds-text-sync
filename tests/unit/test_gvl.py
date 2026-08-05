@@ -7,9 +7,7 @@ Verifies variable detection from element specs and correct .st file generation.
 
 import os
 import sys
-import tempfile
 
-import pytest
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
@@ -348,7 +346,7 @@ class TestCrossGvlDedup:
         with open(os.path.join(hmi_dir, "HMI.st"), "w") as f:
             f.write("VAR_GLOBAL\n    OutTemp : REAL;\nEND_VAR\n")
         elems = [{"params": {"text_var": "HMI.OutTemp", "text": "%3.1f"}}]
-        result = gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
+        gvl.ensure_gvl(str(tmp_path), elems, gvl_name="VisuVars")
         # Path is returned but the file is never created (nothing new to add).
         assert not os.path.isfile(os.path.join(pou_dir, "VisuVars.st"))
 

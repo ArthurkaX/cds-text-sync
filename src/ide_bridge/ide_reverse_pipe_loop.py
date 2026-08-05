@@ -17,11 +17,8 @@ This avoids calling CODESYS APIs from a background thread.
 
 from __future__ import print_function
 
-import io
-import json
 import os
 import sys
-import tempfile
 import time
 import traceback
 
@@ -32,8 +29,6 @@ _LOOP_DIR = os.path.dirname(os.path.abspath(__file__))
 if _LOOP_DIR not in sys.path:
     sys.path.insert(0, _LOOP_DIR)
 
-import ide_online_helpers as _helpers
-import ide_runtime_common as _common
 
 clr.AddReference("System.IO.Pipes")
 clr.AddReference("System.IO")
@@ -46,42 +41,17 @@ from ide_daemon_state import (
     PIPE_NAME,
     VERSION,
     CONNECT_TIMEOUT_MS,
-    LOG_FILE,
-    MAX_MESSAGE_SIZE,
-    _DEFAULT_CONFIG,
-    _now,
     _log,
-    _read_text_utf8,
     _read_json_from_pipe,
     _write_json_to_pipe,
-    _require_param,
-    _get_active_project,
-    _obj_name,
-    _json_safe,
-    _build_path,
     _load_daemon_config,
-    _save_daemon_config,
     _check_permission,
     _get_status_info,
-    _read_online_attr,
-    _bool_or_none,
     _get_plc_status_snapshot,
 )
 
 from ide_daemon_helpers import (
-    _get_project_info_object,
-    _project_info_summary,
-    _project_info_properties,
-    _get_device_objects,
-    _invalidate_device_cache,
-    _find_object_in_project,
-    _active_application_name,
-    _read_text_member,
-    _find_object_by_selector,
-    _ensure_online_app,
-    _build_tree,
     _get_sync_folder,
-    _active_app_online_state,
 )
 
 from ide_handlers_plc import (
@@ -452,7 +422,7 @@ def run_loop():
                     _dash.log_command("[WARN] Sync folder not set")
                 else:
                     _dash.log_command("Sync folder: {0}".format(os.path.basename(sf)))
-        except Exception as e:
+        except Exception:
             _dash = None
 
     while sys._codesys_daemon_loop.get("running", False):

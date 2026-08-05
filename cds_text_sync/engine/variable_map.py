@@ -31,6 +31,8 @@ A "member" is a dict: {name, type, scope, line, initial}.
 A "leaf" is a dict: {path, type, leaf(bool), note}.
 """
 
+import io
+import os
 import re
 
 ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
@@ -688,10 +690,6 @@ def _index_product(ranges):
 # ---------------------------------------------------------------------------
 # High-level map builder (CLI / offline use)
 # ---------------------------------------------------------------------------
-
-import io
-import os
-
 
 def pou_name(decl, default):
     """Extract the POU name from a PROGRAM/FUNCTION_BLOCK/FUNCTION header."""

@@ -212,9 +212,10 @@ that normalized literal in the same POU. Adding an occurrence discriminator
 would make suppressions noisier and invalidate existing baselines without
 improving the rule's intended semantics.
 
-## D3. Repo-wide ruff debt
+## D3. Repo-wide ruff debt — done
 
-`ruff check` over the whole repo reports 35 errors, 12 auto-fixable. All are
-pre-existing and none are in `cds_text_sync/analyze` (which is clean); they sit
-in `tests/unit/test_xml_helpers.py` and similar. Untouched by this work and out
-of scope for it, but worth one cleanup pass so the signal is usable.
+The repo-wide Ruff debt has been removed. `python -m ruff check .` now passes
+with no findings. Safe unused-import and unused-variable fixes were applied;
+the remaining E402 cases are intentional imports after `sys.path`/CLR setup in
+CODESYS and IronPython host modules, and are documented as per-file ignores in
+`pyproject.toml`.

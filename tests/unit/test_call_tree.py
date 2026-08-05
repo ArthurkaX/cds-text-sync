@@ -8,7 +8,6 @@ Uses synthetic .st snippets rather than real project directories.
 import json
 import os
 import tempfile
-from unittest.mock import patch
 
 import pytest
 
@@ -378,7 +377,7 @@ class TestBuildCallTree:
 
     def test_single_program_with_function_calls(self, system_catalog):
         """A single .st file with a PROGRAM calling a function."""
-        from call_tree import _collect_project_symbols_from_st_files, build_call_tree
+        from call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a function file

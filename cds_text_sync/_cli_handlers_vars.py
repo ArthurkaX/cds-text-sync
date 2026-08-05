@@ -161,7 +161,8 @@ def cmd_variable_snapshot(
     import snapshot_engine as se
 
     rows, stats, base, vm = _build_map_rows(path_filter, sync_folder, include_programs)
-    read_fn = lambda exprs: _batch("read_variables", "names", exprs, timeout)
+    def read_fn(exprs):
+        return _batch("read_variables", "names", exprs, timeout)
     try:
         rows, rstats = se.run_snapshot(rows, read_fn)
     except RuntimeError as e:
@@ -249,7 +250,8 @@ def cmd_variable_restore(
         print(_format_output(summary, fmt=output_fmt, title="variable_restore"))
         return
 
-    write_fn = lambda items: _batch("write_variables", "items", items, timeout)
+    def write_fn(items):
+        return _batch("write_variables", "items", items, timeout)
     try:
         eligible, wstats = se.apply_restore(eligible, write_fn)
     except RuntimeError as e:

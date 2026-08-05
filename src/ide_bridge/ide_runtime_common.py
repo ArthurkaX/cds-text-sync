@@ -25,7 +25,6 @@ if _ENGINE_DIR not in sys.path:
 
 from _project_layout import resolve_layout
 from _project_settings import load_project_settings
-from xml_helpers import normalize_guid
 
 
 def dump_path(project_root):

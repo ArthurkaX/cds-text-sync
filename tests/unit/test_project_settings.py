@@ -5,7 +5,6 @@ settings keys (coercion, aliases, defaults, round-trip).
 """
 
 import json
-import os
 
 from _project_settings import (
     SYNC_MODE_TEXT_FIRST,

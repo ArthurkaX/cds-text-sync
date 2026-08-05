@@ -5,7 +5,6 @@ test_diff_engine.py – Unit tests for diff_engine.py (Priority 3).
 Uses synthetic ProjectModel instances with small helper functions.
 """
 
-import pytest
 import xml.etree.ElementTree as ET
 from _project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
 from diff_engine import DiffEngine

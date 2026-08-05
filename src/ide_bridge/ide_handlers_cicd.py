@@ -10,7 +10,6 @@ from __future__ import print_function
 import json
 import os
 import sys
-import time
 
 import ide_online_helpers as _helpers
 
@@ -133,9 +132,7 @@ def _cmd_cicd(params):
     Args:
         file: path to test JSON file (relative to sync_folder/.test/ or absolute)
     """
-    import time as _time
 
-    import ide_online_helpers as _helpers
 
     project, err = _get_active_project()
     if err:
@@ -392,7 +389,6 @@ def _run_test_plan(project, plan):
 
     for test in tests:
         test_name = test.get("name", "unnamed")
-        test_timeout = test.get("timeout", plan_timeout * 1000) / 1000.0
         steps = test.get("steps", [])
         continue_on_fail = test.get("continue_on_fail", False)
 
