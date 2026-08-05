@@ -29,7 +29,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 - **OS**: Windows 10/11
 - **PowerShell**: 5.1 or higher
 - **Internet**: Required for download
-- **Python 3**: The installer checks that `python --version` works and reports Python 3. If Python is missing or not reachable from PowerShell/CMD, it can offer `winget` installation, open the manual download page, or show PATH / Windows App Execution Alias configuration hints. Python is required for the system CLI command.
+- **Python 3.11+**: The installer checks that `python --version` works and reports Python 3.11 or newer. If Python is missing, too old, or not reachable from PowerShell/CMD, it can offer `winget` installation, open the manual download page, or show PATH / Windows App Execution Alias configuration hints. Python is required for the system CLI command.
 
 ## CLI Command
 

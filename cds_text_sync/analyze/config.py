@@ -9,8 +9,8 @@ Configuration is data (rules stay code). The config file may:
 * tune per-rule options (``[rules.<id>] options.<name> = ...``);
 * scope rules to path globs (``[[rule_scope]]``).
 
-TOML is parsed with ``tomllib`` (3.11+); on older Pythons a config file is
-reported as unsupported instead of being silently ignored.
+TOML is parsed with the standard-library ``tomllib`` (available since
+Python 3.11, the package's minimum supported version).
 """
 
 from __future__ import annotations
@@ -22,10 +22,7 @@ from pathlib import Path
 
 from cds_text_sync.analyze.model import is_valid_severity
 
-try:
-    import tomllib
-except ImportError:  # pragma: no cover - Python < 3.11
-    tomllib = None
+import tomllib
 
 DEFAULT_FAIL_ON = "suspicious"
 DEFAULT_INCOMPLETE = "warn"
@@ -182,11 +179,6 @@ def load_config(config_path):
     config = ResolvedConfig()
     if not config_path or not os.path.isfile(config_path):
         return config
-    if tomllib is None:
-        raise ConfigError(
-            "cts-analyze.toml requires Python 3.11+ (tomllib). "
-            "Remove the config file or upgrade Python."
-        )
     with open(config_path, "rb") as fh:
         try:
             data = tomllib.load(fh)

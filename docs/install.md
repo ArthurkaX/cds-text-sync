@@ -5,7 +5,7 @@
 - **Minimum Tested Target**: CODESYS V3.5 SP10+ (earlier versions might support
   scripting but lack essential API features for reliable text syncing).
 - **Recommended Target**: CODESYS V3.5 SP13 and newer.
-- **Python 3 Required**: CODESYS/IronPython is used only as a thin IDE bridge.
+- **Python 3.11+ Required**: CODESYS/IronPython is used only as a thin IDE bridge.
   Export, compare, import, options, diagnostics, and the CLI use the external
   Python 3 engine, so `python` must be available from the Windows command line.
 
@@ -15,8 +15,9 @@ Check before running the scripts:
 python --version
 ```
 
-If this command is not found, install Python 3 or configure your environment so
-`python` points to Python 3. The quick PowerShell installer also checks for
+If this command is not found or reports a version below 3.11, install Python
+3.11 or newer and configure your environment so `python` points to it. The quick
+PowerShell installer also checks for
 `python` up front and can offer a manual download page or a `winget`
 installation path if it is missing.
 

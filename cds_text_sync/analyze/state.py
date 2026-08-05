@@ -20,8 +20,8 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
+import tomllib
 
-from cds_text_sync.analyze.config import tomllib
 from cds_text_sync.analyze.fingerprint import FINGERPRINT_SCHEMA
 
 STATE_SCHEMA = 1
@@ -188,8 +188,6 @@ def read_suppressions(state_dir):
     path = suppressions_path(state_dir)
     if not os.path.isfile(path):
         return []
-    if tomllib is None:
-        raise StateError(f"{path} requires Python 3.11+ (tomllib) to read")
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)

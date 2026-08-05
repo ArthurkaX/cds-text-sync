@@ -115,7 +115,7 @@ Full walkthrough: **[HMI screens from SVG](docs/visu.md)**.
 ## Quick start
 
 **Requirements**: CODESYS V3.5 SP10+ (SP13 and newer recommended), Windows, and
-Python 3 available as `python`. Full list in
+Python 3.11+ available as `python`. Full list in
 [Installation](docs/install.md#requirements).
 
 Install with one command — it sets up the tool, the CLI, and the CODESYS
