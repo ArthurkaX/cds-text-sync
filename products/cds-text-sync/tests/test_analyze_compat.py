@@ -24,3 +24,11 @@ def test_adapter_keeps_st_and_xml_compatibility_projection(tmp_path):
     snapshot = analyze_compat.build_compat_snapshot(str(tmp_path))
 
     assert {unit.source_path for unit in snapshot.units} == {"Main.st", "Screen.xml"}
+
+
+def test_xml_unit_does_not_gain_st_declaration_sections():
+    unit = analyze_compat._build_xml_unit("Screen.xml", "<Visualization />")
+
+    from cds_static_analyzer.st.body import declaration
+
+    assert not declaration(unit)

@@ -1,7 +1,6 @@
 """Section access layer for analyzer rule text."""
 
 from cds_static_analyzer import project as pm
-from cds_text_sync import analyze_compat as compat
 from cds_static_analyzer.st.body import body, declaration
 
 _SNIPPET = (
@@ -61,11 +60,6 @@ def test_body_without_implementation_uses_whole_text():
 
 def test_body_is_falsy_when_text_is_empty():
     assert not body(_st(""))
-
-
-def test_declaration_is_falsy_when_absent():
-    unit = compat._build_xml_unit("snippet.xml", "<Visualization></Visualization>")
-    assert not declaration(unit)
 
 
 def test_statements_split_at_real_semicolons_only():
