@@ -5,7 +5,7 @@ test_analyze_rules.py - Unit tests for the built-in rules on small snippets.
 from cds_static_analyzer import project as pm
 from cds_static_analyzer.project import ProjectSnapshot
 
-from analyze_helpers import run_rule
+from st_helpers import run_rule
 
 
 def _st_unit(text):

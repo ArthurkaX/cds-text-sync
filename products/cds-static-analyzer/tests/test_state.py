@@ -156,3 +156,4 @@ def test_write_baseline_uses_supported_schema_constant(state_dir):
     assert schema == FINGERPRINT_SCHEMA
     text = open(st.baseline_path(state_dir), encoding="utf-8").read()
     assert f'"fingerprint_schema": {FINGERPRINT_SCHEMA}' in text
+

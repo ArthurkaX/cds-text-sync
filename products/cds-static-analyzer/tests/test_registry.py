@@ -106,7 +106,9 @@ def test_engine_does_not_import_analyze():
     """The dependency arrow is analyze -> engine, never the reverse."""
     import ast
 
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    repo_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..")
+    )
     engine_dir = os.path.join(
         repo_root, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
     )
@@ -211,7 +213,7 @@ def test_runner_stamps_registry_identity():
     from cds_static_analyzer.runner import RunOptions, run_analysis
     from cds_static_analyzer.workspace import WorkspaceResolver
 
-    from analyze_helpers import fixture_project_view
+    from st_helpers import fixture_project_view
 
     registry = load_builtin_rules()
     workspace = WorkspaceResolver(workspace=fixture_project_view()).resolve()

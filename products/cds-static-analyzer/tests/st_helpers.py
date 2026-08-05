@@ -14,3 +14,18 @@ def fixture_path(*parts):
 
 def fixture_project_view():
     return fixture_path("project-view")
+
+
+def run_rule(rule_id, snapshot):
+    """Run one analyzer rule over a snapshot through production dispatch."""
+    from cds_static_analyzer.config import ResolvedConfig
+    from cds_static_analyzer.runner import RunOptions, run_analysis
+    from cds_static_analyzer.workspace import Workspace
+
+    result = run_analysis(
+        Workspace(root=".", project_view=".", state_dir="."),
+        snapshot,
+        ResolvedConfig(),
+        RunOptions(rule_filter={rule_id}),
+    )
+    return result.findings
