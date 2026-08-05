@@ -35,7 +35,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 _IDE_BRIDGE = _ROOT / "products" / "codesys-host" / "src" / "ide_bridge"
-_CLI = _ROOT / "cds_text_sync"
+_CLI = _ROOT / "products" / "cds-cli" / "src" / "cds_cli"
 
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))

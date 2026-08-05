@@ -15,4 +15,10 @@ _ANALYZER_SRC = (
 if _ANALYZER_SRC.is_dir() and str(_ANALYZER_SRC) not in sys.path:
     sys.path.insert(0, str(_ANALYZER_SRC))
 
+_CLI_SRC = (
+    Path(__file__).resolve().parent.parent / "products" / "cds-cli" / "src"
+)
+if _CLI_SRC.is_dir() and str(_CLI_SRC) not in sys.path:
+    sys.path.insert(0, str(_CLI_SRC))
+
 __version__ = "3.0.0"

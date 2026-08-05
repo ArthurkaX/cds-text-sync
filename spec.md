@@ -84,12 +84,18 @@ Move `cds_text_sync.analyze` and its rule resources into a dedicated
 baselines, CLI output, and `.st`-only scope. The analyzer must not import
 visualization or CODESYS-host modules.
 
-### Stage 3 — extract `cds-cli`
+### Stage 3 — extract `cds-cli` — done
 
 Move command parsing and dispatch into `cds_cli`. Keep `cts` and
 `cds-text-sync` command entrypoints working through compatibility wrappers while
 the migration is in progress. CLI handlers delegate to product APIs instead of
 becoming a new location for synchronization or analyzer logic.
+
+The CLI composition layer now lives under
+`products/cds-cli/src/cds_cli/`. The historical modules under `cds_text_sync/`
+are module aliases kept for import compatibility, and both console entrypoints
+resolve to `cds_cli.main`. The CLI still delegates synchronization, engine,
+visualization, and static-analysis behavior to their respective products.
 
 ### Stage 4 — separate visualization tooling
 
@@ -118,6 +124,8 @@ Stage 2 is complete. The analyzer source and rule resources now live under
 desktop analyzer UI use that package. Source-checkout path setup and wheel
 package discovery keep the migration compatible with the existing CLI.
 
-Clean-wheel installation, analyzer selftest, full unit tests, Ruff, and the
-legacy-reference scan all pass. The next implementation task is Stage 3:
-extract the CLI composition layer into `cds-cli`.
+Stage 3 is complete. The new CLI package owns parser construction, dispatch,
+daemon I/O coordination, output formatting, and command handlers. Full unit
+tests (`1066 passed, 7 skipped`), Ruff, and `git diff --check` pass. The next
+implementation task is Stage 4: separate visualization support from the
+independent `visu-lint` product.
