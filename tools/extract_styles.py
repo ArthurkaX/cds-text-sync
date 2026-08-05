@@ -30,7 +30,15 @@ if _ROOT not in sys.path:
 
 from cds_text_sync.visu import styledef  # noqa: E402
 
-_SNAPSHOT_PATH = os.path.join(_ROOT, "cds_text_sync", "visu", "styles_snapshot.json")
+_SNAPSHOT_PATH = os.path.join(
+    _ROOT,
+    "products",
+    "cds-text-sync",
+    "src",
+    "cds_text_sync",
+    "visu",
+    "styles_snapshot.json",
+)
 
 
 def build_snapshot():

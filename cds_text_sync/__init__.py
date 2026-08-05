@@ -1,30 +1,31 @@
-"""Shared package bootstrap for the source checkout and installed wheel."""
+"""Source-checkout compatibility shim for the relocated sync product.
+
+The implementation lives in ``products/cds-text-sync/src``.  Keeping this
+small package at the repository root preserves historical imports while the
+repository finishes migrating callers and deployment tooling.
+"""
 
 from pathlib import Path
 import sys
 
 
-# The analyzer is a product with its own source root. During a source
-# checkout, make that root importable before the CLI lazily imports it.
-_ANALYZER_SRC = (
+_PACKAGE_DIR = (
     Path(__file__).resolve().parent.parent
     / "products"
-    / "cds-static-analyzer"
+    / "cds-text-sync"
     / "src"
+    / "cds_text_sync"
 )
-if _ANALYZER_SRC.is_dir() and str(_ANALYZER_SRC) not in sys.path:
-    sys.path.insert(0, str(_ANALYZER_SRC))
 
-_CLI_SRC = (
-    Path(__file__).resolve().parent.parent / "products" / "cds-cli" / "src"
-)
-if _CLI_SRC.is_dir() and str(_CLI_SRC) not in sys.path:
-    sys.path.insert(0, str(_CLI_SRC))
+if not _PACKAGE_DIR.is_dir():
+    raise ImportError(f"relocated cds_text_sync package is missing: {_PACKAGE_DIR}")
 
-_VISU_LINT_SRC = (
-    Path(__file__).resolve().parent.parent / "products" / "visu-lint" / "src"
-)
-if _VISU_LINT_SRC.is_dir() and str(_VISU_LINT_SRC) not in sys.path:
-    sys.path.insert(0, str(_VISU_LINT_SRC))
+__path__ = [str(_PACKAGE_DIR)]
+
+_REPO_ROOT = _PACKAGE_DIR.parents[3]
+for _product in ("cds-static-analyzer", "cds-cli", "visu-lint"):
+    _source = _REPO_ROOT / "products" / _product / "src"
+    if _source.is_dir() and str(_source) not in sys.path:
+        sys.path.insert(0, str(_source))
 
 __version__ = "3.0.0"

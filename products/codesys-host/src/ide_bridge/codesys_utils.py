@@ -32,7 +32,11 @@ def _utility_root():
     here = os.path.dirname(os.path.abspath(__file__))
     current = here
     while True:
-        if os.path.isdir(os.path.join(current, "cds_text_sync", "engine")):
+        if os.path.isdir(
+            os.path.join(
+                current, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+            )
+        ):
             return current
         parent = os.path.dirname(current)
         if not parent or parent == current:
@@ -47,7 +51,9 @@ def ensure_engine_path():
     Falls back to the historical src/external_engine location when the primary
     directory is absent.
     """
-    engine_dir = os.path.join(_utility_root(), "cds_text_sync", "engine")
+    engine_dir = os.path.join(
+        _utility_root(), "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+    )
     if not os.path.isdir(engine_dir):
         engine_dir = os.path.join(_utility_root(), "src", "external_engine")
     if engine_dir not in sys.path:

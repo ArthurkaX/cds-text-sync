@@ -7,8 +7,27 @@ from __future__ import print_function
 import os
 import re
 import shutil
+import sys
 import time
 import xml.etree.ElementTree as ET
+
+_BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
+_ENGINE_DIR = os.path.normpath(
+    os.path.join(
+        _BRIDGE_DIR,
+        "..",
+        "..",
+        "..",
+        "..",
+        "products",
+        "cds-text-sync",
+        "src",
+        "cds_text_sync",
+        "engine",
+    )
+)
+if os.path.isdir(_ENGINE_DIR) and _ENGINE_DIR not in sys.path:
+    sys.path.insert(0, _ENGINE_DIR)
 
 from _project_settings import load_project_settings
 

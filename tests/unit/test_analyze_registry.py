@@ -107,7 +107,9 @@ def test_engine_does_not_import_analyze():
     import ast
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    engine_dir = os.path.join(repo_root, "cds_text_sync", "engine")
+    engine_dir = os.path.join(
+        repo_root, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+    )
     offenders = []
     for filename in os.listdir(engine_dir):
         if not filename.endswith(".py"):

@@ -13,8 +13,10 @@ import xml.etree.ElementTree as ET
 
 ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 FIXTURE_DIR = os.path.join(ROOT_DIR, "tests", "fixtures", "offline_engine", "basic_case")
-ENGINE_CLI = os.path.join(ROOT_DIR, "cds_text_sync", "engine", "engine_cli.py")
-ENGINE_DIR = os.path.join(ROOT_DIR, "cds_text_sync", "engine")
+ENGINE_DIR = os.path.join(
+    ROOT_DIR, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+)
+ENGINE_CLI = os.path.join(ENGINE_DIR, "engine_cli.py")
 
 
 class RegressionFailure(Exception):
