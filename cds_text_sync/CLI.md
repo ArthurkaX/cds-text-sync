@@ -216,6 +216,10 @@ ancestor directory that contains both a `cts-analyze.toml` and a
 `project-view/`; or an explicit `--project-view`. There is no daemon lookup, and
 passing both `--workspace` and `--project-view` is an error.
 
+The static analyzer's user-facing input and findings are Structured Text
+(`.st`) only. Visualization XML is intentionally outside this contract and
+is handled by the separate machine-oriented `cts visu-lint` command below.
+
 ### `cts-analyze.toml`
 
 Configuration lives in a `cts-analyze.toml` next to `project-view/`. It sets

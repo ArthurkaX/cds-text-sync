@@ -184,32 +184,33 @@ and every ```` ```st bad ```` fence carrying an explicit count and at least one
 These were found during the refactor and are recorded so they are not
 rediscovered later. Neither is a regression.
 
-## D1. A second, parallel rule system in `cds_text_sync/visu_lint/`
+## D1. `visu_lint/` is intentionally separate — decided
 
-`visu_lint/` implements `VISU001` with its own CLI and its own finding shape,
-entirely outside the analyze framework: no `RuleSpec`, no registry, no
-capabilities, no docs contract, no selftest, no baseline or suppression
-support. It predates the framework (`CTS0003` was `dead_explicit_color` until
-commit `7535712` split human analysis from visu lint).
+`visu_lint/` implements `VISU001` with its own CLI and JSON finding shape.
+This is intentional, not a second implementation of the human-facing static
+analyzer:
 
-Nothing is broken today, but it is a second place where "what is a rule" is
-defined, and the consolidation spec's entire premise is that a second
-definition is cheap to remove now and expensive at 60 rules. Worth an explicit
-decision: fold it into the analyze registry as a `VISU`-scoped rule, or declare
-it permanently separate and say so in its docstring.
+* `cts analyze` is for users and analyzes Structured Text (`.st`) code;
+* `cts visu-lint` is a narrow machine/LLM feedback loop for generated
+  visualization XML;
+* the two tools do not share a rule registry, suppression model, baseline, or
+  finding contract;
+* low-level XML helpers may be shared, but visualization checks must not be
+  registered as CTS analyzer rules.
 
-## D2. Two CTS0004 findings share one fingerprint
+The separate CLI and finding shape are therefore part of the public boundary.
+Do not fold `VISU001` into the analyze registry.
+
+## D2. CTS0004 fingerprint aggregation — decided
 
 The fixture run produces 22 findings but only 21 distinct fingerprints: the two
-`4095` magic-number hits in `PB.st` collide. A single suppression therefore
-silences both, which is not what a user writing one suppression would expect.
+`4095` magic-number hits in `PB.st` share one fingerprint. This is intentional.
 
-Whether that is a defect depends on the intended fingerprint semantics — for a
-"this literal repeats" rule, collapsing all occurrences of the same literal in
-the same unit may well be correct. Decide it deliberately rather than by
-accident; if the answer is "one suppression per occurrence", the fingerprint
-needs an occurrence discriminator, and every baseline in the field is
-invalidated by that change.
+CTS0004 diagnoses a repeated literal as one unit-level refactoring issue, not
+two independent defects. One suppression therefore silences all occurrences of
+that normalized literal in the same POU. Adding an occurrence discriminator
+would make suppressions noisier and invalidate existing baselines without
+improving the rule's intended semantics.
 
 ## D3. Repo-wide ruff debt
 
