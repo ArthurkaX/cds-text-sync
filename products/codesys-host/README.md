@@ -10,9 +10,11 @@ IronPython 2.7. It must stay Python-2-compatible: no f-strings, no walrus
 operator, no `pathlib`, no type annotations, no `subprocess.run`
 (`subprocess.Popen` is fine, and most modules start with `from __future__`).
 
-The rest of the repository — especially the `cds_text_sync/` package — is ordinary CPython 3.11+ and has none
-of those restrictions. The two trees must not import each other directly; `cds_text_sync/`
-reaches the bridge only through the root `cds_bootstrap.py`.
+The rest of the repository — especially the
+`products/cds-text-sync/src/cds_text_sync/` package — is ordinary CPython 3.11+
+and has none of those restrictions. The two trees must not import each other
+directly; the sync package reaches the bridge only through the root
+`cds_bootstrap.py`.
 
 ## Not a package
 
@@ -22,7 +24,7 @@ name, not as a package — `cds_bootstrap.import_runtime_module` puts
 
 `src/ide_bridge` remains a load-bearing sentinel inside this product:
 `codesys_runtime._get_root_dir` walks up the host tree looking for it, and
-`cds_text_sync/install_menu.py` checks it to validate an install. Do not rename
+`cds_text_sync.install_menu` checks it to validate an install. Do not rename
 or move it inside `codesys-host`.
 
 ## Indentation
