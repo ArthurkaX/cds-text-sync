@@ -7,7 +7,7 @@ name = "cds-static-analyzer"
 version = "3.0.0"
 description = "Human-facing static analysis for CODESYS Structured Text"
 requires-python = ">=3.11"
-dependencies = ["cds-text-sync==3.0.0"]
+dependencies = []
 
 [tool.setuptools]
 package-dir = {"" = "src"}

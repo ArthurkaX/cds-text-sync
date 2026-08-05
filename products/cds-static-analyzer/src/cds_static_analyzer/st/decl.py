@@ -1,16 +1,8 @@
-"""
-decl.py - Declaration layer for the analyzer (DECLARATIONS capability).
-
-Thin wrapper over the engine's battle-tested parsers
-(``cds_text_sync.engine.variable_map``): the analyzer does not re-implement
-declaration parsing, it adapts it. ``parse_var_blocks`` and ``parse_dut``
-are reused as-is; this module adds only the unit-level convenience the rules
-need.
-"""
+"""Declaration layer for the analyzer (DECLARATIONS capability)."""
 
 from __future__ import annotations
 
-from cds_text_sync.engine.variable_map import parse_dut, parse_var_blocks
+from cds_static_analyzer.st.declarations import parse_dut, parse_var_blocks
 
 PERSISTENT_SCOPES = ("VAR_GLOBAL",)
 

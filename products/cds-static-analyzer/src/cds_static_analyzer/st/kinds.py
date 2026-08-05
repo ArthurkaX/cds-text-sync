@@ -25,7 +25,10 @@ from __future__ import annotations
 
 import re
 
-from cds_text_sync.engine.variable_map import _blank_noise, parse_dut
+from cds_static_analyzer.st.blanking import blank_noise
+from cds_static_analyzer.st.declarations import parse_dut
+
+_blank_noise = blank_noise
 
 # ---------------------------------------------------------------------------
 # Kinds
