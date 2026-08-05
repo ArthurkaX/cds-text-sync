@@ -1,12 +1,8 @@
-"""
-test_analyze_st_body.py - Section access layer for rule text (Item 3).
-"""
+"""Section access layer for analyzer rule text."""
 
 from cds_static_analyzer import project as pm
 from cds_static_analyzer.st.body import body, declaration
 
-# The implementation body starts after the IMPLEMENTATION marker plus a blank
-# line, so a naive "body starts at 0" assumption lands in the VAR block.
 _SNIPPET = (
     "PROGRAM P\n"
     "VAR\n"
@@ -29,8 +25,6 @@ def _st(text):
 def test_body_offsets_are_absolute_and_land_in_unit_text():
     unit = _st(_SNIPPET)
     section = body(unit)
-    # The first body character 'x' sits far from offset 0 (after the VAR
-    # block and IMPLEMENTATION marker); .at must convert, not truncate.
     assert unit.text[section.at(0)] == "x"
     for needle in ("y := ", "w := 3"):
         local = section.text.find(needle)
@@ -42,7 +36,6 @@ def test_body_blanked_text_keeps_comments_and_strings_out():
     section = body(_st(_SNIPPET))
     assert "z := 2" not in section.text
     assert "'a;b'" not in section.text
-    # .raw is the untouched section text.
     assert "// z := 2;" in section.raw
     assert "y := 'a;b';" in section.raw
 
@@ -56,8 +49,6 @@ def test_declaration_offsets_are_absolute():
 
 
 def test_body_without_implementation_uses_whole_text():
-    # A unit without an IMPLEMENTATION marker is analysed as its whole text
-    # (the legacy rule fallback), with base 0 so offsets stay absolute.
     unit = _st("VAR_GLOBAL\n  g_x : INT;\nEND_VAR\n")
     section = body(unit)
     assert section
@@ -86,11 +77,7 @@ def test_statements_split_at_real_semicolons_only():
 
 
 def test_statements_split_across_lines():
-    unit = _st(
-        "PROGRAM P\nIMPLEMENTATION\n"
-        "result := a +\n"
-        "    b;\n"
-    )
+    unit = _st("PROGRAM P\nIMPLEMENTATION\nresult := a +\n    b;\n")
     statements = list(body(unit).statements())
     assert len(statements) == 1
     offset, statement = statements[0]
@@ -99,12 +86,7 @@ def test_statements_split_across_lines():
 
 
 def test_semicolon_in_string_does_not_split():
-    unit = _st(
-        "PROGRAM P\nIMPLEMENTATION\n"
-        "x := 1;\n"
-        "msg := 'a;b;c';\n"
-        "y := 2;\n"
-    )
+    unit = _st("PROGRAM P\nIMPLEMENTATION\nx := 1;\nmsg := 'a;b;c';\ny := 2;\n")
     assert [text for _o, text in body(unit).statements()] == [
         "x := 1",
         "msg := '     '",
@@ -113,15 +95,8 @@ def test_semicolon_in_string_does_not_split():
 
 
 def test_semicolon_in_comment_does_not_split():
-    unit = _st(
-        "PROGRAM P\nIMPLEMENTATION\n"
-        "x := 1; (* keep ; here *)\n"
-        "y := 2; // and ; here\n"
-    )
-    assert [text for _o, text in body(unit).statements()] == [
-        "x := 1",
-        "y := 2",
-    ]
+    unit = _st("PROGRAM P\nIMPLEMENTATION\nx := 1; (* keep ; here *)\ny := 2; // and ; here\n")
+    assert [text for _o, text in body(unit).statements()] == ["x := 1", "y := 2"]
 
 
 def test_lines_yield_lineno_absolute_offset_and_raw_text():
