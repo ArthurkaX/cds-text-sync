@@ -2,7 +2,7 @@
 
 import os
 
-from cds_static_analyzer.project import build_snapshot
+from cds_static_analyzer.project import build_st_snapshot
 from cds_static_analyzer.st import kinds as K
 
 
@@ -14,7 +14,7 @@ def test_codedys_property_accessors_are_classified_from_filename(tmp_path):
         with open(path, "w", encoding="utf-8") as fh:
             fh.write("VAR\nEND_VAR\n\n// --- implementation ---\nvalue := 1;\n")
 
-    snap = build_snapshot(root)
+    snap = build_st_snapshot(root)
     assert snap.diagnostics == []
     assert snap.find_unit("POUs/FB_Conveyor.Speed.Get.st#FB_Conveyor.Speed.Get").kind == K.PROPERTY_GET
     assert snap.find_unit("POUs/FB_Conveyor.Speed.Set.st#FB_Conveyor.Speed.Set").kind == K.PROPERTY_SET
@@ -27,7 +27,7 @@ def test_snapshot_parses_file_directives_once_at_project_boundary(tmp_path):
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("// cts:ignore-file cts0001 -- generated example\nPROGRAM Main\n")
 
-    snap = build_snapshot(root)
+    snap = build_st_snapshot(root)
     directives = snap.file_directives["POUs/Main.st"]
     assert directives.rules == frozenset({"CTS0001"})
     assert directives.issues == ()
@@ -40,10 +40,24 @@ def test_st_snapshot_normalizes_bom_and_crlf_offsets(tmp_path):
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write("\ufeffPROGRAM Main\r\nIMPLEMENTATION\r\nx := 1;\r\n")
 
-    snap = build_snapshot(root)
+    snap = build_st_snapshot(root)
     unit = snap.find_unit("POUs/Main.st#Main")
     assert unit is not None
     assert unit.kind == K.PROGRAM
     assert "\ufeff" not in unit.text
     assert "\r" not in unit.text
     assert unit.implementation.startswith("x := 1;")
+
+
+def test_public_st_snapshot_ignores_xml_files(tmp_path):
+    root = str(tmp_path / "project-view")
+    os.makedirs(os.path.join(root, "POUs"))
+    with open(os.path.join(root, "POUs", "Main.st"), "w", encoding="utf-8") as fh:
+        fh.write("PROGRAM Main\n")
+    with open(os.path.join(root, "Screen.xml"), "w", encoding="utf-8") as fh:
+        fh.write("<Visualization><Single Name=\"Screen\" /></Visualization>\n")
+
+    snap = build_st_snapshot(root)
+
+    assert [unit.source_path for unit in snap.units] == ["POUs/Main.st"]
+    assert snap.source_errors == []

@@ -209,7 +209,7 @@ def test_runner_stamps_registry_identity():
     cannot drift.
     """
     from cds_static_analyzer.config import ResolvedConfig
-    from cds_static_analyzer.project import build_snapshot
+    from cds_static_analyzer.project import build_st_snapshot
     from cds_static_analyzer.runner import RunOptions, run_analysis
     from cds_static_analyzer.workspace import WorkspaceResolver
 
@@ -217,7 +217,7 @@ def test_runner_stamps_registry_identity():
 
     registry = load_builtin_rules()
     workspace = WorkspaceResolver(workspace=fixture_project_view()).resolve()
-    snapshot = build_snapshot(workspace.project_view)
+    snapshot = build_st_snapshot(workspace.project_view)
     result = run_analysis(
         workspace,
         snapshot,

@@ -25,6 +25,7 @@ where = ["src"]
 [tool.cds_product]
 runtime = "cpython"
 test_paths = [
+  "tests/test_*.py",
   "../../tests/unit/test_cli_*.py",
   "../../tests/unit/test_daemon_*.py",
   "../../tests/unit/test_engine_cli_helpers.py",

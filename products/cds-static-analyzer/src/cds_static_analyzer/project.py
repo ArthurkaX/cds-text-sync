@@ -303,7 +303,7 @@ class ProjectSnapshot:
         }
 
 
-def build_snapshot(project_view):
+def build_snapshot(project_view, include_xml=True):
     """Build a ProjectSnapshot from a project-view directory.
 
     Never raises for a single unreadable or unparsable file: unreadable
@@ -327,7 +327,7 @@ def build_snapshot(project_view):
             full_path = os.path.join(dirpath, filename)
             rel = _relpath(root, full_path)
             lower = filename.lower()
-            if not lower.endswith((".st", ".xml")):
+            if not lower.endswith(".st") and not (include_xml and lower.endswith(".xml")):
                 continue
             try:
                 text = _read_text(full_path)
@@ -374,6 +374,16 @@ def build_snapshot(project_view):
 
     units.sort(key=lambda u: u.id)
     return ProjectSnapshot(root, units, diagnostics, source_errors, file_directives)
+
+
+def build_st_snapshot(project_view):
+    """Build the public static-analyzer snapshot from ``.st`` files only."""
+    return build_snapshot(project_view, include_xml=False)
+
+
+def build_compat_snapshot(project_view):
+    """Build the legacy snapshot including XML compatibility sources."""
+    return build_snapshot(project_view, include_xml=True)
 
 
 def _xml_parse_error(rel, text, exc):

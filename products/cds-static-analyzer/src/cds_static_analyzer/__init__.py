@@ -15,7 +15,11 @@ from cds_static_analyzer.model import (
     Finding,
     Location,
 )
-from cds_static_analyzer.project import ProjectSnapshot, Unit, build_snapshot
+from cds_static_analyzer.project import (
+    ProjectSnapshot,
+    Unit,
+    build_st_snapshot,
+)
 from cds_static_analyzer.workspace import Workspace, WorkspaceResolver
 
 __all__ = [
@@ -29,5 +33,5 @@ __all__ = [
     "Unit",
     "Workspace",
     "WorkspaceResolver",
-    "build_snapshot",
+    "build_st_snapshot",
 ]

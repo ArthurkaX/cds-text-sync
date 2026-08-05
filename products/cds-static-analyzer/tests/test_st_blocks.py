@@ -96,7 +96,7 @@ def test_case_body_before_labels_is_not_a_branch():
 
 
 def test_fixture_most_nested_pou_is_correct():
-    snap = pm.build_snapshot(fixture_project_view())
+    snap = pm.build_st_snapshot(fixture_project_view())
     unit = snap.find_unit("POUs/FB_Conveyor.Run.st#FB_Conveyor.Run")
     root = tree(unit)
     assert not root.unbalanced

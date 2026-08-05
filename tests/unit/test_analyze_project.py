@@ -4,14 +4,14 @@ test_analyze_project.py - ProjectSnapshot built from the analyze fixture.
 
 import os
 
-from cds_static_analyzer.project import build_snapshot
+from cds_static_analyzer.project import build_compat_snapshot
 from cds_static_analyzer.st import kinds as K
 
 from analyze_helpers import fixture_project_view
 
 
 def test_fixture_has_expected_units():
-    snap = build_snapshot(fixture_project_view())
+    snap = build_compat_snapshot(fixture_project_view())
     by_id = {u.id: u for u in snap.units}
     assert snap.diagnostics == []
 
@@ -29,7 +29,7 @@ def test_fixture_has_expected_units():
 
 
 def test_owner_resolution():
-    snap = build_snapshot(fixture_project_view())
+    snap = build_compat_snapshot(fixture_project_view())
     run = snap.find_unit("POUs/FB_Conveyor.Run.st#FB_Conveyor.Run")
     fb = snap.find_unit("POUs/FB_Conveyor.st#FB_Conveyor")
     assert run is not None and fb is not None
@@ -38,7 +38,7 @@ def test_owner_resolution():
 
 
 def test_units_owned_by():
-    snap = build_snapshot(fixture_project_view())
+    snap = build_compat_snapshot(fixture_project_view())
     owned = snap.units_owned_by("FB_Conveyor")
     assert {u.qualified_name for u in owned} == {
         "FB_Conveyor.Run",
@@ -47,7 +47,7 @@ def test_units_owned_by():
 
 
 def test_decl_impl_split_with_offsets():
-    snap = build_snapshot(fixture_project_view())
+    snap = build_compat_snapshot(fixture_project_view())
     main = snap.find_unit("POUs/Main.st#Main")
     assert main is not None
     assert main.declaration.startswith("PROGRAM MAIN")
@@ -58,7 +58,7 @@ def test_decl_impl_split_with_offsets():
 
 
 def test_action_has_no_declaration():
-    snap = build_snapshot(fixture_project_view())
+    snap = build_compat_snapshot(fixture_project_view())
     action = snap.find_unit("POUs/FB_Conveyor.Advance.st#FB_Conveyor.Advance")
     assert action is not None
     assert action.declaration.strip() == "ACTION Advance"
@@ -66,7 +66,7 @@ def test_action_has_no_declaration():
 
 
 def test_unit_ids_are_stable():
-    snap = build_snapshot(fixture_project_view())
+    snap = build_compat_snapshot(fixture_project_view())
     ids = [u.id for u in snap.units]
     assert ids == sorted(ids)  # deterministic order
     assert len(ids) == len(set(ids))  # unique
@@ -80,7 +80,7 @@ def test_unknown_but_parseable_xml_is_not_an_error(tmp_path):
     os.makedirs(os.path.join(root, "sub"))
     with open(os.path.join(root, "sub", "Unrelated.xml"), "w", encoding="utf-8") as fh:
         fh.write("<Foo><Bar>hello</Bar></Foo>\n")
-    snap = build_snapshot(root)
+    snap = build_compat_snapshot(root)
     assert snap.source_errors == []
     assert snap.diagnostics == []
     assert not any(u.kind == K.VISUALIZATION for u in snap.units)
@@ -98,7 +98,7 @@ def test_codesys_native_task_archives_are_classified_as_task_config(tmp_path):
             "</Single></Single>"
         )
 
-    snap = build_snapshot(root)
+    snap = build_compat_snapshot(root)
     task = snap.find_unit("Application/Task Configuration/Fast.xml#Fast")
     assert task is not None
     assert task.kind == K.TASK_CONFIG
@@ -109,7 +109,7 @@ def test_unparsable_xml_is_a_source_error(tmp_path):
     os.makedirs(os.path.join(root, "HMI"))
     with open(os.path.join(root, "HMI", "Broken.xml"), "w", encoding="utf-8") as fh:
         fh.write('<Visualization>\n  <Single Name="x">\n')
-    snap = build_snapshot(root)
+    snap = build_compat_snapshot(root)
     assert len(snap.source_errors) == 1
     record = snap.source_errors[0]
     assert record.source_kind == K.VISUALIZATION
