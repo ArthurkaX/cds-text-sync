@@ -1213,3 +1213,201 @@ def test_cts0034_ignores_used_returns_unknown_calls_and_fb_calls():
         "IMPLEMENTATION\nOk := Check();\nUnknown();\nT();\nRun := Ok;\n",
     )
     assert run_rule("CTS0034", ProjectSnapshot(".", [function, fb, caller])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0035 - division by literal zero
+# ---------------------------------------------------------------------------
+
+
+def test_cts0035_flags_integer_real_and_typed_zero_divisors():
+    unit = _st_unit(
+        "FUNCTION Calc : LREAL\nIMPLEMENTATION\n"
+        "Calc := 10 / 0 + 1.0 / 0.0 + 2 / DINT#0;\n"
+    )
+    findings = run_rule("CTS0035", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["0", "0.0", "DINT#0"]
+    assert all(f.rule_id == "CTS0035" for f in findings)
+
+
+def test_cts0035_ignores_nonzero_and_variable_divisors():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nVAR_INPUT\n"
+        "    Divisor : REAL;\nEND_VAR\nIMPLEMENTATION\n"
+        "Calc := 10 / 10 + 10 / Divisor;\n"
+    )
+    assert run_rule("CTS0035", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0036 - duplicate IF condition
+# ---------------------------------------------------------------------------
+
+
+def test_cts0036_flags_repeated_condition_in_one_chain():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR_INPUT\n Ready : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Ready THEN\n Start();\n"
+        "ELSIF  Ready  THEN\n Retry();\nEND_IF;\nRun := Ready;\n"
+    )
+    findings = run_rule("CTS0036", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "Ready"
+    assert findings[0].rule_id == "CTS0036"
+
+
+def test_cts0036_ignores_different_chains_and_conditions():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nIMPLEMENTATION\n"
+        "IF Ready THEN\n Start();\nELSIF Fault THEN\n Stop();\nEND_IF;\n"
+        "IF Ready THEN\n Start();\nEND_IF;\nRun := TRUE;\n"
+    )
+    assert run_rule("CTS0036", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0037 - no-op control-flow branch
+# ---------------------------------------------------------------------------
+
+
+def test_cts0037_flags_noop_else_and_case_branches():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR_INPUT\n State : INT;\n Ready : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Ready THEN\n Start();\nELSE\n;\nEND_IF;\n"
+        "CASE State OF\n 1: Start();\nELSE\n ;\nEND_CASE;\nRun := TRUE;\n"
+    )
+    findings = run_rule("CTS0037", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert all(f.anchor == ";" for f in findings)
+
+
+def test_cts0037_ignores_real_branch_body_and_standalone_statement():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nIMPLEMENTATION\n"
+        "IF Ready THEN\n;\nDoWork();\nELSE\nDoOtherWork();\nEND_IF;\n"
+        ";\nRun := TRUE;\n"
+    )
+    assert run_rule("CTS0037", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0038 - invalid FOR loop step
+# ---------------------------------------------------------------------------
+
+
+def test_cts0038_flags_zero_and_wrong_direction_steps():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR i : INT; END_VAR\nIMPLEMENTATION\n"
+        "FOR i := 0 TO 10 BY 0 DO Work(); END_FOR;\n"
+        "FOR i := 0 TO 10 BY -1 DO Work(); END_FOR;\n"
+        "FOR i := 10 TO 0 BY 1 DO Work(); END_FOR;\nRun := TRUE;\n"
+    )
+    findings = run_rule("CTS0038", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["0", "-1", "1"]
+
+
+def test_cts0038_ignores_valid_or_variable_steps():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR i, first, last, step : INT; END_VAR\n"
+        "IMPLEMENTATION\nFOR i := 0 TO 10 BY 1 DO Work(); END_FOR;\n"
+        "FOR i := 10 TO 0 BY -1 DO Work(); END_FOR;\n"
+        "FOR i := first TO last BY step DO Work(); END_FOR;\nRun := TRUE;\n"
+    )
+    assert run_rule("CTS0038", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0039 - FOR range exceeds array bounds
+# ---------------------------------------------------------------------------
+
+
+def test_cts0039_flags_counter_access_outside_array_range():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n"
+        " Values : ARRAY[0..9] OF INT;\n i : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nFOR i := 0 TO 10 DO Values[i] := 0; END_FOR;\n"
+        "Run := TRUE;\n"
+    )
+    findings = run_rule("CTS0039", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "Values[i]"
+
+
+def test_cts0039_ignores_fitting_range_and_non_counter_access():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n"
+        " Values : ARRAY[0..9] OF INT;\n i, j : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nFOR i := 0 TO 9 DO Values[i] := 0; Values[j] := 1; END_FOR;\n"
+        "Run := TRUE;\n"
+    )
+    assert run_rule("CTS0039", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0040 - shift amount outside operand width
+# ---------------------------------------------------------------------------
+
+
+def test_cts0040_flags_shift_at_or_above_operand_width():
+    unit = _st_unit(
+        "FUNCTION Run : BYTE\nVAR\n b : BYTE;\n w : WORD;\nEND_VAR\n"
+        "IMPLEMENTATION\nRun := SHL(b, 8); w := SHR(w, 16);\n"
+        "Run := SHL(b, 7);\n"
+    )
+    findings = run_rule("CTS0040", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["8", "16"]
+
+
+def test_cts0040_ignores_unknown_type_and_variable_amount():
+    unit = _st_unit(
+        "FUNCTION Run : BYTE\nVAR\n b : BYTE;\n amount : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nRun := SHL(b, amount);\n"
+    )
+    assert run_rule("CTS0040", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0041 - bit index outside type width
+# ---------------------------------------------------------------------------
+
+
+def test_cts0041_flags_bit_index_at_or_above_type_width():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n b : BYTE;\n w : WORD;\nEND_VAR\n"
+        "IMPLEMENTATION\nb.8 := TRUE; w.16 := FALSE; b.7 := TRUE;\n"
+        "Run := b.7;\n"
+    )
+    findings = run_rule("CTS0041", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["b.8", "w.16"]
+
+
+# ---------------------------------------------------------------------------
+# CTS0042 - zero timer preset time
+# ---------------------------------------------------------------------------
+
+
+def test_cts0042_flags_zero_timer_pt():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n T : TON;\nEND_VAR\n"
+        "IMPLEMENTATION\nT(PT := T#0s); T(PT := T#100ms); Run := T.Q;\n"
+    )
+    findings = run_rule("CTS0042", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "T#0s"
+
+
+# ---------------------------------------------------------------------------
+# CTS0043 - comparison outside type range
+# ---------------------------------------------------------------------------
+
+
+def test_cts0043_flags_always_true_and_false_type_comparisons():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n u : UINT;\n b : BYTE;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF u >= 0 THEN Run := TRUE; END_IF;\n"
+        "IF b > 300 THEN Run := FALSE; END_IF;\n"
+    )
+    findings = run_rule("CTS0043", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert "always true" in findings[0].message
+    assert "always false" in findings[1].message
