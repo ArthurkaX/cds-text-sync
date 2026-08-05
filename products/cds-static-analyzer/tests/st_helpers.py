@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 
 FIXTURE_DIR = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "analyze"
@@ -14,6 +15,12 @@ def fixture_path(*parts):
 
 def fixture_project_view():
     return fixture_path("project-view")
+
+
+def copy_fixture(dest):
+    """Copy the analyzer project fixture into a temporary workspace."""
+    shutil.copytree(fixture_project_view(), str(Path(dest) / "project-view"))
+    return str(dest)
 
 
 def run_rule(rule_id, snapshot):
