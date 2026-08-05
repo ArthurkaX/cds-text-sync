@@ -49,6 +49,23 @@ def test_cts0001_ignores_prose_comments():
     assert findings == []
 
 
+def test_cts0001_ignores_parenthetical_documentation():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n"
+        "// Sensor service (debounce, edge, logging)\n"
+        "// Cycle period (100ms)\n"
+    )
+    assert run_rule("CTS0001", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0001_ignores_documentation_examples():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n"
+        "(* Example: Component:=Component.user_action *)\n"
+    )
+    assert run_rule("CTS0001", ProjectSnapshot(".", [unit])) == []
+
+
 def test_cts0001_does_not_see_comment_markers_in_strings():
     unit = _st_unit(
         "PROGRAM P\nVAR\n s : STRING;\nEND_VAR\n\nIMPLEMENTATION\n\n"
@@ -943,6 +960,17 @@ def test_cts0026_handles_bits_and_ignores_unknown_or_nonoverlapping_types():
         "    Other AT %IX0.7 : BOOL;\n"
         "    WordValue AT %IW2 : WORD;\n"
         "    StructValue AT %IB3 : MyStruct;\n"
+        "END_VAR\n",
+    )
+    assert run_rule("CTS0026", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0026_treats_input_bytes_as_eight_bits():
+    unit = _st_unit_named(
+        "Inputs.st",
+        "VAR_GLOBAL\n"
+        "    LastBit AT %IX0.7 : BOOL;\n"
+        "    NextByte AT %IX1.0 : BOOL;\n"
         "END_VAR\n",
     )
     assert run_rule("CTS0026", ProjectSnapshot(".", [unit])) == []

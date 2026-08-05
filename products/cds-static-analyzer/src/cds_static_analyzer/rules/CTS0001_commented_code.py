@@ -30,30 +30,37 @@ from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.blanking import comment_spans
 
 _ASSIGN_RE = re.compile(r":=")
-_CALL_RE = re.compile(r"\b[A-Za-z_]\w*\s*\(")
+_DOCUMENTATION_EXAMPLE_RE = re.compile(r"\b(?:example|e\.g\.|syntax|format)\s*:", re.IGNORECASE)
+# A bare ``name (`` also occurs in ordinary prose comments. Require a
+# complete statement ending in ``;`` so parenthetical documentation is not
+# mistaken for a commented-out function call.
+_CALL_RE = re.compile(r"\b[A-Za-z_]\w*\s*\([^;\n]*\)\s*;")
 # Keywords that are also common English words only count when paired with
 # their ST structural partner (IF..THEN, FOR..TO/DO, ...).
 _PAIRED_KEYWORDS = [
-    (re.compile(r"\bIF\b", re.IGNORECASE), re.compile(r"\bTHEN\b", re.IGNORECASE)),
+        (re.compile(r"\bIF\b"), re.compile(r"\bTHEN\b")),
     (
-        re.compile(r"\bFOR\b", re.IGNORECASE),
-        re.compile(r"\b(?:TO|DO)\b", re.IGNORECASE),
+        re.compile(r"\bFOR\b"),
+        re.compile(r"\b(?:TO|DO)\b"),
     ),
-    (re.compile(r"\bWHILE\b", re.IGNORECASE), re.compile(r"\bDO\b", re.IGNORECASE)),
-    (re.compile(r"\bCASE\b", re.IGNORECASE), re.compile(r"\bOF\b", re.IGNORECASE)),
-    (re.compile(r"\bREPEAT\b", re.IGNORECASE), re.compile(r"\bUNTIL\b", re.IGNORECASE)),
-    (re.compile(r"\bELSIF\b", re.IGNORECASE), re.compile(r"\bTHEN\b", re.IGNORECASE)),
+    (re.compile(r"\bWHILE\b"), re.compile(r"\bDO\b")),
+    (re.compile(r"\bCASE\b"), re.compile(r"\bOF\b")),
+    (re.compile(r"\bREPEAT\b"), re.compile(r"\bUNTIL\b")),
+    (re.compile(r"\bELSIF\b"), re.compile(r"\bTHEN\b")),
 ]
 # Keywords that are never ordinary English words: strong signals alone.
 _STRONG_KEYWORD_RE = re.compile(
     r"\b(ELSE|RETURN|EXIT|END_IF|END_FOR|END_WHILE|END_CASE|END_REPEAT)\b",
-    re.IGNORECASE,
 )
 
 
 def _looks_like_code(content, min_tokens):
     content = content.strip()
     if not content:
+        return False
+    # API comments often show notation such as ``Component:=...``.  An
+    # explicitly labelled example is documentation, not a disabled statement.
+    if _DOCUMENTATION_EXAMPLE_RE.search(content):
         return False
     significant = re.sub(r"\s+", "", content)
     if len(significant) < min_tokens:
