@@ -30,6 +30,12 @@ except ImportError:  # pragma: no cover - Python < 3.11
 DEFAULT_FAIL_ON = "suspicious"
 DEFAULT_INCOMPLETE = "warn"
 
+# Rules that are available in the catalog but are intentionally opt-in for a
+# normal project-wide run. Keep this list small and explain each entry in the
+# rule documentation: these checks are useful in selected projects, but their
+# signal depends on a project convention or a platform limitation.
+DEFAULT_DISABLED_RULES = frozenset({"CTS0034"})
+
 VALID_INCOMPLETE = ("warn", "error", "ignore")
 
 
@@ -106,7 +112,9 @@ class ResolvedConfig:
         override = self.rule_overrides.get(rule_id, {})
         return override.get("severity") or default
 
-    def enabled_for(self, rule_id, default=True):
+    def enabled_for(self, rule_id, default=None):
+        if default is None:
+            default = str(rule_id).strip().upper() not in DEFAULT_DISABLED_RULES
         override = self.rule_overrides.get(rule_id, {})
         return override.get("enabled", default)
 
