@@ -71,6 +71,7 @@ class Rule:
         self.merge = spec.merge
         self.options = spec.options or {}
         self.check = spec.check
+        self.fix = spec.fix
         self.stem = stem
         self.source_path = source_path
         self.doc_path = doc_path
