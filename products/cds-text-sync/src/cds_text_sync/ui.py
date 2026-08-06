@@ -245,8 +245,14 @@ class AnalyzerApi:
             return {"ok": False, "error": str(exc)}
 
 
+def _resolve_initial_workspace(initial_workspace: str = "") -> str:
+    """Resolve the explicit workspace or the CODESYS launcher fallback."""
+    return (initial_workspace or os.environ.get("CTS_INITIAL_WORKSPACE", "")).strip()
+
+
 def launch(initial_workspace: str = "") -> int:
     """Create the native window, or explain how to install the UI extra."""
+    initial_workspace = _resolve_initial_workspace(initial_workspace)
     try:
         import webview
     except ImportError:
@@ -264,7 +270,7 @@ def launch(initial_workspace: str = "") -> int:
         js_api=AnalyzerApi(initial_workspace),
         width=1240,
         height=780,
-        min_size=(1180, 640),
+        min_size=(980, 640),
     )
     webview.start()
     return 0
