@@ -31,7 +31,10 @@ The runner guarantees:
 
 from __future__ import annotations
 
+import collections
+
 from cds_static_analyzer import fingerprint as fp
+from cds_static_analyzer import progress as progress_mod
 from cds_static_analyzer.execution import ExecutionGraph
 from cds_static_analyzer.capabilities import (
     Capability,
@@ -42,6 +45,7 @@ from cds_static_analyzer.model import (
     AnalysisResult,
     Diagnostic,
     Location,
+    normalize_context,
     severity_rank,
 )
 from cds_static_analyzer.registry import RegistryError, load_builtin_rules
@@ -282,8 +286,12 @@ def _select_rules(registry, config, rule_filter):
     return rules
 
 
-def run_analysis(workspace, snapshot, config, options):
-    """Run every enabled rule over the snapshot. Returns AnalysisResult."""
+def run_analysis(workspace, snapshot, config, options, progress=None):
+    """Run every enabled rule over the snapshot. Returns AnalysisResult.
+
+    ``progress`` is the optional sink described in
+    :mod:`cds_static_analyzer.progress`; it is reported to but never read.
+    """
     result = AnalysisResult()
     result.summary.files = len(snapshot.file_directives)
 
@@ -306,7 +314,8 @@ def run_analysis(workspace, snapshot, config, options):
     result.summary.rules_run = sorted(r.id for r in rules)
 
     skipped = {}
-    for rule in rules:
+    for index, rule in enumerate(rules, start=1):
+        progress_mod.emit(progress, "prepare", index, len(rules), rule.id)
         # A rule with no visible units runs nothing: it requests no
         # capabilities (a scoped-out history rule must not start git) and
         # is not dispatched.
@@ -331,7 +340,8 @@ def run_analysis(workspace, snapshot, config, options):
                 )
                 break
 
-    for rule in rules:
+    for index, rule in enumerate(rules, start=1):
+        progress_mod.emit(progress, "rules", index, len(rules), rule.id)
         if rule.id in skipped:
             continue
         if not ctx.visible_units(rule):
@@ -347,6 +357,8 @@ def run_analysis(workspace, snapshot, config, options):
         else:
             _dispatch_project(rule, ctx, result)
 
+    progress_mod.emit(progress, "finalize", 1, 1, "")
+    _merge_findings(result, ctx, rules)
     # Fingerprints must exist before the later state filter.  File directives
     # are source-level suppression, but stale state entries must still be
     # checked against findings that were removed by that first stage.
@@ -545,13 +557,141 @@ def _collect(rule, found, result, config):
             result.summary.add_finding(item)
 
 
+def _merge_findings(result, ctx, rules):
+    """Collapse findings that a rule declares to be one problem.
+
+    Runs before ``_fingerprint_all`` on purpose: a merged finding is its own
+    first member mutated in place, so its anchor/context - and therefore its
+    fingerprint - are exactly what that member had alone. Existing baseline
+    and suppression entries that pointed at the first member keep matching;
+    entries for the dropped members surface as stale, which is the intended
+    and visible outcome.
+    """
+    by_rule = {rule.id: rule for rule in rules}
+    groups = collections.OrderedDict()
+    for finding in result.findings:
+        groups.setdefault((finding.rule_id, finding.unit_id), []).append(finding)
+    merged = []
+    for (rule_id, _unit_id), group in groups.items():
+        rule = by_rule.get(rule_id)
+        strategy = getattr(rule, "merge", None) if rule is not None else None
+        if not strategy or not _merge_enabled(ctx, rule):
+            merged.extend(group)
+        elif strategy == "adjacent":
+            merged.extend(_merge_adjacent(group))
+        elif strategy == "identical":
+            merged.extend(_merge_identical(group))
+        else:
+            merged.extend(group)
+    if len(merged) != len(result.findings):
+        result.findings = merged
+        _recount_summary(result)
+
+
+def _merge_enabled(ctx, rule):
+    """Resolve the per-rule ``merge`` switch the way ``ctx.option`` would.
+
+    The merge pass runs outside rule dispatch, so ``ctx.active_rule`` is not
+    this rule and ``ctx.option`` cannot be used directly. Reading the raw
+    config instead would let ``options.merge = "no"`` silently disable
+    merging; coercing against the declared default keeps a malformed value
+    behaving like the declared one, with the mismatch already reported as a
+    ``rule-option`` Diagnostic.
+    """
+    default = rule.options.get("merge", True)
+    configured = ctx.config.options_for(rule.id).get("merge")
+    if configured is None:
+        return default
+    coerced = _coerce_option("merge", configured, default)
+    return default if coerced is None else coerced
+
+
+def _merge_adjacent(group):
+    """Group findings that occupy a contiguous run of source lines."""
+    group = sorted(
+        group, key=lambda f: ((f.location.line or 0), (f.location.column or 0))
+    )
+    runs, current = [], [group[0]]
+    for finding in group[1:]:
+        previous = current[-1].location
+        previous_end = previous.end_line or previous.line or 0
+        if (finding.location.line or 0) <= previous_end + 1:
+            current.append(finding)
+        else:
+            runs.append(current)
+            current = [finding]
+    runs.append(current)
+    return [_collapse(run, span=True) for run in runs]
+
+
+def _merge_identical(group):
+    """Group findings the state layer already cannot tell apart.
+
+    Fingerprints are still None at this point, so the key must be the identity
+    tuple the fingerprint is built from rather than the fingerprint itself.
+    """
+    buckets = collections.OrderedDict()
+    for finding in group:
+        buckets.setdefault(_identity_key(finding), []).append(finding)
+    return [_collapse(members, span=False) for members in buckets.values()]
+
+
+def _collapse(members, span):
+    """Return the first member, widened to cover the whole group.
+
+    ``span`` widens the location to a line range, which is only truthful for
+    an adjacent run. Identical members are scattered - two hits on lines 7 and
+    28 are not a 22-line problem - so they carry ``member_lines`` alone.
+    """
+    if len(members) == 1:
+        return members[0]
+    first, last = members[0], members[-1]
+    if span:
+        first.location.end_line = last.location.end_line or last.location.line
+        first.location.end_column = last.location.end_column or last.location.column
+    first.member_count = len(members)
+    first.member_lines = [m.location.line for m in members if m.location.line]
+    return first
+
+
+def _identity_key(finding):
+    """The tuple a fingerprint is computed from, minus the schema version.
+
+    Single-sourced so the merge pass and the numbering of duplicates always
+    agree on what "the same finding" means.
+    """
+    return (
+        finding.rule_id,
+        finding.unit_id,
+        finding.anchor or finding.message,
+        normalize_context(finding.context or ""),
+    )
+
+
 def _fingerprint_all(findings):
-    for f in findings:
-        if f.fingerprint:
+    """Assign identities, numbering exact duplicates so each is addressable.
+
+    Findings that share an identity tuple used to share a fingerprint, so
+    suppressing one silently suppressed the others while the list kept showing
+    them all.  Duplicates are now numbered in document order; the first keeps
+    the plain payload, which is why existing state survives and
+    ``FINGERPRINT_SCHEMA`` does not move.
+    """
+    groups = collections.OrderedDict()
+    for finding in findings:
+        if finding.fingerprint:
             continue
-        f.fingerprint = fp.fingerprint(
-            f.rule_id, f.unit_id, f.anchor or f.message, f.context
-        )
+        groups.setdefault(_identity_key(finding), []).append(finding)
+    for key, group in groups.items():
+        rule_id, unit_id, anchor, _context = key
+        if len(group) > 1:
+            group = sorted(
+                group, key=lambda f: ((f.location.line or 0), (f.location.column or 0))
+            )
+        for occurrence, finding in enumerate(group):
+            finding.fingerprint = fp.fingerprint(
+                rule_id, unit_id, anchor, finding.context, occurrence=occurrence
+            )
 
 
 # ---------------------------------------------------------------------------

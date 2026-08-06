@@ -154,6 +154,8 @@ class Finding:
         self.anchor = anchor
         self.context = context
         self.fingerprint: str | None = None  # assigned by the runner
+        self.member_count = None  # >1 when the runner merged several findings
+        self.member_lines = None  # source lines of every merged member
 
     def to_dict(self, with_fingerprint=True):
         data = {
@@ -169,6 +171,10 @@ class Finding:
             data["anchor"] = self.anchor
         if self.context:
             data["context"] = self.context
+        if self.member_count:
+            data["member_count"] = self.member_count
+        if self.member_lines:
+            data["member_lines"] = list(self.member_lines)
         if with_fingerprint and self.fingerprint:
             data["fingerprint"] = self.fingerprint
         return data

@@ -102,5 +102,6 @@ RULE = RuleSpec(
     summary="Repeated non-trivial numeric literals should be named constants or parameters.",
     topic="Code quality",
     check=check,
-    options={"min_occurrences": 2, "max_trivial_integer": 10},
+    merge="identical",
+    options={"min_occurrences": 2, "max_trivial_integer": 10, "merge": True},
 )

@@ -106,5 +106,6 @@ RULE = RuleSpec(
     summary="ST statements that survive inside comments.",
     topic="Code quality",
     check=check,
-    options={"min_tokens": 4},
+    merge="adjacent",
+    options={"min_tokens": 4, "merge": True},
 )

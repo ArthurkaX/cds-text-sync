@@ -141,3 +141,49 @@ def test_ui_bulk_triage_applies_one_decision_to_group(tmp_path):
 
     assert applied["ok"] is True
     assert applied["summary"]["fix_later"] == 2
+
+
+def test_progress_is_idle_outside_a_run():
+    assert AnalyzerApi().progress() == AnalyzerApi.IDLE_PROGRESS
+
+
+def test_progress_hands_out_a_copy():
+    """The page polls this on a second thread while ``analyze`` writes; a
+    caller must not be able to reach into the record being written."""
+    api = AnalyzerApi()
+    api._record_progress("rules", 3, 24, "CTS0012")
+
+    snapshot = api.progress()
+    snapshot["done"] = 999
+
+    assert api.progress()["done"] == 3
+
+
+def test_analyze_reports_the_phases_it_runs_then_goes_idle(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    api = AnalyzerApi()
+    seen = []
+    record = api._record_progress
+
+    def spy(phase, done, total, detail):
+        seen.append((phase, done, total))
+        record(phase, done, total, detail)
+
+    api._record_progress = spy
+
+    response = api.analyze(root)
+
+    assert response["ok"] is True
+    assert [phase for phase, _done, _total in seen if phase == "start"] == ["start"]
+    assert {"parse", "prepare", "rules", "finalize"} <= {row[0] for row in seen}
+    assert all(done <= total for _phase, done, total in seen if total)
+    # Nothing is in flight once the answer is on its way back to the page.
+    assert api.progress() == AnalyzerApi.IDLE_PROGRESS
+
+
+def test_analyze_goes_idle_after_a_failed_run(tmp_path):
+    api = AnalyzerApi()
+
+    assert api.analyze(str(tmp_path / "missing"))["ok"] is False
+    assert api.progress() == AnalyzerApi.IDLE_PROGRESS

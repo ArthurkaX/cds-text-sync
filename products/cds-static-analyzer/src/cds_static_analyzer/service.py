@@ -10,11 +10,16 @@ from cds_static_analyzer.state import baseline_fingerprints, is_expired
 from cds_static_analyzer.workspace import WorkspaceResolver
 
 
-def analyze_resolved(workspace, config, options=None, apply_state=True):
-    """Run analysis for an already resolved workspace/config pair."""
+def analyze_resolved(workspace, config, options=None, apply_state=True, progress=None):
+    """Run analysis for an already resolved workspace/config pair.
+
+    ``progress`` is the optional sink described in
+    :mod:`cds_static_analyzer.progress`, forwarded to both the source scan and
+    the rule dispatch so a caller sees the whole run, not just its second half.
+    """
     options = options or RunOptions()
-    snapshot = build_st_snapshot(workspace.project_view)
-    result = run_analysis(workspace, snapshot, config, options)
+    snapshot = build_st_snapshot(workspace.project_view, progress=progress)
+    result = run_analysis(workspace, snapshot, config, options, progress=progress)
     if apply_state:
         state_mod.validate_baseline_schema(workspace.state_dir)
         suppressions = state_mod.read_suppressions(workspace.state_dir)
@@ -26,8 +31,10 @@ def analyze_resolved(workspace, config, options=None, apply_state=True):
     return workspace, config, result
 
 
-def analyze(workspace_path, options=None, apply_state=True):
+def analyze(workspace_path, options=None, apply_state=True, progress=None):
     """Resolve *workspace_path* and run the canonical analysis pipeline."""
     workspace = WorkspaceResolver(workspace=workspace_path).resolve()
     config = load_config(workspace.config_path)
-    return analyze_resolved(workspace, config, options, apply_state=apply_state)
+    return analyze_resolved(
+        workspace, config, options, apply_state=apply_state, progress=progress
+    )

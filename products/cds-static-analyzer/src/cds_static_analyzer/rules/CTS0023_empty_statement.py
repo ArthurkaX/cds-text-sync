@@ -56,4 +56,6 @@ RULE = RuleSpec(
     summary="Standalone or duplicated semicolons that produce empty statements.",
     topic="Style",
     check=check,
+    merge="identical",
+    options={"merge": True},
 )

@@ -190,10 +190,14 @@ def test_cts0004_flags_repeated_nontrivial_numbers():
         "IF value > 75 THEN result := 75; END_IF;\n"
     )
     findings = run_rule("CTS0004", ProjectSnapshot(".", [unit]))
-    assert len(findings) == 2
-    assert all(f.rule_id == "CTS0004" for f in findings)
-    assert all(f.severity == "style" for f in findings)
-    assert [f.location.line for f in findings] == [4, 4]
+    # Both 75 literals share one anchor and context, so they are already one
+    # identity for the state layer; the merge pass reports them as one finding.
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0004"
+    assert findings[0].severity == "style"
+    assert findings[0].location.line == 4
+    assert findings[0].member_count == 2
+    assert findings[0].member_lines == [4, 4]
 
 
 def test_cts0004_ignores_trivial_numbers_comments_and_strings():

@@ -104,4 +104,6 @@ RULE = RuleSpec(
     summary="Implementation indentation must reflect actual ST block nesting.",
     topic="Style",
     check=check,
+    merge="adjacent",
+    options={"merge": True},
 )
