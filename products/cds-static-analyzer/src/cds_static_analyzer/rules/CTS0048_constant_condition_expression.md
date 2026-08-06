@@ -21,7 +21,7 @@ configuration mistake, dead code, or a partially edited condition.
 IF 10 < 20 THEN // cts:here
     Run();
 END_IF;
-IF (2 + 3) = 5 THEN
+IF (2 + 3) = 5 THEN // cts:here
     Log();
 END_IF;
 ```

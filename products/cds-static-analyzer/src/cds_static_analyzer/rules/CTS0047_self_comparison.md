@@ -25,7 +25,7 @@ which often indicates a typo or a copy-and-paste error.
 IF value = value THEN // cts:here
     Accept();
 END_IF;
-IF status <> status THEN
+IF status <> status THEN // cts:here
     Reject();
 END_IF;
 ```
