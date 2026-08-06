@@ -6,8 +6,9 @@ related: [CTS0006, CTS0038]
 
 ## What it is
 
-A literal `FOR` counter range is used to index a one-dimensional array, and
-the range extends outside the array's declared bounds.
+A literal `FOR` counter range is used to index an array, and the range extends
+outside the declared bounds of that dimension. Nested `FOR` loops and direct
+indices of multidimensional arrays are supported.
 
 ## Why it is dangerous
 
@@ -40,4 +41,6 @@ END_FOR;
 ## How to fix
 
 Align the loop limits with the array bounds or guard the access explicitly.
-Only literal bounds and direct `array[counter]` accesses are checked here.
+Only literal bounds and direct `array[counter]` or
+`array[outerCounter, innerCounter]` accesses are checked here. Complex index
+expressions and symbolic array bounds are intentionally skipped.

@@ -18,7 +18,10 @@ _FORM = re.compile(
     r"(?P<end>[+-]?\d+)(?:\s+BY\s+(?P<step>[+-]?\d+))?\s*$",
     re.IGNORECASE,
 )
-_ACCESS = re.compile(r"\b(?P<array>[A-Za-z_]\w*)\s*\[\s*(?P<index>[A-Za-z_]\w*)\s*\]")
+_ACCESS = re.compile(
+    r"\b(?P<array>[A-Za-z_]\w*)\s*\[\s*(?P<indices>[^\]\n]+?)\s*\]"
+)
+_IDENTIFIER = re.compile(r"^[A-Za-z_]\w*$")
 
 
 def _constant_int(value):
@@ -32,12 +35,17 @@ def _array_bounds(unit):
     arrays = {}
     for member in decl.all_members(unit):
         typ = classify_type(member.get("type", ""))
-        if typ.get("kind") != "array" or len(typ.get("dims", ())) != 1:
+        if typ.get("kind") != "array":
             continue
-        lower = _constant_int(typ["dims"][0][0])
-        upper = _constant_int(typ["dims"][0][1])
-        if lower is not None and upper is not None:
-            arrays[member["name"].lower()] = (member["name"], lower, upper)
+        dimensions = []
+        for lower_text, upper_text in typ.get("dims", ()):
+            lower = _constant_int(lower_text)
+            upper = _constant_int(upper_text)
+            if lower is None or upper is None:
+                break
+            dimensions.append((lower, upper))
+        if len(dimensions) == len(typ.get("dims", ())):
+            arrays[member["name"].lower()] = (member["name"], dimensions)
     return arrays
 
 
@@ -45,6 +53,37 @@ def _walk(block):
     for child in block.children:
         yield child
         yield from _walk(child)
+
+
+def _split_indices(text):
+    return [part.strip() for part in text.split(",")]
+
+
+def _for_range(block, text, section):
+    if block.kind != "FOR" or block.end_offset is None:
+        return None
+    loop_start = block.start_offset - section.base
+    loop_end = block.end_offset - section.base
+    header = _HEADER.search(text, loop_start, loop_end)
+    if not header:
+        return None
+    parsed = _FORM.match(header.group("header"))
+    if not parsed:
+        return None
+    start = int(parsed.group("start"))
+    end = int(parsed.group("end"))
+    step = int(parsed.group("step") or "1")
+    if step == 0 or (start < end and step < 0) or (start > end and step > 0):
+        return None
+    low, high = (start, end) if step > 0 else (end, start)
+    return {
+        "start": loop_start,
+        "end": loop_end,
+        "body_start": header.end("do"),
+        "counter": parsed.group("counter").lower(),
+        "low": low,
+        "high": high,
+    }
 
 
 def check(unit, ctx):
@@ -56,42 +95,52 @@ def check(unit, ctx):
         return
     text = section.text
 
+    loops = []
     for block in _walk(tree(unit)):
-        if block.kind != "FOR" or block.end_offset is None:
+        loop = _for_range(block, text, section)
+        if loop is not None:
+            loops.append(loop)
+
+    for access in _ACCESS.finditer(text):
+        info = arrays.get(access.group("array").lower())
+        if info is None:
             continue
-        loop_start = block.start_offset - section.base
-        loop_end = block.end_offset - section.base
-        header = _HEADER.search(text, loop_start, loop_end)
-        if not header:
+        indices = _split_indices(access.group("indices"))
+        name, dimensions = info
+        if len(indices) != len(dimensions):
             continue
-        parsed = _FORM.match(header.group("header"))
-        if not parsed:
-            continue
-        counter = parsed.group("counter").lower()
-        start = int(parsed.group("start"))
-        end = int(parsed.group("end"))
-        step = int(parsed.group("step") or "1")
-        if step == 0 or (start < end and step < 0) or (start > end and step > 0):
-            continue
-        low, high = (start, end) if step > 0 else (end, start)
-        body_start = header.end("do")
-        for access in _ACCESS.finditer(text, body_start, loop_end):
-            info = arrays.get(access.group("array").lower())
-            if info is None or access.group("index").lower() != counter:
+        enclosing = [
+            loop
+            for loop in loops
+            if loop["body_start"] <= access.start() < loop["end"]
+        ]
+        for dimension, (index, bounds) in enumerate(zip(indices, dimensions), start=1):
+            if not _IDENTIFIER.fullmatch(index):
                 continue
-            name, array_low, array_high = info
+            counter = index.lower()
+            matching = [loop for loop in enclosing if loop["counter"] == counter]
+            if not matching:
+                continue
+            loop = max(matching, key=lambda item: item["start"])
+            low, high = loop["low"], loop["high"]
+            array_low, array_high = bounds
             if low >= array_low and high <= array_high:
                 continue
-            absolute = section.at(access.start("index"))
+            absolute = section.at(access.start("indices") + access.group("indices").lower().find(index.lower()))
             yield finding_in(
                 message=(
-                    f"FOR counter range [{low}..{high}] can access array "
-                    f"'{name}' outside declared bounds [{array_low}..{array_high}]"
+                    f"FOR counter range [{low}..{high}] can access dimension "
+                    f"{dimension} of array '{name}' outside declared bounds "
+                    f"[{array_low}..{array_high}]"
                 ),
                 unit=unit,
                 offset=absolute,
-                end_offset=section.at(access.end("index")),
-                anchor=f"{name}[{access.group('index')}]",
+                end_offset=section.at(
+                    access.start("indices")
+                    + access.group("indices").lower().find(index.lower())
+                    + len(index)
+                ),
+                anchor=access.group(0),
                 context=access.group(0),
             )
 

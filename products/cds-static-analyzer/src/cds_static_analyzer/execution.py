@@ -16,6 +16,7 @@ from collections import defaultdict, deque
 from cds_static_analyzer.st import kinds as K
 from cds_static_analyzer.st.body import body
 from cds_static_analyzer.st.decl import all_members
+from cds_static_analyzer.st.library import is_known_function, is_known_function_block
 
 
 _BARE_CALL = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
@@ -118,7 +119,7 @@ class ExecutionGraph:
         }
         method_spans = set()
         for match in _METHOD_CALL.finditer(section.text):
-            method_spans.add(match.start())
+            method_spans.add(match.start("method"))
             instance = _key(match.group("instance"))
             method = match.group("method")
             type_name = local_types.get(instance)
@@ -142,6 +143,10 @@ class ExecutionGraph:
             type_name = local_types.get(_key(name))
             callee = self._resolve_type(type_name) if type_name else self._resolve_name(name)
             if callee is None:
+                if is_known_function(name) or is_known_function_block(name):
+                    continue
+                if type_name and is_known_function_block(type_name):
+                    continue
                 self.unresolved_calls[caller].add(name)
             else:
                 self.calls[caller].add(callee)
