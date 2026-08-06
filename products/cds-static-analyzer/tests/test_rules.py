@@ -17,6 +17,492 @@ def _st_unit_named(path, text):
 
 
 # ---------------------------------------------------------------------------
+# CTS0053 - unresolved call
+# ---------------------------------------------------------------------------
+
+
+def test_cts0053_flags_unknown_bare_and_method_calls():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n device : Device;\nEND_VAR\nIMPLEMENTATION\n"
+        "MissingPou();\nDevice.Start();\n"
+    )
+    findings = run_rule("CTS0053", ProjectSnapshot(".", [unit]))
+    assert {finding.anchor for finding in findings} == {"MissingPou", "Device.Start"}
+    assert all(finding.severity == "suspicious" for finding in findings)
+
+
+def test_cts0053_ignores_project_and_known_library_calls():
+    helper = _st_unit_named(
+        "Helper.st", "FUNCTION Helper : INT\nIMPLEMENTATION\nHelper := 1;\n"
+    )
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n timer : TON;\nEND_VAR\nIMPLEMENTATION\n"
+        "value := Helper();\nvalue := ABS(value);\n"
+        "value := TO_INT(value);\n"
+        "timer(IN := Enable, PT := T#1s);\n"
+    )
+    assert run_rule("CTS0053", ProjectSnapshot(".", [helper, unit])) == []
+
+
+def test_cts0053_ignores_self_method_calls_and_reports_unknown_function_block():
+    unit = _st_unit(
+        "METHOD Run\nIMPLEMENTATION\nTHIS.Helper();\nUnknownBlock();\n"
+    )
+    findings = run_rule("CTS0053", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["UnknownBlock"]
+
+
+# ---------------------------------------------------------------------------
+# CTS0052 - function-block output read before call
+# ---------------------------------------------------------------------------
+
+
+def test_cts0052_flags_timer_output_read_before_call():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n timer : TON;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF timer.Q THEN Done := TRUE; END_IF;\n"
+        "timer(IN := Enable, PT := T#1s);\n"
+    )
+    findings = run_rule("CTS0052", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "timer.Q"
+
+
+def test_cts0052_accepts_timer_and_edge_trigger_called_before_read():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n timer : TON;\n trig : R_TRIG;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "timer(IN := Enable, PT := T#1s);\n"
+        "trig(CLK := Signal);\n"
+        "IF timer.Q AND trig.Q THEN Done := TRUE; END_IF;\n"
+    )
+    assert run_rule("CTS0052", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0052_flags_uncalled_edge_output_and_supports_project_fb_outputs():
+    fb = _st_unit_named(
+        "FB.st",
+        "FUNCTION_BLOCK FB\nVAR_OUTPUT\n Done : BOOL;\nEND_VAR\nIMPLEMENTATION\n",
+    )
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n fb : FB;\n trig : F_TRIG;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF fb.Done OR trig.Q THEN Done := TRUE; END_IF;\n"
+    )
+    fb.qualified_name = "FB"
+    findings = run_rule("CTS0052", ProjectSnapshot(".", [fb, unit]))
+    assert {finding.anchor for finding in findings} == {"fb.Done", "trig.Q"}
+
+
+def test_cts0052_ignores_non_output_fields_and_assignments():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n timer : TON;\nEND_VAR\nIMPLEMENTATION\n"
+        "timer.Q := FALSE;\n"
+        "timer(IN := Enable, PT := timer.ET);\n"
+    )
+    assert run_rule("CTS0052", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0051 - escaping local address
+# ---------------------------------------------------------------------------
+
+
+def test_cts0051_flags_function_result_and_call_escape():
+    unit = _st_unit(
+        "FUNCTION Make : POINTER TO BYTE\nVAR_TEMP\n"
+        " localByte : BYTE;\nEND_VAR\nIMPLEMENTATION\n"
+        "Make := ADR(localByte);\n"
+    )
+    findings = run_rule("CTS0051", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "ADR(localByte)"
+
+
+def test_cts0051_flags_address_passed_to_call():
+    unit = _st_unit(
+        "FUNCTION Store : BOOL\nVAR_TEMP\n"
+        " localByte : BYTE;\nEND_VAR\nIMPLEMENTATION\n"
+        "Store := StoreForLater(ADR(localByte));\n"
+    )
+    findings = run_rule("CTS0051", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "passed out" in findings[0].message
+
+
+def test_cts0051_flags_retain_and_external_destinations():
+    unit = _st_unit(
+        "FUNCTION Save : BOOL\nVAR RETAIN\n"
+        " retainedPointer : POINTER TO BYTE;\nEND_VAR\n"
+        "VAR_EXTERNAL\n externalPointer : POINTER TO BYTE;\nEND_VAR\n"
+        "VAR_TEMP\n localByte : BYTE;\nEND_VAR\n"
+        "IMPLEMENTATION\nretainedPointer := ADR(localByte);\n"
+        "externalPointer := ADR(localByte);\n"
+    )
+    findings = run_rule("CTS0051", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert all("escapes" in finding.message for finding in findings)
+
+
+def test_cts0051_ignores_local_address_use_and_nonlocal_values():
+    unit = _st_unit(
+        "FUNCTION Use : BOOL\nVAR\n"
+        " localByte : BYTE;\n localPointer : POINTER TO BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "localPointer := ADR(localByte);\n"
+        "Use := ReadNow(localPointer);\n"
+        "ADR(globalByte);\n"
+    )
+    assert run_rule("CTS0051", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0050 - possible zero divisor
+# ---------------------------------------------------------------------------
+
+
+def test_cts0050_flags_variable_division_without_a_guard():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nVAR_INPUT\n"
+        "    divisor : REAL;\nEND_VAR\nIMPLEMENTATION\n"
+        "Calc := value / divisor;\n"
+    )
+    findings = run_rule("CTS0050", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0050"
+    assert findings[0].severity == "danger"
+    assert findings[0].anchor == "divisor"
+
+
+def test_cts0050_accepts_simple_nonzero_if_and_else_guards():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nIMPLEMENTATION\n"
+        "IF divisor <> 0 THEN\n"
+        "    Calc := value / divisor;\n"
+        "END_IF;\n"
+        "IF divisor = 0 THEN\n"
+        "    Calc := 0;\n"
+        "ELSE\n"
+        "    Calc := value / divisor;\n"
+        "END_IF;\n"
+    )
+    assert run_rule("CTS0050", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0050_flags_branch_where_divisor_is_zero():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nIMPLEMENTATION\n"
+        "IF divisor = 0 THEN\n"
+        "    Calc := value / divisor;\n"
+        "END_IF;\n"
+    )
+    findings = run_rule("CTS0050", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "proven to be zero" in findings[0].message
+
+
+def test_cts0050_accepts_guard_clause_and_skips_literal_divisors():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nIMPLEMENTATION\n"
+        "IF divisor = 0 THEN RETURN; END_IF;\n"
+        "Calc := value / divisor;\n"
+        "Calc := 10 / 10;\n"
+        "Calc := 10 / DINT#0;\n"
+    )
+    assert run_rule("CTS0050", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0050_does_not_assume_complex_guard_is_sufficient():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nIMPLEMENTATION\n"
+        "IF divisor <> 0 AND enabled THEN\n"
+        "    Calc := value / divisor;\n"
+        "END_IF;\n"
+    )
+    findings = run_rule("CTS0050", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# CTS0049 - constant arithmetic overflow
+# ---------------------------------------------------------------------------
+
+
+def test_cts0049_flags_overflow_in_constant_initializer():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    nValue : INT := 30000 + 10000;\n"
+        "END_VAR\nIMPLEMENTATION\nEND_PROGRAM\n"
+    )
+    findings = run_rule("CTS0049", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0049"
+    assert findings[0].severity == "danger"
+    assert findings[0].anchor == "nValue"
+    assert "40000" in findings[0].message
+    assert "INT" in findings[0].message
+
+
+def test_cts0049_flags_overflow_in_direct_assignment():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    nValue : BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "nValue := 200 + 100;\n"
+    )
+    findings = run_rule("CTS0049", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "nValue"
+
+
+def test_cts0049_accepts_in_range_values_and_skips_nonconstant_expressions():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    intValue : INT := 30000 + 1000;\n"
+        "    wideValue : DINT;\n"
+        "    inputValue : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "wideValue := 30000 + 10000;\n"
+        "intValue := inputValue + 1;\n"
+    )
+    assert run_rule("CTS0049", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0049_ignores_comments_strings_and_non_integer_targets():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    realValue : REAL;\n"
+        "    intValue : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "realValue := 30000 + 10000;\n"
+        "message := 'intValue := 30000 + 10000';\n"
+        "// intValue := 30000 + 10000;\n"
+    )
+    assert run_rule("CTS0049", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0048 - constant control-flow expression
+# ---------------------------------------------------------------------------
+
+
+def test_cts0048_flags_constant_numeric_and_boolean_expressions():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF 10 < 20 THEN Work(); END_IF;\n"
+        "IF (2 + 3) = 5 AND TRUE THEN Log(); END_IF;\n"
+    )
+    findings = run_rule("CTS0048", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert "always true" in findings[0].message
+    assert "always true" in findings[1].message
+
+
+def test_cts0048_supports_constant_false_and_while_conditions():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "WHILE 4 * 2 <> 8 DO Work(); END_WHILE;\n"
+    )
+    findings = run_rule("CTS0048", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "always false" in findings[0].message
+
+
+def test_cts0048_leaves_literal_conditions_and_nonconstant_expressions_to_other_rules():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF TRUE THEN Work(); END_IF;\n"
+        "IF value = value THEN Work(); END_IF;\n"
+        "IF limit < 20 THEN Work(); END_IF;\n"
+        "message := 'IF 10 < 20 THEN';\n"
+    )
+    assert run_rule("CTS0048", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0047 - self-comparison
+# ---------------------------------------------------------------------------
+
+
+def test_cts0047_flags_tautological_and_contradictory_comparisons():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF value = value THEN Work(); END_IF;\n"
+        "IF status <> status THEN Reject(); END_IF;\n"
+    )
+    findings = run_rule("CTS0047", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert "always true" in findings[0].message
+    assert "always false" in findings[1].message
+
+
+def test_cts0047_handles_qualified_names_and_relational_operators():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF GVL.State >= GVL.State THEN Work(); END_IF;\n"
+        "IF count < count THEN Stop(); END_IF;\n"
+    )
+    findings = run_rule("CTS0047", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert findings[0].anchor == "GVL.State >= GVL.State"
+    assert findings[1].anchor == "count < count"
+
+
+def test_cts0047_ignores_different_or_complex_operands():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "IF value = other THEN Work(); END_IF;\n"
+        "IF ReadValue() = ReadValue() THEN Work(); END_IF;\n"
+        "IF data[index] = data[index] THEN Work(); END_IF;\n"
+        "message := 'value = value';\n"
+    )
+    assert run_rule("CTS0047", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0046 - REPEAT condition not changed
+# ---------------------------------------------------------------------------
+
+
+def test_cts0046_flags_condition_not_changed_in_repeat_body():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "REPEAT\n"
+        "    Work();\n"
+        "UNTIL ready\n"
+        "END_REPEAT;\n"
+    )
+    findings = run_rule("CTS0046", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0046"
+    assert findings[0].severity == "danger"
+    assert findings[0].anchor == "ready"
+
+
+def test_cts0046_accepts_direct_assignment_to_condition_variable():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "REPEAT\n"
+        "    ready := CheckReady();\n"
+        "UNTIL ready\n"
+        "END_REPEAT;\n"
+    )
+    assert run_rule("CTS0046", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0046_uses_outer_until_for_nested_repeat():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "REPEAT\n"
+        "    REPEAT\n"
+        "        inner_done := TRUE;\n"
+        "    UNTIL inner_done\n"
+        "    END_REPEAT;\n"
+        "UNTIL outer_done\n"
+        "END_REPEAT;\n"
+    )
+    findings = run_rule("CTS0046", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "outer_done"
+
+
+def test_cts0046_skips_complex_or_alternate_termination_paths():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "REPEAT\n"
+        "    IF StopNow THEN EXIT; END_IF;\n"
+        "UNTIL IsReady()\n"
+        "END_REPEAT;\n"
+    )
+    assert run_rule("CTS0046", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0045 - unreachable POU
+# ---------------------------------------------------------------------------
+
+
+def test_cts0045_flags_pou_reachable_only_from_unreachable_pou():
+    main = _st_unit_named(
+        "Main.st", "PROGRAM Main\nIMPLEMENTATION\nEND_PROGRAM\n"
+    )
+    orphan = _st_unit_named(
+        "Orphan.st", "FUNCTION Orphan\nIMPLEMENTATION\nLeaf();\nEND_FUNCTION\n"
+    )
+    leaf = _st_unit_named(
+        "Leaf.st", "FUNCTION Leaf\nIMPLEMENTATION\nEND_FUNCTION\n"
+    )
+    snapshot = ProjectSnapshot(".", [main, orphan, leaf, _task_unit("Fast", "Main")])
+    findings = run_rule("CTS0045", snapshot)
+    assert {finding.anchor for finding in findings} == {"Orphan", "Leaf"}
+    leaf_finding = next(finding for finding in findings if finding.anchor == "Leaf")
+    assert "orphan" in leaf_finding.message.casefold()
+
+
+def test_cts0045_accepts_pou_reachable_from_a_task():
+    main = _st_unit_named(
+        "Main.st", "PROGRAM Main\nIMPLEMENTATION\nHelper();\nEND_PROGRAM\n"
+    )
+    helper = _st_unit_named(
+        "Helper.st", "FUNCTION Helper\nIMPLEMENTATION\nEND_FUNCTION\n"
+    )
+    snapshot = ProjectSnapshot(".", [main, helper, _task_unit("Fast", "Main")])
+    assert run_rule("CTS0045", snapshot) == []
+
+
+def test_cts0045_skips_when_task_roots_are_unavailable():
+    unit = _st_unit_named(
+        "Unused.st", "FUNCTION Unused\nIMPLEMENTATION\nEND_FUNCTION\n"
+    )
+    assert run_rule("CTS0045", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0044 - overlapping CASE ranges
+# ---------------------------------------------------------------------------
+
+
+def test_cts0044_flags_overlapping_numeric_ranges():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n\n"
+        "CASE state OF\n"
+        "  1..5: state := 1;\n"
+        "  5..10: state := 2;\n"
+        "END_CASE;\n"
+    )
+    findings = run_rule("CTS0044", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].rule_id == "CTS0044"
+    assert findings[0].severity == "danger"
+    assert findings[0].location.line == 6
+    assert findings[0].anchor == "5..10"
+
+
+def test_cts0044_treats_single_label_as_a_one_value_range():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n\n"
+        "CASE state OF\n"
+        "  1..5: state := 1;\n"
+        "  4, 8..10: state := 2;\n"
+        "END_CASE;\n"
+    )
+    findings = run_rule("CTS0044", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "4"
+
+
+def test_cts0044_ignores_exact_duplicates_and_symbolic_labels():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n\n"
+        "CASE state OF\n"
+        "  1..5: state := 1;\n"
+        "  1..5: state := 2;\n"
+        "  StateIdle..StateRun: state := 3;\n"
+        "END_CASE;\n"
+    )
+    assert run_rule("CTS0044", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
 # CTS0001 - commented-out code
 # ---------------------------------------------------------------------------
 
@@ -1435,6 +1921,37 @@ def test_cts0039_ignores_fitting_range_and_non_counter_access():
         "FUNCTION Run : BOOL\nVAR\n"
         " Values : ARRAY[0..9] OF INT;\n i, j : INT;\nEND_VAR\n"
         "IMPLEMENTATION\nFOR i := 0 TO 9 DO Values[i] := 0; Values[j] := 1; END_FOR;\n"
+        "Run := TRUE;\n"
+    )
+    assert run_rule("CTS0039", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0039_checks_nested_for_counters_against_multidimensional_bounds():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n"
+        " Grid : ARRAY[0..2, 10..12] OF INT;\n"
+        " i, j : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "FOR i := 0 TO 2 DO\n"
+        "    FOR j := 10 TO 13 DO Grid[i, j] := 0; END_FOR;\n"
+        "END_FOR;\n"
+        "Run := TRUE;\n"
+    )
+    findings = run_rule("CTS0039", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "Grid[i, j]"
+    assert "dimension 2" in findings[0].message
+
+
+def test_cts0039_ignores_fitting_multidimensional_nested_for():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n"
+        " Grid : ARRAY[-1..2, 10..12] OF INT;\n"
+        " i, j : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "FOR i := -1 TO 2 DO\n"
+        "    FOR j := 10 TO 12 DO Grid[i, j] := 0; END_FOR;\n"
+        "END_FOR;\n"
         "Run := TRUE;\n"
     )
     assert run_rule("CTS0039", ProjectSnapshot(".", [unit])) == []

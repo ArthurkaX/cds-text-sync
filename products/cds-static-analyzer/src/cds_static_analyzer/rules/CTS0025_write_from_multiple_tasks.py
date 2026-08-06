@@ -114,12 +114,12 @@ def _finding(display, occurrence, message):
 
 RULE = RuleSpec(
     id="CTS0025",
-    title="Concurrent writes to shared data",
+    title="Concurrent access to shared data",
     severity="suspicious",
     scope=Scope.PROJECT,
     requires={Capability.DECLARATIONS, Capability.EXECUTION_GRAPH},
     kinds="ANY",
-    summary="Shared project data written by programs running in different contexts.",
+    summary="Shared project data accessed by programs running in different contexts.",
     topic="Data consistency",
     check=check,
 )

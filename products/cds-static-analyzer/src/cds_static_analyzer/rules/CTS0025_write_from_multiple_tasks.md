@@ -1,5 +1,5 @@
 ---
-title: Concurrent writes to shared data
+title: Concurrent access to shared data
 ---
 
 ## What it is
