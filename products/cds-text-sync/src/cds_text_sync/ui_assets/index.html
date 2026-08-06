@@ -535,10 +535,12 @@
         let group=map.get(key);
         if(!group){
           group={key, mode, rule_id:f.rule_id, rule_title:f.rule_title,
-                 path:(f.location && f.location.path)||'', severity:f.severity, items:[], occurrences:0};
+                 path:(f.location && f.location.path)||'', paths:[], severity:f.severity, items:[], occurrences:0};
           map.set(key,group);
         }
         group.items.push(f);
+        const itemPath=(f.location && f.location.path)||'';
+        if(group.paths.indexOf(itemPath)<0) group.paths.push(itemPath);
         group.occurrences+=occurrenceLines(f).length || 1;
         if(sevRank(f.severity)>sevRank(group.severity)) group.severity=f.severity;
       });
@@ -788,18 +790,20 @@
        triage applying to all of its findings. */
     async function selectGroup(group) {
       selectedGroupKey=group.key; selectedFingerprint=''; renderFindings();
-      const path=group.path, ruleIds=Array.from(new Set(group.items.map(f=>f.rule_id)));
+      const paths=group.paths||[group.path||''];
+      const path=paths.length===1 ? paths[0] : '';
+      const ruleIds=Array.from(new Set(group.items.map(f=>f.rule_id)));
       const rule=ruleIds.length===1 ? await ruleFor(ruleIds[0]) : null;
       const documentation=rule && (rule.documentation || rule.summary) ||
         (ruleIds.length===1 ? 'No rule documentation is available.' : 'This group spans '+ruleIds.length+' rules.');
-      const lines=[]; group.items.forEach(f=>lines.push(...occurrenceLines(f)));
+      const lines=[]; if(path) group.items.forEach(f=>lines.push(...occurrenceLines(f)));
       $('details').className='details';
-      $('details').innerHTML='<div class="code-title"><div><h2>'+esc((path||'').split(/[\\\\/]/).pop() || 'Project')+'</h2><div class="sub">'+esc(path||'Project')+' · '+esc(groupCountText(group))+'</div></div>'+
+      $('details').innerHTML='<div class="code-title"><div><h2>'+esc(path ? (path||'').split(/[\\\\/]/).pop() : (rule && (rule.title || rule.rule_title) || 'Multiple files'))+'</h2><div class="sub">'+esc(path ? path : (paths.length+' files'))+' · '+esc(groupCountText(group))+'</div></div>'+
        (path?'<button id="open-file" class="link-button">Open in editor ↗</button>':'')+'</div>'+
         '<div class="documentation-actions"><button id="show-documentation" class="link-button doc-button">Why this matters · '+esc(ruleIds.length===1?ruleIds[0]:'rule documentation')+' ↗</button>'+
         (ruleIds.length===1?'<button id="show-rule" class="link-button doc-button">Open '+esc(ruleIds[0])+' in rule settings ↗</button>':'')+'</div>'+
         '<div id="source" class="code"><div class="empty">Loading source context…</div></div>'+
-         '<div class="detail"><h3>Cases in this group</h3><p>'+group.items.map(f=>esc(findingRange(f,4))+' — '+esc(f.message || f.rule_title)).join('<br>')+'</p></div>'+
+          '<div class="detail"><h3>Cases in this group</h3><p>'+group.items.map(f=>(paths.length>1?esc(locationText(f.location))+' — ':'')+esc(findingRange(f,4))+' — '+esc(f.message || f.rule_title)).join('<br>')+'</p></div>'+
          '<div class="actions"><button id="fix-later">Mark whole group fix-later</button><button id="baseline">Baseline whole group</button><button id="suppress">Suppress whole group</button></div>';
        if(rule && rule.fixable) {
          $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix'+(group.items.length>1?' group':'')+'</button>');
@@ -809,7 +813,7 @@
       $('show-documentation').onclick=()=>openDocumentation(rule,ruleIds.length===1?ruleIds[0]:'Rule documentation',documentation);
       if(ruleIds.length===1)$('show-rule').onclick=()=>{showRules(true);$('rule-search').value=ruleIds[0];renderRules();};
       if(path && lines.length) await fillSource(path,lines);
-      else $('source').innerHTML='<div class="empty">This group has no file-backed source to show.</div>';
+      else $('source').innerHTML='<div class="empty">This group spans multiple files. Expand the group and select an individual case to view source context.</div>';
       const decide=action=>applyTriage(action,group.items.slice());
       $('fix-later').onclick=()=>decide('fix-later'); $('baseline').onclick=()=>decide('baseline'); $('suppress').onclick=()=>decide('suppress');
     }

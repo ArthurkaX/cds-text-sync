@@ -7,14 +7,27 @@ import re
 from cds_static_analyzer.capabilities import Capability, Scope
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.body import body
+from cds_static_analyzer.st.blanking import blank_noise, trim_strings
 
 _OPENERS = re.compile(r"\b(IF|FOR|WHILE|REPEAT|CASE)\b", re.IGNORECASE)
 _CLOSERS = re.compile(r"^END_(IF|FOR|WHILE|REPEAT|CASE)\b", re.IGNORECASE)
 _BRANCH = re.compile(r"^(ELSE|ELSIF)\b", re.IGNORECASE)
+_CONTINUATION_START = re.compile(
+    r"^(?:[,.)\]}]|(?:AND|OR|XOR)\b|[+\-*/])", re.IGNORECASE
+)
 
 
-def _is_continuation(previous):
-    return bool(previous and re.search(r"(?:\b(?:AND|OR|XOR)|:=|,|\(|\.)\s*$", previous, re.I))
+def _is_continuation(previous, current=""):
+    """Return whether a line belongs to the expression above it.
+
+    ST projects commonly put call arguments on lines beginning with a comma,
+    and put the closing ``);`` on its own line.  Looking only at the previous
+    line made those perfectly intentional alignments look like block drift.
+    """
+    return bool(
+        (previous and re.search(r"(?:\b(?:AND|OR|XOR)|:=|,|\(|\.)\s*$", previous, re.I))
+        or (current and _CONTINUATION_START.match(current))
+    )
 
 
 def _indent_width(prefix):
@@ -56,7 +69,7 @@ def check(unit, ctx):
         if not code:
             continue
 
-        continuation = _is_continuation(previous_code)
+        continuation = _is_continuation(previous_code, code)
         is_close = bool(_CLOSERS.match(upper))
         is_branch = bool(_BRANCH.match(upper))
         expected_depth = max(0, depth - (1 if is_close or is_branch else 0))
@@ -94,6 +107,89 @@ def check(unit, ctx):
         previous_code = code
 
 
+def fix(text, finding):
+    """Return *text* with the affected structural indentation corrected.
+
+    The expected indentation is calculated with the same depth model as
+    :func:`check`.  Only the source lines represented by the finding are
+    changed; continuation lines and all non-leading content remain intact.
+    """
+    raw_lines = text.splitlines(keepends=True)
+    clean_lines = trim_strings(blank_noise(text)).splitlines()
+    target_lines = set()
+    location = finding.get("location") if isinstance(finding, dict) else None
+    if isinstance(location, dict) and location.get("line") is not None:
+        target_lines.add(int(location["line"]))
+    for value in (finding.get("member_lines", []) if isinstance(finding, dict) else []):
+        try:
+            target_lines.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not target_lines:
+        return text
+
+    depth_indents = {0: 0}
+    depth = 0
+    previous_code = ""
+    records = []
+    observed_prefixes = []
+
+    for index, raw in enumerate(raw_lines):
+        if index >= len(clean_lines):
+            break
+        code = clean_lines[index].strip()
+        prefix = raw[: len(raw) - len(raw.lstrip(" \t"))]
+        if not code:
+            continue
+
+        continuation = _is_continuation(previous_code, code)
+        upper = code.upper()
+        is_close = bool(_CLOSERS.match(upper))
+        is_branch = bool(_BRANCH.match(upper))
+        expected_depth = max(0, depth - (1 if is_close or is_branch else 0))
+        if not continuation:
+            actual = _indent_width(prefix)
+            expected = depth_indents.setdefault(
+                expected_depth, actual if expected_depth else 0
+            )
+            mixed = " " in prefix and "\t" in prefix
+            if prefix and not mixed:
+                observed_prefixes.append(prefix)
+            records.append((index, actual, expected, mixed, prefix))
+
+        if is_close:
+            depth = max(0, depth - 1)
+        elif not is_branch:
+            opens = _OPENERS.findall(upper)
+            if opens and not re.search(
+                r"\bEND_(?:IF|FOR|WHILE|REPEAT|CASE)\b", upper
+            ):
+                depth += len(opens)
+        previous_code = code
+
+    tab_columns = sum(prefix.count("\t") for prefix in observed_prefixes)
+    space_columns = sum(prefix.count(" ") for prefix in observed_prefixes)
+    use_tabs = tab_columns > space_columns
+
+    def prefix_for(expected):
+        if expected <= 0:
+            return ""
+        for prefix in observed_prefixes:
+            if _indent_width(prefix) == expected:
+                return prefix
+        return ("\t" if use_tabs else " ") * expected
+
+    for index, actual, expected, mixed, prefix in records:
+        if index + 1 not in target_lines or (actual == expected and not mixed):
+            continue
+        raw = raw_lines[index]
+        content = raw.rstrip("\r\n")
+        newline = raw[len(content) :]
+        raw_lines[index] = prefix_for(expected) + content[len(prefix) :] + newline
+
+    return "".join(raw_lines)
+
+
 RULE = RuleSpec(
     id="CTS0007",
     title="Structural indentation",
@@ -106,4 +202,5 @@ RULE = RuleSpec(
     check=check,
     merge="adjacent",
     options={"merge": True},
+    fix=fix,
 )
