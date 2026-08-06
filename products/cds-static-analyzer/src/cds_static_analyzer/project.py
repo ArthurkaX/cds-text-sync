@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from cds_static_analyzer import progress as progress_mod
 from cds_static_analyzer.file_directives import directive_info
 from cds_static_analyzer.model import Diagnostic, Location, line_col_of
 from cds_static_analyzer.st import kinds as K
@@ -225,13 +226,18 @@ class ProjectSnapshot:
         }
 
 
-def build_st_snapshot(project_view):
+def build_st_snapshot(project_view, progress=None):
     """Build a ProjectSnapshot from a project-view directory.
 
     Never raises for a single unreadable or unparsable file: unreadable
     files land in ``snapshot.diagnostics`` (and a structured ``SourceError``
     record), and unclassifiable ``.st`` files become ``kind=UNKNOWN`` units.
     XML files are outside this public API.
+
+    ``progress`` is the optional sink described in
+    :mod:`cds_static_analyzer.progress`.  The walk is completed before any
+    file is read so the reports can carry a real total instead of counting up
+    from an unknown one.
     """
     root = os.path.abspath(project_view)
     units = []
@@ -239,36 +245,37 @@ def build_st_snapshot(project_view):
     source_errors = []
     file_directives = {}
 
+    targets = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for filename in sorted(filenames):
-            full_path = os.path.join(dirpath, filename)
-            rel = _relpath(root, full_path)
-            lower = filename.lower()
-            if not lower.endswith(".st"):
-                continue
-            try:
-                text = _read_text(full_path)
-            except OSError as exc:
-                source_errors.append(
-                    SourceError(rel, "st", f"cannot read {rel}: {exc}")
-                )
-                diagnostics.append(
-                    Diagnostic(
-                        "project-read",
-                        f"cannot read {rel}: {exc}",
-                        location=Location(rel),
-                    )
-                )
-                continue
+            if filename.lower().endswith(".st"):
+                targets.append(os.path.join(dirpath, filename))
 
-            if lower.endswith(".st"):
-                rules, issues = directive_info(text)
-                file_directives[rel] = FileDirectives(rules, issues)
-                unit = _build_st_unit(rel, text)
-            if unit is None:
-                continue
-            units.append(unit)
+    for index, full_path in enumerate(targets, start=1):
+        rel = _relpath(root, full_path)
+        progress_mod.emit(progress, "parse", index, len(targets), rel)
+        try:
+            text = _read_text(full_path)
+        except OSError as exc:
+            source_errors.append(
+                SourceError(rel, "st", f"cannot read {rel}: {exc}")
+            )
+            diagnostics.append(
+                Diagnostic(
+                    "project-read",
+                    f"cannot read {rel}: {exc}",
+                    location=Location(rel),
+                )
+            )
+            continue
+
+        rules, issues = directive_info(text)
+        file_directives[rel] = FileDirectives(rules, issues)
+        unit = _build_st_unit(rel, text)
+        if unit is None:
+            continue
+        units.append(unit)
 
     # Resolve owner ids in a post-pass (case-insensitive: IEC identifiers).
     by_qual = {}

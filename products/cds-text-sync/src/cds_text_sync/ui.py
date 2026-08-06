@@ -45,19 +45,47 @@ def analyze_workspace(workspace_path: str) -> dict:
 class AnalyzerApi:
     """Methods exposed to the local pywebview page."""
 
+    #: What :meth:`progress` reports when no run is in flight.
+    IDLE_PROGRESS = {"running": False, "phase": "", "done": 0, "total": 0, "detail": ""}
+
     def __init__(self, initial_workspace: str = ""):
         self.initial_workspace = initial_workspace
         self._last_project_view = ""
         self._last_analysis = None
         self._last_result = None
+        self._progress = dict(self.IDLE_PROGRESS)
 
     def initial_state(self) -> dict:
         return {"workspace": self.initial_workspace, "analyzer_version": __version__}
 
+    def progress(self) -> dict:
+        """Snapshot of the run currently in flight, polled by the page.
+
+        pywebview dispatches every bridge call on its own thread, so this is
+        read while :meth:`analyze` is still working.  ``_record`` replaces the
+        whole dict instead of mutating it, so a poll either sees the previous
+        report or the next one, never a half-written one, and no lock is
+        needed on either side.
+        """
+        return dict(self._progress)
+
+    def _record_progress(self, phase, done, total, detail) -> None:
+        self._progress = {
+            "running": True,
+            "phase": str(phase),
+            "done": int(done),
+            "total": int(total),
+            "detail": str(detail),
+        }
+
     def analyze(self, workspace_path: str) -> dict:
+        self._record_progress("start", 0, 0, "")
         try:
             workspace, _config, result = run_service(
-                workspace_path, RunOptions(), apply_state=True
+                workspace_path,
+                RunOptions(),
+                apply_state=True,
+                progress=self._record_progress,
             )
             response = {
                 "ok": True,
@@ -73,6 +101,10 @@ class AnalyzerApi:
             return {"ok": False, "error": str(exc)}
         except Exception as exc:
             return {"ok": False, "error": f"Analysis failed unexpectedly: {exc}"}
+        finally:
+            # A poll that arrives after the answer must not keep the page
+            # showing a phase that is already over.
+            self._progress = dict(self.IDLE_PROGRESS)
 
     def rules(self, workspace_path: str) -> dict:
         """Return the human-analyzer rule catalog and project settings."""
@@ -143,31 +175,37 @@ class AnalyzerApi:
             return {"ok": False, "error": str(exc)}
         return {"ok": True}
 
-    def source_context(
-        self, relative_path: str, line: int | None = None, radius: int = 5
-    ) -> dict:
-        """Return a small source excerpt for the selected finding.
+    def _read_source(self, relative_path):
+        """Return ``(lines, None)`` for an analyzed ST file, or ``(None, error)``.
 
         The webview is allowed to inspect only ST files below the last analyzed
         project-view.  This keeps the context panel useful without turning the
         UI bridge into a general-purpose file reader.
         """
         if not self._last_project_view:
-            return {"ok": False, "error": "Run analysis before opening source context."}
+            return None, {"ok": False, "error": "Run analysis before opening source context."}
         root = Path(self._last_project_view).resolve()
         target = (root / str(relative_path or "")).resolve()
         try:
             target.relative_to(root)
         except ValueError:
-            return {"ok": False, "error": "Invalid source path."}
+            return None, {"ok": False, "error": "Invalid source path."}
         if target.suffix.lower() != ".st":
-            return {"ok": False, "error": "Only .st source context is available."}
+            return None, {"ok": False, "error": "Only .st source context is available."}
         if not target.is_file():
-            return {"ok": False, "error": f"Source file no longer exists: {relative_path}"}
+            return None, {"ok": False, "error": f"Source file no longer exists: {relative_path}"}
         try:
-            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+            return target.read_text(encoding="utf-8", errors="replace").splitlines(), None
         except OSError as exc:
-            return {"ok": False, "error": str(exc)}
+            return None, {"ok": False, "error": str(exc)}
+
+    def source_context(
+        self, relative_path: str, line: int | None = None, radius: int = 5
+    ) -> dict:
+        """Return a small source excerpt for the selected finding."""
+        lines, error = self._read_source(relative_path)
+        if error is not None:
+            return error
         selected = max(1, int(line or 1))
         safe_radius = max(1, min(int(radius or 5), 12))
         start = max(1, selected - safe_radius)
@@ -179,6 +217,56 @@ class AnalyzerApi:
             "lines": [
                 {"number": number, "text": lines[number - 1], "hot": number == selected}
                 for number in range(start, end + 1)
+            ],
+        }
+
+    def source_spans(
+        self, relative_path: str, lines: list | None = None, radius: int = 5
+    ) -> dict:
+        """Return excerpts covering every occurrence line of one case.
+
+        The list groups a whole file into a single case, so the detail panel
+        has to show all of its occurrences at once.  Windows that touch or
+        overlap are coalesced; a window that follows a skipped region carries
+        ``gap_before`` so the page can draw a separator instead of implying
+        the excerpt is contiguous.
+        """
+        source, error = self._read_source(relative_path)
+        if error is not None:
+            return error
+        wanted = set()
+        for value in lines or []:
+            try:
+                number = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= number <= len(source):
+                wanted.add(number)
+        if not wanted:
+            return {"ok": False, "error": "No source lines to show for this case."}
+        safe_radius = max(1, min(int(radius or 5), 12))
+        windows: list[list[int]] = []
+        for number in sorted(wanted):
+            start = max(1, number - safe_radius)
+            end = min(len(source), number + safe_radius)
+            if windows and start <= windows[-1][1] + 1:
+                windows[-1][1] = max(windows[-1][1], end)
+            else:
+                windows.append([start, end])
+        return {
+            "ok": True,
+            "path": str(relative_path),
+            "hot_lines": sorted(wanted),
+            "spans": [
+                {
+                    "start_line": start,
+                    "gap_before": index > 0,
+                    "lines": [
+                        {"number": n, "text": source[n - 1], "hot": n in wanted}
+                        for n in range(start, end + 1)
+                    ],
+                }
+                for index, (start, end) in enumerate(windows)
             ],
         }
 

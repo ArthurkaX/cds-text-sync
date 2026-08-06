@@ -68,6 +68,7 @@ class Rule:
         self.kinds = expand_kinds(spec.kinds)
         self.summary = spec.summary
         self.topic = spec.topic
+        self.merge = spec.merge
         self.options = spec.options or {}
         self.check = spec.check
         self.stem = stem

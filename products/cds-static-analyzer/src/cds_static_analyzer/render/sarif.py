@@ -45,6 +45,10 @@ def render(result, tool_name="cts analyze", tool_version="1"):
                 region["startLine"] = loc.line
             if loc.column is not None:
                 region["startColumn"] = loc.column
+            if loc.end_line is not None:
+                region["endLine"] = loc.end_line
+            if loc.end_column is not None:
+                region["endColumn"] = loc.end_column
             entry["locations"] = [
                 {
                     "physicalLocation": {

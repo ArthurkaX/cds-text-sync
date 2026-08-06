@@ -23,16 +23,24 @@ def copy_fixture(dest):
     return str(dest)
 
 
-def run_rule(rule_id, snapshot):
-    """Run one analyzer rule over a snapshot through production dispatch."""
+def run_rule(rule_id, snapshot, options=None):
+    """Run one analyzer rule over a snapshot through production dispatch.
+
+    ``options`` is a raw per-rule option mapping, applied exactly as a project
+    ``cts-analyze.toml`` would apply it - handy for exercising switches such as
+    ``merge`` without writing a config file.
+    """
     from cds_static_analyzer.config import ResolvedConfig
     from cds_static_analyzer.runner import RunOptions, run_analysis
     from cds_static_analyzer.workspace import Workspace
 
+    config = ResolvedConfig()
+    if options:
+        config.rule_overrides[rule_id] = {"options": dict(options)}
     result = run_analysis(
         Workspace(root=".", project_view=".", state_dir="."),
         snapshot,
-        ResolvedConfig(),
+        config,
         RunOptions(rule_filter={rule_id}),
     )
     return result.findings

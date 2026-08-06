@@ -83,7 +83,8 @@ def test_malformed_visu_does_not_hurt_st_rules(tmp_path):
     data = run_analyze_json(root, extra=["--rule", "CTS0001", "--rule", "CTS0002"])
     assert data["complete"] is True
     assert data["diagnostics"] == []
-    assert len(data["findings"]) == 4  # 2x CTS0001 + 2x CTS0002
+    # 1x CTS0001 (the adjacent pair on Main.st merges) + 2x CTS0002.
+    assert len(data["findings"]) == 3
 
 def test_human_analyzer_ignores_malformed_visu_xml(tmp_path):
     root = _malformed_visu_workspace(tmp_path)

@@ -33,3 +33,19 @@ def test_context_case_is_normalised():
 
 def test_schema_version_part_of_identity():
     assert fingerprint("CTS0001", "U", "x", "x", schema=1) != fingerprint("CTS0001", "U", "x", "x", schema=2)
+
+
+def test_first_occurrence_keeps_the_pre_numbering_identity():
+    """Numbering duplicates must not move stored baselines.  The literal below
+    is the digest of the payload as it was hashed before ``occurrence``
+    existed, so occurrence 0 has to reproduce it byte for byte."""
+    historic = "cts1:47807893b2862a55b952885c6e0ed044a6e8ea03"
+    assert fingerprint("CTS0001", "U", "x", "x") == historic
+    assert fingerprint("CTS0001", "U", "x", "x", occurrence=0) == historic
+
+
+def test_occurrence_distinguishes_exact_duplicates():
+    plain = fingerprint("CTS0007", "U", "level:1", "END_IF;")
+    second = fingerprint("CTS0007", "U", "level:1", "END_IF;", occurrence=1)
+    third = fingerprint("CTS0007", "U", "level:1", "END_IF;", occurrence=2)
+    assert len({plain, second, third}) == 3

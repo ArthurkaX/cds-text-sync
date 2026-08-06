@@ -19,9 +19,15 @@ def render(result):
             loc = f.location
             pos = ""
             if loc.path:
-                pos = f"{loc.path}:{loc.line or '?'}:{loc.column or '?'}  "
+                line = loc.line or "?"
+                if loc.end_line and loc.end_line != loc.line:
+                    line = f"{loc.line}-{loc.end_line}"
+                pos = f"{loc.path}:{line}:{loc.column or '?'}  "
             sev = _SEVERITY_LABEL.get(f.severity, f.severity)
-            lines.append(f"[{f.rule_id}] {sev}  {pos}{f.message}")
+            line = f"[{f.rule_id}] {sev}  {pos}{f.message}"
+            if f.member_count:
+                line += f" (x{f.member_count})"
+            lines.append(line)
             if f.unit_id and f.unit_id != loc.path:
                 lines.append(f"          unit: {f.unit_id}")
     else:

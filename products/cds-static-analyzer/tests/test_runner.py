@@ -40,7 +40,9 @@ def test_fixture_expected_findings(tmp_path):
     by_rule = {}
     for f in result.findings:
         by_rule.setdefault(f.rule_id, []).append(f.anchor)
-    assert sorted(by_rule["CTS0001"]) == ["y := x + 5;", "y := y + 2;"]
+    # Main.st lines 22-23 are one commented-out block, so CTS0001 reports it
+    # once, anchored on the first line; "y := y + 2;" is a merged-away member.
+    assert sorted(by_rule["CTS0001"]) == ["y := x + 5;"]
     assert sorted(by_rule["CTS0002"]) == ["nTarget", "sName"]
     assert result.complete is True
 
@@ -48,8 +50,13 @@ def test_fixture_block_comment_columns_are_1_to_1(tmp_path):
     """PB.st carries a block comment before a CTS0004 violation in the same
     section. Its reported columns are the real character columns: the
     blanking off-by-one used to shift every such finding one byte left per
-    block comment."""
-    _, _, result = _run(fixture_project_view())
+    block comment. Merging is off here so both occurrences keep their own
+    column."""
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    with open(os.path.join(root, "cts-analyze.toml"), "w", encoding="utf-8") as fh:
+        fh.write("[rules.CTS0004]\noptions.merge = false\n")
+    _, _, result = _run(root)
     pb = [f for f in result.findings if f.location.path == "POUs/PB.st"]
     assert [(f.location.line, f.location.column) for f in pb] == [(9, 27), (10, 10)]
     assert {f.rule_id for f in pb} == {"CTS0004"}
@@ -68,7 +75,8 @@ def test_file_ignore_directive_suppresses_all_matching_findings(tmp_path):
             fh.write("// cts:ignore-file CTS0001, CTS0002, CTS0007, CTS0008, CTS0013 -- legacy fixture\n" + original)
     _, _, result = _run(root)
     assert not any(f.location.path == "POUs/Main.st" for f in result.findings)
-    assert result.summary.suppressed == 6
+    # 5, not 6: the CTS0001 pair on lines 22-23 is reported as one finding.
+    assert result.summary.suppressed == 5
 
 def test_exit_codes(tmp_path):
     ws, config, result = _run(fixture_project_view())
@@ -235,10 +243,12 @@ def test_rule_option_reaches_rule_and_changes_output(tmp_path):
     pb = [f for f in result.findings if f.location.path == "POUs/PB.st"]
     # Both 4095 findings should be gone (they occur exactly twice)
     assert pb == []
-    # Verify the default config would find them
+    # Verify the default config would find them: one merged finding standing
+    # for both occurrences (CTS0004 merges by identity).
     default_result = run_analysis(ws, snap, ResolvedConfig(), RunOptions(rule_filter={"CTS0004"}))
     pb_default = [f for f in default_result.findings if f.location.path == "POUs/PB.st"]
-    assert len(pb_default) == 2
+    assert len(pb_default) == 1
+    assert pb_default[0].member_lines == [9, 10]
 
 def test_undeclared_option_key_yields_one_diagnostic(tmp_path):
     """An unknown option key yields exactly one ``rule-option`` Diagnostic
@@ -317,6 +327,7 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    # 22 findings; the two same-value CTS0004 hits on PB.st share a
-    # fingerprint (location is not a fingerprint input), so 21 distinct ones.
-    assert len(current) == 21  # nothing silently hidden
+    # 19 findings, all distinct: merging removed the pair of same-value
+    # CTS0004 hits on PB.st that used to share one fingerprint.
+    assert len(current) == 19  # nothing silently hidden
+    assert len(result.findings) == 19

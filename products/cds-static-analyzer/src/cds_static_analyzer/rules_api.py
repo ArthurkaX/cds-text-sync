@@ -48,6 +48,14 @@ Identity is stamped by the runner, not by a rule. ``finding_in`` returns a
 Finding with empty ``rule_id``/``severity``/``rule_title``; ``_collect`` in
 runner.py fills them from the registry ``Rule`` so a rule can never drift
 from its manifest.
+
+Findings merge: a rule may declare a ``merge`` strategy so the runner
+collapses several findings it produced into one. ``"adjacent"`` groups
+findings that occupy a contiguous run of source lines; ``"identical"`` groups
+findings the state layer already cannot tell apart (same anchor and
+normalised context). The merged finding is its own first member widened to
+cover the whole group, so its anchor/context - and therefore its fingerprint
+- are exactly what that member had alone.
 """
 
 from __future__ import annotations
@@ -89,6 +97,7 @@ class RuleSpec:
         summary,
         check,
         topic,
+        merge=None,
         options=None,
     ):
         self.id = str(id).strip()
@@ -99,6 +108,7 @@ class RuleSpec:
         self.kinds = kinds  # expanded by the registry
         self.summary = str(summary).strip()
         self.topic = str(topic).strip()
+        self.merge = merge
         self.check = check
         self.options = {k: v for k, v in (options or {}).items()}
 
@@ -120,6 +130,8 @@ class RuleSpec:
             raise RuleSpecError(f"{self.id}: bad severity {self.severity!r}")
         if not callable(self.check):
             raise RuleSpecError(f"{self.id}: check must be callable")
+        if self.merge not in (None, "adjacent", "identical"):
+            raise RuleSpecError(f"{self.id}: bad merge strategy {self.merge!r}")
         for name, default in self.options.items():
             if name in _RESERVED_OPTIONS:
                 raise RuleSpecError(

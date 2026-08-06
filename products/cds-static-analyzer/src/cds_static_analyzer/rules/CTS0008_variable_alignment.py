@@ -102,4 +102,6 @@ RULE = RuleSpec(
     summary="Variable declarations in one group should form a readable aligned table.",
     topic="Style",
     check=check,
+    merge="adjacent",
+    options={"merge": True},
 )
