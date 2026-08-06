@@ -286,9 +286,36 @@ def test_cts0007_ignores_declaration_table_and_continuation_alignment():
         "IF a OR\n"
         "\t b THEN\n"
         "\tx := 1;\n"
-        "END_IF;\n"
+        "END_IF;\n\n"
+        "Logger(\n"
+        "    inputValue\n"
+        "    , path := 'logs/'\n"
+        "    , enabled := TRUE\n"
+        "    );\n"
     )
     assert run_rule("CTS0007", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0007_fix_reindents_only_reported_lines():
+    text = (
+        "PROGRAM P\nIMPLEMENTATION\n\n"
+        "IF ready THEN\n"
+        "\tFOR i := 1 TO 10 DO\n"
+        "\t\tvalue := i;\n"
+        "\t\t\ttotal := total + value;\n"
+        "\tEND_FOR\n"
+        "END_IF;\n"
+    )
+    unit = _st_unit(text)
+    findings = run_rule("CTS0007", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+
+    from cds_static_analyzer.rules.CTS0007_indentation import fix
+
+    fixed = fix(text, findings[0].to_dict())
+    assert "\t\ttotal := total + value;\n" in fixed
+    assert "\t\t\ttotal := total + value;\n" not in fixed
+    assert fixed.count("\t\tvalue := i;\n") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -799,10 +826,11 @@ def test_cts0022_accepts_default_and_ignores_fb_and_output_arguments():
 def test_cts0023_flags_standalone_and_duplicate_semicolons():
     unit = _st_unit(
         "PROGRAM P\nIMPLEMENTATION\n"
-        ";\nDoWork();;\nEND_IF;\n"
+        ";\nDoWork();;\nIF Ready THEN\n;\nEND_IF;\n"
     )
     findings = run_rule("CTS0023", ProjectSnapshot(".", [unit]))
     assert len(findings) == 2
+    assert any(finding.member_lines == [3, 6] for finding in findings)
     assert all(finding.anchor == ";" for finding in findings)
 
 
@@ -811,6 +839,27 @@ def test_cts0023_ignores_normal_statement_terminators_and_comments():
         "PROGRAM P\nIMPLEMENTATION\n"
         "DoWork();\nIF Ready THEN\n    DoWork();\nEND_IF;\n"
         "// ;\n"
+    )
+    assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0023_ignores_terminator_on_line_after_multiline_call():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "Logger(\n"
+        "    inputValue\n"
+        "    , path := 'logs/'\n"
+        ")\n"
+        ";\n"
+    )
+    assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0023_ignores_explicitly_documented_empty_statement():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "; // Intentionally empty branch for compatibility\n"
+        "; (* Reserved for the vendor hook. *)\n"
     )
     assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
 
