@@ -28,7 +28,7 @@ UpdateSate(); // cts:here
 ```st good
 PROGRAM Main
 IMPLEMENTATION
-UpdateState();
+UpdateState(); // cts:function UpdateState
 ```
 
 ## When ignoring is legitimate

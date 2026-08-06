@@ -22,19 +22,12 @@ that the author believed was running.
 ## Example
 
 ```st bad 2
-PROGRAM Main
+PROGRAM Main // cts:here
 IMPLEMENTATION
-MainWork();
+// cts:task Fast: Main
+// cts:function Orphan
+// cts:function Leaf
 END_PROGRAM
-
-FUNCTION Orphan
-IMPLEMENTATION
-Leaf();
-END_FUNCTION
-
-FUNCTION Leaf // cts:here
-IMPLEMENTATION
-END_FUNCTION
 ```
 
 ```st good
@@ -54,7 +47,7 @@ END_FUNCTION
 ```
 
 In the bad example, `Orphan` and `Leaf` are not reachable from the task root
-`Main`; `Leaf` is reachable only through the unreachable `Orphan`.
+`Main`. The selftest markers add them as separate project POUs.
 
 ## When ignoring is legitimate
 
