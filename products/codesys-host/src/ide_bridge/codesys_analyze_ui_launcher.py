@@ -148,6 +148,4 @@ def main(params=None, caller_globals=None):
         _notify(runtime, message, is_error=True)
         return {"status": "error", "error": message}
 
-    message = "Static analysis UI opened for:\n" + sync_folder
-    _notify(runtime, message)
     return {"status": "started", "pid": process.pid, "sync_folder": sync_folder}

@@ -50,6 +50,26 @@ def test_open_file_accepts_optional_line(tmp_path, monkeypatch):
     assert calls and calls[0][0:2] == ["code", "-g"]
 
 
+def test_source_context_is_limited_to_st_files_and_project_view(tmp_path):
+    source = tmp_path / "Main.st"
+    source.write_text("PROGRAM Main\nvalue := 1;\nEND_PROGRAM\n", encoding="utf-8")
+    api = AnalyzerApi()
+    api._last_project_view = str(tmp_path)
+
+    response = api.source_context("Main.st", 2, radius=1)
+
+    assert response["ok"] is True
+    assert response["lines"] == [
+        {"number": 1, "text": "PROGRAM Main", "hot": False},
+        {"number": 2, "text": "value := 1;", "hot": True},
+        {"number": 3, "text": "END_PROGRAM", "hot": False},
+    ]
+    assert api.source_context("../outside.st", 1)["error"] == "Invalid source path."
+    assert api.source_context("notes.txt", 1)["error"] == (
+        "Only .st source context is available."
+    )
+
+
 def test_rules_catalog_contains_only_human_analyzer_rules(tmp_path):
     root = str(tmp_path / "sync")
     copy_fixture(root)

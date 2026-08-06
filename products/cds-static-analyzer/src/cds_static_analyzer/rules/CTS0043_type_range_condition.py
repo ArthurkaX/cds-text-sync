@@ -25,9 +25,41 @@ _RANGES = {
 }
 
 
-def _truth(op, left, right):
-    return {"=": left == right, "<>": left != right, "<": left < right,
-            "<=": left <= right, ">": left > right, ">=": left >= right}[op]
+def _constant_range_result(op, low, high, constant):
+    """Return the result when a comparison is constant over the full range.
+
+    Checking only the two endpoints is insufficient for equality and inequality:
+    ``x = 24`` is neither always true nor always false for ``UINT x``.
+    """
+    if op == "=":
+        if constant < low or constant > high:
+            return False
+        return None
+    if op == "<>":
+        if constant < low or constant > high:
+            return True
+        return None
+    if op == "<":
+        if low >= constant:
+            return False
+        if high < constant:
+            return True
+    elif op == "<=":
+        if low > constant:
+            return False
+        if high <= constant:
+            return True
+    elif op == ">":
+        if high <= constant:
+            return False
+        if low > constant:
+            return True
+    elif op == ">=":
+        if high < constant:
+            return False
+        if low >= constant:
+            return True
+    return None
 
 
 def check(unit, ctx):
@@ -48,11 +80,10 @@ def check(unit, ctx):
             continue
         constant = int(match.group("const"))
         low, high = limits
-        at_low = _truth(match.group("op"), low, constant)
-        at_high = _truth(match.group("op"), high, constant)
-        if at_low != at_high:
+        result_value = _constant_range_result(match.group("op"), low, high, constant)
+        if result_value is None:
             continue
-        result = "always true" if at_low else "always false"
+        result = "always true" if result_value else "always false"
         absolute = section.at(match.start("value"))
         yield finding_in(
             message=(

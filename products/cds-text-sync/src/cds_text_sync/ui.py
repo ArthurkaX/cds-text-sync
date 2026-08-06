@@ -142,6 +142,45 @@ class AnalyzerApi:
             return {"ok": False, "error": str(exc)}
         return {"ok": True}
 
+    def source_context(
+        self, relative_path: str, line: int | None = None, radius: int = 5
+    ) -> dict:
+        """Return a small source excerpt for the selected finding.
+
+        The webview is allowed to inspect only ST files below the last analyzed
+        project-view.  This keeps the context panel useful without turning the
+        UI bridge into a general-purpose file reader.
+        """
+        if not self._last_project_view:
+            return {"ok": False, "error": "Run analysis before opening source context."}
+        root = Path(self._last_project_view).resolve()
+        target = (root / str(relative_path or "")).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return {"ok": False, "error": "Invalid source path."}
+        if target.suffix.lower() != ".st":
+            return {"ok": False, "error": "Only .st source context is available."}
+        if not target.is_file():
+            return {"ok": False, "error": f"Source file no longer exists: {relative_path}"}
+        try:
+            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        selected = max(1, int(line or 1))
+        safe_radius = max(1, min(int(radius or 5), 12))
+        start = max(1, selected - safe_radius)
+        end = min(len(lines), selected + safe_radius)
+        return {
+            "ok": True,
+            "path": str(relative_path),
+            "start_line": start,
+            "lines": [
+                {"number": number, "text": lines[number - 1], "hot": number == selected}
+                for number in range(start, end + 1)
+            ],
+        }
+
     def suppression_entry(self, finding: dict) -> dict:
         """Return a ready-to-edit TOML suppression entry for one finding."""
         if not isinstance(finding, dict) or not str(finding.get("fingerprint", "")).strip():
