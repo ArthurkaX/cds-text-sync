@@ -15,6 +15,7 @@ def test_ui_adapter_runs_existing_analyzer(tmp_path):
     assert response["ok"] is True
     assert response["workspace"] == root
     assert response["result"]["schema_version"] == 1
+    assert response["result"]["summary"]["files"] > 0
     assert response["result"]["findings"]
     assert all(item["rule_id"] != "VISU001" for item in response["result"]["findings"])
 
@@ -24,6 +25,13 @@ def test_ui_adapter_returns_workspace_error_as_data(tmp_path):
 
     assert response["ok"] is False
     assert "workspace directory not found" in response["error"]
+
+
+def test_ui_initial_state_exposes_analyzer_version():
+    state = AnalyzerApi("C:/project").initial_state()
+
+    assert state["workspace"] == "C:/project"
+    assert state["analyzer_version"]
 
 
 def test_open_file_rejects_path_outside_project_view(tmp_path):

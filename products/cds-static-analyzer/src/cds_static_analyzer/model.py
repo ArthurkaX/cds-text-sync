@@ -213,6 +213,7 @@ class Diagnostic:
 
 class Summary:
     def __init__(self):
+        self.files = 0
         self.total = 0
         self.by_severity = {DANGER: 0, SUSPICIOUS: 0, STYLE: 0}
         self.by_rule = {}
@@ -233,6 +234,7 @@ class Summary:
 
     def to_dict(self):
         return {
+            "files": self.files,
             "total": self.total,
             "by_severity": self.by_severity,
             "by_rule": self.by_rule,

@@ -19,6 +19,7 @@ from cds_static_analyzer.runner import RunOptions
 from cds_static_analyzer.service import analyze as run_service
 from cds_static_analyzer.triage import TriageError, apply_decisions
 from cds_static_analyzer.workspace import WorkspaceError, WorkspaceResolver
+from cds_text_sync import __version__
 
 
 def analyze_workspace(workspace_path: str) -> dict:
@@ -51,7 +52,7 @@ class AnalyzerApi:
         self._last_result = None
 
     def initial_state(self) -> dict:
-        return {"workspace": self.initial_workspace}
+        return {"workspace": self.initial_workspace, "analyzer_version": __version__}
 
     def analyze(self, workspace_path: str) -> dict:
         try:
@@ -263,7 +264,7 @@ def launch(initial_workspace: str = "") -> int:
         js_api=AnalyzerApi(initial_workspace),
         width=1240,
         height=780,
-        min_size=(920, 600),
+        min_size=(1180, 640),
     )
     webview.start()
     return 0

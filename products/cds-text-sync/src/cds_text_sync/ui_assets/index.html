@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CTS Static Analyzer</title>
-  <link rel="stylesheet" href="app.css">
   <script src="app.js"></script>
   <style>
     :root {
@@ -16,7 +15,7 @@
     }
     * { box-sizing:border-box; }
     html, body { height:100%; }
-    body { margin:0; min-width:900px; background:var(--bg); color:var(--text); font-size:13px; }
+    body { margin:0; min-width:1125px; background:var(--bg); color:var(--text); font-size:13px; }
     button, input, select { font:inherit; color:inherit; }
     button { border:1px solid var(--line); border-radius:6px; padding:7px 11px; background:var(--panel-2); cursor:pointer; }
     button:hover { border-color:#456071; filter:brightness(1.08); }
@@ -38,8 +37,8 @@
     .layout { display:grid; grid-template-columns:245px minmax(450px,1fr) 430px; height:calc(100vh - 58px); }
     aside, .right { background:var(--panel); padding:20px 16px; overflow:auto; }
     aside { border-right:1px solid var(--line); }
-    .right { border-left:1px solid var(--line); }
-    .main { min-width:0; overflow:auto; }
+    .right { border-left:1px solid var(--line); padding-bottom:58px; }
+    .main { min-width:0; overflow:auto; padding-bottom:38px; }
     h1 { font-size:18px; margin:0 0 4px; }
     h2 { font-size:14px; margin:0; }
     h3 { font-size:12px; margin:0 0 10px; }
@@ -64,8 +63,12 @@
     .controls .search { flex:1; min-width:180px; }
     .result-count { align-self:center; margin-left:auto; color:var(--muted); font-size:11px; }
     .list { padding:12px 14px 35px; }
-    .issue { display:grid; grid-template-columns:10px minmax(0,1fr) auto; gap:11px; padding:13px 10px; border-bottom:1px solid #202a37; cursor:pointer; }
+    .issue { display:grid; grid-template-columns:24px 10px minmax(0,1fr) auto; gap:11px; align-items:start; padding:13px 10px; border-bottom:1px solid #202a37; cursor:pointer; }
     .issue:hover, .issue.selected { background:#1c2832; border-radius:6px; }
+    .issue:focus-visible { outline:2px solid var(--cyan); outline-offset:-2px; }
+    .issue-select { width:16px; height:16px; margin:1px 0 0 2px; accent-color:var(--cyan); }
+    .group-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:12px 0 2px; padding:8px 10px 6px; border-bottom:1px solid var(--line); color:var(--text); font-weight:600; }
+    .group-heading small { color:var(--muted); font-size:11px; font-weight:400; }
     .sev { width:8px; height:8px; margin-top:5px; border-radius:50%; background:var(--yellow); }
     .sev.err { background:var(--red); }
     .sev.style { background:var(--blue); }
@@ -78,6 +81,10 @@
     .notice { margin:14px 22px 0; padding:9px 11px; border:1px solid var(--line); border-radius:7px; color:var(--muted); background:var(--panel); }
     .notice.error { border-color:#743e47; color:#ffd0d0; background:#2b1b20; }
     .notice.success { border-color:#315f49; color:#b8efd1; background:#17271f; }
+    .completion-banner { margin:14px 22px 0; padding:10px 12px; border:1px solid #684d2c; border-radius:7px; color:#f0cf91; background:#2b2418; }
+    .completion-banner.complete { border-color:#315f49; color:#b8efd1; background:#17271f; }
+    .state-summary { display:flex; flex-wrap:wrap; gap:8px 16px; padding:10px 14px 0; color:var(--muted); font-size:11px; }
+    .state-summary strong { color:var(--text); }
     .code-title { display:flex; align-items:start; justify-content:space-between; gap:12px; padding-bottom:14px; margin-bottom:17px; border-bottom:1px solid var(--line); }
     .code-title h2 { margin-bottom:5px; }
     .code { overflow:auto; border:1px solid var(--line); border-radius:7px; background:#10151c; color:#b8c4d3; font:12px/1.8 var(--mono); }
@@ -85,11 +92,14 @@
     .code-row.hot { border-left:2px solid var(--red); background:#39252b; }
     .ln { padding-right:13px; color:#586679; text-align:right; user-select:none; }
     .detail { margin-top:20px; }
+    .details { min-height:250px; }
     .detail p { color:#c7d0dc; line-height:1.55; }
     .meta { display:grid; grid-template-columns:80px minmax(0,1fr); gap:8px; margin-top:10px; color:var(--muted); }
     .meta code { overflow:hidden; color:#c7d0dc; font:11px var(--mono); text-overflow:ellipsis; white-space:nowrap; }
     .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
     .actions button { font-size:12px; }
+    .bulk-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; width:100%; padding:10px 0 2px; }
+    .bulk-tools span { color:var(--muted); font-size:11px; margin-right:auto; }
     .diagnostics { margin:14px 22px; border:1px solid #684d2c; border-radius:7px; }
     .diagnostic { padding:10px 14px; border-bottom:1px solid var(--line); color:#e8c994; }
     .diagnostic:last-child { border:0; }
@@ -169,12 +179,21 @@
         <input id="search" class="search" aria-label="Search findings" placeholder="⌕  Search findings">
       </div>
       <div id="message" class="notice">Select a project folder, then run analysis.</div>
+      <div id="completion-banner" class="completion-banner hidden"></div>
       <div id="controls" class="controls hidden">
         <select id="grouping" aria-label="Group results"><option value="rule">Group by rule</option><option value="file">Group by file</option></select>
         <span id="result-count" class="result-count"></span>
+        <div id="bulk-tools" class="bulk-tools hidden" aria-live="polite">
+          <span id="selected-count"></span>
+          <button data-bulk-action="fix-later">Fix-later selected</button>
+          <button data-bulk-action="baseline">Baseline selected</button>
+          <button data-bulk-action="suppress">Suppress selected</button>
+          <button id="clear-selection" class="link-button">Clear</button>
+        </div>
       </div>
-      <div id="list" class="list"><div class="empty"><strong>No analysis yet</strong>Choose a workspace and run the analyzer.</div></div>
       <section id="diagnostics-panel" class="diagnostics hidden"><div id="diagnostics"></div></section>
+      <div id="state-summary" class="state-summary hidden"><span>Suppressed: <strong id="suppressed-total">0</strong></span><span>Baselined: <strong id="baselined-total">0</strong></span><span>Stale suppressions: <strong id="stale-suppressions-total">0</strong></span><span>Stale baseline: <strong id="stale-baselined-total">0</strong></span></div>
+      <div id="list" class="list"><div class="empty"><strong>No analysis yet</strong>Choose a workspace and run the analyzer.</div></div>
     </main>
 
     <section class="right">
@@ -188,10 +207,11 @@
     <div id="rule-tools" class="catalog-head hidden"><input id="rule-search" placeholder="Search rule ID, name, or description"><select id="rule-state"><option value="">All rules</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div>
     <div id="rule-catalog"></div>
   </section>
-  <div class="footer"><span id="footer-status">✓ 0 parse errors</span><span id="footer-run">No analysis run</span>baseline: project state · analyzer 0.8.0</div>
+  <div class="footer"><span id="footer-status">✓ 0 parse errors</span><span id="footer-run">No analysis run</span><span id="footer-version">Analyzer</span></div>
 
   <script>
-    let findings = [], diagnostics = [], rules = [], selectedFingerprint = '', currentWorkspace = '', viewFilter = '', activeSeverity = '';
+    let findings = [], diagnostics = [], rules = [], selectedFingerprint = '', currentWorkspace = '', viewFilter = '', activeSeverity = '', currentSummary = null, lastEnvelope = null, resultsStale = false;
+    const selectedFingerprints = new Set();
     const $ = id => document.getElementById(id);
     const esc = window.CTSUi.escapeHtml;
     const severityName = value => ({danger:'Danger', suspicious:'Suspicious', style:'Style'}[value] || value);
@@ -208,34 +228,94 @@
       });
     }
     function renderSummary(summary) {
+      summary=summary || {files:0,total:0,by_severity:{}};
+      currentSummary=summary;
       const by=summary.by_severity || {};
       $('danger-total').textContent=by.danger || 0; $('suspicious-total').textContent=by.suspicious || 0; $('style-total').textContent=by.style || 0;
       $('all-count').textContent=summary.total || 0; $('danger-count').textContent=by.danger || 0; $('attention-count').textContent=(by.danger || 0)+(by.suspicious || 0);
+      $('suppressed-total').textContent=summary.suppressed || 0; $('baselined-total').textContent=summary.baselined || 0;
+      $('stale-suppressions-total').textContent=(summary.stale_suppressions || []).length; $('stale-baselined-total').textContent=(summary.stale_baselined || []).length;
+      $('state-summary').classList.remove('hidden');
+    }
+    function renderCompletion() {
+      const banner=$('completion-banner');
+      if(!lastEnvelope){banner.classList.add('hidden');return;}
+      banner.className='completion-banner '+(resultsStale?'':'complete');
+      banner.textContent=resultsStale?'Rule settings changed. Results are stale — run analysis again.':(lastEnvelope.complete?'Complete analysis result.':'Incomplete analysis result. Review diagnostics before treating the list as clean.');
+    }
+    function updateBulkTools() {
+      const count=selectedFingerprints.size;
+      $('bulk-tools').classList.toggle('hidden',!count);
+      $('selected-count').textContent=count+' selected';
     }
     function renderFindings() {
       const visible=filteredFindings(), byRule=$('grouping').value==='rule', grouped={};
       visible.forEach(f => { const key=byRule ? f.rule_id : f.location.path; (grouped[key] ||= []).push(f); });
       $('result-count').textContent=visible.length+' of '+findings.length;
       if(!visible.length){ $('list').innerHTML='<div class="empty"><strong>No matching findings</strong>Adjust filters or run analysis again.</div>'; return; }
-      $('list').innerHTML=Object.entries(grouped).map(([key,items]) => items.map(f =>
-        '<div class="issue '+(f.fingerprint===selectedFingerprint?'selected':'')+'" data-fingerprint="'+esc(f.fingerprint)+'">'+
-        '<i class="sev '+(f.severity==='danger'?'err':f.severity==='style'?'style':'')+'"></i><div>'+
-        '<div class="rule">'+esc(f.rule_id)+' · '+esc(severityName(f.severity))+'</div><div class="title">'+esc(f.rule_title || f.message)+'</div>'+
-        '<div class="path">'+esc(locationText(f.location))+(byRule?'':' · '+esc(key))+'</div></div><div class="line">L'+esc(f.location.line || '—')+'</div></div>'
+      $('list').innerHTML=Object.entries(grouped).map(([key,items]) =>
+        '<div class="group-heading"><span>'+esc(byRule ? (items[0].rule_title || key) : key)+'</span><small>'+items.length+' finding'+(items.length===1?'':'s')+'</small></div>'+items.map(f =>
+        '<div class="issue '+(f.fingerprint===selectedFingerprint?'selected':'')+'" data-fingerprint="'+esc(f.fingerprint)+'" tabindex="0" role="button" aria-pressed="'+(f.fingerprint===selectedFingerprint?'true':'false')+'">'+
+        '<input class="issue-select" type="checkbox" aria-label="Select '+esc(f.rule_id)+' finding" '+(selectedFingerprints.has(f.fingerprint)?'checked':'')+'><i class="sev '+(f.severity==='danger'?'err':f.severity==='style'?'style':'')+'"></i><div>'+
+        '<div class="rule">'+esc(f.rule_id)+' · '+esc(severityName(f.severity))+'</div><div class="title">'+esc(f.message || f.rule_title)+'</div><div class="sub">'+esc(f.rule_title || '')+'</div>'+
+        '<div class="path">'+esc(locationText(f.location))+'</div></div><div class="line">L'+esc(f.location.line || '—')+'</div></div>'
       ).join('')).join('');
-      document.querySelectorAll('.issue').forEach(row => row.onclick=()=>selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint)));
+      document.querySelectorAll('.issue').forEach(row => {
+        row.onclick=()=>selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint));
+        row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint));}};
+        const checkbox=row.querySelector('.issue-select');
+        checkbox.onclick=e=>e.stopPropagation();
+        checkbox.onchange=e=>{if(e.target.checked)selectedFingerprints.add(row.dataset.fingerprint);else selectedFingerprints.delete(row.dataset.fingerprint);updateBulkTools();};
+      });
+      updateBulkTools();
+    }
+    function clearDetails() {
+      selectedFingerprint='';
+      $('details').className='empty';
+      $('details').innerHTML='<strong>No finding selected</strong>Choose an item to inspect its source and explanation.';
+    }
+    async function applyTriage(action, items) {
+      items=items.filter(Boolean);
+      if(!items.length){setNotice('message','Select at least one finding first.','error');return;}
+      let reason='';
+      if(action==='suppress'||action==='fix-later'){
+        reason=window.prompt(action==='suppress'?'Reason for suppression:':'Fix-later note (optional):','')??'';
+        if(action==='suppress'&&!reason.trim())return;
+      }
+      const response=await window.pywebview.api.triage_many(currentWorkspace,items,action,reason);
+      if(!response.ok){setNotice('message',response.error,'error');return;}
+      const fingerprints=new Set(items.map(item=>item.fingerprint));
+      findings=findings.filter(item=>!fingerprints.has(item.fingerprint));
+      if(currentSummary){
+        const by={...(currentSummary.by_severity||{})};
+        items.forEach(item=>{by[item.severity]=Math.max(0,(by[item.severity]||0)-1);});
+        currentSummary={...currentSummary,total:findings.length,by_severity:by,
+          suppressed:(currentSummary.suppressed||0)+(action==='suppress'?items.length:0),
+          baselined:(currentSummary.baselined||0)+(action==='baseline'?items.length:0)};
+        renderSummary(currentSummary);
+        if(lastEnvelope)lastEnvelope={...lastEnvelope,findings:[...findings],summary:currentSummary};
+      }
+      items.forEach(item=>selectedFingerprints.delete(item.fingerprint));
+      if(fingerprints.has(selectedFingerprint))clearDetails();
+      renderFindings();
+      const applied=response.summary ? Object.values(response.summary).reduce((total,value)=>total+value,0) : items.length;
+      setNotice('message',applied+' finding'+(applied===1?'':'s')+' marked '+action+'.','success');
     }
     async function selectFinding(f) {
       if(!f) return; selectedFingerprint=f.fingerprint; renderFindings();
+      let rule=rules.find(item=>item.id===f.rule_id);
+      if(!rule && currentWorkspace){const catalog=await window.pywebview.api.rules(currentWorkspace);if(catalog.ok){rules=catalog.rules||[];rule=rules.find(item=>item.id===f.rule_id);}}
       const file=f.location && f.location.path || '', line=f.location && f.location.line || 1;
+      const documentation=rule && (rule.documentation || rule.summary) || 'No rule documentation is available.';
       $('details').className='details';
-      $('details').innerHTML='<div class="code-title"><div><h2>'+esc(file.split(/[\\\\/]/).pop() || 'Source')+'</h2><div class="sub">'+esc(locationText(f.location))+'</div></div><button id="open-file" class="link-button">Open in editor ↗</button></div><div id="source" class="code"><div class="empty">Loading source context…</div></div><div class="detail"><h3>Why this matters</h3><p>'+esc(f.message)+'</p></div><div class="detail"><h3>Finding details</h3><div class="meta"><span>Rule</span><code>'+esc(f.rule_id)+'</code><span>Severity</span><span>'+esc(severityName(f.severity))+'</span><span>Unit</span><code>'+esc(f.unit_id || '—')+'</code></div></div><div class="actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button><button id="copy-suppression">Copy suppression</button></div>';
+      $('details').innerHTML='<div class="code-title"><div><h2>'+esc(file.split(/[\\\\/]/).pop() || 'Source')+'</h2><div class="sub">'+esc(locationText(f.location))+'</div></div><button id="open-file" class="link-button">Open in editor ↗</button></div><div id="source" class="code"><div class="empty">Loading source context…</div></div><div class="detail"><h3>Finding</h3><p>'+esc(f.message)+'</p></div><div class="detail"><h3>Why this matters</h3><p>'+esc(documentation)+'</p><button id="show-rule" class="link-button">Open '+esc(f.rule_id)+' in rule settings ↗</button></div><div class="detail"><h3>Finding details</h3><div class="meta"><span>Rule</span><code>'+esc(f.rule_id)+'</code><span>Severity</span><span>'+esc(severityName(f.severity))+'</span><span>Unit</span><code>'+esc(f.unit_id || '—')+'</code></div></div><div class="actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button><button id="copy-suppression">Copy suppression</button></div>';
       $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
+      $('show-rule').onclick=()=>{showRules(true);$('rule-search').value=f.rule_id;renderRules();};
       const source=await window.pywebview.api.source_context(file,line,5);
       if(source.ok){ $('source').innerHTML=source.lines.map(item=>'<div class="code-row '+(item.hot?'hot':'')+'"><span class="ln">'+item.number+'</span><span>'+esc(item.text)+'</span></div>').join(''); }
       else $('source').innerHTML='<div class="empty">'+esc(source.error || 'Source context unavailable.')+'</div>';
       $('copy-suppression').onclick=async()=>{const r=await window.pywebview.api.suppression_entry(f);if(!r.ok){setNotice('message',r.error,'error');return;}try{await navigator.clipboard.writeText(r.text);setNotice('message','Suppression entry copied. Replace the TODO reason before committing.','success');}catch(_){window.prompt('Copy suppression entry:',r.text);}};
-      const decide=async action=>{let reason='';if(action==='suppress'||action==='fix-later'){reason=window.prompt(action==='suppress'?'Reason for suppression:':'Fix-later note (optional):','')??'';if(action==='suppress'&&!reason.trim())return;}const r=await window.pywebview.api.triage(currentWorkspace,f,action,reason);if(!r.ok){setNotice('message',r.error,'error');return;}setNotice('message',action+' decision applied. Re-running analysis…','success');run();};
+      const decide=action=>applyTriage(action,[f]);
       $('fix-later').onclick=()=>decide('fix-later'); $('baseline').onclick=()=>decide('baseline'); $('suppress').onclick=()=>decide('suppress');
     }
     function renderDiagnostics() {
@@ -248,7 +328,7 @@
       visible.forEach(r=>(groups[r.topic]||=[]).push(r));
       $('rule-catalog').innerHTML=Object.entries(groups).map(([topic,items])=>'<section class="topic"><h2 class="topic-title">'+esc(topic)+' <small>'+items.length+' rules</small></h2>'+items.map(r=>'<article class="rule-card '+(r.enabled?'':'disabled')+'"><div class="rule-summary"><label class="switch"><input type="checkbox" data-rule="'+esc(r.id)+'" '+(r.enabled?'checked':'')+'><span class="slider"></span></label><strong>'+esc(r.id)+'</strong><div><div class="rule-title">'+esc(r.title)+'</div><div class="rule-description">'+esc(r.summary)+'</div></div><button class="doc-toggle">Details ▾</button></div><div class="rule-doc hidden">'+esc(r.documentation)+'</div></article>').join('')+'</section>').join('')||'<div class="empty"><strong>No matching rules</strong>Adjust the filters.</div>';
       document.querySelectorAll('.doc-toggle').forEach(btn=>btn.onclick=()=>{const doc=btn.closest('.rule-card').querySelector('.rule-doc');const open=doc.classList.toggle('hidden');btn.textContent=open?'Details ▾':'Hide ▴';});
-      document.querySelectorAll('[data-rule]').forEach(box=>box.onchange=async()=>{box.disabled=true;const r=await window.pywebview.api.set_rule_enabled(currentWorkspace,box.dataset.rule,box.checked);box.disabled=false;if(!r.ok){box.checked=!box.checked;setNotice('rules-message',r.error,'error');return;}const rule=rules.find(x=>x.id===box.dataset.rule);rule.enabled=box.checked;setNotice('rules-message',rule.id+' '+(box.checked?'enabled':'disabled')+' for this project.','success');renderRules();});
+      document.querySelectorAll('[data-rule]').forEach(box=>box.onchange=async()=>{box.disabled=true;const r=await window.pywebview.api.set_rule_enabled(currentWorkspace,box.dataset.rule,box.checked);box.disabled=false;if(!r.ok){box.checked=!box.checked;setNotice('rules-message',r.error,'error');return;}const rule=rules.find(x=>x.id===box.dataset.rule);rule.enabled=box.checked;resultsStale=true;setNotice('rules-message',rule.id+' '+(box.checked?'enabled':'disabled')+' for this project. Run analysis to refresh findings.','success');renderCompletion();renderRules();});
     }
     async function loadRules() {
       if(!currentWorkspace){setNotice('rules-message','Select a project folder first.','error');return;}
@@ -260,14 +340,32 @@
       $('run').disabled=true;$('run').textContent='Analyzing…';setStatus('Running analysis…',false);setNotice('message','Reading .st files and running enabled rules…');
       const response=await window.pywebview.api.analyze(currentWorkspace);$('run').disabled=false;$('run').textContent='Run analysis';
       if(!response.ok){setStatus('Analysis failed',false);setNotice('message',response.error,'error');return;}
-      findings=response.result.findings||[];diagnostics=response.result.diagnostics||[];selectedFingerprint='';renderSummary(response.result.summary);renderDiagnostics();$('controls').classList.remove('hidden');$('project-label').textContent=response.workspace;$('project-subtitle').textContent=(response.result.summary.files || 'Project')+' files analyzed';setNotice('message',response.result.complete?'Analysis complete · '+response.workspace:'Analysis completed with diagnostics.',response.result.complete?'success':'error');setStatus('Analysis complete',true);$('footer-run').textContent='Last run just now';renderFindings();$('export').disabled=false;
+      findings=response.result.findings||[];diagnostics=response.result.diagnostics||[];selectedFingerprint='';selectedFingerprints.clear();lastEnvelope=response.result;resultsStale=false;renderSummary(response.result.summary);renderCompletion();renderDiagnostics();$('controls').classList.remove('hidden');$('project-label').textContent=response.workspace;$('project-subtitle').textContent=(response.result.summary.files || 0)+' .st files analyzed';setNotice('message',response.result.complete?'Analysis complete · '+response.workspace:'Analysis completed with diagnostics.',response.result.complete?'success':'error');setStatus('Analysis complete',true);$('footer-run').textContent='Last run '+new Date().toLocaleTimeString();renderFindings();$('export').disabled=false;
     }
-    $('run').onclick=run;$('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path){$('workspace').value=path;currentWorkspace=path;$('project-label').textContent=path;$('project-subtitle').textContent='Ready to analyze';}};$('rules-button').onclick=()=>showRules(true);$('open-rules').onclick=()=>showRules(true);$('back-to-findings').onclick=()=>showRules(false);$('export').onclick=()=>{const blob=new Blob([JSON.stringify({findings,diagnostics},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cts-analysis.json';a.click();URL.revokeObjectURL(a.href);};
+    $('run').onclick=run;$('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path){$('workspace').value=path;currentWorkspace=path;$('project-label').textContent=path;$('project-subtitle').textContent='Ready to analyze';}};$('rules-button').onclick=()=>showRules(true);$('open-rules').onclick=()=>showRules(true);$('back-to-findings').onclick=()=>showRules(false);$('export').onclick=()=>{if(!lastEnvelope)return;const blob=new Blob([JSON.stringify(lastEnvelope,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cts-analysis.json';a.click();URL.revokeObjectURL(a.href);};
     $('search').oninput=renderFindings;$('grouping').onchange=renderFindings;$('rule-search').oninput=renderRules;$('rule-state').onchange=renderRules;
+    document.querySelectorAll('[data-bulk-action]').forEach(button=>button.onclick=()=>applyTriage(button.dataset.bulkAction,findings.filter(f=>selectedFingerprints.has(f.fingerprint))));
+    $('clear-selection').onclick=()=>{selectedFingerprints.clear();renderFindings();};
     document.querySelectorAll('[data-severity]').forEach(chip=>chip.onclick=()=>{activeSeverity=chip.dataset.severity;document.querySelectorAll('[data-severity]').forEach(x=>x.classList.toggle('on',x===chip));renderFindings();});
     document.querySelectorAll('[data-view-filter]').forEach(nav=>nav.onclick=()=>{viewFilter=nav.dataset.viewFilter;document.querySelectorAll('[data-view-filter]').forEach(x=>x.classList.toggle('active',x===nav));$('search').value='';renderFindings();});
-    $('workspace').onkeydown=e=>{if(e.key==='Enter')run();};document.addEventListener('keydown',e=>{if(e.key==='F5'){e.preventDefault();run();}});
-    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();$('workspace').value=state.workspace||'';currentWorkspace=state.workspace||'';if(currentWorkspace){$('project-label').textContent=currentWorkspace;$('project-subtitle').textContent='Analyzing current project…';await run();}});
+    $('workspace').onkeydown=e=>{if(e.key==='Enter')run();};
+    document.addEventListener('keydown',e=>{
+      if(e.key==='F5'){e.preventDefault();run();return;}
+      if(e.target.matches('input,select,textarea,[contenteditable="true"]'))return;
+      const visible=filteredFindings(), current=visible.findIndex(f=>f.fingerprint===selectedFingerprint);
+      if(e.key==='j'||e.key==='ArrowDown'||e.key==='k'||e.key==='ArrowUp'){
+        if(!visible.length)return;
+        e.preventDefault();
+        const delta=e.key==='j'||e.key==='ArrowDown'?1:-1;
+        const next=visible[Math.max(0,Math.min(visible.length-1,current<0?(delta>0?0:visible.length-1):current+delta))];
+        selectFinding(next).then(()=>{const row=Array.from(document.querySelectorAll('.issue')).find(item=>item.dataset.fingerprint===next.fingerprint);if(row)row.focus();});
+      } else if(selectedFingerprint && (e.key==='s'||e.key==='b'||e.key==='f')) {
+        e.preventDefault();
+        const action={s:'suppress',b:'baseline',f:'fix-later'}[e.key];
+        applyTriage(action,[findings.find(f=>f.fingerprint===selectedFingerprint)]);
+      }
+    });
+    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();$('workspace').value=state.workspace||'';currentWorkspace=state.workspace||'';$('footer-version').textContent='Analyzer '+(state.analyzer_version||'');if(currentWorkspace){$('project-label').textContent=currentWorkspace;$('project-subtitle').textContent='Analyzing current project…';await run();}});
   </script>
   <input id="workspace" class="hidden" aria-hidden="true">
 </body>
