@@ -285,6 +285,7 @@ def _select_rules(registry, config, rule_filter):
 def run_analysis(workspace, snapshot, config, options):
     """Run every enabled rule over the snapshot. Returns AnalysisResult."""
     result = AnalysisResult()
+    result.summary.files = len(snapshot.file_directives)
 
     # Staleness is checked first so its Diagnostic is counted by the
     # `result.summary.diagnostics` total at the bottom. It is best-effort: a
