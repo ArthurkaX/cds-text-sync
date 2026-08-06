@@ -1439,3 +1439,14 @@ def test_cts0043_flags_always_true_and_false_type_comparisons():
     assert len(findings) == 2
     assert "always true" in findings[0].message
     assert "always false" in findings[1].message
+
+
+def test_cts0043_does_not_flag_in_range_equality_or_inequality():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n u : UINT;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "IF u = 24 THEN Run := TRUE; END_IF;\n"
+        "IF u <> 24 THEN Run := TRUE; END_IF;\n"
+    )
+    findings = run_rule("CTS0043", ProjectSnapshot(".", [unit]))
+    assert findings == []

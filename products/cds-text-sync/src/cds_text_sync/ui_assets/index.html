@@ -8,154 +8,267 @@
   <script src="app.js"></script>
   <style>
     :root {
-      color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif;
-      --bg:#101318; --surface:#171b22; --surface-2:#1d232c; --line:#303846;
-      --text:#edf1f7; --muted:#9da9b8; --accent:#4b9cf5; --accent-2:#287bcf;
-      --danger:#ff7979; --warning:#f5bd63; --style:#7fb5f5; --good:#65c995;
+      color-scheme: dark;
+      --bg:#0d1117; --panel:#151b24; --panel-2:#1b2330; --line:#2a3443;
+      --text:#e7edf5; --muted:#8b98aa; --cyan:#55d6c2; --yellow:#f2c96d;
+      --red:#ff7f86; --blue:#82aaff; --mono:"Cascadia Code","SFMono-Regular",Consolas,monospace;
+      font-family: "Segoe UI", system-ui, sans-serif;
     }
-    * { box-sizing: border-box; }
-    body { margin:0; min-width:680px; background:var(--bg); color:var(--text); font-size:14px; }
-    button,input,select { font:inherit; color:inherit; }
-    button { border:1px solid transparent; border-radius:7px; padding:8px 13px; background:var(--accent-2); cursor:pointer; }
-    button:hover { filter:brightness(1.12); } button:disabled { opacity:.55; cursor:default; }
-    button.secondary { background:var(--surface-2); border-color:var(--line); }
-    input,select { border:1px solid var(--line); border-radius:7px; padding:9px 11px; background:#11151b; outline:none; }
-    input:focus,select:focus { border-color:var(--accent); box-shadow:0 0 0 2px #4b9cf52a; }
-    header { position:sticky; top:0; z-index:10; padding:16px 24px 0; background:#151920f2; backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
-    .brand { display:flex; align-items:center; justify-content:space-between; gap:18px; }
-    .brand h1 { margin:0; font-size:19px; letter-spacing:.1px; } .brand small { color:var(--muted); }
-    .workspace-bar { display:flex; gap:8px; margin:14px 0; } #workspace { flex:1; min-width:240px; }
-    nav { display:flex; gap:22px; }
-    .tab { padding:10px 2px 12px; border:0; border-bottom:2px solid transparent; border-radius:0; color:var(--muted); background:transparent; }
-    .tab.active { color:var(--text); border-bottom-color:var(--accent); }
-    main { padding:20px 24px 32px; max-width:1600px; margin:auto; }
+    * { box-sizing:border-box; }
+    html, body { height:100%; }
+    body { margin:0; min-width:900px; background:var(--bg); color:var(--text); font-size:13px; }
+    button, input, select { font:inherit; color:inherit; }
+    button { border:1px solid var(--line); border-radius:6px; padding:7px 11px; background:var(--panel-2); cursor:pointer; }
+    button:hover { border-color:#456071; filter:brightness(1.08); }
+    button:disabled { opacity:.55; cursor:default; }
+    button.primary { background:#1d655f; border-color:#329e91; }
+    button.link-button { border:0; background:transparent; padding:0; color:var(--cyan); }
+    input, select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#10151c; outline:none; }
+    input:focus, select:focus { border-color:var(--cyan); box-shadow:0 0 0 2px #55d6c222; }
     .hidden { display:none !important; }
-    .notice { min-height:38px; display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:7px; color:var(--muted); background:var(--surface); border:1px solid var(--line); }
-    .notice.error { color:#ffd0d0; border-color:#743e47; background:#2b1b20; }
-    .notice.success { color:#b8efd1; border-color:#315f49; background:#17271f; }
-    .summary { display:grid; grid-template-columns:repeat(7,minmax(105px,1fr)); gap:10px; margin:14px 0; }
-    .metric { padding:13px 14px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
-    .metric b { display:block; font-size:22px; line-height:1.15; } .metric span { color:var(--muted); font-size:12px; }
-    .danger { color:var(--danger); } .suspicious { color:var(--warning); } .style { color:var(--style); }
-    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0; }
-    .controls .search { flex:1; min-width:240px; } .result-count { color:var(--muted); margin-left:auto; }
-    .workspace { display:grid; grid-template-columns:minmax(390px,1.35fr) minmax(300px,1fr); gap:14px; align-items:start; }
-    .panel { border:1px solid var(--line); border-radius:9px; background:var(--surface); overflow:hidden; }
-    .panel-title { margin:0; padding:12px 14px; font-size:13px; color:var(--muted); border-bottom:1px solid var(--line); }
-    .groups { max-height:590px; overflow:auto; }
-    .group-head { width:100%; display:grid; grid-template-columns:auto 90px 1fr auto; gap:10px; align-items:center; text-align:left; padding:12px 14px; border:0; border-bottom:1px solid var(--line); border-radius:0; background:var(--surface-2); }
-    .chevron { color:var(--muted); width:12px; } .badge { justify-self:end; min-width:27px; padding:2px 7px; border-radius:12px; text-align:center; background:#344052; }
-    .finding-row { display:grid; grid-template-columns:1fr auto; gap:6px 14px; padding:11px 14px 11px 38px; border-bottom:1px solid #29313d; cursor:pointer; }
-    .finding-row:hover,.finding-row.selected { background:#233044; } .finding-row .message-text { grid-column:1/-1; color:#cbd3de; }
-    .location { color:var(--muted); font-family:Consolas,monospace; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .details { min-height:250px; padding:18px; } .details h2 { margin:0 0 5px; font-size:18px; } .details .rule { color:var(--accent); font-weight:600; }
-    .details .lead { margin:18px 0; font-size:15px; line-height:1.55; } .meta { display:grid; grid-template-columns:85px 1fr; gap:8px; color:var(--muted); margin:18px 0; }
-    .empty { padding:48px 24px; text-align:center; color:var(--muted); } .empty strong { display:block; color:var(--text); font-size:16px; margin-bottom:7px; }
-    .diagnostics { margin-top:14px; border-color:#684d2c; } .diagnostic { padding:10px 14px; border-bottom:1px solid var(--line); color:#e8c994; }
-    .catalog-head { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; } .catalog-head input { flex:1; min-width:250px; }
-    .topic { margin:20px 0; } .topic-title { display:flex; align-items:baseline; gap:9px; margin:0 0 9px; font-size:17px; } .topic-title small { color:var(--muted); font-weight:400; }
-    .rule-card { border:1px solid var(--line); border-radius:9px; margin:8px 0; background:var(--surface); overflow:hidden; }
-    .rule-card.disabled { opacity:.68; } .rule-summary { display:grid; grid-template-columns:auto 80px minmax(150px,1fr) auto; align-items:center; gap:10px; padding:13px 14px; }
-    .rule-summary button { background:transparent; border:0; padding:0; text-align:left; } .rule-title { font-weight:600; } .rule-description { color:var(--muted); }
-    .switch { position:relative; width:38px; height:22px; } .switch input { opacity:0; width:0; height:0; }
-    .slider { position:absolute; inset:0; border-radius:20px; background:#46505e; cursor:pointer; transition:.15s; } .slider:before { content:""; position:absolute; width:16px; height:16px; left:3px; top:3px; border-radius:50%; background:white; transition:.15s; }
-    .switch input:checked + .slider { background:var(--accent-2); } .switch input:checked + .slider:before { transform:translateX(16px); }
+    .top { height:58px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:18px; padding:0 22px; background:#111720; }
+    .brand { font-weight:700; letter-spacing:.2px; white-space:nowrap; }
+    .mark { display:inline-grid; place-items:center; width:27px; height:27px; margin-right:9px; border:1px solid var(--cyan); color:var(--cyan); border-radius:7px; font-weight:800; }
+    .project { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); padding-left:20px; border-left:1px solid var(--line); }
+    .top-actions { margin-left:auto; display:flex; align-items:center; gap:10px; white-space:nowrap; }
+    .status { display:flex; gap:7px; align-items:center; color:var(--muted); }
+    .status.ready { color:var(--cyan); }
+    .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); }
+    .status.ready .dot { background:var(--cyan); box-shadow:0 0 9px var(--cyan); }
+    .layout { display:grid; grid-template-columns:245px minmax(450px,1fr) 430px; height:calc(100vh - 58px); }
+    aside, .right { background:var(--panel); padding:20px 16px; overflow:auto; }
+    aside { border-right:1px solid var(--line); }
+    .right { border-left:1px solid var(--line); }
+    .main { min-width:0; overflow:auto; }
+    h1 { font-size:18px; margin:0 0 4px; }
+    h2 { font-size:14px; margin:0; }
+    h3 { font-size:12px; margin:0 0 10px; }
+    .sub { color:var(--muted); font-size:12px; }
+    .section { margin-top:27px; }
+    .label { margin-bottom:10px; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:1px; }
+    .nav { display:flex; justify-content:space-between; width:100%; padding:9px 10px; border:0; border-radius:6px; text-align:left; color:#bdc7d5; background:transparent; }
+    .nav:hover { background:var(--panel-2); }
+    .nav.active { color:var(--cyan); background:#233238; }
+    .count { color:var(--muted); font-size:11px; }
+    .filter { display:flex; flex-wrap:wrap; gap:7px; }
+    .chip { padding:5px 8px; border:1px solid var(--line); border-radius:13px; color:var(--muted); font-size:11px; cursor:pointer; }
+    .chip.on { border-color:#39877f; color:var(--cyan); background:#183430; }
+    .toolbar { display:flex; align-items:end; justify-content:space-between; gap:15px; padding:20px 22px 16px; border-bottom:1px solid var(--line); }
+    .summary { display:flex; gap:22px; margin-top:14px; }
+    .metric strong { display:block; font-size:20px; line-height:1.1; }
+    .metric span { color:var(--muted); font-size:11px; }
+    .metric.warn strong { color:var(--yellow); }
+    .metric.err strong { color:var(--red); }
+    .search { width:205px; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; padding:12px 14px 0; }
+    .controls .search { flex:1; min-width:180px; }
+    .result-count { align-self:center; margin-left:auto; color:var(--muted); font-size:11px; }
+    .list { padding:12px 14px 35px; }
+    .issue { display:grid; grid-template-columns:10px minmax(0,1fr) auto; gap:11px; padding:13px 10px; border-bottom:1px solid #202a37; cursor:pointer; }
+    .issue:hover, .issue.selected { background:#1c2832; border-radius:6px; }
+    .sev { width:8px; height:8px; margin-top:5px; border-radius:50%; background:var(--yellow); }
+    .sev.err { background:var(--red); }
+    .sev.style { background:var(--blue); }
+    .rule { color:#aeb9c7; font-family:var(--mono); font-size:11px; }
+    .title { margin:3px 0 4px; }
+    .path { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-family:var(--mono); font-size:11px; }
+    .line { color:#a8b3c2; font-family:var(--mono); font-size:11px; white-space:nowrap; }
+    .empty { padding:48px 24px; color:var(--muted); text-align:center; }
+    .empty strong { display:block; margin-bottom:7px; color:var(--text); font-size:16px; }
+    .notice { margin:14px 22px 0; padding:9px 11px; border:1px solid var(--line); border-radius:7px; color:var(--muted); background:var(--panel); }
+    .notice.error { border-color:#743e47; color:#ffd0d0; background:#2b1b20; }
+    .notice.success { border-color:#315f49; color:#b8efd1; background:#17271f; }
+    .code-title { display:flex; align-items:start; justify-content:space-between; gap:12px; padding-bottom:14px; margin-bottom:17px; border-bottom:1px solid var(--line); }
+    .code-title h2 { margin-bottom:5px; }
+    .code { overflow:auto; border:1px solid var(--line); border-radius:7px; background:#10151c; color:#b8c4d3; font:12px/1.8 var(--mono); }
+    .code-row { display:grid; grid-template-columns:42px minmax(0,1fr); padding:0 12px; white-space:pre; }
+    .code-row.hot { border-left:2px solid var(--red); background:#39252b; }
+    .ln { padding-right:13px; color:#586679; text-align:right; user-select:none; }
+    .detail { margin-top:20px; }
+    .detail p { color:#c7d0dc; line-height:1.55; }
+    .meta { display:grid; grid-template-columns:80px minmax(0,1fr); gap:8px; margin-top:10px; color:var(--muted); }
+    .meta code { overflow:hidden; color:#c7d0dc; font:11px var(--mono); text-overflow:ellipsis; white-space:nowrap; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
+    .actions button { font-size:12px; }
+    .diagnostics { margin:14px 22px; border:1px solid #684d2c; border-radius:7px; }
+    .diagnostic { padding:10px 14px; border-bottom:1px solid var(--line); color:#e8c994; }
+    .diagnostic:last-child { border:0; }
+    .footer { position:fixed; right:0; bottom:0; left:0; height:29px; padding:6px 18px; border-top:1px solid var(--line); color:var(--muted); background:#111720; font-size:11px; }
+    .footer span { margin-right:22px; color:var(--cyan); }
+    .rules-view { padding:20px 22px 45px; overflow:auto; }
+    .rules-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .catalog-head { display:flex; gap:8px; margin:14px 0; }
+    .catalog-head input { flex:1; }
+    .topic { margin:20px 0; }
+    .topic-title { display:flex; align-items:baseline; gap:9px; margin:0 0 9px; font-size:17px; }
+    .topic-title small { color:var(--muted); font-size:11px; font-weight:400; }
+    .rule-card { margin:8px 0; overflow:hidden; border:1px solid var(--line); border-radius:9px; background:var(--panel); }
+    .rule-card.disabled { opacity:.68; }
+    .rule-summary { display:grid; grid-template-columns:auto 80px minmax(150px,1fr) auto; align-items:center; gap:10px; padding:13px 14px; }
+    .rule-summary button { border:0; padding:0; background:transparent; text-align:left; }
+    .rule-title { font-weight:600; }
+    .rule-description { color:var(--muted); }
     .rule-doc { padding:0 52px 18px 104px; color:#c7d0dc; line-height:1.55; white-space:pre-wrap; }
-    @media (max-width:980px) { .summary{grid-template-columns:repeat(3,1fr)} .workspace{grid-template-columns:1fr} .details{min-height:180px} }
+    .switch { position:relative; width:38px; height:22px; }
+    .switch input { width:0; height:0; opacity:0; }
+    .slider { position:absolute; inset:0; border-radius:20px; background:#46505e; cursor:pointer; }
+    .slider:before { position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:white; content:""; transition:.15s; }
+    .switch input:checked + .slider { background:#287bcf; }
+    .switch input:checked + .slider:before { transform:translateX(16px); }
+    @media (max-width:1100px) { .layout { grid-template-columns:210px minmax(430px,1fr) 350px; } }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand"><div><h1>CTS Static Analyzer</h1><small>Human-facing project checks</small></div></div>
-    <div class="workspace-bar"><input id="workspace" aria-label="Project workspace" placeholder="Select the sync project folder"><button class="secondary" id="browse">Browse…</button><button id="run">Run analysis</button></div>
-    <nav><button class="tab active" data-view="analysis">Analysis</button><button class="tab" data-view="rules">Rules</button></nav>
+  <header class="top">
+    <div class="brand"><span class="mark">C</span>CTS Static Analyzer</div>
+    <div id="project-label" class="project">No project selected</div>
+    <div class="top-actions">
+      <div id="status" class="status"><span class="dot"></span><span id="status-text">Ready</span></div>
+      <button id="rules-button">Rule settings</button>
+      <button id="export" disabled>Export JSON</button>
+      <button id="run" class="primary">Run analysis</button>
+    </div>
   </header>
-  <main>
-    <section id="analysis-view">
+
+  <div id="analysis-layout" class="layout">
+    <aside>
+      <h1>Findings</h1>
+      <div id="project-subtitle" class="sub">Select a project folder</div>
+      <div class="section">
+        <div class="label">Views</div>
+        <button class="nav active" data-view-filter="all">All findings <span id="all-count" class="count">—</span></button>
+        <button class="nav" data-view-filter="attention">Needs attention <span id="attention-count" class="count">—</span></button>
+        <button class="nav" data-view-filter="danger">Danger only <span id="danger-count" class="count">—</span></button>
+      </div>
+      <div class="section">
+        <div class="label">Severity</div>
+        <div class="filter">
+          <button class="chip on" data-severity="">All</button>
+          <button class="chip" data-severity="danger">Danger</button>
+          <button class="chip" data-severity="suspicious">Suspicious</button>
+          <button class="chip" data-severity="style">Style</button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="label">Project</div>
+        <button id="browse" class="nav">Choose workspace <span>…</span></button>
+        <button id="open-rules" class="nav">Configure rules <span>→</span></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="toolbar">
+        <div>
+          <h1>All findings</h1>
+          <div class="summary">
+            <div class="metric err"><strong id="danger-total">—</strong><span>danger</span></div>
+            <div class="metric warn"><strong id="suspicious-total">—</strong><span>suspicious</span></div>
+            <div class="metric"><strong id="style-total">—</strong><span>style</span></div>
+          </div>
+        </div>
+        <input id="search" class="search" aria-label="Search findings" placeholder="⌕  Search findings">
+      </div>
       <div id="message" class="notice">Select a project folder, then run analysis.</div>
-      <div id="summary" class="summary hidden"></div>
-      <div id="filters" class="controls hidden">
-        <input id="search" class="search" placeholder="Search message, rule, or file">
-        <select id="severity" aria-label="Severity"><option value="">All severities</option><option value="danger">Danger</option><option value="suspicious">Suspicious</option><option value="style">Style</option></select>
+      <div id="controls" class="controls hidden">
         <select id="grouping" aria-label="Group results"><option value="rule">Group by rule</option><option value="file">Group by file</option></select>
         <span id="result-count" class="result-count"></span>
       </div>
-      <div id="results" class="workspace hidden">
-        <section class="panel"><h2 class="panel-title">Findings</h2><div id="groups" class="groups"></div></section>
-        <aside class="panel"><h2 class="panel-title">Details</h2><div id="details" class="details empty"><strong>No finding selected</strong>Choose an item to inspect it.</div></aside>
-      </div>
-      <section id="diagnostics-panel" class="panel diagnostics hidden"><h2 class="panel-title">Analyzer diagnostics</h2><div id="diagnostics"></div></section>
+      <div id="list" class="list"><div class="empty"><strong>No analysis yet</strong>Choose a workspace and run the analyzer.</div></div>
+      <section id="diagnostics-panel" class="diagnostics hidden"><div id="diagnostics"></div></section>
+    </main>
+
+    <section class="right">
+      <div id="details" class="empty"><strong>No finding selected</strong>Choose an item to inspect its source and explanation.</div>
     </section>
-    <section id="rules-view" class="hidden">
-      <div id="rules-message" class="notice">Select a project folder to view its rule settings.</div>
-      <div id="rule-tools" class="catalog-head hidden"><input id="rule-search" placeholder="Search rule ID, name, or description"><select id="rule-state"><option value="">All rules</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div>
-      <div id="rule-catalog"></div>
-    </section>
-  </main>
+  </div>
+
+  <section id="rules-layout" class="rules-view hidden">
+    <div class="rules-head"><div><h1>Rule settings</h1><div class="sub">Configure checks for this project</div></div><button id="back-to-findings">← Back to findings</button></div>
+    <div id="rules-message" class="notice">Select a project folder to view its rule settings.</div>
+    <div id="rule-tools" class="catalog-head hidden"><input id="rule-search" placeholder="Search rule ID, name, or description"><select id="rule-state"><option value="">All rules</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div>
+    <div id="rule-catalog"></div>
+  </section>
+  <div class="footer"><span id="footer-status">✓ 0 parse errors</span><span id="footer-run">No analysis run</span>baseline: project state · analyzer 0.8.0</div>
+
   <script>
-    let findings = [], diagnostics = [], rules = [], ruleWorkspace = '', selectedFingerprint = '';
+    let findings = [], diagnostics = [], rules = [], selectedFingerprint = '', currentWorkspace = '', viewFilter = '', activeSeverity = '';
     const $ = id => document.getElementById(id);
     const esc = window.CTSUi.escapeHtml;
     const severityName = value => ({danger:'Danger', suspicious:'Suspicious', style:'Style'}[value] || value);
-    function setNotice(id, text, state='') { const el=$(id); el.textContent=text; el.className=`notice ${state}`.trim(); }
     const locationText = window.CTSUi.locationText;
+    function setNotice(id, text, state) { const el=$(id); el.textContent=text; el.className='notice '+(state || ''); }
+    function setStatus(text, ready) { $('status-text').textContent=text; $('status').classList.toggle('ready', !!ready); }
     function filteredFindings() {
-      const severity=$('severity').value, q=$('search').value.trim().toLowerCase();
-      return findings.filter(f => (!severity || f.severity===severity) && (!q || `${f.rule_id} ${f.rule_title} ${f.location.path} ${f.message}`.toLowerCase().includes(q)));
+      const query=$('search').value.trim().toLowerCase();
+      return findings.filter(f => {
+        const attention=!viewFilter || (viewFilter==='attention' && f.severity!=='style') || (viewFilter==='danger' && f.severity==='danger');
+        const severity=!activeSeverity || f.severity===activeSeverity;
+        const text=[f.rule_id,f.rule_title,f.location && f.location.path,f.message].join(' ').toLowerCase();
+        return attention && severity && (!query || text.includes(query));
+      });
+    }
+    function renderSummary(summary) {
+      const by=summary.by_severity || {};
+      $('danger-total').textContent=by.danger || 0; $('suspicious-total').textContent=by.suspicious || 0; $('style-total').textContent=by.style || 0;
+      $('all-count').textContent=summary.total || 0; $('danger-count').textContent=by.danger || 0; $('attention-count').textContent=(by.danger || 0)+(by.suspicious || 0);
     }
     function renderFindings() {
       const visible=filteredFindings(), byRule=$('grouping').value==='rule', grouped={};
       visible.forEach(f => { const key=byRule ? f.rule_id : f.location.path; (grouped[key] ||= []).push(f); });
-      $('result-count').textContent=`${visible.length} of ${findings.length}`;
-      if (!visible.length) { $('groups').innerHTML='<div class="empty"><strong>No matching findings</strong>Adjust filters or run analysis again.</div>'; return; }
-      $('groups').innerHTML=Object.entries(grouped).map(([key,items],n) => `<section><div class="group-head" data-group="${n}"><span class="chevron">▾</span><span class="${esc(items[0].severity)}">${esc(byRule ? key : severityName(items[0].severity))}</span><strong>${esc(byRule ? items[0].rule_title : key)}</strong><span class="badge">${items.length}</span><span class="group-actions"><button type="button" data-group-action="baseline" data-group="${n}">Baseline all</button><button type="button" data-group-action="fix-later" data-group="${n}">Fix all</button><button type="button" data-group-action="suppress" data-group="${n}">Suppress all</button></span></div><div data-group-body="${n}">${items.map(f => `<div class="finding-row ${f.fingerprint===selectedFingerprint?'selected':''}" data-fingerprint="${esc(f.fingerprint)}"><span class="location">${esc(locationText(f.location))}</span><span class="${esc(f.severity)}">${esc(severityName(f.severity))}</span><span class="message-text">${esc(f.message)}</span></div>`).join('')}</div></section>`).join('');
-      document.querySelectorAll('.group-head').forEach(head => head.onclick=()=>{ const body=document.querySelector(`[data-group-body="${head.dataset.group}"]`); const closed=body.classList.toggle('hidden'); head.querySelector('.chevron').textContent=closed?'▸':'▾'; });
-      document.querySelectorAll('.finding-row').forEach(row => row.onclick=()=>selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint),row));
-      document.querySelectorAll('[data-group-action]').forEach(button=>button.onclick=e=>{e.stopPropagation();const items=Object.values(grouped)[Number(button.dataset.group)]||[];bulkTriage(items,button.dataset.groupAction);});
+      $('result-count').textContent=visible.length+' of '+findings.length;
+      if(!visible.length){ $('list').innerHTML='<div class="empty"><strong>No matching findings</strong>Adjust filters or run analysis again.</div>'; return; }
+      $('list').innerHTML=Object.entries(grouped).map(([key,items]) => items.map(f =>
+        '<div class="issue '+(f.fingerprint===selectedFingerprint?'selected':'')+'" data-fingerprint="'+esc(f.fingerprint)+'">'+
+        '<i class="sev '+(f.severity==='danger'?'err':f.severity==='style'?'style':'')+'"></i><div>'+
+        '<div class="rule">'+esc(f.rule_id)+' · '+esc(severityName(f.severity))+'</div><div class="title">'+esc(f.rule_title || f.message)+'</div>'+
+        '<div class="path">'+esc(locationText(f.location))+(byRule?'':' · '+esc(key))+'</div></div><div class="line">L'+esc(f.location.line || '—')+'</div></div>'
+      ).join('')).join('');
+      document.querySelectorAll('.issue').forEach(row => row.onclick=()=>selectFinding(findings.find(f=>f.fingerprint===row.dataset.fingerprint)));
     }
-    async function bulkTriage(items,action) { let reason=''; if(action==='fix-later'||action==='suppress'){reason=window.prompt(action==='suppress'?'Reason for suppressing this group:':'Fix-later note (optional):','')??'';if(action==='suppress'&&!reason.trim())return;} const r=await window.pywebview.api.triage_many($('workspace').value.trim(),items,action,reason); if(!r.ok){setNotice('message',r.error,'error');return;} setNotice('message',`${action} applied to ${items.length} finding(s). Re-running analysis…`,'success');run(); }
-    function selectFinding(f,row) {
-      if(!f)return; selectedFingerprint=f.fingerprint; document.querySelectorAll('.finding-row').forEach(x=>x.classList.remove('selected')); row.classList.add('selected');
-      $('details').className='details'; $('details').innerHTML=`<span class="rule">${esc(f.rule_id)} · ${esc(severityName(f.severity))}</span><h2>${esc(f.rule_title || 'Finding')}</h2><p class="lead">${esc(f.message)}</p><div class="meta"><span>Location</span><code>${esc(locationText(f.location))}</code><span>Unit</span><span>${esc(f.unit_id || '—')}</span></div><div class="actions"><button id="open-file">Open source file</button><button id="copy-suppression">Copy suppression entry</button></div>`;
-      $('open-file').onclick=async()=>{ const r=await window.pywebview.api.open_file(f.location.path,f.location.line||null); if(!r.ok)setNotice('message',r.error,'error'); };
-      $('copy-suppression').onclick=async()=>{ const r=await window.pywebview.api.suppression_entry(f); if(!r.ok){setNotice('message',r.error,'error');return;} try { await navigator.clipboard.writeText(r.text); setNotice('message','Suppression entry copied. Add it to .cts-analyze/suppressions.toml and replace the TODO reason.','success'); } catch (_) { window.prompt('Copy suppression entry:',r.text); } };
-      $('details').insertAdjacentHTML('beforeend','<div class="actions triage-actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button></div>');
-      const decide=async action=>{ let reason=''; if(action==='suppress'||action==='fix-later'){reason=window.prompt(action==='suppress'?'Reason for suppression:':'Fix-later note (optional):','')??'';if(action==='suppress'&&!reason.trim())return;} const r=await window.pywebview.api.triage($('workspace').value.trim(),f,action,reason); if(!r.ok){setNotice('message',r.error,'error');return;} setNotice('message',`${action} decision applied. Re-running analysis…`,'success');run(); };
+    async function selectFinding(f) {
+      if(!f) return; selectedFingerprint=f.fingerprint; renderFindings();
+      const file=f.location && f.location.path || '', line=f.location && f.location.line || 1;
+      $('details').className='details';
+      $('details').innerHTML='<div class="code-title"><div><h2>'+esc(file.split(/[\\\\/]/).pop() || 'Source')+'</h2><div class="sub">'+esc(locationText(f.location))+'</div></div><button id="open-file" class="link-button">Open in editor ↗</button></div><div id="source" class="code"><div class="empty">Loading source context…</div></div><div class="detail"><h3>Why this matters</h3><p>'+esc(f.message)+'</p></div><div class="detail"><h3>Finding details</h3><div class="meta"><span>Rule</span><code>'+esc(f.rule_id)+'</code><span>Severity</span><span>'+esc(severityName(f.severity))+'</span><span>Unit</span><code>'+esc(f.unit_id || '—')+'</code></div></div><div class="actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button><button id="copy-suppression">Copy suppression</button></div>';
+      $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
+      const source=await window.pywebview.api.source_context(file,line,5);
+      if(source.ok){ $('source').innerHTML=source.lines.map(item=>'<div class="code-row '+(item.hot?'hot':'')+'"><span class="ln">'+item.number+'</span><span>'+esc(item.text)+'</span></div>').join(''); }
+      else $('source').innerHTML='<div class="empty">'+esc(source.error || 'Source context unavailable.')+'</div>';
+      $('copy-suppression').onclick=async()=>{const r=await window.pywebview.api.suppression_entry(f);if(!r.ok){setNotice('message',r.error,'error');return;}try{await navigator.clipboard.writeText(r.text);setNotice('message','Suppression entry copied. Replace the TODO reason before committing.','success');}catch(_){window.prompt('Copy suppression entry:',r.text);}};
+      const decide=async action=>{let reason='';if(action==='suppress'||action==='fix-later'){reason=window.prompt(action==='suppress'?'Reason for suppression:':'Fix-later note (optional):','')??'';if(action==='suppress'&&!reason.trim())return;}const r=await window.pywebview.api.triage(currentWorkspace,f,action,reason);if(!r.ok){setNotice('message',r.error,'error');return;}setNotice('message',action+' decision applied. Re-running analysis…','success');run();};
       $('fix-later').onclick=()=>decide('fix-later'); $('baseline').onclick=()=>decide('baseline'); $('suppress').onclick=()=>decide('suppress');
     }
     function renderDiagnostics() {
       $('diagnostics-panel').classList.toggle('hidden',!diagnostics.length);
-      $('diagnostics').innerHTML=diagnostics.map(d=>`<div class="diagnostic"><strong>${esc(d.kind)}</strong> · ${esc(locationText(d.location))}<br>${esc(d.message)}</div>`).join('');
+      $('diagnostics').innerHTML=diagnostics.map(d=>'<div class="diagnostic"><strong>'+esc(d.kind)+'</strong> · '+esc(locationText(d.location))+'<br>'+esc(d.message)+'</div>').join('');
+      $('footer-status').textContent=diagnostics.length?'! '+diagnostics.length+' diagnostics':'✓ 0 parse errors';
     }
     function renderRules() {
-      const q=$('rule-search').value.trim().toLowerCase(), state=$('rule-state').value;
-      const visible=rules.filter(r=>(!q||`${r.id} ${r.title} ${r.summary} ${r.topic}`.toLowerCase().includes(q))&&(!state||(state==='enabled')===r.enabled)); const groups={};
+      const q=$('rule-search').value.trim().toLowerCase(), state=$('rule-state').value, visible=rules.filter(r=>(!q||(r.id+' '+r.title+' '+r.summary+' '+r.topic).toLowerCase().includes(q))&&(!state||(state==='enabled')===r.enabled)), groups={};
       visible.forEach(r=>(groups[r.topic]||=[]).push(r));
-      $('rule-catalog').innerHTML=Object.entries(groups).map(([topic,items])=>`<section class="topic"><h2 class="topic-title">${esc(topic)} <small>${items.length} rule(s)</small></h2>${items.map(r=>`<article class="rule-card ${r.enabled?'':'disabled'}"><div class="rule-summary"><label class="switch" title="Enable or disable for this project"><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled?'checked':''}><span class="slider"></span></label><strong class="${esc(r.severity)}">${esc(r.id)}</strong><div><div class="rule-title">${esc(r.title)}</div><div class="rule-description">${esc(r.summary)}</div></div><button class="doc-toggle" aria-label="Show documentation">Details ▾</button></div><div class="rule-doc hidden">${esc(r.documentation)}</div></article>`).join('')}</section>`).join('') || '<div class="empty"><strong>No matching rules</strong>Adjust the search or status filter.</div>';
-      document.querySelectorAll('.doc-toggle').forEach(btn=>btn.onclick=()=>{ const doc=btn.closest('.rule-card').querySelector('.rule-doc'); const open=doc.classList.toggle('hidden'); btn.textContent=open?'Details ▾':'Hide ▴'; });
-      document.querySelectorAll('[data-rule]').forEach(box=>box.onchange=async()=>{ box.disabled=true; const r=await window.pywebview.api.set_rule_enabled(ruleWorkspace,box.dataset.rule,box.checked); box.disabled=false; if(!r.ok){box.checked=!box.checked;setNotice('rules-message',r.error,'error');return;} const rule=rules.find(x=>x.id===box.dataset.rule); rule.enabled=box.checked; setNotice('rules-message',`${rule.id} ${box.checked?'enabled':'disabled'} for this project.`,'success'); renderRules(); });
+      $('rule-catalog').innerHTML=Object.entries(groups).map(([topic,items])=>'<section class="topic"><h2 class="topic-title">'+esc(topic)+' <small>'+items.length+' rules</small></h2>'+items.map(r=>'<article class="rule-card '+(r.enabled?'':'disabled')+'"><div class="rule-summary"><label class="switch"><input type="checkbox" data-rule="'+esc(r.id)+'" '+(r.enabled?'checked':'')+'><span class="slider"></span></label><strong>'+esc(r.id)+'</strong><div><div class="rule-title">'+esc(r.title)+'</div><div class="rule-description">'+esc(r.summary)+'</div></div><button class="doc-toggle">Details ▾</button></div><div class="rule-doc hidden">'+esc(r.documentation)+'</div></article>').join('')+'</section>').join('')||'<div class="empty"><strong>No matching rules</strong>Adjust the filters.</div>';
+      document.querySelectorAll('.doc-toggle').forEach(btn=>btn.onclick=()=>{const doc=btn.closest('.rule-card').querySelector('.rule-doc');const open=doc.classList.toggle('hidden');btn.textContent=open?'Details ▾':'Hide ▴';});
+      document.querySelectorAll('[data-rule]').forEach(box=>box.onchange=async()=>{box.disabled=true;const r=await window.pywebview.api.set_rule_enabled(currentWorkspace,box.dataset.rule,box.checked);box.disabled=false;if(!r.ok){box.checked=!box.checked;setNotice('rules-message',r.error,'error');return;}const rule=rules.find(x=>x.id===box.dataset.rule);rule.enabled=box.checked;setNotice('rules-message',rule.id+' '+(box.checked?'enabled':'disabled')+' for this project.','success');renderRules();});
     }
     async function loadRules() {
-      ruleWorkspace=$('workspace').value.trim(); if(!ruleWorkspace){setNotice('rules-message','Select a project folder first.','error');return;}
-      setNotice('rules-message','Loading rule catalog…'); const response=await window.pywebview.api.rules(ruleWorkspace);
-      if(!response.ok){setNotice('rules-message',response.error,'error');return;} rules=response.rules||[]; $('rule-tools').classList.remove('hidden'); setNotice('rules-message',`${rules.filter(r=>r.enabled).length} of ${rules.length} rules enabled · ${response.config_path||'default settings'}`); renderRules();
+      if(!currentWorkspace){setNotice('rules-message','Select a project folder first.','error');return;}
+      setNotice('rules-message','Loading rule catalog…');const response=await window.pywebview.api.rules(currentWorkspace);if(!response.ok){setNotice('rules-message',response.error,'error');return;}rules=response.rules||[];$('rule-tools').classList.remove('hidden');setNotice('rules-message',rules.filter(r=>r.enabled).length+' of '+rules.length+' rules enabled · '+(response.config_path||'default settings'));renderRules();
     }
+    function showRules(open) { $('analysis-layout').classList.toggle('hidden',open);$('rules-layout').classList.toggle('hidden',!open);if(open)loadRules(); }
     async function run() {
-      const workspace=$('workspace').value.trim(); if(!workspace){setNotice('message','Select a project folder first.','error');return;}
-      $('run').disabled=true; $('run').textContent='Analyzing…'; setNotice('message','Reading project and running enabled rules…');
-      const response=await window.pywebview.api.analyze(workspace); $('run').disabled=false; $('run').textContent='Run analysis';
-      if(!response.ok){setNotice('message',response.error,'error');return;}
-      findings=response.result.findings||[]; diagnostics=response.result.diagnostics||[]; selectedFingerprint=''; const s=response.result.summary;
-      $('summary').classList.remove('hidden'); $('filters').classList.remove('hidden'); $('results').classList.remove('hidden');
-      $('summary').innerHTML=`<div class="metric"><b>${s.total}</b><span>Active findings</span></div><div class="metric danger"><b>${s.by_severity.danger||0}</b><span>Danger</span></div><div class="metric suspicious"><b>${s.by_severity.suspicious||0}</b><span>Suspicious</span></div><div class="metric style"><b>${s.by_severity.style||0}</b><span>Style</span></div><div class="metric"><b>${s.suppressed||0}</b><span>State ignored</span></div><div class="metric"><b>${s.suppressed_by_directive||0}</b><span>File directives</span></div><div class="metric"><b>${s.baselined||0}</b><span>Baselined</span></div>`;
-      $('details').className='details empty'; $('details').innerHTML='<strong>No finding selected</strong>Choose an item to inspect it.';
-      setNotice('message',response.result.complete?`Analysis complete · ${response.workspace}`:`Analysis completed with ${diagnostics.length} diagnostic(s).`,response.result.complete?'success':'error'); renderFindings(); renderDiagnostics();
+      currentWorkspace=$('workspace').value.trim();if(!currentWorkspace){setNotice('message','Select a project folder first.','error');return;}
+      $('run').disabled=true;$('run').textContent='Analyzing…';setStatus('Running analysis…',false);setNotice('message','Reading .st files and running enabled rules…');
+      const response=await window.pywebview.api.analyze(currentWorkspace);$('run').disabled=false;$('run').textContent='Run analysis';
+      if(!response.ok){setStatus('Analysis failed',false);setNotice('message',response.error,'error');return;}
+      findings=response.result.findings||[];diagnostics=response.result.diagnostics||[];selectedFingerprint='';renderSummary(response.result.summary);renderDiagnostics();$('controls').classList.remove('hidden');$('project-label').textContent=response.workspace;$('project-subtitle').textContent=(response.result.summary.files || 'Project')+' files analyzed';setNotice('message',response.result.complete?'Analysis complete · '+response.workspace:'Analysis completed with diagnostics.',response.result.complete?'success':'error');setStatus('Analysis complete',true);$('footer-run').textContent='Last run just now';renderFindings();$('export').disabled=false;
     }
-    function showView(name) { document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===name)); $('analysis-view').classList.toggle('hidden',name!=='analysis'); $('rules-view').classList.toggle('hidden',name!=='rules'); if(name==='rules')loadRules(); }
-    $('run').onclick=run; $('workspace').onkeydown=e=>{if(e.key==='Enter')run();}; $('workspace').oninput=()=>{try{localStorage.setItem('cts.workspace',$('workspace').value.trim());}catch(_){}}; $('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path){$('workspace').value=path;try{localStorage.setItem('cts.workspace',path);}catch(_){}}};
-    $('severity').onchange=renderFindings; $('grouping').onchange=renderFindings; $('search').oninput=renderFindings; $('rule-search').oninput=renderRules; $('rule-state').onchange=renderRules; document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showView(t.dataset.view));
-    document.addEventListener('keydown',e=>{ if(e.key==='F5'){e.preventDefault();run();return;} if((e.key==='ArrowDown'||e.key==='ArrowUp')&&findings.length){const visible=filteredFindings();if(!visible.length)return;let i=visible.findIndex(f=>f.fingerprint===selectedFingerprint);i=(i+(e.key==='ArrowDown'?1:-1)+visible.length)%visible.length;const f=visible[i],row=document.querySelector(`[data-fingerprint="${CSS.escape(f.fingerprint)}"]`);if(row)selectFinding(f,row);e.preventDefault();} });
-    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();if(state.workspace)$('workspace').value=state.workspace;else{try{$('workspace').value=localStorage.getItem('cts.workspace')||'';}catch(_){}}});
+    $('run').onclick=run;$('browse').onclick=async()=>{const path=await window.pywebview.api.choose_workspace();if(path){$('workspace').value=path;currentWorkspace=path;$('project-label').textContent=path;$('project-subtitle').textContent='Ready to analyze';}};$('rules-button').onclick=()=>showRules(true);$('open-rules').onclick=()=>showRules(true);$('back-to-findings').onclick=()=>showRules(false);$('export').onclick=()=>{const blob=new Blob([JSON.stringify({findings,diagnostics},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cts-analysis.json';a.click();URL.revokeObjectURL(a.href);};
+    $('search').oninput=renderFindings;$('grouping').onchange=renderFindings;$('rule-search').oninput=renderRules;$('rule-state').onchange=renderRules;
+    document.querySelectorAll('[data-severity]').forEach(chip=>chip.onclick=()=>{activeSeverity=chip.dataset.severity;document.querySelectorAll('[data-severity]').forEach(x=>x.classList.toggle('on',x===chip));renderFindings();});
+    document.querySelectorAll('[data-view-filter]').forEach(nav=>nav.onclick=()=>{viewFilter=nav.dataset.viewFilter;document.querySelectorAll('[data-view-filter]').forEach(x=>x.classList.toggle('active',x===nav));$('search').value='';renderFindings();});
+    $('workspace').onkeydown=e=>{if(e.key==='Enter')run();};document.addEventListener('keydown',e=>{if(e.key==='F5'){e.preventDefault();run();}});
+    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();$('workspace').value=state.workspace||'';currentWorkspace=state.workspace||'';if(currentWorkspace){$('project-label').textContent=currentWorkspace;$('project-subtitle').textContent='Analyzing current project…';await run();}});
   </script>
+  <input id="workspace" class="hidden" aria-hidden="true">
 </body>
 </html>
