@@ -207,6 +207,14 @@
     .state-summary strong { color:var(--text); font-variant-numeric:tabular-nums; }
 
     /* ---- Detail panel ---- */
+    .finding-rule { margin-bottom:16px; padding:12px 14px; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:8px; background:var(--surface-2); }
+    .finding-rule.err { border-left-color:var(--danger); }
+    .finding-rule.suspicious { border-left-color:var(--suspicious); }
+    .finding-rule.style { border-left-color:var(--style); }
+    .finding-rule-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:5px; }
+    .finding-rule-id { color:var(--text); font:600 13px var(--mono); }
+    .finding-rule-title { color:var(--text); font-size:15px; font-weight:650; line-height:1.35; }
+    .finding-rule-label { color:var(--muted); font-size:10px; letter-spacing:.8px; text-transform:uppercase; }
     .code-title { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-bottom:14px; margin-bottom:18px; border-bottom:1px solid var(--line); }
     .code-title h2 { margin-bottom:4px; font-family:var(--mono); font-size:14px; }
     .code { overflow:auto; border:1px solid var(--line); border-radius:8px; background:var(--code-bg); color:var(--text-2); font:12px/1.8 var(--mono); }
@@ -261,6 +269,16 @@
     .modal-hint { margin:0 0 12px; color:var(--muted); font-size:12px; line-height:1.5; }
     .modal-card textarea { width:100%; min-height:76px; resize:vertical; }
     .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+    .autofix-card { width:min(980px,94vw); max-height:min(820px,90vh); display:flex; flex-direction:column; }
+    .autofix-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+    .autofix-head h3 { margin:0 0 5px; }
+    .autofix-summary { margin:14px 0 10px; color:var(--muted); font-size:12px; }
+    .autofix-diff { overflow:auto; margin:0; padding:12px 0; border:1px solid var(--line); border-radius:8px; background:var(--code-bg); color:var(--text-2); font:12px/1.7 var(--mono); }
+    .diff-line { min-height:1.7em; padding:0 14px; white-space:pre; }
+    .diff-line.added { color:var(--good); background:var(--good-bg); }
+    .diff-line.removed { color:var(--danger); background:var(--danger-bg); }
+    .diff-line.hunk { color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, var(--code-bg)); }
+    .autofix-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 
     /* ---- Rule documentation modal ---- */
     .documentation-card { width:min(780px,92vw); max-height:min(760px,88vh); display:flex; flex-direction:column; }
@@ -355,7 +373,7 @@
       <div id="list" class="list"><div class="empty"><strong>No analysis yet</strong>Choose a workspace and run the analyzer.</div></div>
     </main>
 
-     <div id="splitter" class="splitter" role="separator" aria-label="Resize findings and details panels" aria-orientation="vertical" aria-valuemin="300" aria-valuemax="700" aria-valuenow="430" tabindex="0"></div>
+      <div id="splitter" class="splitter" role="separator" aria-label="Resize findings and details panels" aria-orientation="vertical" aria-valuemin="300" aria-valuemax="1100" aria-valuenow="430" tabindex="0"></div>
      <section class="right">
       <div id="details" class="empty"><strong>No finding selected</strong>Choose an item to inspect its source and explanation.</div>
     </section>
@@ -393,10 +411,22 @@
     </div>
   </div>
 
+  <div id="autofix-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="autofix-title">
+    <div class="modal-card autofix-card">
+      <div class="autofix-head">
+        <div><h3 id="autofix-title">Preview autofix</h3><div id="autofix-subtitle" class="sub"></div></div>
+        <button id="autofix-close" class="documentation-close" aria-label="Close autofix preview">Cancel</button>
+      </div>
+      <div id="autofix-summary" class="autofix-summary">Review the proposed whitespace-only change before applying it.</div>
+      <pre id="autofix-diff" class="autofix-diff"></pre>
+      <div class="autofix-actions"><button id="autofix-cancel">Close</button><button id="autofix-skip">Skip</button><button id="autofix-apply" class="primary">Apply changes</button></div>
+    </div>
+  </div>
+
   <input id="workspace" class="hidden" aria-hidden="true">
 
   <script>
-    let findings = [], diagnostics = [], rules = [], selectedFingerprint = '', currentWorkspace = '', viewFilter = '', activeSeverity = '', currentSummary = null, lastEnvelope = null, resultsStale = false, selectedGroupKey = '';
+    let findings = [], diagnostics = [], rules = [], selectedFingerprint = '', currentWorkspace = '', viewFilter = '', activeSeverity = '', currentSummary = null, lastEnvelope = null, resultsStale = false, selectedGroupKey = '', pendingAutofix = null;
     const selectedFingerprints = new Set();
     // Keys whose expansion differs from the mode default: rule+file groups
     // start collapsed (the whole file is one case), the flat modes expanded.
@@ -405,14 +435,15 @@
     const DETAILS_WIDTH_KEY = 'cts-static-analyzer.details-width';
     let detailsWidth = 430;
     function detailsWidthLimits() {
-      const layout=$('analysis-layout'), splitterWidth=8, minMainWidth=420;
+      const layout=$('analysis-layout'), splitterWidth=8, minMainWidth=420, maxDetailsWidth=1100;
       const available=Math.max(300, layout.clientWidth-splitterWidth-minMainWidth);
-      return {min:300, max:Math.max(300,Math.min(700,available))};
+      return {min:300, max:Math.max(300,Math.min(maxDetailsWidth,available))};
     }
     function setDetailsWidth(value, persist=true) {
       const limits=detailsWidthLimits();
       detailsWidth=Math.round(Math.max(limits.min,Math.min(limits.max,Number(value)||430)));
       $('analysis-layout').style.setProperty('--details-width',detailsWidth+'px');
+      $('splitter').setAttribute('aria-valuemax',limits.max);
       $('splitter').setAttribute('aria-valuenow',detailsWidth);
       if(persist){try{localStorage.setItem(DETAILS_WIDTH_KEY,String(detailsWidth));}catch(_){} }
     }
@@ -646,6 +677,45 @@
       $('documentation-close').focus();
     }
     function closeDocumentation() { $('documentation-modal').classList.add('hidden'); }
+    function renderAutofixDiff(lines) {
+      return (lines || []).map(line=>{
+        const kind=line.startsWith('+')?'added':line.startsWith('-')?'removed':line.startsWith('@@')?'hunk':'';
+        return '<div class="diff-line '+kind+'">'+esc(line || ' ')+'</div>';
+      }).join('') || '<div class="empty">No source changes.</div>';
+    }
+    async function loadAutofixStep() {
+      const pending=pendingAutofix;
+      if(!pending || pending.index>=pending.items.length){closeAutofix();return;}
+      const finding=pending.items[pending.index], apply=$('autofix-apply'), skip=$('autofix-skip');
+      apply.disabled=true;skip.disabled=true;apply.textContent='Preparing preview…';
+      let response;
+      try { response=await window.pywebview.api.autofix_preview(currentWorkspace,finding); }
+      catch(error){ response={ok:false,error:String(error)}; }
+      apply.disabled=false;skip.disabled=false;
+      if(!response.ok){
+        $('autofix-title').textContent='Autofix unavailable';
+        $('autofix-subtitle').textContent=(finding.rule_id||'Rule')+' · '+((finding.location||{}).path||'Source');
+        $('autofix-summary').textContent=response.error;
+        $('autofix-diff').innerHTML='<div class="empty">Skip this item to continue.</div>';
+        apply.disabled=true;apply.textContent='Apply changes';return;
+      }
+      pending.beforeHash=response.before_hash;
+      pending.current=finding;
+      $('autofix-title').textContent='Autofix preview · '+response.rule_id;
+      $('autofix-subtitle').textContent=(pending.index+1)+' of '+pending.items.length+' · '+(response.rule_title||response.rule_id)+' · '+response.path;
+      $('autofix-summary').textContent='Review the proposed change. Nothing has been written yet.';
+      $('autofix-diff').innerHTML=renderAutofixDiff(response.diff);
+      apply.textContent=pending.index+1<pending.items.length?'Apply & next':'Apply changes';
+    }
+    async function openAutofix(items) {
+      items=(items||[]).filter(Boolean);
+      if(!items.length)return;
+      pendingAutofix={items,index:0,beforeHash:'',current:null};
+      $('autofix-modal').classList.remove('hidden');
+      await loadAutofixStep();
+      $('autofix-apply').focus();
+    }
+    function closeAutofix() { $('autofix-modal').classList.add('hidden'); pendingAutofix=null; }
     let pendingTriage = null;
     function openReasonModal(action, items) {
       pendingTriage = {action, items};
@@ -729,9 +799,13 @@
         '<div class="documentation-actions"><button id="show-documentation" class="link-button doc-button">Why this matters · '+esc(ruleIds.length===1?ruleIds[0]:'rule documentation')+' ↗</button>'+
         (ruleIds.length===1?'<button id="show-rule" class="link-button doc-button">Open '+esc(ruleIds[0])+' in rule settings ↗</button>':'')+'</div>'+
         '<div id="source" class="code"><div class="empty">Loading source context…</div></div>'+
-        '<div class="detail"><h3>Cases in this group</h3><p>'+group.items.map(f=>esc(findingRange(f,4))+' — '+esc(f.message || f.rule_title)).join('<br>')+'</p></div>'+
-        '<div class="actions"><button id="fix-later">Mark whole group fix-later</button><button id="baseline">Baseline whole group</button><button id="suppress">Suppress whole group</button></div>';
-      if(path)$('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(path,lines[0]||1);if(!r.ok)setNotice('message',r.error,'error');};
+         '<div class="detail"><h3>Cases in this group</h3><p>'+group.items.map(f=>esc(findingRange(f,4))+' — '+esc(f.message || f.rule_title)).join('<br>')+'</p></div>'+
+         '<div class="actions"><button id="fix-later">Mark whole group fix-later</button><button id="baseline">Baseline whole group</button><button id="suppress">Suppress whole group</button></div>';
+       if(rule && rule.fixable) {
+         $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix'+(group.items.length>1?' group':'')+'</button>');
+         $('autofix').onclick=()=>openAutofix(group.items);
+       }
+       if(path)$('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(path,lines[0]||1);if(!r.ok)setNotice('message',r.error,'error');};
       $('show-documentation').onclick=()=>openDocumentation(rule,ruleIds.length===1?ruleIds[0]:'Rule documentation',documentation);
       if(ruleIds.length===1)$('show-rule').onclick=()=>{showRules(true);$('rule-search').value=ruleIds[0];renderRules();};
       if(path && lines.length) await fillSource(path,lines);
@@ -744,11 +818,14 @@
       const rule=await ruleFor(f.rule_id);
       const file=f.location && f.location.path || '', line=f.location && f.location.line || 1;
       const documentation=rule && (rule.documentation || rule.summary) || 'No rule documentation is available.';
+      const ruleTitle=(f.rule_title || (rule && (rule.title || rule.summary)) || f.rule_id);
       $('details').className='details';
-       $('details').innerHTML='<div class="code-title"><div><h2>'+esc(file.split(/[\\\\/]/).pop() || 'Source')+'</h2><div class="sub">'+esc(locationText(f.location))+'</div></div><button id="open-file" class="link-button">Open in editor ↗</button></div><div class="documentation-actions"><button id="show-documentation" class="link-button doc-button">Why this matters · '+esc(f.rule_id)+' ↗</button><button id="show-rule" class="link-button doc-button">Open '+esc(f.rule_id)+' in rule settings ↗</button></div><div id="source" class="code"><div class="empty">Loading source context…</div></div><div class="detail"><h3>Finding</h3><p>'+esc(f.message)+'</p></div><div class="detail"><h3>Finding details</h3><div class="meta"><span>Rule</span><code>'+esc(f.rule_id)+'</code><span>Severity</span><span>'+esc(severityName(f.severity))+'</span><span>Occurrences</span><span>'+esc(findingRange(f,6))+'</span><span>Unit</span><code>'+esc(f.unit_id || '—')+'</code></div></div><div class="actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button><button id="copy-suppression">Copy suppression</button></div>';
-      $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
+       $('details').innerHTML='<div class="finding-rule '+sevClass(f.severity)+'"><div class="finding-rule-label">Rule</div><div class="finding-rule-head"><span class="sev '+sevClass(f.severity)+'">'+esc(severityName(f.severity))+'</span><code class="finding-rule-id">'+esc(f.rule_id)+'</code></div><div class="finding-rule-title">'+esc(ruleTitle)+'</div></div><div class="code-title"><div><h2>'+esc(file.split(/[\\\\/]/).pop() || 'Source')+'</h2><div class="sub">'+esc(locationText(f.location))+'</div></div><button id="open-file" class="link-button">Open in editor ↗</button></div><div class="documentation-actions"><button id="show-documentation" class="link-button doc-button">Why this matters · '+esc(f.rule_id)+' ↗</button><button id="show-rule" class="link-button doc-button">Open '+esc(f.rule_id)+' in rule settings ↗</button></div><div id="source" class="code"><div class="empty">Loading source context…</div></div><div class="detail"><h3>Finding</h3><p>'+esc(f.message)+'</p></div><div class="detail"><h3>Finding details</h3><div class="meta"><span>Rule</span><code>'+esc(f.rule_id)+'</code><span>Severity</span><span>'+esc(severityName(f.severity))+'</span><span>Occurrences</span><span>'+esc(findingRange(f,6))+'</span><span>Unit</span><code>'+esc(f.unit_id || '—')+'</code></div></div><div class="actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button><button id="copy-suppression">Copy suppression</button></div>';
+       if(rule && rule.fixable) $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix</button>');
+       $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
       $('show-documentation').onclick=()=>openDocumentation(rule,f.rule_id,documentation);
-      $('show-rule').onclick=()=>{showRules(true);$('rule-search').value=f.rule_id;renderRules();};
+       $('show-rule').onclick=()=>{showRules(true);$('rule-search').value=f.rule_id;renderRules();};
+       if(rule && rule.fixable) $('autofix').onclick=()=>openAutofix(f);
       await fillSource(file,occurrenceLines(f));
       $('copy-suppression').onclick=async()=>{const r=await window.pywebview.api.suppression_entry(f);if(!r.ok){setNotice('message',r.error,'error');return;}try{await navigator.clipboard.writeText(r.text);setNotice('message','Suppression entry copied. Replace the TODO reason before committing.','success');}catch(_){window.prompt('Copy suppression entry:',r.text);}};
       const decide=action=>applyTriage(action,[f]);
@@ -833,6 +910,26 @@
     $('modal-cancel').onclick=()=>{ $('modal').classList.add('hidden'); pendingTriage=null; };
     $('documentation-close').onclick=closeDocumentation;
     $('documentation-modal').onclick=e=>{if(e.target===$('documentation-modal'))closeDocumentation();};
+    $('autofix-close').onclick=closeAutofix;
+    $('autofix-cancel').onclick=closeAutofix;
+    $('autofix-skip').onclick=async()=>{
+      if(!pendingAutofix)return;
+      pendingAutofix.index+=1;await loadAutofixStep();
+    };
+    $('autofix-modal').onclick=e=>{if(e.target===$('autofix-modal'))closeAutofix();};
+    $('autofix-apply').onclick=async()=>{
+      const pending=pendingAutofix;if(!pending)return;
+      if(!pending.current)return;
+      const button=$('autofix-apply');button.disabled=true;$('autofix-skip').disabled=true;button.textContent='Applying…';
+      let response;
+      try { response=await window.pywebview.api.autofix_apply(currentWorkspace,pending.current,pending.beforeHash); }
+      catch(error){ response={ok:false,error:String(error)}; }
+      button.disabled=false;$('autofix-skip').disabled=false;button.textContent='Apply changes';
+      if(!response.ok){$('autofix-summary').textContent=response.error;setNotice('message',response.error,'error');return;}
+      pending.index+=1;
+      if(pending.index<pending.items.length){await loadAutofixStep();return;}
+      closeAutofix();setNotice('message','Autofix applied. Re-running analysis…','success');await run();
+    };
     $('modal-confirm').onclick=async()=>{
       const p=pendingTriage; $('modal').classList.add('hidden'); pendingTriage=null;
       if(!p) return;
@@ -851,8 +948,9 @@
     applyTheme(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
     document.addEventListener('keydown',e=>{
       if(e.key==='F5'){e.preventDefault();run();return;}
-      if(e.key==='Escape'){
-        if(!$('documentation-modal').classList.contains('hidden')){closeDocumentation();return;}
+        if(e.key==='Escape'){
+          if(!$('autofix-modal').classList.contains('hidden')){closeAutofix();return;}
+          if(!$('documentation-modal').classList.contains('hidden')){closeDocumentation();return;}
         if(!$('modal').classList.contains('hidden')){$('modal-cancel').click();return;}
       }
       if(e.target.matches('input,select,textarea,[contenteditable="true"]'))return;

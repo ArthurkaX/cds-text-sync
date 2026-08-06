@@ -7,6 +7,7 @@ import re
 from cds_static_analyzer.capabilities import Capability, Scope
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.body import declaration
+from cds_static_analyzer.st.blanking import blank_noise
 
 _SECTION_START = re.compile(r"^VAR(?:_INPUT|_OUTPUT|_IN_OUT|_TEMP|_GLOBAL)?\b", re.I)
 _SECTION_END = re.compile(r"^END_VAR\b", re.I)
@@ -92,6 +93,84 @@ def check(unit, ctx):
     yield from emit(group)
 
 
+def fix(text, finding):
+    """Return *text* with the affected declaration group aligned.
+
+    This fixer deliberately changes whitespace before the declaration colon
+    only.  It uses the same section/group boundaries as :func:`check`, so a
+    preview can never silently reformat an unrelated declaration block.
+    """
+    raw_lines = text.splitlines(keepends=True)
+    clean_lines = blank_noise(text).splitlines(keepends=True)
+    target_lines = set()
+    location = finding.get("location") if isinstance(finding, dict) else None
+    if isinstance(location, dict) and location.get("line") is not None:
+        target_lines.add(int(location["line"]))
+    for value in (finding.get("member_lines", []) if isinstance(finding, dict) else []):
+        try:
+            target_lines.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not target_lines:
+        return text
+
+    def content(raw):
+        return raw.rstrip("\r\n")
+
+    def align_group(rows):
+        if len(rows) < 2 or not target_lines.intersection(row[0] for row in rows):
+            return
+        expected_indent = rows[0][3].group("indent")
+        # Keep one readable space before the colon, including for the longest
+        # declaration in a group.
+        expected_colon = max(row[5] for row in rows) + 1
+        for line_no, index, raw, match, name_end, colon in rows:
+            new_prefix = expected_indent + raw[len(match.group("indent")) : name_end]
+            padding = max(1, expected_colon - len(new_prefix))
+            replacement = new_prefix + (" " * padding) + raw[colon:]
+            newline = raw_lines[index][len(content(raw_lines[index])) :]
+            raw_lines[index] = replacement + newline
+
+    in_section = False
+    group = []
+    for index, clean_raw in enumerate(clean_lines):
+        clean = content(clean_raw)
+        stripped = clean.strip()
+        if not in_section:
+            if _SECTION_START.match(stripped):
+                in_section = True
+            continue
+        if _SECTION_END.match(stripped):
+            align_group(group)
+            group = []
+            in_section = False
+            continue
+        if not stripped:
+            align_group(group)
+            group = []
+            continue
+        match = _DECLARATION.match(clean)
+        if match:
+            colon = clean.find(":")
+            group.append(
+                (
+                    index + 1,
+                    index,
+                    content(raw_lines[index]),
+                    match,
+                    match.end("names"),
+                    colon,
+                )
+            )
+        elif stripped.startswith(("//", "(*", "{", "(")):
+            pass
+        else:
+            align_group(group)
+            group = []
+    align_group(group)
+    return "".join(raw_lines)
+
+
 RULE = RuleSpec(
     id="CTS0008",
     title="Variable declaration alignment",
@@ -104,4 +183,5 @@ RULE = RuleSpec(
     check=check,
     merge="adjacent",
     options={"merge": True},
+    fix=fix,
 )

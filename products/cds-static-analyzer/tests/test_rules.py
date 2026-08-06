@@ -321,6 +321,22 @@ def test_cts0008_allows_separate_groups_and_preserves_comments():
     assert len(findings) == 1
 
 
+def test_cts0008_fix_aligns_only_the_affected_group():
+    from cds_static_analyzer.rules.CTS0008_variable_alignment import fix
+
+    text = (
+        "PROGRAM P\nVAR\n"
+        "    short_name : INT;\n"
+        "    much_longer_name: BOOL;\n\n"
+        "    isolated : BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\nEND_PROGRAM\n"
+    )
+    fixed = fix(text, {"location": {"line": 4}})
+    fixed_lines = fixed.splitlines()
+    assert fixed_lines[2].index(":") == fixed_lines[3].index(":")
+    assert "    isolated : BYTE;\n" in fixed
+
+
 # ---------------------------------------------------------------------------
 # CTS0009 - output not assigned
 # ---------------------------------------------------------------------------

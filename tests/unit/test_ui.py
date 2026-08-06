@@ -96,6 +96,27 @@ def test_rules_catalog_contains_only_human_analyzer_rules(tmp_path):
             "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029", "CTS0030", "CTS0031", "CTS0032", "CTS0033", "CTS0034", "CTS0035", "CTS0036", "CTS0037", "CTS0038", "CTS0039", "CTS0040", "CTS0041", "CTS0042", "CTS0043"
     }
     assert all("documentation" in rule for rule in response["rules"])
+    assert next(rule for rule in response["rules"] if rule["id"] == "CTS0008")["fixable"] is True
+
+
+def test_cts0008_autofix_requires_preview_and_applies_only_unchanged_source(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    analysis = analyze_workspace(root)
+    finding = next(item for item in analysis["result"]["findings"] if item["rule_id"] == "CTS0008")
+    api = AnalyzerApi()
+
+    preview = api.autofix_preview(root, finding)
+
+    assert preview["ok"] is True
+    assert any(line.startswith("-") for line in preview["diff"])
+    assert any(line.startswith("+") for line in preview["diff"])
+    applied = api.autofix_apply(root, finding, preview["before_hash"])
+    assert applied["ok"] is True
+
+    stale = api.autofix_apply(root, finding, preview["before_hash"])
+    assert stale["ok"] is False
+    assert "Source changed after the preview" in stale["error"]
 
 
 def test_rule_switch_is_saved_to_project_config(tmp_path):

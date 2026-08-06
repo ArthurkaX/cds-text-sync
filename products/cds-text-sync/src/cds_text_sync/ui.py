@@ -9,6 +9,8 @@ usable without its optional dependency.
 from __future__ import annotations
 
 import os
+import difflib
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -120,6 +122,7 @@ class AnalyzerApi:
                 catalog.append({
                     "id": rule.id, "title": rule.title, "summary": rule.summary,
                     "severity": rule.severity, "topic": rule.topic,
+                    "fixable": rule.fix is not None,
                     "enabled": config.enabled_for(rule.id),
                     "documentation": documentation,
                 })
@@ -184,7 +187,17 @@ class AnalyzerApi:
         """
         if not self._last_project_view:
             return None, {"ok": False, "error": "Run analysis before opening source context."}
-        root = Path(self._last_project_view).resolve()
+        target, error = self._source_target(self._last_project_view, relative_path)
+        if error is not None:
+            return None, error
+        try:
+            return target.read_text(encoding="utf-8", errors="replace").splitlines(), None
+        except OSError as exc:
+            return None, {"ok": False, "error": str(exc)}
+
+    @staticmethod
+    def _source_target(project_view, relative_path):
+        root = Path(project_view).resolve()
         target = (root / str(relative_path or "")).resolve()
         try:
             target.relative_to(root)
@@ -194,10 +207,7 @@ class AnalyzerApi:
             return None, {"ok": False, "error": "Only .st source context is available."}
         if not target.is_file():
             return None, {"ok": False, "error": f"Source file no longer exists: {relative_path}"}
-        try:
-            return target.read_text(encoding="utf-8", errors="replace").splitlines(), None
-        except OSError as exc:
-            return None, {"ok": False, "error": str(exc)}
+        return target, None
 
     def source_context(
         self, relative_path: str, line: int | None = None, radius: int = 5
@@ -269,6 +279,87 @@ class AnalyzerApi:
                 for index, (start, end) in enumerate(windows)
             ],
         }
+
+    def _autofix_context(self, workspace_path: str, finding: dict):
+        if not isinstance(finding, dict):
+            return None, None, None, {"ok": False, "error": "Finding data is missing."}
+        rule_id = str(finding.get("rule_id", "")).strip()
+        if not rule_id:
+            return None, None, None, {"ok": False, "error": "Finding rule is missing."}
+        try:
+            workspace = WorkspaceResolver(workspace=workspace_path).resolve()
+            target, error = self._source_target(
+                workspace.project_view,
+                (finding.get("location") or {}).get("path", ""),
+            )
+            if error is not None:
+                return None, None, None, error
+            rule = load_builtin_rules().get(rule_id)
+            if rule is None or rule.fix is None:
+                return None, None, None, {
+                    "ok": False,
+                    "error": f"Rule {rule_id} does not provide a safe autofix.",
+                }
+            before = target.read_text(encoding="utf-8", errors="replace")
+            after = rule.fix(before, finding)
+            if not isinstance(after, str) or after == before:
+                return None, None, None, {
+                    "ok": False,
+                    "error": "This finding has no applicable source change.",
+                }
+            return target, rule, before, after
+        except (WorkspaceError, ConfigError, RegistryError, OSError) as exc:
+            return None, None, None, {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return None, None, None, {
+                "ok": False,
+                "error": f"Autofix preview failed unexpectedly: {exc}",
+            }
+
+    def autofix_preview(self, workspace_path: str, finding: dict) -> dict:
+        """Return a non-mutating unified diff for a registered rule fixer."""
+        target, rule, before, after = self._autofix_context(workspace_path, finding)
+        if isinstance(after, dict):
+            return after
+        relative = str((finding.get("location") or {}).get("path", "")).replace("\\", "/")
+        diff = list(
+            difflib.unified_diff(
+                before.splitlines(),
+                after.splitlines(),
+                fromfile="Before",
+                tofile="After",
+                lineterm="",
+            )
+        )
+        return {
+            "ok": True,
+            "rule_id": rule.id,
+            "rule_title": rule.title,
+            "path": relative,
+            "before_hash": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+            "diff": diff,
+        }
+
+    def autofix_apply(
+        self, workspace_path: str, finding: dict, before_hash: str = ""
+    ) -> dict:
+        """Apply a previously previewed fix only if the source is unchanged."""
+        target, rule, before, after = self._autofix_context(workspace_path, finding)
+        if isinstance(after, dict):
+            return after
+        current_hash = hashlib.sha256(before.encode("utf-8")).hexdigest()
+        if before_hash and before_hash != current_hash:
+            return {
+                "ok": False,
+                "error": "Source changed after the preview. Generate a new preview first.",
+            }
+        try:
+            with target.open("w", encoding="utf-8", newline="") as handle:
+                handle.write(after)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        relative = str((finding.get("location") or {}).get("path", "")).replace("\\", "/")
+        return {"ok": True, "rule_id": rule.id, "path": relative}
 
     def suppression_entry(self, finding: dict) -> dict:
         """Return a ready-to-edit TOML suppression entry for one finding."""

@@ -99,6 +99,7 @@ class RuleSpec:
         topic,
         merge=None,
         options=None,
+        fix=None,
     ):
         self.id = str(id).strip()
         self.title = str(title).strip()
@@ -110,6 +111,7 @@ class RuleSpec:
         self.topic = str(topic).strip()
         self.merge = merge
         self.check = check
+        self.fix = fix
         self.options = {k: v for k, v in (options or {}).items()}
 
     def validate(self):
@@ -130,6 +132,8 @@ class RuleSpec:
             raise RuleSpecError(f"{self.id}: bad severity {self.severity!r}")
         if not callable(self.check):
             raise RuleSpecError(f"{self.id}: check must be callable")
+        if self.fix is not None and not callable(self.fix):
+            raise RuleSpecError(f"{self.id}: fix must be callable when provided")
         if self.merge not in (None, "adjacent", "identical"):
             raise RuleSpecError(f"{self.id}: bad merge strategy {self.merge!r}")
         for name, default in self.options.items():
