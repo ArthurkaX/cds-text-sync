@@ -40,11 +40,7 @@ def _project_sync_folder(project):
             "Sync folder is not configured. Run Project_directory.py first."
         )
 
-    relative = (
-        sync_folder == "."
-        or sync_folder.startswith("./")
-        or sync_folder.startswith(".\\")
-    )
+    relative = not os.path.isabs(sync_folder)
     if relative:
         project_path = str(getattr(project, "path", "") or "").strip()
         if not project_path:
@@ -59,7 +55,7 @@ def _project_sync_folder(project):
                 sync_folder.replace("/", os.sep).replace("\\", os.sep),
             )
         )
-    return sync_folder, None
+    return os.path.abspath(sync_folder), None
 
 
 def _body_root():
@@ -125,6 +121,12 @@ def main(params=None, caller_globals=None):
         sync_folder,
     ]
     kwargs = {"cwd": _body_root()}
+    # Keep a second hand-off channel for installations where the host or
+    # launcher normalizes command-line arguments before starting CPython.
+    # The UI uses this only when --workspace is absent.
+    environment = os.environ.copy()
+    environment["CTS_INITIAL_WORKSPACE"] = sync_folder
+    kwargs["env"] = environment
     if os.name == "nt":
         kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
     try:

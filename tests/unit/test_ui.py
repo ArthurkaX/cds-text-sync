@@ -34,6 +34,15 @@ def test_ui_initial_state_exposes_analyzer_version():
     assert state["analyzer_version"]
 
 
+def test_ui_launch_uses_environment_workspace_fallback(monkeypatch):
+    monkeypatch.setenv("CTS_INITIAL_WORKSPACE", "C:/from-codesys")
+
+    import cds_text_sync.ui as ui
+
+    assert ui._resolve_initial_workspace() == "C:/from-codesys"
+    assert ui._resolve_initial_workspace("C:/explicit") == "C:/explicit"
+
+
 def test_open_file_rejects_path_outside_project_view(tmp_path):
     api = AnalyzerApi()
     api._last_project_view = str(tmp_path)

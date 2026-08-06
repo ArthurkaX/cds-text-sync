@@ -15,7 +15,7 @@
     }
     * { box-sizing:border-box; }
     html, body { height:100%; }
-    body { margin:0; min-width:1125px; background:var(--bg); color:var(--text); font-size:13px; }
+    body { margin:0; min-width:850px; background:var(--bg); color:var(--text); font-size:13px; }
     button, input, select { font:inherit; color:inherit; }
     button { border:1px solid var(--line); border-radius:6px; padding:7px 11px; background:var(--panel-2); cursor:pointer; }
     button:hover { border-color:#456071; filter:brightness(1.08); }
@@ -34,18 +34,17 @@
     .status.ready { color:var(--cyan); }
     .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); }
     .status.ready .dot { background:var(--cyan); box-shadow:0 0 9px var(--cyan); }
-    .layout { display:grid; grid-template-columns:245px minmax(450px,1fr) 430px; height:calc(100vh - 58px); }
-    aside, .right { background:var(--panel); padding:20px 16px; overflow:auto; }
-    aside { border-right:1px solid var(--line); }
+    .layout { display:grid; grid-template-columns:minmax(0,1fr) 430px; height:calc(100vh - 58px); }
+    .right { background:var(--panel); padding:20px 16px; overflow:auto; }
     .right { border-left:1px solid var(--line); padding-bottom:58px; }
     .main { min-width:0; overflow:auto; padding-bottom:38px; }
     h1 { font-size:18px; margin:0 0 4px; }
     h2 { font-size:14px; margin:0; }
     h3 { font-size:12px; margin:0 0 10px; }
     .sub { color:var(--muted); font-size:12px; }
-    .section { margin-top:27px; }
+    .section { display:flex; align-items:center; gap:10px; }
     .label { margin-bottom:10px; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:1px; }
-    .nav { display:flex; justify-content:space-between; width:100%; padding:9px 10px; border:0; border-radius:6px; text-align:left; color:#bdc7d5; background:transparent; }
+    .nav { display:flex; justify-content:space-between; padding:7px 10px; border:0; border-radius:6px; text-align:left; color:#bdc7d5; background:transparent; }
     .nav:hover { background:var(--panel-2); }
     .nav.active { color:var(--cyan); background:#233238; }
     .count { color:var(--muted); font-size:11px; }
@@ -59,6 +58,11 @@
     .metric.warn strong { color:var(--yellow); }
     .metric.err strong { color:var(--red); }
     .search { width:205px; }
+    .filterbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 22px 0; }
+    .filterbar .label { margin:0 2px 0 0; }
+    .filterbar .nav { border:1px solid transparent; }
+    .filterbar .nav.active { border-color:#39877f; }
+    .filterbar .project-actions { display:flex; gap:6px; margin-left:auto; }
     .controls { display:flex; flex-wrap:wrap; gap:8px; padding:12px 14px 0; }
     .controls .search { flex:1; min-width:180px; }
     .result-count { align-self:center; margin-left:auto; color:var(--muted); font-size:11px; }
@@ -125,7 +129,7 @@
     .slider:before { position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:white; content:""; transition:.15s; }
     .switch input:checked + .slider { background:#287bcf; }
     .switch input:checked + .slider:before { transform:translateX(16px); }
-    @media (max-width:1100px) { .layout { grid-template-columns:210px minmax(430px,1fr) 350px; } }
+    @media (max-width:1100px) { .layout { grid-template-columns:minmax(0,1fr) 350px; } .project-actions { margin-left:0 !important; } }
   </style>
 </head>
 <body>
@@ -141,35 +145,11 @@
   </header>
 
   <div id="analysis-layout" class="layout">
-    <aside>
-      <h1>Findings</h1>
-      <div id="project-subtitle" class="sub">Select a project folder</div>
-      <div class="section">
-        <div class="label">Views</div>
-        <button class="nav active" data-view-filter="all">All findings <span id="all-count" class="count">—</span></button>
-        <button class="nav" data-view-filter="attention">Needs attention <span id="attention-count" class="count">—</span></button>
-        <button class="nav" data-view-filter="danger">Danger only <span id="danger-count" class="count">—</span></button>
-      </div>
-      <div class="section">
-        <div class="label">Severity</div>
-        <div class="filter">
-          <button class="chip on" data-severity="">All</button>
-          <button class="chip" data-severity="danger">Danger</button>
-          <button class="chip" data-severity="suspicious">Suspicious</button>
-          <button class="chip" data-severity="style">Style</button>
-        </div>
-      </div>
-      <div class="section">
-        <div class="label">Project</div>
-        <button id="browse" class="nav">Choose workspace <span>…</span></button>
-        <button id="open-rules" class="nav">Configure rules <span>→</span></button>
-      </div>
-    </aside>
-
     <main class="main">
       <div class="toolbar">
         <div>
           <h1>All findings</h1>
+          <div id="project-subtitle" class="sub">Select a project folder</div>
           <div class="summary">
             <div class="metric err"><strong id="danger-total">—</strong><span>danger</span></div>
             <div class="metric warn"><strong id="suspicious-total">—</strong><span>suspicious</span></div>
@@ -177,6 +157,23 @@
           </div>
         </div>
         <input id="search" class="search" aria-label="Search findings" placeholder="⌕  Search findings">
+      </div>
+      <div class="filterbar">
+        <span class="label">View</span>
+        <button class="nav active" data-view-filter="all">All <span id="all-count" class="count">—</span></button>
+        <button class="nav" data-view-filter="attention">Attention <span id="attention-count" class="count">—</span></button>
+        <button class="nav" data-view-filter="danger">Danger <span id="danger-count" class="count">—</span></button>
+        <span class="label">Severity</span>
+        <div class="filter">
+          <button class="chip on" data-severity="">All</button>
+          <button class="chip" data-severity="danger">Danger</button>
+          <button class="chip" data-severity="suspicious">Suspicious</button>
+          <button class="chip" data-severity="style">Style</button>
+        </div>
+        <div class="project-actions">
+          <button id="browse" class="nav">Choose workspace</button>
+          <button id="open-rules" class="nav">Configure rules →</button>
+        </div>
       </div>
       <div id="message" class="notice">Select a project folder, then run analysis.</div>
       <div id="completion-banner" class="completion-banner hidden"></div>
@@ -365,7 +362,7 @@
         applyTriage(action,[findings.find(f=>f.fingerprint===selectedFingerprint)]);
       }
     });
-    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();$('workspace').value=state.workspace||'';currentWorkspace=state.workspace||'';$('footer-version').textContent='Analyzer '+(state.analyzer_version||'');if(currentWorkspace){$('project-label').textContent=currentWorkspace;$('project-subtitle').textContent='Analyzing current project…';await run();}});
+    window.addEventListener('pywebviewready',async()=>{const state=await window.pywebview.api.initial_state();const urlWorkspace=new URLSearchParams(window.location.search).get('workspace')||'';const workspace=state.workspace||urlWorkspace;$('workspace').value=workspace;currentWorkspace=workspace;$('footer-version').textContent='Analyzer '+(state.analyzer_version||'');if(currentWorkspace){$('project-label').textContent=currentWorkspace;$('project-subtitle').textContent='Analyzing current project…';await run();}});
   </script>
   <input id="workspace" class="hidden" aria-hidden="true">
 </body>
