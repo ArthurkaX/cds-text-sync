@@ -87,6 +87,90 @@ def test_cts0071_flags_large_literal_array():
     assert "1025 bytes" in findings[0].message
 
 
+def test_cts0072_flags_address_of_output():
+    unit = _st_unit(
+        "FUNCTION_BLOCK Producer\nVAR_OUTPUT\n"
+        "    Value : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "SendLater(ADR(Value));\n"
+    )
+    findings = run_rule("CTS0072", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "ADR(Value)"
+
+
+def test_cts0072_ignores_address_of_local_and_input():
+    unit = _st_unit(
+        "FUNCTION_BLOCK Producer\nVAR_INPUT\n"
+        "    Value : INT;\nEND_VAR\nVAR\n"
+        "    Local : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "SendLater(ADR(Value));\nSendLater(ADR(Local));\n"
+    )
+    assert run_rule("CTS0072", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0073_flags_undocumented_public_pou_and_interface_member():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR_INPUT\n"
+        "    Command : BOOL;\nEND_VAR\nIMPLEMENTATION\n"
+    )
+    findings = run_rule("CTS0073", ProjectSnapshot(".", [unit]))
+    assert {finding.anchor for finding in findings} == {"Main", "Command"}
+
+
+def test_cts0073_accepts_pou_and_interface_comments():
+    unit = _st_unit(
+        "// Runs the main sequence.\nPROGRAM Main\nVAR_INPUT\n"
+        "    // Start command.\n    Command : BOOL;\nEND_VAR\nIMPLEMENTATION\n"
+    )
+    assert run_rule("CTS0073", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0075_flags_function_result_missing_on_a_path():
+    unit = _st_unit(
+        "FUNCTION GetValue : INT\nVAR_INPUT\n"
+        "    ok : BOOL;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF ok THEN GetValue := 42; END_IF;\n"
+    )
+    findings = run_rule("CTS0075", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "GetValue"
+
+
+def test_cts0075_accepts_default_before_conditional_result():
+    unit = _st_unit(
+        "FUNCTION GetValue : INT\nVAR_INPUT\n"
+        "    ok : BOOL;\nEND_VAR\nIMPLEMENTATION\n"
+        "GetValue := 0; IF ok THEN GetValue := 42; END_IF;\n"
+    )
+    assert run_rule("CTS0075", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0076_flags_read_only_inout():
+    unit = _st_unit(
+        "FUNCTION IsReady : BOOL\nVAR_IN_OUT\n"
+        "    ioState : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "IsReady := ioState > 0;\n"
+    )
+    findings = run_rule("CTS0076", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "ioState"
+
+
+def test_cts0076_accepts_direct_field_and_output_argument_writes():
+    field = _st_unit(
+        "FUNCTION Update : BOOL\nVAR_IN_OUT\n"
+        "    ioState : State;\nEND_VAR\nIMPLEMENTATION\n"
+        "ioState.Ready := TRUE; Update := TRUE;\n"
+    )
+    output_arg = _st_unit(
+        "FUNCTION Update : BOOL\nVAR_IN_OUT\n"
+        "    ioState : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "GetState(Value => ioState); Update := TRUE;\n"
+    )
+    assert run_rule("CTS0076", ProjectSnapshot(".", [field])) == []
+    assert run_rule("CTS0076", ProjectSnapshot(".", [output_arg])) == []
+
+
 # ---------------------------------------------------------------------------
 # CTS0054 - implicit narrowing conversion
 # ---------------------------------------------------------------------------

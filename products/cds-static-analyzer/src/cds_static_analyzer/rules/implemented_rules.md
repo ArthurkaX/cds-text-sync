@@ -62,6 +62,10 @@
 - CTS0062 — Implicit TIME and numeric arithmetic
 - CTS0063 — Inconsistent MEMCPY/MemMove size
 - CTS0064 — Retained pointer
+- CTS0072 — Escaping address of VAR_OUTPUT
+- CTS0073 — Missing public POU documentation
+- CTS0075 — Function result not assigned on all paths
+- CTS0076 — VAR_IN_OUT never written
 
 ## Pending — correctness analyzer
 
