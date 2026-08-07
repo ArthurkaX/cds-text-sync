@@ -159,6 +159,110 @@ def test_cts0058_accepts_valid_composed_literals_and_ignores_ltime():
 
 
 # ---------------------------------------------------------------------------
+# CTS0059 - unsafe enumeration use
+# ---------------------------------------------------------------------------
+
+
+def test_cts0059_flags_invalid_enum_assignment_and_incomplete_case():
+    enum = _st_unit_named(
+        "State.st",
+        "TYPE State : (Idle, Running, Error); END_TYPE\n",
+    )
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " state : State;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "state := 42;\n"
+        "CASE state OF\n"
+        " Idle: Work();\n"
+        " Running: Work();\n"
+        "END_CASE;\n"
+    )
+    findings = run_rule("CTS0059", ProjectSnapshot(".", [enum, unit]))
+    assert len(findings) == 2
+    assert "assignment to enum 'State'" in findings[0].message
+    assert "does not cover members: error" in findings[1].message.lower()
+
+
+def test_cts0059_accepts_declared_members_and_else_case():
+    enum = _st_unit_named(
+        "State.st",
+        "TYPE State : (Idle, Running := 4, Error); END_TYPE\n",
+    )
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " state : State := Idle;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "state := State#Running;\n"
+        "CASE state OF\n"
+        " Idle: Work();\n"
+        " Running: Work();\n"
+        "ELSE\n"
+        " Error: Work();\n"
+        "END_CASE;\n"
+    )
+    assert run_rule("CTS0059", ProjectSnapshot(".", [enum, unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0060 - unchecked pointer dereference
+# ---------------------------------------------------------------------------
+
+
+def test_cts0060_flags_unchecked_pointer_and_accepts_dominating_guard():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " pData : POINTER TO BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "value := pData^;\n"
+        "IF pData <> 0 THEN\n"
+        " value := pData^;\n"
+        "END_IF;\n"
+    )
+    findings = run_rule("CTS0060", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "pData^"
+
+
+def test_cts0060_accepts_guard_clause_that_returns_on_null():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n pData : POINTER TO BYTE;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF pData = 0 THEN RETURN; END_IF;\n"
+        "value := pData^;\n"
+    )
+    assert run_rule("CTS0060", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0061 - unchecked reference use
+# ---------------------------------------------------------------------------
+
+
+def test_cts0061_flags_unchecked_reference_and_accepts_validation():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " refData : REFERENCE TO Data;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "value := refData.value;\n"
+        "IF __ISVALIDREF(refData) THEN\n"
+        " value := refData.value;\n"
+        "END_IF;\n"
+    )
+    findings = run_rule("CTS0061", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "refData.value"
+
+
+def test_cts0061_accepts_invalid_reference_guard_clause():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n refData : REFERENCE TO Data;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF NOT __ISVALIDREF(refData) THEN RETURN; END_IF;\n"
+        "value := refData.value;\n"
+    )
+    assert run_rule("CTS0061", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
 # CTS0053 - unresolved call
 # ---------------------------------------------------------------------------
 
