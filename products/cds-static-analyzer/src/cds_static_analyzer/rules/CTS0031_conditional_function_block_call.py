@@ -59,16 +59,14 @@ def check(unit, ctx):
         return
 
     block_types = _function_block_types(ctx)
-    instances = {
-        member.get("name", "").casefold()
-        for member in all_members(unit)
-        if member.get("name")
-        and (
-            member.get("type", "").strip().casefold() in block_types
-            or member.get("type", "").strip().casefold().rsplit(".", 1)[-1]
-            in block_types
-        )
-    }
+    instances = set()
+    for member in all_members(unit):
+        name = member.get("name", "")
+        type_name = member.get("type", "").strip().casefold()
+        if not name or type_name.rsplit(".", 1)[-1] in {"r_trig", "f_trig"}:
+            continue
+        if type_name in block_types or type_name.rsplit(".", 1)[-1] in block_types:
+            instances.add(name.casefold())
     if not instances:
         return
 

@@ -62,6 +62,12 @@
 - CTS0062 — Implicit TIME and numeric arithmetic
 - CTS0063 — Inconsistent MEMCPY/MemMove size
 - CTS0064 — Retained pointer
+- CTS0065 — Partial array coverage
+- CTS0067 — Non-strict enumeration
+- CTS0068 — Direct hardware address in executable logic
+- CTS0069 — Single-element array
+- CTS0070 — Shadowed symbol
+- CTS0071 — Large variable
 - CTS0072 — Escaping address of VAR_OUTPUT
 - CTS0073 — Missing public POU documentation
 - CTS0075 — Function result not assigned on all paths
@@ -74,6 +80,9 @@
 - CTS0082 — Pointer guard relies on short-circuit evaluation
 - CTS0083 — SEL/MUX argument may have side effects
 - CTS0084 — Identical control-flow branch bodies
+- CTS0085 — Recursive POU call cycle
+- CTS0086 — Uninitialized interface use
+- CTS0087 — Conditional edge-trigger call
 
 ## Pending — correctness analyzer
 
@@ -90,12 +99,9 @@
 
 - `WHILE` condition variable not changed in the loop body.
 - Ambiguous `AND`/`OR` precedence without parentheses.
-- Recursive POU call graph.
 
 ### POU and function-block lifecycle
 
-- Reading timer `.Q` without calling the timer in the current cycle.
-- Conditional or non-periodic `R_TRIG`/`F_TRIG` invocation.
 - `FUNCTION` with global side effects.
 - Empty or unreachable POU/method/action.
 - POU complexity and size metrics.
