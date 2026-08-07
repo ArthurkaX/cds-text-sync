@@ -71,6 +71,9 @@
 - CTS0079 — String assignment may truncate the destination
 - CTS0080 — CONCAT result exceeds string capacity
 - CTS0081 — Tautological or contradictory boolean expression
+- CTS0082 — Pointer guard relies on short-circuit evaluation
+- CTS0083 — SEL/MUX argument may have side effects
+- CTS0084 — Identical control-flow branch bodies
 
 ## Pending — correctness analyzer
 
@@ -86,18 +89,13 @@
 ### Control flow and logic
 
 - `WHILE` condition variable not changed in the loop body.
-- Reliance on short-circuit evaluation for pointer safety.
-- `SEL`/`MUX` arguments with side effects.
 - Ambiguous `AND`/`OR` precedence without parentheses.
-- Identical branch bodies.
 - Recursive POU call graph.
 
 ### POU and function-block lifecycle
 
-- Function result not assigned on every path.
 - Reading timer `.Q` without calling the timer in the current cycle.
 - Conditional or non-periodic `R_TRIG`/`F_TRIG` invocation.
-- `VAR_IN_OUT` that is never written.
 - `FUNCTION` with global side effects.
 - Empty or unreachable POU/method/action.
 - POU complexity and size metrics.
