@@ -88,6 +88,11 @@ def test_empty_body_returns_root_without_children():
     assert not root.unbalanced
 
 
+def test_tree_is_cached_per_unit():
+    root, unit = _impl("IF ready THEN\nEND_IF\n")
+    assert tree(unit) is root
+
+
 def test_case_body_before_labels_is_not_a_branch():
     root, _ = _impl("CASE x OF\n1: y := 1;\nEND_CASE\n")
     labels = [label for label, _start, _end in root.children[0].branches]

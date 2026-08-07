@@ -29,8 +29,14 @@ from cds_static_analyzer.model import normalize_context
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.blanking import comment_spans
 
-_ASSIGN_RE = re.compile(r":=")
-_DOCUMENTATION_EXAMPLE_RE = re.compile(r"\b(?:example|e\.g\.|syntax|format)\s*:", re.IGNORECASE)
+_ASSIGN_RE = re.compile(
+    r"\b[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)?\s*:=\s*[^;\n]*;",
+    re.IGNORECASE,
+)
+_DOCUMENTATION_EXAMPLE_RE = re.compile(
+    r"\b(?:example|e\.g\.|syntax|format|formula|pseudocode)\s*:",
+    re.IGNORECASE,
+)
 # A bare ``name (`` also occurs in ordinary prose comments. Require a
 # complete statement ending in ``;`` so parenthetical documentation is not
 # mistaken for a commented-out function call.

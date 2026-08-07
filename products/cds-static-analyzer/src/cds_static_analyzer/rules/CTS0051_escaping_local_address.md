@@ -40,6 +40,8 @@ StoreBuffer := StoreForLater(ADR(localByte)); // cts:here
 
 - The address is consumed synchronously and the called API is documented not
   to retain it.
+- The pointer is passed as the result buffer to the supported synchronous
+  `SysSockSendTo` call.
 - The source is generated and a target-specific transformation owns the
   address lifetime.
 

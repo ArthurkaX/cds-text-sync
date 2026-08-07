@@ -50,6 +50,8 @@ x := 10;
 
 - The comment explains *why* the code is absent (`// disabled for TICKET-482`).
 - The commented block is a documentation example, not real logic.
+- A comment labels a formula or pseudocode example; prose such as
+  `BOOL := TRUE` without a complete statement is not treated as code.
 - The comment predates the git history and the team deliberately keeps it
   (prefer git history; this is usually a migration task, not a permanent
   exception).

@@ -14,9 +14,15 @@ def var_blocks(unit):
     declaration does not parse.
     """
     decl = unit.declaration
-    if not decl:
-        return []
-    return parse_var_blocks_text(decl)
+    cached = getattr(unit, "_cts_var_blocks_cache", None)
+    if cached is not None and cached[0] is decl:
+        return cached[1]
+    parsed = parse_var_blocks_text(decl)
+    # A Unit is immutable for the lifetime of a snapshot.  Keep the parsed
+    # declaration on that Unit so rules do not re-parse the same VAR blocks
+    # dozens of times (project rules can otherwise turn this into O(files²)).
+    unit._cts_var_blocks_cache = (decl, parsed)
+    return parsed
 
 
 def parse_var_blocks_text(text):

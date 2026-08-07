@@ -214,6 +214,8 @@
     .finding-rule-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:5px; }
     .finding-rule-id { color:var(--text); font:600 13px var(--mono); }
     .finding-rule-title { color:var(--text); font-size:15px; font-weight:650; line-height:1.35; }
+    .finding-rule-summary { margin:7px 0 0; color:var(--text-2); font-size:12px; line-height:1.55; }
+    .finding-rule-list { margin:7px 0 0; color:var(--text-2); font-size:12px; line-height:1.55; }
     .finding-rule-label { color:var(--muted); font-size:10px; letter-spacing:.8px; text-transform:uppercase; }
     .code-title { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-bottom:14px; margin-bottom:18px; border-bottom:1px solid var(--line); }
     .code-title h2 { margin-bottom:4px; font-family:var(--mono); font-size:14px; }
@@ -432,25 +434,38 @@
     // start collapsed (the whole file is one case), the flat modes expanded.
     const toggledGroups = new Set();
     const $ = id => document.getElementById(id);
-    const DETAILS_WIDTH_KEY = 'cts-static-analyzer.details-width';
-    let detailsWidth = 430;
+    const SPLIT_RATIO_KEY = 'cts-static-analyzer.split-ratio';
+    const SPLITTER_WIDTH = 8;
+    const DEFAULT_SPLIT_RATIO = 0.5;
+    let detailsWidth = 430, splitRatio = DEFAULT_SPLIT_RATIO;
     function detailsWidthLimits() {
-      const layout=$('analysis-layout'), splitterWidth=8, minMainWidth=420, maxDetailsWidth=1100;
-      const available=Math.max(300, layout.clientWidth-splitterWidth-minMainWidth);
+      const layout=$('analysis-layout'), minMainWidth=420, maxDetailsWidth=1100;
+      const available=Math.max(300, layout.clientWidth-SPLITTER_WIDTH-minMainWidth);
       return {min:300, max:Math.max(300,Math.min(maxDetailsWidth,available))};
+    }
+    function splitAvailableWidth() {
+      return Math.max(1,$('analysis-layout').clientWidth-SPLITTER_WIDTH);
+    }
+    function defaultDetailsWidth() {
+      return Math.round(splitAvailableWidth()*DEFAULT_SPLIT_RATIO);
     }
     function setDetailsWidth(value, persist=true) {
       const limits=detailsWidthLimits();
-      detailsWidth=Math.round(Math.max(limits.min,Math.min(limits.max,Number(value)||430)));
+      detailsWidth=Math.round(Math.max(limits.min,Math.min(limits.max,Number(value)||defaultDetailsWidth())));
       $('analysis-layout').style.setProperty('--details-width',detailsWidth+'px');
       $('splitter').setAttribute('aria-valuemax',limits.max);
       $('splitter').setAttribute('aria-valuenow',detailsWidth);
-      if(persist){try{localStorage.setItem(DETAILS_WIDTH_KEY,String(detailsWidth));}catch(_){} }
+      if(persist){
+        splitRatio=detailsWidth/splitAvailableWidth();
+        try{localStorage.setItem(SPLIT_RATIO_KEY,String(splitRatio));}catch(_){}
+      }
     }
     function restoreDetailsWidth() {
       let stored='';
-      try{stored=localStorage.getItem(DETAILS_WIDTH_KEY)||'';}catch(_){}
-      setDetailsWidth(stored || 430,false);
+      try{stored=localStorage.getItem(SPLIT_RATIO_KEY)||'';}catch(_){}
+      const parsed=Number(stored);
+      if(Number.isFinite(parsed) && parsed>0 && parsed<1) splitRatio=parsed;
+      setDetailsWidth(splitAvailableWidth()*splitRatio,false);
     }
     function initSplitter() {
       const splitter=$('splitter');
@@ -467,7 +482,7 @@
       });
       splitter.addEventListener('pointerup',stopResize);
       splitter.addEventListener('pointercancel',stopResize);
-      splitter.addEventListener('dblclick',()=>setDetailsWidth(430));
+      splitter.addEventListener('dblclick',()=>{splitRatio=DEFAULT_SPLIT_RATIO;setDetailsWidth(defaultDetailsWidth());});
       splitter.addEventListener('keydown',event=>{
         const limits=detailsWidthLimits();
         if(event.key==='ArrowLeft'){setDetailsWidth(detailsWidth-16);event.preventDefault();}
@@ -475,7 +490,7 @@
         else if(event.key==='Home'){setDetailsWidth(limits.min);event.preventDefault();}
         else if(event.key==='End'){setDetailsWidth(limits.max);event.preventDefault();}
       });
-      window.addEventListener('resize',()=>setDetailsWidth(detailsWidth,false));
+      window.addEventListener('resize',()=>setDetailsWidth(splitAvailableWidth()*splitRatio,false));
       restoreDetailsWidth();
     }
     const esc = window.CTSUi.escapeHtml;
@@ -766,6 +781,22 @@
       }
       return rule;
     }
+    function ruleCard(ruleId, rule, severity, titleFallback, summaryFallback) {
+      const title=(rule && (rule.title || rule.summary)) || titleFallback || ruleId;
+      const summary=(rule && rule.summary) || summaryFallback || '';
+      return '<div class="finding-rule '+sevClass(severity)+'"><div class="finding-rule-label">Rule</div><div class="finding-rule-head"><span class="sev '+sevClass(severity)+'">'+esc(severityName(severity))+'</span><code class="finding-rule-id">'+esc(ruleId)+'</code></div><div class="finding-rule-title">'+esc(title)+'</div>'+(summary?'<p class="finding-rule-summary">'+esc(summary)+'</p>':'')+'</div>';
+    }
+    function mixedRuleCard(group, ruleIds) {
+      const labels=ruleIds.map(id=>{
+        const finding=group.items.find(item=>item.rule_id===id);
+        return '<code>'+esc(id)+'</code> · '+esc((finding && (finding.rule_title || finding.message)) || id);
+      }).join('<br>');
+      return '<div class="finding-rule '+sevClass(group.severity)+'"><div class="finding-rule-label">Rules in this group</div><div class="finding-rule-head"><span class="sev '+sevClass(group.severity)+'">'+esc(severityName(group.severity))+'</span><strong>'+ruleIds.length+' rules</strong></div><div class="finding-rule-title">Multiple rule types</div><div class="finding-rule-list">'+labels+'</div></div>';
+    }
+    function placeActionsNearTop() {
+      const actions=$('details').querySelector('.actions'), source=$('details').querySelector('#source');
+      if(actions && source) source.parentNode.insertBefore(actions,source);
+    }
     /* Draw every excerpt the bridge returned, separating coalesced windows so
        a skipped region never reads as contiguous source. */
     function renderSpans(spans) {
@@ -798,13 +829,14 @@
         (ruleIds.length===1 ? 'No rule documentation is available.' : 'This group spans '+ruleIds.length+' rules.');
       const lines=[]; if(path) group.items.forEach(f=>lines.push(...occurrenceLines(f)));
       $('details').className='details';
-      $('details').innerHTML='<div class="code-title"><div><h2>'+esc(path ? (path||'').split(/[\\\\/]/).pop() : (rule && (rule.title || rule.rule_title) || 'Multiple files'))+'</h2><div class="sub">'+esc(path ? path : (paths.length+' files'))+' · '+esc(groupCountText(group))+'</div></div>'+
+      $('details').innerHTML=(ruleIds.length===1?ruleCard(ruleIds[0],rule,group.severity,group.rule_title,'No short rule description is available.'):mixedRuleCard(group,ruleIds))+'<div class="code-title"><div><h2>'+esc(path ? (path||'').split(/[\\\\/]/).pop() : (rule && (rule.title || rule.rule_title) || 'Multiple files'))+'</h2><div class="sub">'+esc(path ? path : (paths.length+' files'))+' · '+esc(groupCountText(group))+'</div></div>'+
        (path?'<button id="open-file" class="link-button">Open in editor ↗</button>':'')+'</div>'+
         '<div class="documentation-actions"><button id="show-documentation" class="link-button doc-button">Why this matters · '+esc(ruleIds.length===1?ruleIds[0]:'rule documentation')+' ↗</button>'+
         (ruleIds.length===1?'<button id="show-rule" class="link-button doc-button">Open '+esc(ruleIds[0])+' in rule settings ↗</button>':'')+'</div>'+
         '<div id="source" class="code"><div class="empty">Loading source context…</div></div>'+
           '<div class="detail"><h3>Cases in this group</h3><p>'+group.items.map(f=>(paths.length>1?esc(locationText(f.location))+' — ':'')+esc(findingRange(f,4))+' — '+esc(f.message || f.rule_title)).join('<br>')+'</p></div>'+
          '<div class="actions"><button id="fix-later">Mark whole group fix-later</button><button id="baseline">Baseline whole group</button><button id="suppress">Suppress whole group</button></div>';
+       placeActionsNearTop();
        if(rule && rule.fixable) {
          $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix'+(group.items.length>1?' group':'')+'</button>');
          $('autofix').onclick=()=>openAutofix(group.items);
@@ -825,6 +857,10 @@
       const ruleTitle=(f.rule_title || (rule && (rule.title || rule.summary)) || f.rule_id);
       $('details').className='details';
        $('details').innerHTML='<div class="finding-rule '+sevClass(f.severity)+'"><div class="finding-rule-label">Rule</div><div class="finding-rule-head"><span class="sev '+sevClass(f.severity)+'">'+esc(severityName(f.severity))+'</span><code class="finding-rule-id">'+esc(f.rule_id)+'</code></div><div class="finding-rule-title">'+esc(ruleTitle)+'</div></div><div class="code-title"><div><h2>'+esc(file.split(/[\\\\/]/).pop() || 'Source')+'</h2><div class="sub">'+esc(locationText(f.location))+'</div></div><button id="open-file" class="link-button">Open in editor ↗</button></div><div class="documentation-actions"><button id="show-documentation" class="link-button doc-button">Why this matters · '+esc(f.rule_id)+' ↗</button><button id="show-rule" class="link-button doc-button">Open '+esc(f.rule_id)+' in rule settings ↗</button></div><div id="source" class="code"><div class="empty">Loading source context…</div></div><div class="detail"><h3>Finding</h3><p>'+esc(f.message)+'</p></div><div class="detail"><h3>Finding details</h3><div class="meta"><span>Rule</span><code>'+esc(f.rule_id)+'</code><span>Severity</span><span>'+esc(severityName(f.severity))+'</span><span>Occurrences</span><span>'+esc(findingRange(f,6))+'</span><span>Unit</span><code>'+esc(f.unit_id || '—')+'</code></div></div><div class="actions"><button id="fix-later">Mark fix-later</button><button id="baseline">Baseline</button><button id="suppress">Suppress</button><button id="copy-suppression">Copy suppression</button></div>';
+       placeActionsNearTop();
+       const ruleSummary=(rule && rule.summary) || 'No short rule description is available.';
+       const ruleCardNode=$('details').querySelector('.finding-rule');
+       if(ruleCardNode) ruleCardNode.querySelector('.finding-rule-title').insertAdjacentHTML('afterend','<p class="finding-rule-summary">'+esc(ruleSummary)+'</p>');
        if(rule && rule.fixable) $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix</button>');
        $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
       $('show-documentation').onclick=()=>openDocumentation(rule,f.rule_id,documentation);

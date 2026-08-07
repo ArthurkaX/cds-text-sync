@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 
 from cds_static_analyzer.capabilities import Capability, Scope
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
@@ -88,45 +89,78 @@ def _external_instances(ctx, owner):
     return instances
 
 
-def _externally_read(ctx, owner, field, instances):
-    field_key = field.casefold()
-    if not instances:
-        return False
-    owner_ids = {owner.id} | {unit.id for unit in _owner_units(ctx, owner)}
+def _external_reads(ctx):
+    """Index ``instance.output`` reads by instance and source unit.
+
+    The old implementation repeated a full body scan for every output of
+    every FB.  Build the same information once, then each output lookup is a
+    constant-time set membership check.
+    """
+    key = "cts0094_external_reads"
+    cached = ctx._cache.get(key)
+    if cached is not None:
+        return cached
+
+    reads = defaultdict(set)
+    ignored = defaultdict(set)
     for unit in ctx.units:
         section = body(unit)
-        if unit.id in owner_ids or not section:
+        if not section:
             continue
         text = section.text
         for match in _DOTTED_ACCESS.finditer(text):
             parts = [part.strip().casefold() for part in match.group("path").split(".")]
             path = ".".join(parts[:-1])
-            if path in instances and parts[-1] == field_key:
-                return True
+            if path:
+                reads[(path, parts[-1])].add(unit.id)
 
         # CODESYS also exposes an FB output through named output mapping:
         # ``instance(Output => destination)``.  A non-empty destination is
         # an external consumer even when no ``instance.Output`` expression
         # appears in the caller.
         for call in _CALL.finditer(text):
-            path = ".".join(part.strip().casefold() for part in call.group("path").split("."))
-            if path not in instances:
-                continue
+            path = ".".join(
+                part.strip().casefold() for part in call.group("path").split(".")
+            )
             end = text.find(";", call.start())
             if end < 0:
                 end = len(text)
             for mapping in _OUTPUT_MAPPING.finditer(text, call.end(), end):
-                if (
-                    mapping.group("output").casefold() == field_key
-                    and mapping.group("target").strip()
-                ):
-                    return True
-    return False
+                if mapping.group("target").strip():
+                    reads[(path, mapping.group("output").casefold())].add(unit.id)
+                else:
+                    ignored[(path, mapping.group("output").casefold())].add(unit.id)
+
+    ctx._cache[key] = (reads, ignored)
+    return reads, ignored
+
+
+def _externally_read(ctx, owner, field, instances, reads):
+    if not instances:
+        return False
+    owner_ids = {owner.id} | {unit.id for unit in _owner_units(ctx, owner)}
+    return any(
+        source_id not in owner_ids
+        for instance in instances
+        for source_id in reads.get((instance, field.casefold()), ())
+    )
+
+
+def _explicitly_ignored(ctx, owner, field, instances, ignored):
+    """Return whether every visible instance explicitly discards this output."""
+    if not instances:
+        return False
+    owner_ids = {owner.id} | {unit.id for unit in _owner_units(ctx, owner)}
+    return all(
+        any(source_id not in owner_ids for source_id in ignored.get((instance, field.casefold()), ()))
+        for instance in instances
+    )
 
 
 def check(ctx):
     ctx.capability(Capability.DECLARATIONS)
     ctx.capability(Capability.ST_TEXT)
+    reads, ignored = _external_reads(ctx)
     for owner in ctx.units:
         if owner.kind != K.FUNCTION_BLOCK:
             continue
@@ -136,7 +170,11 @@ def check(ctx):
         instances = _external_instances(ctx, owner)
         for member in outputs:
             name = member.get("name", "")
-            if not name or _externally_read(ctx, owner, name, instances):
+            if (
+                not name
+                or _externally_read(ctx, owner, name, instances, reads)
+                or _explicitly_ignored(ctx, owner, name, instances, ignored)
+            ):
                 continue
             yield finding_in(
                 message=(

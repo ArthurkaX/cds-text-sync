@@ -32,6 +32,8 @@ The runner guarantees:
 from __future__ import annotations
 
 import collections
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 from cds_static_analyzer import fingerprint as fp
 from cds_static_analyzer import progress as progress_mod
@@ -257,9 +259,13 @@ def _st_read_errors(snapshot):
 
 
 class RunOptions:
-    def __init__(self, rule_filter=None, incomplete=None):
+    def __init__(self, rule_filter=None, incomplete=None, workers=None):
         self.rule_filter = rule_filter  # set of rule ids or None
         self.incomplete = incomplete  # CLI override: warn|error|ignore
+        # Unit checks are independent.  ``None`` selects a conservative
+        # automatic thread count; callers can pass 1 to force the old
+        # sequential behavior (useful for profiling and debugging).
+        self.workers = workers
 
 
 def _select_rules(registry, config, rule_filter):
@@ -350,10 +356,29 @@ def run_analysis(workspace, snapshot, config, options, progress=None):
         _report_unparsed_units(rule, ctx, result)
         _report_visu_xml_errors(rule, ctx, result)
         if rule.scope == Scope.UNIT:
-            for unit in ctx.visible_units(rule):
-                if not rule.applicable_to(unit.kind):
-                    continue
-                _dispatch_unit(rule, unit, ctx, result)
+            units = [
+                unit
+                for unit in ctx.visible_units(rule)
+                if rule.applicable_to(unit.kind)
+            ]
+            workers = _worker_count(options.workers, len(units))
+            if workers == 1:
+                for unit in units:
+                    _dispatch_unit(rule, unit, ctx, result)
+            else:
+                # Futures are consumed in submission order, not completion
+                # order.  This keeps findings and diagnostics deterministic
+                # while allowing expensive independent unit checks to overlap.
+                with ThreadPoolExecutor(
+                    max_workers=workers,
+                    thread_name_prefix="cts-rule",
+                ) as pool:
+                    futures = [
+                        pool.submit(_dispatch_unit_local, rule, unit, ctx)
+                        for unit in units
+                    ]
+                    for future in futures:
+                        _merge_local_result(result, future.result())
         else:
             _dispatch_project(rule, ctx, result)
 
@@ -368,6 +393,39 @@ def run_analysis(workspace, snapshot, config, options, progress=None):
     result.sort()
     result.summary.diagnostics = len(result.diagnostics)
     return result
+
+
+def _worker_count(requested, unit_count):
+    """Return the number of unit workers for one rule.
+
+    Small rules pay more thread-pool overhead than they save.  The default is
+    deliberately capped because rules are Python code and a large pool only
+    causes contention; ``workers=1`` remains the exact sequential mode.
+    """
+    if unit_count < 8:
+        return 1
+    if requested is not None:
+        try:
+            return max(1, min(int(requested), unit_count))
+        except (TypeError, ValueError):
+            return 1
+    return max(1, min(8, os.cpu_count() or 1))
+
+
+def _dispatch_unit_local(rule, unit, ctx):
+    """Run one unit check into an isolated result for threaded dispatch."""
+    local = AnalysisResult()
+    _dispatch_unit(rule, unit, ctx, local)
+    return local
+
+
+def _merge_local_result(result, local):
+    """Merge one completed unit result without sharing mutable lists."""
+    result.complete = result.complete and local.complete
+    result.diagnostics.extend(local.diagnostics)
+    for finding in local.findings:
+        result.findings.append(finding)
+        result.summary.add_finding(finding)
 
 
 def _apply_file_directives(result, snapshot, known_rules):

@@ -82,6 +82,30 @@ def test_a_run_without_a_sink_produces_the_same_result():
     ]
 
 
+def test_parallel_unit_dispatch_keeps_the_result_deterministic():
+    view = fixture_project_view()
+    snapshot = build_st_snapshot(view)
+    workspace = Workspace(root=".", project_view=view, state_dir=".")
+    quiet = run_analysis(
+        workspace,
+        snapshot,
+        ResolvedConfig(),
+        RunOptions(workers=1),
+    )
+    parallel = run_analysis(
+        workspace,
+        snapshot,
+        ResolvedConfig(),
+        RunOptions(workers=4),
+    )
+    assert [f.to_dict() for f in quiet.findings] == [
+        f.to_dict() for f in parallel.findings
+    ]
+    assert [d.to_dict() for d in quiet.diagnostics] == [
+        d.to_dict() for d in parallel.diagnostics
+    ]
+
+
 def test_a_failing_sink_cannot_take_the_run_with_it():
     """The analysis is the product and the report is decoration: a UI that
     dies mid-poll must not lose the run."""

@@ -7,6 +7,7 @@ import re
 from cds_static_analyzer.capabilities import Capability, Scope
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.blocks import tree
+from cds_static_analyzer.st.blanking import has_intentional_noop_comment
 from cds_static_analyzer.st.body import body
 
 
@@ -54,6 +55,8 @@ def check(unit, ctx):
                 continue
             semicolon = text.find(";", content_start, end)
             if semicolon < 0:
+                continue
+            if has_intentional_noop_comment(section.raw, semicolon):
                 continue
             absolute = section.at(semicolon)
             yield finding_in(

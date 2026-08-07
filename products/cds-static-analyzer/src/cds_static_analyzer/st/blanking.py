@@ -8,7 +8,20 @@ another.
 
 from __future__ import annotations
 
-__all__ = ["blank_noise", "trim_strings", "comment_spans"]
+import re
+
+__all__ = [
+    "blank_noise",
+    "trim_strings",
+    "comment_spans",
+    "has_intentional_noop_comment",
+]
+
+_INTENTIONAL_NOOP_COMMENT = re.compile(
+    r"\b(?:wait|waiting|reset|intentionally|reserved|not\s+applicable|"
+    r"no[-\s]?op|nothing\s+to\s+do)\b",
+    re.IGNORECASE,
+)
 
 
 def blank_noise(text):
@@ -132,3 +145,17 @@ def comment_spans(text):
             continue
         i += 1
     return out
+
+
+def has_intentional_noop_comment(text, position):
+    """Return whether a nearby comment documents a deliberate no-op.
+
+    Only comments immediately preceding *position* are considered. This is
+    intentionally narrow so a stray comment elsewhere cannot hide a blank
+    branch.
+    """
+    for _start, end, content in reversed(comment_spans(text[:position])):
+        if text[end:position].strip():
+            break
+        return bool(_INTENTIONAL_NOOP_COMMENT.search(content))
+    return False

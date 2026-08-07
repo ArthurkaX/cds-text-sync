@@ -104,8 +104,12 @@ def tree(unit):
     when any block was left unterminated (closed at the section end).
     """
     section = body(unit)
+    cached = getattr(unit, "_cts_block_tree_cache", None)
+    if cached is not None and cached[0] is section:
+        return cached[1]
     root = Block("ROOT", 0, 0, section.at)
     if not section:
+        unit._cts_block_tree_cache = (section, root)
         return root
     text = section.text
     n = len(text)
@@ -186,4 +190,5 @@ def tree(unit):
         issues.append((block.start_offset, f"unterminated {block.kind} block"))
 
     root.issues = issues
+    unit._cts_block_tree_cache = (section, root)
     return root

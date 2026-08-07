@@ -21,6 +21,10 @@ _CALL = re.compile(
     r"\b[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)?\s*\([^;]*$",
     re.IGNORECASE,
 )
+_SYNCHRONOUS_POINTER_CALL = re.compile(
+    r"\bSysSockSendTo\s*\([^;]*$",
+    re.IGNORECASE,
+)
 _RETURN = re.compile(r"\bRETURN\s*$", re.IGNORECASE)
 _FUNCTION_NAME = re.compile(
     r"^\s*FUNCTION\s+(?P<name>[A-Za-z_]\w*)\b", re.IGNORECASE | re.MULTILINE
@@ -136,6 +140,10 @@ def check(unit, ctx):
                 f"address of local '{local_name}' escapes through "
                 f"destination '{target.group('target').replace(' ', '')}'"
             )
+        elif _SYNCHRONOUS_POINTER_CALL.search(prefix):
+            # SysSockSendTo consumes its pResult pointer during the call; it
+            # does not retain the address after the method returns.
+            continue
         elif _CALL.search(prefix) or _RETURN.search(prefix):
             message = (
                 f"address of local '{local_name}' is passed out of its "
