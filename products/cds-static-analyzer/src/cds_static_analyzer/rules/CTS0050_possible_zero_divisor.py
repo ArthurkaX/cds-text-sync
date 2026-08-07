@@ -11,16 +11,18 @@ from cds_static_analyzer.st.body import body
 
 
 _DIVISION = re.compile(
-    r"/\s*(?P<name>[A-Za-z_]\w*)\b(?!\s*#)", re.IGNORECASE
+    r"/\s*(?P<name>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\b(?!\s*#)",
+    re.IGNORECASE,
 )
 _GUARD = re.compile(
     r"^\s*(?:IF|ELSIF)\s*\(?\s*"
-    r"(?P<name>[A-Za-z_]\w*)\s*(?P<operator><>|<=|>=|=|<|>)\s*"
+    r"(?P<name>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*"
+    r"(?P<operator><>|<=|>=|=|<|>)\s*"
     r"(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*\)?\s*$",
     re.IGNORECASE,
 )
 _GUARD_EXIT = re.compile(
-    r"\bIF\s+(?P<name>[A-Za-z_]\w*)\s*=\s*0\s+THEN"
+    r"\bIF\s+(?P<name>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*=\s*0\s+THEN"
     r"(?P<body>.*?)\bEND_IF\b",
     re.IGNORECASE | re.DOTALL,
 )
@@ -41,7 +43,7 @@ def _simple_guard(label):
         value = float(match.group("value"))
     except ValueError:
         return None
-    name = match.group("name").casefold()
+    name = re.sub(r"\s+", "", match.group("name")).casefold()
     operator = match.group("operator")
     if operator == "<>" and value == 0:
         return name, "nonzero"
@@ -85,8 +87,10 @@ def _branch_guards(root, offset):
 
 
 def _guard_clause_exits(section_text, divisor, before_offset):
+    normalized_divisor = re.sub(r"\s+", "", divisor).casefold()
     for match in _GUARD_EXIT.finditer(section_text, 0, before_offset):
-        if match.group("name").casefold() != divisor.casefold():
+        guarded_name = re.sub(r"\s+", "", match.group("name")).casefold()
+        if guarded_name != normalized_divisor:
             continue
         if not _TERMINAL.search(match.group("body")):
             continue
@@ -98,8 +102,9 @@ def _guard_clause_exits(section_text, divisor, before_offset):
 
 
 def _safe_for_divisor(root, section, divisor, offset):
+    normalized_divisor = re.sub(r"\s+", "", divisor).casefold()
     guards = _branch_guards(root, offset)
-    states = [state for name, state in guards if name == divisor.casefold()]
+    states = [state for name, state in guards if name == normalized_divisor]
     if "zero" in states:
         return "zero"
     if "nonzero" in states:

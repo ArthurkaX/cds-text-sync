@@ -177,12 +177,22 @@ def check(ctx):
                 if _INTEGER.fullmatch(value):
                     valid = int(value) in enum["values"]
                 else:
+                    normalized_value = value.replace(" ", "")
+                    member_name = normalized_value.rsplit("#", 1)[-1].rsplit(
+                        ".", 1
+                    )[-1].casefold()
                     valid = bool(
                         re.fullmatch(
                             r"(?:[A-Za-z_]\w*[.#])?[A-Za-z_]\w*", value
                         )
-                        and value.rsplit("#", 1)[-1].rsplit(".", 1)[-1].casefold()
-                        in enum["members"]
+                        and (
+                            member_name in enum["members"]
+                            or any(
+                                other_enum is enum
+                                and other_member["name"].casefold() == member_name
+                                for other_member, other_enum in variables.values()
+                            )
+                        )
                     )
                 if valid:
                     continue
