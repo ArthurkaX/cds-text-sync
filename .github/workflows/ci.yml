@@ -49,7 +49,12 @@ jobs:
       - name: Compile Python sources
         shell: pwsh
         run: |
-          python -m compileall `
+          python -m compileall -q `
+            products/cds-text-sync/src `
+            products/cds-static-analyzer/src `
+            products/cds-cli/src `
+            products/visu-lint/src `
+            products/codesys-host/src/ide_bridge `
             products/codesys-host/cds_bootstrap.py `
             products/codesys-host/Project_build.py `
             products/codesys-host/Project_analyze_ui.py `
@@ -62,8 +67,7 @@ jobs:
             products/codesys-host/Project_resources.py `
             products/codesys-host/Project_snapshooter.py `
             products/codesys-host/Project_daemon.py `
-            cds_text_sync `
-            src
+            cds_text_sync
 
       - name: Run local regression suite
         shell: pwsh

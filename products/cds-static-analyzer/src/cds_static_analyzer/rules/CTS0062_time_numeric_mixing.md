@@ -18,7 +18,14 @@ onds, counts and durations are easy to confuse in PLC code.
 ## Example
 
 ```st bad 1
+PROGRAM Main
+VAR
+    timeout : TIME;
+    delayMs : UDINT;
+END_VAR
+IMPLEMENTATION
 timeout := T#5s + delayMs; // cts:here
+END_PROGRAM
 ```
 
 ```st good

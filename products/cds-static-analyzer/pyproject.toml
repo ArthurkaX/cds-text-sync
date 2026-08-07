@@ -14,7 +14,7 @@ package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "../../shared/src"]
 
 [tool.setuptools.package-data]
 cds_static_analyzer = ["rules/*.py", "rules/*.md"]
@@ -23,4 +23,7 @@ cds_static_analyzer = ["rules/*.py", "rules/*.md"]
 runtime = "cpython"
 test_paths = [
   "tests/test_*.py",
+  "../../tests/unit/test_analyze_project.py",
+  "../../tests/unit/test_analyze_runner.py",
+  "../../tests/unit/test_rule_resilience.py",
 ]

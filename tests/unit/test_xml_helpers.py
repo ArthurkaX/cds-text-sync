@@ -8,7 +8,7 @@ These tests do not touch the filesystem.
 import xml.etree.ElementTree as ET
 
 import pytest
-from xml_helpers import (
+from cds_text_sync.engine.xml_helpers import (
     ST_IMPLEMENTATION_MARKER,
     ProjectionValidationError,
     extract_bool_property,
@@ -288,7 +288,7 @@ class TestExtractBoolPropertyMalformedXml:
 
 class TestProjectionValidationErrorDuplicateTextId:
     def test_duplicate_textid_raises_projection_validation_error(self):
-        from xml_helpers import apply_textlist_csv
+        from cds_text_sync.engine.xml_helpers import apply_textlist_csv
 
         csv_content = "TextID,TextDefault\nid1,val1\nid1,val2\n"
         root = ET.Element("Single", {"Name": "Object"})
@@ -303,7 +303,7 @@ class TestProjectionValidationErrorDuplicateTextId:
 
 class TestProjectionValidationErrorDuplicateAlarmId:
     def test_duplicate_alarmid_raises_projection_validation_error(self):
-        from xml_helpers import apply_alarm_items_csv
+        from cds_text_sync.engine.xml_helpers import apply_alarm_items_csv
 
         csv_content = "AlarmID,Expression\nid1,expr1\nid1,expr2\n"
         root = ET.Element("Single", {"Name": "Object"})
@@ -321,7 +321,7 @@ class TestCsvStructuralEditsRaiseError:
     def test_textlist_inserted_textid_raises_error(self):
         """Adding a new TextID row to a TextList CSV is a structural edit that
         raises ProjectionValidationError."""
-        from xml_helpers import apply_textlist_csv
+        from cds_text_sync.engine.xml_helpers import apply_textlist_csv
 
         csv_content = "TextID,TextDefault\nid1,val1\nnew_id,new_val\n"
         root = ET.Element("Single", {"Name": "Object"})
@@ -336,7 +336,7 @@ class TestCsvStructuralEditsRaiseError:
     def test_textlist_removed_textid_raises_error(self):
         """Removing a TextID row from a TextList CSV is a structural edit that
         raises ProjectionValidationError."""
-        from xml_helpers import apply_textlist_csv
+        from cds_text_sync.engine.xml_helpers import apply_textlist_csv
 
         csv_content = "TextID,TextDefault\n"  # empty — all IDs removed
         root = ET.Element("Single", {"Name": "Object"})

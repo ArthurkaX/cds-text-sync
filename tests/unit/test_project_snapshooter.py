@@ -9,6 +9,7 @@ if BRIDGE not in sys.path:
 
 import importlib.machinery
 import importlib.util
+import project_snapshooter_ui
 
 
 MODULE_PATH = os.path.join(BRIDGE, "project_snapshooter.py")
@@ -17,6 +18,19 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 ps = importlib.util.module_from_spec(spec)
 sys.modules[loader.name] = ps
 loader.exec_module(ps)
+
+
+def test_winforms_frontend_is_lazy_backend_boundary(monkeypatch):
+    calls = []
+
+    def fake_runner(backend=None, app="Application", save_to=""):
+        calls.append((app, save_to))
+        return "closed"
+
+    monkeypatch.setattr(project_snapshooter_ui, "run", fake_runner)
+
+    assert ps._run_winforms_interactive("Application", "preset.json") == "closed"
+    assert calls == [("Application", "preset.json")]
 
 
 class DummyProject:
@@ -126,6 +140,49 @@ def test_restore_apply_writes_eligible_values(monkeypatch):
     assert report["written"] == 1
     assert report["would_write"] == 0
     assert report["skipped"] == 0
+
+
+def test_restore_apply_refuses_active_online_session(monkeypatch):
+    monkeypatch.setattr(ps._helpers, "is_online_session_active", lambda: True)
+    monkeypatch.setattr(
+        ps,
+        "take",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("online guard must run before PLC reads")
+        ),
+    )
+
+    try:
+        ps.restore(
+            {"vars": [{"path": "GVL.a", "type": "UINT", "value": "UINT#7"}]},
+            apply=True,
+            project=DummyProject(),
+        )
+    except ps.SnapshotOnlineError as exc:
+        assert "CODESYS is online" in str(exc)
+    else:
+        raise AssertionError("Expected online snapshot import to be refused")
+
+
+def test_restore_dry_run_is_allowed_online(monkeypatch):
+    monkeypatch.setattr(ps._helpers, "is_online_session_active", lambda: True)
+    monkeypatch.setattr(
+        ps,
+        "take",
+        lambda paths, project=None: {
+            "vars": [
+                {"path": "GVL.a", "type": "UINT", "value": "UINT#1", "read_ok": True},
+            ]
+        },
+    )
+
+    report = ps.restore(
+        {"vars": [{"path": "GVL.a", "type": "UINT", "value": "UINT#7"}]},
+        apply=False,
+        project=DummyProject(),
+    )
+
+    assert report["would_write"] == 1
 
 
 def test_default_preset_path_uses_sync_folder(monkeypatch):

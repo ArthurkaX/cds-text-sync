@@ -26,7 +26,6 @@ _ENGINE_DIR = (
 )
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
-
 from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
 
 # -- Config ------------------------------------------------------------------

@@ -11,6 +11,7 @@ import ide_runtime_common
 import ide_export_snapshot
 import ide_apply_patch
 import ide_backup
+import ide_online_helpers
 from _project_settings import load_project_settings
 
 def _selected_guid_args(selected_guids):
@@ -26,30 +27,38 @@ def _selected_guid_args(selected_guids):
     return ["--filter-guids", ",".join(guids)]
 
 
+def _notify_ui(system, method, message, fallback_method=None, fallback_message=None):
+    """Call an optional IDE notification and return whether it succeeded."""
+    try:
+        ui = getattr(system, "ui", None) if system is not None else None
+        callback = getattr(ui, method, None)
+        if callback is not None:
+            callback(message)
+            return True
+        if fallback_method:
+            callback = getattr(ui, fallback_method, None)
+            if callback is not None:
+                callback(fallback_message if fallback_message is not None else message)
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def _show_warning(system, message):
-    try:
-        if system and hasattr(system, "ui") and hasattr(system.ui, "warning"):
-            system.ui.warning(message)
-            return
-    except Exception:
-        pass
-    try:
-        if system and hasattr(system, "ui") and hasattr(system.ui, "info"):
-            system.ui.info("Warning:\n" + message)
-            return
-    except Exception:
-        pass
-    ide_runtime_common.log_error(message)
+    if not _notify_ui(
+        system,
+        "warning",
+        message,
+        fallback_method="info",
+        fallback_message="Warning:\n" + message,
+    ):
+        ide_runtime_common.log_error(message)
 
 
 def _show_info(system, message):
-    try:
-        if system and hasattr(system, "ui") and hasattr(system.ui, "info"):
-            system.ui.info(message)
-            return
-    except Exception:
-        pass
-    ide_runtime_common.log_info(message)
+    if not _notify_ui(system, "info", message):
+        ide_runtime_common.log_info(message)
 
 
 def _completion_popup_enabled(project_root):
@@ -149,6 +158,13 @@ def run_action(
     2. Invoke Python 3 engine_cli.py
     3. If action == 'import', apply IMPORT.xml
     """
+    if action == "import" and ide_online_helpers.is_online_session_active():
+        _show_warning(
+            system,
+            "Import is disabled while CODESYS is online. "
+            "Disconnect from the PLC/runtime and retry.",
+        )
+        return False
     project_layout = ide_runtime_common.layout(project_root, view_root=view_root, layout_mode=layout_mode)
     dump_root = dump_root or project_layout.dump_root
     snapshot_name = "IDE.current.xml" if action == "compare" else "IDE.xml"

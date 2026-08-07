@@ -18,11 +18,25 @@ silently leave the destination only partly initialized.
 ## Example
 
 ```st bad 1
+PROGRAM Main
+VAR
+    smallBuffer : ARRAY[0..3] OF BYTE;
+    source : ARRAY[0..7] OF BYTE;
+END_VAR
+IMPLEMENTATION
 MEMCPY(ADR(smallBuffer), ADR(source), SIZEOF(source)); // cts:here
+END_PROGRAM
 ```
 
 ```st bad 1
+PROGRAM Main
+VAR
+    pDestination : POINTER TO BYTE;
+    pSource : POINTER TO BYTE;
+END_VAR
+IMPLEMENTATION
 MEMCPY(pDestination, pSource, SIZEOF(pDestination)); // cts:here
+END_PROGRAM
 ```
 
 The first call copies a larger known object into a smaller one. The second
@@ -31,7 +45,14 @@ gets the size of the pointer value, not the storage behind it.
 ## Good example
 
 ```st good
+PROGRAM Main
+VAR
+    destination : ARRAY[0..7] OF BYTE;
+    source : ARRAY[0..7] OF BYTE;
+END_VAR
+IMPLEMENTATION
 MEMCPY(ADR(destination), ADR(source), SIZEOF(destination));
+END_PROGRAM
 ```
 
 ## When ignoring is legitimate

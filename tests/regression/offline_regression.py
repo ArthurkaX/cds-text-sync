@@ -1513,39 +1513,11 @@ def _scenario_deleted_object(work_dir):
 
 
 def main():
-    work_dir = tempfile.mkdtemp(prefix="offline-regression-", dir=ROOT_DIR)
-    try:
-        _scenario_baseline(work_dir)
-        _scenario_project_view_layout(work_dir)
-        _scenario_root_view_layout(work_dir)
-        _scenario_selected_export(work_dir)
-        _scenario_create_standalone_st(work_dir)
-        _scenario_create_native_xml(work_dir)
-        _scenario_projection_config(work_dir)
-        _scenario_text_first_roundtrip(work_dir)
-        _scenario_full_pou_and_child(work_dir)
-        _scenario_projection_filter_graphical(work_dir)
-        _scenario_dut_projection(work_dir)
-        _scenario_persistent_projection(work_dir)
-        _scenario_textlist_projection(work_dir)
-        _scenario_alarm_projection(work_dir)
-        _scenario_settings_roundtrip(work_dir)
-        _scenario_missing_settings(work_dir)
-        _scenario_pathless_project_object(work_dir)
-        _scenario_duplicate_structured_view(work_dir)
-        _scenario_alias_structured_view(work_dir)
-        _scenario_added_object(work_dir)
-        _scenario_deleted_object(work_dir)
-        print("offline_regression: PASS")
-        print("workspace: {0}".format(work_dir))
-        return 0
-    except RegressionFailure as error:
-        print("offline_regression: FAIL")
-        print(error)
-        print("workspace: {0}".format(work_dir))
-        return 1
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+    """Keep the historical script entry point while using pytest as runner."""
+    import pytest
+
+    test_path = os.path.join(ROOT_DIR, "tests", "regression", "test_offline_regression.py")
+    return pytest.main([test_path])
 
 
 if __name__ == "__main__":

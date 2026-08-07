@@ -312,20 +312,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
             else current_settings.get("sync_mode")
         ) or "xml_first"
 
-        title = Label()
-        title.Text = "Project Sync Options"
-        title.Font = Font("Segoe UI", 14, FontStyle.Bold)
-        title.Location = Point(20, 18)
-        title.Size = Size(460, 28)
-        self.Controls.Add(title)
-
-        subtitle = Label()
-        subtitle.Text = "These settings are saved to cds-text-sync.json in the sync root."
-        subtitle.Font = Font("Segoe UI", 9)
-        subtitle.ForeColor = Color.FromArgb(90, 90, 90)
-        subtitle.Location = Point(22, 50)
-        subtitle.Size = Size(460, 22)
-        self.Controls.Add(subtitle)
+        self._build_header()
 
         lbl_layout = Label()
         lbl_layout.Text = "View storage"
@@ -403,6 +390,53 @@ class ProjectOptionsForm(Form if Form is not None else object):
         hint.Font = Font("Segoe UI", 8)
         self.Controls.Add(hint)
 
+        self._build_profile_controls(current_settings)
+
+        self._build_sync_mode_controls()
+
+        self._build_view_lists(current_settings)
+
+        self._build_backup_controls(current_settings)
+
+        self._build_dialog_buttons()
+
+    def _build_dialog_buttons(self):
+        btn_ok = Button()
+        btn_ok.Text = "Save"
+        btn_ok.Location = Point(344, 650)
+        btn_ok.Size = Size(85, 28)
+        btn_ok.Click += self._on_save
+        self.Controls.Add(btn_ok)
+        self.AcceptButton = btn_ok
+
+        btn_cancel = Button()
+        btn_cancel.Text = "Cancel"
+        btn_cancel.Location = Point(436, 650)
+        btn_cancel.Size = Size(85, 28)
+        btn_cancel.DialogResult = DialogResult.Cancel
+        self.Controls.Add(btn_cancel)
+        self.CancelButton = btn_cancel
+        self._refresh_view_root_state()
+        self._refresh_view_root_summary()
+        self._refresh_sync_mode_panels()
+
+    def _build_header(self):
+        title = Label()
+        title.Text = "Project Sync Options"
+        title.Font = Font("Segoe UI", 14, FontStyle.Bold)
+        title.Location = Point(20, 18)
+        title.Size = Size(460, 28)
+        self.Controls.Add(title)
+
+        subtitle = Label()
+        subtitle.Text = "These settings are saved to cds-text-sync.json in the sync root."
+        subtitle.Font = Font("Segoe UI", 9)
+        subtitle.ForeColor = Color.FromArgb(90, 90, 90)
+        subtitle.Location = Point(22, 50)
+        subtitle.Size = Size(460, 22)
+        self.Controls.Add(subtitle)
+
+    def _build_profile_controls(self, current_settings):
         lbl_profile = Label()
         lbl_profile.Text = "Profile"
         lbl_profile.Location = Point(24, 252)
@@ -424,16 +458,12 @@ class ProjectOptionsForm(Form if Form is not None else object):
             profile_ids.insert(0, current_profile)
         for profile_id in profile_ids:
             self.cmb_profile.Items.Add(profile_id)
-        self.cmb_profile.SelectedIndex = profile_ids.index(current_profile) if current_profile in profile_ids else 0
+        self.cmb_profile.SelectedIndex = (
+            profile_ids.index(current_profile) if current_profile in profile_ids else 0
+        )
         self.Controls.Add(self.cmb_profile)
 
-        # -- Sync mode (paradigm) -----------------------------------------
-        # The paradigm selector sits directly above the single list slot it
-        # drives. The two lists are mutually exclusive, so only one is ever
-        # visible (see _refresh_sync_mode_panels):
-        #   xml-first  -> "Derived views"  (which .st/.csv views to generate)
-        #   text-first -> "Keep XML in view" (which kinds keep native .xml in
-        #                 the view instead of the .dump/xml mirror)
+    def _build_sync_mode_controls(self):
         lbl_sync_mode = Label()
         lbl_sync_mode.Text = "Sync mode"
         lbl_sync_mode.Location = Point(24, 290)
@@ -466,7 +496,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         lbl_sync_mode_help.Font = Font("Segoe UI", 8)
         self.Controls.Add(lbl_sync_mode_help)
 
-        # -- Swappable list slot: "Derived views" XOR "Keep XML in view" ---
+    def _build_view_lists(self, current_settings):
         self.lbl_list = Label()
         self.lbl_list.Location = Point(24, 352)
         self.lbl_list.Size = Size(120, 20)
@@ -495,6 +525,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.list_hint.Font = Font("Segoe UI", 8)
         self.Controls.Add(self.list_hint)
 
+    def _build_backup_controls(self, current_settings):
         lbl_backup = Label()
         lbl_backup.Text = "Safety backup"
         lbl_backup.Location = Point(24, 504)
@@ -548,25 +579,6 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.chk_gitignore.Size = Size(310, 22)
         self.chk_gitignore.Checked = bool(current_settings.get("_ensure_gitignore", False))
         self.Controls.Add(self.chk_gitignore)
-
-        btn_ok = Button()
-        btn_ok.Text = "Save"
-        btn_ok.Location = Point(344, 650)
-        btn_ok.Size = Size(85, 28)
-        btn_ok.Click += self._on_save
-        self.Controls.Add(btn_ok)
-        self.AcceptButton = btn_ok
-
-        btn_cancel = Button()
-        btn_cancel.Text = "Cancel"
-        btn_cancel.Location = Point(436, 650)
-        btn_cancel.Size = Size(85, 28)
-        btn_cancel.DialogResult = DialogResult.Cancel
-        self.Controls.Add(btn_cancel)
-        self.CancelButton = btn_cancel
-        self._refresh_view_root_state()
-        self._refresh_view_root_summary()
-        self._refresh_sync_mode_panels()
 
     def _projection_enabled(self, current_settings, projection):
         current = current_settings.get("projections") or {}

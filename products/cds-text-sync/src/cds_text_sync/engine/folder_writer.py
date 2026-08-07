@@ -9,6 +9,10 @@ import os
 import time
 
 from _dirty_scan import dirty_view_paths
+from _manifest_bookkeeper import entries as manifest_entries
+from _manifest_bookkeeper import hash_by_path, load as load_manifest
+from _path_safety import replace_extension, safe_path_in_root
+from _projection_codec import encode as encode_projection
 from _project_layout import is_reserved_root_child
 from _project_profiles import enabled_projection_options, kind_for_type_guid
 from _project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
@@ -18,13 +22,11 @@ from _view_paths import (
     normalize_fs_path,
 )
 from xml_helpers import (
-    csv_projection_content,
     ensure_dir,
     entry_to_xml,
     externalized_text_xml,
     normalize_guid,
     sha1_hex,
-    st_projection_content,
 )
 
 
@@ -126,25 +128,22 @@ class FolderWriter:
         self._skipped_dirty = []
 
     def _safe_path_in_root(self, relative_path, root_path):
-        if not relative_path:
-            return None
-        parts = relative_path.replace("\\", os.sep).split(os.sep)
+        if relative_path:
+            parts = relative_path.replace("\\", os.sep).split(os.sep)
+        else:
+            parts = []
         if parts and is_reserved_root_child(parts[0]):
             _log("Notice: Ignoring reserved root view path: {0}".format(relative_path))
             return None
-        full_path = _absolute_view_path(os.path.join(root_path, relative_path))
-        view_root = _normalize_fs_path(root_path)
-        if _normalize_fs_path(full_path) == view_root:
-            return None
-        if _normalize_fs_path(full_path) and not _normalize_fs_path(
-            full_path
-        ).startswith(view_root + os.sep):
+        full_path = safe_path_in_root(
+            relative_path, root_path, is_reserved=is_reserved_root_child
+        )
+        if full_path is None and relative_path:
             _log(
                 "Notice: Ignoring managed path outside view root: {0}".format(
                     relative_path
                 )
             )
-            return None
         return full_path
 
     def _safe_view_path(self, relative_path):
@@ -170,12 +169,10 @@ class FolderWriter:
     def _load_existing_manifest(self):
         if not os.path.exists(self.manifest_path):
             return None
-        try:
-            with open(self.manifest_path, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            _log("Warning: Could not read existing manifest: {0}".format(e))
-            return None
+        manifest = load_manifest(self.manifest_path)
+        if manifest is None:
+            _log("Warning: Could not read existing manifest: {0}".format(self.manifest_path))
+        return manifest
 
     def _remove_empty_parent_dirs(self, path, root_path=None):
         view_root = _normalize_fs_path(root_path or self.views_path)
@@ -247,7 +244,7 @@ class FolderWriter:
         keep = set(keep_paths or ())
         removed = 0
         seen = set()
-        for entry in manifest.get("entries", []):
+        for entry in manifest_entries(manifest):
             if selected_guids is not None:
                 guid = normalize_guid(entry.get("guid"))
                 if guid not in selected_guids:
@@ -311,7 +308,7 @@ class FolderWriter:
         if _normalize_fs_path(self.views_path) == _normalize_fs_path(self.project_root):
             return
 
-        for entry in manifest.get("entries", []):
+        for entry in manifest_entries(manifest):
             for relative_path in self._managed_relative_paths(entry):
                 full_path = self._safe_path_in_root(relative_path, self.project_root)
                 if full_path and os.path.isfile(full_path):
@@ -349,15 +346,7 @@ class FolderWriter:
             _log("Removed {0} previously managed view files.".format(removed))
 
     def _manifest_hash_by_path(self, manifest):
-        result = {}
-        for entry in (manifest or {}).get("entries", []) or []:
-            xml_path = entry.get("xml_path") or entry.get("view_path")
-            if xml_path and entry.get("hash"):
-                result[str(xml_path).replace("\\", "/")] = entry.get("hash")
-            for projection_path, value in (entry.get("projection_hashes") or {}).items():
-                if value:
-                    result[str(projection_path).replace("\\", "/")] = value
-        return result
+        return hash_by_path(manifest)
 
     def _prepare_dirty_state(self, selected_guids=None):
         """Find locally-modified managed files that this export must not overwrite.
@@ -383,7 +372,7 @@ class FolderWriter:
         manifest = self._load_existing_manifest()
         if not manifest:
             return []
-        return manifest.get("entries", []) or []
+        return manifest_entries(manifest)
 
     def _merge_manifest_entries(self, selected_guids, selected_entries):
         if not selected_guids:
@@ -410,8 +399,7 @@ class FolderWriter:
         return result
 
     def _replace_extension(self, relative_path, extension):
-        base, _ = os.path.splitext(relative_path)
-        return base + extension
+        return replace_extension(relative_path, extension)
 
     def _flat_nested_path(self, project_model, node, extension):
         parent = project_model.collapsed_parent_for(node)
@@ -471,15 +459,7 @@ class FolderWriter:
         return result
 
     def _projection_content(self, node, projection):
-        if projection.get("format") == "st":
-            blob_text = st_projection_content(node.entry_element)
-            if blob_text is not None:
-                return blob_text
-        if projection.get("format") == "csv":
-            return csv_projection_content(
-                node.entry_element, projection.get("extractor") or projection.get("id")
-            )
-        return node.code
+        return encode_projection(node, projection)
 
     def _write_projection_files(
         self, project_model, node, xml_path, projection_options
@@ -672,6 +652,81 @@ class FolderWriter:
         if removed:
             _log("Removed {0} stale mirror xml files.".format(removed))
 
+    def _write_node(self, project_model, node, emitted_paths):
+        """Write one model node and return its manifest metadata."""
+        projection_options = self._node_projection_options(node)
+        if (
+            project_model.is_nested_under_collapsed_object(node)
+            and not projection_options
+        ):
+            return None
+
+        metadata = {
+            "guid": node.guid,
+            "name": node.name,
+            "type_guid": node.type,
+            "parent_guid": node.parent_guid,
+        }
+        for key in ("structured_view_guid", "structured_view_single_attrs"):
+            if node.metadata.get(key):
+                metadata[key] = node.metadata.get(key)
+
+        xml_path = self._xml_path_for_node(project_model, node)
+        (
+            projection_paths,
+            projection_hashes,
+            projection_extractors,
+            projection_import_safe,
+        ) = self._write_projection_files(
+            project_model, node, xml_path, projection_options
+        )
+        for projection_path in projection_paths:
+            full_projection_path = self._safe_view_path(projection_path)
+            if full_projection_path:
+                emitted_paths.add(full_projection_path)
+
+        xml_text = entry_to_xml(node.entry_element)
+        if projection_paths and self._has_st_projection(projection_options):
+            xml_text = externalized_text_xml(node.entry_element)
+        if xml_text is None:
+            return metadata
+
+        full_path, in_dump_mirror = self._xml_target(node, xml_path)
+        if not full_path:
+            return None
+        rel_key = str(xml_path).replace("\\", "/")
+        if (
+            not in_dump_mirror
+            and rel_key in self._dirty_paths
+            and os.path.isfile(full_path)
+        ):
+            _log("XML preserved (locally modified, pending import): {0}".format(xml_path))
+            self._skipped_dirty.append(rel_key)
+            emitted_paths.add(full_path)
+            metadata["xml_path"] = xml_path
+            metadata["hash"] = self._previous_hash_by_path.get(rel_key) or sha1_hex(xml_text)
+        else:
+            ensure_dir(os.path.dirname(full_path))
+            self._canonicalize_existing_path(full_path)
+            with codecs.open(full_path, "w", "utf-8") as handle:
+                handle.write(xml_text)
+            emitted_paths.add(full_path)
+            if projection_paths and self._has_st_projection(projection_options):
+                _log("XML externalized for projection: {0}".format(xml_path))
+            metadata["xml_path"] = xml_path
+            metadata["hash"] = sha1_hex(xml_text)
+
+        if in_dump_mirror:
+            metadata["xml_root"] = "dump"
+        if projection_paths:
+            metadata["projection_paths"] = projection_paths
+            metadata["projection_hashes"] = projection_hashes
+            if projection_extractors:
+                metadata["projection_extractors"] = projection_extractors
+            if projection_import_safe:
+                metadata["projection_import_safe"] = projection_import_safe
+        return metadata
+
     def write(self, project_model):
         selected_guids = self.selected_guids or None
         self._prepare_dirty_state(selected_guids=selected_guids)
@@ -685,93 +740,9 @@ class FolderWriter:
         for guid, node in project_model.nodes.items():
             if selected_guids is not None and guid not in selected_guids:
                 continue
-            projection_options = self._node_projection_options(node)
-            if (
-                project_model.is_nested_under_collapsed_object(node)
-                and not projection_options
-            ):
-                continue
-
-            metadata = {
-                "guid": guid,
-                "name": node.name,
-                "type_guid": node.type,
-                "parent_guid": node.parent_guid,
-            }
-            if node.metadata.get("structured_view_guid"):
-                metadata["structured_view_guid"] = node.metadata.get(
-                    "structured_view_guid"
-                )
-            if node.metadata.get("structured_view_single_attrs"):
-                metadata["structured_view_single_attrs"] = node.metadata.get(
-                    "structured_view_single_attrs"
-                )
-
-            xml_path = self._xml_path_for_node(project_model, node)
-            (
-                projection_paths,
-                projection_hashes,
-                projection_extractors,
-                projection_import_safe,
-            ) = self._write_projection_files(
-                project_model,
-                node,
-                xml_path,
-                projection_options,
-            )
-            for projection_path in projection_paths:
-                full_projection_path = self._safe_view_path(projection_path)
-                if full_projection_path:
-                    emitted_paths.add(full_projection_path)
-
-            xml_text = entry_to_xml(node.entry_element)
-            if projection_paths and self._has_st_projection(projection_options):
-                xml_text = externalized_text_xml(node.entry_element)
-            if xml_text is not None:
-                full_path, in_dump_mirror = self._xml_target(node, xml_path)
-                if not full_path:
-                    continue
-                rel_key = str(xml_path).replace("\\", "/")
-                if (
-                    not in_dump_mirror
-                    and rel_key in self._dirty_paths
-                    and os.path.isfile(full_path)
-                ):
-                    # Locally modified since the last export: keep the user's file
-                    # and carry the previous hash forward (pending import).
-                    _log(
-                        "XML preserved (locally modified, pending import): {0}".format(
-                            xml_path
-                        )
-                    )
-                    self._skipped_dirty.append(rel_key)
-                    emitted_paths.add(full_path)
-                    metadata["xml_path"] = xml_path
-                    metadata["hash"] = self._previous_hash_by_path.get(
-                        rel_key
-                    ) or sha1_hex(xml_text)
-                else:
-                    ensure_dir(os.path.dirname(full_path))
-                    self._canonicalize_existing_path(full_path)
-                    with codecs.open(full_path, "w", "utf-8") as f:
-                        f.write(xml_text)
-                    emitted_paths.add(full_path)
-                    if projection_paths and self._has_st_projection(projection_options):
-                        _log("XML externalized for projection: {0}".format(xml_path))
-
-                    metadata["xml_path"] = xml_path
-                    metadata["hash"] = sha1_hex(xml_text)
-                if in_dump_mirror:
-                    metadata["xml_root"] = "dump"
-                if projection_paths:
-                    metadata["projection_paths"] = projection_paths
-                    metadata["projection_hashes"] = projection_hashes
-                    if projection_extractors:
-                        metadata["projection_extractors"] = projection_extractors
-                    if projection_import_safe:
-                        metadata["projection_import_safe"] = projection_import_safe
-
-            manifest_entries.append(metadata)
+            metadata = self._write_node(project_model, node, emitted_paths)
+            if metadata is not None:
+                manifest_entries.append(metadata)
 
         if selected_guids is None:
             self._remove_orphan_projection_files(emitted_paths)

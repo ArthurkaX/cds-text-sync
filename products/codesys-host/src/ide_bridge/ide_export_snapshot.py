@@ -109,8 +109,9 @@ def export_snapshot(system, project, output_path, log_fn=None):
     os.close(fd)
     try:
         os.remove(tmp_path)
-    except Exception:
-        pass
+    except Exception as error:
+        if log_fn:
+            log_fn("Temporary snapshot path cleanup skipped: " + str(error))
 
     try:
         _t0 = time.time()
@@ -138,8 +139,9 @@ def export_snapshot(system, project, output_path, log_fn=None):
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
-            except Exception:
-                pass
+            except Exception as error:
+                if log_fn:
+                    log_fn("Could not remove failed snapshot temporary file: " + str(error))
         return False
 
 
@@ -162,8 +164,9 @@ def export_selected_snapshot(project, objects, output_path, log_fn=None):
     os.close(fd)
     try:
         os.remove(tmp_path)
-    except Exception:
-        pass
+    except Exception as error:
+        if log_fn:
+            log_fn("Temporary selected-snapshot path cleanup skipped: " + str(error))
 
     try:
         _log = log_fn or (lambda m: None)
@@ -182,6 +185,7 @@ def export_selected_snapshot(project, objects, output_path, log_fn=None):
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
-            except Exception:
-                pass
+            except Exception as error:
+                if log_fn:
+                    log_fn("Could not remove failed selected-snapshot temporary file: " + str(error))
         return False

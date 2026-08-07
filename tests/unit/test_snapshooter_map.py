@@ -8,8 +8,8 @@ ENGINE = os.path.join(
 if ENGINE not in sys.path:
     sys.path.insert(0, ENGINE)
 
-from _project_model import ProjectModel, ProjectNode
-from snapshooter_map import _is_excluded_from_build
+from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+from cds_text_sync.engine.snapshooter_map import _is_excluded_from_build
 
 
 def _make_model(*entries):

@@ -66,8 +66,8 @@ def _prune_snapshots(dump_dir, keep=SNAPSHOT_RETENTION_COUNT):
         try:
             os.remove(os.path.join(dump_dir, name))
             removed += 1
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Could not remove old snapshot {0}: {1}".format(name, error))
     if removed:
         _log("Pruned {0} old snapshot(s), kept {1}.".format(removed, keep))
     return removed
@@ -89,8 +89,8 @@ def _cmd_sync_info():
             try:
                 items = os.listdir(dump_path)
                 result["dump_items"] = len(items)
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not inspect sync dump folder {0}: {1}".format(dump_path, error))
         else:
             result["dump_exists"] = False
         # Check for _metadata.json
@@ -146,8 +146,8 @@ def _cmd_sync_export(params):
         os.close(fd)
         try:
             os.remove(tmp_path)
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Temporary export file was already removed or unavailable: {0}".format(error))
         try:
             project.export_native(objects, tmp_path, recursive=False)
             import shutil
@@ -158,8 +158,8 @@ def _cmd_sync_export(params):
             if os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
-                except Exception:
-                    pass
+                except Exception as error:
+                    _log("Could not clean failed export temporary file: {0}".format(error))
             raise
         size = os.path.getsize(out_path)
         _log("Exported snapshot: {0} ({1} bytes)".format(out_path, size))
@@ -261,8 +261,8 @@ def _cmd_sync_compare(params):
                 typ = str(getattr(child, "type", ""))
                 guid = str(getattr(child, "guid", ""))
                 current_info[name] = {"name": name, "type": typ, "guid": guid}
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not inspect project child during sync compare: {0}".format(error))
 
         # 2. Parse the XML and see what's different (basic check - just names)
         import xml.etree.ElementTree as ET
@@ -369,14 +369,13 @@ def _cmd_sync_import_text(params):
     # online session is active the new objects silently won't be created, so
     # fail early with a clear instruction to disconnect first.
     online, state = _active_app_online_state()
-    if online and not params.get("force_online"):
+    if online:
         return {
             "ok": False,
             "error": (
                 "Active application is online (state: {0}). Adding/creating "
                 "objects is an offline operation. Run disconnect_from_device "
-                "first, then retry sync_import_text. "
-                "(Pass force_online=true to override.)"
+                "first, then retry sync_import_text."
             ).format(state or "connected"),
         }
 
@@ -561,8 +560,8 @@ def _cmd_sync_import_text(params):
                                 "reason": _reason,
                             }
                         )
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not classify pending projection: {0}".format(error))
 
         # Step 4: Apply StructuredView (MAIN update) — skip if fails, objects are already created
         try:
@@ -575,8 +574,8 @@ def _cmd_sync_import_text(params):
                 project.import_native(filtered_path)
                 try:
                     os.remove(filtered_path)
-                except Exception:
-                    pass
+                except Exception as error:
+                    _log("Could not remove temporary StructuredView file: {0}".format(error))
         except Exception as e:
             import traceback
 
@@ -635,8 +634,8 @@ def _replace_text_document(doc, text):
         try:
             doc.text = text
             return True
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Could not replace text document through its text property: {0}".format(error))
     if hasattr(doc, "replace"):
         doc.replace(text)
         return True

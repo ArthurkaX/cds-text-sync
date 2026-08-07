@@ -145,8 +145,8 @@ def _cmd_app_crc(params):
                             if fn.endswith(".crc"):
                                 crc_filename = fn
                                 break
-                except Exception:
-                    pass
+                except Exception as error:
+                    _log("Could not inspect PLC CRC directory: {0}".format(error))
 
                 online_dev.upload_file(app_dir + "/" + crc_filename, tmp, True)
                 with open(tmp, "rb") as f:
@@ -163,8 +163,8 @@ def _cmd_app_crc(params):
 
                         c1, c2 = struct.unpack("<II", data[:8])
                         result["crc_value"] = "{:08X}{:08X}".format(c1, c2)
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        _log("Could not decode PLC CRC value: {0}".format(error))
                     if len(data) > 8:
                         name_part = data[8:].rstrip("\x00")
                         if name_part:
@@ -178,8 +178,8 @@ def _cmd_app_crc(params):
             finally:
                 try:
                     os.remove(tmp)
-                except Exception:
-                    pass
+                except Exception as error:
+                    _log("Could not remove temporary PLC CRC file: {0}".format(error))
 
         return {"ok": True, "data": result}
     except Exception as e:
@@ -263,8 +263,8 @@ def _cmd_app_info():
                     asm_name = asm.GetName()
                     if asm_name:
                         info["assembly_version"] = str(asm_name.Version)
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not remove temporary CRC comparison file: {0}".format(error))
         except Exception:
             pass
 

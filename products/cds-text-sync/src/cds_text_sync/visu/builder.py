@@ -25,8 +25,6 @@ from . import style_roles as _style_roles
 from ._builder_base import (
     BuilderError,
     _COLOR_TYPE,
-    _EL,
-    _FONT_TYPE,
     _MB,
     _MEMBER_TYPE,
     _ROOT_TYPE,
@@ -151,31 +149,6 @@ def _resolve_theme_role_uint(role, theme_colors, fallback_uint):
 # --------------------------------------------------------------------------
 # Member rendering
 # --------------------------------------------------------------------------
-
-
-def _render_color_member(member_id, color_int, canonical_name):
-    if not canonical_name:
-        raise BuilderError(
-            "Color member {0} CanonicalName must be non-empty".format(member_id)
-        )
-    return (
-        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
-        '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
-        '{mb}  <List Name="Value" Type="System.Collections.ArrayList">\n'
-        '{mb}    <Single Type="{ct}" Method="IArchivable">\n'
-        '{mb}      <Single Name="Color" Type="int">{color}</Single>\n'
-        '{mb}      <Single Name="CanonicalName" Type="string">{cn}</Single>\n'
-        "{mb}    </Single>\n"
-        "{mb}  </List>\n"
-        "{mb}</Single>\n"
-    ).format(
-        mb=_MB,
-        mt=_MEMBER_TYPE,
-        ct=_COLOR_TYPE,
-        id=member_id,
-        color=color_int,
-        cn=_esc(canonical_name),
-    )
 
 
 def _remove_color_uint_placeholder(block, member_id):
@@ -337,181 +310,9 @@ def _unlink_font_color_from_style(block, signed_int):
     return _FONT_DESCRIPTOR_MEMBER_RE.sub(_rewrite, block)
 
 
-def _render_scalar_member(member_id, value_type, value):
-    if value == "" or value is None:
-        return (
-            '{mb}<Single Type="{mt}" Method="IArchivable">\n'
-            '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
-            '{mb}  <Single Name="Value" Type="{vt}" />\n'
-            "{mb}</Single>\n"
-        ).format(mb=_MB, mt=_MEMBER_TYPE, id=member_id, vt=value_type)
-    return (
-        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
-        '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
-        '{mb}  <Single Name="Value" Type="{vt}">{val}</Single>\n'
-        "{mb}</Single>\n"
-    ).format(mb=_MB, mt=_MEMBER_TYPE, id=member_id, vt=value_type, val=_esc(value))
-
-
-def _render_font_member(member_id, fd):
-    return (
-        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
-        '{mb}  <Single Name="Id" Type="long">{id}</Single>\n'
-        '{mb}  <List Name="Value" Type="System.Collections.ArrayList">\n'
-        '{mb}    <Single Type="{ft}" Method="IArchivable">\n'
-        '{mb}      <Single Name="FontStyle" Type="int">{FontStyle}</Single>\n'
-        '{mb}      <Single Name="AdditionalFontStyle" Type="ushort">{AdditionalFontStyle}</Single>\n'
-        '{mb}      <Single Name="ExplicitColor" Type="int">{ExplicitColor}</Single>\n'
-        '{mb}      <Single Name="CanonicalName" Type="string">{CanonicalName}</Single>\n'
-        '{mb}      <Single Name="FontName" Type="string">{FontName}</Single>\n'
-        '{mb}      <Single Name="DisplayName" Type="string" />\n'
-        '{mb}      <Single Name="FontSize" Type="int">{FontSize}</Single>\n'
-        '{mb}      <Single Name="ScriptIdentification" Type="int">{ScriptIdentification}</Single>\n'
-        '{mb}      <Single Name="DoubleFontSize" Type="double">{DoubleFontSize}</Single>\n'
-        '{mb}      <Single Name="NamedColor" Type="{ct}" Method="IArchivable">\n'
-        '{mb}        <Single Name="Color" Type="int">{ncColor}</Single>\n'
-        '{mb}        <Single Name="CanonicalName" Type="string">{ncName}</Single>\n'
-        "{mb}      </Single>\n"
-        "{mb}    </Single>\n"
-        "{mb}  </List>\n"
-        "{mb}</Single>\n"
-    ).format(
-        mb=_MB,
-        mt=_MEMBER_TYPE,
-        ft=_FONT_TYPE,
-        ct=_COLOR_TYPE,
-        id=member_id,
-        ncColor=_esc(fd["NamedColor"]["Color"]),
-        ncName=_esc(fd["NamedColor"]["CanonicalName"]),
-        FontStyle=_esc(fd["FontStyle"]),
-        AdditionalFontStyle=_esc(fd["AdditionalFontStyle"]),
-        ExplicitColor=_esc(fd["ExplicitColor"]),
-        CanonicalName=_esc(fd["CanonicalName"]),
-        FontName=_esc(fd["FontName"]),
-        FontSize=_esc(fd["FontSize"]),
-        ScriptIdentification=_esc(fd["ScriptIdentification"]),
-        DoubleFontSize=_esc(fd["DoubleFontSize"]),
-    )
-
-
 # --------------------------------------------------------------------------
 # Element building
 # --------------------------------------------------------------------------
-
-
-def _resolve_members(catalog, params):
-    """Return an ordered list of (member_dict, override) describing the element.
-
-    Applies geometry/shape/color/scalar overrides from ``params`` onto a copy
-    of the catalog base_members. Auto-computes Center X/Y. Validates bounds and
-    the text/Text-ID invariant. Returns the resolved member tuples plus a dict
-    of computed geometry for callers (list/check).
-    """
-    base = catalog["base_members"]
-    geo = catalog.get("geometry", {})
-    params_map = catalog.get("params", {})
-
-    # Effective scalar values keyed by member id (as string overrides).
-    overrides = {}
-
-    # Geometry first (needed for center computation + bounds).
-    def _geo_default(role_id):
-        for m in base:
-            if m.get("id") == role_id:
-                return int(m.get("value", "0"))
-        return 0
-
-    x = (
-        int(params.get("x"))
-        if params.get("x") is not None
-        else _geo_default(geo.get("x"))
-    )
-    y = (
-        int(params.get("y"))
-        if params.get("y") is not None
-        else _geo_default(geo.get("y"))
-    )
-    w = (
-        int(params.get("width"))
-        if params.get("width") is not None
-        else _geo_default(geo.get("width"))
-    )
-    h = (
-        int(params.get("height"))
-        if params.get("height") is not None
-        else _geo_default(geo.get("height"))
-    )
-
-    overrides[geo["x"]] = str(x)
-    overrides[geo["y"]] = str(y)
-    overrides[geo["width"]] = str(w)
-    overrides[geo["height"]] = str(h)
-    overrides[geo["center_x"]] = str(x + w // 2)
-    overrides[geo["center_y"]] = str(y + h // 2)
-
-    # Shape.
-    if params.get("shape"):
-        sv = _catalog.shape_value(catalog, params["shape"])
-        if sv is None:
-            raise BuilderError(
-                "Unknown shape '{0}'. Variants: {1}".format(
-                    params["shape"],
-                    ", ".join(sorted(catalog.get("shape_variants", {}))),
-                )
-            )
-        overrides[catalog["shape_member_id"]] = sv
-
-    # Color overrides (param name -> color member).
-    color_overrides = {}  # member_id -> (color_int, canonical_name)
-    for pname in ("fill", "frame", "alarm_frame", "alarm_fill", "alarm_text"):
-        if params.get(pname) is not None:
-            spec = params_map.get(pname, {})
-            mid = spec.get("member_id")
-            color_int = parse_color(params[pname])
-            color_overrides[mid] = (color_int, spec.get("canonical_name"))
-
-    # Generic scalar overrides driven by the param map.
-    for pname, spec in params_map.items():
-        if spec.get("kind") in ("color", "shape"):
-            continue
-        if pname in ("x", "y", "width", "height"):
-            continue
-        if params.get(pname) is not None:
-            overrides[spec["member_id"]] = str(params[pname])
-
-    # Text / Text-ID invariant.
-    text_val = params.get("text")
-    if text_val:
-        raise BuilderError(
-            "Text on a {0} requires a GlobalTextList Text ID (member 823443203), "
-            "which is not yet supported. Omit --text for now.".format(catalog["type"])
-        )
-
-    resolved = []
-    for member in base:
-        mid = member["id"]
-        if member["form"] == "color":
-            if mid in color_overrides:
-                color_int, cn = color_overrides[mid]
-                cn = cn or member.get("canonical_name")
-            else:
-                color_int, cn = member["color"], member.get("canonical_name")
-            resolved.append(("color", mid, color_int, cn))
-        elif member["form"] == "font_descriptor":
-            resolved.append(("font", mid, catalog["font_descriptor"], None))
-        else:
-            value = overrides.get(mid, member.get("value", ""))
-            resolved.append(("scalar", mid, member["value_type"], value))
-
-    geometry = {
-        "x": x,
-        "y": y,
-        "width": w,
-        "height": h,
-        "center_x": x + w // 2,
-        "center_y": y + h // 2,
-    }
-    return resolved, geometry
 
 
 def validate_bounds(geometry, size_x, size_y):
@@ -532,68 +333,6 @@ def validate_bounds(geometry, size_x, size_y):
     if y + h > size_y:
         errors.append("Y+Height ({0}) exceeds screen SizeY ({1})".format(y + h, size_y))
     return errors
-
-
-def render_element(
-    catalog, params, identifier, owning_guid, identification_guid, visual_element_id=0
-):
-    """Render a full <Single Type="{f86c2928...}"> element block as text."""
-    resolved, geometry = _resolve_members(catalog, params)
-
-    member_xml = []
-    for entry in resolved:
-        kind = entry[0]
-        if kind == "color":
-            member_xml.append(_render_color_member(entry[1], entry[2], entry[3]))
-        elif kind == "font":
-            member_xml.append(_render_font_member(entry[1], entry[2]))
-        else:
-            member_xml.append(_render_scalar_member(entry[1], entry[2], entry[3]))
-    members = "".join(member_xml)
-
-    is_rect = "True" if catalog.get("visualElementIsRectangle") else "False"
-    block = (
-        '{el}<Single Type="{ft}" Method="IArchivable">\n'
-        '{el}  <Array Name="ConfiguredComplexInputs" Type="{{1de566f6-72a7-494c-9353-9a418172c96e}}" />\n'
-        '{el}  <List Name="Elements" Type="System.Collections.ArrayList" />\n'
-        '{el}  <Null Name="VisualElementDescription" />\n'
-        '{el}  <Single Name="VisualElemMemberList" Type="{{17e26cd1-bb9b-47fe-a3d5-18fcd63b9c96}}" Method="IArchivable">\n'
-        '{el}    <List Name="VisualElemMemberList" Type="{{a4b83bea-3742-489c-9fe8-d96d68dba7ab}}">\n'
-        "{members}"
-        "{el}    </List>\n"
-        "{el}  </Single>\n"
-        '{el}  <Single Name="VisualElementName" Type="string">{vename}</Single>\n'
-        '{el}  <Single Name="VisualElementTypeName" Type="string">{vetype}</Single>\n'
-        '{el}  <Single Name="VisualElementIsRectangle" Type="bool">{isrect}</Single>\n'
-        '{el}  <Single Name="VisualElementIdentifier" Type="string">{ident}</Single>\n'
-        '{el}  <Null Name="VisualElementOfflinePaintCommands" />\n'
-        '{el}  <Null Name="VisualElementFrameInformation" />\n'
-        '{el}  <Dictionary Type="System.Collections.Hashtable" Name="VisualElementInputActions" />\n'
-        '{el}  <Single Name="VisualElementIdentification" Type="System.Guid">{idguid}</Single>\n'
-        '{el}  <Single Name="VisualElementOwningObjectGuid" Type="System.Guid">{owning}</Single>\n'
-        '{el}  <Array Name="LMGuids" Type="System.Guid" />\n'
-        '{el}  <Dictionary Type="System.Collections.Hashtable" Name="SubElements" />\n'
-        '{el}  <Single Name="VisualElementId" Type="int">{veid}</Single>\n'
-        '{el}  <List Name="UserManagementAccessRights" Type="System.Collections.ArrayList" />\n'
-        '{el}  <Single Name="AnimationDuration" Type="string">0</Single>\n'
-        '{el}  <Single Name="BringToForeground" Type="string" />\n'
-        '{el}  <Single Name="ElementVersion" Type="byte">{ver}</Single>\n'
-        '{el}  <Null Name="TabOrder" />\n'
-        "{el}</Single>\n"
-    ).format(
-        el=_EL,
-        ft="{f86c2928-8614-4cca-824b-e819ac4d58c4}",
-        members=members,
-        vename=_esc(catalog.get("visualElementName", "")),
-        vetype=_esc(catalog["visualElementTypeName"]),
-        isrect=is_rect,
-        ident=_esc(identifier),
-        idguid=identification_guid,
-        owning=owning_guid,
-        veid=str(visual_element_id),
-        ver=catalog.get("elementVersion", 1),
-    )
-    return block, geometry
 
 
 def _resolve_golden_geometry(catalog, params):
@@ -1115,13 +854,8 @@ def append_element(
             scheme=scheme,
         )
     else:
-        block, geometry = render_element(
-            catalog,
-            params,
-            identifier,
-            owning_guid,
-            identification_guid,
-            visual_element_id=visual_element_id,
+        raise BuilderError(
+            "Element catalog has no golden_template; legacy rendering is unsupported"
         )
 
     bound_errors = validate_bounds(geometry, size_x, size_y)

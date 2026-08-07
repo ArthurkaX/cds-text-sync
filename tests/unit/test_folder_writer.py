@@ -10,8 +10,8 @@ import codecs
 import json
 import os
 
-from _project_model import ProjectModel, ProjectNode
-from folder_writer import FolderWriter
+from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+from cds_text_sync.engine.folder_writer import FolderWriter
 
 
 def _write_manifest(dump_path, manifest_data):

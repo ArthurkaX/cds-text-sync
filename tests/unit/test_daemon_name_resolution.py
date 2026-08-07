@@ -130,7 +130,7 @@ def _restore_stubs(saved: dict[str, ModuleType]) -> None:
 # ---------------------------------------------------------------------------
 
 MUST_IMPORT = {"ide_reverse_pipe_loop", "ide_daemon_state"}
-UI_MODULES = {"ide_daemon_ui"}
+UI_MODULES = {"ide_daemon_ui", "project_snapshooter_ui"}
 
 
 # ---------------------------------------------------------------------------

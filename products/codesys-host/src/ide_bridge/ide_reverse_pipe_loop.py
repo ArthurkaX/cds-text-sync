@@ -219,94 +219,15 @@ def _handle_status(params):
     return {"ok": True, "data": result}
 
 
-_ALIASES = {
-    "connect": "connect_to_device",
-    "disconnect": "disconnect_from_device",
-    "app": "application_state",
-    "proj": "project_info",
-    "tree": "project_tree",
-}
+import command_registry as _registry
 
-_NO_PERMISSION = frozenset([
-    "ping",
-    "status",
-    "help",
-    "stop",
-    "permissions",
-    "sync",
-    "project_info",
-    "project_tree",
-    "read_object",
-    "explore",
-    "project_list",
-    "list_devices",
-    "diagnose_online",
-    "discover",
-])
+_ALIASES = _registry.ALIASES
+_NO_PERMISSION = _registry.NO_PERMISSION
 
-_DISPATCH = {
-    # params-taking handlers
-    "project_tree": _cmd_project_tree,
-    "read_object": _cmd_read_object,
-    "connect_to_device": _cmd_connect_to_device,
-    "download": _cmd_download,
-    "read_variable": _cmd_read_variable,
-    "write_variable": _cmd_write_variable,
-    "read_variables": _cmd_read_variables,
-    "write_variables": _cmd_write_variables,
-    "export": _cmd_export,
-    "build": _cmd_build,
-    "device_status": _cmd_device_status,
-    "test_online": _cmd_test_online,
-    "sync_export": _cmd_sync_export,
-    "sync_import": _cmd_sync_import,
-    "sync_compare": _cmd_sync_compare,
-    "sync_export_text": _cmd_sync_export_text,
-    "sync_import_text": _cmd_sync_import_text,
-    "sync_compare_text": _cmd_sync_compare_text,
-    "update_pou": _cmd_update_pou,
-    "delete_pou": _cmd_delete_pou,
-    "cicd": _cmd_cicd,
-    "read_log": _cmd_read_log,
-    "reset_plc": _cmd_reset_plc,
-    "source_download": _cmd_source_download,
-    "probe": _cmd_probe_oa,
-    "application_tree": _cmd_application_tree,
-    "plc_files": _cmd_plc_files,
-    "plc_log": _cmd_plc_log,
-    "plc_download": _cmd_plc_download,
-    "plc_upload": _cmd_plc_upload,
-    "export_csv": _cmd_export_csv,
-    "export_st": _cmd_export_st,
-    "app_crc": _cmd_app_crc,
-    "app_history": _cmd_app_history,
-    "compare": _cmd_compare_crc,
-    # inline special cases (already accept params)
-    "stop": _handle_stop,
-    "ping": _handle_ping,
-    "status": _handle_status,
-    # no-arg handlers
-    "project_info": _noarg(_cmd_project_info),
-    "application_state": _noarg(_cmd_application_state),
-    "disconnect_from_device": _noarg(_cmd_disconnect_from_device),
-    "explore": _noarg(_cmd_explore_api),
-    "sync": _noarg(_cmd_sync_info),
-    "help": _noarg(_cmd_help),
-    "start_plc": _noarg(_cmd_start_plc),
-    "stop_plc": _noarg(_cmd_stop_plc),
-    "create_boot_app": _noarg(_cmd_create_boot_app),
-    "app_info": _noarg(_cmd_app_info),
-    "permissions": _noarg(_cmd_permissions),
-    # project lifecycle / devices / diagnostics (cts project ..., cts discover)
-    "project_open": _cmd_project_open,
-    "project_close": _noarg(_cmd_project_close),
-    "project_list": _noarg(_cmd_project_list),
-    "list_devices": _noarg(_cmd_list_devices),
-    "set_simulation_mode": _cmd_set_simulation_mode,
-    "set_credentials": _cmd_set_credentials,
-    "diagnose_online": _noarg(_cmd_diagnose_online),
-    "discover": _cmd_discover,
-}
+_DISPATCH = {}
+for _command_name, (_mode, _handler_name) in _registry.DISPATCH_SPECS.items():
+    _handler = globals()[_handler_name]
+    _DISPATCH[_command_name] = _noarg(_handler) if _mode == "noarg" else _handler
 
 
 def handle_command(method, params):

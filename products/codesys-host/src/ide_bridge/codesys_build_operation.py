@@ -14,6 +14,7 @@ from codesys_utils import (
     ensure_engine_path,
     init_logging,
     load_base_dir,
+    log_info,
     resolve_projects,
     safe_str,
 )
@@ -55,8 +56,8 @@ def _project_name(project):
             name = safe_str(project.get_name())
         elif hasattr(project, "path"):
             name = os.path.basename(safe_str(project.path))
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not read project name metadata: " + safe_str(error))
     if "\\" in name or "/" in name:
         name = os.path.basename(name).replace(".project", "")
     match = re.search(r"stPath=([^,\)]+)", name)
@@ -92,8 +93,8 @@ def _find_applications(project, profile, kind_for_type_guid):
         for obj in project.get_children(recursive=True):
             if _kind_for_obj(obj, profile, kind_for_type_guid) == "application":
                 apps.append(obj)
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not enumerate application objects: " + safe_str(error))
     return apps
 
 
@@ -121,8 +122,8 @@ def _choose_application(runtime, project, base_dir):
     try:
         if project.active_application:
             return project.active_application
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not read active application: " + safe_str(error))
 
     return None
 
@@ -145,14 +146,14 @@ def _text_sections(obj_ref):
         text_obj = getattr(obj_ref, "textual_declaration", None)
         if text_obj:
             declaration = safe_str(text_obj.text)
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not read declaration text: " + safe_str(error))
     try:
         text_obj = getattr(obj_ref, "textual_implementation", None)
         if text_obj:
             implementation = safe_str(text_obj.text)
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not read implementation text: " + safe_str(error))
     return declaration, implementation
 
 
@@ -300,8 +301,8 @@ def main(params=None, runtime=None):
 
     try:
         runtime.system.clear_messages(category_guid)
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not clear build messages: " + safe_str(error))
 
     start = time.time()
     try:

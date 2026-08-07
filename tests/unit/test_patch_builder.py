@@ -10,8 +10,8 @@ import os
 import tempfile
 import xml.etree.ElementTree as ET
 
-from _patch_builder import PatchBuilder
-from _project_model import ProjectModel, ProjectNode
+from cds_text_sync.engine._patch_builder import PatchBuilder
+from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
 
 
 # ===================================================================

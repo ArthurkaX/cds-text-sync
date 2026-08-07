@@ -34,6 +34,18 @@ A "leaf" is a dict: {path, type, leaf(bool), note}.
 import io
 import os
 import re
+import sys
+
+try:
+    from cts_shared.st import declarations as _shared_declarations
+except ImportError:
+    _SHARED_SRC = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..", "..", "shared", "src"
+    ))
+    if _SHARED_SRC not in sys.path:
+        sys.path.insert(0, _SHARED_SRC)
+    from cts_shared.st import declarations as _shared_declarations
+
 
 ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
 
@@ -59,36 +71,15 @@ _VAR_OPENERS = [
 # Text normalisation
 # ---------------------------------------------------------------------------
 
-def split_decl_impl(text):
-    """Split a .st blob into (declaration, implementation).
-
-    implementation is None when the marker is absent.
-    """
-    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-    marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
-    if marker in normalized:
-        decl, impl = normalized.split(marker, 1)
-        return decl, impl
-    if ST_IMPLEMENTATION_MARKER in normalized:
-        decl, impl = normalized.split(ST_IMPLEMENTATION_MARKER, 1)
-        return decl, impl
-    return normalized, None
-
-
 def _blank_noise(text):
-    """Replace comments and pragmas with spaces, preserving offsets/newlines.
-
-    String literals are respected so a // or (* inside a string is not treated
-    as a comment. Newlines are kept so line numbers stay correct.
-    """
+    """Blank comments, strings, and nested pragmas without changing offsets."""
     out = []
     i = 0
     n = len(text)
     while i < n:
         c = text[i]
         nxt = text[i + 1] if i + 1 < n else ""
-        if c == "'" or c == '"':
-            # Copy the string literal verbatim (handles doubled-quote escape).
+        if c in ("'", '"'):
             quote = c
             out.append(c)
             i += 1
@@ -113,22 +104,40 @@ def _blank_noise(text):
             while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == ")"):
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
-            # blank the closing *)
             if i < n:
                 out.append("  ")
                 i += 2
             continue
         if c == "{":
-            while i < n and text[i] != "}":
+            depth = 1
+            out.append(" ")
+            i += 1
+            while i < n and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
                 out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            if i < n:
-                out.append(" ")
                 i += 1
             continue
         out.append(c)
         i += 1
     return "".join(out)
+
+def split_decl_impl(text):
+    """Split a .st blob into (declaration, implementation).
+
+    implementation is None when the marker is absent.
+    """
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
+    if marker in normalized:
+        decl, impl = normalized.split(marker, 1)
+        return decl, impl
+    if ST_IMPLEMENTATION_MARKER in normalized:
+        decl, impl = normalized.split(ST_IMPLEMENTATION_MARKER, 1)
+        return decl, impl
+    return normalized, None
 
 
 def detect_owner_kind(decl):
@@ -157,349 +166,6 @@ def detect_owner_kind(decl):
 # Statement splitting
 # ---------------------------------------------------------------------------
 
-def _split_statements(body):
-    """Yield (statement_text, offset_in_body) split on top-level ';'.
-
-    Respects (), [], and string literals so initializers spanning lines or
-    containing ';' are kept whole.
-    """
-    stmts = []
-    depth = 0
-    start = 0
-    i = 0
-    n = len(body)
-    while i < n:
-        c = body[i]
-        if c == "'" or c == '"':
-            quote = c
-            i += 1
-            while i < n:
-                if body[i] == quote:
-                    if i + 1 < n and body[i + 1] == quote:
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                i += 1
-            continue
-        if c in "([":
-            depth += 1
-        elif c in ")]":
-            if depth > 0:
-                depth -= 1
-        elif c == ";" and depth == 0:
-            stmts.append((body[start:i], start))
-            start = i + 1
-        i += 1
-    tail = body[start:]
-    if tail.strip():
-        stmts.append((tail, start))
-    return stmts
-
-
-def _split_top_level(text, sep):
-    """Find the first top-level occurrence of sep (':' or ':=').
-
-    Returns index or -1. Respects brackets and strings.
-    """
-    depth = 0
-    i = 0
-    n = len(text)
-    slen = len(sep)
-    while i < n:
-        c = text[i]
-        if c == "'" or c == '"':
-            quote = c
-            i += 1
-            while i < n:
-                if text[i] == quote:
-                    if i + 1 < n and text[i + 1] == quote:
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                i += 1
-            continue
-        if c in "([":
-            depth += 1
-        elif c in ")]":
-            if depth > 0:
-                depth -= 1
-        elif depth == 0 and text[i:i + slen] == sep:
-            # For ':' make sure it is not ':='
-            if sep == ":" and text[i:i + 2] == ":=":
-                i += 2
-                continue
-            return i
-        i += 1
-    return -1
-
-
-def _parse_member_statement(stmt):
-    """Parse 'name [AT %...] : type [:= init]' -> (name, type, initial) or None."""
-    colon = _split_top_level(stmt, ":")
-    if colon < 0:
-        return None
-    left = stmt[:colon].strip()
-    right = stmt[colon + 1:].strip()
-    if not left or not right:
-        return None
-    # Left side: may be "a, b, c" (multi-decl) and may contain "AT %MW0".
-    # Drop an AT clause.
-    at_idx = re.search(r"(?i)\bAT\b", left)
-    if at_idx:
-        left = left[:at_idx.start()].strip()
-    names = [p.strip() for p in left.split(",") if p.strip()]
-    if not names:
-        return None
-    # Reject if a name is not an identifier (guards against parsing garbage).
-    for nm in names:
-        if not re.match(r"^[A-Za-z_]\w*$", nm):
-            return None
-    # Right side: split type and initializer.
-    assign = _split_top_level(right, ":=")
-    if assign >= 0:
-        typ = right[:assign].strip()
-        init = right[assign + 2:].strip()
-    else:
-        typ = right.strip()
-        init = ""
-    typ = re.sub(r"\s+", " ", typ)
-    return (names, typ, init)
-
-
-def parse_var_blocks(decl):
-    """Parse all VAR_* blocks. Returns [ {scope, members} ].
-
-    member = {name, type, scope, line, initial}
-    """
-    blanked = _blank_noise(decl or "")
-    blocks = []
-    # Iterate lines to find block boundaries, then parse bodies by absolute
-    # offset so line numbers stay accurate.
-    lines = blanked.split("\n")
-    line_starts = []
-    pos = 0
-    for ln in lines:
-        line_starts.append(pos)
-        pos += len(ln) + 1
-
-    i = 0
-    nlines = len(lines)
-    while i < nlines:
-        stripped = lines[i].strip()
-        first = stripped.split()[0].upper() if stripped else ""
-        opener = None
-        if first in _VAR_OPENERS:
-            opener = first
-        if opener is None:
-            i += 1
-            continue
-        scope = opener
-        # Body starts right after this opener line.
-        body_start = line_starts[i] + len(lines[i]) + 1
-        # Find END_VAR.
-        j = i + 1
-        while j < nlines and lines[j].strip().upper() != "END_VAR" \
-                and not lines[j].strip().upper().startswith("END_VAR"):
-            j += 1
-        body_end = line_starts[j] if j < nlines else len(blanked)
-        body = blanked[body_start:body_end]
-        members = []
-        for stmt, off in _split_statements(body):
-            parsed = _parse_member_statement(stmt)
-            if not parsed:
-                continue
-            names, typ, init = parsed
-            abs_off = body_start + off
-            # Skip leading whitespace to point at the name.
-            lead = len(stmt) - len(stmt.lstrip())
-            line_no = blanked[:abs_off + lead].count("\n") + 1
-            for nm in names:
-                members.append({
-                    "name": nm,
-                    "type": typ,
-                    "scope": scope,
-                    "line": line_no,
-                    "initial": init,
-                })
-        blocks.append({"scope": scope, "members": members})
-        i = j + 1
-    return blocks
-
-
-def parse_dut(decl):
-    """Parse a TYPE...END_TYPE declaration.
-
-    Returns {name, kind: 'struct'|'enum'|'alias'|'union', fields, base} or None.
-    fields is a list of member dicts for structs/unions.
-    """
-    blanked = _blank_noise(decl or "")
-    m = re.search(r"(?is)\bTYPE\s+([A-Za-z_]\w*)\s*:(.*?)\bEND_TYPE\b", blanked)
-    if not m:
-        return None
-    name = m.group(1)
-    body = m.group(2)
-    upper = body.upper()
-    for kw, end_kw in (("STRUCT", "END_STRUCT"), ("UNION", "END_UNION")):
-        if kw in upper and end_kw in upper:
-            inner = re.search(r"(?is)" + kw + r"(.*?)" + end_kw, body)
-            fields = []
-            if inner:
-                for stmt, _off in _split_statements(inner.group(1)):
-                    parsed = _parse_member_statement(stmt)
-                    if not parsed:
-                        continue
-                    names, typ, init = parsed
-                    for nm in names:
-                        fields.append({"name": nm, "type": typ,
-                                       "initial": init})
-            # Unions expand like structs (every member is a readable leaf).
-            return {"name": name, "kind": "struct", "fields": fields,
-                    "base": None}
-    # Enum: a parenthesised list, optionally with a trailing base type.
-    paren = body.strip()
-    if paren.startswith("("):
-        close = paren.rfind(")")
-        base = ""
-        inside = ""
-        if close >= 0:
-            inside = paren[1:close]
-            base = paren[close + 1:].strip().rstrip(";").strip()
-        # Parse member list: NAME [ := <int-expr> ] [, NAME [...]]
-        # Split on top-level commas (respecting parens/strings).
-        items = []
-        depth = 0
-        cur = []
-        i = 0
-        n = len(inside)
-        in_str = None
-        while i < n:
-            c = inside[i]
-            if in_str:
-                cur.append(c)
-                if c == in_str and (i + 1 >= n or inside[i + 1] != in_str):
-                    in_str = None
-                i += 1
-                continue
-            if c in ("'", '"'):
-                in_str = c
-                cur.append(c)
-                i += 1
-                continue
-            if c in "([{":
-                depth += 1
-            elif c in ")]}":
-                depth = max(0, depth - 1)
-            if c == "," and depth == 0:
-                items.append("".join(cur).strip())
-                cur = []
-            else:
-                cur.append(c)
-            i += 1
-        if cur:
-            items.append("".join(cur).strip())
-
-        fields = []
-        last_value = -1
-        for raw_item in items:
-            if not raw_item:
-                continue
-            # Strip attribute blocks and inline comments
-            stmt_clean = re.sub(r"\{[^}]*\}", " ", raw_item)
-            stmt_clean = re.sub(r"//.*?$", "", stmt_clean, flags=re.M)
-            stmt_clean = stmt_clean.strip().rstrip(",").strip()
-            if not stmt_clean:
-                continue
-            m_em = re.match(r"^([A-Za-z_]\w*)\s*(?::=\s*([^,]+))?$",
-                            stmt_clean)
-            if not m_em:
-                continue
-            mem_name = m_em.group(1)
-            mem_val_expr = m_em.group(2)
-            if mem_val_expr is not None:
-                expr = mem_val_expr.strip()
-                try:
-                    val = int(expr, 0)  # supports 0x.., decimal
-                except ValueError:
-                    val = last_value + 1
-            else:
-                val = last_value + 1
-            last_value = val
-            fields.append({"name": mem_name, "type": "INT",
-                           "initial": str(val), "value": val})
-        return {"name": name, "kind": "enum", "fields": fields,
-                "base": base or "INT"}
-    # Alias: TYPE x : SOMETYPE;
-    alias = paren.rstrip(";").strip()
-    return {"name": name, "kind": "alias", "fields": [], "base": alias}
-
-
-# ---------------------------------------------------------------------------
-# Type classification
-# ---------------------------------------------------------------------------
-
-def _base_type_name(typestr):
-    """Strip STRING/WSTRING length, return upper base token."""
-    t = typestr.strip()
-    m = re.match(r"(?i)^(W?STRING)\s*(\(.*\)|\[.*\])?\s*$", t)
-    if m:
-        return m.group(1).upper()
-    # POINTER TO X / REFERENCE TO X
-    m = re.match(r"(?i)^(POINTER|REFERENCE)\s+TO\b", t)
-    if m:
-        return m.group(1).upper()
-    return t.upper()
-
-
-def classify_type(typestr):
-    """Return a dict describing the type.
-
-    kinds:
-      scalar: {kind:'scalar', base}
-      array:  {kind:'array', elem, dims:[(lo,hi),...]}  (lo/hi are raw strings)
-      ref:    {kind:'ref', name}   (DUT/FB/enum/alias/unknown)
-    """
-    t = (typestr or "").strip()
-    m = re.match(r"(?is)^ARRAY\s*\[(.*?)\]\s*OF\s+(.+)$", t)
-    if m:
-        dims_raw = m.group(1)
-        elem = m.group(2).strip()
-        dims = []
-        for part in _split_dims(dims_raw):
-            rng = part.split("..")
-            if len(rng) == 2:
-                dims.append((rng[0].strip(), rng[1].strip()))
-            else:
-                dims.append((part.strip(), part.strip()))
-        return {"kind": "array", "elem": elem, "dims": dims}
-    base = _base_type_name(t)
-    if base in SCALAR_TYPES:
-        return {"kind": "scalar", "base": base}
-    return {"kind": "ref", "name": t}
-
-
-def _split_dims(dims_raw):
-    """Split multi-dim 'a..b, c..d' on top-level commas."""
-    parts = []
-    depth = 0
-    cur = []
-    for ch in dims_raw:
-        if ch in "([":
-            depth += 1
-        elif ch in ")]":
-            depth = max(0, depth - 1)
-        if ch == "," and depth == 0:
-            parts.append("".join(cur))
-            cur = []
-        else:
-            cur.append(ch)
-    if cur:
-        parts.append("".join(cur))
-    return parts
-
-
-# ---------------------------------------------------------------------------
 # Type registry
 # ---------------------------------------------------------------------------
 
@@ -848,3 +514,17 @@ def filter_rows_by_path(rows, path_filter):
 
 MAP_COLUMNS = ["path", "name", "type", "scope", "owner", "file", "line",
                "initial"]
+
+# Keep the engine's historical API names while making the shared parser the
+# implementation used by all public callers. The old definitions above remain
+# only as a compatibility reference for IronPython source consumers and can be
+# removed once the bridge no longer loads this module as a flat script.
+SCALAR_TYPES = set(_shared_declarations.SCALAR_TYPES)
+_split_statements = _shared_declarations._split_statements
+_split_top_level = _shared_declarations._split_top_level
+_parse_member_statement = _shared_declarations._parse_member_statement
+parse_var_blocks = _shared_declarations.parse_var_blocks
+parse_dut = _shared_declarations.parse_dut
+_base_type_name = _shared_declarations._base_type_name
+classify_type = _shared_declarations.classify_type
+_split_dims = _shared_declarations._split_dims

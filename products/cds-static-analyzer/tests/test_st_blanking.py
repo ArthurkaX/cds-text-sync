@@ -42,6 +42,14 @@ def test_blank_noise_blanks_terminated_and_unterminated_blocks():
     assert blanked.endswith(" " * len("(* still open"))
 
 
+def test_blank_noise_handles_nested_pragmas():
+    text = "x := 1; {attribute 'x' := '{nested}'} y := 2;"
+    blanked = blank_noise(text)
+    assert len(blanked) == len(text)
+    assert "y := 2;" in blanked
+    assert "nested" not in blanked
+
+
 def test_trim_strings_preserves_length_after_blanking():
     text = "msg := 'a//b;(*c*)';\n"
     double = trim_strings(blank_noise(text))

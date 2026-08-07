@@ -25,10 +25,10 @@ VAR
 END_VAR
 IMPLEMENTATION
 state := 42; // cts:here
-CASE state OF
+CASE state OF // cts:here
     Idle: HandleIdle();
     Running: HandleRunning();
-END_CASE; // cts:here
+END_CASE;
 END_PROGRAM
 ```
 

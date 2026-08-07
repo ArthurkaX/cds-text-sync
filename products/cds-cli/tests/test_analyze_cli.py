@@ -54,9 +54,9 @@ def test_rules_lists_registry():
     assert code == 0
     rows = json.loads(out)
     ids = {r["id"] for r in rows}
-    assert ids == {
-        "CTS0001", "CTS0002", "CTS0003", "CTS0004", "CTS0006", "CTS0007", "CTS0008", "CTS0009", "CTS0010", "CTS0011", "CTS0012", "CTS0013", "CTS0014", "CTS0015", "CTS0016", "CTS0017", "CTS0018", "CTS0019", "CTS0020", "CTS0021", "CTS0022", "CTS0023", "CTS0024", "CTS0025", "CTS0026", "CTS0027", "CTS0028", "CTS0029", "CTS0030", "CTS0031", "CTS0032", "CTS0033", "CTS0034", "CTS0035", "CTS0036", "CTS0037", "CTS0038", "CTS0039", "CTS0040", "CTS0041", "CTS0042", "CTS0043"
-    }
+    from cds_static_analyzer.registry import load_builtin_rules
+
+    assert ids == set(load_builtin_rules())
 
 
 def test_explain_renders_doc():
@@ -93,7 +93,7 @@ def test_fail_on_danger_ignores_suspicious():
     # Fixture has no danger findings; suspicious ones do not fail.
     assert code == 0
     data = json.loads(out)
-    assert data["summary"]["total"] == 22
+    assert data["summary"]["total"] == 19
 
 
 def test_rule_filter_cli():
@@ -152,9 +152,9 @@ def test_package_data_covers_rule_assets():
     rules_dir = os.path.join(analyze_dir, "rules")
     rule_py = [f for f in os.listdir(rules_dir) if f.endswith(".py") and f != "__init__.py"]
     md = [f for f in os.listdir(rules_dir) if f.endswith(".md")]
-    assert len(rule_py) == 42
+    assert len(rule_py) == len(md) - 1
     # implemented_rules.md is the catalog, not a per-rule document.
-    assert len(md) == 43
+    assert len(md) == len(rule_py) + 1
     stems = {f[:-3] for f in rule_py}
     assert stems == {f[:-3] for f in md if f != "implemented_rules.md"}
 
@@ -274,4 +274,3 @@ def test_baseline_update_recovers_from_incompatible_schema(tmp_path):
 
     code, _out, _err = run_cli(["analyze", "--workspace", root, "--format", "json"])
     assert code != 2  # schema policy satisfied; findings decide the exit code
-

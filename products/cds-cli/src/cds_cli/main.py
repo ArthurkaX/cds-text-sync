@@ -36,11 +36,10 @@ _ENGINE_DIR = (
 )
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
-
 # -- Re-exports from submodules (used by main() and kept accessible) ----------
 
 __all__ = [
-    # from cds_text_sync._cli_io
+    # from cds_cli._cli_io
     "_print_error",
     "_print_info",
     "_print_ok",
@@ -58,9 +57,9 @@ __all__ = [
     "ENGINE_CLI",
     "DAEMON_SCRIPT",
     "_CODESYS_CANDIDATES",
-    # from cds_text_sync._cli_parser
+    # from cds_cli._cli_parser
     "build_parser",
-    # from cds_text_sync._cli_handlers_*
+    # from cds_cli._cli_handlers_*
     "cmd_discover",
     "dispatch_project",
     "dispatch_pou",
@@ -209,7 +208,17 @@ def main():
         )
 
     elif args.command == "visu":
-        dispatch_visu(args)
+        try:
+            dispatch_visu(args)
+        except Exception as exc:
+            # Visu library commands expose failures as values; this is the
+            # process boundary where they become CLI diagnostics and status.
+            from cds_text_sync.visu.commands import VisuCommandError
+
+            if not isinstance(exc, VisuCommandError):
+                raise
+            _print_error(str(exc))
+            sys.exit(exc.exit_code)
 
     elif args.command == "analyze":
         from cds_static_analyzer import cli as analyze_cli

@@ -19,7 +19,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cds_text_sync import _cli_handlers_daemon as d
+from cds_cli import _cli_handlers_daemon as d
 
 
 @pytest.fixture
@@ -59,9 +59,9 @@ def test_import_dry_run_previews_compare(daemon_calls):
     assert daemon_calls == [("sync_compare_text", {})]
 
 
-def test_import_force_online_flag(daemon_calls):
+def test_import_does_not_allow_online_override(daemon_calls):
     d.dispatch_daemon(_args(command="import", dry_run=False, force_online=True))
-    assert daemon_calls == [("sync_import_text", {"force_online": True})]
+    assert daemon_calls == [("sync_import_text", {})]
 
 
 def test_plc_crc_builds_first(daemon_calls):
