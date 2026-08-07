@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_cli_handlers_visu.py -- Tests for ``cds_text_sync._cli_handlers_visu.dispatch_visu``.
+test_cli_handlers_visu.py -- Tests for ``cds_cli._cli_handlers_visu.dispatch_visu``.
 
 The visu subcommand dispatch was extracted verbatim from the main() CLI
 dispatcher. These tests pin the routing contract: which cds_text_sync.visu.commands
@@ -18,7 +18,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cds_text_sync import _cli_handlers_visu
+from cds_cli import _cli_handlers_visu
 from cds_text_sync.visu import commands as visu_cmds
 
 
@@ -145,7 +145,7 @@ def test_a_screen_named_with_name_is_pointed_at_screen(calls, capsys):
 
 def _no_daemon(monkeypatch, record):
     """Make the daemon call fail the way an absent IDE does, recording timeout."""
-    from cds_text_sync import _cli_handlers_vars
+    from cds_cli import _cli_handlers_vars
 
     def _fail(method, params, timeout=30):
         record["timeout"] = timeout
@@ -172,7 +172,7 @@ def test_optional_project_view_does_not_wait_the_full_daemon_timeout(monkeypatch
 
 def test_project_commands_still_report_a_missing_daemon(monkeypatch, capsys):
     """The quiet path is opt-in: the default still explains itself."""
-    from cds_text_sync import _cli_handlers_vars
+    from cds_cli import _cli_handlers_vars
 
     _no_daemon(monkeypatch, {})
     with pytest.raises(SystemExit):

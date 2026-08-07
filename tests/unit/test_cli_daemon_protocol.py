@@ -188,7 +188,7 @@ def _sent_method_literals(py_path):
 
 def test_daemon_methods_table_is_dispatchable(daemon):
     """Every value in _cli_handlers_daemon._DAEMON_METHODS is a daemon handler."""
-    from cds_text_sync._cli_handlers_daemon import _DAEMON_METHODS
+    from cds_cli._cli_handlers_daemon import _DAEMON_METHODS
 
     resolvable = _resolvable_methods(daemon)
     missing = {cmd: m for cmd, m in _DAEMON_METHODS.items() if m not in resolvable}

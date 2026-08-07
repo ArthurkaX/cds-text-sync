@@ -1,21 +1,17 @@
 """
 blanking.py - Comment/string blanking helpers for the analyzer.
 
-These mirror the engine's ``variable_map._blank_noise`` and
-``call_tree._trim_string_literals`` without dragging the flat-import engine
-modules into the analyzer. ``Section`` (st/body.py) applies them once per
-section; only a rule that must inspect comment content imports them directly.
+The shared implementation lives in :mod:`st_text.blanking` so the analyzer
+and the CPython engine use the same lexical behavior without depending on one
+another.
 """
 
 from __future__ import annotations
 
+__all__ = ["blank_noise", "trim_strings", "comment_spans"]
+
 
 def blank_noise(text):
-    """Replace comments and pragmas with spaces, preserving offsets/newlines.
-
-    String literals are respected so a // or (* inside a string is not
-    treated as a comment.
-    """
     out = []
     i = 0
     n = len(text)
@@ -48,17 +44,19 @@ def blank_noise(text):
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
             if i < n:
-                # "*)": two characters, so two spaces keep the blanked text
-                # the same length as the raw text (offsets stay 1:1).
                 out.append("  ")
                 i += 2
             continue
         if c == "{":
-            while i < n and text[i] != "}":
+            depth = 1
+            out.append(" ")
+            i += 1
+            while i < n and depth > 0:
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
                 out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            if i < n:
-                out.append(" ")
                 i += 1
             continue
         out.append(c)
@@ -67,7 +65,6 @@ def blank_noise(text):
 
 
 def trim_strings(text):
-    """Replace string-literal contents with spaces (delimiters kept)."""
     out = []
     i = 0
     n = len(text)

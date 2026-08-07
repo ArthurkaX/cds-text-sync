@@ -33,7 +33,7 @@ def copy_fixture(dest):
 
 def run_cli(argv):
     """Run the CLI in-process, returning (exit_code, stdout, stderr)."""
-    from cds_text_sync.main import main
+    from cds_cli.main import main
 
     old_argv = sys.argv
     sys.argv = ["cts"] + list(argv)

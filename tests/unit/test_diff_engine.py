@@ -6,8 +6,8 @@ Uses synthetic ProjectModel instances with small helper functions.
 """
 
 import xml.etree.ElementTree as ET
-from _project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
-from diff_engine import DiffEngine
+from cds_text_sync.engine._project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
+from cds_text_sync.engine.diff_engine import DiffEngine
 
 # ===================================================================
 # Helpers

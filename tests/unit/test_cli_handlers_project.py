@@ -17,7 +17,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cds_text_sync import _cli_handlers_project as h
+from cds_cli import _cli_handlers_project as h
 
 
 @pytest.fixture
@@ -118,7 +118,7 @@ def test_pou_delete_warns(calls, capsys):
 
 def test_every_deprecated_action_maps_to_a_real_top_level_command():
     # Guard: the replacement strings must name commands that actually exist.
-    from cds_text_sync._cli_parser import build_parser
+    from cds_cli._cli_parser import build_parser
 
     parser = build_parser()
     sub = next(

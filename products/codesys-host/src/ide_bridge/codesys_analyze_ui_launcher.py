@@ -115,7 +115,7 @@ def main(params=None, caller_globals=None):
     command = [
         _python_command(),
         "-m",
-        "cds_text_sync.main",
+        "cds_cli.main",
         "ui",
         "--workspace",
         sync_folder,

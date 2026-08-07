@@ -7,7 +7,7 @@ parses but contains no EntryList. Previously line 193 did `return model`
 before `model` was defined, raising NameError on that path.
 """
 
-from snapshot_reader import SnapshotReader
+from cds_text_sync.engine.snapshot_reader import SnapshotReader
 
 
 def test_read_returns_none_when_no_entry_list(tmp_path):

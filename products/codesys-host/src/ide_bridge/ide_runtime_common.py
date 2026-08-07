@@ -36,6 +36,12 @@ if not os.path.isdir(_ENGINE_DIR):
 if _ENGINE_DIR not in sys.path:
     sys.path.insert(0, _ENGINE_DIR)
 
+_SHARED_DIR = os.path.normpath(os.path.join(
+    _BRIDGE_DIR, "..", "..", "..", "..", "shared", "src"
+))
+if os.path.isdir(_SHARED_DIR) and _SHARED_DIR not in sys.path:
+    sys.path.insert(0, _SHARED_DIR)
+
 from _project_layout import resolve_layout
 from _project_settings import load_project_settings
 

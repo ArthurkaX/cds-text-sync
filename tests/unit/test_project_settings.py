@@ -6,7 +6,7 @@ settings keys (coercion, aliases, defaults, round-trip).
 
 import json
 
-from _project_settings import (
+from cds_text_sync.engine._project_settings import (
     SYNC_MODE_TEXT_FIRST,
     SYNC_MODE_XML_FIRST,
     default_project_settings,

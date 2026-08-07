@@ -22,7 +22,7 @@ import json
 
 import pytest
 
-from cds_text_sync._cli_io import (
+from cds_cli._cli_io import (
     MAX_TEXT_LINES,
     MAX_TEXT_VALUE_CHARS,
     _format_output,

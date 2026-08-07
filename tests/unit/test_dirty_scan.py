@@ -9,10 +9,10 @@ import os
 
 import xml.etree.ElementTree as ET
 
-from _dirty_scan import dirty_view_paths, scan_dirty
-from _project_model import ProjectModel, ProjectNode
-from folder_writer import FolderWriter
-from xml_helpers import sha1_hex
+from cds_text_sync.engine._dirty_scan import dirty_view_paths, scan_dirty
+from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+from cds_text_sync.engine.folder_writer import FolderWriter
+from cds_text_sync.engine.xml_helpers import sha1_hex
 
 
 def _write_file(base_path, relative_path, content, newline=None):

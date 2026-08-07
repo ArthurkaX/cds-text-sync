@@ -127,14 +127,14 @@ def test_recompiling_drops_what_the_author_deleted(tmp_path):
 def test_from_svg_missing_screen_exits(tmp_path):
     pv = str(tmp_path)
     svg_path = _write_svg(pv)
-    with pytest.raises(SystemExit):
+    with pytest.raises(commands.VisuCommandError):
         commands.from_svg(pv, svg_path, "NoSuchScreen", "", None, None, False, "")
 
 
 def test_from_svg_missing_svg_exits(tmp_path):
     pv = str(tmp_path)
     _make_screen(pv, "Screen1")
-    with pytest.raises(SystemExit):
+    with pytest.raises(commands.VisuCommandError):
         commands.from_svg(
             pv, os.path.join(pv, "absent.svg"), "Screen1", "", None, None, False, "",
         )
@@ -152,10 +152,10 @@ def test_from_svg_without_a_screen_says_so(tmp_path, capsys):
     _make_screen(pv, "Screen1")
     svg_path = _write_svg(pv)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(commands.VisuCommandError) as exc_info:
         commands.from_svg(pv, svg_path, "", "", None, None, False, "")
 
-    message = capsys.readouterr().err
+    message = str(exc_info.value)
     assert "--screen" in message
     assert ".xml" not in message
 
@@ -167,10 +167,10 @@ def test_create_screen_refuses_to_clobber_and_says_how(tmp_path, capsys):
     svg_path = _write_svg(pv)
 
     commands.from_svg(pv, svg_path, "", "", None, "", True, "Made")
-    with pytest.raises(SystemExit):
+    with pytest.raises(commands.VisuCommandError) as exc_info:
         commands.from_svg(pv, svg_path, "", "", None, "", True, "Made")
 
-    assert "--replace" in capsys.readouterr().err
+    assert "--replace" in str(exc_info.value)
 
 
 def test_replace_recompiles_a_screen_and_keeps_its_identity(tmp_path):

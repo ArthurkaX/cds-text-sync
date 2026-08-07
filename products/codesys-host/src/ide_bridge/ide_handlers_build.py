@@ -46,8 +46,8 @@ def _cmd_export(params):
         os.close(fd)
         try:
             os.remove(tmp_path)
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Export temporary file cleanup failed: {0}".format(error))
         try:
             project.export_native(objects, tmp_path, recursive=False)
             from ide_online_helpers import atomic_write
@@ -60,8 +60,8 @@ def _cmd_export(params):
             if os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
-                except Exception:
-                    pass
+                except Exception as error:
+                    _log("Export failure cleanup failed: {0}".format(error))
             raise
         size = os.path.getsize(out_path)
         _log("Exported snapshot: {0} ({1} bytes)".format(out_path, size))
@@ -100,8 +100,8 @@ def _cmd_build(params):
         app = None
         try:
             app = project.active_application
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Could not read active application: {0}".format(error))
         if app is None:
             for child in project.get_children(True):
                 if hasattr(child, "is_application"):
@@ -109,16 +109,16 @@ def _cmd_build(params):
                         if child.is_application:
                             app = child
                             break
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        _log("Could not inspect project child application: {0}".format(error))
         if app is None:
             return {"ok": False, "error": "No active application found to build."}
 
         app_name = "?"
         try:
             app_name = app.get_name()
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Could not read application name: {0}".format(error))
 
         # Clear build messages before build
         try:
@@ -127,8 +127,8 @@ def _cmd_build(params):
         except Exception:
             try:
                 system_obj.clear_messages(BUILD_CATEGORY_GUID)
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not clear build messages with fallback GUID: {0}".format(error))
 
         # Build
         start = time.time()
@@ -160,8 +160,8 @@ def _cmd_build(params):
                         obj_ref = getattr(msg, "object", None)
                         if obj_ref:
                             obj_name = str(obj_ref.get_name())
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        _log("Could not resolve build message object name: {0}".format(error))
                     msg_id = ""
                     try:
                         prefix = str(getattr(msg, "prefix", ""))
@@ -170,8 +170,8 @@ def _cmd_build(params):
                             msg_id = "{0}{1:04d}".format(prefix, number)
                         else:
                             msg_id = prefix
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        _log("Could not resolve build message identifier: {0}".format(error))
                     messages.append(
                         {
                             "severity": severity,
@@ -180,10 +180,10 @@ def _cmd_build(params):
                             "object": obj_name,
                         }
                     )
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as error:
+                    _log("Could not decode one build message: {0}".format(error))
+        except Exception as error:
+            _log("Could not collect build messages: {0}".format(error))
 
         result = {
             "ok": error_count == 0,
@@ -263,8 +263,8 @@ def _cmd_export_csv(params):
                             ):
                                 val_str = sv
                                 break
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        _log("Could not read application-tree value: {0}".format(error))
 
             if not pattern or pattern in full_path.lower() or pattern in name.lower():
                 rows.append((full_path, val_str))
@@ -272,8 +272,8 @@ def _cmd_export_csv(params):
             try:
                 for child in list(obj.get_children()):
                     _walk(child, full_path, depth + 1)
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not walk application-tree node: {0}".format(error))
 
         _walk(app_obj)
 
@@ -441,8 +441,8 @@ def _cmd_export_st(params):
                     child_name = _obj_name(child) or ""
                     child_folder = folder + "/" + child_name if folder else child_name
                     _walk_export(child, child_folder)
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not walk export node: {0}".format(error))
 
         _walk_export(project)
 
@@ -533,8 +533,8 @@ def _cmd_application_tree(params):
                             else:
                                 node["value"] = str_val
                             break
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        _log("Could not read application-tree child value: {0}".format(error))
 
             try:
                 children = list(obj.get_children())
@@ -546,8 +546,8 @@ def _cmd_application_tree(params):
                             child_list.append(child_node)
                     if child_list:
                         node["children"] = child_list
-            except Exception:
-                pass
+            except Exception as error:
+                _log("Could not build application-tree node: {0}".format(error))
 
             return node
 

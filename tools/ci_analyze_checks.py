@@ -25,7 +25,7 @@ import zipfile
 
 def check_selftest():
     """Every rule must pass its own good/bad documentation examples."""
-    from cds_text_sync.main import main
+    from cds_cli.main import main
 
     old_argv = sys.argv
     sys.argv = ["cts", "analyze", "selftest"]

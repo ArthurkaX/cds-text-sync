@@ -215,8 +215,8 @@ def _get_application_name(app):
                 value = value()
             if value:
                 return str(value)
-        except Exception:
-            pass
+        except Exception as error:
+            _log("Could not read application name attribute {0}: {1}".format(attr, error))
     return ""
 
 
@@ -228,18 +228,18 @@ def _find_application_by_name(project, name):
         app = project.active_application
         if app is not None and _get_application_name(app) == name:
             return app
-    except Exception:
-        pass
+    except Exception as error:
+        _log("Could not read active application while resolving test target: {0}".format(error))
     try:
         for child in project.get_children(True):
             try:
                 if hasattr(child, "is_application") and child.is_application:
                     if _get_application_name(child) == name:
                         return child
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as error:
+                _log("Could not inspect project child while resolving test target: {0}".format(error))
+    except Exception as error:
+        _log("Could not enumerate project applications for test target: {0}".format(error))
     return None
 
 
@@ -260,8 +260,8 @@ def _prepare_cicd_plan(project, plan):
     active_name = ""
     try:
         active_name = _get_application_name(project.active_application)
-    except Exception:
-        pass
+    except Exception as error:
+        _log("Could not read active application name for CICD plan: {0}".format(error))
     if active_name and active_name != application:
         try:
             project.active_application = target_app

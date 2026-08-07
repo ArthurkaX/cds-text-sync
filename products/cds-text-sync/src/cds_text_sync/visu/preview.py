@@ -217,115 +217,91 @@ def _text_node(params, x, y, w, h, color, size, content, weight=None, inset=0):
     )
 
 
+def _render_rectangle(params, context):
+    x, y, w, h, paint = context[:5]
+    shape = (params.get("shape") or "rectangle").lower()
+    if shape == "ellipse":
+        return ['<ellipse cx="{0:.1f}" cy="{1:.1f}" rx="{2:.1f}" ry="{3:.1f}" {4}/>'.format(
+            x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0, paint)]
+    radius = _num(params, "corner_radius") if shape == "rounded" else 0
+    return ['<rect x="{0}" y="{1}" width="{2}" height="{3}" rx="{4}" {5}/>'.format(
+        x, y, w, h, radius, paint)]
+
+
+def _render_line(params, context):
+    x, y, w, h, _paint_value = context[:5]
+    fill, _fill_a, frame = context[5], context[6], context[7]
+    colour = frame or fill or "#000000"
+    return ['<line x1="{0}" y1="{1}" x2="{2}" y2="{3}" stroke="{4}" stroke-width="1"/>'.format(
+        _num(params, "x1", x), _num(params, "y1", y),
+        _num(params, "x2", x + w), _num(params, "y2", y + h), colour)]
+
+
+def _render_label(params, context):
+    x, y, w, h, paint, fill, fill_a, frame, frame_a, font, theme_colors = context
+    out = []
+    if (fill and fill_a > 0) or (frame and frame_a > 0):
+        out.append('<rect x="{0}" y="{1}" width="{2}" height="{3}" {4}/>'.format(x, y, w, h, paint))
+    out.append(_text_node(params, x, y, w, h, font, _num(params, "font_size", 12), params.get("text", "")))
+    return out
+
+
+def _render_button(params, context):
+    x, y, w, h, paint, _fill, _fill_a, _frame, _frame_a, font, _theme = context
+    caption = dict(params, h_align="HCENTER", v_align="VCENTER")
+    return [
+        '<rect x="{0}" y="{1}" width="{2}" height="{3}" rx="2" {4}/>'.format(x, y, w, h, paint),
+        _text_node(caption, x, y, w, h, font, _num(params, "font_size", 12), params.get("text", "")),
+    ]
+
+
+def _render_textfield(params, context):
+    x, y, w, h, paint, _fill, _fill_a, _frame, _frame_a, font, _theme = context
+    shown = params.get("text") or ("%s" if params.get("text_var") else "")
+    return [
+        '<rect x="{0}" y="{1}" width="{2}" height="{3}" {4}/>'.format(x, y, w, h, paint),
+        _text_node(params, x, y, w, h, font, _num(params, "font_size", 12), shown, inset=2),
+    ]
+
+
+def _render_lamp(params, context):
+    x, y, w, h, _paint, _fill, _fill_a, _frame, _frame_a, _font, theme_colors = context
+    colour = _LAMP_HEX.get(params.get("style_role"), "#A8AEB6")
+    return ['<circle cx="{0:.1f}" cy="{1:.1f}" r="{2:.1f}" fill="{3}" stroke="{4}" stroke-width="1"/>'.format(
+        x + w / 2.0, y + h / 2.0, min(w, h) / 2.0,
+        colour, _role_hex(theme_colors, "frame", "#808080"))]
+
+
+def _render_placeholder(params, context):
+    x, y, w, h, paint, _fill, _fill_a, _frame, _frame_a, _font, theme_colors = context
+    type_name = params.get("type", "control")
+    centred = dict(params, h_align="HCENTER", v_align="VCENTER")
+    return [
+        '<rect x="{0}" y="{1}" width="{2}" height="{3}" {4}/>'.format(x, y, w, h, paint),
+        _text_node(centred, x, y, w, h, _role_hex(theme_colors, "text.muted", "#666666"), 11, type_name),
+    ]
+
+
+_ELEMENT_RENDERERS = {
+    "rectangle": _render_rectangle,
+    "line": _render_line,
+    "label": _render_label,
+    "button": _render_button,
+    "textfield": _render_textfield,
+    "lamp": _render_lamp,
+}
+
+
 def _render_element(spec, theme_colors, scheme="light"):
     """Return the SVG markup for one parsed element (may be several nodes)."""
     type_name = spec.get("type")
-    params = spec.get("params", {})
+    params = dict(spec.get("params", {}))
+    params["type"] = type_name
     x, y = _num(params, "x"), _num(params, "y")
     w, h = _num(params, "width"), _num(params, "height")
     fill, fill_a, frame, frame_a, font = _resolved_colors(spec, theme_colors, scheme)
-    paint = _paint(fill, fill_a, frame, frame_a)
-    out = []
-
-    if type_name == "rectangle":
-        shape = (params.get("shape") or "rectangle").lower()
-        if shape == "ellipse":
-            out.append(
-                '<ellipse cx="{0:.1f}" cy="{1:.1f}" rx="{2:.1f}" ry="{3:.1f}" {4}/>'.format(
-                    x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0, paint
-                )
-            )
-        else:
-            radius = _num(params, "corner_radius") if shape == "rounded" else 0
-            out.append(
-                '<rect x="{0}" y="{1}" width="{2}" height="{3}" rx="{4}" {5}/>'.format(
-                    x, y, w, h, radius, paint
-                )
-            )
-
-    elif type_name == "line":
-        colour = frame or fill or _role_hex(theme_colors, "divider", "#000000")
-        out.append(
-            '<line x1="{0}" y1="{1}" x2="{2}" y2="{3}" stroke="{4}" '
-            'stroke-width="1"/>'.format(
-                _num(params, "x1", x),
-                _num(params, "y1", y),
-                _num(params, "x2", x + w),
-                _num(params, "y2", y + h),
-                colour,
-            )
-        )
-
-    elif type_name == "label":
-        if (fill and fill_a > 0) or (frame and frame_a > 0):
-            out.append(
-                '<rect x="{0}" y="{1}" width="{2}" height="{3}" {4}/>'.format(
-                    x, y, w, h, paint
-                )
-            )
-        out.append(
-            _text_node(
-                params, x, y, w, h, font, _num(params, "font_size", 12),
-                params.get("text", ""),
-            )
-        )
-
-    elif type_name == "button":
-        out.append(
-            '<rect x="{0}" y="{1}" width="{2}" height="{3}" rx="2" {4}/>'.format(
-                x, y, w, h, paint
-            )
-        )
-        caption = dict(params, h_align="HCENTER", v_align="VCENTER")
-        out.append(
-            _text_node(caption, x, y, w, h, font, _num(params, "font_size", 12),
-                       params.get("text", ""))
-        )
-
-    elif type_name == "textfield":
-        out.append(
-            '<rect x="{0}" y="{1}" width="{2}" height="{3}" {4}/>'.format(
-                x, y, w, h, paint
-            )
-        )
-        shown = params.get("text") or ""
-        if not shown and params.get("text_var"):
-            shown = "%s"
-        out.append(
-            _text_node(
-                params, x, y, w, h, font, _num(params, "font_size", 12), shown,
-                inset=2,
-            )
-        )
-
-    elif type_name == "lamp":
-        colour = _LAMP_HEX.get(params.get("style_role"), "#A8AEB6")
-        r = min(w, h) / 2.0
-        out.append(
-            '<circle cx="{0:.1f}" cy="{1:.1f}" r="{2:.1f}" fill="{3}" '
-            'stroke="{4}" stroke-width="1"/>'.format(
-                x + w / 2.0, y + h / 2.0, r, colour,
-                _role_hex(theme_colors, "frame", "#808080"),
-            )
-        )
-
-    else:
-        # combobox / alarm-banner / image-switcher / frame and anything added
-        # later: a labelled placeholder is honest about "a native control goes
-        # here" without pretending to know how the style paints it.
-        out.append(
-            '<rect x="{0}" y="{1}" width="{2}" height="{3}" {4}/>'.format(
-                x, y, w, h, paint
-            )
-        )
-        centred = dict(params, h_align="HCENTER", v_align="VCENTER")
-        out.append(
-            _text_node(centred, x, y, w, h,
-                       _role_hex(theme_colors, "text.muted", "#666666"), 11, type_name)
-        )
-
-    return out
-
+    context = (x, y, w, h, _paint(fill, fill_a, frame, frame_a), fill, fill_a, frame, frame_a, font, theme_colors)
+    return _ELEMENT_RENDERERS.get(type_name, _render_placeholder)(params, context)
 
 # ---------------------------------------------------------------------------
 # Public API

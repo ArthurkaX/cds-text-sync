@@ -113,6 +113,33 @@ def _get_cached_online_app():
         state["online_target_app"] = None
         return None, None
 
+
+def is_online_session_active():
+    """Return whether the daemon currently owns an active online session.
+
+    This deliberately inspects only the cached session. It must not create a
+    connection or prompt/login as a side effect of a safety check.
+    """
+    online_app, _target_app = _get_cached_online_app()
+    if online_app is None:
+        return False
+    for attr in ("is_connected", "is_online"):
+        if not hasattr(online_app, attr):
+            continue
+        try:
+            value = getattr(online_app, attr)
+            value = value() if callable(value) else value
+            if isinstance(value, bool):
+                return value
+            lowered = str(value).lower()
+            if lowered in ("true", "connected", "online"):
+                return True
+            if lowered in ("false", "disconnected", "offline"):
+                return False
+        except Exception:
+            continue
+    return True
+
 def find_device_with_capability(project, attr_name):
     """Find the first child of project that supports a given capability.
     

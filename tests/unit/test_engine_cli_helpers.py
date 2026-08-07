@@ -12,7 +12,7 @@ import sys
 
 import pytest
 
-from engine_cli import _configure_stdio_utf8, _filter_diff_result, _filter_guids, _log
+from cds_text_sync.engine.engine_cli import _configure_stdio_utf8, _filter_diff_result, _filter_guids, _log
 
 # ===================================================================
 # _filter_guids

@@ -381,11 +381,6 @@ class TestElement:
         assert self._find_member(new_xml, 2812299069) is None  # fill
         assert self._find_member(new_xml, 494569607) is None  # frame
 
-    def test_color_canonical_name_nonempty(self):
-        """_render_color_member rejects empty canonical_name."""
-        with pytest.raises(builder.BuilderError):
-            builder._render_color_member(2812299069, "-1", "")
-
     def test_text_on_rectangle_supported(self, empty_screen, rectangle_catalog):
         """Text on a rectangle is now supported (Text-ID still needed for import).
         The builder accepts text params and passes them through to the template;

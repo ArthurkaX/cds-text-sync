@@ -9,7 +9,7 @@ on-disk tree and import resolution are locale-independent -- and must leave an
 already-English snapshot untouched.
 """
 
-from snapshot_reader import SnapshotReader
+from cds_text_sync.engine.snapshot_reader import SnapshotReader
 
 _TEMPLATE = u"""<?xml version="1.0" encoding="utf-8"?>
 <Project>

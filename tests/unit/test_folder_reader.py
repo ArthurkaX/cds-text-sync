@@ -10,8 +10,8 @@ import json
 import os
 
 import pytest
-from folder_reader import FolderReader, _detect_st_kind, _split_st_create_content
-from xml_helpers import sha1_hex
+from cds_text_sync.engine.folder_reader import FolderReader, _detect_st_kind, _split_st_create_content
+from cds_text_sync.engine.xml_helpers import sha1_hex
 
 # ===================================================================
 # _split_st_create_content

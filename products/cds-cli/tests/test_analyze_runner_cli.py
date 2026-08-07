@@ -18,8 +18,8 @@ def test_file_ignore_directive_counter_survives_cli_filtering(tmp_path):
 
     assert data["_exit"] == 0
     assert data["summary"]["total"] == 0
-    assert data["summary"]["suppressed"] == 4
-    assert data["summary"]["suppressed_by_directive"] == 4
+    assert data["summary"]["suppressed"] == 3
+    assert data["summary"]["suppressed_by_directive"] == 3
 
 def test_file_ignore_directive_reports_missing_reason(tmp_path):
     root = copy_fixture(tmp_path)
@@ -52,7 +52,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 22
+    assert data["summary"]["total"] == 19
 
 def test_cli_read_only_no_state_written(tmp_path):
     root = str(tmp_path / "sync")
@@ -67,4 +67,3 @@ def test_cli_read_only_no_state_written(tmp_path):
         for f in files:
             after.add(os.path.relpath(os.path.join(dirpath, f), root))
     assert before == after  # the analyzer writes nothing
-

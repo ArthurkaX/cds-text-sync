@@ -69,17 +69,15 @@ cts build --timeout 120
 | Flag | Meaning |
 | --- | --- |
 | `--dry-run` | Show what would change without applying (runs compare). |
-| `--force-online` | Skip the offline preflight check; use only when you are sure the IDE is offline. |
 
 Rules:
 
 - `export` is destructive for local text files: it refreshes `project-view/`
   from the IDE state.
 - `import` treats disk as the source of truth.
-- Adding new objects requires the IDE project to be offline. Run
-  `disconnect` before `import` when new GVL, DUT, POU, or folder objects were
-  added on disk. If `disconnect` does not clear the online state, use
-  `cts import --force-online` or `cts raw sync_import_text force_online=true`.
+- `import` is refused whenever the IDE is connected to a PLC/runtime. Run
+  `disconnect` first; there is no override because applying an offline project
+  patch while online can silently fail to create objects.
 - `build` compiles in the IDE only. It does not guarantee that the PLC is
   running the new code.
 
@@ -356,7 +354,7 @@ and debugging.
 
 | Command | Meaning |
 | --- | --- |
-| `raw METHOD [--key value ...]` | Send a daemon method directly. Useful for overrides such as `force_online=true` or a custom `timeout`. |
+| `raw METHOD [--key value ...]` | Send a daemon method directly. Useful for diagnostic parameters or a custom `timeout`. |
 | `rp METHOD [--key value ...]` | Deprecated alias for `raw`. |
 | `engine export|import|compare|validate|resources|call-tree ...` | Run `engine_cli.py` directly without CODESYS. |
 
@@ -365,7 +363,7 @@ Examples:
 ```bash
 cts raw help --timeout 10
 cts raw application_tree --flat --output C:/Temp/tree.json --timeout 120
-cts raw sync_import_text force_online=true --timeout 120
+cts raw sync_import_text --timeout 120
 cts engine validate --project-root C:/Work/Project
 cts engine call-tree --project-root ./MyProject --output call-tree.json
 cts engine call-tree --project-root ./MyProject --snapshot .dump/IDE.xml --output call-tree.json
@@ -432,11 +430,11 @@ Common failures:
 Use Windows Python when calling from WSL:
 
 ```bash
-python.exe -m cds_text_sync.main status --timeout 10
+python.exe -m cds_cli.main status --timeout 10
 ```
 
 If the installed command is not found, use the source form:
 
 ```bash
-python -m cds_text_sync.main status --timeout 10
+python -m cds_cli.main status --timeout 10
 ```

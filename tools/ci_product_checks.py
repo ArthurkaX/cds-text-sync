@@ -47,7 +47,29 @@ def _test_paths(name: str, path: Path) -> list[str]:
     return paths
 
 
+def _owned_tests(name: str, manifest: Path) -> set[Path]:
+    """Expand one product's test ownership patterns to absolute paths."""
+    owned = set()
+    for pattern in _test_paths(name, manifest):
+        owned.update(path.resolve() for path in (manifest.parent / pattern).parent.glob(Path(pattern).name))
+    return owned
+
+
+def _candidate_tests() -> set[Path]:
+    """Return executable test files that must have exactly one owner."""
+    candidates = set()
+    for path in (ROOT / "tests").glob("unit/test_*.py"):
+        candidates.add(path.resolve())
+    for path in (ROOT / "tests").glob("regression/*_regression.py"):
+        candidates.add(path.resolve())
+    for product in (ROOT / "products").iterdir():
+        for path in (product / "tests").glob("test_*.py"):
+            candidates.add(path.resolve())
+    return candidates
+
+
 def check_manifests() -> None:
+    ownership = {}
     for name, manifest in PRODUCTS.items():
         if not manifest.is_file():
             raise SystemExit(f"{name}: missing manifest {manifest}")
@@ -55,6 +77,17 @@ def check_manifests() -> None:
             matches = list((manifest.parent / pattern).parent.glob(Path(pattern).name))
             if not matches:
                 raise SystemExit(f"{name}: test ownership pattern matches nothing: {pattern}")
+        for test in _owned_tests(name, manifest):
+            ownership.setdefault(test, []).append(name)
+
+    duplicate = {path: names for path, names in ownership.items() if len(names) != 1}
+    missing = _candidate_tests() - ownership.keys()
+    if duplicate:
+        details = "; ".join(f"{path.relative_to(ROOT)}: {names}" for path, names in duplicate.items())
+        raise SystemExit(f"test ownership is not exclusive: {details}")
+    if missing:
+        details = ", ".join(str(path.relative_to(ROOT)) for path in sorted(missing))
+        raise SystemExit(f"test ownership is incomplete: {details}")
     print(f"product manifests OK: {len(PRODUCTS)} products have build/runtime and test ownership")
 
 

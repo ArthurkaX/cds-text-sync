@@ -16,11 +16,43 @@ import re
 import time
 
 from variable_map import (
+    _blank_noise,
     detect_owner_kind,
     iter_st_files,
     parse_var_blocks,
     pou_name,
 )
+
+_blank_comments = _blank_noise
+
+
+def _trim_string_literals(text: str) -> str:
+    """Replace string contents with spaces while preserving offsets."""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c in ("'", '"'):
+            quote = c
+            out.append(c)
+            i += 1
+            while i < n:
+                d = text[i]
+                if d == quote:
+                    if i + 1 < n and text[i + 1] == quote:
+                        out.append(" ")
+                        i += 2
+                        continue
+                    out.append(c)
+                    i += 1
+                    break
+                out.append(" ")
+                i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -105,98 +137,6 @@ def load_system_catalog(path: str | None = None) -> dict:
         "functions": {n.upper() for n in data.get("functions", [])},
         "function_blocks": {n.upper() for n in data.get("function_blocks", [])},
     }
-
-
-def _blank_comments(text: str) -> str:
-    """Replace comments and pragmas with spaces, preserving line numbers.
-
-    This is a simplified version of variable_map._blank_noise that handles
-    line comments (//), block comments (*...*), and pragmas ({...}).
-    String literals are preserved so separators inside strings are safe.
-    """
-    out: list[str] = []
-    i = 0
-    n = len(text)
-    while i < n:
-        c = text[i]
-        nxt = text[i + 1] if i + 1 < n else ""
-        # String literal
-        if c in ("'", '"'):
-            quote = c
-            out.append(c)
-            i += 1
-            while i < n:
-                d = text[i]
-                out.append(d)
-                if d == quote:
-                    if i + 1 < n and text[i + 1] == quote:
-                        out.append(text[i + 1])
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                i += 1
-            continue
-        # Line comment //
-        if c == "/" and nxt == "/":
-            while i < n and text[i] != "\n":
-                out.append(" ")
-                i += 1
-            continue
-        # Block comment (* ... *)
-        if c == "(" and nxt == "*":
-            while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == ")"):
-                out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            if i < n:
-                out.append("  ")
-                i += 2
-            continue
-        # Pragmas { ... }
-        if c == "{":
-            depth = 1
-            out.append(" ")
-            i += 1
-            while i < n and depth > 0:
-                if text[i] == "{":
-                    depth += 1
-                elif text[i] == "}":
-                    depth -= 1
-                out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
-
-
-def _trim_string_literals(text: str) -> str:
-    """Replace string-literal contents with spaces to reduce false matches."""
-    out: list[str] = []
-    i = 0
-    n = len(text)
-    while i < n:
-        c = text[i]
-        if c in ("'", '"'):
-            quote = c
-            out.append(c)
-            i += 1
-            while i < n:
-                d = text[i]
-                if d == quote:
-                    if i + 1 < n and text[i + 1] == quote:
-                        out.append(" ")
-                        i += 2
-                        continue
-                    out.append(c)
-                    i += 1
-                    break
-                out.append(" ")
-                i += 1
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
 
 
 def _clean_for_calls(text: str) -> str:

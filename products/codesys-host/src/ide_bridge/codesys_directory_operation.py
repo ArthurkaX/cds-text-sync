@@ -15,7 +15,7 @@ from __future__ import print_function
 import os
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import resolve_projects
+from codesys_utils import log_info, resolve_projects
 
 
 def main(params=None, runtime=None):
@@ -52,8 +52,8 @@ def set_base_directory(runtime, projects_obj):
         props = info.values if hasattr(info, "values") else info
         if "cds-sync-folder" in props:  # Dictionary-like access
             initial_dir = props["cds-sync-folder"]
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not read existing sync-folder property: " + str(error))
 
     # Offer choice: Browse or Manual Input
     from codesys_ui import show_directory_choice_dialog
@@ -164,8 +164,8 @@ def set_base_directory(runtime, projects_obj):
         try:
             import socket
             props["cds-sync-pc"] = socket.gethostname()
-        except Exception:
-            pass
+        except Exception as error:
+            log_info("Could not record sync-directory host name: " + str(error))
 
         if is_relative:
             print("Success: Project sync directory set to relative path: " + selected_path)
@@ -182,8 +182,8 @@ def set_base_directory(runtime, projects_obj):
     try:
         from codesys_utils import update_application_count_flag
         update_application_count_flag()
-    except Exception:
-        pass
+    except Exception as error:
+        log_info("Could not update application-count flag: " + str(error))
 
     # Check _metadata.json for project path mismatch (only for absolute paths)
     if not is_relative:
@@ -200,8 +200,8 @@ def set_base_directory(runtime, projects_obj):
                 current_path = ""
                 try:
                     current_path = proj.path
-                except Exception:
-                    pass
+                except Exception as error:
+                    log_info("Could not read current project path: " + str(error))
 
                 if current_path and json_path and json_path != current_path:
                     message = "Metadata Mismatch Detected!\n\n"
@@ -215,8 +215,8 @@ def set_base_directory(runtime, projects_obj):
                         data['project_path'] = current_path
                         try:
                             data['project_name'] = str(proj)
-                        except Exception:
-                            pass
+                        except Exception as error:
+                            log_info("Could not read current project name: " + str(error))
 
                         with open(metadata_path, 'w') as f:
                             json.dump(data, f, indent=2)

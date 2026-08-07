@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 from collections import OrderedDict
 
 from . import style_roles, themes
+from .element_registry import CODESYS_TYPES
 from .xml_ns import find_named, named_text, strip_ns
 
 
@@ -970,35 +971,29 @@ def _inject_attrs(tag_str, parts):
     return tag_str
 
 
+_ELEMENT_RENDERERS = {
+    "VisuFbElemSimple": _simple_to_svg,
+    "VisuFbElemLine": _render_line,
+    "VisuFbLabel": _render_label,
+    "VisuFbElemButton": _render_button,
+    "VisuFbElemTextfield": _render_textfield,
+    "VisuFbElemLamp": _render_lamp,
+    "VisuFbImageSwitcher": _render_image_switcher,
+    "VisuFbComboBoxInteger": _render_combobox,
+    "VisuFbElemAlarmBanner": _render_alarm_banner,
+    "VisuFbFrame": _render_frame,
+    "VisuFbElemSlider": _render_slider,
+}
+
+
 def _element_to_svg(element):
     """Dispatch a CODESYS visual element to the appropriate SVG renderer."""
     type_name = named_text(element, "VisualElementTypeName")
     if not type_name:
         raise SvgExportError("Element has no VisualElementTypeName")
 
-    if type_name == "VisuFbElemSimple":
-        svg = _simple_to_svg(element)
-    elif type_name == "VisuFbElemLine":
-        svg = _render_line(element)
-    elif type_name == "VisuFbLabel":
-        svg = _render_label(element)
-    elif type_name == "VisuFbElemButton":
-        svg = _render_button(element)
-    elif type_name == "VisuFbElemTextfield":
-        svg = _render_textfield(element)
-    elif type_name == "VisuFbElemLamp":
-        svg = _render_lamp(element)
-    elif type_name == "VisuFbImageSwitcher":
-        svg = _render_image_switcher(element)
-    elif type_name == "VisuFbComboBoxInteger":
-        svg = _render_combobox(element)
-    elif type_name == "VisuFbElemAlarmBanner":
-        svg = _render_alarm_banner(element)
-    elif type_name == "VisuFbFrame":
-        svg = _render_frame(element)
-    elif type_name == "VisuFbElemSlider":
-        svg = _render_slider(element)
-    else:
+    renderer = _ELEMENT_RENDERERS.get(type_name)
+    if renderer is None:
         raise SvgExportError(
             "Unsupported element type: '{0}' "
             "(v1 vocabulary: VisuFbElemSimple, VisuFbElemLine, "
@@ -1007,8 +1002,9 @@ def _element_to_svg(element):
             "VisuFbComboBoxInteger, "
             "VisuFbElemAlarmBanner, "
             "VisuFbElemSlider, "
-            "VisuFbFrame)".format(type_name)
+            "{0})".format(", ".join(CODESYS_TYPES))
         )
+    svg = renderer(element)
 
     # Cross-cutting: inject dialog-open data attributes.
     info = _read_dialog_action(element)

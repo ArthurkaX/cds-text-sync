@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from xml_helpers import (
+from cds_text_sync.engine.xml_helpers import (
     ST_IMPLEMENTATION_MARKER,
     split_action_projection,
     split_st_projection_values,
@@ -27,7 +27,7 @@ from xml_helpers import (
     text_blob_values,
 )
 
-import folder_reader
+from cds_text_sync.engine import folder_reader
 
 
 _BRIDGE = os.path.normpath(

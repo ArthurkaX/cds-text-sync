@@ -7,7 +7,7 @@ Uses synthetic ProjectNode objects.  Does not parse real IDE XML.
 
 import os
 
-from _project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
+from cds_text_sync.engine._project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
 
 # ===================================================================
 # ProjectModel.safe_component

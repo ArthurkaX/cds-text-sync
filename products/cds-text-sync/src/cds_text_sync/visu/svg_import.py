@@ -813,14 +813,21 @@ def _apply_dialog_attrs(child, element_dict):
 
 
 _ELEMENT_PARSERS = {
-    "rect": _parse_rect,
-    "circle": _parse_circle,
-    "ellipse": _parse_ellipse,
-    "line": _parse_line,
-    "text": _parse_text,
+    ("rect", None): _parse_rect,
+    ("circle", None): _parse_circle,
+    ("ellipse", None): _parse_ellipse,
+    ("line", None): _parse_line,
+    ("text", None): _parse_text,
+    ("rect", "button"): _parse_button,
+    ("text", "textfield"): _parse_textfield,
+    ("rect", "lamp"): _parse_lamp,
+    ("rect", "image-switcher"): _parse_image_switcher,
+    ("rect", "combobox"): _parse_combobox,
+    ("rect", "alarm-banner"): _parse_alarm_banner,
+    ("rect", "frame"): _parse_frame,
 }
 
-_SUPPORTED = set(_ELEMENT_PARSERS.keys())
+_SUPPORTED = {tag for tag, _kind in _ELEMENT_PARSERS}
 
 
 # ---------------------------------------------------------------------------
@@ -983,49 +990,9 @@ def parse_svg(svg_text, theme=None, project_dir=None, background=None, scheme=No
         if child.get("data-cds-type") is None:
             _apply_class_attributes(child, sheet)
 
-        # Promote <rect data-cds-type="button"> to button.
-        if tag == "rect" and child.get("data-cds-type") == "button":
-            elements.append(_parse_button(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        # Promote <text data-cds-type="textfield"> to textfield.
-        if tag == "text" and child.get("data-cds-type") == "textfield":
-            elements.append(_parse_textfield(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        # Promote <rect data-cds-type="lamp"> to indicator lamp.
-        if tag == "rect" and child.get("data-cds-type") == "lamp":
-            elements.append(_parse_lamp(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        # Promote <rect data-cds-type="image-switcher"> to ImageSwitcher.
-        if tag == "rect" and child.get("data-cds-type") == "image-switcher":
-            elements.append(_parse_image_switcher(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        # Promote <rect data-cds-type="combobox"> to ComboBoxInteger.
-        if tag == "rect" and child.get("data-cds-type") == "combobox":
-            elements.append(_parse_combobox(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        # Promote <rect data-cds-type="alarm-banner"> to AlarmBanner.
-        if tag == "rect" and child.get("data-cds-type") == "alarm-banner":
-            elements.append(_parse_alarm_banner(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        # Promote <rect data-cds-type="frame"> to VisuFbFrame.
-        if tag == "rect" and child.get("data-cds-type") == "frame":
-            elements.append(_parse_frame(child, merged_theme))
-            _apply_dialog_attrs(child, elements[-1])
-            continue
-
-        parser = _ELEMENT_PARSERS.get(tag)
+        parser = _ELEMENT_PARSERS.get((tag, child.get("data-cds-type")))
+        if parser is None:
+            parser = _ELEMENT_PARSERS.get((tag, None))
         if parser is None:
             raise ValueError(
                 "Unsupported SVG element: <{0}>. Supported: {1}".format(

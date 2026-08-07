@@ -9,7 +9,7 @@ read, write, test, project-tree, read-object, update-pou, delete-pou,
 read-log. Extracted from the main() dispatcher.
 
 Unlike the pure project/pou/visu routers, a few of these carry logic:
-  * import   -> --dry-run previews via sync_compare_text; --force-online flag
+  * import   -> --dry-run previews via sync_compare_text; online imports are rejected
   * download -> optional --start passthrough
   * plc-crc  -> optional build first
   * write    -> write_variable then read_variable read-back in one response
@@ -53,8 +53,6 @@ def dispatch_daemon(args, output_fmt="json"):
     if command in _DAEMON_METHODS:
         params = {}
         if command == "import":
-            if getattr(args, "force_online", False):
-                params["force_online"] = True
             if getattr(args, "dry_run", False):
                 # Dry-run shows the same preview as compare.
                 cmd_daemon(
