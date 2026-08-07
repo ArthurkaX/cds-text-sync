@@ -1147,6 +1147,85 @@ def test_cts0001_ignores_prose_comments():
     assert findings == []
 
 
+# ---------------------------------------------------------------------------
+# CTS0082 - pointer guard relies on short-circuit evaluation
+# ---------------------------------------------------------------------------
+
+
+def test_cts0082_flags_pointer_dereference_in_and_right_operand():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " pData : POINTER TO BYTE;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF pData <> 0 AND pData^ = 16#10 THEN Work(); END_IF;\n"
+    )
+    findings = run_rule("CTS0082", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "pData <> 0 AND pData^"
+
+
+def test_cts0082_ignores_nested_guard_and_non_pointer_expression():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " pData : POINTER TO BYTE;\n value : BYTE;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF pData <> 0 THEN\n"
+        "    IF pData^ = value THEN Work(); END_IF;\n"
+        "END_IF;\n"
+        "IF value <> 0 AND value = 1 THEN Work(); END_IF;\n"
+    )
+    assert run_rule("CTS0082", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0083 - SEL/MUX argument may have side effects
+# ---------------------------------------------------------------------------
+
+
+def test_cts0083_flags_calls_inside_sel_or_mux_arguments():
+    unit = _st_unit(
+        "FUNCTION Run : INT\nVAR_INPUT\n UseNew : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nRun := SEL(UseNew, ReadOld(), UpdateAndReadNew());\n"
+    )
+    findings = run_rule("CTS0083", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor.upper().startswith("SEL(")
+    assert "UpdateAndReadNew" in findings[0].message
+
+
+def test_cts0083_ignores_literals_and_known_pure_calls():
+    unit = _st_unit(
+        "FUNCTION Run : INT\nVAR_INPUT\n UseNew : BOOL; value : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nRun := MUX(UseNew, ABS(value), MIN(value, 10));\n"
+    )
+    assert run_rule("CTS0083", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0084 - identical control-flow branch bodies
+# ---------------------------------------------------------------------------
+
+
+def test_cts0084_flags_duplicate_if_and_case_bodies():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR\n State : INT;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF State = 1 THEN\n StartMotor();\n"
+        "ELSIF State = 2 THEN\n // same action\n StartMotor();\nEND_IF;\n"
+        "CASE State OF\n 3: StopMotor();\n 4: StopMotor();\nEND_CASE;\nRun := TRUE;\n"
+    )
+    findings = run_rule("CTS0084", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert all("same body" in finding.message for finding in findings)
+
+
+def test_cts0084_ignores_different_and_empty_branches():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nVAR State : INT; END_VAR\nIMPLEMENTATION\n"
+        "IF State = 1 THEN\n StartMotor();\n"
+        "ELSIF State = 2 THEN\n StopMotor();\n"
+        "ELSE\n;\nEND_IF;\nRun := TRUE;\n"
+    )
+    assert run_rule("CTS0084", ProjectSnapshot(".", [unit])) == []
+
+
 def test_cts0001_ignores_parenthetical_documentation():
     unit = _st_unit(
         "PROGRAM P\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n"

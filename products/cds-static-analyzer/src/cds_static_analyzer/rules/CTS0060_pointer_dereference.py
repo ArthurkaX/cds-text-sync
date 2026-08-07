@@ -24,6 +24,12 @@ _ZERO_GUARD = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _TERMINAL = re.compile(r"\bRETURN\b", re.IGNORECASE)
+_SHORT_CIRCUIT = re.compile(
+    r"\b(?P<name>[A-Za-z_]\w*)\s*<>\s*0\s+AND\b",
+    re.IGNORECASE,
+)
+
+
 def _walk(node):
     for child in node.children:
         yield child
@@ -85,6 +91,15 @@ def _safe(root, section, name, absolute):
     return _guard_clause_exits(section.text, name, local)
 
 
+def _is_short_circuit_guarded(text, name, local):
+    start = max(text.rfind("\n", 0, local), text.rfind(";", 0, local)) + 1
+    prefix = text[start:local]
+    return any(
+        match.group("name").casefold() == name.casefold()
+        for match in _SHORT_CIRCUIT.finditer(prefix)
+    )
+
+
 def check(unit, ctx):
     ctx.capability(Capability.DECLARATIONS)
     ctx.capability(Capability.BLOCK_STRUCTURE)
@@ -100,6 +115,10 @@ def check(unit, ctx):
         if name.casefold() not in pointers:
             continue
         absolute = section.at(match.start("name"))
+        # CTS0082 reports this more specific case. Keep CTS0060 focused on a
+        # genuinely absent guard instead of producing two findings at once.
+        if _is_short_circuit_guarded(section.text, name, match.start("name")):
+            continue
         if _safe(root, section, name, absolute):
             continue
         expression = match.group(0).strip()
