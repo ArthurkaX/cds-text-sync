@@ -49,14 +49,16 @@
 - CTS0048 — Constant control-flow expression
 - CTS0049 — Constant arithmetic overflow
 - CTS0050 — Possible zero divisor
+- CTS0051 — Escaping local address
+- CTS0052 — FB output before call
+- CTS0053 — Unresolved call
+- CTS0054 — Implicit narrowing conversion
+- CTS0055 — Mixed signed and unsigned comparison
 
 ## Pending — correctness analyzer
 
 ### Types and arithmetic
 
-- Narrowing conversion without an explicit `TO_` conversion (`DINT` → `INT`,
-  `LREAL` → `REAL`, `INT` → `BYTE`).
-- Mixed signed/unsigned comparison (`INT` versus `UINT`/`WORD`).
 - Integer division assigned to a floating-point result.
 - `FOR` counter type too narrow for literal loop bounds.
 - Invalid or overflowing `TIME` literal and arithmetic mixing `TIME` with a
@@ -67,7 +69,6 @@
 
 - Pointer dereference without a dominating null check.
 - `REFERENCE` use without `__ISVALIDREF`.
-- `CTS0051` — `ADR()` of a local or temporary value escaping its lifetime.
 - `MEMCPY`/`MemMove` size inconsistent with the destination object or derived
   from the pointer rather than the object.
 - `RETAIN`/`PERSISTENT` pointer declaration.
@@ -94,7 +95,6 @@
 ### POU and function-block lifecycle
 
 - Function result not assigned on every path.
-- `CTS0052` — reading an FB output before its call in the current cycle.
 - Reading timer `.Q` without calling the timer in the current cycle.
 - Conditional or non-periodic `R_TRIG`/`F_TRIG` invocation.
 - `VAR_IN_OUT` that is never written.
@@ -115,7 +115,6 @@
 - Missing initial values for state enums/structures.
 - Non-constant array bounds or arrays above the configured size limit.
 - Use of deprecated library functions.
-- `CTS0053` — unresolved calls not found in the project or known libraries.
 
 ## Pending — separate formatter/linter tool
 

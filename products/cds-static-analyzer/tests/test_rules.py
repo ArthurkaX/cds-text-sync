@@ -17,6 +17,76 @@ def _st_unit_named(path, text):
 
 
 # ---------------------------------------------------------------------------
+# CTS0054 - implicit narrowing conversion
+# ---------------------------------------------------------------------------
+
+
+def test_cts0054_flags_known_narrowing_assignments():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " source : DINT; target : INT;\n"
+        " precise : LREAL; result : REAL;\n"
+        " count : INT; byte_value : BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "target := source;\n"
+        "result := precise;\n"
+        "byte_value := count;\n"
+    )
+    findings = run_rule("CTS0054", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == [
+        "target := source",
+        "result := precise",
+        "byte_value := count",
+    ]
+    assert findings[0].message.startswith("implicit narrowing conversion from DINT to INT")
+
+
+def test_cts0054_ignores_explicit_widening_and_same_type_assignments():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " small : INT; wide : DINT; precise : LREAL; result : REAL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "wide := small;\n"
+        "result := TO_REAL(precise);\n"
+        "small := TO_INT(wide);\n"
+        "result := result;\n"
+    )
+    assert run_rule("CTS0054", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0055 - mixed signed and unsigned comparison
+# ---------------------------------------------------------------------------
+
+
+def test_cts0055_flags_mixed_signed_unsigned_comparisons():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " signedValue : INT; unsignedValue : UINT;\n"
+        " signedCount : DINT; unsignedCount : UDINT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "IF signedValue < unsignedValue THEN Accept(); END_IF;\n"
+        "IF signedCount = unsignedCount THEN Match(); END_IF;\n"
+    )
+    findings = run_rule("CTS0055", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == [
+        "signedValue < unsignedValue",
+        "signedCount = unsignedCount",
+    ]
+
+
+def test_cts0055_ignores_same_signedness_and_explicit_conversions():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " signedValue : INT; otherSigned : DINT; unsignedValue : UINT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "IF signedValue < otherSigned THEN Accept(); END_IF;\n"
+        "IF TO_UINT(signedValue) < unsignedValue THEN Accept(); END_IF;\n"
+    )
+    assert run_rule("CTS0055", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
 # CTS0053 - unresolved call
 # ---------------------------------------------------------------------------
 
