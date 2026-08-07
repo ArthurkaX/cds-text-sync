@@ -16,6 +16,34 @@ def _st_unit_named(path, text):
     return pm._build_st_unit(path, text)
 
 
+def test_cts0065_flags_literal_for_range_covering_only_part_of_array():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\nValues : ARRAY[0..9] OF INT; i : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nFOR i := 0 TO 8 DO Values[i] := 0; END_FOR;\n"
+    )
+    findings = run_rule("CTS0065", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "only part of array 'Values'" in findings[0].message
+
+
+def test_cts0065_accepts_full_array_range():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\nValues : ARRAY[0..9] OF INT; i : INT;\nEND_VAR\n"
+        "IMPLEMENTATION\nFOR i := 0 TO 9 DO Values[i] := 0; END_FOR;\n"
+    )
+    assert run_rule("CTS0065", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0067_flags_non_strict_enum_and_accepts_strict_enum():
+    plain = _st_unit_named("state.st", "TYPE State : (Idle, Running); END_TYPE\n")
+    strict = _st_unit_named(
+        "strict_state.st",
+        "{attribute 'strict'}\nTYPE State : (Idle, Running); END_TYPE\n",
+    )
+    assert len(run_rule("CTS0067", ProjectSnapshot(".", [plain]))) == 1
+    assert run_rule("CTS0067", ProjectSnapshot(".", [strict])) == []
+
+
 # ---------------------------------------------------------------------------
 # CTS0054 - implicit narrowing conversion
 # ---------------------------------------------------------------------------

@@ -177,6 +177,7 @@ def _split_enum_items(text: str):
 
 
 def parse_dut(declaration):
+    strict_attribute = bool(re.search(r"(?is)\{\s*attribute\s+'strict'\s*\}", declaration or ""))
     """Parse a TYPE declaration into a neutral DUT description."""
     text = blank_noise(declaration or "")
     match = re.search(r"(?is)\bTYPE\s+([A-Za-z_]\w*)\s*:(.*?)\bEND_TYPE\b", text)
@@ -196,7 +197,8 @@ def parse_dut(declaration):
                     fields.append({"name": field, "type": parsed[1], "initial": parsed[2]})
         return {"name": name, "kind": "struct", "fields": fields, "base": None}
 
-    stripped = body.strip()
+    strict = strict_attribute
+    stripped = re.sub(r"(?is)^\s*\{\s*attribute\s+'strict'\s*\}\s*", "", body).strip()
     if stripped.startswith("("):
         close = stripped.rfind(")")
         inside = stripped[1:close] if close >= 0 else ""
@@ -215,7 +217,7 @@ def parse_dut(declaration):
             last_value = value
             fields.append({"name": enum_match.group(1), "type": "INT",
                            "initial": str(value), "value": value})
-        return {"name": name, "kind": "enum", "fields": fields, "base": base or "INT"}
+        return {"name": name, "kind": "enum", "fields": fields, "base": base or "INT", "strict": strict}
     return {"name": name, "kind": "alias", "fields": [], "base": stripped.rstrip(";").strip()}
 
 
