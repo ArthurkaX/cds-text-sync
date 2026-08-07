@@ -57,7 +57,10 @@ def test_fixture_block_comment_columns_are_1_to_1(tmp_path):
     with open(os.path.join(root, "cts-analyze.toml"), "w", encoding="utf-8") as fh:
         fh.write("[rules.CTS0004]\noptions.merge = false\n")
     _, _, result = _run(root)
-    pb = [f for f in result.findings if f.location.path == "POUs/PB.st"]
+    pb = [
+        f for f in result.findings
+        if f.location.path == "POUs/PB.st" and f.rule_id == "CTS0004"
+    ]
     assert [(f.location.line, f.location.column) for f in pb] == [(9, 27), (10, 10)]
     assert {f.rule_id for f in pb} == {"CTS0004"}
 
@@ -72,11 +75,12 @@ def test_file_ignore_directive_suppresses_all_matching_findings(tmp_path):
     with open(main, encoding="utf-8") as fh:
         original = fh.read()
     with open(main, "w", encoding="utf-8") as fh:
-            fh.write("// cts:ignore-file CTS0001, CTS0002, CTS0007, CTS0008, CTS0013 -- legacy fixture\n" + original)
+            fh.write("// cts:ignore-file CTS0001, CTS0002, CTS0007, CTS0008, CTS0013, CTS0073 -- legacy fixture\n" + original)
     _, _, result = _run(root)
     assert not any(f.location.path == "POUs/Main.st" for f in result.findings)
-    # 5, not 6: the CTS0001 pair on lines 22-23 is reported as one finding.
-    assert result.summary.suppressed == 5
+    # 8, not 9: the CTS0001 pair on lines 22-23 is reported as one finding,
+    # and the documentation rule sees the ignore-file comment as POU docs.
+    assert result.summary.suppressed == 8
 
 def test_exit_codes(tmp_path):
     ws, config, result = _run(fixture_project_view())
@@ -327,7 +331,7 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    # 19 findings, all distinct: merging removed the pair of same-value
+    # 29 findings, all distinct: merging removed the pair of same-value
     # CTS0004 hits on PB.st that used to share one fingerprint.
-    assert len(current) == 19  # nothing silently hidden
-    assert len(result.findings) == 19
+    assert len(current) == 29  # nothing silently hidden
+    assert len(result.findings) == 29
