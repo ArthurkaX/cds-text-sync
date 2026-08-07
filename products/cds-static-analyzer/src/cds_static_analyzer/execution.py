@@ -19,12 +19,12 @@ from cds_static_analyzer.st.decl import all_members
 from cds_static_analyzer.st.library import is_known_function, is_known_function_block
 
 
-_BARE_CALL = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
-_METHOD_CALL = re.compile(
-    r"\b(?P<instance>[A-Za-z_]\w*)\s*\.\s*(?P<method>[A-Za-z_]\w*)\s*\("
+_QUALIFIED_CALL = re.compile(
+    r"\b(?P<callee>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\("
 )
 _NON_CALLS = {
-    "IF", "FOR", "WHILE", "CASE", "REPEAT", "RETURN", "SEL", "MUX",
+    "IF", "ELSIF", "FOR", "WHILE", "CASE", "REPEAT", "RETURN", "SEL", "MUX",
+    "AND", "OR", "XOR", "NOT",
 }
 
 
@@ -63,6 +63,7 @@ class ExecutionGraph:
         self.unresolved_calls = defaultdict(set)
         self._units = {}
         self._name_index = defaultdict(set)
+        self._global_instance_types = {}
         self._tasks_by_unit = defaultdict(set)
         self._build()
 
@@ -73,6 +74,22 @@ class ExecutionGraph:
             self._units[_key(unit.qualified_name)] = unit
             self._name_index[_key(unit.qualified_name)].add(_key(unit.qualified_name))
             self._name_index[_short(unit.qualified_name)].add(_key(unit.qualified_name))
+
+        # A qualified GVL member is a valid FB instance path, for example
+        # ``GVL_Sensors.ScaleEntry``.  Keeping its declared type lets the
+        # graph distinguish an FB invocation from a method call on an unknown
+        # object.
+        for unit in self.snapshot.units:
+            if unit.kind not in (K.GVL, K.GVL_PERSISTENT):
+                continue
+            for member in all_members(unit):
+                name = member.get("name")
+                type_name = member.get("type", "").strip()
+                if not name or not type_name:
+                    continue
+                self._global_instance_types[
+                    _key(f"{unit.qualified_name}.{name}")
+                ] = type_name
 
         for unit in self.snapshot.units:
             if unit.kind == K.TASK_CONFIG:
@@ -131,39 +148,86 @@ class ExecutionGraph:
             for member in all_members(unit)
             if member.get("name") and member.get("type")
         }
-        method_spans = set()
-        for match in _METHOD_CALL.finditer(section.text):
-            method_spans.add(match.start("method"))
-            instance = _key(match.group("instance"))
-            method = match.group("method")
-            type_name = local_types.get(instance)
-            callee = None
+        if unit.owner_name:
+            owner = next(
+                (
+                    candidate
+                    for candidate in self.snapshot.units
+                    if _key(candidate.qualified_name) == _key(unit.owner_name)
+                ),
+                None,
+            )
+            if owner is not None:
+                local_types.update(
+                    {
+                        _key(member.get("name")): member.get("type", "").strip()
+                        for member in all_members(owner)
+                        if member.get("name") and member.get("type")
+                    }
+                )
+
+        def instance_type(path):
+            key = _key(path)
+            if key in local_types:
+                return local_types[key]
+            return self._global_instance_types.get(key)
+
+        for match in _QUALIFIED_CALL.finditer(section.text):
+            raw_name = match.group("callee")
+            name = ".".join(part.strip() for part in raw_name.split("."))
+            parts = name.split(".")
+            if parts[-1].upper() in _NON_CALLS:
+                continue
+            if parts[0].upper() in {"THIS", "SUPER"}:
+                continue
+
+            # First resolve a complete project POU name.  This also supports
+            # qualified project functions without treating the prefix as an
+            # instance.
+            callee = self._resolve_name(name)
+            if callee is not None:
+                add_call(callee, match)
+                continue
+
+            # A call may be an FB instance itself: ``timer(...)`` or
+            # ``GVL_Sensors.ScaleEntry(...)``.
+            type_name = instance_type(name)
             if type_name:
                 fb_type = self._resolve_type(type_name)
                 if fb_type is not None:
                     add_call(fb_type, match)
-                callee = self._resolve_name(f"{type_name}.{method}")
-            if callee is None:
-                self.unresolved_calls[caller].add(f"{match.group('instance')}.{method}")
-            else:
-                add_call(callee, match)
+                    continue
+                # The declaration proves that this is an FB instance even
+                # when its library type is not exported into project-view.
+                # Do not turn a call such as ``_fbClock10Hz(...)`` into an
+                # unresolved project POU finding merely because the vendor
+                # library source is unavailable.
+                if _key(name) in local_types:
+                    continue
+                if is_known_function_block(type_name):
+                    continue
 
-        for match in _BARE_CALL.finditer(section.text):
-            if match.start() in method_spans:
+            if len(parts) > 1:
+                # Resolve ``instance.Method(...)`` where the instance can be
+                # local or a qualified GVL member such as
+                # ``LogComponent.Logger``.
+                prefix = ".".join(parts[:-1])
+                method = parts[-1]
+                type_name = instance_type(prefix)
+                if type_name:
+                    fb_type = self._resolve_type(type_name)
+                    if fb_type is not None:
+                        add_call(fb_type, match)
+                    method_unit = self._resolve_name(f"{type_name}.{method}")
+                    if method_unit is not None:
+                        add_call(method_unit, match)
+                        continue
+                    if is_known_function_block(type_name):
+                        continue
+
+            if is_known_function(name) or is_known_function_block(name):
                 continue
-            name = match.group("name")
-            if name.upper() in _NON_CALLS:
-                continue
-            type_name = local_types.get(_key(name))
-            callee = self._resolve_type(type_name) if type_name else self._resolve_name(name)
-            if callee is None:
-                if is_known_function(name) or is_known_function_block(name):
-                    continue
-                if type_name and is_known_function_block(type_name):
-                    continue
-                self.unresolved_calls[caller].add(name)
-            else:
-                add_call(callee, match)
+            self.unresolved_calls[caller].add(name)
 
     def tasks_for(self, unit_name):
         """Return task names that can reach *unit_name*."""

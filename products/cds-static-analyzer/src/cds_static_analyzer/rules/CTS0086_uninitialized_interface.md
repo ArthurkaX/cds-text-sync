@@ -18,6 +18,7 @@ before the owning function block has completed initialization.
 ## Example
 
 ```st bad 1
+// cts:interface IMotor
 PROGRAM Main
 VAR
     motor : IMotor;
@@ -28,6 +29,8 @@ motor.Start(); // motor has no assigned implementation // cts:here
 ```
 
 ```st good
+// cts:interface IMotor
+// cts:fb FB_Motor
 PROGRAM Main
 VAR
     motor : IMotor;

@@ -20,6 +20,11 @@ from being processed.
 ## Example
 
 ```st bad 1
+PROGRAM Main
+VAR
+    rStart : R_TRIG;
+END_VAR
+IMPLEMENTATION
 IF Enable THEN
     rStart(CLK := StartInput); // may be skipped for a scan // cts:here
 END_IF;
@@ -30,6 +35,11 @@ END_IF;
 ```
 
 ```st good
+PROGRAM Main
+VAR
+    startTrigger : R_TRIG;
+END_VAR
+IMPLEMENTATION
 startTrigger(CLK := StartInput);
 IF startTrigger.Q THEN
     StartMotor := TRUE;

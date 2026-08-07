@@ -29,6 +29,7 @@ fbTarget.xEnable := fbSource.xEnable;
 ## Example
 
 ```st bad 1
+// cts:fb FB_Motor
 PROGRAM Main
 VAR
     fbSource : FB_Motor;
@@ -39,6 +40,7 @@ fbTarget := fbSource; // state is copied // cts:here
 ```
 
 ```st good
+// cts:fb FB_Motor
 PROGRAM Main
 VAR
     fbSource : FB_Motor;

@@ -31,12 +31,22 @@ reported.
 
 ```st bad 1
 METHOD FB_Init : BOOL
+// cts:owner FB_Base
+// cts:fb FB_Base
+// cts:fb FB_Derived extends FB_Base
+// cts:method FB_Base: Configure
+// cts:method FB_Derived: Configure
     Configure(); // overridden by a derived FB // cts:here
 END_METHOD
 ```
 
 ```st good
 METHOD FB_Init : BOOL
+// cts:owner FB_Base
+// cts:fb FB_Base
+// cts:fb FB_Derived extends FB_Base
+// cts:method FB_Base: Configure
+// cts:method FB_Derived: Configure
     SUPER^.Configure();
 END_METHOD
 ```

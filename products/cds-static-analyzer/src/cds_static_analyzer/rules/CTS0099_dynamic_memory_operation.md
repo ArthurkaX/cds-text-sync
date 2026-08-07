@@ -19,7 +19,7 @@ leak when a pointer is overwritten before it is released.
 
 ## Example
 
-```st bad 1
+```st bad 2
 FUNCTION_BLOCK FB_Buffer
 VAR
     pData : POINTER TO BYTE;
@@ -27,7 +27,7 @@ END_VAR
 IMPLEMENTATION
 pData := __NEW(BYTE, 1024); // allocation has unbounded cycle cost // cts:here
 IF Reset THEN
-    __DELETE(pData);
+    __DELETE(pData); // cts:here
 END_IF;
 ```
 

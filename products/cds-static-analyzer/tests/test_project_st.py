@@ -21,6 +21,27 @@ def test_codedys_property_accessors_are_classified_from_filename(tmp_path):
     assert snap.find_unit("POUs/FB_Conveyor.Speed.Set.st#FB_Conveyor.Speed.Set").kind == K.PROPERTY_SET
 
 
+def test_implementation_only_child_files_are_classified_from_filename(tmp_path):
+    root = str(tmp_path / "project-view")
+    os.makedirs(os.path.join(root, "POUs"))
+    files = {
+        "FB_Conveyor.FB_Conveyor_Action.st": ("xDone := TRUE;", K.ACTION),
+        "FB_Conveyor.Init.st": ("xReady := TRUE;", K.METHOD),
+    }
+    for name, (text, expected_kind) in files.items():
+        with open(os.path.join(root, "POUs", name), "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    snap = build_st_snapshot(root)
+
+    assert snap.find_unit(
+        "POUs/FB_Conveyor.FB_Conveyor_Action.st#FB_Conveyor.FB_Conveyor_Action"
+    ).kind == K.ACTION
+    assert snap.find_unit(
+        "POUs/FB_Conveyor.Init.st#FB_Conveyor.Init"
+    ).kind == K.METHOD
+
+
 def test_snapshot_parses_file_directives_once_at_project_boundary(tmp_path):
     root = str(tmp_path / "project-view")
     os.makedirs(os.path.join(root, "POUs"))

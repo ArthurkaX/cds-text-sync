@@ -21,9 +21,9 @@ rule does not replace `CTS0045`, which checks reachability.
 ## Example
 
 ```st bad 1
-FUNCTION_BLOCK FB_Reserved
+FUNCTION_BLOCK FB_Reserved // cts:here
 IMPLEMENTATION
-// TODO: implement the state machine // cts:here
+// TODO: implement the state machine
 ```
 
 ```st good

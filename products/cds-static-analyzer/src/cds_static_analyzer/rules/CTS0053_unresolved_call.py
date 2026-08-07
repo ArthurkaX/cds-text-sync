@@ -12,12 +12,14 @@ from cds_static_analyzer.st.body import body
 from cds_static_analyzer.st.library import is_known_function_block
 
 
-_BARE_CALL = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(", re.IGNORECASE)
-_METHOD_CALL = re.compile(
-    r"\b(?P<instance>[A-Za-z_]\w*)\s*\.\s*(?P<method>[A-Za-z_]\w*)\s*\(",
+_QUALIFIED_CALL = re.compile(
+    r"\b(?P<name>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(",
     re.IGNORECASE,
 )
-_NON_CALLS = {"IF", "FOR", "WHILE", "CASE", "REPEAT", "RETURN", "SEL", "MUX"}
+_NON_CALLS = {
+    "IF", "FOR", "WHILE", "CASE", "REPEAT", "RETURN", "SEL", "MUX",
+    "AND", "OR", "XOR", "NOT",
+}
 
 
 def _local_library_instances(unit):
@@ -59,21 +61,12 @@ def check(ctx):
         if not section:
             continue
         local_library_instances = _local_library_instances(unit)
-        method_starts = set()
-        for match in _METHOD_CALL.finditer(section.text):
-            method_starts.add(match.start("method"))
-            name = f"{match.group('instance')}.{match.group('method')}"
-            if name.casefold() not in unresolved:
+        for match in _QUALIFIED_CALL.finditer(section.text):
+            name = ".".join(part.strip() for part in match.group("name").split("."))
+            parts = name.split(".")
+            if parts[-1].upper() in _NON_CALLS:
                 continue
-            if match.group("instance").casefold() in {"this", "super"}:
-                continue
-            yield _finding(unit, section, match.start(), match.end(), name)
-
-        for match in _BARE_CALL.finditer(section.text):
-            if match.start() in method_starts:
-                continue
-            name = match.group("name")
-            if name.upper() in _NON_CALLS:
+            if parts[0].casefold() in {"this", "super"}:
                 continue
             if name.casefold() in local_library_instances:
                 continue
