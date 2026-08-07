@@ -56,6 +56,9 @@
 - CTS0055 — Mixed signed and unsigned comparison
 - CTS0057 — Inadequate FOR counter type
 - CTS0058 — TIME literal outside range
+- CTS0059 — Unsafe enumeration use
+- CTS0060 — Unchecked pointer dereference
+- CTS0061 — Unchecked reference use
 
 ## Pending — correctness analyzer
 
@@ -68,8 +71,6 @@
 
 ### Arrays and memory
 
-- Pointer dereference without a dominating null check.
-- `REFERENCE` use without `__ISVALIDREF`.
 - `MEMCPY`/`MemMove` size inconsistent with the destination object or derived
   from the pointer rather than the object.
 - `RETAIN`/`PERSISTENT` pointer declaration.
