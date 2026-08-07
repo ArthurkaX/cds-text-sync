@@ -562,6 +562,21 @@ def test_cts0059_accepts_declared_members_and_else_case():
     assert run_rule("CTS0059", ProjectSnapshot(".", [enum, unit])) == []
 
 
+def test_cts0059_accepts_assignment_from_same_enum_variable():
+    enum = _st_unit_named(
+        "State.st",
+        "TYPE State : (Idle, Running, Error); END_TYPE\n",
+    )
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " state : State;\n"
+        " otherState : State;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "state := otherState;\n"
+    )
+    assert run_rule("CTS0059", ProjectSnapshot(".", [enum, unit])) == []
+
+
 # ---------------------------------------------------------------------------
 # CTS0060 - unchecked pointer dereference
 # ---------------------------------------------------------------------------
@@ -1102,6 +1117,17 @@ def test_cts0050_does_not_assume_complex_guard_is_sufficient():
     )
     findings = run_rule("CTS0050", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
+
+
+def test_cts0050_accepts_qualified_divisor_and_guard():
+    unit = _st_unit(
+        "FUNCTION Calc : REAL\nVAR_IN_OUT\n"
+        "    State : DUT_State;\nEND_VAR\nIMPLEMENTATION\n"
+        "IF State.rSpeed > 0.05 THEN\n"
+        "    Calc := State.rDistance / State.rSpeed;\n"
+        "END_IF;\n"
+    )
+    assert run_rule("CTS0050", ProjectSnapshot(".", [unit])) == []
 
 
 # ---------------------------------------------------------------------------
