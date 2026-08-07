@@ -83,6 +83,9 @@
 - CTS0085 — Recursive POU call cycle
 - CTS0086 — Uninitialized interface use
 - CTS0087 — Conditional edge-trigger call
+- CTS0088 — Stateful function-block assignment
+- CTS0089 — Global state access during FB_Init
+- CTS0090 — Overridable method called from FB_Init
 
 ## Pending — correctness analyzer
 
