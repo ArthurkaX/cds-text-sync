@@ -87,6 +87,78 @@ def test_cts0055_ignores_same_signedness_and_explicit_conversions():
 
 
 # ---------------------------------------------------------------------------
+# CTS0057 - inadequate FOR counter type
+# ---------------------------------------------------------------------------
+
+
+def test_cts0057_flags_literal_bounds_outside_counter_type():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " byte_counter : BYTE; int_counter : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "FOR byte_counter := 0 TO 300 DO Work(); END_FOR;\n"
+        "FOR int_counter := -40000 TO 10 DO Work(); END_FOR;\n"
+    )
+    findings = run_rule("CTS0057", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == [
+        "FOR byte_counter := 0 TO 300 DO",
+        "FOR int_counter := -40000 TO 10 DO",
+    ]
+    assert "upper bound 300 > 255" in findings[0].message
+    assert "lower bound -40000 < -32768" in findings[1].message
+
+
+def test_cts0057_handles_reverse_ranges_and_ignores_valid_or_dynamic_loops():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " byte_counter : BYTE; word_counter : WORD;\n"
+        " first : INT; last : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "FOR byte_counter := 255 TO -1 BY -1 DO Work(); END_FOR;\n"
+        "FOR word_counter := 300 TO 0 BY -1 DO Work(); END_FOR;\n"
+        "FOR byte_counter := first TO last DO Work(); END_FOR;\n"
+        "FOR byte_counter := 0 TO 255 DO Work(); END_FOR;\n"
+    )
+    findings = run_rule("CTS0057", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "lower bound -1 < 0" in findings[0].message
+
+
+# ---------------------------------------------------------------------------
+# CTS0058 - TIME literal outside range
+# ---------------------------------------------------------------------------
+
+
+def test_cts0058_flags_overflowing_and_negative_time_literals():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " too_long : TIME := T#50d;\n"
+        " negative : TIME;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "negative := T#-1ms;\n"
+        "Wait(TIME#49d17h2m47s296ms);\n"
+    )
+    findings = run_rule("CTS0058", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == [
+        "T#50d",
+        "T#-1ms",
+        "TIME#49d17h2m47s296ms",
+    ]
+    assert "outside the 32-bit TIME range" in findings[0].message
+
+
+def test_cts0058_accepts_valid_composed_literals_and_ignores_ltime():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " short : TIME := T#1h30m;\n"
+        " wide : LTIME := LTIME#500d;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "Wait(T#49d17h2m47s295ms);\n"
+    )
+    assert run_rule("CTS0058", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
 # CTS0053 - unresolved call
 # ---------------------------------------------------------------------------
 
