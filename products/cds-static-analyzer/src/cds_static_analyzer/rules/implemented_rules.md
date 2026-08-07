@@ -66,12 +66,16 @@
 - CTS0073 — Missing public POU documentation
 - CTS0075 — Function result not assigned on all paths
 - CTS0076 — VAR_IN_OUT never written
+- CTS0077 — Integer division assigned to floating point
+- CTS0078 — String literal exceeds declared capacity
+- CTS0079 — String assignment may truncate the destination
+- CTS0080 — CONCAT result exceeds string capacity
+- CTS0081 — Tautological or contradictory boolean expression
 
 ## Pending — correctness analyzer
 
 ### Types and arithmetic
 
-- Integer division assigned to a floating-point result.
 
 ### Arrays and memory
 
@@ -79,15 +83,9 @@
 
 ### Strings
 
-- `STRING(n)` assignment that can truncate the destination.
-- `CONCAT` chain whose provable length exceeds the destination capacity.
-- String literal longer than the declared destination.
-
 ### Control flow and logic
 
 - `WHILE` condition variable not changed in the loop body.
-- Tautological or contradictory boolean expression (`x AND NOT x`,
-  `x OR TRUE`).
 - Reliance on short-circuit evaluation for pointer safety.
 - `SEL`/`MUX` arguments with side effects.
 - Ambiguous `AND`/`OR` precedence without parentheses.

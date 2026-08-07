@@ -171,6 +171,135 @@ def test_cts0076_accepts_direct_field_and_output_argument_writes():
     assert run_rule("CTS0076", ProjectSnapshot(".", [output_arg])) == []
 
 
+def test_cts0077_flags_integer_division_assigned_to_real():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    numerator : DINT; denominator : DINT; ratio : REAL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "ratio := numerator / denominator;\n"
+    )
+    findings = run_rule("CTS0077", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "numerator / denominator"
+
+
+def test_cts0077_ignores_float_operands_and_non_float_destinations():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    numerator : DINT; denominator : REAL; ratio : REAL; quotient : DINT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "ratio := numerator / denominator;\n"
+        "quotient := numerator / 2;\n"
+    )
+    assert run_rule("CTS0077", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0078_flags_literal_longer_than_string_capacity():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    deviceName : STRING(4);\nEND_VAR\n"
+        "IMPLEMENTATION\ndeviceName := 'PUMP-01';\n"
+    )
+    findings = run_rule("CTS0078", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "'PUMP-01'"
+
+
+def test_cts0078_checks_declaration_initializers_and_escaped_quotes():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    shortName : STRING(3) := 'ABCD';\n"
+        "    quote : STRING(2);\nEND_VAR\nIMPLEMENTATION\n"
+        "quote := 'A''B';\n"
+    )
+    findings = run_rule("CTS0078", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert {finding.location.line for finding in findings} == {3, 7}
+
+
+def test_cts0078_ignores_literals_that_fit():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    name : STRING(8);\nEND_VAR\n"
+        "IMPLEMENTATION\nname := 'PUMP';\n"
+    )
+    assert run_rule("CTS0078", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0079_flags_bounded_string_assignment_that_can_truncate():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    source : STRING(80); target : STRING(20);\nEND_VAR\n"
+        "IMPLEMENTATION\ntarget := source;\n"
+    )
+    findings = run_rule("CTS0079", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "target := source"
+
+
+def test_cts0079_ignores_equal_or_wider_destinations_and_unknown_bounds():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    source : STRING(20); equal : STRING(20); wider : STRING(80); unknown : STRING;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "equal := source;\n"
+        "wider := source;\n"
+        "unknown := source;\n"
+    )
+    assert run_rule("CTS0079", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0080_flags_provably_oversized_concat_chain():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    prefix : STRING(8); suffix : STRING(8); message : STRING(10);\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "message := CONCAT(prefix, suffix);\n"
+    )
+    findings = run_rule("CTS0080", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "CONCAT(prefix, suffix)"
+
+
+def test_cts0080_supports_nested_concat_and_ignores_unknown_or_fitting_values():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    prefix : STRING(4); suffix : STRING(4); unknown : STRING;\n"
+        "    small : STRING(10); large : STRING(8);\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "small := CONCAT('a', 'bc');\n"
+        "large := CONCAT(CONCAT(prefix, suffix), 'x');\n"
+        "small := CONCAT(unknown, 'x');\n"
+    )
+    findings = run_rule("CTS0080", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "CONCAT(CONCAT(prefix, suffix), 'x')"
+
+
+def test_cts0081_flags_tautologies_and_contradictions():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    ready : BOOL; alarm : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "IF ready AND NOT ready THEN Start := TRUE; END_IF;\n"
+        "IF alarm OR TRUE THEN Log := TRUE; END_IF;\n"
+        "IF FALSE AND ready THEN Stop := TRUE; END_IF;\n"
+    )
+    findings = run_rule("CTS0081", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 3
+    assert {finding.anchor for finding in findings} == {
+        "ready AND NOT ready",
+        "alarm OR TRUE",
+        "FALSE AND ready",
+    }
+
+
+def test_cts0081_ignores_non_tautological_boolean_expressions():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    ready : BOOL; alarm : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF ready AND NOT alarm THEN Start := TRUE; END_IF;\n"
+        "IF alarm OR ready THEN Log := TRUE; END_IF;\n"
+    )
+    assert run_rule("CTS0081", ProjectSnapshot(".", [unit])) == []
+
+
 # ---------------------------------------------------------------------------
 # CTS0054 - implicit narrowing conversion
 # ---------------------------------------------------------------------------
