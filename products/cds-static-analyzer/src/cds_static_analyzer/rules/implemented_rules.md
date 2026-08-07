@@ -59,21 +59,18 @@
 - CTS0059 — Unsafe enumeration use
 - CTS0060 — Unchecked pointer dereference
 - CTS0061 — Unchecked reference use
+- CTS0062 — Implicit TIME and numeric arithmetic
+- CTS0063 — Inconsistent MEMCPY/MemMove size
+- CTS0064 — Retained pointer
 
 ## Pending — correctness analyzer
 
 ### Types and arithmetic
 
 - Integer division assigned to a floating-point result.
-- Arithmetic mixing `TIME` with a numeric value without an explicit
-  conversion.
-- Exhaustive enum range and enum assignment validation.
 
 ### Arrays and memory
 
-- `MEMCPY`/`MemMove` size inconsistent with the destination object or derived
-  from the pointer rather than the object.
-- `RETAIN`/`PERSISTENT` pointer declaration.
 - `__NEW`/`__DELETE` in cyclic tasks.
 
 ### Strings
@@ -90,7 +87,6 @@
 - Reliance on short-circuit evaluation for pointer safety.
 - `SEL`/`MUX` arguments with side effects.
 - Ambiguous `AND`/`OR` precedence without parentheses.
-- `CASE` over an enum without complete coverage.
 - Identical branch bodies.
 - Recursive POU call graph.
 

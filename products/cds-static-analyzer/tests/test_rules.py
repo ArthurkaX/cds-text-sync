@@ -263,6 +263,88 @@ def test_cts0061_accepts_invalid_reference_guard_clause():
 
 
 # ---------------------------------------------------------------------------
+# CTS0062 - implicit TIME and numeric arithmetic
+# ---------------------------------------------------------------------------
+
+
+def test_cts0062_flags_time_numeric_arithmetic_and_accepts_explicit_conversion():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " timeout : TIME; delayMs : UDINT; elapsed : TIME; count : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "timeout := T#5s + delayMs;\n"
+        "elapsed := elapsed - count;\n"
+        "timeout := T#5s + UDINT_TO_TIME(delayMs);\n"
+        "timeout := T#1s + T#2s;\n"
+    )
+    findings = run_rule("CTS0062", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == [
+        "T#5s + delayMs",
+        "elapsed - count",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# CTS0063 - inconsistent MEMCPY/MemMove size
+# ---------------------------------------------------------------------------
+
+
+def test_cts0063_flags_oversized_copy_and_sizeof_pointer():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " smallBuffer : ARRAY[0..3] OF BYTE;\n"
+        " source : ARRAY[0..9] OF BYTE;\n"
+        " pDestination : POINTER TO BYTE; pSource : POINTER TO BYTE;\n"
+        " destination : ARRAY[0..9] OF BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "MEMCPY(ADR(smallBuffer), ADR(source), SIZEOF(source));\n"
+        "MemMove(pDestination, pSource, SIZEOF(pDestination));\n"
+        "MEMCPY(ADR(destination), ADR(source), SIZEOF(destination));\n"
+    )
+    findings = run_rule("CTS0063", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 2
+    assert findings[0].anchor.startswith("MEMCPY(")
+    assert "pointer size" in findings[1].message
+
+
+def test_cts0063_flags_known_literal_overflow_and_ignores_unknown_sizes():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " buffer : ARRAY[0..7] OF BYTE;\n"
+        " pBuffer : POINTER TO BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "MEMCPY(ADR(buffer), pBuffer, 9);\n"
+        "MEMCPY(pBuffer, pBuffer, length);\n"
+    )
+    findings = run_rule("CTS0063", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "requests 9 bytes" in findings[0].message
+
+
+# ---------------------------------------------------------------------------
+# CTS0064 - retained pointer
+# ---------------------------------------------------------------------------
+
+
+def test_cts0064_flags_retain_and_persistent_pointers_only():
+    unit = _st_unit(
+        "PROGRAM Main\n"
+        "VAR RETAIN\n"
+        " pRetained : POINTER TO BYTE;\n"
+        "END_VAR\n"
+        "VAR PERSISTENT\n"
+        " pPersistent : POINTER TO BYTE;\n"
+        "END_VAR\n"
+        "VAR\n"
+        " pNormal : POINTER TO BYTE;\n"
+        "END_VAR\n"
+        "IMPLEMENTATION\n"
+    )
+    findings = run_rule("CTS0064", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["pRetained", "pPersistent"]
+
+
+# ---------------------------------------------------------------------------
 # CTS0053 - unresolved call
 # ---------------------------------------------------------------------------
 
