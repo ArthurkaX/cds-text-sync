@@ -44,6 +44,49 @@ def test_cts0067_flags_non_strict_enum_and_accepts_strict_enum():
     assert run_rule("CTS0067", ProjectSnapshot(".", [strict])) == []
 
 
+def test_cts0068_flags_direct_hardware_addresses_in_logic():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n xMotor : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\n%QX0.1 := xMotor;\n"
+    )
+    findings = run_rule("CTS0068", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "%QX0.1"
+
+
+def test_cts0068_does_not_flag_symbolic_logic():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n xMotor : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\nxMotor := TRUE;\n"
+    )
+    assert run_rule("CTS0068", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0069_flags_single_element_array():
+    unit = _st_unit("PROGRAM Main\nVAR\n Value : ARRAY[0..0] OF INT;\nEND_VAR\nIMPLEMENTATION\n")
+    findings = run_rule("CTS0069", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "Value"
+
+
+def test_cts0070_flags_global_shadowing():
+    global_unit = _st_unit_named("Globals.gvl", "VAR_GLOBAL\n xReady : BOOL;\nEND_VAR\n")
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n xReady : BOOL;\nEND_VAR\nIMPLEMENTATION\n",
+    )
+    findings = run_rule("CTS0070", ProjectSnapshot(".", [global_unit, program]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "xReady"
+
+
+def test_cts0071_flags_large_literal_array():
+    unit = _st_unit("PROGRAM Main\nVAR\n Buffer : ARRAY[0..1024] OF BYTE;\nEND_VAR\nIMPLEMENTATION\n")
+    findings = run_rule("CTS0071", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert "1025 bytes" in findings[0].message
+
+
 # ---------------------------------------------------------------------------
 # CTS0054 - implicit narrowing conversion
 # ---------------------------------------------------------------------------
