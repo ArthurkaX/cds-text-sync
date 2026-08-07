@@ -86,6 +86,15 @@
 - CTS0088 — Stateful function-block assignment
 - CTS0089 — Global state access during FB_Init
 - CTS0090 — Overridable method called from FB_Init
+- CTS0091 — Implicit pointer conversion
+- CTS0092 — Pointer dereference in declaration initializer
+- CTS0093 — Reference use in declaration initializer
+- CTS0094 — Unused function-block output
+- CTS0095 — Local variable uses AT hardware mapping
+- CTS0096 — Function writes global state
+- CTS0097 — Empty callable implementation
+- CTS0098 — Mixed AND and OR without parentheses
+- CTS0099 — Dynamic memory operation
 
 ## Pending — correctness analyzer
 
@@ -94,19 +103,16 @@
 
 ### Arrays and memory
 
-- `__NEW`/`__DELETE` in cyclic tasks.
 
 ### Strings
 
 ### Control flow and logic
 
 - `WHILE` condition variable not changed in the loop body.
-- Ambiguous `AND`/`OR` precedence without parentheses.
 
 ### POU and function-block lifecycle
 
-- `FUNCTION` with global side effects.
-- Empty or unreachable POU/method/action.
+- Unreachable POU/method/action is covered by CTS0045.
 - POU complexity and size metrics.
 - Project-wide duplicated code blocks.
 

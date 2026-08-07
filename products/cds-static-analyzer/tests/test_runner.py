@@ -331,7 +331,8 @@ def test_baseline_with_other_fingerprint_schema_does_not_hide(tmp_path):
 
     current = {f.fingerprint for f in result.findings}
     assert current.isdisjoint(baseline_fingerprints(entries))
-    # 29 findings, all distinct: merging removed the pair of same-value
-    # CTS0004 hits on PB.st that used to share one fingerprint.
-    assert len(current) == 29  # nothing silently hidden
-    assert len(result.findings) == 29
+    # 30 findings, all distinct: merging removed the pair of same-value
+    # CTS0004 hits on PB.st, and CTS0094 reports FB_Conveyor.bMoving without
+    # an external FB instance in the fixture.
+    assert len(current) == 30  # nothing silently hidden
+    assert len(result.findings) == 30

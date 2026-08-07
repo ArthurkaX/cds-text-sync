@@ -702,6 +702,180 @@ def test_cts0064_flags_retain_and_persistent_pointers_only():
     assert [finding.anchor for finding in findings] == ["pRetained", "pPersistent"]
 
 
+def test_cts0091_flags_incompatible_typed_pointer_assignment_and_ignores_byte_view():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " pDint : POINTER TO DINT;\n"
+        " pReal : POINTER TO REAL;\n"
+        " pByte : POINTER TO BYTE;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "pReal := pDint;\n"
+        "pByte := pDint;\n"
+    )
+    findings = run_rule("CTS0091", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "pReal := pDint"
+
+
+def test_cts0092_flags_pointer_dereference_in_declaration_initializer_only():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " pValue : POINTER TO INT;\n"
+        " value : INT := pValue^;\n"
+        " safeValue : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "IF pValue <> 0 THEN\n"
+        " safeValue := pValue^;\n"
+        "END_IF;\n"
+    )
+    findings = run_rule("CTS0092", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "pValue^"
+
+
+def test_cts0093_flags_reference_value_read_in_initializer_but_allows_binding():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        " sourceData : Data;\n"
+        " refData : REFERENCE TO Data;\n"
+        " value : INT := refData.nValue;\n"
+        " bound : REFERENCE TO Data := sourceData;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+    )
+    findings = run_rule("CTS0093", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "refData.nValue"
+
+
+def test_cts0094_flags_unconsumed_fb_outputs_but_accepts_external_reads():
+    fb = _st_unit_named(
+        "FB_Motor.st",
+        "FUNCTION_BLOCK FB_Motor\nVAR_OUTPUT\n"
+        "    xDone : BOOL;\n    xError : BOOL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "xDone := TRUE;\n"
+        "xError := FALSE;\n",
+    )
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n    motor : FB_Motor;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "IF motor.xDone THEN\n    StartNextStep();\nEND_IF;\n",
+    )
+    findings = run_rule("CTS0094", ProjectSnapshot(".", [fb, program]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "xError"
+
+
+def test_cts0094_does_not_count_internal_fb_use_as_external_consumer():
+    fb = _st_unit_named(
+        "FB_Motor.st",
+        "FUNCTION_BLOCK FB_Motor\nVAR_OUTPUT\n"
+        "    xDone : BOOL;\nEND_VAR\nIMPLEMENTATION\n"
+        "xDone := TRUE;\nIF xDone THEN\n    xDone := FALSE;\nEND_IF;\n",
+    )
+    assert len(run_rule("CTS0094", ProjectSnapshot(".", [fb]))) == 1
+
+
+def test_cts0095_flags_local_at_mapping_and_ignores_global_and_interface_maps():
+    local = _st_unit(
+        "PROGRAM Main\nVAR\n"
+        "    xMotor AT %QX0.1 : BOOL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+    )
+    findings = run_rule("CTS0095", ProjectSnapshot(".", [local]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "xMotor"
+
+    global_map = _st_unit_named(
+        "IO.gvl",
+        "VAR_GLOBAL\n    xMotor AT %QX0.1 : BOOL;\nEND_VAR\n",
+    )
+    interface_map = _st_unit(
+        "PROGRAM Main\nVAR_INPUT\n"
+        "    xMotor AT %QX0.1 : BOOL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+    )
+    assert run_rule("CTS0095", ProjectSnapshot(".", [global_map, interface_map])) == []
+
+
+def test_cts0096_flags_function_global_writes_and_ignores_reads_and_shadowing():
+    gvl = _st_unit_named("Globals.gvl", "VAR_GLOBAL\n    gCount : UDINT;\nEND_VAR\n")
+    side_effect = _st_unit_named(
+        "NextValue.st",
+        "FUNCTION NextValue : UDINT\nIMPLEMENTATION\n"
+        "gCount := gCount + 1;\nNextValue := gCount;\n",
+    )
+    pure = _st_unit_named(
+        "ReadValue.st",
+        "FUNCTION ReadValue : UDINT\nIMPLEMENTATION\n"
+        "ReadValue := gCount;\n",
+    )
+    shadowed = _st_unit_named(
+        "LocalValue.st",
+        "FUNCTION LocalValue : UDINT\nVAR\n    gCount : UDINT;\nEND_VAR\n"
+        "IMPLEMENTATION\ngCount := 1;\nLocalValue := gCount;\n",
+    )
+    findings = run_rule(
+        "CTS0096", ProjectSnapshot(".", [gvl, side_effect, pure, shadowed])
+    )
+    assert len(findings) == 1
+    assert findings[0].anchor == "gCount :="
+
+
+def test_cts0097_flags_empty_callable_and_ignores_real_implementation():
+    empty = _st_unit_named(
+        "FB_Reserved.st",
+        "FUNCTION_BLOCK FB_Reserved\nIMPLEMENTATION\n"
+        "// TODO: implement later\n;\n",
+    )
+    real = _st_unit_named(
+        "FB_Ready.st",
+        "FUNCTION_BLOCK FB_Ready\nIMPLEMENTATION\n"
+        "xReady := TRUE;\n",
+    )
+    findings = run_rule("CTS0097", ProjectSnapshot(".", [empty, real]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "FB_Reserved"
+
+
+def test_cts0098_flags_mixed_boolean_operators_without_parentheses():
+    unit = _st_unit(
+        "PROGRAM Main\nIMPLEMENTATION\n"
+        "IF AutoMode AND Ready OR ForceStart THEN\n"
+        "    Start := TRUE;\nEND_IF;\n"
+        "IF (AutoMode AND Ready) OR ForceStart THEN\n"
+        "    Start := TRUE;\nEND_IF;\n"
+    )
+    findings = run_rule("CTS0098", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "IF AutoMode AND Ready OR ForceStart THEN"
+
+
+def test_cts0099_flags_dynamic_memory_operations_in_implementation():
+    unit = _st_unit(
+        "FUNCTION_BLOCK FB_Buffer\nIMPLEMENTATION\n"
+        "pData := __NEW(BYTE, 1024);\n"
+        "__DELETE(pData);\n"
+    )
+    findings = run_rule("CTS0099", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["__NEW", "__DELETE"]
+    assert all(finding.severity == "suspicious" for finding in findings)
+
+
+def test_cts0099_ignores_comments_and_declaration_only_sources():
+    commented = _st_unit(
+        "FUNCTION_BLOCK FB_Buffer\nIMPLEMENTATION\n"
+        "// __NEW(BYTE, 1024);\n(* __DELETE(pData); *)\n"
+    )
+    declaration_only = _st_unit(
+        "FUNCTION_BLOCK FB_Buffer\nVAR\n"
+        "    __NEW_marker : BOOL;\nEND_VAR\n"
+    )
+    assert run_rule("CTS0099", ProjectSnapshot(".", [commented])) == []
+    assert run_rule("CTS0099", ProjectSnapshot(".", [declaration_only])) == []
+
+
 # ---------------------------------------------------------------------------
 # CTS0053 - unresolved call
 # ---------------------------------------------------------------------------
