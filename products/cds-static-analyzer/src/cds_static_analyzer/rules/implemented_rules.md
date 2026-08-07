@@ -54,15 +54,16 @@
 - CTS0053 — Unresolved call
 - CTS0054 — Implicit narrowing conversion
 - CTS0055 — Mixed signed and unsigned comparison
+- CTS0057 — Inadequate FOR counter type
+- CTS0058 — TIME literal outside range
 
 ## Pending — correctness analyzer
 
 ### Types and arithmetic
 
 - Integer division assigned to a floating-point result.
-- `FOR` counter type too narrow for literal loop bounds.
-- Invalid or overflowing `TIME` literal and arithmetic mixing `TIME` with a
-  numeric value without an explicit conversion.
+- Arithmetic mixing `TIME` with a numeric value without an explicit
+  conversion.
 - Exhaustive enum range and enum assignment validation.
 
 ### Arrays and memory
