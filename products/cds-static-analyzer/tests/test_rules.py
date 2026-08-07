@@ -125,6 +125,80 @@ def test_cts0073_accepts_pou_and_interface_comments():
     assert run_rule("CTS0073", ProjectSnapshot(".", [unit])) == []
 
 
+def test_cts0088_flags_assignment_between_function_block_instances_only():
+    fb = _st_unit_named("FB_Motor.st", "FUNCTION_BLOCK FB_Motor\nIMPLEMENTATION\n")
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n"
+        "    source : FB_Motor;\n    target : FB_Motor;\n"
+        "    sourceValue : INT;\n    targetValue : INT;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "target := source;\n"
+        "targetValue := sourceValue;\n"
+        "target.xEnable := source.xEnable;\n",
+    )
+    findings = run_rule("CTS0088", ProjectSnapshot(".", [fb, program]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "target := source"
+
+
+def test_cts0089_flags_global_writes_and_global_fb_use_from_fb_init():
+    fb = _st_unit_named("Controller.st", "FUNCTION_BLOCK Controller\nIMPLEMENTATION\n")
+    gvl = _st_unit_named(
+        "Globals.gvl",
+        "VAR_GLOBAL\n    gController : Controller;\n    gReady : BOOL;\n    gMode : INT;\nEND_VAR\n",
+    )
+    init = _st_unit_named(
+        "Controller.FB_Init.st",
+        "METHOD FB_Init : BOOL\nIMPLEMENTATION\n"
+        "gReady := TRUE;\n"
+        "gController.Start();\n"
+        "IF gMode = 1 THEN\n    xReady := TRUE;\nEND_IF\n",
+    )
+    findings = run_rule("CTS0089", ProjectSnapshot(".", [fb, gvl, init]))
+    assert {finding.anchor for finding in findings} == {"gReady", "gController"}
+
+
+def test_cts0089_ignores_scalar_global_reads_in_fb_init():
+    gvl = _st_unit_named("Globals.gvl", "VAR_GLOBAL\n    gMode : INT;\nEND_VAR\n")
+    init = _st_unit_named(
+        "Controller.FB_Init.st",
+        "METHOD FB_Init : BOOL\nIMPLEMENTATION\n"
+        "xMode := gMode;\n",
+    )
+    assert run_rule("CTS0089", ProjectSnapshot(".", [gvl, init])) == []
+
+
+def test_cts0090_flags_proven_override_but_not_super_call():
+    base = _st_unit_named("FB_Base.st", "FUNCTION_BLOCK FB_Base\nIMPLEMENTATION\n")
+    derived = _st_unit_named(
+        "FB_Derived.st",
+        "FUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nIMPLEMENTATION\n",
+    )
+    base_method = _st_unit_named(
+        "FB_Base.Configure.st",
+        "METHOD Configure\nIMPLEMENTATION\n",
+    )
+    derived_method = _st_unit_named(
+        "FB_Derived.Configure.st",
+        "METHOD Configure\nIMPLEMENTATION\n",
+    )
+    init = _st_unit_named(
+        "FB_Base.FB_Init.st",
+        "METHOD FB_Init : BOOL\nIMPLEMENTATION\nConfigure();\n",
+    )
+    units = [base, derived, base_method, derived_method, init]
+    findings = run_rule("CTS0090", ProjectSnapshot(".", units))
+    assert len(findings) == 1
+    assert findings[0].anchor == "Configure"
+
+    super_init = _st_unit_named(
+        "FB_Base.FB_Init.st",
+        "METHOD FB_Init : BOOL\nIMPLEMENTATION\nSUPER^.Configure();\n",
+    )
+    assert run_rule("CTS0090", ProjectSnapshot(".", units[:-1] + [super_init])) == []
+
+
 def test_cts0075_flags_function_result_missing_on_a_path():
     unit = _st_unit(
         "FUNCTION GetValue : INT\nVAR_INPUT\n"
