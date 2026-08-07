@@ -17,7 +17,12 @@ The omitted elements may silently retain stale values.
 Reports a literal `FOR` loop that indexes only part of a one-dimensional array.
 
 ```st bad 1
-Values : ARRAY[0..9] OF INT;
+PROGRAM Main
+VAR
+    Values : ARRAY[0..9] OF INT;
+    i : INT;
+END_VAR
+IMPLEMENTATION
 FOR i := 0 TO 8 DO
     Values[i] := 0; // cts:here
 END_FOR;
@@ -26,7 +31,12 @@ END_FOR;
 ## Example
 
 ```st good
-Values : ARRAY[0..9] OF INT;
+PROGRAM Main
+VAR
+    Values : ARRAY[0..9] OF INT;
+    i : INT;
+END_VAR
+IMPLEMENTATION
 FOR i := 0 TO 9 DO
     Values[i] := 0; // cts:here
 END_FOR;

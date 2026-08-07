@@ -57,3 +57,27 @@ def test_execution_graph_does_not_reach_unrelated_pou():
     )
 
     assert graph.tasks_for("Other") == set()
+
+
+def test_execution_graph_resolves_qualified_gvl_fb_calls_and_methods():
+    fb = _st("FB_Logger.st", "FUNCTION_BLOCK FB_Logger\nEND_FUNCTION_BLOCK\n")
+    method = _st(
+        "FB_Logger.LogADD.st",
+        "METHOD LogADD\nIMPLEMENTATION\nEND_METHOD\n",
+    )
+    gvl = _st(
+        "LogComponent.gvl",
+        "VAR_GLOBAL\n    logger : FB_Logger;\nEND_VAR\n",
+    )
+    main = _st(
+        "Main.st",
+        "PROGRAM Main\nIMPLEMENTATION\n"
+        "LogComponent.logger.LogADD();\nEND_PROGRAM\n",
+    )
+    graph = execution.ExecutionGraph(
+        ProjectSnapshot(".", [main, fb, method, gvl, _task("Fast", "Main")])
+    )
+
+    assert graph.tasks_for("FB_Logger") == {"Fast"}
+    assert graph.tasks_for("FB_Logger.LogADD") == {"Fast"}
+    assert graph.unresolved_calls == {}

@@ -20,10 +20,10 @@ understand and can hide unnecessary coupling between POUs.
 ```st bad 1
 FUNCTION IsReady : BOOL
 VAR_IN_OUT
-    ioState : INT;
+    ioState : INT; // cts:here
 END_VAR
 IMPLEMENTATION
-IsReady := ioState > 0; // cts:here
+IsReady := ioState > 0;
 ```
 
 ```st good

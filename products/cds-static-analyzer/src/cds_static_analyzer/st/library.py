@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 KNOWN_FUNCTIONS = frozenset(
     {
@@ -12,7 +14,15 @@ KNOWN_FUNCTIONS = frozenset(
         "LEFT", "RIGHT", "MID", "LEN", "FIND", "REPLACE", "INSERT", "DELETE",
         "CONCAT", "MOVE", "DEREF", "ADR", "REF", "SIZEOF",
         "TO_STRING", "TO_WSTRING", "TRUNC", "INT", "REAL", "LREAL", "DINT", "UDINT",
-        "WORD", "DWORD", "BYTE", "BOOL",
+        "WORD", "DWORD", "BYTE", "BOOL", "TIME", "DATE", "DT", "TOD",
+        "STRING", "WSTRING", "LOWER_BOUND", "UPPER_BOUND",
+        "SYSMEMCPY", "SYSSOCKBIND", "SYSSOCKCLOSE", "SYSSOCKCREATE",
+        "SYSSOCKGETOPTION", "SYSSOCKHTONS", "SYSSOCKINETADDR",
+        "SYSSOCKIOCTL", "SYSSOCKRECVFROM", "SYSSOCKSENDTO",
+        "SYSSOCKSETOPTION", "SYSSOCKSHUTDOWN",
+        "CMADDCOMPONENT2", "COMPONENT_MANAGER.CMADDCOMPONENT2",
+        "CMPLOG.LOGADD2", "IECTASKGETCURRENT", "IECTASKGETINFO3",
+        "SYSTIMEGETMS",
     }
 )
 
@@ -26,12 +36,11 @@ KNOWN_FUNCTION_BLOCKS = frozenset(
 
 def is_known_function(name):
     upper = (name or "").strip().upper()
-    return upper in KNOWN_FUNCTIONS or any(
-        upper.startswith(prefix)
-        for prefix in (
-            "TO_", "BOOL_TO_", "INT_TO_", "REAL_TO_", "STRING_TO_", "WORD_TO_"
-        )
-    )
+    # IEC conversion functions use ``SOURCE_TO_DEST`` names (for example
+    # ``DINT_TO_LREAL``).  They are library functions even when a particular
+    # width/type combination is not listed in the small built-in table.
+    conversion_name = bool(re.fullmatch(r"[A-Z][A-Z0-9]*_TO_[A-Z][A-Z0-9]*", upper))
+    return upper in KNOWN_FUNCTIONS or upper.startswith("TO_") or conversion_name
 
 
 def is_known_function_block(name):

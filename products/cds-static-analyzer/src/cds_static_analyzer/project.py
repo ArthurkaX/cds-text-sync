@@ -310,6 +310,18 @@ def _build_st_unit(rel, text):
             kind = K.PROPERTY_GET
         elif suffix == "set":
             kind = K.PROPERTY_SET
+        elif suffix.endswith("action"):
+            # CODESYS exports actions as implementation-only files.  Their
+            # filename still carries the object kind (for example
+            # ``Owner.Owner_Action.st``), even though the blob has no ACTION
+            # header or declaration section.
+            kind = K.ACTION
+        elif "." in stem:
+            # Methods and lifecycle hooks are also commonly exported as a
+            # child file containing only the implementation (for example
+            # ``FB_Logger.Init.st``).  A dotted child of an otherwise
+            # unclassified ST object is therefore a method projection.
+            kind = K.METHOD
     owner_name = None
     qualified = stem
     if "." in stem:

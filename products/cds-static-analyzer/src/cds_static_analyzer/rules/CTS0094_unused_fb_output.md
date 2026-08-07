@@ -24,11 +24,11 @@ external consumer.
 ```st bad 1
 FUNCTION_BLOCK FB_Motor
 VAR_OUTPUT
-    xDone : BOOL;
+    xDone : BOOL; // cts:here
 END_VAR
 IMPLEMENTATION
 xDone := TRUE;
-// No POU reads motor.xDone. // cts:here
+// No POU reads motor.xDone.
 ```
 
 ```st good

@@ -777,6 +777,28 @@ def test_cts0094_does_not_count_internal_fb_use_as_external_consumer():
     assert len(run_rule("CTS0094", ProjectSnapshot(".", [fb]))) == 1
 
 
+def test_cts0094_resolves_qualified_gvl_instances_and_output_mapping():
+    fb = _st_unit_named(
+        "FB_Motor.st",
+        "FUNCTION_BLOCK FB_Motor\nVAR_OUTPUT\n"
+        "    xDone : BOOL;\n    xError : BOOL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "xDone := TRUE;\nxError := FALSE;\n",
+    )
+    gvl = _st_unit_named(
+        "GVL_Motors.st",
+        "VAR_GLOBAL\n    motor : FB_Motor;\nEND_VAR\n",
+    )
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n    mapped : BOOL;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "GVL_Motors.motor(xDone => mapped);\n"
+        "IF GVL_Motors.motor.xError THEN\nEND_IF;\n",
+    )
+    assert run_rule("CTS0094", ProjectSnapshot(".", [fb, gvl, program])) == []
+
+
 def test_cts0095_flags_local_at_mapping_and_ignores_global_and_interface_maps():
     local = _st_unit(
         "PROGRAM Main\nVAR\n"

@@ -21,7 +21,7 @@ effects from the implementation, which makes integration mistakes more likely.
 ```st bad 2
 PROGRAM Conveyor // cts:here
 VAR_INPUT
-    Speed : INT;
+    Speed : INT; // cts:here
 END_VAR
 ```
 

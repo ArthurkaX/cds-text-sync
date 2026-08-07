@@ -24,8 +24,8 @@ VAR_INPUT
 END_VAR
 IMPLEMENTATION
 IF ok THEN
-    GetValue := 42;
-END_IF; // cts:here
+    GetValue := 42; // cts:here
+END_IF;
 ```
 
 ```st good

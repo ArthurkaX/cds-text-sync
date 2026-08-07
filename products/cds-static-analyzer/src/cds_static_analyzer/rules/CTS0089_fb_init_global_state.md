@@ -28,15 +28,23 @@ global FBs.
 
 ## Example
 
-```st bad 1
+```st bad 2
 METHOD FB_Init : BOOL
+// cts:owner Controller
+// cts:fb Controller
+// cts:gvl Globals: gController Controller
+// cts:gvl Globals: gReady BOOL
     gReady := TRUE; // startup ordering dependency // cts:here
-    gController.Start();
+gController.Start(); // cts:here
 END_METHOD
 ```
 
 ```st good
 METHOD FB_Init : BOOL
+// cts:owner Controller
+// cts:fb Controller
+// cts:gvl Globals: gController Controller
+// cts:gvl Globals: gReady BOOL
     xReady := TRUE;
 END_METHOD
 ```

@@ -11,8 +11,16 @@ from cds_static_analyzer.st import kinds as K
 from cds_static_analyzer.st.body import body
 
 
-_FIELD_ACCESS = re.compile(
-    r"\b(?P<instance>[A-Za-z_]\w*)\s*\.\s*(?P<field>[A-Za-z_]\w*)\b",
+_DOTTED_ACCESS = re.compile(
+    r"\b(?P<path>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)+)\b",
+    re.IGNORECASE,
+)
+_CALL = re.compile(
+    r"\b(?P<path>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(",
+    re.IGNORECASE,
+)
+_OUTPUT_MAPPING = re.compile(
+    r"\b(?P<output>[A-Za-z_]\w*)\s*=>\s*(?P<target>[^,;)\r\n]*)",
     re.IGNORECASE,
 )
 
@@ -60,7 +68,23 @@ def _external_instances(ctx, owner):
         for member in decl.all_members(unit):
             name = member.get("name", "")
             if name and _matches_type(member.get("type", ""), names):
-                instances[name.casefold()] = name
+                if unit.kind in (K.GVL, K.GVL_PERSISTENT):
+                    path = f"{unit.qualified_name}.{name}"
+                else:
+                    path = name
+                instances[path.casefold()] = path
+
+                # Non-qualified GVL access is legal when the GVL is not
+                # marked ``qualified_only``.  Add it only when no two GVLs
+                # expose the same FB instance name; otherwise guessing would
+                # create a false consumer.
+                if unit.kind in (K.GVL, K.GVL_PERSISTENT):
+                    simple = name.casefold()
+                    previous = instances.get(simple)
+                    if previous is None:
+                        instances[simple] = path
+                    elif previous != path:
+                        instances.pop(simple, None)
     return instances
 
 
@@ -70,14 +94,33 @@ def _externally_read(ctx, owner, field, instances):
         return False
     owner_ids = {owner.id} | {unit.id for unit in _owner_units(ctx, owner)}
     for unit in ctx.units:
-        if unit.id in owner_ids or not unit.implementation:
+        section = body(unit)
+        if unit.id in owner_ids or not section:
             continue
-        for match in _FIELD_ACCESS.finditer(body(unit).text):
-            if (
-                match.group("instance").casefold() in instances
-                and match.group("field").casefold() == field_key
-            ):
+        text = section.text
+        for match in _DOTTED_ACCESS.finditer(text):
+            parts = [part.strip().casefold() for part in match.group("path").split(".")]
+            path = ".".join(parts[:-1])
+            if path in instances and parts[-1] == field_key:
                 return True
+
+        # CODESYS also exposes an FB output through named output mapping:
+        # ``instance(Output => destination)``.  A non-empty destination is
+        # an external consumer even when no ``instance.Output`` expression
+        # appears in the caller.
+        for call in _CALL.finditer(text):
+            path = ".".join(part.strip().casefold() for part in call.group("path").split("."))
+            if path not in instances:
+                continue
+            end = text.find(";", call.start())
+            if end < 0:
+                end = len(text)
+            for mapping in _OUTPUT_MAPPING.finditer(text, call.end(), end):
+                if (
+                    mapping.group("output").casefold() == field_key
+                    and mapping.group("target").strip()
+                ):
+                    return True
     return False
 
 
