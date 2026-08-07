@@ -59,6 +59,7 @@ class ExecutionGraph:
         self.snapshot = snapshot
         self.task_roots = {}
         self.calls = defaultdict(set)
+        self.call_sites = defaultdict(list)
         self.unresolved_calls = defaultdict(set)
         self._units = {}
         self._name_index = defaultdict(set)
@@ -112,6 +113,19 @@ class ExecutionGraph:
         if not section:
             return
         caller = _key(unit.qualified_name)
+
+        def add_call(callee, match):
+            if callee is None:
+                return
+            self.calls[caller].add(callee)
+            self.call_sites[caller].append(
+                (
+                    callee,
+                    section.at(match.start()),
+                    match.group(0),
+                )
+            )
+
         local_types = {
             _key(member.get("name")): member.get("type", "").strip()
             for member in all_members(unit)
@@ -127,12 +141,12 @@ class ExecutionGraph:
             if type_name:
                 fb_type = self._resolve_type(type_name)
                 if fb_type is not None:
-                    self.calls[caller].add(fb_type)
+                    add_call(fb_type, match)
                 callee = self._resolve_name(f"{type_name}.{method}")
             if callee is None:
                 self.unresolved_calls[caller].add(f"{match.group('instance')}.{method}")
             else:
-                self.calls[caller].add(callee)
+                add_call(callee, match)
 
         for match in _BARE_CALL.finditer(section.text):
             if match.start() in method_spans:
@@ -149,7 +163,7 @@ class ExecutionGraph:
                     continue
                 self.unresolved_calls[caller].add(name)
             else:
-                self.calls[caller].add(callee)
+                add_call(callee, match)
 
     def tasks_for(self, unit_name):
         """Return task names that can reach *unit_name*."""

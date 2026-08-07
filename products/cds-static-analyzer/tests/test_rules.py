@@ -2395,6 +2395,123 @@ def test_cts0031_ignores_unconditional_call():
 
 
 # ---------------------------------------------------------------------------
+# CTS0085 - recursive POU call cycle
+# ---------------------------------------------------------------------------
+
+
+def test_cts0085_flags_direct_recursive_call():
+    unit = _st_unit_named(
+        "Loop.st",
+        "FUNCTION Loop\nIMPLEMENTATION\nLoop();\nEND_FUNCTION\n",
+    )
+    findings = run_rule("CTS0085", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "Loop("
+    assert "Loop -> Loop" in findings[0].message
+
+
+def test_cts0085_flags_indirect_recursive_call_once_per_cycle():
+    first = _st_unit_named(
+        "First.st", "FUNCTION First\nIMPLEMENTATION\nSecond();\nEND_FUNCTION\n"
+    )
+    second = _st_unit_named(
+        "Second.st", "FUNCTION Second\nIMPLEMENTATION\nFirst();\nEND_FUNCTION\n"
+    )
+    findings = run_rule("CTS0085", ProjectSnapshot(".", [first, second]))
+    assert len(findings) == 1
+    assert "First" in findings[0].message and "Second" in findings[0].message
+
+
+def test_cts0085_ignores_acyclic_calls():
+    caller = _st_unit_named(
+        "Caller.st", "FUNCTION Caller\nIMPLEMENTATION\nWorker();\nEND_FUNCTION\n"
+    )
+    worker = _st_unit_named(
+        "Worker.st", "FUNCTION Worker\nIMPLEMENTATION\nEND_FUNCTION\n"
+    )
+    assert run_rule("CTS0085", ProjectSnapshot(".", [caller, worker])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0086 - uninitialized interface use
+# ---------------------------------------------------------------------------
+
+
+def test_cts0086_flags_interface_access_before_assignment():
+    interface = _st_unit_named(
+        "IMotor.st", "INTERFACE IMotor\nEND_INTERFACE\n"
+    )
+    program = _st_unit(
+        "PROGRAM Main\nVAR\n    motor : IMotor;\nEND_VAR\n"
+        "IMPLEMENTATION\nmotor.Start();\n"
+    )
+    findings = run_rule("CTS0086", ProjectSnapshot(".", [interface, program]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "motor.Start"
+
+
+def test_cts0086_accepts_assignment_before_interface_access():
+    interface = _st_unit_named("IMotor.st", "INTERFACE IMotor\nEND_INTERFACE\n")
+    program = _st_unit(
+        "PROGRAM Main\nVAR\n    motor : IMotor;\n    fb : FB_Motor;\n"
+        "END_VAR\nIMPLEMENTATION\nmotor := fb;\nmotor.Start();\n"
+    )
+    fb = _st_unit_named(
+        "FB_Motor.st", "FUNCTION_BLOCK FB_Motor\nEND_FUNCTION_BLOCK\n"
+    )
+    assert run_rule("CTS0086", ProjectSnapshot(".", [interface, program, fb])) == []
+
+
+def test_cts0086_does_not_check_interface_inputs():
+    interface = _st_unit_named("IMotor.st", "INTERFACE IMotor\nEND_INTERFACE\n")
+    function = _st_unit(
+        "FUNCTION StartMotor : BOOL\nVAR_INPUT\n    motor : IMotor;\nEND_VAR\n"
+        "IMPLEMENTATION\nmotor.Start();\nStartMotor := TRUE;\n"
+    )
+    assert run_rule("CTS0086", ProjectSnapshot(".", [interface, function])) == []
+
+
+# ---------------------------------------------------------------------------
+# CTS0087 - conditional edge-trigger call
+# ---------------------------------------------------------------------------
+
+
+def test_cts0087_flags_edge_trigger_inside_if():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    trigger : R_TRIG;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Enabled THEN\n    trigger(CLK := Signal);\nEND_IF;\n"
+    )
+    findings = run_rule("CTS0087", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].anchor == "trigger"
+    assert findings[0].severity == "danger"
+
+
+def test_cts0087_flags_edge_trigger_inside_loop():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    trigger : F_TRIG;\nEND_VAR\n"
+        "IMPLEMENTATION\nFOR i := 0 TO 1 DO\n    trigger(CLK := Signal);\nEND_FOR;\n"
+    )
+    assert len(run_rule("CTS0087", ProjectSnapshot(".", [unit]))) == 1
+
+
+def test_cts0087_accepts_unconditional_edge_trigger_call():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    trigger : R_TRIG;\nEND_VAR\n"
+        "IMPLEMENTATION\ntrigger(CLK := Signal);\n"
+    )
+    assert run_rule("CTS0087", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0031_leaves_edge_trigger_diagnostics_to_cts0087():
+    unit = _st_unit(
+        "PROGRAM Main\nVAR\n    trigger : R_TRIG;\nEND_VAR\n"
+        "IMPLEMENTATION\nIF Enabled THEN\n    trigger(CLK := Signal);\nEND_IF;\n"
+    )
+    assert run_rule("CTS0031", ProjectSnapshot(".", [unit])) == []
+
+
+# ---------------------------------------------------------------------------
 # CTS0032 - stateless function block
 # ---------------------------------------------------------------------------
 
