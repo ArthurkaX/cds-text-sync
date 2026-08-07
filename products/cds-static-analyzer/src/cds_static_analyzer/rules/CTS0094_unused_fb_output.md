@@ -54,6 +54,8 @@ END_IF;
 Ignore outputs consumed by HMI, visualization, fieldbus mapping, watch lists,
 or another project that is not present in the exported `.st` view. Public FB
 interfaces may intentionally expose signals before an internal consumer exists.
+An output explicitly discarded in a named call mapping (`Output => ,`) is also
+treated as intentional and is not reported.
 
 ## How to fix
 

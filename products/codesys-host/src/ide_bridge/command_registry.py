@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Plain command metadata shared by the IronPython bridge and tooling.
 
 Keep this module data-only: it must load in IronPython 2.7 and CPython without

@@ -58,6 +58,19 @@ def _path_after(match, text):
     return "".join(selectors)
 
 
+def _is_assigned(path, assigned):
+    """Return whether a prior write covers this read path.
+
+    A whole-value assignment also initializes later field/index reads.  The
+    old exact-path check missed that relationship for values such as
+    ``lidString := ...`` followed by ``lidString[index]``.
+    """
+    normalized = path.lower()
+    if normalized in assigned:
+        return True
+    return bool(normalized and "" in assigned)
+
+
 def check(unit, ctx):
     ctx.capability(Capability.DECLARATIONS)
     ctx.capability(Capability.ST_TEXT)
@@ -104,7 +117,7 @@ def check(unit, ctx):
                     aggregate_assigned = True
                 continue
 
-            if path.lower() in assigned or aggregate_assigned:
+            if _is_assigned(path, assigned) or aggregate_assigned:
                 continue
             yield finding_in(
                 message=f"local '{name}' is read before its first assignment",

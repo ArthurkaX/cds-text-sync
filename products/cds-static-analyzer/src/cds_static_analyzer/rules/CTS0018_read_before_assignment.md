@@ -39,6 +39,8 @@ Main := temp + 1;
 
 - An external runtime contract initializes the storage before this code runs.
 - The declaration has an explicit initial value.
+- A whole value is assigned before a later field or indexed read; that write
+  initializes the value for this lexical check.
 
 ## How to fix
 

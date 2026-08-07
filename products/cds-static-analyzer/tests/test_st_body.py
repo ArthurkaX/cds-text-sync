@@ -58,6 +58,12 @@ def test_body_without_implementation_uses_whole_text():
     assert unit.text[section.at(local)] == "g"
 
 
+def test_body_and_declaration_sections_are_cached_per_unit():
+    unit = _st(_SNIPPET)
+    assert body(unit) is body(unit)
+    assert declaration(unit) is declaration(unit)
+
+
 def test_body_is_falsy_when_text_is_empty():
     assert not body(_st(""))
 

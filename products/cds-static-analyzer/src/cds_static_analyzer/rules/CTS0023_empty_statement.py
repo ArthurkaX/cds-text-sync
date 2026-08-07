@@ -7,7 +7,10 @@ import re
 from cds_static_analyzer.capabilities import Capability, Scope
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.body import body
-from cds_static_analyzer.st.blanking import comment_spans
+from cds_static_analyzer.st.blanking import (
+    comment_spans,
+    has_intentional_noop_comment,
+)
 
 _STANDALONE = re.compile(r"(?m)^[ \t]*;[ \t]*(?:\r?$)")
 _DUPLICATE = re.compile(r";[ \t]*;")
@@ -60,6 +63,8 @@ def check(unit, ctx):
     for match in _STANDALONE.finditer(section.text):
         absolute = section.at(match.start() + match.group().find(";"))
         if _has_comment_on_line(match.start(), section.raw):
+            continue
+        if has_intentional_noop_comment(section.raw, match.start()):
             continue
         if not _is_empty_statement(match.start(), section.text):
             continue

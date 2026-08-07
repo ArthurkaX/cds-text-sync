@@ -82,9 +82,20 @@ def body(unit):
     when there is no text at all.
     """
     text = unit.implementation if unit.implementation is not None else unit.text
-    return _section(unit, "implementation", text)
+    cached = getattr(unit, "_cts_body_section_cache", None)
+    if cached is not None and cached[0] is text:
+        return cached[1]
+    section = _section(unit, "implementation", text)
+    unit._cts_body_section_cache = (text, section)
+    return section
 
 
 def declaration(unit):
     """Declaration section of *unit* (falsy when there is none)."""
-    return _section(unit, "declaration", unit.declaration)
+    text = unit.declaration
+    cached = getattr(unit, "_cts_declaration_section_cache", None)
+    if cached is not None and cached[0] is text:
+        return cached[1]
+    section = _section(unit, "declaration", text)
+    unit._cts_declaration_section_cache = (text, section)
+    return section

@@ -814,6 +814,23 @@ def test_cts0094_resolves_qualified_gvl_instances_and_output_mapping():
     assert run_rule("CTS0094", ProjectSnapshot(".", [fb, gvl, program])) == []
 
 
+def test_cts0094_ignores_outputs_explicitly_discarded_by_mapping():
+    fb = _st_unit_named(
+        "FB_Motor.st",
+        "FUNCTION_BLOCK FB_Motor\nVAR_OUTPUT\n"
+        "    xDone : BOOL;\n    xError : BOOL;\n"
+        "END_VAR\nIMPLEMENTATION\n"
+        "xDone := TRUE;\nxError := FALSE;\n",
+    )
+    program = _st_unit_named(
+        "Main.st",
+        "PROGRAM Main\nVAR\n    motor : FB_Motor;\nEND_VAR\n"
+        "IMPLEMENTATION\n"
+        "motor(xDone => , xError => );\n",
+    )
+    assert run_rule("CTS0094", ProjectSnapshot(".", [fb, program])) == []
+
+
 def test_cts0095_flags_local_at_mapping_and_ignores_global_and_interface_maps():
     local = _st_unit(
         "PROGRAM Main\nVAR\n"
@@ -1024,6 +1041,16 @@ def test_cts0051_flags_address_passed_to_call():
     findings = run_rule("CTS0051", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert "passed out" in findings[0].message
+
+
+def test_cts0051_ignores_synchronous_sys_socket_result_pointer():
+    unit = _st_unit(
+        "FUNCTION SendNow : BOOL\nVAR_TEMP\n"
+        "    result : DINT;\nEND_VAR\nIMPLEMENTATION\n"
+        "SysSockSendTo(socket, ADR(buffer), size, 0, ADR(address), "
+        "addressSize, ADR(result));\n"
+    )
+    assert run_rule("CTS0051", ProjectSnapshot(".", [unit])) == []
 
 
 def test_cts0051_flags_retain_and_external_destinations():
@@ -1535,6 +1562,15 @@ def test_cts0001_ignores_documentation_examples():
     unit = _st_unit(
         "PROGRAM P\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n"
         "(* Example: Component:=Component.user_action *)\n"
+    )
+    assert run_rule("CTS0001", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0001_ignores_formula_labels_and_prose_assignments():
+    unit = _st_unit(
+        "PROGRAM P\nVAR\nEND_VAR\n\nIMPLEMENTATION\n\n"
+        "// Check using formula: midpoint := lead + (trail - lead) / 2;\n"
+        "// CODESYS may reset BOOL := TRUE on download\n"
     )
     assert run_rule("CTS0001", ProjectSnapshot(".", [unit])) == []
 
@@ -2151,6 +2187,17 @@ def test_cts0018_accepts_assignment_before_read():
     assert run_rule("CTS0018", ProjectSnapshot(".", [unit])) == []
 
 
+def test_cts0018_accepts_indexed_read_after_whole_value_assignment():
+    unit = _st_unit(
+        "FUNCTION F : STRING(8)\nVAR\n"
+        "    text : STRING(8);\n"
+        "    index : INT := 0;\nEND_VAR\nIMPLEMENTATION\n"
+        "text := 'ready';\n"
+        "F := text[index];\n"
+    )
+    assert run_rule("CTS0018", ProjectSnapshot(".", [unit])) == []
+
+
 def test_cts0018_accepts_output_arguments_and_field_writes():
     unit = _st_unit(
         "FUNCTION F : INT\nVAR\n"
@@ -2333,6 +2380,15 @@ def test_cts0023_ignores_explicitly_documented_empty_statement():
         "PROGRAM P\nIMPLEMENTATION\n"
         "; // Intentionally empty branch for compatibility\n"
         "; (* Reserved for the vendor hook. *)\n"
+    )
+    assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0023_ignores_noop_with_preceding_intent_comment():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "// Wait for Reset; this state intentionally does nothing\n"
+        ";\n"
     )
     assert run_rule("CTS0023", ProjectSnapshot(".", [unit])) == []
 
@@ -2973,6 +3029,19 @@ def test_cts0037_ignores_real_branch_body_and_standalone_statement():
         "FUNCTION Run : BOOL\nIMPLEMENTATION\n"
         "IF Ready THEN\n;\nDoWork();\nELSE\nDoOtherWork();\nEND_IF;\n"
         ";\nRun := TRUE;\n"
+    )
+    assert run_rule("CTS0037", ProjectSnapshot(".", [unit])) == []
+
+
+def test_cts0037_ignores_documented_intentional_noop_branch():
+    unit = _st_unit(
+        "FUNCTION Run : BOOL\nIMPLEMENTATION\n"
+        "CASE State OF\n"
+        "  1: Work();\n"
+        "  2:\n"
+        "    // Wait for Reset; this state intentionally does nothing\n"
+        "    ;\n"
+        "END_CASE;\nRun := TRUE;\n"
     )
     assert run_rule("CTS0037", ProjectSnapshot(".", [unit])) == []
 

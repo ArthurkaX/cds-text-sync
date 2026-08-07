@@ -36,6 +36,8 @@ END_CASE;
 
 - A deliberate no-op branch is required by a generated state machine.
 - The branch is a documented placeholder during an active implementation.
+- A directly preceding comment explains that the branch intentionally waits,
+  resets, or does nothing.
 
 ## How to fix
 

@@ -37,6 +37,8 @@ END_IF;
 
 - Generated source uses a deliberate empty statement as a formatting marker.
 - A vendor-specific preprocessor requires the extra terminator.
+- A directly preceding comment explicitly documents an intentional wait, reset,
+  reserved hook, or other no-op branch.
 
 ## How to fix
 

@@ -23,17 +23,34 @@ _DIRECT_BINDING = re.compile(
 
 
 def _reference_names(unit, ctx):
-    names = set()
-    for candidate in [unit, *ctx.units]:
-        if candidate is not unit and candidate.kind not in (K.GVL, K.GVL_PERSISTENT):
-            continue
-        for member in decl.all_members(candidate):
-            if (
-                member.get("name")
-                and classify_type(member.get("type", "")).get("base", "").upper()
-                == "REFERENCE"
-            ):
-                names.add(member["name"].casefold())
+    # The project-wide part is identical for every callable in this rule.
+    # Computing it inside every unit check made large projects quadratic.
+    key = "cts0093_project_reference_names"
+    project_names = ctx._cache.get(key)
+    if project_names is None:
+        project_names = set()
+        for candidate in ctx.units:
+            if candidate.kind not in (K.GVL, K.GVL_PERSISTENT):
+                continue
+            for member in decl.all_members(candidate):
+                if (
+                    member.get("name")
+                    and classify_type(member.get("type", "")).get("base", "").upper()
+                    == "REFERENCE"
+                ):
+                    project_names.add(member["name"].casefold())
+        ctx._cache[key] = project_names
+
+    names = set(project_names)
+
+    # A callable can declare a local REFERENCE as well.
+    for member in decl.all_members(unit):
+        if (
+            member.get("name")
+            and classify_type(member.get("type", "")).get("base", "").upper()
+            == "REFERENCE"
+        ):
+            names.add(member["name"].casefold())
     return names
 
 
