@@ -7,7 +7,8 @@ related: [CTS0009, CTS0013]
 ## What it is
 
 `CTS0094` reports a `VAR_OUTPUT` of a project function block that has no
-external `instance.Output` read in the analyzed Structured Text.
+external `instance.Output` read in the analyzed Structured Text or in the
+visualization XML of the project view.
 
 ## Why it is dangerous
 
@@ -51,8 +52,19 @@ END_IF;
 
 ## When ignoring is legitimate
 
-Ignore outputs consumed by HMI, visualization, fieldbus mapping, watch lists,
-or another project that is not present in the exported `.st` view. Public FB
+In CODESYS HMI projects an FB output is very often read only by a
+visualization element. The analyzer now consults the visualization XML of the
+project view (for example `project-view/Runtime/PLC Logic/Application/HMI/
+Screen1.xml`): an output that is bound by a screen element such as
+`Main.pump.running` is treated as consumed and is not reported, even when no
+`.st` file reads it.
+
+The visualization match is deliberately textual and approximate: it looks for
+dotted identifier paths in the XML and considers an output used if it appears.
+It can therefore miss a genuinely dead output that happens to be named in a
+screen, which is the acceptable direction of error for a `suspicious` rule.
+Fieldbus mappings, watch lists, and other external tooling are still invisible
+to the analyzer: an output consumed only by those is still reported. Public FB
 interfaces may intentionally expose signals before an internal consumer exists.
 An output explicitly discarded in a named call mapping (`Output => ,`) is also
 treated as intentional and is not reported.
@@ -60,4 +72,5 @@ treated as intentional and is not reported.
 ## How to fix
 
 Remove the output, consume it explicitly, or document the external consumer
-that is outside the analyzed project.
+that is outside the analyzed project view (for example a fieldbus mapping or a
+watch list that the analyzer cannot see).
