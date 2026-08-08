@@ -24,6 +24,37 @@ from cds_static_analyzer.workspace import WorkspaceError, WorkspaceResolver
 from cds_text_sync import __version__
 
 
+def _repair_mojibake(text: str) -> str:
+    """Repair an obvious UTF-8 -> Latin-1 -> UTF-8 round trip for display.
+
+    Some CODESYS exports contain Russian comments that were decoded as a
+    single-byte encoding and encoded as UTF-8 again.  Do not apply a broad
+    encoding guess: only transform text when it is entirely single-byte and
+    the conversion removes the characteristic C1 controls and ``Ð``/``Ñ``
+    markers.  The source file itself is never rewritten by this helper.
+    """
+
+    def badness(value: str) -> int:
+        return sum(
+            1
+            for char in value
+            if "\x80" <= char <= "\x9f" or char in "ÃÂÐÑ"
+        )
+
+    current = text
+    for _ in range(2):
+        if any(ord(char) > 0xFF for char in current):
+            break
+        try:
+            candidate = current.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            break
+        if badness(candidate) >= badness(current):
+            break
+        current = candidate
+    return current
+
+
 def analyze_workspace(workspace_path: str) -> dict:
     """Return the same JSON envelope that ``cts analyze`` would display.
 
@@ -36,12 +67,23 @@ def analyze_workspace(workspace_path: str) -> dict:
             "ok": True,
             "workspace": workspace.root,
             "project_view": workspace.project_view,
-            "result": result.to_dict(),
+            "result": _ui_result_dict(result),
         }
     except (WorkspaceError, ConfigError, RegistryError, state_mod.StateError, OSError) as exc:
         return {"ok": False, "error": str(exc)}
     except Exception as exc:  # Do not leave the window with an opaque bridge error.
         return {"ok": False, "error": f"Analysis failed unexpectedly: {exc}"}
+
+
+def _ui_result_dict(result) -> dict:
+    """Add UI-only capabilities without changing the CLI result contract."""
+    payload = result.to_dict()
+    fixable = {
+        rule_id: rule.fix is not None for rule_id, rule in load_builtin_rules().items()
+    }
+    for finding in payload.get("findings", []):
+        finding["fixable"] = bool(fixable.get(finding.get("rule_id"), False))
+    return payload
 
 
 class AnalyzerApi:
@@ -93,7 +135,7 @@ class AnalyzerApi:
                 "ok": True,
                 "workspace": workspace.root,
                 "project_view": workspace.project_view,
-                "result": result.to_dict(),
+                "result": _ui_result_dict(result),
             }
             self._last_project_view = workspace.project_view
             self._last_analysis = (workspace.root, response["result"])
@@ -191,7 +233,10 @@ class AnalyzerApi:
         if error is not None:
             return None, error
         try:
-            return target.read_text(encoding="utf-8", errors="replace").splitlines(), None
+            text = target.read_text(encoding="utf-8", errors="replace")
+            # ST uses LF as its source line separator.  ``splitlines`` also
+            # treats U+0085 inside an exported comment as a new source line.
+            return _repair_mojibake(text).split("\n"), None
         except OSError as exc:
             return None, {"ok": False, "error": str(exc)}
 

@@ -18,6 +18,7 @@ def test_ui_adapter_runs_existing_analyzer(tmp_path):
     assert response["result"]["summary"]["files"] > 0
     assert response["result"]["findings"]
     assert all(item["rule_id"] != "VISU001" for item in response["result"]["findings"])
+    assert all("fixable" in item for item in response["result"]["findings"])
 
 
 def test_ui_adapter_returns_workspace_error_as_data(tmp_path):
@@ -85,6 +86,21 @@ def test_source_context_is_limited_to_st_files_and_project_view(tmp_path):
     assert api.source_context("notes.txt", 1)["error"] == (
         "Only .st source context is available."
     )
+
+
+def test_source_context_repairs_obvious_mojibake_in_exported_comments(tmp_path):
+    source = tmp_path / "Main.st"
+    comment = "// Массив данных Расходомеров"
+    corrupted = comment.encode("utf-8").decode("latin-1")
+    corrupted = corrupted.encode("utf-8").decode("utf-8")
+    source.write_text("PROGRAM Main\n" + corrupted + "\nEND_PROGRAM\n", encoding="utf-8")
+    api = AnalyzerApi()
+    api._last_project_view = str(tmp_path)
+
+    response = api.source_context("Main.st", 2, radius=1)
+
+    assert response["ok"] is True
+    assert response["lines"][1]["text"] == comment
 
 
 def test_rules_catalog_contains_only_human_analyzer_rules(tmp_path):

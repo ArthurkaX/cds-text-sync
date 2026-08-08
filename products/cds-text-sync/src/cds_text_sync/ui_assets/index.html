@@ -550,10 +550,12 @@
         let group=map.get(key);
         if(!group){
           group={key, mode, rule_id:f.rule_id, rule_title:f.rule_title,
-                 path:(f.location && f.location.path)||'', paths:[], severity:f.severity, items:[], occurrences:0};
+                 path:(f.location && f.location.path)||'', paths:[], severity:f.severity,
+                 fixable:Boolean(f.fixable), items:[], occurrences:0};
           map.set(key,group);
         }
         group.items.push(f);
+        group.fixable=group.fixable || Boolean(f.fixable);
         const itemPath=(f.location && f.location.path)||'';
         if(group.paths.indexOf(itemPath)<0) group.paths.push(itemPath);
         group.occurrences+=occurrenceLines(f).length || 1;
@@ -837,7 +839,7 @@
           '<div class="detail"><h3>Cases in this group</h3><p>'+group.items.map(f=>(paths.length>1?esc(locationText(f.location))+' — ':'')+esc(findingRange(f,4))+' — '+esc(f.message || f.rule_title)).join('<br>')+'</p></div>'+
          '<div class="actions"><button id="fix-later">Mark whole group fix-later</button><button id="baseline">Baseline whole group</button><button id="suppress">Suppress whole group</button></div>';
        placeActionsNearTop();
-       if(rule && rule.fixable) {
+       if((rule && rule.fixable) || group.fixable) {
          $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix'+(group.items.length>1?' group':'')+'</button>');
          $('autofix').onclick=()=>openAutofix(group.items);
        }
@@ -861,11 +863,11 @@
        const ruleSummary=(rule && rule.summary) || 'No short rule description is available.';
        const ruleCardNode=$('details').querySelector('.finding-rule');
        if(ruleCardNode) ruleCardNode.querySelector('.finding-rule-title').insertAdjacentHTML('afterend','<p class="finding-rule-summary">'+esc(ruleSummary)+'</p>');
-       if(rule && rule.fixable) $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix</button>');
+       if((rule && rule.fixable) || f.fixable) $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix</button>');
        $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
       $('show-documentation').onclick=()=>openDocumentation(rule,f.rule_id,documentation);
        $('show-rule').onclick=()=>{showRules(true);$('rule-search').value=f.rule_id;renderRules();};
-       if(rule && rule.fixable) $('autofix').onclick=()=>openAutofix(f);
+       if((rule && rule.fixable) || f.fixable) $('autofix').onclick=()=>openAutofix(f);
       await fillSource(file,occurrenceLines(f));
       $('copy-suppression').onclick=async()=>{const r=await window.pywebview.api.suppression_entry(f);if(!r.ok){setNotice('message',r.error,'error');return;}try{await navigator.clipboard.writeText(r.text);setNotice('message','Suppression entry copied. Replace the TODO reason before committing.','success');}catch(_){window.prompt('Copy suppression entry:',r.text);}};
       const decide=action=>applyTriage(action,[f]);
