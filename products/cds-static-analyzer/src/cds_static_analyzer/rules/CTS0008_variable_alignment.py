@@ -127,9 +127,18 @@ def fix(text, finding):
         if len(rows) < 2 or not target_lines.intersection(row[0] for row in rows):
             return
         expected_indent = rows[0][3].group("indent")
-        # Keep one readable space before the colon, including for the longest
-        # declaration in a group.
-        expected_colon = max(row[5] for row in rows) + 1
+        # Derive the shared colon column from the declared names, never from
+        # the colon columns already in the file: the latter grow by one on
+        # every pass, so applying a group fix finding by finding - exactly
+        # what the UI does - drifted the whole table one space to the right
+        # per member.  One readable space after the longest name.
+        expected_colon = (
+            max(
+                len(expected_indent) + name_end - len(match.group("indent"))
+                for _line_no, _index, _raw, match, name_end, _colon in rows
+            )
+            + 1
+        )
         for line_no, index, raw, match, name_end, colon in rows:
             new_prefix = expected_indent + raw[len(match.group("indent")) : name_end]
             padding = max(1, expected_colon - len(new_prefix))
