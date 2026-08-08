@@ -55,6 +55,28 @@ def _repair_mojibake(text: str) -> str:
     return current
 
 
+def _read_autofix_source(path: Path):
+    """Return ``(text_lf, newline, had_bom, raw)`` for an ST source file.
+
+    Autofix must not rewrite a whole file just because Python's universal
+    newline translation turned CRLF into LF.  The rule fixers are written for
+    LF and split on ``"\\n"``, so they are handed LF-normalized text; on
+    write-back the original dominant line ending and a leading UTF-8 BOM are
+    restored.
+
+    Line-ending rule: if the file contains any CRLF, write CRLF for every
+    line ending, otherwise write LF.  This deliberately normalizes a mixed
+    file to CRLF; that is the intentional trade-off for the common CODESYS
+    export layout.
+    """
+    raw = path.read_bytes()
+    had_bom = raw.startswith(b"\xef\xbb\xbf")
+    body = raw[3:] if had_bom else raw
+    text = body.decode("utf-8", errors="replace")
+    newline = "\r\n" if b"\r\n" in body else "\n"
+    return text.replace("\r\n", "\n"), newline, had_bom, raw
+
+
 def analyze_workspace(workspace_path: str) -> dict:
     """Return the same JSON envelope that ``cts analyze`` would display.
 
@@ -345,14 +367,22 @@ class AnalyzerApi:
                     "ok": False,
                     "error": f"Rule {rule_id} does not provide a safe autofix.",
                 }
-            before = target.read_text(encoding="utf-8", errors="replace")
+            before, newline, had_bom, raw = _read_autofix_source(target)
             after = rule.fix(before, finding)
             if not isinstance(after, str) or after == before:
+                # The raw bytes ride along so that :meth:`autofix_apply` can
+                # still run its stale-source guard before this verdict wins.
                 return None, None, None, {
                     "ok": False,
                     "error": "This finding has no applicable source change.",
+                    "raw": raw,
                 }
-            return target, rule, before, after
+            return target, rule, after, {
+                "newline": newline,
+                "had_bom": had_bom,
+                "raw": raw,
+                "text_lf": before,
+            }
         except (WorkspaceError, ConfigError, RegistryError, OSError) as exc:
             return None, None, None, {"ok": False, "error": str(exc)}
         except Exception as exc:
@@ -362,14 +392,18 @@ class AnalyzerApi:
             }
 
     def autofix_preview(self, workspace_path: str, finding: dict) -> dict:
-        """Return a non-mutating unified diff for a registered rule fixer."""
-        target, rule, before, after = self._autofix_context(workspace_path, finding)
-        if isinstance(after, dict):
-            return after
+        """Return a non-mutating unified diff for a registered rule fixer.
+
+        ``before_hash`` is the SHA-256 of the on-disk bytes, so an external
+        edit that only changes line endings is still detected as "changed".
+        """
+        target, rule, after, meta = self._autofix_context(workspace_path, finding)
+        if isinstance(meta, dict) and meta.get("ok") is False:
+            return meta
         relative = str((finding.get("location") or {}).get("path", "")).replace("\\", "/")
         diff = list(
             difflib.unified_diff(
-                before.splitlines(),
+                meta["text_lf"].splitlines(),
                 after.splitlines(),
                 fromfile="Before",
                 tofile="After",
@@ -381,18 +415,33 @@ class AnalyzerApi:
             "rule_id": rule.id,
             "rule_title": rule.title,
             "path": relative,
-            "before_hash": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+            "before_hash": hashlib.sha256(meta["raw"]).hexdigest(),
             "diff": diff,
         }
 
     def autofix_apply(
         self, workspace_path: str, finding: dict, before_hash: str = ""
     ) -> dict:
-        """Apply a previously previewed fix only if the source is unchanged."""
-        target, rule, before, after = self._autofix_context(workspace_path, finding)
-        if isinstance(after, dict):
-            return after
-        current_hash = hashlib.sha256(before.encode("utf-8")).hexdigest()
+        """Apply a previously previewed fix only if the source is unchanged.
+
+        ``before_hash`` is the SHA-256 of the on-disk bytes captured at
+        preview time; it guards against an external edit, including one that
+        only changed line endings.
+        """
+        target, rule, after, meta = self._autofix_context(workspace_path, finding)
+        if isinstance(meta, dict) and meta.get("ok") is False:
+            # The fixer reported an error.  When it is the "no applicable
+            # source change" verdict, the on-disk raw bytes still ride along so
+            # an external edit that only changed line endings is caught here.
+            if "raw" in meta:
+                current_hash = hashlib.sha256(meta["raw"]).hexdigest()
+                if before_hash and before_hash != current_hash:
+                    return {
+                        "ok": False,
+                        "error": "Source changed after the preview. Generate a new preview first.",
+                    }
+            return meta
+        current_hash = hashlib.sha256(meta["raw"]).hexdigest()
         if before_hash and before_hash != current_hash:
             return {
                 "ok": False,
@@ -400,7 +449,12 @@ class AnalyzerApi:
             }
         try:
             with target.open("w", encoding="utf-8", newline="") as handle:
-                handle.write(after)
+                # Restore the original dominant line ending and a leading BOM.
+                # ``_read_autofix_source`` normalizes a mixed file to CRLF, so
+                # writing CRLF for every line ending is the intentional rule.
+                if meta["had_bom"]:
+                    handle.write("\ufeff")
+                handle.write(after.replace("\n", meta["newline"]))
         except OSError as exc:
             return {"ok": False, "error": str(exc)}
         relative = str((finding.get("location") or {}).get("path", "")).replace("\\", "/")

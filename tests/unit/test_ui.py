@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from analyze_helpers import copy_fixture
 from cds_text_sync.ui import AnalyzerApi, analyze_workspace
 
@@ -134,6 +136,105 @@ def test_cts0008_autofix_requires_preview_and_applies_only_unchanged_source(tmp_
     stale = api.autofix_apply(root, finding, preview["before_hash"])
     assert stale["ok"] is False
     assert "Source changed after the preview" in stale["error"]
+
+
+def _cts0008_finding(root):
+    """Return the first CTS0008 finding; its source line is ``POUs/FB_Conveyor.st``."""
+    analysis = analyze_workspace(root)
+    return next(item for item in analysis["result"]["findings"] if item["rule_id"] == "CTS0008")
+
+
+def _cts0008_source(root, finding):
+    """Return the ``Path`` of the finding's source file."""
+    return Path(root) / "project-view" / finding["location"]["path"]
+
+
+def test_cts0008_autofix_preserves_crlf_line_endings(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    finding = _cts0008_finding(root)
+    target = _cts0008_source(root, finding)
+    crlf = target.read_bytes().replace(b"\n", b"\r\n")
+    target.write_bytes(crlf)
+    api = AnalyzerApi()
+
+    preview = api.autofix_preview(root, finding)
+    assert preview["ok"] is True
+    applied = api.autofix_apply(root, finding, preview["before_hash"])
+    assert applied["ok"] is True
+
+    written = target.read_bytes()
+    # CRLF survives and the intended alignment fix took effect.
+    assert b"\r\n" in written
+    assert b"    speed      : INT;" in written
+    assert b"\n" not in written.replace(b"\r\n", b"")
+    assert b"\r" not in written.replace(b"\r\n", b"")
+
+
+def test_cts0008_autofix_preserves_utf8_bom(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    finding = _cts0008_finding(root)
+    target = _cts0008_source(root, finding)
+    target.write_bytes(b"\xef\xbb\xbf" + target.read_bytes())
+    api = AnalyzerApi()
+
+    preview = api.autofix_preview(root, finding)
+    assert preview["ok"] is True
+    applied = api.autofix_apply(root, finding, preview["before_hash"])
+    assert applied["ok"] is True
+
+    written = target.read_bytes()
+    # The leading BOM is written exactly once and the fix took effect.
+    assert written.startswith(b"\xef\xbb\xbf")
+    assert written.count(b"\xef\xbb\xbf") == 1
+    assert b"    speed      : INT;" in written
+
+
+def test_cts0008_autofix_preserves_trailing_newline(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    finding = _cts0008_finding(root)
+    target = _cts0008_source(root, finding)
+    original = target.read_bytes()
+    api = AnalyzerApi()
+
+    # No trailing newline on the last line stays missing after apply.
+    target.write_bytes(original.rstrip(b"\r\n"))
+    preview = api.autofix_preview(root, finding)
+    assert preview["ok"] is True
+    assert api.autofix_apply(root, finding, preview["before_hash"])["ok"] is True
+    written = target.read_bytes()
+    assert not written.endswith(b"\n") and not written.endswith(b"\r\n")
+    assert b"    speed      : INT;" in written
+
+    # A single trailing newline stays a single trailing newline after apply.
+    target.write_bytes(original)
+    preview = api.autofix_preview(root, finding)
+    assert preview["ok"] is True
+    assert api.autofix_apply(root, finding, preview["before_hash"])["ok"] is True
+    written = target.read_bytes()
+    assert written.endswith(b"\n") and not written.endswith(b"\n\n")
+    assert b"    speed      : INT;" in written
+
+
+def test_cts0008_stale_guard_catches_line_ending_only_edit(tmp_path):
+    root = str(tmp_path / "sync")
+    copy_fixture(root)
+    finding = _cts0008_finding(root)
+    target = _cts0008_source(root, finding)
+    api = AnalyzerApi()
+
+    preview = api.autofix_preview(root, finding)
+    assert preview["ok"] is True
+
+    # An external edit that only flips CRLF <-> LF must invalidate the preview.
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n"))
+
+    stale = api.autofix_apply(root, finding, preview["before_hash"])
+    assert stale["ok"] is False
+    assert "Source changed after the preview" in stale["error"]
+
 
 
 def test_rule_switch_is_saved_to_project_config(tmp_path):
