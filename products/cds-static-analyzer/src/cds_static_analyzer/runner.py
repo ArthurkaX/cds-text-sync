@@ -546,7 +546,10 @@ def _report_visu_xml_errors(rule, ctx, result):
 
 def _dispatch_unit(rule, unit, ctx, result):
     try:
-        found = rule.check(unit, ctx) or []
+        # A rule may be a generator.  Materialize it inside the guarded
+        # section because generator body exceptions are raised during
+        # iteration, not at the call site.
+        found = list(rule.check(unit, ctx) or [])
     except CapabilityError as exc:
         result.complete = False
         result.diagnostics.append(
@@ -572,7 +575,7 @@ def _dispatch_unit(rule, unit, ctx, result):
 
 def _dispatch_project(rule, ctx, result):
     try:
-        found = rule.check(ctx) or []
+        found = list(rule.check(ctx) or [])
     except CapabilityError as exc:
         result.complete = False
         result.diagnostics.append(

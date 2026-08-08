@@ -208,6 +208,7 @@ def test_cts0075_flags_function_result_missing_on_a_path():
     findings = run_rule("CTS0075", ProjectSnapshot(".", [unit]))
     assert len(findings) == 1
     assert findings[0].anchor == "GetValue"
+    assert findings[0].severity == "suspicious"
 
 
 def test_cts0075_accepts_default_before_conditional_result():
@@ -1827,6 +1828,29 @@ def test_cts0007_fix_reindents_only_reported_lines():
     assert fixed.count("\t\tvalue := i;\n") == 1
 
 
+def test_cts0007_fix_uses_the_full_merged_location_range():
+    from cds_static_analyzer.rules.CTS0007_indentation import fix
+
+    text = (
+        "PROGRAM AERATION\nIMPLEMENTATION\n"
+        "IF p.act_step <> p.next_step THEN\n"
+        "\tp.act_step := p.next_step;\n"
+        "\tELSE \n"
+        "\t\tt.tSTEP_TIME := T#0MS;\n"
+        "\t\tp.first_scan := FALSE;\n"
+        "END_IF\n"
+    )
+    fixed = fix(
+        text,
+        {
+            "location": {"line": 5, "end_line": 7},
+            "member_lines": [5, 6, 7],
+        },
+    )
+
+    assert "\nELSE \n\tt.tSTEP_TIME := T#0MS;\n\tp.first_scan := FALSE;\n" in fixed
+
+
 # ---------------------------------------------------------------------------
 # CTS0008 - variable declaration alignment
 # ---------------------------------------------------------------------------
@@ -1871,6 +1895,20 @@ def test_cts0008_fix_aligns_only_the_affected_group():
     fixed_lines = fixed.splitlines()
     assert fixed_lines[2].index(":") == fixed_lines[3].index(":")
     assert "    isolated : BYTE;\n" in fixed
+
+
+def test_cts0008_handles_unicode_line_separator_in_exported_comment():
+    # Some CODESYS-based IDE exports contain U+0085 in legacy-encoded comment
+    # text.  It is not an ST newline, but str.splitlines() treats it as one.
+    unit = _st_unit(
+        "PROGRAM P\nVAR\n"
+        "    first : INT; // legacy comment\x85still one ST line\n"
+        "    much_longer_name: BOOL;\n"
+        "END_VAR\nIMPLEMENTATION\nEND_PROGRAM\n"
+    )
+    findings = run_rule("CTS0008", ProjectSnapshot(".", [unit]))
+    assert len(findings) == 1
+    assert findings[0].location.line == 3
 
 
 # ---------------------------------------------------------------------------

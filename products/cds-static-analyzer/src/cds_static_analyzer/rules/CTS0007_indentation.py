@@ -50,7 +50,7 @@ def check(unit, ctx):
     section = body(unit)
     # Blanking is 1:1, so the blanked text splits into the same lines as the
     # raw text and gives the comment-free code for each of them.
-    clean_lines = section.text.splitlines()
+    clean_lines = section.text.split("\n")
     depth_indents = {0: 0}
     depth = 0
     previous_code = ""
@@ -114,12 +114,16 @@ def fix(text, finding):
     :func:`check`.  Only the source lines represented by the finding are
     changed; continuation lines and all non-leading content remain intact.
     """
-    raw_lines = text.splitlines(keepends=True)
-    clean_lines = trim_strings(blank_noise(text)).splitlines()
+    # ST source is line-oriented by LF.  ``str.splitlines`` also treats
+    # Unicode control characters inside comments as line breaks.
+    raw_lines = text.split("\n")
+    clean_lines = trim_strings(blank_noise(text)).split("\n")
     target_lines = set()
     location = finding.get("location") if isinstance(finding, dict) else None
     if isinstance(location, dict) and location.get("line") is not None:
-        target_lines.add(int(location["line"]))
+        start_line = int(location["line"])
+        end_line = int(location.get("end_line") or start_line)
+        target_lines.update(range(start_line, max(start_line, end_line) + 1))
     for value in (finding.get("member_lines", []) if isinstance(finding, dict) else []):
         try:
             target_lines.add(int(value))
@@ -183,11 +187,9 @@ def fix(text, finding):
         if index + 1 not in target_lines or (actual == expected and not mixed):
             continue
         raw = raw_lines[index]
-        content = raw.rstrip("\r\n")
-        newline = raw[len(content) :]
-        raw_lines[index] = prefix_for(expected) + content[len(prefix) :] + newline
+        raw_lines[index] = prefix_for(expected) + raw[len(prefix) :]
 
-    return "".join(raw_lines)
+    return "\n".join(raw_lines)
 
 
 RULE = RuleSpec(

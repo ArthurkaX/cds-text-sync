@@ -121,7 +121,7 @@ def check(unit, ctx):
 RULE = RuleSpec(
     id="CTS0075",
     title="Function result not assigned on all paths",
-    severity="danger",
+    severity="suspicious",
     scope=Scope.UNIT,
     requires={Capability.DECLARATIONS, Capability.ST_TEXT, Capability.BLOCK_STRUCTURE},
     kinds="function",

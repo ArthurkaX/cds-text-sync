@@ -55,13 +55,22 @@ class Section:
     def lines(self):
         """Yield ``(lineno, absolute_offset, line_text)`` -- 1-based lineno,
         absolute offsets (identical in ``.raw`` and ``.text``, since blanking
-        is 1:1), raw line text (line ending stripped)."""
+        is 1:1), raw line text (line ending stripped).
+
+        ST source uses LF as its line delimiter.  Do not use
+        :meth:`str.splitlines` here: legacy-encoded comments may contain
+        Unicode line-separator controls such as U+0085, which are characters
+        in the comment rather than source line endings.
+        """
         lineno = 0
         offset = 0
-        for line in self.raw.splitlines(keepends=True):
+        lines = self.raw.split("\n")
+        if lines and lines[-1] == "":
+            lines.pop()
+        for line in lines:
             lineno += 1
             yield lineno, self.base + offset, line.rstrip("\r\n")
-            offset += len(line)
+            offset += len(line) + 1
 
 
 def _section(unit, role, text):

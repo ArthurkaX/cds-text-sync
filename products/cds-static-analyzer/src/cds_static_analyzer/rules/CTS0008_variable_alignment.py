@@ -34,7 +34,11 @@ def check(unit, ctx):
 
     # Blanking is 1:1, so line N of the blanked text is line N of the raw
     # text with comments and string contents already removed.
-    clean_lines = section.text.splitlines()
+    # ``str.splitlines()`` also treats control characters such as U+0085 as
+    # line boundaries.  They can occur in legacy-encoded comments exported by
+    # a CODESYS-based IDE, while the ST source still has only LF line endings.
+    # Keep the blanked text aligned with Section.lines(), which is LF-based.
+    clean_lines = section.text.split("\n")
     group = []
     in_section = False
 
@@ -100,8 +104,10 @@ def fix(text, finding):
     only.  It uses the same section/group boundaries as :func:`check`, so a
     preview can never silently reformat an unrelated declaration block.
     """
-    raw_lines = text.splitlines(keepends=True)
-    clean_lines = blank_noise(text).splitlines(keepends=True)
+    # Use the source newline convention, not every Unicode line-separator
+    # character that may be present in a comment from a legacy export.
+    raw_lines = text.split("\n")
+    clean_lines = blank_noise(text).split("\n")
     target_lines = set()
     location = finding.get("location") if isinstance(finding, dict) else None
     if isinstance(location, dict) and location.get("line") is not None:
@@ -128,8 +134,7 @@ def fix(text, finding):
             new_prefix = expected_indent + raw[len(match.group("indent")) : name_end]
             padding = max(1, expected_colon - len(new_prefix))
             replacement = new_prefix + (" " * padding) + raw[colon:]
-            newline = raw_lines[index][len(content(raw_lines[index])) :]
-            raw_lines[index] = replacement + newline
+            raw_lines[index] = replacement
 
     in_section = False
     group = []
@@ -168,7 +173,7 @@ def fix(text, finding):
             align_group(group)
             group = []
     align_group(group)
-    return "".join(raw_lines)
+    return "\n".join(raw_lines)
 
 
 RULE = RuleSpec(
