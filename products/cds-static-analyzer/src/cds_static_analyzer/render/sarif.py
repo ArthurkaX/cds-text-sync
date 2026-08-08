@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+import cds_static_analyzer as analyze
+
 _LEVEL = {
     "danger": "error",
     "suspicious": "warning",
@@ -17,17 +19,58 @@ _LEVEL = {
 }
 
 
-def render(result, tool_name="cts analyze", tool_version="1"):
+def _rule_metadata():
+    """Map {rule_id: {summary, topic, scope}} from the built-in registry.
+
+    The registry lives in the same package and is expected to load, but a
+    renderer must never be able to break a run: after a successful analysis a
+    raise here would lose the whole result. Any failure degrades gracefully
+    to an empty map and the document falls back to today's leaner rule
+    entries.
+    """
+    try:
+        from cds_static_analyzer.registry import load_builtin_rules
+
+        registry = load_builtin_rules()
+    except Exception:
+        return {}
+    meta = {}
+    for rule_id, rule in registry.items():
+        meta[rule_id] = {
+            "summary": rule.summary,
+            "topic": rule.topic,
+            "scope": rule.scope.value,
+        }
+    return meta
+
+
+def render(result, tool_name="cts analyze", tool_version=None):
     """Render an AnalysisResult as a SARIF 2.1.0 document."""
+    if tool_version is None:
+        tool_version = analyze.__version__
+    metadata = _rule_metadata()
     rules = {}
     for f in result.findings:
         if f.rule_id not in rules:
-            rules[f.rule_id] = {
+            entry = {
                 "id": f.rule_id,
                 "name": f.rule_title or f.rule_id,
                 "shortDescription": {"text": f.rule_title or f.rule_id},
                 "defaultConfiguration": {"level": _LEVEL.get(f.severity, "warning")},
             }
+            meta = metadata.get(f.rule_id)
+            if meta:
+                summary = meta["summary"] or f.rule_title or f.rule_id
+                entry["fullDescription"] = {"text": summary}
+                # help is the rule's long-form explanation. Note: there is no
+                # canonical public URL for this tool, so no informationUri or
+                # helpUri is emitted - do not "fix" that by inventing one.
+                entry["help"] = {"text": summary}
+                entry["properties"] = {
+                    "topic": meta["topic"],
+                    "scope": meta["scope"],
+                }
+            rules[f.rule_id] = entry
 
     results = []
     for f in result.findings:

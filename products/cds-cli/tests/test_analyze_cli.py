@@ -6,7 +6,55 @@ and SARIF snapshots.
 import json
 import os
 
+import tomllib
+
 from analyze_helpers import copy_fixture, fixture_project_view, run_cli
+
+
+def test_analyze_format_md_is_real_markdown():
+    code_json, json_out, _ = run_cli(
+        ["analyze", "--workspace", fixture_project_view(), "--format", "json"]
+    )
+    code, out, _ = run_cli(
+        ["analyze", "--workspace", fixture_project_view(), "--format", "md"]
+    )
+    assert code == code_json
+    assert out.startswith("# cts analyze")
+    # A known finding from the fixture appears as a table row.
+    assert "| CTS0001 |" in out
+    # No ANSI escape sequences: markdown output must be plain text.
+    assert "\x1b" not in out
+
+
+def test_rules_format_md_is_markdown_table():
+    code, out, _ = run_cli(["analyze", "rules", "--format", "md"])
+    assert code == 0
+    assert out.startswith("# cts analyze rules")
+    assert "| CTS0001 |" in out
+
+
+def test_sarif_reports_real_tool_version():
+    code, out, _ = run_cli(
+        [
+            "analyze",
+            "--workspace",
+            fixture_project_view(),
+            "--format",
+            "sarif",
+        ]
+    )
+    assert code == 1
+    doc = json.loads(out)
+    version = doc["runs"][0]["tool"]["driver"]["version"]
+    assert version != "1"
+    # The reported version must stay in lockstep with the package version.
+    here = os.path.dirname(__file__)
+    pyproject = os.path.join(
+        here, "..", "..", "cds-static-analyzer", "pyproject.toml"
+    )
+    with open(pyproject, "rb") as fh:
+        declared = tomllib.load(fh)["project"]["version"]
+    assert version == declared
 
 
 def test_json_snapshot_is_deterministic():
