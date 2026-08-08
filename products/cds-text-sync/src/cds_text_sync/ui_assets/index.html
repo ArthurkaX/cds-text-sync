@@ -536,7 +536,7 @@
        through one rule - the list stays short and the detail panel colours
        every occurrence - while the flat modes keep the older per-rule and
        per-file breakdown. */
-    let currentGroups = [];
+    let currentGroups = [], detailsRequest = 0;
     function groupKeyFor(finding, mode) {
       const path=(finding.location && finding.location.path) || '';
       if(mode==='rule') return 'rule '+finding.rule_id;
@@ -799,6 +799,14 @@
       const actions=$('details').querySelector('.actions'), source=$('details').querySelector('#source');
       if(actions && source) source.parentNode.insertBefore(actions,source);
     }
+    function addAutofixAction(items, label) {
+      const actions=$('details').querySelector('.actions');
+      if(!actions)return;
+      const button=document.createElement('button');
+      button.type='button'; button.className='primary'; button.textContent=label || 'Auto-fix';
+      button.onclick=event=>{event.preventDefault();event.stopPropagation();openAutofix(items);};
+      actions.insertBefore(button,actions.firstChild);
+    }
     /* Draw every excerpt the bridge returned, separating coalesced windows so
        a skipped region never reads as contiguous source. */
     function renderSpans(spans) {
@@ -822,11 +830,13 @@
     /* A whole group as one case: every occurrence highlighted at once, and
        triage applying to all of its findings. */
     async function selectGroup(group) {
+      const request=++detailsRequest;
       selectedGroupKey=group.key; selectedFingerprint=''; renderFindings();
       const paths=group.paths||[group.path||''];
       const path=paths.length===1 ? paths[0] : '';
       const ruleIds=Array.from(new Set(group.items.map(f=>f.rule_id)));
       const rule=ruleIds.length===1 ? await ruleFor(ruleIds[0]) : null;
+      if(request!==detailsRequest)return;
       const documentation=rule && (rule.documentation || rule.summary) ||
         (ruleIds.length===1 ? 'No rule documentation is available.' : 'This group spans '+ruleIds.length+' rules.');
       const lines=[]; if(path) group.items.forEach(f=>lines.push(...occurrenceLines(f)));
@@ -840,8 +850,7 @@
          '<div class="actions"><button id="fix-later">Mark whole group fix-later</button><button id="baseline">Baseline whole group</button><button id="suppress">Suppress whole group</button></div>';
        placeActionsNearTop();
        if((rule && rule.fixable) || group.fixable) {
-         $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix'+(group.items.length>1?' group':'')+'</button>');
-         $('autofix').onclick=()=>openAutofix(group.items);
+         addAutofixAction(group.items,'Auto-fix'+(group.items.length>1?' group':''));
        }
        if(path)$('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(path,lines[0]||1);if(!r.ok)setNotice('message',r.error,'error');};
       $('show-documentation').onclick=()=>openDocumentation(rule,ruleIds.length===1?ruleIds[0]:'Rule documentation',documentation);
@@ -852,8 +861,9 @@
       $('fix-later').onclick=()=>decide('fix-later'); $('baseline').onclick=()=>decide('baseline'); $('suppress').onclick=()=>decide('suppress');
     }
     async function selectFinding(f) {
-      if(!f) return; selectedFingerprint=f.fingerprint; selectedGroupKey=''; expandGroupOf(f); renderFindings();
+      if(!f) return; const request=++detailsRequest; selectedFingerprint=f.fingerprint; selectedGroupKey=''; expandGroupOf(f); renderFindings();
       const rule=await ruleFor(f.rule_id);
+      if(request!==detailsRequest)return;
       const file=f.location && f.location.path || '', line=f.location && f.location.line || 1;
       const documentation=rule && (rule.documentation || rule.summary) || 'No rule documentation is available.';
       const ruleTitle=(f.rule_title || (rule && (rule.title || rule.summary)) || f.rule_id);
@@ -863,11 +873,10 @@
        const ruleSummary=(rule && rule.summary) || 'No short rule description is available.';
        const ruleCardNode=$('details').querySelector('.finding-rule');
        if(ruleCardNode) ruleCardNode.querySelector('.finding-rule-title').insertAdjacentHTML('afterend','<p class="finding-rule-summary">'+esc(ruleSummary)+'</p>');
-       if((rule && rule.fixable) || f.fixable) $('details').querySelector('.actions').insertAdjacentHTML('afterbegin','<button id="autofix" class="primary">Auto-fix</button>');
+       if((rule && rule.fixable) || f.fixable) addAutofixAction([f],'Auto-fix');
        $('open-file').onclick=async()=>{const r=await window.pywebview.api.open_file(file,line);if(!r.ok)setNotice('message',r.error,'error');};
       $('show-documentation').onclick=()=>openDocumentation(rule,f.rule_id,documentation);
        $('show-rule').onclick=()=>{showRules(true);$('rule-search').value=f.rule_id;renderRules();};
-       if((rule && rule.fixable) || f.fixable) $('autofix').onclick=()=>openAutofix(f);
       await fillSource(file,occurrenceLines(f));
       $('copy-suppression').onclick=async()=>{const r=await window.pywebview.api.suppression_entry(f);if(!r.ok){setNotice('message',r.error,'error');return;}try{await navigator.clipboard.writeText(r.text);setNotice('message','Suppression entry copied. Replace the TODO reason before committing.','success');}catch(_){window.prompt('Copy suppression entry:',r.text);}};
       const decide=action=>applyTriage(action,[f]);
