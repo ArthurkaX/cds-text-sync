@@ -161,7 +161,18 @@ def check_wheel_install():
                 f"{exc}\n{proc.stdout[:500]}"
             ) from exc
         ids = {row.get("id") for row in rows}
-        expected_ids = {f"CTS{number:04d}" for number in range(1, 44)} - {"CTS0005"}
+        rules_dir = os.path.join(
+            root,
+            "products",
+            "cds-static-analyzer",
+            "src",
+            "cds_static_analyzer",
+            "rules",
+        )
+        expected_ids = {
+            os.path.basename(path).split("_", 1)[0]
+            for path in glob.glob(os.path.join(rules_dir, "CTS*.py"))
+        }
         if ids != expected_ids:
             raise SystemExit(
                 f"installed registry reports unexpected rule ids: {sorted(ids)}"

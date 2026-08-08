@@ -63,13 +63,12 @@ unavailable capability becomes a `Diagnostic` and the run is marked
 incomplete - analysis never crashes on one bad object, and a missing model
 never looks like "all clean".
 
-First rules, one per source:
-
-- `CTS0001` commented-out code (text rule; ST_TEXT).
-- `CTS0002` unused `VAR_INPUT` member, read across the owner's methods and
-  actions (DECLARATIONS + PROJECT_SYMBOLS).
-- `CTS0004` `PERSISTENT` member order changed against an explicit git base
-  (GIT_BASE via subprocess; no git -> policy-controlled Diagnostic).
+The release now ships 95 documented human-facing rules. They cover commented
+out code, declarations, data flow, control flow, type and arithmetic hazards,
+pointer/reference safety, strings, function blocks, project structure, and
+several conservative style checks. The complete registry is listed in
+`products/cds-static-analyzer/src/cds_static_analyzer/rules/implemented_rules.md`
+and is available through `cts analyze rules`.
 
 **Findings are identified by fingerprint**, not by file:line: schema
 version + rule id + stable unit id + semantic anchor + normalised context.
