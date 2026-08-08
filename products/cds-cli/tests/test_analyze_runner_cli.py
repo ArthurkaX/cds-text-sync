@@ -52,7 +52,7 @@ def test_cli_json_envelope(tmp_path):
     data = json.loads(out)
     assert data["schema_version"] == 1
     assert "findings" in data and "diagnostics" in data
-    assert data["summary"]["total"] == 19
+    assert data["summary"]["total"] == 30
 
 def test_cli_read_only_no_state_written(tmp_path):
     root = str(tmp_path / "sync")

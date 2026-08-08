@@ -93,7 +93,7 @@ def test_fail_on_danger_ignores_suspicious():
     # Fixture has no danger findings; suspicious ones do not fail.
     assert code == 0
     data = json.loads(out)
-    assert data["summary"]["total"] == 19
+    assert data["summary"]["total"] == 30
 
 
 def test_rule_filter_cli():

@@ -30,9 +30,13 @@ jobs:
         shell: pwsh
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Run unit tests
+      - name: Run full test suite
         shell: pwsh
-        run: python -m pytest tests\unit
+        run: python -m pytest -q
+
+      - name: Check Python style
+        shell: pwsh
+        run: python -m ruff check .
 
       - name: Analyze selftest (rules against their own docs)
         shell: pwsh
