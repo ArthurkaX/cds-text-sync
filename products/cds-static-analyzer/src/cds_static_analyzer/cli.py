@@ -25,6 +25,7 @@ from cds_static_analyzer import state as state_mod
 from cds_static_analyzer.config import ConfigError, load_config
 from cds_static_analyzer.registry import RegistryError, load_builtin_rules
 from cds_static_analyzer.render import json as render_json
+from cds_static_analyzer.render import markdown as render_markdown
 from cds_static_analyzer.render import sarif as render_sarif
 from cds_static_analyzer.render import terminal as render_terminal
 from cds_static_analyzer.runner import (
@@ -141,6 +142,8 @@ def _render(result, args):
         return render_json.render(result)
     if fmt == "sarif":
         return render_sarif.render(result)
+    if fmt == "md":
+        return render_markdown.render(result)
     return render_terminal.render(result)
 
 
@@ -191,6 +194,15 @@ def cmd_rules(args, out=None):
         )
     if fmt == "json":
         out.write(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
+    elif fmt == "md":
+        out.write("# cts analyze rules\n\n")
+        out.write("| id | severity | scope | title |\n")
+        out.write("| --- | --- | --- | --- |\n")
+        for row in rows:
+            out.write(
+                f"| {row['id']} | {row['severity']} | {row['scope']} "
+                f"| {row['title'].replace('|', '\\|')} |\n"
+            )
     else:
         for row in rows:
             out.write(
