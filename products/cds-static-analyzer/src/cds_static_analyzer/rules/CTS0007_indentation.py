@@ -12,6 +12,13 @@ from cds_static_analyzer.st.blanking import blank_noise, trim_strings
 _OPENERS = re.compile(r"\b(IF|FOR|WHILE|REPEAT|CASE)\b", re.IGNORECASE)
 _CLOSERS = re.compile(r"^END_(IF|FOR|WHILE|REPEAT|CASE)\b", re.IGNORECASE)
 _BRANCH = re.compile(r"^(ELSE|ELSIF)\b", re.IGNORECASE)
+# A CASE label is a structural branch, not a statement at the CASE body
+# level.  CODESYS commonly writes labels at the CASE indentation and indents
+# their statements one level further, for example ``1:`` followed by a TAB.
+# Keep the pattern deliberately broad: labels may be integer ranges, enums,
+# qualified names, or comma-separated alternatives.  ``:=`` is excluded so a
+# normal assignment can never be mistaken for a label.
+_CASE_LABEL = re.compile(r"^[^;:]+:(?!=)", re.IGNORECASE)
 _CONTINUATION_START = re.compile(
     r"^(?:[,.)\]}]|(?:AND|OR|XOR)\b|[+\-*/])", re.IGNORECASE
 )
@@ -72,7 +79,10 @@ def check(unit, ctx):
         continuation = _is_continuation(previous_code, code)
         is_close = bool(_CLOSERS.match(upper))
         is_branch = bool(_BRANCH.match(upper))
-        expected_depth = max(0, depth - (1 if is_close or is_branch else 0))
+        is_case_label = bool(_CASE_LABEL.match(upper)) and depth > 0
+        expected_depth = max(
+            0, depth - (1 if is_close or is_branch or is_case_label else 0)
+        )
 
         if not continuation:
             actual = _indent_width(prefix)
@@ -93,9 +103,11 @@ def check(unit, ctx):
 
         if is_close:
             depth = max(0, depth - 1)
-        elif is_branch:
+        elif is_branch or is_case_label:
             # ELSE/ELSIF belongs to the current block; its following body is
-            # nested one level again.
+            # nested one level again. CASE labels have the same structural
+            # role: the label is at the parent level, while its body remains
+            # at the CASE depth.
             pass
         else:
             opens = _OPENERS.findall(upper)
@@ -150,7 +162,10 @@ def fix(text, finding):
         upper = code.upper()
         is_close = bool(_CLOSERS.match(upper))
         is_branch = bool(_BRANCH.match(upper))
-        expected_depth = max(0, depth - (1 if is_close or is_branch else 0))
+        is_case_label = bool(_CASE_LABEL.match(upper)) and depth > 0
+        expected_depth = max(
+            0, depth - (1 if is_close or is_branch or is_case_label else 0)
+        )
         if not continuation:
             actual = _indent_width(prefix)
             expected = depth_indents.setdefault(
@@ -163,7 +178,7 @@ def fix(text, finding):
 
         if is_close:
             depth = max(0, depth - 1)
-        elif not is_branch:
+        elif not (is_branch or is_case_label):
             opens = _OPENERS.findall(upper)
             if opens and not re.search(
                 r"\bEND_(?:IF|FOR|WHILE|REPEAT|CASE)\b", upper

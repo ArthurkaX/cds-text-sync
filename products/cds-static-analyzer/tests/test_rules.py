@@ -1806,6 +1806,20 @@ def test_cts0007_ignores_declaration_table_and_continuation_alignment():
     assert run_rule("CTS0007", ProjectSnapshot(".", [unit])) == []
 
 
+def test_cts0007_treats_case_labels_as_structural_branches():
+    unit = _st_unit(
+        "PROGRAM P\nIMPLEMENTATION\n"
+        "CASE screen_select OF\n"
+        "1: VisuElems.CURRENTVISU := 'SCREEN_1';\n"
+        "2:\n"
+        "\tIF write_request THEN\n"
+        "\t\tvalue := 1;\n"
+        "\tEND_IF;\n"
+        "END_CASE;\n"
+    )
+    assert run_rule("CTS0007", ProjectSnapshot(".", [unit])) == []
+
+
 def test_cts0007_fix_reindents_only_reported_lines():
     text = (
         "PROGRAM P\nIMPLEMENTATION\n\n"
