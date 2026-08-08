@@ -157,6 +157,25 @@ def _explicitly_ignored(ctx, owner, field, instances, ignored):
     )
 
 
+def _referenced_from_xml(ctx, instances, name):
+    """Whether any known instance of the FB is read from XML with *name*.
+
+    Visualizations, text lists and the task configuration bind PLC symbols by
+    name in the project-view XML that is not part of the ST snapshot. A symbol
+    read exclusively from a screen looks dead to the ST-only scan, so an output
+    named in that XML must not be reported as unused.
+
+    ``instances`` maps casefolded instance paths to their display form; the
+    keys are exactly what ``ExternalReferences.is_referenced`` expects as the
+    owner path, and ``is_referenced`` casefolds both arguments anyway, so only
+    the keys are consulted. This is a deliberately loose, textual match: false
+    negatives (a symbol wrongly considered used) are the accepted error
+    direction for a ``suspicious`` rule.
+    """
+    index = ctx.capability(Capability.VISU_XML)
+    return any(index.is_referenced(owner, name) for owner in instances)
+
+
 def check(ctx):
     ctx.capability(Capability.DECLARATIONS)
     ctx.capability(Capability.ST_TEXT)
@@ -174,12 +193,13 @@ def check(ctx):
                 not name
                 or _externally_read(ctx, owner, name, instances, reads)
                 or _explicitly_ignored(ctx, owner, name, instances, ignored)
+                or _referenced_from_xml(ctx, instances, name)
             ):
                 continue
             yield finding_in(
                 message=(
                     f"function-block output '{name}' has no external read "
-                    "in the analyzed Structured Text"
+                    "in Structured Text or visualization XML"
                 ),
                 unit=owner,
                 offset=_member_offset(owner, member),
@@ -193,7 +213,7 @@ RULE = RuleSpec(
     title="Unused function-block output",
     severity="suspicious",
     scope=Scope.PROJECT,
-    requires={Capability.DECLARATIONS, Capability.ST_TEXT},
+    requires={Capability.DECLARATIONS, Capability.ST_TEXT, Capability.VISU_XML},
     kinds="ANY",
     summary="A function-block output has no external consumer in the project view.",
     topic="Interfaces",

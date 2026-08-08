@@ -38,6 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 from cds_static_analyzer import fingerprint as fp
 from cds_static_analyzer import progress as progress_mod
 from cds_static_analyzer.execution import ExecutionGraph
+from cds_static_analyzer.external_refs import ExternalReferences
 from cds_static_analyzer.capabilities import (
     Capability,
     CapabilityError,
@@ -139,7 +140,7 @@ class AnalysisContext:
             error = _st_read_errors(self.snapshot)
             return _Entry(symbols.ProjectSymbols(self.snapshot), error)
         if cap == Capability.VISU_XML:
-            return _Entry(self.snapshot, None)
+            return _Entry(ExternalReferences(self.snapshot.root), None)
         if cap == Capability.TEXT_LISTS:
             return _Entry(self.snapshot, None)
         if cap == Capability.TASK_CONFIG:
