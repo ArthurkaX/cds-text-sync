@@ -11,6 +11,12 @@ nestedness, or tabs and spaces are mixed in one leading prefix.
 Declaration sections are intentionally not checked here. Their table-like
 alignment belongs to a separate future rule.
 
+The model is block-local: the outermost expected indent is *learned* from the
+first implementation line, and each block indents its body by one uniform
+step. This means a whole body uniformly shifted one level is not drift, and
+each `CASE` block keeps whichever label style it chose, provided its own
+labels and statements stay consistent.
+
 ## Why it is dangerous
 
 This is a style issue rather than a runtime fault, but misleading indentation
@@ -33,7 +39,6 @@ IF ready THEN
             total := total + value;  // cts:here
     END_FOR
 END_IF;
-END_PROGRAM
 ```
 
 ```st good
@@ -45,8 +50,52 @@ IF ready THEN
         total := total + value;
     END_FOR
 END_IF;
-END_PROGRAM
 ```
+
+```st good
+PROGRAM P
+IMPLEMENTATION
+CASE step OF
+    1:
+        value := 1;
+    2:
+        value := 2;
+END_CASE;
+```
+
+```st good
+PROGRAM P
+IMPLEMENTATION
+CASE step OF
+1:
+    value := 1;
+2:
+    value := 2;
+END_CASE;
+```
+
+```st good
+PROGRAM P
+IMPLEMENTATION
+    IF ready THEN
+        value := 1;
+    END_IF;
+```
+
+```st bad 1
+PROGRAM P
+IMPLEMENTATION
+CASE step OF
+1:
+    value := 1;
+    2:  // cts:here
+END_CASE;
+```
+
+The last block flags the indented label: a `CASE` block fixes its label column
+from its first label, so a second label that disagrees is drift. A statement
+one level below an indented label would be flagged for the same reason; here
+the second branch is left empty so only the label itself is reported.
 
 ## When ignoring is legitimate
 
