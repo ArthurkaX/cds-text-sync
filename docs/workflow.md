@@ -17,10 +17,11 @@ the `cts` CLI once `Project_daemon.py` is running inside CODESYS (see
 
 Before the team can start working, the project must be prepared:
 
-1.  **Choose the sync mode**: Run `Project_options.py` on the **empty** sync folder and decide between XML-first (default) and text-first (`.st` files are the source of truth). The mode is fixed once the first export runs; switching later requires a new empty sync folder.
-2.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes the editable `project-view/` tree for review.
-3.  **Choose Git Scope**: For team review, track `project-view/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
-4.  **Initialize Repository**: A Git repository is created, and the chosen exported view files (and optionally the `.project` binary using LFS) are pushed to a remote server (e.g., GitHub, GitLab).
+1.  **Set the project folder**: Run `Project_directory.py` and select the sync folder for the open project. The default profile exports all supported `.st` and `.csv` text projections.
+2.  **Choose advanced options if needed**: Run `Project_options.py` on the **empty** sync folder only when you need to change XML-first/text-first mode, layout, profile, or text-export selection. The mode is fixed once the first export runs; switching later requires a new empty sync folder.
+3.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes the editable `project-view/` tree for review.
+4.  **Choose Git Scope**: For team review, track `project-view/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
+5.  **Initialize Repository**: A Git repository is created, and the chosen exported view files (and optionally the `.project` binary using LFS) are pushed to a remote server (e.g., GitHub, GitLab).
 
 ### Text-first projects: what is tracked
 

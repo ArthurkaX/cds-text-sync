@@ -13,7 +13,7 @@ shown:
 
 | Mode | List shown | You choose |
 |------|-----------|------------|
-| XML-first | **Derived views** | which optional `.st`/`.csv` projections to generate |
+| XML-first | **Derived views** | which `.st`/`.csv` projections to generate (all supported text projections are enabled by default) |
 | Text-first | **Keep XML in view** | which kinds keep their native `.xml` in the view instead of the `.dump/xml/` mirror (`.st` is always on) |
 
 Toggle the checkbox and the list swaps in place. Once the folder is initialized

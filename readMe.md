@@ -19,7 +19,7 @@ engineers to merge their work, and no way for any external tool to read your
 logic.
 
 **cds-text-sync turns that project into a folder of files on disk** — one per
-object, XML with optional readable `.st` and `.csv` text — which you keep in a
+object, XML with readable `.st` and `.csv` text exports enabled by default — which you keep in a
 normal Git repository, review in pull requests, edit in any editor, and apply
 back into the IDE. CODESYS stays the tool that talks to hardware; Git becomes
 the tool that holds the history.
@@ -45,7 +45,7 @@ Export the open project to disk, edit it anywhere, bring the edits back.
 - **[`Project_export.py`](docs/scripts.md#4-project_exportpy-codesys---disk)** captures a full native snapshot to `.dump/IDE.xml` and rebuilds the editable view in `project-view/`.
 - **[`Project_import.py`](docs/scripts.md#5-project_importpy-disk---codesys)** applies your disk edits back — textual objects through the CODESYS text APIs, the rest through native XML import — with an optional timestamped `.project` backup first.
 - **[`Project_compare_ui.py`](docs/scripts.md#6-project_compare_uipy-ide-vs-disk)** reports what differs between the IDE and disk, as JSON and as a dialog inside CODESYS that can apply changes object by object.
-- **[Text projections](docs/scripts.md#7-optional-projections)** make the code itself readable: POUs, their methods and actions, GVLs, persistent variable lists and DUTs as `.st`; text lists and alarm items as `.csv`. A logic change then shows up once, in the `.st` file, instead of twice in XML and text.
+- **[Text projections](docs/scripts.md#7-text-projections)** make the code itself readable: POUs, their methods and actions, GVLs, persistent variable lists and DUTs as `.st`; text lists and alarm items as `.csv`. All supported text projections are enabled by default, so a logic change shows up once, in the `.st` file, instead of twice in XML and text.
 - **[Overwrite protection](docs/sync-modes.md#overwrite-protection-both-modes)** means export never silently discards a local edit you have not imported yet, and never deletes a file it does not own.
 - **[Profiles](profiles/profiles.md)** describe vendor and fork-specific object kinds, which projections are available, and the safety rules — so a DIAStudio or KeStudio project behaves correctly rather than approximately.
 
@@ -103,9 +103,9 @@ linting; its public package is `cds_static_analyzer`.
 
 The first analysis follows a short export path:
 
-1. Choose the folder that will hold the project export / sync view.
-2. Open `Project_options.py` and enable the readable `.st` projection.
-3. Run `Project_export.py` to write the exported text view.
+1. Run `Project_directory.py` and choose the sync folder for the open project.
+2. Run `Project_export.py`; all supported `.st` and `.csv` text projections are enabled by default.
+3. If you previously disabled a projection, enable it again in `Project_options.py`.
 4. Run `Project_analyze_ui.py` to open the findings UI.
 
 The UI analyzes the exported `project-view/` files offline. For automation, run
@@ -155,14 +155,30 @@ scripting menu:
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
-Then, in CODESYS, from **Tools > Scripting > Scripts > P**:
+Then, for each open CODESYS project, from **Tools > Scripting > Scripts > P**:
 
-1. **`Project_directory.py`** — link the open project to a folder on disk.
-2. **`Project_options.py`** — pick the sync mode, layout, profile, and which
-   `.st`/`.csv` projections you want.
-3. **`Project_export.py`** — write the snapshot and build `project-view/`.
-4. **Edit** the files in `project-view/` in any editor, and commit them.
-5. **`Project_import.py`** — apply the disk edits back into CODESYS.
+1. **`Project_directory.py`** — set the sync folder for this project. Use a
+   relative path such as `./sync/` when the folder should travel with the project.
+2. **`Project_export.py`** — write the snapshot and build `project-view/`; all
+   supported `.st` and `.csv` text exports are on by default.
+3. **Edit** the files in `project-view/` in any editor, and commit them.
+4. **`Project_import.py`** — apply the disk edits back into CODESYS.
+
+`Project_options.py` is only needed when you want to change the sync mode,
+layout, profile, or default text-export selection.
+
+For the shell/LLM workflow, run **`Project_daemon.py`** in CODESYS once, then
+use the same project folder through the CLI:
+
+```powershell
+cts export                 # IDE -> project-view/
+cts compare                # inspect IDE vs disk
+cts import                 # project-view/ -> IDE
+cts analyze --workspace .  # offline analysis; daemon is not required
+```
+
+`cts analyze` is offline. `cts export`, `cts compare`, and `cts import` use the
+running daemon and its currently open CODESYS project.
 
 For the CLI, analyzer, and visualization workflows, install the package and
 start the daemon when a live CODESYS project is needed:
@@ -185,7 +201,7 @@ Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) �
 | --- | --- |
 | [Installation](docs/install.md) | Requirements, the three install methods, CLI install, upgrading |
 | [Sync modes](docs/sync-modes.md) | XML-first vs text-first, and overwrite protection |
-| [Script overview](docs/scripts.md) | What each `Project_*.py` does, and the optional projections |
+| [Script overview](docs/scripts.md) | What each `Project_*.py` does, and the default text projections |
 | [Project layout](docs/project-layout.md) | On-disk structure, `.gitignore`, the day-to-day cycle, Git LFS |
 | [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md) | Every `cts` command, flag, timeout and error mode |
 | [Static analyzer](products/cds-static-analyzer/README.md) | Human-facing `.st` analysis and rule boundaries |

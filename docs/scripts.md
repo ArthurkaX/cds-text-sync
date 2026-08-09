@@ -2,8 +2,9 @@
 
 The CODESYS-side entry points, in the order you use them. All of them appear
 under **Tools > Scripting > Scripts > P** after [installation](install.md) —
-and they are the only thing this tool puts in that menu. Every one of them has
-a `cts` equivalent for shell and CI use — see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
+and they are the only thing this tool puts in that menu. The recurring sync,
+daemon, and analysis actions also have `cts` equivalents for shell and CI use —
+see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 
 ## 1. `Project_directory.py` (Setup)
 
@@ -40,9 +41,11 @@ The active root entry points are `Project_directory.py`, `Project_options.py`,
 `Project_export.py`, `Project_import.py`, `Project_compare_ui.py`,
 `Project_build.py`, `Project_discover.py`, and `Project_resources.py`.
 
-## 3. `Project_options.py` (Layout, Profile, Projections)
+## 3. `Project_options.py` (Advanced project options)
 
-Use this after selecting the sync root.
+The normal first export does not require this dialog: the default profile
+already enables every supported `.st` and `.csv` text projection. Use it after
+selecting the sync root only when you need to change advanced project options.
 
 - **Sync Mode**: Choose XML-first (default) or text-first. This is a one-time
   choice on an empty folder — see [Sync modes](sync-modes.md).
@@ -53,8 +56,9 @@ Use this after selecting the sync root.
   and custom view root controls. To use a different export folder, start again
   with a clean sync directory.
 - **Profile**: Select the active CODESYS profile for object type handling.
-- **Projections**: Enable optional readable files such as `.st` and `.csv` based
-  on the active profile.
+- **Projections**: All supported readable `.st` and `.csv` files start enabled
+  in the default profile. The dialog can disable individual projections or
+  restore them for a custom profile.
 - **Safety Backup**: Enable or disable timestamped binary backup before import
   and set how many generated backups to keep.
 - **Completion Summary**: Show or hide the final import/export success popup.
@@ -119,10 +123,11 @@ and lets you act on it.
 For a compare without any dialog — in a shell, in CI, or from the daemon — use
 [`cts compare`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 
-## 7. Optional projections
+## 7. Text projections
 
 Projections are editable views generated from XML-backed CODESYS objects. They
-are optional in XML-first mode and selected in `Project_options.py`; in
+are enabled by default in XML-first mode and can be adjusted in
+`Project_options.py`; in
 [text-first mode](sync-modes.md#text-first-opt-in) the `.st` ones are always on.
 
 - **POU `.st`**: Declaration/interface first, then `// --- implementation ---`,

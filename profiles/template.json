@@ -83,11 +83,11 @@
       "label": "POU Structured Text (.st)",
       "kind": "pou",
       "format": "st",
-      "default_enabled": false,
+      "default_enabled": true,
       "import_safe": false,
       "requires_textual_implementation": true,
       "sections": ["declaration", "implementation"],
-      "description": "Optional derived ST view for textual POU declaration and implementation."
+      "description": "Derived ST view for textual POU declaration and implementation (enabled by default)."
     },
     {
       "id": "pou_child_st",
@@ -95,10 +95,10 @@
       "kind": "method",
       "kinds": ["method", "action", "property", "property_accessor"],
       "format": "st",
-      "default_enabled": false,
+      "default_enabled": true,
       "import_safe": false,
       "sections": ["declaration", "implementation"],
-      "description": "Optional derived ST view for methods, actions, properties, and property accessors under a POU."
+      "description": "Derived ST view for methods, actions, properties, and property accessors under a POU (enabled by default)."
     },
     {
       "id": "gvl_st",
@@ -106,20 +106,20 @@
       "kind": "gvl",
       "kinds": ["gvl", "persistent_gvl", "task_local_gvl"],
       "format": "st",
-      "default_enabled": false,
+      "default_enabled": true,
       "import_safe": false,
       "sections": ["declaration"],
-      "description": "Optional derived ST view for global, persistent, and task-local variable lists."
+      "description": "Derived ST view for global, persistent, and task-local variable lists (enabled by default)."
     },
     {
       "id": "dut_st",
       "label": "DUT Structured Text (.st)",
       "kind": "dut",
       "format": "st",
-      "default_enabled": false,
+      "default_enabled": true,
       "import_safe": false,
       "sections": ["declaration"],
-      "description": "Optional derived ST view for data unit types such as STRUCT, ENUM, UNION, and aliases."
+      "description": "Derived ST view for data unit types such as STRUCT, ENUM, UNION, and aliases (enabled by default)."
     },
     {
       "id": "textlist_csv",
@@ -128,10 +128,10 @@
       "kinds": ["textlist", "global_text_list"],
       "format": "csv",
       "exclude_names": ["AlarmGroup"],
-      "default_enabled": false,
+      "default_enabled": true,
       "import_safe": true,
       "sections": ["entries"],
-      "description": "Optional derived CSV view for text-list style data."
+      "description": "Derived CSV view for text-list style data (enabled by default)."
     },
     {
       "id": "alarm_items_csv",
@@ -139,10 +139,10 @@
       "kind": "alarm_config_item",
       "format": "csv",
       "extractor": "alarm_items_csv",
-      "default_enabled": false,
+      "default_enabled": true,
       "import_safe": true,
       "sections": ["alarms"],
-      "description": "Optional derived CSV view for alarm item definitions."
+      "description": "Derived CSV view for alarm item definitions (enabled by default)."
     }
   ]
 }
