@@ -99,6 +99,18 @@ linting; its public package is `cds_static_analyzer`.
 
 ![Static analyzer findings, rule details, and auto-fix preview](img/static_analyzer_demo.gif)
 
+#### From project to findings
+
+The first analysis follows a short export path:
+
+1. Choose the folder that will hold the project export / sync view.
+2. Open `Project_options.py` and enable the readable `.st` projection.
+3. Run `Project_export.py` to write the exported text view.
+4. Run `Project_analyze_ui.py` to open the findings UI.
+
+The UI analyzes the exported `project-view/` files offline. For automation, run
+`cts analyze --workspace <sync-folder>` against the same folder.
+
 ### 4. `cts visu` — HMI screens authored by an LLM
 
 The last thing in a CODESYS project that resisted text was the visualization.

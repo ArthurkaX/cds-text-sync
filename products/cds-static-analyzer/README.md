@@ -29,6 +29,18 @@ cts ui --workspace C:\path\to\sync-folder
 project's configured sync folder and starts the same offline UI; analysis still
 uses only the exported `.st` files.
 
+## From project to findings
+
+The first analysis follows this export path:
+
+1. Choose the folder that will hold the project export / sync view.
+2. Open `Project_options.py` and enable the readable `.st` projection.
+3. Run `Project_export.py` to write the exported `project-view/` files.
+4. Run `Project_analyze_ui.py` to open the findings UI for that export.
+
+The analyzer is offline after export: it reads the `.st` files from
+`project-view/` and does not need the daemon or a live project connection.
+
 ## Basic usage
 
 ```powershell
