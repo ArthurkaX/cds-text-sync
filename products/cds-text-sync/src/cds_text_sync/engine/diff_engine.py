@@ -5,12 +5,19 @@ diff_engine.py - Compares an IDE snapshot model with a Folder model.
 
 import xml.etree.ElementTree as ET
 
+from _library_resolution import resolution_drift, resolution_from_model
 from _project_profiles import kind_for_type_guid
 from xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
+    LIBRARY_DERIVED_XML_NAMES,
     csv_projection_content,
     normalized_xml_text,
     st_projection_content,
+)
+
+LIBRARY_DRIFT_HINT = (
+    "run `cts export` to re-baseline project-view/ against the current "
+    "library resolution"
 )
 
 
@@ -130,6 +137,16 @@ class DiffEngine:
         # We will assume folder_model represents current user edits,
         # and ide_model represents baseline from CODESYS.
 
+        # A library that resolves to a different version than it did at export
+        # time makes the IDE regenerate library-derived subtrees in every visu
+        # object. Detect that once, up front, so those objects can be told apart
+        # from real edits below.
+        library_drift = resolution_drift(
+            resolution_from_model(self.folder_model),
+            resolution_from_model(self.ide_model),
+        )
+        drift_only_guids = []
+
         folder_guids = set(self.folder_model.nodes.keys())
         ide_guids = set(
             guid
@@ -138,15 +155,36 @@ class DiffEngine:
             or guid in folder_guids
         )
 
-        def node_content(node):
+        def node_content(node, ignore_library_derived=False):
             xml_text = getattr(node, "xml_text", None)
             if xml_text:
-                cached = node.metadata.get("_normalized_xml")
+                cache_key = (
+                    "_normalized_xml_no_library_derived"
+                    if ignore_library_derived
+                    else "_normalized_xml"
+                )
+                cached = node.metadata.get(cache_key)
                 if cached is None:
-                    cached = normalized_xml_text(xml_text)
-                    node.metadata["_normalized_xml"] = cached
+                    cached = normalized_xml_text(
+                        xml_text,
+                        extra_ignore_names=(
+                            LIBRARY_DERIVED_XML_NAMES
+                            if ignore_library_derived
+                            else None
+                        ),
+                    )
+                    node.metadata[cache_key] = cached
                 return cached
             return node.code
+
+        def differs_only_by_library_drift(ide_node, folder_node):
+            """True when the two sides match once library-derived blocks go.
+
+            Only ever consulted when a drift has already been proven, and only
+            for objects that already came out as different -- so this second
+            normalization runs over a handful of objects, not the whole project.
+            """
+            return node_content(ide_node, True) == node_content(folder_node, True)
 
         for guid in ide_guids.intersection(folder_guids):
             ide_node = self.ide_model.get_node(guid)
@@ -187,6 +225,18 @@ class DiffEngine:
                     projection_content_matches
                     and not folder_node.metadata.get("xml_changed")
                 ):
+                    xml_differs = False
+                if (
+                    xml_differs
+                    and library_drift
+                    and differs_only_by_library_drift(ide_node, folder_node)
+                ):
+                    # Nothing here was authored: the whole difference is the
+                    # library-derived blocks the IDE rebuilt under a different
+                    # resolution. Reported once as drift instead of N times as
+                    # a modified object.
+                    folder_node.metadata["library_drift_only"] = True
+                    drift_only_guids.append(guid)
                     xml_differs = False
             unsupported_paths = [
                 path
@@ -257,5 +307,11 @@ class DiffEngine:
             diff_result["unsupported_projection_changes"] = (
                 unsupported_projection_changes
             )
+        if library_drift:
+            diff_result["library_resolution"] = {
+                "drift": library_drift,
+                "drift_only_objects": len(drift_only_guids),
+                "hint": LIBRARY_DRIFT_HINT,
+            }
 
         return diff_result

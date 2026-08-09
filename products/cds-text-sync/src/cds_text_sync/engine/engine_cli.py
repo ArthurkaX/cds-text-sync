@@ -10,6 +10,7 @@ import sys
 import time
 
 from _dirty_scan import scan_dirty
+from _library_resolution import describe_drift
 from _patch_builder import PatchBuilder, UnsupportedPatchError
 from _project_layout import (
     LAYOUT_LEGACY_DUMP_VIEWS,
@@ -33,6 +34,10 @@ from snapshooter_map import write_snapshooter_map
 from snapshot_reader import SnapshotReader
 from xml_helpers import ProjectionValidationError, normalize_guid
 
+# Diff-result keys that hold diagnostics rather than object guids. They must
+# survive guid filtering and never count as a difference.
+_NON_GUID_DIFF_KEYS = frozenset(["library_resolution"])
+
 
 def _filter_guids(args):
     raw_values = getattr(args, "filter_guids", None) or []
@@ -53,7 +58,9 @@ def _filter_diff_result(diff_result, selected_guids):
     selected = set(selected_guids)
     filtered = {}
     for key, value in diff_result.items():
-        if isinstance(value, list):
+        if key in _NON_GUID_DIFF_KEYS:
+            filtered[key] = value
+        elif isinstance(value, list):
             filtered[key] = [guid for guid in value if guid in selected]
         elif isinstance(value, dict):
             filtered[key] = dict(
@@ -208,6 +215,25 @@ def _log_diff_node(category, guid, ide_model, folder_model):
     _log("{0}: {1} [{2}] {3}{4}".format(category, name, guid, path, suffix))
 
 
+def _log_library_drift(diff_result):
+    """Report a library-resolution drift once, instead of per affected object."""
+    resolution = diff_result.get("library_resolution") or {}
+    drift = resolution.get("drift") or []
+    if not drift:
+        return
+    for line in describe_drift(drift):
+        _log("library resolution drift: " + line)
+    drift_only = resolution.get("drift_only_objects") or 0
+    if drift_only:
+        _log(
+            "{0} objects differ only in IDE-generated library metadata and are "
+            "reported as unchanged.".format(drift_only)
+        )
+    hint = resolution.get("hint")
+    if hint:
+        _log("Hint: " + hint)
+
+
 def _log_compare_details(diff_result, ide_model, folder_model):
     _log(
         "Compare model sizes: ide={0}, disk={1}".format(
@@ -228,6 +254,7 @@ def _log_compare_details(diff_result, ide_model, folder_model):
         value = diff_result.get(key, [])
         summary_parts.append("{0}={1}".format(key, len(value)))
     _log("Compare summary: " + ", ".join(summary_parts))
+    _log_library_drift(diff_result)
 
     for category in ("modified", "added", "deleted", "projection_conflicts"):
         for guid in diff_result.get(category, []):
@@ -368,6 +395,16 @@ def run_import(args):
     diff_result, ide_model, folder_model, _ = _load_diff(args, "import")
     diff_result = _filter_diff_result(diff_result, selected_guids)
     _log_compare_details(diff_result, ide_model, folder_model)
+    if diff_result.get("library_resolution"):
+        # Objects that differ only by the drift are already unchanged and will
+        # not be patched. What remains is a genuinely edited object whose
+        # IDE-generated blocks on disk were built under the old resolution --
+        # importing it ships those stale blocks back into the IDE.
+        print(
+            "Warning: importing while the library resolution differs from the "
+            "one project-view/ was exported under. Re-export first if the "
+            "objects below are visualizations."
+        )
 
     patcher = PatchBuilder(diff_result, ide_model, folder_model)
     try:
@@ -384,7 +421,11 @@ def run_validate(args):
     )
     diff_result, _, _, _ = _load_diff(args, "validation")
 
-    has_diffs = any(len(v) > 0 for k, v in diff_result.items() if k != "unchanged")
+    has_diffs = any(
+        len(v) > 0
+        for k, v in diff_result.items()
+        if k != "unchanged" and k not in _NON_GUID_DIFF_KEYS
+    )
     if has_diffs:
         print("Validation failed. Snapshot and folder state differ.")
         sys.exit(1)
