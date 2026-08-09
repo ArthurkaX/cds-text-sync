@@ -66,8 +66,10 @@ def test_import_does_not_allow_online_override(daemon_calls):
 
 def test_plc_crc_builds_first(daemon_calls):
     d.dispatch_daemon(_args(command="plc-crc", build=True))
-    # build runs before the compare.
-    assert daemon_calls == [("build", {}), ("compare", {})]
+    # build runs before the CRC comparison. The daemon method is plc_crc, not
+    # "compare" -- that older name made the daemon log read as if `cts compare`
+    # were running, which is a different command entirely.
+    assert daemon_calls == [("build", {}), ("plc_crc", {})]
 
 
 def test_download_start_passthrough(daemon_calls):

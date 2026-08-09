@@ -105,6 +105,26 @@ Examples:
         action="store_true",
         help="Show what import would change without applying (runs compare)",
     )
+    p_import.add_argument(
+        "--save",
+        action="store_true",
+        help=(
+            "Save the CODESYS project after a successful import. Off by "
+            "default: saving also commits everything else open in the IDE, so "
+            "it stays your call. Without it the import lives only in memory "
+            "until you save in the IDE."
+        ),
+    )
+    p_import.add_argument(
+        "--no-refresh",
+        dest="no_refresh",
+        action="store_true",
+        help=(
+            "Do not re-baseline project-view/ and manifest.json from the IDE "
+            "after a successful import. Without the refresh, compare keeps "
+            "reporting the changes you just imported."
+        ),
+    )
 
     # -- build / PLC lifecycle ---------------------------------------------
     add_daemon_parser(subparsers, "build", "Compile the active CODESYS application", 120)

@@ -362,6 +362,60 @@ def _cmd_sync_export_text(params):
 
 
 
+def _save_requested(params):
+    """Should import save the project? Default: no.
+
+    Saving a CODESYS project is the user's call, not the tool's -- it commits
+    whatever else is open in the IDE too. Import therefore applies to the
+    in-memory project and says so; ``save=true`` (cts import --save) opts in.
+    """
+    value = (params or {}).get("save", False)
+    if isinstance(value, str):
+        return value.strip().lower() not in ("0", "false", "no", "off", "")
+    return bool(value)
+
+
+def _refresh_requested(params):
+    """Is the post-import manifest re-baseline wanted? Default: yes.
+
+    Callers opt out with refresh=false (cts import --no-refresh) when they want
+    the import alone -- e.g. to inspect the IDE before the disk baseline moves.
+    """
+    value = (params or {}).get("refresh", True)
+    if isinstance(value, str):
+        return value.strip().lower() not in ("0", "false", "no", "off")
+    return bool(value)
+
+
+def _refresh_blockers(mutated, failed_text, failed_native, skipped_projection_objects):
+    """Why the manifest must not be re-baselined, or "" when it is safe.
+
+    The refresh regenerates view files from the IDE, so it is only safe once
+    every disk edit has actually reached the IDE. Anything left behind -- a
+    failed create, a projection that could not be applied -- still exists on
+    disk alone, and overwriting it would destroy the user's only copy.
+
+    Saving is deliberately not part of this test: export reads the live project
+    in memory, not the .project file, so an unsaved project is still a faithful
+    baseline for as long as the IDE stays open.
+    """
+    if not mutated:
+        return ""
+    if failed_text or failed_native:
+        return (
+            "{0} object(s) failed to be created; their .st files still hold the "
+            "only copy of that code".format(len(failed_text) + len(failed_native))
+        )
+    if skipped_projection_objects:
+        return (
+            "{0} object(s) have projection changes that were not applied; their "
+            "files still hold the only copy of those edits".format(
+                len(skipped_projection_objects)
+            )
+        )
+    return ""
+
+
 def _cmd_sync_import_text(params):
     import xml.etree.ElementTree as ET
 
@@ -425,6 +479,27 @@ def _cmd_sync_import_text(params):
     if p_err:
         return p_err
 
+    # Same safety net as the manual Project_import action, but only when this
+    # import is going to write the .project file. Without --save the file on
+    # disk is never touched, so it already *is* the pre-import state and a
+    # backup would add nothing -- while costing a forced project.save(), which
+    # is exactly the decision the user asked to keep.
+    if _save_requested(params):
+        import ide_backup as _backup
+
+        backup_root = _common.layout(sync_folder).backup_root
+        if not _backup.ensure_pre_import_backup(
+            project, sync_folder, backup_root, patch_path
+        ):
+            return {
+                "ok": False,
+                "error": (
+                    "Pre-import backup failed; nothing was applied. Fix the "
+                    "backup root ({0}) or disable pre_import_backup_enabled in "
+                    "cds-text-sync.json, then retry."
+                ).format(backup_root),
+            }
+
     try:
         tree = ET.parse(patch_path)
         root = tree.getroot()
@@ -464,19 +539,43 @@ def _cmd_sync_import_text(params):
                             }
                         )
 
+        created_text = []
+        reused_text = []
+        failed_text = []
         if text_creates:
             _log("Creating {0} new text objects...".format(len(text_creates)))
             created = {}
             for entry in text_creates:
                 try:
-                    _apply_text_create_entry(project, entry, created)
+                    reused = _apply_text_create_entry(project, entry, created)
+                    if reused:
+                        reused_text.append(entry["name"])
+                    else:
+                        created_text.append(entry["name"])
                 except Exception as e:
+                    # One bad entry must not abort the rest of the import, but
+                    # it must not be reported as created either.
                     _log("Failed to create {0}: {1}".format(entry["name"], str(e)))
-            _log(
-                "Created text objects: {0}".format(
-                    ", ".join(e["name"] for e in text_creates)
+                    failed_text.append(
+                        {
+                            "name": entry["name"],
+                            "path": entry.get("path", ""),
+                            "error": str(e),
+                        }
+                    )
+            if created_text:
+                _log("Created text objects: {0}".format(", ".join(created_text)))
+            if reused_text:
+                _log(
+                    "Text objects that already existed and were updated: "
+                    "{0}".format(", ".join(reused_text))
                 )
-            )
+            if failed_text:
+                _log(
+                    "Text objects that failed (import continued): {0}".format(
+                        ", ".join(f["name"] for f in failed_text)
+                    )
+                )
 
         # Step 3b: Process CreateNativeObject entries (visualizations, image
         # pools, and other native objects). Unlike text objects, these carry a
@@ -521,6 +620,7 @@ def _cmd_sync_import_text(params):
 
         updated_text = []
         skipped_projection_objects = []
+        ide_only_count = 0
         if os.path.exists(compare_report_path):
             updated_text = _apply_modified_st_objects(project, compare_report_path)
             if updated_text:
@@ -532,6 +632,7 @@ def _cmd_sync_import_text(params):
 
                 _report = _json.loads(_read_text_utf8(compare_report_path))
                 _updated_names = set(updated_text)
+                ide_only_count = len((_report.get("objects") or {}).get("deleted") or [])
                 for obj in (_report.get("objects") or {}).get("modified") or []:
                     _name = obj.get("name") or obj.get("guid") or "?"
                     if _name in _updated_names:
@@ -564,6 +665,7 @@ def _cmd_sync_import_text(params):
                 _log("Could not classify pending projection: {0}".format(error))
 
         # Step 4: Apply StructuredView (MAIN update) — skip if fails, objects are already created
+        structured_view_applied = False
         try:
             filtered_root = _strip_text_creates(root)
             if filtered_root is not None:
@@ -572,6 +674,7 @@ def _cmd_sync_import_text(params):
                 tree2 = ET.ElementTree(filtered_root)
                 tree2.write(filtered_path, encoding="utf-8", xml_declaration=True)
                 project.import_native(filtered_path)
+                structured_view_applied = True
                 try:
                     os.remove(filtered_path)
                 except Exception as error:
@@ -585,15 +688,92 @@ def _cmd_sync_import_text(params):
                 )
             )
 
+        # Step 5: Persist -- only when asked. Everything above mutates the
+        # in-memory project; saving it also commits whatever else the user has
+        # open in the IDE, so that stays their decision. What is NOT optional is
+        # saying so: without a save the whole import is discarded the moment the
+        # project is closed or reloaded, and the objects look real until then.
+        saved = False
+        save_error = ""
+        mutated = bool(
+            created_text
+            or reused_text
+            or created_native
+            or updated_text
+            or structured_view_applied
+        )
+        if mutated and _save_requested(params):
+            try:
+                project.save()
+                saved = True
+            except Exception as e:
+                save_error = str(e)
+                _log("Could not save the project after import: {0}".format(save_error))
+
         return_data = {
             "path": patch_path,
             "size": os.path.getsize(patch_path),
-            "created_text_objects": [e["name"] for e in text_creates],
+            "created_text_objects": created_text,
+            "reused_text_objects": reused_text,
+            "failed_text_objects": failed_text,
             "created_native_objects": created_native,
             "updated_text_objects": updated_text,
             "skipped_projection_objects": skipped_projection_objects,
             "failed_native_objects": failed_native,
+            "saved": saved,
         }
+        if mutated and not saved:
+            return_data["unsaved"] = (
+                "The project was changed in memory but NOT saved{0}. Save it in "
+                "the CODESYS IDE (or re-run with --save) -- until then the "
+                "changes are lost when the project is closed or reloaded."
+            ).format(
+                " ({0})".format(save_error) if save_error else ""
+            )
+            if save_error:
+                return_data["save_error"] = save_error
+
+        # Step 6: Re-baseline manifest.json against the now-current IDE.
+        #
+        # manifest.json is the only record of which files are "managed". An
+        # import teaches the IDE about the disk but leaves the manifest at its
+        # pre-import state, so a created object stays an unmanaged .st (a
+        # pending create) and an updated object keeps its stale projection
+        # hash. Compare then reports the very same changes after a successful
+        # import, forever, and the next import re-applies them.
+        #
+        # The refresh must overwrite dirty files: disk edits were just pushed
+        # into the IDE, so regenerating them from the IDE is a no-op in content
+        # and the only way the recorded hashes catch up. That is exactly why it
+        # is withheld whenever anything did NOT reach the IDE -- those files
+        # still hold the only copy of the user's edit.
+        if _refresh_requested(params):
+            withheld = _refresh_blockers(
+                mutated, failed_text, failed_native, skipped_projection_objects
+            )
+            if withheld:
+                return_data["manifest_refreshed"] = False
+                return_data["manifest_refresh_skipped"] = withheld
+            else:
+                refresh = _cmd_sync_export_text(dict(params, overwrite_dirty=True))
+                return_data["manifest_refreshed"] = bool(refresh.get("ok"))
+                if not refresh.get("ok"):
+                    return_data["manifest_refresh_error"] = (
+                        "Import applied, but the manifest could not be "
+                        "refreshed ({0}). Compare will keep reporting these "
+                        "objects until 'cts export' succeeds."
+                    ).format(refresh.get("error") or "export failed")
+                elif ide_only_count:
+                    # These are not blocked (IMPORT.xml cannot delete, so the
+                    # gap can never close by importing) but the refresh does
+                    # write them back to disk, and that must not be silent.
+                    return_data["manifest_refresh_restored"] = (
+                        "{0} object(s) existed in the IDE but not in "
+                        "project-view/. Import cannot delete objects, so the "
+                        "refresh wrote them back to disk. If you meant to "
+                        "delete them, delete them in the CODESYS IDE."
+                    ).format(ide_only_count)
+
         if (
             not text_creates
             and not created_native
@@ -816,7 +996,8 @@ def _apply_text_create_entry(project, entry, created_by_name):
 
     obj_name = entry["name"]
     existing = _iap._find_child_transparent(container, obj_name)
-    if existing is not None:
+    reused = existing is not None
+    if reused:
         obj = existing
     else:
         obj = _iap._create_text_object(
@@ -830,7 +1011,15 @@ def _apply_text_create_entry(project, entry, created_by_name):
 
     _iap._apply_textual_patch(obj, entry)
     created_by_name[_iap.object_name(obj).lower()] = obj
-    _log("Created textual object: {0}".format(rel_path))
+    # Say which of the two happened. "Created" over an object that already
+    # existed hides the interesting case: a create that keeps repeating because
+    # the disk baseline never caught up with the IDE.
+    _log(
+        "{0} textual object: {1}".format(
+            "Updated existing" if reused else "Created", rel_path
+        )
+    )
+    return reused
 
 
 def _cmd_sync_compare_text(params):

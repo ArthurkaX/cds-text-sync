@@ -72,6 +72,37 @@ def object_name(obj):
         return ""
 
 
+def object_guid(obj):
+    """The object's GUID, normalized -- or "" if it has none.
+
+    The attribute is ``guid``, lowercase. IronPython attribute lookup is
+    case-sensitive, so ``obj.Guid`` raises AttributeError on every object in
+    the project, and code that reached for it inside a bare ``except`` simply
+    saw every object as GUID-less. That silently disabled GUID matching
+    everywhere it was used: `project_tree` emitted no guids at all, and
+    `_find_object_by_selector` fell through to name matching for every
+    lookup -- which is how `cts import` came to write a POU body into the
+    task that happened to share its name.
+
+    ``get_guid()`` is accepted too, in case a future ScriptObject exposes it
+    that way instead.
+    """
+    for attr in ("guid", "Guid"):
+        try:
+            value = getattr(obj, attr, None)
+        except Exception:
+            continue
+        if value is not None:
+            return normalize_guid(value)
+    try:
+        getter = getattr(obj, "get_guid", None)
+        if callable(getter):
+            return normalize_guid(getter())
+    except Exception:
+        pass
+    return ""
+
+
 def get_workspace_dir(script_file=None):
     # Prefer the repository root for the external engine. Fall back to the
     # host product root when this tree is deployed without the repository.

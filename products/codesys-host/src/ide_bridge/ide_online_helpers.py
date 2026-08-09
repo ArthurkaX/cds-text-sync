@@ -310,9 +310,8 @@ def require_online_session(project):
     online_app, _ = _get_cached_online_app()
     if online_app is None:
         raise RuntimeError(
-            "Not connected. The daemon has no online session, and reading or "
-            "writing a variable will not open one for you. "
-            "Run 'cts connect' first."
+            "Not connected. The daemon has no online session, and this command "
+            "will not open one for you. Run 'cts connect' first."
         )
     return online_app
 

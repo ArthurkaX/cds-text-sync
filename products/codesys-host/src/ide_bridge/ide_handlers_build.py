@@ -9,6 +9,7 @@ from __future__ import print_function
 
 import json
 import os
+import re
 import sys
 import time
 
@@ -68,6 +69,26 @@ def _cmd_export(params):
         return {"ok": True, "data": {"path": out_path, "size": size}}
     except Exception as e:
         return {"ok": False, "error": "Export error: {0}".format(e)}
+
+
+def _message_number(value):
+    """Read a CODESYS message number without binding to a .NET overload.
+
+    In IronPython, ``int(SystemValue)`` can enter the .NET overload binder and
+    fail with an ambiguity between ``Extensible[float]``, ``IList[Byte]`` and
+    ``object``.  Build message numbers stringify cleanly, so parse the string
+    with Python's integer conversion instead.
+    """
+    text = str(value).strip()
+    if not text:
+        return 0
+    match = re.match(r"^[+-]?\d+$", text)
+    if not match:
+        return 0
+    try:
+        return int(match.group(0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _cmd_build(params):
@@ -165,7 +186,7 @@ def _cmd_build(params):
                     msg_id = ""
                     try:
                         prefix = str(getattr(msg, "prefix", ""))
-                        number = int(getattr(msg, "number", 0))
+                        number = _message_number(getattr(msg, "number", 0))
                         if number > 0:
                             msg_id = "{0}{1:04d}".format(prefix, number)
                         else:

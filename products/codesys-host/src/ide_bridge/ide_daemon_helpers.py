@@ -232,44 +232,101 @@ def _read_text_member(obj, attr_name):
         return None
 
 
+def _normalize_object_path(path):
+    """Canonical form for comparing object paths.
+
+    The compare report names an object by its projection file --
+    "...\\TASKS AND CORES\\ProgrammTask3.xml" -- while `_build_path` names it
+    by its objects -- ".../Task configuration/ProgrammTask3". For the two to
+    match, the projection extension is stripped and the comparison is made
+    case-insensitively (CODESYS object names are case-insensitive).
+    """
+    text = str(path or "").replace("\\", "/").strip("/")
+    for ext in (".xml", ".st", ".csv"):
+        if text.lower().endswith(ext):
+            text = text[: -len(ext)]
+            break
+    return text.lower()
+
+
 def _find_object_by_selector(project, params):
-    guid = str(params.get("guid", "") or "").lower()
-    path = str(params.get("path", "") or "").replace("\\", "/").strip("/")
+    """Resolve an object by guid, then path, then name -- in that order.
+
+    The order is the whole point, and it used to be wrong. The test used to be
+    made per object -- guid, path, name against one child before moving to the
+    next -- so the first object matching on *any* criterion won, and a name
+    match on an early object beat an exact guid match on a later one.
+
+    A CODESYS project happily holds a task and a POU under the same name. That
+    is what `cts import` hit on ProgrammTask3: the compare report named the POU
+    by guid, the scan reached the task first, matched it by name, and the
+    import tried to write a POU body into a task object -- "'ScriptObject' has
+    no attribute 'textual_declaration'". It failed loudly there, but only
+    because a task has nothing to write to. Any two same-named objects that
+    *are* both writable would have taken the edit silently, into the wrong one.
+
+    So: three passes over one scan, strongest identifier first.
+
+    Paths are compared with their projection extension stripped and without
+    regard to case. The compare report names an object by its file --
+    "...\\TASKS AND CORES\\ProgrammTask3.xml" -- while `_build_path` names it
+    by its objects -- ".../Task configuration/ProgrammTask3". Requiring those
+    to match verbatim meant the path pass never matched anything either.
+    """
+    guid = _common.normalize_guid(params.get("guid", ""))
+    path = _normalize_object_path(params.get("path", ""))
     name = str(params.get("name", "") or "")
 
+    by_path = None
+    by_name = None
+
     for child in _get_device_objects(project):
-        try:
-            child_name = str(_common.object_name(child))
-        except Exception:
-            child_name = ""
-        try:
-            child_guid = str(getattr(child, "Guid", "")).lower()
-        except Exception:
-            child_guid = ""
-        try:
-            child_path = _build_path(child).replace("\\", "/").strip("/")
-        except Exception:
-            child_path = ""
+        if guid:
+            if _common.object_guid(child) == guid:
+                return child
 
-        if guid and child_guid == guid:
-            return child
-        if path and child_path == path:
-            return child
-        if name and child_name == name:
-            return child
+        if path and by_path is None:
+            try:
+                child_path = _normalize_object_path(_build_path(child))
+            except Exception:
+                child_path = ""
+            if child_path and child_path == path:
+                by_path = child
 
-    return None
+        if name and by_name is None:
+            try:
+                child_name = str(_common.object_name(child))
+            except Exception:
+                child_name = ""
+            if child_name and child_name == name:
+                by_name = child
+
+    if by_path is not None:
+        return by_path
+    return by_name
 
 
-def _ensure_online_app(project):
+def _online_app_if_connected(project):
+    """The existing online session, or (None, None, reason) -- never a new one.
+
+    Opening a session means ``create_online_application`` plus
+    ``_ensure_logged_in``, and the latter walks a list of login candidates.
+    With no PLC reachable every candidate has to time out before the call
+    returns, and the daemon loop is single-threaded: it serves nothing for
+    minutes and every other command reports "make sure the daemon is running"
+    -- which is exactly wrong, it is running and busy.
+
+    So no command opens a session as a side effect. ``cts connect`` is where
+    the user asked to wait; everywhere else an absent session is an answer,
+    not a reason to go looking for one. See
+    ``ide_online_helpers.require_online_session`` for the measurement.
+    """
     try:
-        online_app, target_app = _helpers.ensure_online_connection(project)
-        if online_app is not None:
-            sys._codesys_daemon_loop["online_app"] = online_app
-            sys._codesys_daemon_loop["online_target_app"] = target_app
-        return online_app, target_app, None
+        online_app = _helpers.require_online_session(project)
     except Exception as e:
         return None, None, str(e)
+    target_app = sys._codesys_daemon_loop.get("online_target_app")
+    return online_app, target_app, None
 
 
 # ── Tree building ──────────────────────────────────────────────────────────
@@ -279,12 +336,9 @@ def _build_tree(obj, depth=0, current_depth=0):
     if current_depth > MAX_TREE_DEPTH:
         return {"name": _obj_name(obj), "_truncated": True}
     node = {"name": _obj_name(obj)}
-    try:
-        guid = obj.Guid
-        if guid:
-            node["guid"] = str(guid)
-    except Exception:
-        pass
+    guid = _common.object_guid(obj)
+    if guid:
+        node["guid"] = guid
     if depth > 0 and current_depth >= depth:
         return node
     try:

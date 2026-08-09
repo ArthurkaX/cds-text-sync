@@ -32,7 +32,7 @@ from ide_daemon_helpers import (
     _project_info_properties,
     _invalidate_device_cache,
     _find_object_by_selector,
-    _ensure_online_app,
+    _online_app_if_connected,
     _build_tree,
     _read_text_member,
 )
@@ -264,10 +264,9 @@ def _cmd_read_object(params):
             "path": _build_path(target),
             "type": obj_type,
         }
-        try:
-            data["guid"] = str(target.Guid)
-        except Exception as error:
-            _log("Could not read selected object's GUID: {0}".format(error))
+        guid = _common.object_guid(target)
+        if guid:
+            data["guid"] = guid
 
         decl = _read_text_member(target, "textual_declaration")
         impl = _read_text_member(target, "textual_implementation")
@@ -300,7 +299,7 @@ def _cmd_device_status(params):
                 "path": _build_path(app),
                 "connected": "false",
             }
-            online_app, _target_app, online_err = _ensure_online_app(project)
+            online_app, _target_app, online_err = _online_app_if_connected(project)
             if online_app is not None:
                 entry["connected"] = "true"
                 try:
@@ -835,7 +834,7 @@ def _cmd_diagnose_online():
         except Exception as e:
             diag["application_error"] = str(e)
         try:
-            _ensure_online_app(project)  # prime the online-app cache
+            _online_app_if_connected(project)  # prime the online-app cache
             diag["plc"] = _get_plc_status_snapshot()
         except Exception as e:
             diag["plc_error"] = str(e)
