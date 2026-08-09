@@ -160,10 +160,8 @@ or not a session existed. It now probes the handle first and returns
 **`cts analyze` - offline static analysis of the exported project-view.**
 
 `cts analyze` reads only the exported `project-view/` tree: no daemon, no
-`.dump/`, no IDE. It is the first piece of the analyzer planned in
-`static_analyze/imp_plan.md`, delivered as vertical slices: the command
-skeleton, the ST input model, the rule registry, and one rule per data
-source.
+`.dump/`, no IDE. It was delivered as vertical slices: the command skeleton,
+the ST input model, the rule registry, and one rule per data source.
 
 **Optional desktop UI:** `pip install -e ".[ui]"` installs pywebview, then
 `cts ui [--workspace <sync-folder>]` opens a local WebView2 window. The first
@@ -514,7 +512,7 @@ The following CLI aliases are retained for backwards compatibility but are sched
 
 - `cts visu from-svg` gained fill/stroke opacity support in SVG import. The SVG-to-visualization pipeline is still under active development and has **not** been fully validated end-to-end against the CODESYS visualization editor; treat it as experimental.
 
-**Internal refactors & tech debt:**
+**Maintenance and refactors:**
 
 - Extracted a shared discovery-report builder so forward-mode discover and the daemon `discover` handler share one implementation.
 - Split the visualization builder into focused modules (`_builder_base`, `builder_frame`, `builder_inputs`) and separated `from_svg` into screen-create/append/GVL helpers.
