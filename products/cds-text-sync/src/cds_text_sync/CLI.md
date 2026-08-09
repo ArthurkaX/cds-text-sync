@@ -50,9 +50,9 @@ These are the primary commands for editing CODESYS projects as text.
 | Command | Direction | Meaning | Timeout |
 | --- | --- | --- | --- |
 | `status` | daemon -> CLI | Show daemon, project, and sync-folder state. | 10s |
-| `export` | IDE -> disk | Export the open IDE project and overwrite `project-view/`. | 60s |
-| `compare` | IDE vs disk | Compare the open IDE project against `project-view/`. | 60s |
-| `import` | disk -> IDE | Build `IMPORT.xml` from `project-view/` and apply it to the IDE project. | 120s |
+| `export` | IDE -> disk | Export the open IDE project and overwrite `project-view/`. | 300s |
+| `compare` | IDE vs disk | Compare the open IDE project against `project-view/`. | 300s |
+| `import` | disk -> IDE | Build `IMPORT.xml` from `project-view/` and apply it to the IDE project. | 600s |
 
 Normal edit cycle:
 
@@ -455,12 +455,24 @@ The simplified CLI maps to daemon methods as follows:
 
 Always set explicit `--timeout` in scripts.
 
+`export`, `compare`, and `import` scale with project size, not with the size of
+your edit. `import` exports a fresh IDE snapshot, then runs the engine over it
+twice (once to build `IMPORT.xml`, once to build the compare report that
+carries modified POU bodies), then applies the result. On a ~70 MB snapshot
+that is 2-3 minutes for a one-line change. The defaults below allow for that.
+
+A CLI timeout only stops the CLI from waiting. The daemon keeps executing the
+command, so the IDE can still change after the error. Retry with a larger
+`--timeout` rather than treating the first timeout as a failed import.
+
 | Operation | Typical timeout |
 | --- | --- |
 | `ping`, `status`, `app-state`, `permissions` | 5-10s |
 | `read`, `write`, `start`, `stop`, `disconnect` | 15-30s |
-| `connect`, `compare`, `export` | 30-60s |
-| `import`, `build`, `download`, `test`, snapshots | 120s |
+| `connect`, `download`, `test`, snapshots | 60-120s |
+| `build` | 120s |
+| `export`, `compare` | 300s |
+| `import` | 600s |
 
 ## Error Handling
 
@@ -473,7 +485,7 @@ Common failures:
 
 | Error | Meaning | Fix |
 | --- | --- | --- |
-| `Reverse pipe error: Timeout...` | Daemon is not running, busy, or blocked by a CODESYS dialog. | Check CODESYS and retry with a larger timeout. |
+| `Reverse pipe error: Timeout...` | Usually the command is still running, not hung: the sync trio scales with project size. The CLI giving up does not cancel it. | Retry with a larger `--timeout`. Only suspect a real hang if `cts ping` also stops answering. |
 | `Not connected. Call connect_to_device first.` | Command needs an online PLC session. | Run `connect`. |
 | `Forbidden by daemon settings` | Permission-gated command is blocked. | Change settings in the daemon dashboard. |
 | `Invalid expression` | Variable is not exported to the online application. | Check symbol path/export settings. |

@@ -455,13 +455,35 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     }
 
 
+def _online_app_is_live(online_app):
+    """Best-effort: does this online application currently hold a session?
+
+    Mirrors the probing in _active_app_online_state so "connected" means the
+    same thing to disconnect as it does to the import preflight.
+    """
+    if online_app is None:
+        return False
+    for attr in ("is_connected", "is_online"):
+        if hasattr(online_app, attr):
+            try:
+                value = getattr(online_app, attr)
+                if callable(value):
+                    value = value()
+                if value:
+                    return True
+            except Exception:
+                pass
+    return False
+
+
 def disconnect_from_device_impl(project):
     """Disconnect from a PLC device.
-    
+
     Logs out and clears cached online_app.
     Next read/write will create a fresh connection with auto-login.
-    Safe to call when not connected — returns success with note.
-    
+    Safe to call when not connected — reports was_connected=False instead of
+    claiming it logged something out.
+
     Returns:
         dict with state info
     """
@@ -469,10 +491,15 @@ def disconnect_from_device_impl(project):
     try:
         # Use cached online_app if available
         online_app, _ = _get_cached_online_app()
+        was_connected = _online_app_is_live(online_app)
         if online_app is None:
             target_app = get_active_application(project)
             if target_app is not None:
+                # create_online_application only builds a handle; it does not
+                # log in. Probe it before logout so an idle IDE is reported as
+                # "nothing to disconnect" rather than a successful logout.
                 online_app = se.online.create_online_application(target_app)
+                was_connected = _online_app_is_live(online_app)
         if online_app is not None:
             try:
                 online_app.logout()
@@ -486,7 +513,13 @@ def disconnect_from_device_impl(project):
                 daemon_state['online_target_app'] = None
         except Exception:
             pass
-        return {"state": "disconnected"}
+        result = {"state": "disconnected", "was_connected": was_connected}
+        if not was_connected:
+            result["note"] = (
+                "No live online session was found: nothing to disconnect. "
+                "The IDE was already offline."
+            )
+        return result
     except Exception as e:
         return {"state": "disconnected", "note": str(e)}
 

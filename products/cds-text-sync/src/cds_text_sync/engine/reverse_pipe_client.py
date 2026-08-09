@@ -397,9 +397,14 @@ class ReversePipeClient:
                 pipe_handle = -1
                 raise RuntimeError(
                     f"Timeout ({self._timeout}s) waiting for IDE response to "
-                    f"'{method}'. The daemon accepted the command but did not "
-                    f"return a response. Check the CODESYS window for modal "
-                    f"dialogs or restart Project_daemon.py."
+                    f"'{method}'. Giving up here does NOT cancel the command: "
+                    f"the daemon keeps running it, so the IDE may still change "
+                    f"after this error. On a large project export/compare/"
+                    f"import legitimately take minutes -- retry with a bigger "
+                    f"--timeout before assuming a hang. A real hang looks "
+                    f"different: 'cts ping' stops answering too, and then you "
+                    f"check CODESYS for a modal dialog or restart "
+                    f"Project_daemon.py."
                 )
             if "error" in box:
                 raise box["error"]
