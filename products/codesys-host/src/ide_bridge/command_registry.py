@@ -34,7 +34,7 @@ DISPATCH_NAMES = frozenset([
     "sync_compare_text", "update_pou", "delete_pou", "cicd", "read_log",
     "reset_plc", "source_download", "probe", "application_tree", "plc_files",
     "plc_log", "plc_download", "plc_upload", "export_csv", "export_st",
-    "app_crc", "app_history", "compare", "stop", "ping", "status",
+    "app_crc", "app_history", "plc_crc", "compare", "stop", "ping", "status",
     "project_info", "application_state", "disconnect_from_device", "explore",
     "sync", "help", "start_plc", "stop_plc", "create_boot_app", "app_info",
     "permissions", "project_open", "project_close", "project_list",
@@ -77,6 +77,12 @@ DISPATCH_SPECS = {
     "export_st": ("direct", "_cmd_export_st"),
     "app_crc": ("direct", "_cmd_app_crc"),
     "app_history": ("direct", "_cmd_app_history"),
+    "plc_crc": ("direct", "_cmd_compare_crc"),
+    # Legacy name. It says "compare" in the daemon log while doing something
+    # entirely unlike `cts compare` (that one is sync_compare_text), so the log
+    # read as a folder comparison mysteriously building the project -- the
+    # build being CODESYS generating code inside the login attempt. Kept so an
+    # older CLI against a newer daemon still works.
     "compare": ("direct", "_cmd_compare_crc"),
     "stop": ("direct", "_handle_stop"),
     "ping": ("direct", "_handle_ping"),
@@ -151,5 +157,6 @@ help_text = {
 "permissions": "Show daemon security config (read-only)",
 "plc_log": "Read PLC log [--file codesyscontrol.log] [--tail N] [--output DIR]",
 "app_info": "Get detailed info about application on PLC",
-"compare": "Compare IDE project CRC with PLC Application.crc",
+"plc_crc": "Compare IDE project CRC with PLC Application.crc",
+"compare": "Deprecated alias for plc_crc",
 }

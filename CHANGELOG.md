@@ -6,6 +6,90 @@ All notable changes to this project will be documented in this file.
 
 ### Unreleased
 
+**Fixed: one command with no PLC attached took the whole daemon down with it.**
+
+`cts plc-crc` against a project that has never been connected did not fail —
+it hung, and took everything else with it for as long as it lasted (measured
+past twenty minutes). Its preflight went looking for an online session, and
+looking means `create_online_application` plus a walk through every login
+candidate, each of which has to time out before the next is tried. CODESYS
+generates code as part of that attempt, so the IDE visibly builds. The daemon
+command loop is single-threaded, so for that entire window every other command
+— `ping` included — came back "Timeout waiting for IDE to connect", which
+reads as a daemon that has died rather than one that is busy.
+
+Variable read/write were moved off that path earlier; the remaining five were
+not. `plc-crc`, `start`, `stop`, `device-status` and `diagnose-online` now ask
+for the session that already exists and return "Not connected. Run 'cts
+connect' first." when there is none. Opening a session is what `cts connect` is
+for, where the wait is the point. A test now reads the handler sources and
+fails if any of them names a session-opening helper again.
+
+**Fixed: two different things called themselves `compare`.**
+
+`cts plc-crc` was wired to a daemon method named `compare`, so that is what
+appeared in the daemon log — indistinguishable from `cts compare`, which is
+`sync_compare_text` and does something else entirely. The log showed `compare`
+followed by the IDE building, which matches neither command's description. The
+method is now `plc_crc`; `compare` still resolves to it so an older CLI keeps
+working, and is documented as the deprecated alias.
+
+**Fixed: a busy daemon was reported as a missing one.**
+
+The connect-phase timeout explained itself with "Make sure the reverse-pipe
+daemon is running" whenever it had no cached IDE pid — which is every first
+command, since each `cts` run is a fresh process, and the timeout that matters
+is usually the first one. The pid is now looked up by image name, so the real
+diagnosis (exited / blocked on a modal dialog / running and busy) is available
+from the start, and the message says outright that the daemon may simply be
+running an earlier command.
+
+**Fixed: `cts import` looked done while being silently discarded.**
+
+The daemon import handler created objects, updated POU bodies and applied the
+structured view — all against the in-memory project — and then said nothing
+about the fact that none of it was on disk. The work looked finished:
+`read-object` returned the new object with its full body, right up until the
+project was closed or reloaded and it was gone. The manual `Project_import`
+action appeared to work only because a human was in the IDE to save.
+
+Saving stays the user's call — it also commits whatever else is open in the
+IDE — so `import` still applies in memory by default. What changed is that it
+now says so: the response carries `saved` and, when the project was mutated
+without being saved, an `unsaved` warning naming the consequence. `cts import
+--save` opts into saving, reports `save_error` if it fails, and takes the same
+binary backup into `.backup/` that the manual action takes before touching
+anything, refusing to apply if that backup cannot be written. Without `--save`
+no backup is needed: the `.project` file is never written, so it already is the
+pre-import state.
+
+**Fixed: `compare` never converged after an import.**
+
+`manifest.json` is the only record of which files on disk are managed, and only
+an export writes it. Import left it untouched, so a newly created object stayed
+an unmanaged `.st` — a pending create — and an updated object kept its stale
+projection hash. `compare` reported the same changes after a successful import,
+forever, and each following import re-applied them.
+
+`import` now re-baselines `project-view/` and `manifest.json` from the IDE. The
+refresh reads the live in-memory project, so an unsaved import is still a valid
+baseline; it is withheld only when an edit did not reach the IDE at all — a
+failed create, or a projection that could not be applied — because in those
+cases the file on disk holds the only copy. The reason is reported in
+`manifest_refresh_skipped`. `--no-refresh` opts out.
+
+Import still cannot delete: an object in the IDE with no file in `project-view/`
+is written back to disk by the refresh, and now says so in
+`manifest_refresh_restored` rather than reappearing silently.
+
+**Fixed: import reported objects as created that were not.**
+
+`created_text_objects` was built from the list of objects import intended to
+create. A create that threw was logged and then reported as a success anyway.
+The response now separates `created_text_objects`, `reused_text_objects` (the
+object already existed and was updated in place) and `failed_text_objects` with
+the error — matching what the native-object branch already did.
+
 **`cts patch save` - hand your changes to a colleague.**
 
 Packages the text you changed on disk so someone with the same project can copy

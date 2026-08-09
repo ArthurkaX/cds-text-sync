@@ -49,6 +49,12 @@ Use this sequence for normal source changes:
 
 There is no flag to import while the IDE is online. If the import preflight reports an online application, disconnect; if that does not clear it, end the online session in the CODESYS IDE before retrying.
 
+`cts import` applies to the in-memory project and does **not** save it: saving also commits whatever else is open in the IDE, so it stays the user's decision. The response carries an `unsaved` warning — pass it on, and tell the user the import is lost if the project is closed or reloaded before they save. Use `--save` only when the user asked for it.
+
+`cts import` then re-baselines `project-view/` and `manifest.json` from the IDE, so a second `cts compare` comes back clean. If it does not, read `manifest_refresh_skipped` in the import response: the refresh is withheld whenever something failed to reach the IDE, precisely so the disk copy of that edit survives. `--no-refresh` skips the re-baseline; use it only when you need to inspect the IDE before the disk baseline moves.
+
+`cts import` never deletes. An object present in the IDE but absent from `project-view/` is written back to disk by the refresh and reported in `manifest_refresh_restored`; delete it in the CODESYS IDE instead.
+
 ## Control Mutation Scope
 
 Classify commands before running them:

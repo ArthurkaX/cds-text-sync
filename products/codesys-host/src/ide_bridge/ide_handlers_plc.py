@@ -19,7 +19,7 @@ from ide_daemon_state import (
 )
 
 from ide_daemon_helpers import (
-    _ensure_online_app,
+    _online_app_if_connected,
 )
 
 
@@ -72,13 +72,11 @@ def _cmd_start_plc():
     if err:
         return err
     try:
-        oa, _target_app, online_err = _ensure_online_app(project)
+        oa, _target_app, online_err = _online_app_if_connected(project)
         if oa is None:
             return {
                 "ok": False,
-                "error": "Not connected. Call connect_to_device first. {0}".format(
-                    online_err or ""
-                ),
+                "error": online_err or "Not connected. Run 'cts connect' first.",
             }
         if not hasattr(oa, "start"):
             return {"ok": False, "error": "OnlineApplication has no start() method"}
@@ -96,13 +94,11 @@ def _cmd_stop_plc():
     if err:
         return err
     try:
-        oa, _target_app, online_err = _ensure_online_app(project)
+        oa, _target_app, online_err = _online_app_if_connected(project)
         if oa is None:
             return {
                 "ok": False,
-                "error": "Not connected. Call connect_to_device first. {0}".format(
-                    online_err or ""
-                ),
+                "error": online_err or "Not connected. Run 'cts connect' first.",
             }
         if not hasattr(oa, "stop"):
             return {"ok": False, "error": "OnlineApplication has no stop() method"}

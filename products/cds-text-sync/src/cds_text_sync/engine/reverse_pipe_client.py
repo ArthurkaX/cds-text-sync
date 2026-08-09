@@ -220,15 +220,45 @@ class ReversePipeClient:
     # ── Smart Timeout Diagnostics ──────────────────────────────────────────
 
     @staticmethod
+    def _find_ide_pid() -> int | None:
+        """Locate a running CODESYS process without a prior successful call.
+
+        ``_last_ide_pid`` is process-global, and every ``cts`` run is a fresh
+        process, so on the command that times out it is almost always None --
+        which used to send every first-command timeout down the "make sure the
+        daemon is running" path, including the case where it is running and
+        merely busy. Looking the process up by image name keeps the real
+        diagnosis (exited / not responding / busy) available from the start.
+        """
+        try:
+            import subprocess
+
+            r = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq CODESYS.exe", "/NH", "/FO", "CSV"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            for line in (r.stdout or "").strip().splitlines():
+                fields = [f.strip('" ') for f in line.split('","')]
+                if len(fields) >= 2 and fields[1].isdigit():
+                    return int(fields[1])
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
     def _diagnose_ide_timeout() -> str:
         """Check if the IDE process is still alive and responding."""
         global _last_ide_pid
-        if _last_ide_pid is None:
-            return (
-                "Make sure the reverse-pipe daemon "
-                "(Project_daemon.py) is running inside CODESYS."
-            )
         pid = _last_ide_pid
+        if pid is None:
+            pid = ReversePipeClient._find_ide_pid()
+        if pid is None:
+            return (
+                "No CODESYS process is running, so nothing could answer. Start "
+                "CODESYS and run Project_daemon.py inside it."
+            )
         try:
             import subprocess
 
@@ -292,8 +322,8 @@ class ReversePipeClient:
             )
         except Exception:
             return (
-                "Make sure the reverse-pipe daemon "
-                "(Project_daemon.py) is running inside CODESYS."
+                f"Could not inspect the IDE process (PID {pid}). Check that "
+                f"Project_daemon.py is running inside CODESYS."
             )
 
     # Maximum retries for CreateNamedPipeW (to handle brief OS cleanup delay)
@@ -352,7 +382,11 @@ class ReversePipeClient:
                         CancelIo(pipe_handle)
                         raise RuntimeError(
                             f"Timeout ({self._timeout}s) waiting for IDE to connect to "
-                            f"{self._pipe_path}. {hint}"
+                            f"{self._pipe_path}. The daemon never picked up this "
+                            f"request: it is either not running, or still running an "
+                            f"earlier command -- the command loop is single-threaded, "
+                            f"so one slow command makes every other one time out here. "
+                            f"{hint}"
                         )
                     # Verify connection result with GetOverlappedResult
                     bytes_xferd = wintypes.DWORD(0)

@@ -22,7 +22,7 @@ from ide_daemon_state import (
 )
 
 from ide_daemon_helpers import (
-    _ensure_online_app,
+    _online_app_if_connected,
     _get_sync_folder,
 )
 
@@ -397,13 +397,11 @@ def _cmd_compare_crc(params):
     project, err = _get_active_project()
     if err:
         return err
-    oa, _target_app, online_err = _ensure_online_app(project)
+    oa, _target_app, online_err = _online_app_if_connected(project)
     if oa is None:
         return {
             "ok": False,
-            "error": "Not connected. Call connect_to_device first. {0}".format(
-                online_err or ""
-            ),
+            "error": online_err or "Not connected. Run 'cts connect' first.",
         }
 
     try:

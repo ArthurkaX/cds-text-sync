@@ -130,10 +130,13 @@ def _choose_application(runtime, project, base_dir):
 
 def _message_id(msg):
     prefix = safe_str(getattr(msg, "prefix", ""))
-    try:
-        number = int(getattr(msg, "number", 0))
-    except Exception:
-        number = 0
+    number_text = safe_str(getattr(msg, "number", "")).strip()
+    number = 0
+    if re.match(r"^[+-]?\d+$", number_text):
+        try:
+            number = int(number_text)
+        except (TypeError, ValueError):
+            number = 0
     if number > 0:
         return "%s%04d" % (prefix, number)
     return prefix

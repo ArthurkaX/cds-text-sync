@@ -40,7 +40,7 @@ _DAEMON_METHODS = {
     "start": "start_plc",
     "stop": "stop_plc",
     "app-state": "application_state",
-    "plc-crc": "compare",
+    "plc-crc": "plc_crc",
     "project-info": "project_info",
     "permissions": "permissions",
 }
@@ -62,6 +62,10 @@ def dispatch_daemon(args, output_fmt="json"):
                     output_fmt=output_fmt,
                 )
                 return True
+            if getattr(args, "save", False):
+                params["save"] = True
+            if getattr(args, "no_refresh", False):
+                params["refresh"] = False
         if command == "download" and getattr(args, "start", None) is not None:
             params["start"] = args.start
         if command == "plc-crc" and getattr(args, "build", False):

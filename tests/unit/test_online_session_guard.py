@@ -156,3 +156,45 @@ def test_refuses_when_the_cached_session_went_stale(helpers):
     with pytest.raises(RuntimeError) as excinfo:
         helpers.require_online_session(project=object())
     assert "cts connect" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# The same rule, one layer up: no command handler may open a session either.
+# ---------------------------------------------------------------------------
+
+# The handlers cannot be imported here — their module level pulls in the
+# CODESYS scriptengine — so this reads the source instead. Only
+# ide_online_helpers is allowed to name ensure_online_connection: that is where
+# connect_to_device_impl lives, and connecting is what it is for.
+_SESSION_OPENERS = ("ensure_online_connection", "_ensure_online_app")
+_MAY_OPEN_A_SESSION = {"ide_online_helpers.py"}
+
+
+def _handler_sources():
+    return sorted(
+        path
+        for path in BRIDGE_DIR.glob("ide_*.py")
+        if path.name not in _MAY_OPEN_A_SESSION
+    )
+
+
+@pytest.mark.parametrize(
+    "path", _handler_sources(), ids=lambda p: p.name
+)
+def test_no_handler_opens_a_session(path):
+    """A command that opens a session as a side effect wedges the daemon.
+
+    ``cts plc-crc`` against a project with no PLC did exactly that: the
+    preflight went looking for a session, every login candidate had to time out
+    first, and for that whole window every other command — ping included — got
+    "Timeout waiting for IDE to connect", which reads as a dead daemon rather
+    than a busy one. Ask for the session that exists; ``cts connect`` is where
+    the user asked to wait for a new one.
+    """
+    source = path.read_text(encoding="utf-8")
+    offenders = [name for name in _SESSION_OPENERS if name in source]
+    assert not offenders, (
+        "{0} references {1}. Use _online_app_if_connected (or "
+        "require_online_session) so the command fails fast instead of blocking "
+        "the single-threaded daemon loop.".format(path.name, ", ".join(offenders))
+    )

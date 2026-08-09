@@ -69,12 +69,36 @@ cts build --timeout 120
 | Flag | Meaning |
 | --- | --- |
 | `--dry-run` | Show what would change without applying (runs compare). |
+| `--save` | Save the project after applying. Off by default. |
+| `--no-refresh` | Skip the post-import re-baseline of `project-view/` and `manifest.json`. |
 
 Rules:
 
 - `export` is destructive for local text files: it refreshes `project-view/`
   from the IDE state.
 - `import` treats disk as the source of truth.
+- `import` does **not** save the project. Everything it does — creating
+  objects, updating bodies, applying the structured view — happens in the
+  in-memory project, exactly as if you had typed it in the IDE. Saving also
+  commits whatever else you have open, so it stays your decision: press Ctrl+S
+  in the IDE, or pass `--save`. Until then the response carries an `unsaved`
+  warning, and closing or reloading the project discards the import.
+- `--save` also takes a binary backup into `.backup/` first, the same one the
+  manual `Project_import` action takes. Without `--save` there is nothing to
+  back up — the `.project` file on disk is never written, so it already is the
+  pre-import state.
+- `import` re-baselines the disk afterwards. `manifest.json` is the only record
+  of which files are managed, and only an export writes it, so without this
+  step `compare` keeps reporting the changes you just imported and the next
+  `import` re-applies them. The refresh regenerates view files from the live
+  in-memory project — a save is not a precondition — so it is withheld only
+  when something did not reach the IDE at all: a failed create, or a projection
+  that could not be applied. In those cases the response carries
+  `manifest_refresh_skipped` with the reason, and the affected file on disk is
+  left alone because it holds the only copy of that edit.
+- `import` cannot delete. An object that exists in the IDE but not in
+  `project-view/` is written back to disk by the refresh; delete it in the
+  CODESYS IDE instead. The response says so in `manifest_refresh_restored`.
 - `import` is refused whenever the IDE is connected to a PLC/runtime. Run
   `disconnect` first; there is no override because applying an offline project
   patch while online can silently fail to create objects.
@@ -458,8 +482,11 @@ Always set explicit `--timeout` in scripts.
 `export`, `compare`, and `import` scale with project size, not with the size of
 your edit. `import` exports a fresh IDE snapshot, then runs the engine over it
 twice (once to build `IMPORT.xml`, once to build the compare report that
-carries modified POU bodies), then applies the result. On a ~70 MB snapshot
-that is 2-3 minutes for a one-line change. The defaults below allow for that.
+carries modified POU bodies), applies the result, and then re-baselines the
+disk with a full export. On a ~70 MB snapshot that is 4-5
+minutes for a one-line change. The defaults below allow for that; `--no-refresh`
+drops the last step and roughly halves it, at the cost of leaving `compare`
+reporting the change you just imported.
 
 A CLI timeout only stops the CLI from waiting. The daemon keeps executing the
 command, so the IDE can still change after the error. Retry with a larger
