@@ -35,6 +35,17 @@ Flags: `--out DIR`, `--sync-folder DIR`, `--zip`, `--dry-run`, `--bare`,
 `--timeout`. Deleted objects cannot be shipped as files; they are listed in
 `patch.json` and `README.txt` instead.
 
+**Fixed: import guidance pointed at a flag that no longer exists.**
+
+`--force-online` was removed when the online preflight became unconditional,
+but three places still advertised it. `cts --help` ended the state-model
+section with a dangling "use:" / "or:" and no command after either, and the
+`cds-text-sync` skill told agents to fall back to `cts import --force-online`,
+which argparse rejects with `unrecognized arguments`. All three now state the
+actual rule: import is refused while the IDE is online, there is no override,
+and a preflight that still reports online after `cts disconnect` means the
+online session has to be ended in the CODESYS IDE.
+
 ---
 
 ### Version 3.0.0 (2026-08-01)

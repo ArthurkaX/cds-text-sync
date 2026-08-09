@@ -40,8 +40,10 @@ State model:
   CODESYS cannot safely edit/import project structure while the IDE is online
   with the PLC. Before folder -> IDE import, run:
     cts disconnect --timeout 15
-  If the online preflight still fails after disconnect, use:
-  or:
+  There is no override flag: import is refused while the IDE is online because
+  an offline project patch applied online can silently create nothing.
+  If the preflight still reports online after disconnect, end the online
+  session in the CODESYS IDE itself, confirm with cts status, then import.
 
 Connection state:
   cts ping and cts status include cached PLC state:

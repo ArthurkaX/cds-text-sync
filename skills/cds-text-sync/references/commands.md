@@ -21,7 +21,7 @@ Use this reference as a routing guide. Confirm exact syntax with the installed `
 | Apply folder-to-IDE changes | `cts import` |
 | Compile the active application | `cts build` |
 
-Disconnect before import when the IDE is online with the PLC. Treat `--force-online` as an exception.
+Disconnect before import when the IDE is online with the PLC. Import has no online override flag; it is refused until the IDE is offline.
 
 ## Project Inspection and Object Changes
 
