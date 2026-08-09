@@ -199,9 +199,13 @@ def cmd_rules(args, out=None):
         out.write("| id | severity | scope | title |\n")
         out.write("| --- | --- | --- | --- |\n")
         for row in rows:
+            # The escape stays outside the f-string: a backslash inside an
+            # f-string expression is a syntax error before Python 3.12, and
+            # this package supports 3.11.
+            title = row["title"].replace("|", "\\|")
             out.write(
                 f"| {row['id']} | {row['severity']} | {row['scope']} "
-                f"| {row['title'].replace('|', '\\|')} |\n"
+                f"| {title} |\n"
             )
     else:
         for row in rows:
