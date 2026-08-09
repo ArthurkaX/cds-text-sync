@@ -608,6 +608,31 @@ if (Test-Path -LiteralPath $menuDir) {
     $menuItem = Get-Item -LiteralPath $menuDir -Force
     $isLink = [bool]($menuItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
 
+    # Match the same layouts as install_menu.classify_menu_dir. Older releases
+    # used src\ide_bridge at the menu root; newer archives have the bridge under
+    # products\codesys-host and carry the root cds_text_sync package instead.
+    $isFullInstallation = (
+        (Test-Path (Join-Path $menuDir "src\ide_bridge")) -or
+        (Test-Path (Join-Path $menuDir "products\codesys-host\src\ide_bridge")) -or
+        (Test-Path (Join-Path $menuDir "cds_text_sync")) -or
+        (Test-Path (Join-Path $menuDir "cli")) -or
+        (Test-Path (Join-Path $menuDir ".git"))
+    )
+
+    if ($isLink -or $isFullInstallation) {
+        if ($dryRun) {
+            Write-Host "[*] Dry run: would ask before migrating the existing installation in $menuDir" -ForegroundColor Magenta
+        } else {
+            $migrationChoice = Read-Host "`nFound an older full installation in $menuDir. Move it to the program folder now? [Y/N] (default: Y)"
+            if ([string]::IsNullOrWhiteSpace($migrationChoice)) {
+                $migrationChoice = "Y"
+            }
+            if ($migrationChoice.ToUpperInvariant() -ne "Y") {
+                throw "Migration cancelled. Move or delete $menuDir manually, then run the installer again."
+            }
+        }
+    }
+
     if ($isLink) {
         # A developer symlink or junction. Its target is the user's own working
         # copy - never touch it. Delete the link itself only: Remove-Item
@@ -625,7 +650,7 @@ if (Test-Path -LiteralPath $menuDir) {
         }
         $migrated = $true
     }
-    elseif ((Test-Path (Join-Path $menuDir "src\ide_bridge")) -or (Test-Path (Join-Path $menuDir ".git"))) {
+    elseif ($isFullInstallation) {
         Write-Host "`n[*] Found a full installation inside ScriptDir. Moving it out to:" -ForegroundColor Cyan
         Write-Host "    $bodyPath" -ForegroundColor Cyan
         if (Test-Path -LiteralPath $bodyPath) {
