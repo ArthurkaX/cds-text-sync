@@ -11,7 +11,7 @@ repository-level product plan lives in ``spec.md``.
 from pathlib import Path
 import sys
 
-__version__ = "3.0.0"  # must match version in pyproject.toml
+__version__ = "1.0.0"  # must match version in pyproject.toml
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _SHARED_SRC = _REPO_ROOT / "shared" / "src"
