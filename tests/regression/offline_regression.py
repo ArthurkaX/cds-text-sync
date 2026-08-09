@@ -153,7 +153,12 @@ def _add_view_object(views_path, dump_path):
         "22222222-2222-2222-2222-222222222222",
     )
     _replace_in_file(added_view, "PLC_PRG", "PLC_AUX")
-    _replace_in_file(added_view, "x := 1;", "x := 10;")
+
+    source_projection = os.path.join(views_path, "Device", "Application", "PLC_PRG.st")
+    added_projection = os.path.join(views_path, "Device", "Application", "PLC_AUX.st")
+    shutil.copyfile(source_projection, added_projection)
+    _replace_in_file(added_projection, "PLC_PRG", "PLC_AUX")
+    _replace_in_file(added_projection, "x := 1;", "x := 10;")
 
     manifest_path = os.path.join(dump_path, "manifest.json")
     manifest = _read_json(manifest_path)
@@ -170,6 +175,22 @@ def _add_view_object(views_path, dump_path):
         added_entry["structured_view_guid"] = source_entry.get("structured_view_guid")
     if source_entry.get("structured_view_single_attrs"):
         added_entry["structured_view_single_attrs"] = source_entry.get("structured_view_single_attrs")
+    source_projection_paths = source_entry.get("projection_paths") or []
+    if source_projection_paths:
+        added_entry["projection_paths"] = [
+            path.replace("PLC_PRG", "PLC_AUX") for path in source_projection_paths
+        ]
+        added_entry["projection_hashes"] = {
+            path.replace("PLC_PRG", "PLC_AUX"): "added-by-regression"
+            for path in source_projection_paths
+        }
+        added_entry["projection_import_safe"] = dict(
+            source_entry.get("projection_import_safe") or {}
+        )
+        added_entry["projection_import_safe"] = {
+            path.replace("PLC_PRG", "PLC_AUX"): safe
+            for path, safe in added_entry["projection_import_safe"].items()
+        }
     manifest["entries"].append(added_entry)
     _write_json(manifest_path, manifest)
 
@@ -218,8 +239,8 @@ def _scenario_baseline(work_dir):
     if not os.path.exists(resources_log_path):
         raise RegressionFailure("resources log was not written")
 
-    exported_view = os.path.join(views_path, "Device", "Application", "PLC_PRG.xml")
-    _replace_in_file(exported_view, "x := 1;", "x := 2;")
+    exported_projection = os.path.join(views_path, "Device", "Application", "PLC_PRG.st")
+    _replace_in_file(exported_projection, "x := 1;", "x := 2;")
 
     modified_compare_path = os.path.join(dump_path, "compare_modified.json")
     _run(["compare", "--project-root", project_root, "--snapshot", snapshot_path, "--views", views_path, "--report", modified_compare_path])

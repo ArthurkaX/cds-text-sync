@@ -10,7 +10,8 @@
           <Single Name="Object">
             <Single Name="Implementation">
               <Single Name="TextDocument">
-                <Single Name="TextBlobForSerialisation">x := 2;</Single>
+                <Single Name="TextBlobForSerialisation">x := 2;
+</Single>
               </Single>
             </Single>
             <Single Name="Interface">
@@ -18,7 +19,8 @@
                 <Single Name="TextBlobForSerialisation">PROGRAM PLC_PRG
 VAR
     x : INT;
-END_VAR</Single>
+END_VAR
+</Single>
               </Single>
             </Single>
           </Single>
