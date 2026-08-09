@@ -8,7 +8,16 @@
       "parent_guid": null,
       "structured_view_guid": "{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}",
       "xml_path": "Device\\Application\\PLC_PRG.xml",
-      "hash": "6ece11f4f5a73809182031bf52b2e74c4e1f713e"
+      "hash": "c1f4b64ea31c242106161772b21e11d287e00053",
+      "projection_paths": [
+        "Device\\Application\\PLC_PRG.st"
+      ],
+      "projection_hashes": {
+        "Device\\Application\\PLC_PRG.st": "c7e00168ffe2614a5f850b2f6e0a27103662ca67"
+      },
+      "projection_import_safe": {
+        "Device\\Application\\PLC_PRG.st": false
+      }
     }
   ]
 }
