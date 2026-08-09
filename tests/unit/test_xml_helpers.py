@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import pytest
 from cds_text_sync.engine.xml_helpers import (
     ST_IMPLEMENTATION_MARKER,
+    VOLATILE_XML_NAMES,
     ProjectionValidationError,
     extract_bool_property,
     extract_cds_text_sync_type_guid,
@@ -183,6 +184,54 @@ class TestNormalizedXmlText:
     def test_preserves_invalid_xml_by_returning_original_text(self):
         invalid = "<not valid xml <<"
         assert normalized_xml_text(invalid) == invalid
+
+    def test_ignores_generated_visu_method_tables(self):
+        xml_a = (
+            "<Root><Single Name='GeneratedLMMDescriptions'>old</Single>"
+            "<Single Name='Data'>x</Single></Root>"
+        )
+        xml_b = (
+            "<Root><Single Name='GeneratedLMMDescriptions'>new</Single>"
+            "<Single Name='Data'>x</Single></Root>"
+        )
+        assert normalized_xml_text(xml_a) == normalized_xml_text(xml_b)
+
+    def test_ignores_per_session_visu_style_temp_path(self):
+        template = (
+            "<Root><Single Name='FileID'>"
+            r"C:\ProgramData\CODESYS\Temporary Files"
+            r"\VisuStyleDefaultImages_{0}\Checkbox.bmp"
+            "</Single></Root>"
+        )
+        xml_a = template.format("6f706eb6-85ba-4993-ae04-d12adfbe3ae3")
+        xml_b = template.format("00000000-1111-2222-3333-444444444444")
+        assert normalized_xml_text(xml_a) == normalized_xml_text(xml_b)
+
+    def test_keeps_comparing_user_image_paths_verbatim(self):
+        template = "<Root><Single Name='FileID'>C:\\images\\{0}.png</Single></Root>"
+        assert normalized_xml_text(
+            template.format("lan_swap_ru")
+        ) != normalized_xml_text(template.format("lan_swap_en"))
+
+    def test_library_id_is_compared_unless_explicitly_ignored(self):
+        template = (
+            "<Root><Single Name='LibraryId'>visuelemswincontrols, {0} (system)"
+            "</Single></Root>"
+        )
+        xml_a = template.format("4.9.0.0")
+        xml_b = template.format("4.5.0.0")
+        assert normalized_xml_text(xml_a) != normalized_xml_text(xml_b)
+        assert normalized_xml_text(
+            xml_a, extra_ignore_names=["LibraryId"]
+        ) == normalized_xml_text(xml_b, extra_ignore_names=["LibraryId"])
+
+    def test_extra_ignore_names_do_not_mutate_the_shared_set(self):
+        before = set(VOLATILE_XML_NAMES)
+        normalized_xml_text(
+            "<Root><Single Name='LibraryId'>x, 1.0.0.0</Single></Root>",
+            extra_ignore_names=["LibraryId"],
+        )
+        assert set(VOLATILE_XML_NAMES) == before
 
 
 # ===================================================================

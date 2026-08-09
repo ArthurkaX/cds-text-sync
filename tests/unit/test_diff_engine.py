@@ -346,3 +346,75 @@ class TestDiffEngineTextFirst:
         result = DiffEngine(model_with(), model_with(folder_node)).compare()
         assert "g1" not in result["added"]
         assert "g1" in result["unchanged"]
+
+
+# ===================================================================
+# Library-resolution drift
+# ===================================================================
+
+
+def _visu_xml(library_version, generated="table-v1", body="authored"):
+    return (
+        "<Single Name='Object'>"
+        "<Single Name='LibraryId' Type='string'>visuelemswincontrols, {0} (system)</Single>"
+        "<Single Name='GeneratedLMMDescriptions'>{1}</Single>"
+        "<Single Name='Body'>{2}</Single>"
+        "</Single>"
+    ).format(library_version, generated, body)
+
+
+class TestLibraryResolutionDrift:
+    def test_generated_method_table_is_never_a_difference(self):
+        """The IDE rebuilds it on every compile; no drift needed to ignore it."""
+        ide_node = _make_node("g1", xml_text=_visu_xml("4.5.0.0", generated="new"))
+        folder_node = _make_node("g1", xml_text=_visu_xml("4.5.0.0", generated="old"))
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["unchanged"]
+        assert "library_resolution" not in result
+
+    def test_library_derived_blocks_still_count_when_nothing_drifted(self):
+        """The extended ignore set must not leak into the no-drift case."""
+        ide_node = _make_node(
+            "g1",
+            xml_text=_visu_xml("4.5.0.0").replace(
+                "<Single Name='Body'>authored</Single>",
+                "<Single Name='TypeNodeAttributes'>a</Single>",
+            ),
+        )
+        folder_node = _make_node(
+            "g1",
+            xml_text=_visu_xml("4.5.0.0").replace(
+                "<Single Name='Body'>authored</Single>",
+                "<Single Name='TypeNodeAttributes'>b</Single>",
+            ),
+        )
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert result.get("library_resolution") is None
+        assert "g1" in result["modified"]
+
+    def test_drift_only_objects_are_reported_once_instead_of_each(self):
+        ide_node = _make_node("g1", xml_text=_visu_xml("4.5.0.0"))
+        folder_node = _make_node("g1", xml_text=_visu_xml("4.9.0.0"))
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["unchanged"]
+        assert "g1" not in result["modified"]
+        assert folder_node.metadata.get("library_drift_only") is True
+        resolution = result["library_resolution"]
+        assert resolution["drift_only_objects"] == 1
+        assert resolution["drift"] == [
+            {
+                "library": "visuelemswincontrols",
+                "disk": ["4.9.0.0"],
+                "ide": ["4.5.0.0"],
+            }
+        ]
+        assert "cts export" in resolution["hint"]
+
+    def test_real_edits_survive_a_drift(self):
+        """Drift must silence the generated blocks, not the authored ones."""
+        ide_node = _make_node("g1", xml_text=_visu_xml("4.5.0.0", body="authored"))
+        folder_node = _make_node("g1", xml_text=_visu_xml("4.9.0.0", body="edited"))
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+        assert "g1" in result["modified"]
+        assert result["library_resolution"]["drift_only_objects"] == 0
+        assert folder_node.metadata.get("library_drift_only") is None
