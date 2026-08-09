@@ -47,7 +47,7 @@ Use this sequence for normal source changes:
 9. Run `cts download` only when the user requested deployment to the PLC.
 10. Verify application state after deployment.
 
-Do not use `--force-online` by default. Use it only when disconnecting cannot satisfy the import preflight and the user accepts the increased risk.
+There is no flag to import while the IDE is online. If the import preflight reports an online application, disconnect; if that does not clear it, end the online session in the CODESYS IDE before retrying.
 
 ## Control Mutation Scope
 
@@ -66,7 +66,7 @@ For variable writes, state that the PLC program may overwrite the value on the n
 
 - If the CLI is unavailable, report the missing executable and inspect project documentation for the expected environment.
 - If the daemon is unreachable, verify that `Project_daemon.py` is running inside CODESYS before changing project files.
-- If import is rejected while online, disconnect and retry the dry run before considering `--force-online`.
+- If import is rejected while online, disconnect and retry the dry run. There is no override; when disconnect does not clear the online state, report that the online session must be closed in the CODESYS IDE.
 - If a command or daemon method is unknown, compare `cts --help`, subcommand help, and daemon version. Do not assume every CLI-exposed method is implemented by the active daemon.
 - If build or download fails, read the IDE log and report the exact errors without proceeding to later mutation steps.
 - If folder and IDE state disagree unexpectedly, use compare and project inspection first. Do not resolve the discrepancy with export or import until the intended source of truth is established.

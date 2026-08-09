@@ -4,9 +4,9 @@ test_cli_handlers_daemon.py -- Tests for the top-level daemon-command dispatch.
 
 dispatch_daemon was extracted from main(); it carries the few commands that
 are more than pure routing. These tests pin: the passthrough table, the
-import --dry-run / --force-online branches, plc-crc build-first ordering,
-download --start passthrough, the write read-back, and the
-"return False for anything I don't handle" contract.
+import --dry-run and the refusal of any online override, plc-crc
+build-first ordering, download --start passthrough, the write read-back,
+and the "return False for anything I don't handle" contract.
 """
 
 import argparse
