@@ -91,10 +91,14 @@ Examples:
     # -- primary sync --------------------------------------------------------
     add_daemon_parser(subparsers, "ping", "Daemon liveness check with cached PLC state", 10)
     add_daemon_parser(subparsers, "status", "Show daemon, project, sync-folder, and PLC state", 10)
-    add_daemon_parser(subparsers, "export", "IDE -> disk: refresh project-view/", 60)
-    add_daemon_parser(subparsers, "compare", "IDE vs disk: compare against project-view/", 60)
+    # Sync timeouts are sized for real projects, not demo ones. A 70 MB
+    # snapshot takes ~1 min to export and each engine pass reads it again, so
+    # import routinely needs 2-3 min end to end. Timing out early does not stop
+    # the daemon -- it only hides the result -- so these ceilings are generous.
+    add_daemon_parser(subparsers, "export", "IDE -> disk: refresh project-view/", 300)
+    add_daemon_parser(subparsers, "compare", "IDE vs disk: compare against project-view/", 300)
     p_import = add_daemon_parser(
-        subparsers, "import", "disk -> IDE: apply project-view/ changes", 120
+        subparsers, "import", "disk -> IDE: apply project-view/ changes", 600
     )
     p_import.add_argument(
         "--dry-run",

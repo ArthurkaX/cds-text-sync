@@ -46,6 +46,29 @@ actual rule: import is refused while the IDE is online, there is no override,
 and a preflight that still reports online after `cts disconnect` means the
 online session has to be ended in the CODESYS IDE.
 
+**Fixed: `cts import` "hung" on large projects — it was the default timeout.**
+
+Import exports a fresh IDE snapshot, runs the engine over it twice (once for
+`IMPORT.xml`, once for the compare report that carries modified POU bodies),
+then applies the result. On a ~70 MB snapshot that is 2-3 minutes for a
+one-line edit, against a 120 s default: measured end to end at 154 s on a real
+project. The CLI gave up mid-flight while the daemon kept working, which looks
+exactly like a deadlock and sends you hunting for a modal dialog that isn't
+there.
+
+Defaults now match the work: `export` and `compare` 300 s, `import` 600 s. A
+timeout is an upper bound, so raising it costs nothing when the project is
+small. The timeout error now says what is actually true — the command was not
+cancelled, the IDE may still change, retry with a bigger `--timeout`, and a
+real hang also stops `cts ping` from answering.
+
+**Fixed: `cts disconnect` reported success when nothing was connected.**
+
+`create_online_application` builds a handle without logging in, so disconnect
+called `logout()` on it and returned a bare `{"state": "disconnected"}` whether
+or not a session existed. It now probes the handle first and returns
+`was_connected`, plus a note when there was nothing to disconnect.
+
 ---
 
 ### Version 3.0.0 (2026-08-01)
