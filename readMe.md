@@ -1,275 +1,141 @@
-# cds-text-sync: Professional CODESYS Git Sync
+# cds-text-sync
 
 [![CI](https://github.com/ArthurkaX/cds-text-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/ArthurkaX/cds-text-sync/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ArthurkaX/cds-text-sync?include_prereleases&sort=semver)](https://github.com/ArthurkaX/cds-text-sync/releases)
-[![Forks](https://badgen.net/github/forks/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/forks)
-[![Issues](https://img.shields.io/github/issues/ArthurkaX/cds-text-sync)](https://github.com/ArthurkaX/cds-text-sync/issues)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
 
-**Version**: `3.0.0`
+Turn a binary CODESYS project into a folder that Git, editors, CI tools and
+LLM agents can understand. Export the project, review or change its text on
+disk, then import it back into CODESYS.
 
-> [!IMPORTANT]
-> **Disclaimer**: This is a third-party tool. It is NOT an official product of CODESYS Group and is not affiliated with, sponsored by, or endorsed by CODESYS Group. This tool is provided "as is" and is not a replacement for official CODESYS products.
+This is an independent MIT-licensed tool, not an official CODESYS product.
 
-## What this is
+## 1. Quick start
 
-A CODESYS project is a single binary `.project` file. Git can store it, but it
-cannot see inside: there is no diff, no line-by-line review, no way for two
-engineers to merge their work, and no way for any external tool to read your
-logic.
+Requirements: Windows, CODESYS V3.5 SP10+ (SP13+ recommended), and Python 3.11+.
 
-**cds-text-sync turns that project into a folder of files on disk** — one per
-object, XML with readable `.st` and `.csv` text exports enabled by default — which you keep in a
-normal Git repository, review in pull requests, edit in any editor, and apply
-back into the IDE. CODESYS stays the tool that talks to hardware; Git becomes
-the tool that holds the history.
-
-```
-CODESYS project  ──export──►  project-view/ on disk  ──►  git commit, PR, review
-      ▲                              │
-      └──────────import──────────────┘
-```
-
-That is the core, and everything else in the tool is built on top of it. Once
-the project is text on disk, things that were impossible become ordinary — which
-is where the other products come from.
-
----
-
-## The user-facing products
-
-### 1. Git outside CODESYS — the core
-
-Export the open project to disk, edit it anywhere, bring the edits back.
-
-- **[`Project_export.py`](docs/scripts.md#4-project_exportpy-codesys---disk)** captures a full native snapshot to `.dump/IDE.xml` and rebuilds the editable view in `project-view/`.
-- **[`Project_import.py`](docs/scripts.md#5-project_importpy-disk---codesys)** applies your disk edits back — textual objects through the CODESYS text APIs, the rest through native XML import — with an optional timestamped `.project` backup first.
-- **[`Project_compare_ui.py`](docs/scripts.md#6-project_compare_uipy-ide-vs-disk)** reports what differs between the IDE and disk, as JSON and as a dialog inside CODESYS that can apply changes object by object.
-- **[Text projections](docs/scripts.md#7-text-projections)** make the code itself readable: POUs, their methods and actions, GVLs, persistent variable lists and DUTs as `.st`; text lists and alarm items as `.csv`. All supported text projections are enabled by default, so a logic change shows up once, in the `.st` file, instead of twice in XML and text.
-- **[Overwrite protection](docs/sync-modes.md#overwrite-protection-both-modes)** means export never silently discards a local edit you have not imported yet, and never deletes a file it does not own.
-- **[Profiles](profiles/profiles.md)** describe vendor and fork-specific object kinds, which projections are available, and the safety rules — so a DIAStudio or KeStudio project behaves correctly rather than approximately.
-
-Two paradigms, chosen once per sync folder: **XML-first** keeps native XML as the
-canonical round-trip format with text projections beside it, and **text-first**
-makes the `.st` files the source of truth and hides the structural XML in a
-tool-owned mirror. See [Sync modes](docs/sync-modes.md).
-
-### 2. CLI and daemon — automation, CI, and LLM agents
-
-The scripts above live in the CODESYS **Tools > Scripting** menu and need a human
-to click them. `Project_daemon.py` runs inside the IDE and exposes it over a
-per-user Windows named pipe; the `cts` CLI talks to that pipe. Anything that can
-run a shell command can now drive CODESYS — a CI job, a Makefile, or an LLM agent
-working on its own.
-
-```powershell
-cts status                 # daemon / project / sync-folder / PLC state
-cts export                 # IDE -> project-view/
-cts import                 # project-view/ -> IDE
-cts build                  # build the active application
-cts test --file plan.json  # JSON-defined test plan
-```
-
-Beyond the sync cycle it covers build execution and logs, PLC connect / start /
-stop / reset, variable read and write, variable map / snapshot / restore, PLC
-file listing and transfer, application CRC for deployment verification, project
-lifecycle (open, close, list devices, simulate, credentials, online
-diagnostics), object-level read / update / delete, environment discovery, and
-JSON or text output on every command.
-
-This is the layer that makes autonomous work possible: an agent can read the
-project, change it, build it, check the result, and iterate — without a person
-in the loop clicking dialogs. See the **[CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md)**.
-
-### 3. `cts analyze` — static analysis for people and CI
-
-The static analyzer reads exported CODESYS Structured Text (`.st`) without
-opening CODESYS or inspecting project XML. It reports correctness, data-flow,
-control-flow, and project-structure findings for developers and CI:
-
-```powershell
-cts analyze --help
-cts analyze project-view
-cts analyze rules
-cts analyze selftest
-```
-
-The analyzer is a separate product from the sync engine and from visualization
-linting; its public package is `cds_static_analyzer`.
-
-![Static analyzer findings, rule details, and auto-fix preview](img/static_analyzer_demo.gif)
-
-#### From project to findings
-
-The first analysis follows a short export path:
-
-1. Run `Project_directory.py` and choose the sync folder for the open project.
-2. Run `Project_export.py`; all supported `.st` and `.csv` text projections are enabled by default.
-3. If you previously disabled a projection, enable it again in `Project_options.py`.
-4. Run `Project_analyze_ui.py` to open the findings UI.
-
-The UI analyzes the exported `project-view/` files offline. For automation, run
-`cts analyze --workspace <sync-folder>` against the same folder.
-
-### 4. `cts visu` — HMI screens authored by an LLM
-
-The last thing in a CODESYS project that resisted text was the visualization.
-`cts visu` closes that: you author the screen as an **SVG sketch** — text, so it
-diffs and reviews like everything else — and the tool compiles it into a real
-CODESYS visualization object.
-
-![A sorting-line overview screen compiled from an SVG sketch](img/visu_preview.png)
-
-The point is who writes the SVG. `cts visu --help` prints the entire contract
-inline — supported tags, semantic classes, colour variables, what is
-unsupported — so an LLM agent needs no other documentation to produce a valid
-screen, and `lint` plus `preview` let it check its own work before anything
-reaches the IDE. You never write a colour: an element carries `class="panel"` or
-`class="value"`, and the palette resolves against your project's visual style, in
-a light or a dark scheme, from the same unchanged sketch.
-
-```powershell
-cts visu new --name Line1 --w 1024 --h 600 --out line1.svg
-cts visu lint --svg line1.svg --fix
-cts visu preview --svg line1.svg
-cts visu from-svg --svg line1.svg --create-screen --screen-name Line1 --gvl VisuVars
-cts import
-```
-
-`--gvl` generates the GVL declarations for every PLC variable the screen binds,
-so the screen arrives wired rather than referencing names that do not exist.
-Full walkthrough: **[HMI screens from SVG](docs/visu.md)**.
-
----
-
-## Quick start
-
-**Requirements**: CODESYS V3.5 SP10+ (SP13 and newer recommended), Windows, and
-Python 3.11+ available as `python`. Full list in
-[Installation](docs/install.md#requirements).
-
-Install with one command — it sets up the tool, the CLI, and the CODESYS
-scripting menu:
+Install the tool and CODESYS menu scripts:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
-Then, for each open CODESYS project, from **Tools > Scripting > Scripts > P**:
+For each project, the important path is:
 
-1. **`Project_directory.py`** — set the sync folder for this project. Use a
-   relative path such as `./sync/` when the folder should travel with the project.
-2. **`Project_export.py`** — write the snapshot and build `project-view/`; all
-   supported `.st` and `.csv` text exports are on by default.
-3. **Edit** the files in `project-view/` in any editor, and commit them.
-4. **`Project_import.py`** — apply the disk edits back into CODESYS.
+1. Open the project in CODESYS and run **`Project_directory.py`**. Choose the
+   sync folder for this project.
+2. Run **`Project_export.py`**. All supported `.st` and `.csv` text exports are
+   enabled by default.
+3. Edit `project-view/` and commit the changes to Git.
+4. Run **`Project_import.py`** to apply disk changes back to CODESYS.
 
-`Project_options.py` is only needed when you want to change the sync mode,
-layout, profile, or default text-export selection.
+That is enough for the first export/import cycle. `Project_options.py` is only
+needed for advanced settings such as sync mode, layout, profile or projection
+selection. See the [installation guide](docs/install.md) if the scripts do not
+appear under **Tools > Scripting**.
 
-For the shell/LLM workflow, run **`Project_daemon.py`** in CODESYS once, then
-use the same project folder through the CLI:
+## 2. Git workflows
+
+Choose the workflow on an **empty sync folder before the first export**. The
+mode is fixed for that folder; changing it later means creating a new empty
+sync folder and exporting again.
+
+### I only want readable `.st` files
+
+Choose **text-first** in `Project_options.py`.
+
+- `.st` is the source of truth for Structured Text edits.
+- Structural XML is kept in the tool-owned `.dump/xml/` mirror instead of the
+  normal Git view.
+- This is the convenient mode for external editors, code review and LLM work.
+- XML objects that must stay hand-editable, such as visualizations, can still
+  be kept in the view.
+
+### I need full control, including XML
+
+Keep the default **XML-first** mode.
+
+- Native XML in `project-view/` is the canonical round-trip format.
+- Readable `.st` and `.csv` projections are generated beside it; all supported
+  text projections are enabled by default.
+- This mode is the right choice when Git must show and control devices, tasks,
+  visualizations and other non-ST project structure as well.
+
+More detail: [sync modes](docs/sync-modes.md), [project layout](docs/project-layout.md),
+and [team workflow](docs/workflow.md).
+
+## 3. I want to find errors in my project
+
+Export the project first, then run the analyzer against its `.st` files. It is
+offline: no CODESYS window, daemon or PLC connection is required.
 
 ```powershell
-cts export                 # IDE -> project-view/
+cts analyze --workspace C:\path\to\sync-folder
+cts analyze --workspace C:\path\to\sync-folder --format sarif  # CI/code scanning
+cts analyze rules
+cts analyze explain CTS0007  # for example, indentation
+```
+
+You can open the desktop findings view with **`Project_analyze_ui.py`**. Safe
+autofixes are previewed before they are applied, including structural
+indentation fixes where available.
+
+Details: [static analyzer](products/cds-static-analyzer/README.md).
+
+## 4. I want an LLM agent to control the project
+
+Start **`Project_daemon.py`** from CODESYS Tools > Scripting. It exposes the
+currently open project to the `cts` CLI. An agent can then export, inspect,
+change, compare, import and build without clicking through the IDE:
+
+```powershell
+cts status                 # check daemon, project and sync folder
+cts export                 # CODESYS -> project-view/
 cts compare                # inspect IDE vs disk
-cts import                 # project-view/ -> IDE
-cts analyze --workspace .  # offline analysis; daemon is not required
+cts import                 # project-view/ -> CODESYS
+cts build                  # build the active application
+cts analyze --workspace .  # offline check; daemon is not required
 ```
 
-`cts analyze` is offline. `cts export`, `cts compare`, and `cts import` use the
-running daemon and its currently open CODESYS project.
+The CLI also exposes project-tree operations, PLC interaction, tests and
+diagnostics. Read the [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md).
 
-For the CLI, analyzer, and visualization workflows, install the package and
-start the daemon when a live CODESYS project is needed:
+### Generate visualization screens from SVG
+
+An agent can create an SVG sketch as plain text, lint and preview it, compile it
+into a CODESYS visualization, and import the result through the same daemon:
 
 ```powershell
-python -m pip install -e <program-folder>
-cts --help
+cts visu new --name Line1 --w 1024 --h 600 --out line1.svg
+cts visu lint --svg line1.svg --fix
+cts visu preview --svg line1.svg
+cts visu from-svg --svg line1.svg --create-screen --screen-name Line1
+cts import
 ```
 
-Details: [Installation](docs/install.md) · [Script overview](docs/scripts.md) ·
-[Project layout](docs/project-layout.md) · [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md)
+![Visualization generated from an SVG sketch](img/visu_preview.png)
 
-![CLI daemon demo](img/cli_demo.gif)
+Details: [HMI screens from SVG](docs/visu.md).
 
----
+The current agent interface is the shell CLI. If an MCP server would fit your
+workflow better, open an [issue](https://github.com/ArthurkaX/cds-text-sync/issues)
+and describe the tools your agent needs; that is a natural next adapter for the
+same daemon contract.
 
 ## Documentation
 
-| Guide | What is in it |
-| --- | --- |
-| [Installation](docs/install.md) | Requirements, the three install methods, CLI install, upgrading |
-| [Sync modes](docs/sync-modes.md) | XML-first vs text-first, and overwrite protection |
-| [Script overview](docs/scripts.md) | What each `Project_*.py` does, and the default text projections |
-| [Project layout](docs/project-layout.md) | On-disk structure, `.gitignore`, the day-to-day cycle, Git LFS |
-| [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md) | Every `cts` command, flag, timeout and error mode |
-| [Static analyzer](products/cds-static-analyzer/README.md) | Human-facing `.st` analysis and rule boundaries |
-| [HMI screens from SVG](docs/visu.md) | `cts visu` end to end, including PLC variable binding |
-| [Team workflow](docs/workflow.md) | Branches and PRs for HMI/hardware engineers and developers |
-| [Alternative installations](docs/alternative-installations.md) | Forks and non-standard CODESYS environments |
-| [Releases & rollback](docs/releases.md) | Stable tags, version policy, reverting |
-| [Profiles](profiles/profiles.md) | Vendor/fork object kinds, projection availability, safety rules |
-| [SVG authoring contract](skills/cds-visu-svg/SKILL.md) | Layout rules and conventions an authoring model follows |
+- [Installation](docs/install.md)
+- [Sync modes](docs/sync-modes.md)
+- [Script overview](docs/scripts.md)
+- [Project layout](docs/project-layout.md)
+- [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md)
+- [Static analyzer](products/cds-static-analyzer/README.md)
+- [HMI screens from SVG](docs/visu.md)
+- [Profiles](profiles/profiles.md)
+- [Releases and rollback](docs/releases.md)
 
-Diagnostics live in the CLI and the scripts alike: `Project_build.py`,
-`Project_discover.py` and `Project_resources.py` write build, environment and
-snapshot-size reports, and `cts engine call-tree` builds a static call graph
-offline. For Zed users,
-[`PLC Structured Text`](https://github.com/ArthurkaX/zed-plc-structured-text)
-adds IEC 61131-3 syntax highlighting for the generated `.st` / `.iecst` files.
-
----
-
-## Reference project & examples
-
-To keep this repository lightweight for users who `git clone` the scripts, all
-test cases, problematic objects, and compatibility examples are hosted in a
-separate
-**[Reference Project](https://github.com/ArthurkaX/cds-text-sync-reference-project)**.
-Refer to that repository's README for detailed verification procedures.
-
----
-
-## Community & Feedback
-
-This is a third-party tool maintained by one person, and nearly every feature and fix in the changelog
-traces back to a user who took a few minutes to describe a problem. If you use it, you are in a better
-position than anyone to say what should change.
-
-**Pick whichever costs you the least effort:**
-
-| I want to... | Where |
-|---|---|
-| Report something broken | [Bug report](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=1-bug.yml) |
-| Say what is confusing or tedious — *no repro needed* | [Friction report](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=3-friction.yml) |
-| Ask for something the tool cannot do | [Feature request](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=2-feature.yml) |
-| Ask whether something is a bug or expected | [Q&A discussion](https://github.com/ArthurkaX/cds-text-sync/discussions/categories/q-a) |
-| Say something that is none of the above | [Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions) |
-| Influence a roadmap decision in one click | [Polls](https://github.com/ArthurkaX/cds-text-sync/discussions/categories/polls) |
-| Just react to what is planned next | [Open roadmap issues](https://github.com/ArthurkaX/cds-text-sync/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap) |
-
-> [!NOTE]
-> **Discussions are open, and quieter than they should be.**
-> If you have something to say that does not fit an issue — a doubt about the direction, a workflow this
-> tool does not serve, an opinion on a decision that is being made — that is what
-> [Discussions](https://github.com/ArthurkaX/cds-text-sync/discussions) are for. You do not need a proposal,
-> evidence, or a solution. An objection with nothing behind it but experience is still worth reading.
->
-> And if something simply feels awkward to use, there is a
-> [form for exactly that](https://github.com/ArthurkaX/cds-text-sync/issues/new?template=3-friction.yml) —
-> no reproduction steps, no version numbers, half a sentence is enough.
-
-Bug reports are usually resolved within a day or two. Reporters are credited by name in the changelog.
-Corporate users: internal criticism is welcome here too — an anonymized "our team keeps tripping over X"
-is more valuable than silence, and you do not need permission to describe a workflow problem.
-
----
-
-## Changelog & License
-
-See the full [CHANGELOG.md](CHANGELOG.md) for details on all versions, and
-[GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases) for
-stable download links. Contributions: [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+Issues, friction reports and feature requests are welcome in the [GitHub issue
+tracker](https://github.com/ArthurkaX/cds-text-sync/issues). See the
+[changelog](CHANGELOG.md) for release history.
 
 MIT License.
