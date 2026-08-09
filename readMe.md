@@ -97,6 +97,8 @@ cts analyze selftest
 The analyzer is a separate product from the sync engine and from visualization
 linting; its public package is `cds_static_analyzer`.
 
+![Static analyzer findings, rule details, and auto-fix preview](img/static_analyzer_demo.gif)
+
 ### 4. `cts visu` — HMI screens authored by an LLM
 
 The last thing in a CODESYS project that resisted text was the visualization.
