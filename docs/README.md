@@ -15,7 +15,7 @@ start. These pages are the detail.
 ## Using it
 
 - **[Script overview](scripts.md)** — what each `Project_*.py` entry point does,
-  in the order you use them, plus the optional `.st`/`.csv` projections.
+  in the order you use them, plus the default `.st`/`.csv` text exports.
 - **[Project layout](project-layout.md)** — the on-disk structure, what to track
   and what to ignore, the day-to-day edit cycle, and Git LFS for `.project`.
 - **[CLI reference](../products/cds-text-sync/src/cds_text_sync/CLI.md)** — every `cts` command and flag, the

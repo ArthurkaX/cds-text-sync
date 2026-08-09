@@ -159,8 +159,10 @@ the smoother path.
 
    ![Add Button to Menu](../img/add_button.gif)
 
-3. **Link a project to disk**: run `Project_directory.py`, then
-   `Project_options.py`, then `Project_export.py`. See
+3. **Link a project to disk**: open the project in CODESYS, run
+   `Project_directory.py` to set its sync folder, and then run
+   `Project_export.py`. All supported `.st` and `.csv` text exports are enabled
+   by default; use `Project_options.py` only for advanced changes. See
    [Script overview](scripts.md) and
    [Recommended workflow](project-layout.md#recommended-workflow-with-git-lfs).
 

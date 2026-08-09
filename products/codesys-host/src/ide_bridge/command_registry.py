@@ -150,7 +150,7 @@ help_text = {
 "sync_export": "Export Native XML snapshot to .dump/ [--output PATH]",
 "sync_import": "Low-level: import a raw .dump/ XML snapshot back into project [--input PATH]. For text edits use sync_import_text instead",
 "sync_compare": "Compare project tree against .dump/ snapshot [--against PATH]",
-"sync_export_text": "IDE->disk: export Native XML and OVERWRITE project-view/ .st files with the IDE state",
+"sync_export_text": "IDE->disk: export Native XML and refresh project-view/ text files (local edits are kept by default)",
 "sync_import_text": "disk->IDE (preferred): build IMPORT.xml from project-view/ and apply to project. Disk wins on conflicts; requires offline (disconnect first)",
 "sync_compare_text": "Compare project against project-view/ (diff report)",
 "cicd": "Run CI/CD test plan --file path [--timeout N]",

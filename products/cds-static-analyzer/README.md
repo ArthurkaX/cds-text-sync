@@ -33,9 +33,11 @@ uses only the exported `.st` files.
 
 The first analysis follows this export path:
 
-1. Choose the folder that will hold the project export / sync view.
-2. Open `Project_options.py` and enable the readable `.st` projection.
-3. Run `Project_export.py` to write the exported `project-view/` files.
+1. Run `Project_directory.py` and choose the sync folder for the open project.
+2. Run `Project_export.py`; the default profile already exports all supported
+   `.st` and `.csv` text projections.
+3. If a project has a custom profile or saved settings that disable `.st`,
+   enable the projection in `Project_options.py` and export again.
 4. Run `Project_analyze_ui.py` to open the findings UI for that export.
 
 The analyzer is offline after export: it reads the `.st` files from
