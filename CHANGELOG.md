@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**`cts patch save` - hand your changes to a colleague.**
+
+Packages the text you changed on disk so someone with the same project can copy
+it in. It runs a compare against the open IDE, then copies only the
+hand-authored text into a folder that mirrors the project structure:
+
+```text
+.dump/patch/patch_20260809-143512/
+├─ project-view/
+│  ├─ Application/PLC_PRG.st
+│  └─ HMI/Visu/Main.xml
+├─ patch.json
+└─ README.txt
+```
+
+The receiver copies `project-view/` over their own sync folder root, replacing
+files, then runs `cts compare` and `cts import`. No new command is needed on
+that side.
+
+What travels: changed `.st` and `.csv` projections, plus the XML of kinds listed
+in `xml_in_view_kinds` (visualizations by default). What deliberately does not:
+device descriptions, task configuration, the library manager and the `.dump/xml`
+mirror - they encode the sending machine's state, and copying them across
+machines is what makes untouched visu objects look modified.
+
+Flags: `--out DIR`, `--sync-folder DIR`, `--zip`, `--dry-run`, `--bare`,
+`--timeout`. Deleted objects cannot be shipped as files; they are listed in
+`patch.json` and `README.txt` instead.
+
+---
+
 ### Version 3.0.0 (2026-08-01)
 
 **`cts analyze` - offline static analysis of the exported project-view.**

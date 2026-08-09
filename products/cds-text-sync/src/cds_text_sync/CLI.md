@@ -157,6 +157,59 @@ Plans live in `<sync-folder>/.test/`. If `--file` is omitted, all `*.json`
 plans are executed in sorted order. See [TEST_FORMAT.md](TEST_FORMAT.md) for the
 JSON schema and examples.
 
+## Sharing Changes (`cts patch save`)
+
+`cts patch save` packages the text you changed on disk so a colleague working on
+the same project can copy it in. It runs a compare against the open IDE, then
+copies only the hand-authored text into a folder that mirrors the project
+structure:
+
+- every changed `.st` and `.csv` projection;
+- the XML of objects whose kind is listed in `xml_in_view_kinds` (visualizations
+  by default), because that XML is edited by hand.
+
+Everything else the project view owns — device descriptions, task configuration,
+the library manager — is left out on purpose: it encodes the sending machine's
+state, and copying it across machines is what makes untouched visu objects show
+up as modified.
+
+```bash
+cts patch save                       # -> .dump/patch/patch_<UTC timestamp>/
+cts patch save --out D:\share\fix    # somewhere else
+cts patch save --zip                 # also write <folder>.zip
+cts patch save --dry-run             # list what would be packaged
+```
+
+Result:
+
+```text
+.dump/patch/patch_20260809-143512/
+├─ project-view/
+│  ├─ Application/PLC_PRG.st
+│  └─ HMI/Visu/Main.xml
+├─ patch.json
+└─ README.txt
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--out DIR` | Output folder (default `<sync-folder>/.dump/patch/patch_<UTC>`). |
+| `--sync-folder DIR` | Use this sync folder instead of asking the daemon. |
+| `--zip` | Also write `<output folder>.zip`. |
+| `--dry-run` | List what would be packaged; write nothing. |
+| `--bare` | Write only the files, without `patch.json` and `README.txt`. |
+
+On the receiving side no extra command is needed:
+
+```bash
+# copy project-view/ from the patch over your own sync folder root, replacing files
+cts compare --timeout 60
+cts import --timeout 120
+```
+
+Deleted objects cannot be shipped as files. They are listed in `patch.json` and
+in `README.txt` so the receiver can remove them by hand.
+
 ## Static Analysis (`cts analyze`)
 
 `cts analyze` runs offline static analysis over the exported `project-view/`
@@ -394,6 +447,7 @@ The simplified CLI maps to daemon methods as follows:
 | `read` | `read_variable` |
 | `write` | `write_variable` |
 | `test` | `cicd` |
+| `patch save` | `sync_compare_text` (then local file copying) |
 | `analyze` | offline — no daemon method |
 | `visu-lint` | offline — no daemon method |
 
