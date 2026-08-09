@@ -27,6 +27,7 @@ runtime = "cpython"
 test_paths = [
   "tests/test_*.py",
   "../../tests/unit/test_cli_handlers_daemon.py",
+  "../../tests/unit/test_cli_handlers_patch.py",
   "../../tests/unit/test_cli_handlers_project.py",
   "../../tests/unit/test_cli_handlers_visu.py",
   "../../tests/unit/test_cli_text_output.py",

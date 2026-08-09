@@ -14,6 +14,7 @@ from cds_text_sync import __version__
 from cds_cli.parsers._common import add_daemon_parser
 from cds_cli.parsers.analyze import register as register_analyze
 from cds_cli.parsers.utility import register as register_utility
+from cds_cli.parsers.patch import register as register_patch
 from cds_cli.parsers.project import register as register_project
 from cds_cli.parsers.variables import register as register_variables
 from cds_cli.parsers.visu import register as register_visu
@@ -189,6 +190,9 @@ Examples:
 
     # -- project and POU commands ------------------------------------------
     register_project(subparsers)
+
+    # -- patch subcommand (compare -> shippable text files) ----------------
+    register_patch(subparsers)
 
     # -- rp subcommand (reverse pipe) --------------------------------------
     p_rp = subparsers.add_parser(

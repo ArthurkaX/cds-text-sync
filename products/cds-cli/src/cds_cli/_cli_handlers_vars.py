@@ -24,10 +24,12 @@ from cds_cli._cli_io import (
 # -- Shared helpers -----------------------------------------------------------
 
 
-def _resolve_project_view(sync_folder, timeout=10, quiet=False):
-    """Return (project_view_dir, sync_folder_base).
+def _resolve_sync_folder(sync_folder, timeout=10, quiet=False):
+    """Return the sync folder root.
 
-    Uses --sync-folder when given, else asks the daemon for sync_folder.
+    Uses --sync-folder when given, else asks the daemon for sync_folder. A
+    project-view directory passed as --sync-folder resolves to its parent, so
+    both spellings work.
 
     ``timeout`` bounds the wait for the IDE to connect to the reverse pipe.
     ``quiet`` suppresses the failure messages: callers for which a project
@@ -52,7 +54,13 @@ def _resolve_project_view(sync_folder, timeout=10, quiet=False):
     if os.path.basename(os.path.normpath(base)) == "project-view" and os.path.isdir(
         base
     ):
-        return base, os.path.dirname(os.path.normpath(base))
+        return os.path.dirname(os.path.normpath(base))
+    return base
+
+
+def _resolve_project_view(sync_folder, timeout=10, quiet=False):
+    """Return (project_view_dir, sync_folder_base)."""
+    base = _resolve_sync_folder(sync_folder, timeout=timeout, quiet=quiet)
     pv = os.path.join(base, "project-view")
     if not os.path.isdir(pv):
         if not quiet:
