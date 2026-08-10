@@ -163,7 +163,7 @@ the smoother path.
 
    <p><img src="../img/add_button.gif"
       alt="Adding the Project_* scripts to a CODESYS toolbar"
-      width="520"></p>
+      width="100%"></p>
    </details>
 
 3. **Link a project to disk**: open the project in CODESYS, run
