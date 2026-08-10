@@ -159,7 +159,7 @@ the smoother path.
    are grouped under `P` because their names start with `Project_`.
 
    <details>
-   <summary>Show how to add the Project_* scripts to a toolbar</summary>
+   <summary><strong>▶ Click to open the animation: adding Project_* scripts to a toolbar</strong></summary>
 
    <p><img src="../img/add_button.gif"
       alt="Adding the Project_* scripts to a CODESYS toolbar"
