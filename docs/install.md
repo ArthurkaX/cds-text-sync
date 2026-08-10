@@ -155,9 +155,16 @@ the smoother path.
    **Tools > Scripting > Scripts > P**, and nothing else from this tool appears
    anywhere else in that menu.
 2. **Add to Toolbar (Recommended)**: go to **Tools > Customize > Toolbars** and
-   add commands from **ScriptEngine Commands > P**.
+   add the generated commands from **ScriptEngine Commands > P**. The commands
+   are grouped under `P` because their names start with `Project_`.
 
-   ![Add Button to Menu](../img/add_button.gif)
+   <details>
+   <summary>Show how to add the Project_* scripts to a toolbar</summary>
+
+   <p><img src="../img/add_button.gif"
+      alt="Adding the Project_* scripts to a CODESYS toolbar"
+      width="520"></p>
+   </details>
 
 3. **Link a project to disk**: open the project in CODESYS, run
    `Project_directory.py` to set its sync folder, and then run
