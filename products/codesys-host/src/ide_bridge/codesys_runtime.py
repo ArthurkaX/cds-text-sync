@@ -25,7 +25,8 @@ OPERATION_MODULES = {
     "build": "codesys_build_operation",
     "directory": "codesys_directory_operation",
     "discover": "codesys_discover_operation",
-    "resources": "codesys_resources_operation"
+    "resources": "codesys_resources_operation",
+    "fmt": "codesys_fmt_operation"
 }
 
 OPTIONAL_MODULES = {
