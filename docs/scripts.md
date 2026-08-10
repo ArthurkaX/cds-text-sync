@@ -39,9 +39,38 @@ see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md)
 
 The active root entry points are `Project_directory.py`, `Project_options.py`,
 `Project_export.py`, `Project_import.py`, `Project_compare_ui.py`,
-`Project_build.py`, `Project_discover.py`, and `Project_resources.py`.
+`Project_build.py`, `Project_fmt.py`, `Project_discover.py`, and
+`Project_resources.py`.
 
-## 3. `Project_options.py` (Advanced project options)
+## 3. `Project_fmt.py` (Quick ST formatting)
+
+Use this when a Structured Text object looks untidy and opening the full
+Analyzer would be unnecessary.
+
+1. Select a POU, GVL, or DUT in the CODESYS project tree.
+2. Run `Project_fmt.py` from **Tools > Scripting**.
+3. The first screen loads object names only. Click a block to analyze it; its
+   row then shows either `[N line(s) to fix]` or `[OK]`.
+4. Use the filter box when the project contains many objects. Choose
+   **Open selected** for one analyzed object, or **FIX all** to scan from
+   the top and open the first object that needs changes.
+5. Review the side-by-side **Before** and **After** preview. Changed lines are
+   highlighted in both panes; **Previous change** and **Next change** jump
+   between them and the panes follow each other's scroll position.
+6. Choose **Apply**, **Skip**, or **Stop**. After each decision, **FIX all**
+   continues scanning from the next object.
+
+`Project_fmt.py` formats only the object currently shown in the preview. It
+aligns variable declarations and repairs structural code indentation; it does
+not run a project-wide analysis or start the daemon. Text is loaded lazily so
+the first list appears without waiting for every project object. Applying a
+change mutates the open IDE object directly; review the preview and use the
+CODESYS Undo command if needed. The formatter refuses to overwrite a section
+that changed after its preview was created. If the CODESYS version does not
+expose its tree selection to ScriptEngine, the script opens a list of textual
+project objects instead.
+
+## 4. `Project_options.py` (Advanced project options)
 
 The normal first export does not require this dialog: the default profile
 already enables every supported `.st` and `.csv` text projection. Use it after
@@ -65,7 +94,7 @@ selecting the sync root only when you need to change advanced project options.
 - **Git Ignore Helper**: Append recommended generated-state ignore rules without
   rewriting existing user rules.
 
-## 4. `Project_export.py` (CODESYS -> Disk)
+## 5. `Project_export.py` (CODESYS -> Disk)
 
 Exports the current project state into the XML-first workspace under the
 configured sync folder.
@@ -86,7 +115,7 @@ configured sync folder.
   silently overwritten — see
   [Overwrite protection](sync-modes.md#overwrite-protection-both-modes).
 
-## 5. `Project_import.py` (Disk -> CODESYS)
+## 6. `Project_import.py` (Disk -> CODESYS)
 
 Applies disk changes back into CODESYS using the XML-first bridge.
 
@@ -103,7 +132,7 @@ Applies disk changes back into CODESYS using the XML-first bridge.
   the object kind is clear from the source. This is also how a screen compiled by
   [`cts visu from-svg`](visu.md) reaches the IDE.
 
-## 6. `Project_compare_ui.py` (IDE vs Disk)
+## 7. `Project_compare_ui.py` (IDE vs Disk)
 
 Shows what differs between the current IDE state and the exported disk view,
 and lets you act on it.
@@ -123,7 +152,7 @@ and lets you act on it.
 For a compare without any dialog — in a shell, in CI, or from the daemon — use
 [`cts compare`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 
-## 7. Text projections
+## 8. Text projections
 
 Projections are editable views generated from XML-backed CODESYS objects. They
 are enabled by default in XML-first mode and can be adjusted in
@@ -152,7 +181,7 @@ object per application, so creating a second one from a new `.st` file is
 rejected before IDE apply. Graphical implementations are skipped by profile
 safety rules unless a safe textual representation is available.
 
-## 8. Diagnostics
+## 9. Diagnostics
 
 - **`Project_build.py`**: Builds the active or selected application and writes
   `.dump/build_<Application>.log` plus `.dump/build_report.json`.

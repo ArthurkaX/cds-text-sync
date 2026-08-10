@@ -90,6 +90,13 @@ indentation fixes where available.
 
 Details: [static analyzer](products/cds-static-analyzer/README.md).
 
+For a quick local cleanup inside CODESYS, select a Structured Text object in
+the project tree and run **`Project_fmt.py`**. It opens a side-by-side preview
+for declaration alignment and code indentation. Changed lines are highlighted,
+and the review can be run for one object or as an **Apply / Skip / Stop** wizard
+without starting the full Analyzer. Formatting is applied directly to the
+open IDE object and remains subject to the normal CODESYS Undo command.
+
 ## 4. I want an LLM agent to control the project
 
 Start **`Project_daemon.py`** from CODESYS Tools > Scripting. It exposes the

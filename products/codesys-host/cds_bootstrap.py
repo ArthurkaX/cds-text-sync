@@ -101,6 +101,8 @@ ENTRYPOINTS = [
   "summary": "Report embedded resources"},
  {"name": "Project_build", "kind": "command", "command": "build",
   "summary": "Build the active application"},
+ {"name": "Project_fmt", "kind": "command", "command": "fmt",
+  "summary": "Preview and apply ST formatting for a selected object"},
  {"name": "Project_analyze_ui", "kind": "bridge",
   "module": "codesys_analyze_ui_launcher", "entry": "main",
   "entry_kwargs": ["params", "caller_globals"],
