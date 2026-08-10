@@ -10,7 +10,7 @@ try:
         Form, Label, Button, ListBox, RichTextBox, TextBox, MessageBox,
         MessageBoxButtons, MessageBoxIcon, DialogResult, FormBorderStyle,
         FormStartPosition, AnchorStyles, BorderStyle, RichTextBoxScrollBars,
-        FlatStyle, DrawMode, DrawItemState, AutoScaleMode
+        FlatStyle, DrawMode, DrawItemState, AutoScaleMode, Timer, ToolTip
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, SolidBrush
 except Exception:
@@ -28,6 +28,8 @@ if Form is not None:
     _AFTER = Color.FromArgb(125, 220, 145)
     _CHANGED_BG = Color.FromArgb(75, 62, 28)
     _ADDED_BG = Color.FromArgb(35, 75, 45)
+    _BEFORE_FOCUS = Color.FromArgb(150, 105, 35)
+    _AFTER_FOCUS = Color.FromArgb(55, 125, 70)
 
 
 def _changed_line_sets(before, after):
@@ -64,6 +66,53 @@ def _highlight_lines(box, line_numbers, color):
         box.ResumeLayout()
 
 
+def _highlight_span(box, line_number, start, end, color):
+    if line_number < 0 or line_number >= box.Lines.Length or end <= start:
+        return
+    line_start = box.GetFirstCharIndexFromLine(line_number)
+    if line_start < 0:
+        return
+    line_length = len(box.Lines[line_number])
+    start = max(0, min(start, line_length))
+    end = max(start, min(end, line_length))
+    if end <= start:
+        return
+    box.Select(line_start + start, end - start)
+    box.SelectionBackColor = color
+
+
+def _highlight_changed_characters(before_box, after_box, before, after, lines):
+    left_lines = (before or "").split("\n")
+    right_lines = (after or "").split("\n")
+    before_box.SuspendLayout()
+    after_box.SuspendLayout()
+    try:
+        for line_number in lines:
+            left = (
+                left_lines[line_number].rstrip("\r")
+                if line_number < len(left_lines)
+                else ""
+            )
+            right = (
+                right_lines[line_number].rstrip("\r")
+                if line_number < len(right_lines)
+                else ""
+            )
+            prefix = 0
+            while prefix < len(left) and prefix < len(right) and left[prefix] == right[prefix]:
+                prefix += 1
+            left_end = len(left)
+            right_end = len(right)
+            while left_end > prefix and right_end > prefix and left[left_end - 1] == right[right_end - 1]:
+                left_end -= 1
+                right_end -= 1
+            _highlight_span(before_box, line_number, prefix, left_end, _BEFORE_FOCUS)
+            _highlight_span(after_box, line_number, prefix, right_end, _AFTER_FOCUS)
+    finally:
+        before_box.ResumeLayout()
+        after_box.ResumeLayout()
+
+
 class ObjectPickerForm(Form if Form is not None else object):
     def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None):
         self.Text = "FMT - Select object"
@@ -80,6 +129,8 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.analyzing = False
         self._status = None
         self._visible_indexes = list(range(len(items)))
+        self._analysis_cursor = 0
+        self._analysis_timer = None
 
         title = Label()
         title.Text = "Select a Structured Text object from the project"
@@ -90,7 +141,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.Controls.Add(title)
 
         subtitle = Label()
-        subtitle.Text = "Select a block to analyze it. FIX all scans from the top and opens the first block that needs changes."
+        subtitle.Text = "Select a block to analyze it. Review All scans from the top and opens the first block that needs changes."
         subtitle.ForeColor = _DIM
         subtitle.Location = Point(18, 45)
         subtitle.AutoSize = True
@@ -104,10 +155,18 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._status = status
         self.Controls.Add(status)
 
+        search_label = Label()
+        search_label.Text = "Filter:"
+        search_label.ForeColor = _DIM
+        search_label.Location = Point(16, 86)
+        search_label.AutoSize = True
+        self._search_label = search_label
+        self.Controls.Add(search_label)
+
         search = TextBox()
-        search.Location = Point(16, 82)
+        search.Location = Point(66, 82)
         search.Size = Size(320, 24)
-        search.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        search.Anchor = AnchorStyles.Top | AnchorStyles.Left
         search.Text = ""
         search.TextChanged += self._on_filter_changed
         self._search = search
@@ -143,7 +202,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._cancel_button = cancel
 
         all_button = Button()
-        all_button.Text = "FIX all"
+        all_button.Text = "Review All"
         all_button.Size = Size(100, 30)
         all_button.Location = Point(750, 590)
         all_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
@@ -163,7 +222,9 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._selected_button = selected
         self.AcceptButton = selected
         self.Resize += self._layout
+        self.FormClosed += self._on_form_closed
         self._layout()
+        self._start_background_analysis()
 
     def _style_button(self, button):
         button.BackColor = _BUTTON_BG
@@ -180,17 +241,24 @@ class ObjectPickerForm(Form if Form is not None else object):
         event.DrawBackground()
         selected = bool(event.State & DrawItemState.Selected)
         status = item.get("status")
-        if selected:
-            color = _TEXT
-        elif status == "changed":
+        if status == "changed":
             color = _BEFORE
         elif status == "ok":
             color = _AFTER
         else:
-            color = _DIM
+            color = _TEXT if selected else _DIM
+        if status == "changed":
+            suffix = "[{0} line(s) to fix]".format(item.get("changed_lines", 0))
+        elif status == "ok":
+            suffix = "[OK]"
+        elif status == "error":
+            suffix = "[read error]"
+        elif item.get("analysis") == "running":
+            suffix = "[analyzing]"
+        else:
+            suffix = "[not analyzed]"
         brush = SolidBrush(color)
         try:
-            suffix = item["display"][len(item["label"]):].strip()
             event.Graphics.DrawString(
                 item["label"], self.list.Font, brush,
                 event.Bounds.X + 6, event.Bounds.Y + 4
@@ -213,6 +281,8 @@ class ObjectPickerForm(Form if Form is not None else object):
         if self.items[index].get("analysis") is not None:
             return
         self.analyzing = True
+        self.items[index]["analysis"] = "running"
+        self.list.Invalidate()
         self._status.Text = "Analyzing selected block..."
         self.UseWaitCursor = True
         try:
@@ -221,12 +291,70 @@ class ObjectPickerForm(Form if Form is not None else object):
         finally:
             self.analyzing = False
             self.UseWaitCursor = False
-            status = self.items[index].get("status")
-            self._status.Text = (
-                "Analysis complete."
-                if status in ("changed", "ok")
-                else "The block could not be analyzed."
-            )
+            self._status.Text = self._analysis_status()
+
+    def _analysis_status(self):
+        analyzed = sum(
+            1 for item in self.items if item.get("analysis") in ("done", "error")
+        )
+        changed = sum(1 for item in self.items if item.get("status") == "changed")
+        errors = sum(1 for item in self.items if item.get("status") == "error")
+        total = len(self.items)
+        if analyzed >= total:
+            return "Analysis complete — {0} block(s) need formatting.".format(changed)
+        suffix = ""
+        if changed:
+            suffix += " {0} need formatting.".format(changed)
+        if errors:
+            suffix += " {0} could not be read.".format(errors)
+        return "Analyzed {0}/{1} block(s).".format(analyzed, total) + suffix
+
+    def _start_background_analysis(self):
+        if self.analyze_callback is None or not self.items:
+            return
+        timer = Timer()
+        timer.Interval = 75
+        timer.Tick += self._on_analysis_tick
+        self._analysis_timer = timer
+        timer.Start()
+
+    def _stop_background_analysis(self):
+        timer = self._analysis_timer
+        self._analysis_timer = None
+        if timer is not None:
+            timer.Stop()
+            timer.Dispose()
+
+    def _on_analysis_tick(self, sender, event):
+        if self.analyzing:
+            return
+        while (
+            self._analysis_cursor < len(self.items)
+            and self.items[self._analysis_cursor].get("analysis") in ("done", "error")
+        ):
+            self._analysis_cursor += 1
+        if self._analysis_cursor >= len(self.items):
+            self._stop_background_analysis()
+            self._status.Text = self._analysis_status()
+            self.list.Invalidate()
+            return
+
+        index = self._analysis_cursor
+        self._analysis_cursor += 1
+        item = self.items[index]
+        item["analysis"] = "running"
+        self._status.Text = "Analyzing {0}/{1}: {2}".format(
+            index + 1, len(self.items), item["label"]
+        )
+        self.list.Invalidate()
+        self.analyzing = True
+        try:
+            self.analyze_callback(index)
+        finally:
+            self.analyzing = False
+            self.list.Invalidate()
+            if self._analysis_cursor >= len(self.items):
+                self._status.Text = self._analysis_status()
 
     def _on_selection_changed(self, sender, event):
         if self.list.SelectedIndex >= 0:
@@ -245,6 +373,7 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _accept_all(self, sender, event):
         if self.scan_callback is None:
             return
+        self._stop_background_analysis()
         self.analyzing = True
         self._status.Text = "Scanning blocks from the top..."
         self.UseWaitCursor = True
@@ -270,8 +399,9 @@ class ObjectPickerForm(Form if Form is not None else object):
         margin = 16
         gap = 10
         button_y = max(0, height - 42)
-        self._search.Location = Point(margin, 82)
-        self._search.Size = Size(max(180, width - margin * 2), 24)
+        self._search_label.Location = Point(margin, 86)
+        self._search.Location = Point(margin + 50, 82)
+        self._search.Size = Size(320, 24)
         self.list.Location = Point(margin, 114)
         self.list.Size = Size(max(100, width - margin * 2), max(100, button_y - 124))
         right = width - margin
@@ -308,9 +438,12 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._refresh_list()
         self.list.Invalidate()
 
+    def _on_form_closed(self, sender, event):
+        self._stop_background_analysis()
+
 
 class FmtPreviewForm(Form if Form is not None else object):
-    def __init__(self, object_name, before, after, changed_lines):
+    def __init__(self, object_name, before, after, changed_lines, wizard_mode=False):
         self.Text = "FMT Preview - " + (object_name or "Structured Text")
         self.Size = Size(1600, 980)
         self.MinimumSize = Size(1050, 650)
@@ -319,6 +452,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         self.AutoScaleMode = AutoScaleMode.Font
         self.BackColor = _BG
         self.action = "stop"
+        self.wizard_mode = wizard_mode
 
         title = Label()
         title.Text = object_name or "Structured Text"
@@ -329,10 +463,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         self.Controls.Add(title)
 
         stats = Label()
-        stats.Text = (
-            "FMT preview - {0} changed line(s). Changes are applied directly "
-            "to the IDE; use Undo if needed. Apply, skip, or stop."
-        ).format(changed_lines)
+        stats.Text = self._stats_text(changed_lines)
         stats.ForeColor = _DIM
         stats.Location = Point(18, 43)
         stats.AutoSize = True
@@ -352,22 +483,25 @@ class FmtPreviewForm(Form if Form is not None else object):
         after_label.AutoSize = True
         self.Controls.Add(after_label)
         self._after_label = after_label
+        self._stats_label = stats
         self._changed_left = set()
         self._changed_right = set()
         self._jump_index = -1
 
-        self._before = self._text_box(before)
-        self._after = self._text_box(after)
+        self._before = self._text_box(before or "")
+        self._after = self._text_box(after or "")
         self._before.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         self._after.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         self.Controls.Add(self._before)
         self.Controls.Add(self._after)
         self._before.VScroll += self._sync_scroll
         self._after.VScroll += self._sync_scroll
+        self._before.HScroll += self._sync_scroll
+        self._after.HScroll += self._sync_scroll
         self.Resize += self._on_resize
 
         stop = Button()
-        stop.Text = "Stop"
+        stop.Text = "Stop" if wizard_mode else "Cancel"
         stop.Size = Size(90, 32)
         stop.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         stop.DialogResult = DialogResult.Cancel
@@ -382,6 +516,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         skip.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         skip.Click += self._skip
         self._style_button(skip)
+        skip.Visible = wizard_mode
         self.Controls.Add(skip)
         self._skip_button = skip
 
@@ -400,6 +535,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         previous.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         previous.Click += self._previous_change
         self._style_button(previous)
+        previous.Enabled = bool(changed_lines)
         self.Controls.Add(previous)
         self._previous_button = previous
         next_button = Button()
@@ -408,10 +544,26 @@ class FmtPreviewForm(Form if Form is not None else object):
         next_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         next_button.Click += self._next_change
         self._style_button(next_button)
+        next_button.Enabled = bool(changed_lines)
         self.Controls.Add(next_button)
         self._next_button = next_button
+        tooltip = ToolTip()
+        tooltip.SetToolTip(previous, "Jump to the previous changed line in this block")
+        tooltip.SetToolTip(next_button, "Jump to the next changed line in this block")
+        self._tooltip = tooltip
         self._layout()
         self._highlight(before, after)
+
+    def _stats_text(self, changed_lines):
+        if self.wizard_mode:
+            return (
+                "FMT preview - {0} changed line(s). Changes are applied directly "
+                "to the IDE; use Undo if needed. Apply, skip, or stop."
+            ).format(changed_lines)
+        return (
+            "FMT preview - {0} changed line(s). Changed characters are highlighted. "
+            "Previous/Next change jumps between modified lines. Apply or cancel."
+        ).format(changed_lines)
 
     def _text_box(self, value):
         box = RichTextBox()
@@ -432,6 +584,9 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._changed_right = sorted(right)
         _highlight_lines(self._before, left, _CHANGED_BG)
         _highlight_lines(self._after, right, _ADDED_BG)
+        _highlight_changed_characters(
+            self._before, self._after, before, after, sorted(left)
+        )
 
     def _style_button(self, button):
         button.BackColor = _BUTTON_BG
@@ -458,9 +613,14 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._skip_button.Location = Point(
             self._stop_button.Left - 10 - self._skip_button.Width, button_y
         )
-        self._apply_button.Location = Point(
-            self._skip_button.Left - 10 - self._apply_button.Width, button_y
-        )
+        if self.wizard_mode:
+            self._apply_button.Location = Point(
+                self._skip_button.Left - 10 - self._apply_button.Width, button_y
+            )
+        else:
+            self._apply_button.Location = Point(
+                self._stop_button.Left - 10 - self._apply_button.Width, button_y
+            )
         self._previous_button.Location = Point(left, button_y)
         self._next_button.Location = Point(
             self._previous_button.Right + 8, button_y
@@ -485,7 +645,19 @@ class FmtPreviewForm(Form if Form is not None else object):
             return
         self._syncing_scroll = True
         try:
-            other.SelectionStart = sender.SelectionStart
+            # SelectionStart is not the viewport position.  Using it makes a
+            # scrollbar event move the other pane to an unrelated line,
+            # especially after jumping to a change.  The character at the
+            # top-left client point is the first visible line in both panes;
+            # the formatter preserves line count, so the line can be shared.
+            top_left = sender.GetCharIndexFromPosition(Point(2, 2))
+            line = sender.GetLineFromCharIndex(top_left)
+            if line < 0 or line >= other.Lines.Length:
+                return
+            target = other.GetFirstCharIndexFromLine(line)
+            if target < 0:
+                return
+            other.Select(target, 0)
             other.ScrollToCaret()
         finally:
             self._syncing_scroll = False
@@ -501,11 +673,19 @@ class FmtPreviewForm(Form if Form is not None else object):
             candidates = [line for line in changes if line < self._jump_index]
             target = candidates[-1] if candidates else changes[-1]
         self._jump_index = target
+        self._stats_label.Text = self._stats_text_with_position(target)
         for box in (self._before, self._after):
             if target < box.Lines.Length:
                 start = box.GetFirstCharIndexFromLine(target)
                 box.Select(max(0, start), len(box.Lines[target]))
                 box.ScrollToCaret()
+
+    def _stats_text_with_position(self, target):
+        position = self._changed_left.index(target) + 1
+        total = len(self._changed_left)
+        return "Change {0} of {1}. Previous/Next change jumps between modified lines.".format(
+            position, total
+        )
 
     def _previous_change(self, sender, event):
         self._jump_change(-1)
@@ -527,10 +707,12 @@ def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_cal
     return form.action, form.selected_index
 
 
-def show_fmt_preview(object_name, before, after, changed_lines):
+def show_fmt_preview(object_name, before, after, changed_lines, wizard_mode=False):
     if Form is None:
         return "stop"
-    form = FmtPreviewForm(object_name, before, after, changed_lines)
+    form = FmtPreviewForm(
+        object_name, before, after, changed_lines, wizard_mode=wizard_mode
+    )
     form.ShowDialog()
     return form.action
 

@@ -52,12 +52,12 @@ Analyzer would be unnecessary.
 3. The first screen loads object names only. Click a block to analyze it; its
    row then shows either `[N line(s) to fix]` or `[OK]`.
 4. Use the filter box when the project contains many objects. Choose
-   **Open selected** for one analyzed object, or **FIX all** to scan from
+   **Open selected** for one analyzed object, or **Review All** to scan from
    the top and open the first object that needs changes.
 5. Review the side-by-side **Before** and **After** preview. Changed lines are
    highlighted in both panes; **Previous change** and **Next change** jump
    between them and the panes follow each other's scroll position.
-6. Choose **Apply**, **Skip**, or **Stop**. After each decision, **FIX all**
+6. Choose **Apply**, **Skip**, or **Stop**. After each decision, **Review All**
    continues scanning from the next object.
 
 `Project_fmt.py` formats only the object currently shown in the preview. It

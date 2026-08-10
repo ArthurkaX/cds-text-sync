@@ -29,21 +29,44 @@ except NameError:
     _BYTE_TYPE = str
 
 
+def _repair_mojibake(text):
+    """Repair an obvious UTF-8 -> Latin-1 round trip in IDE text."""
+    def badness(value):
+        return sum(
+            1
+            for char in value
+            if "\x80" <= char <= "\x9f" or char in "ÃÂÐÑ"
+        )
+
+    current = text
+    for _ in range(2):
+        if any(ord(char) > 0xFF for char in current):
+            break
+        try:
+            candidate = current.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            break
+        if badness(candidate) >= badness(current):
+            break
+        current = candidate
+    return current
+
+
 def _text(value):
-    """Return text without changing its encoding or line endings."""
+    """Return IDE text as Unicode while repairing obvious mojibake."""
     if value is None:
         return _UNICODE_TYPE()
     if isinstance(value, _UNICODE_TYPE):
-        return value
+        return _repair_mojibake(value)
     if isinstance(value, _BYTE_TYPE):
         try:
-            return value.decode("utf-8")
+            return _repair_mojibake(value.decode("utf-8"))
         except UnicodeDecodeError:
-            return value.decode("cp1251", "replace")
+            return _repair_mojibake(value.decode("cp1251", "replace"))
     try:
-        return _UNICODE_TYPE(value)
+        return _repair_mojibake(_UNICODE_TYPE(value))
     except Exception:
-        return _UNICODE_TYPE(str(value))
+        return _repair_mojibake(_UNICODE_TYPE(str(value)))
 
 
 def format_text(text, declaration=False):
@@ -281,7 +304,11 @@ def _show_preview(item, position=None, total=None, progress=None):
         )
     if codesys_fmt_ui:
         return codesys_fmt_ui.show_fmt_preview(
-            label, item["before"], item["after"], item["changed_lines"]
+            label,
+            item["before"],
+            item["after"],
+            item["changed_lines"],
+            wizard_mode=position is not None,
         )
     return "stop"
 
