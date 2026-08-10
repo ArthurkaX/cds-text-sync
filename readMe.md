@@ -80,6 +80,14 @@ You can open the desktop findings view with **`Project_analyze_ui.py`**. Safe
 autofixes are previewed before they are applied, including structural
 indentation fixes where available.
 
+<details>
+<summary><strong>▶ Click to open the animation: Static Analyzer findings UI</strong></summary>
+
+<p><img src="img/static_analyzer_demo.gif"
+   alt="Static Analyzer findings UI"
+   width="100%"></p>
+</details>
+
 Details: [static analyzer](products/cds-static-analyzer/README.md).
 
 ## 4. I want an LLM agent to control the project
@@ -96,6 +104,14 @@ cts import                 # project-view/ -> CODESYS
 cts build                  # build the active application
 cts analyze --workspace .  # offline check; daemon is not required
 ```
+
+<details>
+<summary><strong>▶ Click to open the animation: using the cts CLI</strong></summary>
+
+<p><img src="img/cli_demo.gif"
+   alt="Using the cts command-line interface"
+   width="100%"></p>
+</details>
 
 The CLI also exposes project-tree operations, PLC interaction, tests and
 diagnostics. Read the [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md).
