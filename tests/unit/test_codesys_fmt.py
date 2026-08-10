@@ -35,6 +35,13 @@ def test_string_keywords_do_not_change_block_nesting():
     )
 
 
+def test_text_repairs_obvious_russian_mojibake():
+    comment = "// Сброс признака первой циклы"
+    corrupted = comment.encode("utf-8").decode("latin-1")
+
+    assert fmt._repair_mojibake(corrupted) == comment
+
+
 def test_declaration_formatting_preserves_crlf_when_no_change_is_needed():
     source = "VAR\r\nfoo        : INT;\r\nlongername : BOOL;\r\nEND_VAR\r\n"
 
