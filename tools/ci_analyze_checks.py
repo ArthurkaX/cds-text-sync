@@ -23,6 +23,19 @@ import venv
 import zipfile
 
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _source_root in (
+    "products/cds-cli/src",
+    "products/cds-text-sync/src",
+    "products/cds-static-analyzer/src",
+    "products/visu-lint/src",
+    "shared/src",
+):
+    _source_path = os.path.join(ROOT, _source_root)
+    if _source_path not in sys.path:
+        sys.path.insert(0, _source_path)
+
+
 def check_selftest():
     """Every rule must pass its own good/bad documentation examples."""
     from cds_cli.main import main
