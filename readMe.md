@@ -90,12 +90,38 @@ indentation fixes where available.
 
 Details: [static analyzer](products/cds-static-analyzer/README.md).
 
-For a quick local cleanup inside CODESYS, select a Structured Text object in
-the project tree and run **`Project_fmt.py`**. It opens a side-by-side preview
-for declaration alignment and code indentation. Changed lines are highlighted,
-and the review can be run for one object or as an **Apply / Skip / Stop** wizard
-without starting the full Analyzer. Formatting is applied directly to the
-open IDE object and remains subject to the normal CODESYS Undo command.
+<details>
+<summary><strong>▶ Click to open: Quick ST formatting inside CODESYS</strong></summary>
+
+Use **`Project_fmt.py`** from **Tools > Scripting** when one Structured Text
+object looks untidy and opening the full Analyzer would be unnecessary. It
+aligns variable declarations and repairs structural code indentation directly
+in the open IDE object.
+
+1. Select a POU, GVL, or DUT in the project tree.
+2. Run **`Project_fmt.py`** from **Tools > Scripting**.
+3. Filter the object list or select a block. The list shows which blocks need
+   formatting.
+4. Open one block, or choose **Review All** to review blocks from the top.
+5. Compare the **Before** and **After** panes. Changed characters are
+   highlighted, and **Previous change** / **Next change** navigate the preview.
+6. Choose **Apply**, **Skip**, or **Stop**. Use the normal CODESYS Undo command
+   if you need to revert an applied change.
+
+<p><img src="img/fmt_select_object.png"
+   alt="Project_fmt object selection and formatting status list"
+   width="100%"></p>
+
+<p><img src="img/fmt_preview.png"
+   alt="Project_fmt side-by-side formatting preview"
+   width="100%"></p>
+
+<p><img src="img/fmt_review_all.png"
+   alt="Project_fmt Review All wizard preview"
+   width="100%"></p>
+
+More details: [Project_fmt script guide](docs/scripts.md#3-project_fmtpy-quick-st-formatting).
+</details>
 
 ## 4. I want an LLM agent to control the project
 
