@@ -22,7 +22,13 @@ import sys
 import time
 import traceback
 
-import clr
+try:
+    import clr
+except ImportError:
+    # The dispatch metadata is also inspected by the CPython test suite.
+    # CODESYS provides ``clr`` through IronPython, but it is not available
+    # when this module is imported offline.
+    clr = None
 
 # Add ide_bridge dir to path
 _LOOP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,10 +36,13 @@ if _LOOP_DIR not in sys.path:
     sys.path.insert(0, _LOOP_DIR)
 
 
-clr.AddReference("System.IO.Pipes")
-clr.AddReference("System.IO")
-
-from System.IO.Pipes import NamedPipeClientStream, PipeDirection
+if clr is not None:
+    clr.AddReference("System.IO.Pipes")
+    clr.AddReference("System.IO")
+    from System.IO.Pipes import NamedPipeClientStream, PipeDirection
+else:
+    NamedPipeClientStream = None
+    PipeDirection = None
 
 # ── Shared state / helpers (imported from ide_daemon_state) ───────────────
 
@@ -309,6 +318,8 @@ def _dashboard_log_response(dash, method, response):
 
 def run_loop():
     """Main polling loop. Runs inside CODESYS script context."""
+    if clr is None:
+        raise RuntimeError("The reverse-pipe loop must run inside CODESYS.")
     capture_codesys_globals()
     sys._codesys_daemon_loop["running"] = True
     sys._codesys_daemon_loop["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")

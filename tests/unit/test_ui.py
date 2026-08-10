@@ -154,7 +154,10 @@ def test_cts0008_autofix_preserves_crlf_line_endings(tmp_path):
     copy_fixture(root)
     finding = _cts0008_finding(root)
     target = _cts0008_source(root, finding)
-    crlf = target.read_bytes().replace(b"\n", b"\r\n")
+    # Normalize first because Windows checkouts may already be CRLF when
+    # core.autocrlf is enabled.
+    source_bytes = target.read_bytes().replace(b"\r\n", b"\n")
+    crlf = source_bytes.replace(b"\n", b"\r\n")
     target.write_bytes(crlf)
     api = AnalyzerApi()
 
