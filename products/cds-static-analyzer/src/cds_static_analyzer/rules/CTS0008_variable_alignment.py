@@ -7,7 +7,6 @@ import re
 from cds_static_analyzer.capabilities import Capability, Scope
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.body import declaration
-from cts_shared.st.blanking import blank_noise
 from cts_shared.st.formatting import format_declarations
 
 _SECTION_START = re.compile(r"^VAR(?:_INPUT|_OUTPUT|_IN_OUT|_TEMP|_GLOBAL)?\b", re.I)
