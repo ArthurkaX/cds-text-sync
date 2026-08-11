@@ -23,6 +23,7 @@ def test_profile_counts_st_blocks_and_sizes_each_operation(tmp_path):
 
     assert count == 2
     assert profile["block_count"] == 2
+    assert profile["timeouts"]["connect_to_device"] == 60
     assert profile["timeouts"]["build"] == 120
     assert profile["timeouts"]["sync_import_text"] == 180
 

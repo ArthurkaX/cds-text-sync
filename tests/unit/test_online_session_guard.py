@@ -20,6 +20,7 @@ from __future__ import annotations
 import dis
 import importlib.util
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -140,8 +141,84 @@ def test_returns_the_cached_session(helpers):
     assert helpers.require_online_session(project=object()) is online_app
 
 
-def test_refuses_when_the_cached_session_went_stale(helpers):
-    """A dead session must be refused, not handed out and used."""
+def test_data_plane_adopts_an_existing_ide_session_without_login(helpers, monkeypatch):
+    class _OnlineApp:
+        is_connected = True
+
+        def login(self, *args):
+            raise AssertionError("read/write must not login")
+
+    class _Application:
+        pass
+
+    online_app = _OnlineApp()
+    target_app = _Application()
+    setattr(sys, STATE_KEY, {})
+    monkeypatch.setattr(helpers, "get_active_application", lambda project: target_app)
+    monkeypatch.setitem(
+        sys.modules,
+        "scriptengine",
+        SimpleNamespace(online=SimpleNamespace(create_online_application=lambda app: online_app)),
+    )
+
+    assert helpers.require_online_session(project=object()) is online_app
+    assert sys._codesys_daemon_loop["online_app"] is online_app
+    assert sys._codesys_daemon_loop["online_target_app"] is target_app
+
+
+def test_adoption_accepts_run_state_when_connection_flags_are_unavailable(
+    helpers, monkeypatch
+):
+    class _OnlineApp:
+        application_state = "run"
+
+    online_app = _OnlineApp()
+    setattr(sys, STATE_KEY, {})
+    monkeypatch.setitem(
+        sys.modules,
+        "scriptengine",
+        SimpleNamespace(
+            online=SimpleNamespace(create_online_application=lambda app: online_app)
+        ),
+    )
+    target_app = object()
+    monkeypatch.setattr(helpers, "get_active_application", lambda project: target_app)
+
+    adopted, target = helpers.adopt_existing_online_session(project=object())
+
+    assert adopted is online_app
+    assert target is target_app
+
+
+def test_connect_reuses_live_ide_session_and_caches_it(helpers, monkeypatch):
+    class _OnlineApp:
+        is_connected = True
+        application_state = "run"
+
+        def login(self, *args):
+            raise AssertionError("an existing IDE session must not login again")
+
+    class _Application:
+        def get_name(self):
+            return "Application"
+
+    online_app = _OnlineApp()
+    target_app = _Application()
+    setattr(sys, STATE_KEY, {})
+    monkeypatch.setattr(
+        helpers, "ensure_online_connection", lambda project: (online_app, target_app)
+    )
+    monkeypatch.setitem(sys.modules, "scriptengine", SimpleNamespace())
+
+    result = helpers.connect_to_device_impl(project=object())
+
+    assert result["reused_session"] is True
+    assert result["session_cached"] is True
+    assert helpers.require_online_session(project=object()) is online_app
+
+
+def test_returns_cached_session_when_connection_property_is_unavailable(helpers):
+    """CODESYS can reject is_connected while the wrapper remains usable."""
 
     class _DeadApp:
         @property
@@ -153,9 +230,7 @@ def test_refuses_when_the_cached_session_went_stale(helpers):
         STATE_KEY,
         {"online_app": _DeadApp(), "online_target_app": object()},
     )
-    with pytest.raises(RuntimeError) as excinfo:
-        helpers.require_online_session(project=object())
-    assert "cts connect" in str(excinfo.value)
+    assert helpers.require_online_session(project=object()).__class__ is _DeadApp
 
 
 # ---------------------------------------------------------------------------

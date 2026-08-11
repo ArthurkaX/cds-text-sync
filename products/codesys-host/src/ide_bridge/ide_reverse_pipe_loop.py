@@ -55,6 +55,7 @@ from ide_daemon_state import (
     _write_json_to_pipe,
     _load_daemon_config,
     _check_permission,
+    _get_active_project,
     _get_status_info,
     _get_plc_status_snapshot,
 )
@@ -63,6 +64,7 @@ from ide_daemon_helpers import (
     _get_sync_folder,
 )
 from ide_timeout_profile import count_st_blocks, make_timeout_profile
+from ide_online_helpers import adopt_existing_online_session
 
 from ide_handlers_plc import (
     _cmd_start_plc,
@@ -232,6 +234,14 @@ def _handle_status(params):
     return {"ok": True, "data": result}
 
 
+def _handle_timeout_profile(params):
+    """Return startup-sized timeouts without probing the PLC session."""
+    return {
+        "ok": True,
+        "data": sys._codesys_daemon_loop.get("timeout_profile", {}),
+    }
+
+
 import command_registry as _registry
 
 _ALIASES = _registry.ALIASES
@@ -328,6 +338,17 @@ def run_loop():
     sys._codesys_daemon_loop["running"] = True
     sys._codesys_daemon_loop["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     sys._codesys_daemon_loop["started"] = True
+
+    # The supported operating order is IDE Online/Login first, daemon second.
+    # Capture that existing session now; this creates only a wrapper and never
+    # calls login or changes the PLC connection.
+    try:
+        project, _error = _get_active_project()
+        online_app, _target_app = adopt_existing_online_session(project)
+        if online_app is not None:
+            _log("Adopted existing IDE online session")
+    except Exception as error:
+        _log("Could not adopt existing IDE online session: {0}".format(error))
 
     _log(
         "cds-text-sync v{0} started  pipe={1}  pid={2}".format(

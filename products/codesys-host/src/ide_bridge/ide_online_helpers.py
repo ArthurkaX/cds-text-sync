@@ -96,7 +96,13 @@ def _get_daemon_state():
 
 
 def _get_cached_online_app():
-    """Get cached online_app from shared state, with validation."""
+    """Get the daemon's cached OnlineApplication without probing it.
+
+    On CODESYS SP22 a harmless read of ``is_connected`` can intermittently
+    raise even though the same wrapper is still able to read/write values.
+    Cache lookup must therefore be side-effect free: the operation which uses
+    the wrapper is the authority on whether it is stale.
+    """
     state = _get_daemon_state()
     if state is None:
         return None, None
@@ -104,14 +110,7 @@ def _get_cached_online_app():
     target_app = state.get("online_target_app")
     if online_app is None or target_app is None:
         return None, None
-    # Validate — check if still alive
-    try:
-        _ = online_app.is_connected  # fast property access
-        return online_app, target_app
-    except Exception:
-        state["online_app"] = None
-        state["online_target_app"] = None
-        return None, None
+    return online_app, target_app
 
 
 def is_online_session_active():
@@ -261,11 +260,9 @@ def ensure_online_connection(project, prefer_device=False):
     try:
         online_app = se.online.create_online_application(target_app)
         if online_app is not None:
-            # Auto-login on fresh connection (gateway/ip already set by connect_to_device)
-            try:
-                _ensure_logged_in(online_app)
-            except Exception:
-                pass  # Login might fail if gateway not set — read/write will give clear error
+            # Creating this wrapper must be side-effect free.  In particular,
+            # do not login here: connect_to_device_impl owns that explicit
+            # operation and can first detect an existing IDE online session.
             try:
                 state = _get_daemon_state()
                 if state is not None:
@@ -289,8 +286,38 @@ def ensure_online_connection(project, prefer_device=False):
     )
 
 
+def adopt_existing_online_session(project):
+    """Cache a session which is already online in the CODESYS UI.
+
+    This is deliberately not a connection attempt: it only creates the
+    ScriptEngine wrapper and accepts it when it reports a live session.  There
+    is no gateway change and, critically, no ``login()``.  It lets data-plane
+    commands recover if CODESYS invalidates a previously cached wrapper while
+    the user's IDE connection itself remains active.
+    """
+    online_app, target_app = _get_cached_online_app()
+    if online_app is not None:
+        return online_app, target_app
+    try:
+        import scriptengine as se
+
+        target_app = get_active_application(project)
+        if target_app is None:
+            return None, None
+        online_app = se.online.create_online_application(target_app)
+        if not _online_app_is_live(online_app):
+            return None, None
+        state = _get_daemon_state()
+        if state is not None:
+            state["online_app"] = online_app
+            state["online_target_app"] = target_app
+        return online_app, target_app
+    except Exception:
+        return None, None
+
+
 def require_online_session(project):
-    """Return the cached online application, or fail without touching the gateway.
+    """Return a cached or already-IDE-online application without logging in.
 
     For read/write of PLC data, never build a session implicitly. Creating one
     means create_online_application plus _ensure_logged_in, and the latter walks
@@ -309,9 +336,11 @@ def require_online_session(project):
     """
     online_app, _ = _get_cached_online_app()
     if online_app is None:
+        online_app, _ = adopt_existing_online_session(project)
+    if online_app is None:
         raise RuntimeError(
-            "Not connected. The daemon has no online session, and this command "
-            "will not open one for you. Run 'cts connect' first."
+            "Not connected. No cached or IDE-online session is available; "
+            "run 'cts connect' or log in through the CODESYS UI first."
         )
     return online_app
 
@@ -376,69 +405,10 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     
     online_app, target_app = ensure_online_connection(project)
     app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
-    
-    # CODESYS SP22 login() takes (OnlineChangeOption, password), but enum
-    # member names differ between versions. Pick a safe online-change option.
-    import scriptengine as se
-    if not hasattr(online_app, 'login'):
-        raise TypeError("Online application does not support login().")
 
-    login_errors = []
-    option_candidates = []
-    if hasattr(se, 'OnlineChangeOption'):
-        enum_type = se.OnlineChangeOption
-        for name in (
-            'TryOnlineChange', 'Try', 'PerformOnlineChange',
-            'OnlineChange', 'Always', 'Never', 'NoOnlineChange'
-        ):
-            try:
-                if hasattr(enum_type, name):
-                    option_candidates.append(getattr(enum_type, name))
-            except Exception:
-                pass
-        try:
-            from System import Enum
-            values = list(Enum.GetValues(enum_type))
-            preferred = []
-            fallback = []
-            for value in values:
-                name = str(Enum.GetName(enum_type, value))
-                if 'try' in name.lower() or 'change' in name.lower():
-                    preferred.append(value)
-                else:
-                    fallback.append(value)
-            option_candidates.extend(preferred + fallback)
-        except Exception:
-            pass
-
-    seen = set()
-    for option in option_candidates:
-        key = str(option)
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            online_app.login(option, "")
-            break
-        except Exception as e:
-            login_errors.append(str(e))
-    else:
-        for args in ((0, ""), (None, ""), tuple()):
-            try:
-                online_app.login(*args)
-                break
-            except Exception as e:
-                login_errors.append(str(e))
-        else:
-            raise RuntimeError("login() failed: " + "; ".join(login_errors[-5:]))
-    
-    state = "connected"
-    if hasattr(online_app, 'application_state'):
-        try:
-            state = str(online_app.application_state)
-        except Exception:
-            pass
-    
+    # Cache immediately.  A manually-opened IDE online session can be wrapped
+    # by this call; subsequent read/write commands must use that same handle
+    # even when there is nothing for ``cts connect`` to do.
     try:
         daemon_state = _get_daemon_state()
         if daemon_state is not None:
@@ -447,10 +417,77 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     except Exception:
         pass
 
+    reused_session = _online_app_is_live(online_app)
+    
+    # CODESYS SP22 login() takes (OnlineChangeOption, password), but enum
+    # member names differ between versions. Pick a safe online-change option.
+    import scriptengine as se
+    if not hasattr(online_app, 'login'):
+        raise TypeError("Online application does not support login().")
+
+    if not reused_session:
+        login_errors = []
+        option_candidates = []
+        if hasattr(se, 'OnlineChangeOption'):
+            enum_type = se.OnlineChangeOption
+            for name in (
+                'TryOnlineChange', 'Try', 'PerformOnlineChange',
+                'OnlineChange', 'Always', 'Never', 'NoOnlineChange'
+            ):
+                try:
+                    if hasattr(enum_type, name):
+                        option_candidates.append(getattr(enum_type, name))
+                except Exception:
+                    pass
+            try:
+                from System import Enum
+                values = list(Enum.GetValues(enum_type))
+                preferred = []
+                fallback = []
+                for value in values:
+                    name = str(Enum.GetName(enum_type, value))
+                    if 'try' in name.lower() or 'change' in name.lower():
+                        preferred.append(value)
+                    else:
+                        fallback.append(value)
+                option_candidates.extend(preferred + fallback)
+            except Exception:
+                pass
+
+        seen = set()
+        for option in option_candidates:
+            key = str(option)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                online_app.login(option, "")
+                break
+            except Exception as e:
+                login_errors.append(str(e))
+        else:
+            for args in ((0, ""), (None, ""), tuple()):
+                try:
+                    online_app.login(*args)
+                    break
+                except Exception as e:
+                    login_errors.append(str(e))
+            else:
+                raise RuntimeError("login() failed: " + "; ".join(login_errors[-5:]))
+    
+    state = "connected"
+    if hasattr(online_app, 'application_state'):
+        try:
+            state = str(online_app.application_state)
+        except Exception:
+            pass
+    
     return {
         "state": state,
         "application": app_name,
         "device": str(ip_address) if ip_address else "existing config",
+        "reused_session": reused_session,
+        "session_cached": True,
     }
 
 
@@ -472,6 +509,16 @@ def _online_app_is_live(online_app):
                     return True
             except Exception:
                 pass
+    # Some SP22 OnlineApplication wrappers expose neither connection flag
+    # reliably, while application_state remains available and reports run.
+    try:
+        state = getattr(online_app, "application_state")
+        state = state() if callable(state) else state
+        return str(state).strip().lower() in (
+            "run", "running", "online", "connected"
+        )
+    except Exception:
+        pass
     return False
 
 

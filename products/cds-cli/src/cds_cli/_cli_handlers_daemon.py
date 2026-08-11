@@ -53,15 +53,18 @@ _PROFILE_LOOKUP_TIMEOUT = 10
 def _daemon_timeout(method, requested_timeout=None, fallback=30):
     """Resolve a daemon-owned automatic timeout; explicit values win.
 
-    ``status`` is intentionally a short, read-only preflight.  The daemon has
-    already counted blocks at startup, so this never rescans the project.
+    ``timeout_profile`` is intentionally a short, read-only preflight which
+    does not inspect the PLC connection. The daemon has already counted blocks
+    at startup, so this never rescans the project or invalidates online state.
     Older daemons simply lack the profile and retain the conservative fallback.
     """
     if requested_timeout is not None:
         return requested_timeout
     try:
-        response = send_command_reverse("status", {}, timeout=_PROFILE_LOOKUP_TIMEOUT)
-        profile = response.get("data", {}).get("timeout_profile", {})
+        response = send_command_reverse(
+            "timeout_profile", {}, timeout=_PROFILE_LOOKUP_TIMEOUT
+        )
+        profile = response.get("data", {})
         value = profile.get("timeouts", {}).get(method, profile.get("default"))
         if value is not None:
             blocks = profile.get("block_count")
