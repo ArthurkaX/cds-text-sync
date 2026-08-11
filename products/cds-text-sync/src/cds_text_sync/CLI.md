@@ -61,7 +61,7 @@ cts export --timeout 60
 # edit files in project-view/
 cts compare --timeout 60
 cts import --timeout 120
-cts build --timeout 120
+cts build
 ```
 
 `import` options:
@@ -111,7 +111,7 @@ Rules:
 
 | Command | Meaning | Requires | Timeout |
 | --- | --- | --- | --- |
-| `build` | Compile the active application in the IDE. | daemon | 120s |
+| `build` | Compile the active application in the IDE. The default timeout is calculated from the number of ST blocks in `project-view/`; use `--timeout` to override it. | daemon | calculated |
 | `connect [--ip IP]` | Login/connect to the configured PLC or explicit IP. | daemon + device | 60s |
 | `disconnect` | Logout from the PLC. | daemon | 15s |
 | `download [--start 0|1]` | Force a full download to PLC. Use after adding new objects. | online/device | 120s |
@@ -124,7 +124,7 @@ Deploy existing online-changeable edits:
 
 ```bash
 cts import --timeout 120
-cts build --timeout 120
+cts build
 cts connect --timeout 60
 cts plc-crc --timeout 30
 ```
@@ -134,7 +134,7 @@ Deploy newly added objects:
 ```bash
 cts disconnect --timeout 15
 cts import --timeout 120
-cts build --timeout 120
+cts build
 cts download --timeout 120
 cts plc-crc --timeout 30
 ```
