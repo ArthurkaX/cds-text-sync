@@ -62,6 +62,7 @@ from ide_daemon_state import (
 from ide_daemon_helpers import (
     _get_sync_folder,
 )
+from ide_timeout_profile import count_st_blocks, make_timeout_profile
 
 from ide_handlers_plc import (
     _cmd_start_plc,
@@ -159,6 +160,7 @@ if not hasattr(sys, "_codesys_daemon_loop"):
         "last_command": None,
         "online_app": None,
         "online_target_app": None,
+        "timeout_profile": None,
     }
 
 
@@ -216,6 +218,7 @@ def _handle_ping(params):
             "mode": "reverse_pipe",
             "pid": os.getpid(),
             "plc": _get_plc_status_snapshot(),
+            "timeout_profile": sys._codesys_daemon_loop.get("timeout_profile"),
         },
     }
 
@@ -225,6 +228,7 @@ def _handle_status(params):
     result["running"] = sys._codesys_daemon_loop.get("running", False)
     result["mode"] = "reverse_pipe"
     result["plc"] = _get_plc_status_snapshot()
+    result["timeout_profile"] = sys._codesys_daemon_loop.get("timeout_profile")
     return {"ok": True, "data": result}
 
 
@@ -340,6 +344,14 @@ def run_loop():
         )
     else:
         _log("Sync folder: {0}".format(sf))
+
+    block_count = count_st_blocks(sf)
+    profile = make_timeout_profile(block_count)
+    sys._codesys_daemon_loop["timeout_profile"] = profile
+    if block_count is None:
+        _log("Timeout profile: project-view unavailable; using safe fallback")
+    else:
+        _log("Timeout profile: {0} ST block(s) counted at startup".format(block_count))
 
     # Show UI dashboard (WinForms window)
     _dash = None

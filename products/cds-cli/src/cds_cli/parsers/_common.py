@@ -2,11 +2,17 @@
 
 
 def add_timeout(parser, default):
+    automatic = default is None
     parser.add_argument(
         "--timeout",
         type=float,
         default=default,
-        help=f"Timeout in seconds (default: {default})",
+        help=(
+            "Timeout in seconds (default: calculated by the daemon from its "
+            "startup ST-block count)"
+            if automatic
+            else f"Timeout in seconds (default: {default})"
+        ),
     )
     return parser
 
