@@ -15,7 +15,7 @@ ALIASES = {
 }
 
 NO_PERMISSION = frozenset([
-    "ping", "status", "help", "stop", "permissions", "sync",
+    "ping", "status", "timeout_profile", "help", "stop", "permissions", "sync",
     "project_info", "project_tree", "read_object", "explore",
     "project_list", "list_devices", "diagnose_online", "discover",
 ])
@@ -34,7 +34,7 @@ DISPATCH_NAMES = frozenset([
     "sync_compare_text", "update_pou", "delete_pou", "cicd", "read_log",
     "reset_plc", "source_download", "probe", "application_tree", "plc_files",
     "plc_log", "plc_download", "plc_upload", "export_csv", "export_st",
-    "app_crc", "app_history", "plc_crc", "compare", "stop", "ping", "status",
+    "app_crc", "app_history", "plc_crc", "compare", "stop", "ping", "status", "timeout_profile",
     "project_info", "application_state", "disconnect_from_device", "explore",
     "sync", "help", "start_plc", "stop_plc", "create_boot_app", "app_info",
     "permissions", "project_open", "project_close", "project_list",
@@ -87,6 +87,7 @@ DISPATCH_SPECS = {
     "stop": ("direct", "_handle_stop"),
     "ping": ("direct", "_handle_ping"),
     "status": ("direct", "_handle_status"),
+    "timeout_profile": ("direct", "_handle_timeout_profile"),
     "project_info": ("noarg", "_cmd_project_info"),
     "application_state": ("noarg", "_cmd_application_state"),
     "disconnect_from_device": ("noarg", "_cmd_disconnect_from_device"),

@@ -79,7 +79,7 @@ def test_build_uses_daemon_startup_timeout(monkeypatch):
         "send_command_reverse",
         lambda method, params=None, timeout=15: {
             "ok": True,
-            "data": {"timeout_profile": {"block_count": 42, "timeouts": {"build": 321}}},
+            "data": {"block_count": 42, "timeouts": {"build": 321}},
         },
     )
     monkeypatch.setattr(
@@ -93,6 +93,19 @@ def test_build_uses_daemon_startup_timeout(monkeypatch):
     d.dispatch_daemon(_args(command="build", timeout=None))
 
     assert calls == [("build", {}, 321)]
+
+
+def test_timeout_lookup_does_not_call_status(monkeypatch):
+    methods = []
+    monkeypatch.setattr(
+        d,
+        "send_command_reverse",
+        lambda method, params=None, timeout=15: methods.append(method)
+        or {"ok": True, "data": {"timeouts": {"build": 321}}},
+    )
+
+    assert d._daemon_timeout("build") == 321
+    assert methods == ["timeout_profile"]
 
 
 def test_explicit_build_timeout_is_not_recalculated(monkeypatch):

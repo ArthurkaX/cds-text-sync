@@ -15,6 +15,19 @@ import os
 
 # method -> (fixed startup seconds, seconds per ST block, minimum seconds)
 _TIMEOUT_RULES = {
+    # Online/session lifecycle is not proportional to project size, but it
+    # must never fall through to the 30 s generic timeout: a CODESYS login may
+    # wait for an IDE dialog or gateway response.
+    "connect_to_device": (60, 0.0, 60),
+    "disconnect_from_device": (15, 0.0, 15),
+    "start_plc": (25, 0.0, 25),
+    "stop_plc": (25, 0.0, 25),
+    "application_state": (10, 0.0, 10),
+    "read_variable": (25, 0.0, 25),
+    "write_variable": (25, 0.0, 25),
+    "read_log": (10, 0.0, 10),
+    "project_info": (10, 0.0, 10),
+    "permissions": (5, 0.0, 5),
     "build": (60, 0.55, 120),
     "sync_export_text": (30, 0.35, 60),
     "sync_compare_text": (20, 0.45, 60),

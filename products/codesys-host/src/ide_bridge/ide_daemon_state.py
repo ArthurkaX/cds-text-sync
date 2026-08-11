@@ -440,9 +440,10 @@ def _get_plc_status_snapshot():
 
     if isinstance(is_connected, dict):
         result["connection_error"] = is_connected.get("error", "")
-        state["online_app"] = None
-        state["online_target_app"] = None
-        result["known"] = False
+        # Status is diagnostic only. CODESYS may transiently reject this
+        # property while the existing wrapper remains usable for read/write;
+        # never destroy a live session cache from an observation failure.
+        result["connected"] = False
         return result
 
     connected = _bool_or_none(is_connected)
