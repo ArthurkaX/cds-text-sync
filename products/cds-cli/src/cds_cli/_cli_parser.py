@@ -51,6 +51,14 @@ Connection state:
   They do not auto-connect to the PLC. If the daemon has not seen an online
   session yet, plc.known is false.
 
+IDE-interactive PLC commands:
+  cts connect   CODESYS may ask you to approve Login or connection details.
+  cts download  CODESYS may ask you to confirm Download or Online Change.
+  These IDE questions are modal: the CLI waits and cannot answer them for you.
+  If either command appears stuck, open CODESYS and answer the pending dialog.
+  For unattended work, complete Online -> Login in the IDE before starting the
+  daemon; a download may still require confirmation depending on the project.
+
 Timeouts:
   Commands that talk to the CODESYS daemon accept --timeout SECONDS.
   All daemon operations calculate their default timeout from the number of ST
@@ -145,19 +153,41 @@ Examples:
             "from ST blocks counted at its startup."
         ),
     )
-    p_connect = add_daemon_parser(subparsers, "connect", "Login/connect to PLC", None)
+    p_connect = add_daemon_parser(
+        subparsers,
+        "connect",
+        "[IDE interaction] Login/connect to PLC; may require dialog approval",
+        None,
+    )
+    p_connect.description = (
+        "Login/connect to the PLC. CODESYS may open a modal Login or connection "
+        "dialog. The CLI cannot answer IDE questions: if this command waits, "
+        "open CODESYS and approve or cancel the dialog. For unattended use, "
+        "complete Online -> Login before starting the daemon."
+    )
     p_connect.add_argument("--ip", default="", help="PLC IP address")
     p_connect.add_argument(
         "--gateway", default="Gateway-1", help="Gateway name (default: Gateway-1)"
     )
-    add_daemon_parser(subparsers, "disconnect", "Logout from PLC", None)
-    p_download = add_daemon_parser(subparsers, "download", "Force full download to PLC", None)
+    p_download = add_daemon_parser(
+        subparsers,
+        "download",
+        "[IDE interaction] Download to PLC; may require IDE confirmation",
+        None,
+    )
+    p_download.description = (
+        "Force a full download to the PLC. CODESYS may open a modal Download, "
+        "Online Change, Login, or safety confirmation. The CLI cannot answer "
+        "IDE questions: if this command waits, open CODESYS and approve or "
+        "cancel the dialog."
+    )
     p_download.add_argument(
         "--start",
         choices=["0", "1"],
         default=None,
         help="Start after download: 1 yes, 0 no",
     )
+    add_daemon_parser(subparsers, "disconnect", "Logout from PLC", None)
     add_daemon_parser(subparsers, "start", "Start PLC application", None)
     add_daemon_parser(subparsers, "stop", "Stop PLC application", None)
     add_daemon_parser(subparsers, "app-state", "Show application online state", None)
