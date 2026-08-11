@@ -72,6 +72,56 @@ def test_plc_crc_builds_first(daemon_calls):
     assert daemon_calls == [("build", {}), ("plc_crc", {})]
 
 
+def test_calculated_build_timeout_uses_st_block_count(tmp_path):
+    view = tmp_path / "project-view"
+    view.mkdir()
+    for name in ("one.st", "two.st", "three.st"):
+        (view / name).write_text("", encoding="utf-8")
+
+    timeout, blocks = d._calculated_build_timeout(tmp_path)
+
+    assert blocks == 3
+    assert timeout == d._BUILD_MIN_TIMEOUT_SECONDS
+
+
+def test_calculated_build_timeout_uses_safe_fallback_without_project_view(tmp_path):
+    timeout, blocks = d._calculated_build_timeout(tmp_path)
+
+    assert blocks is None
+    assert timeout == d._BUILD_FALLBACK_TIMEOUT_SECONDS
+
+
+def test_build_uses_calculated_timeout(monkeypatch):
+    calls = []
+    monkeypatch.setattr(d, "_build_timeout", lambda requested=None: 321)
+    monkeypatch.setattr(
+        d,
+        "cmd_daemon",
+        lambda method, params=None, timeout=15, output_fmt="json": calls.append(
+            (method, params or {}, timeout)
+        ),
+    )
+
+    d.dispatch_daemon(_args(command="build", timeout=None))
+
+    assert calls == [("build", {}, 321)]
+
+
+def test_explicit_build_timeout_is_not_recalculated(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        d,
+        "cmd_daemon",
+        lambda method, params=None, timeout=15, output_fmt="json": calls.append(
+            (method, params or {}, timeout)
+        ),
+    )
+
+    d.dispatch_daemon(_args(command="build", timeout=42))
+
+    assert calls == [("build", {}, 42)]
+
+
 def test_download_start_passthrough(daemon_calls):
     d.dispatch_daemon(_args(command="download", start=True))
     assert daemon_calls == [("download", {"start": True})]

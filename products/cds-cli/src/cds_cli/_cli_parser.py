@@ -51,13 +51,18 @@ Connection state:
   They do not auto-connect to the PLC. If the daemon has not seen an online
   session yet, plc.known is false.
 
+Timeouts:
+  Commands that talk to the CODESYS daemon accept --timeout SECONDS.
+  `cts build` calculates its default timeout from the number of ST blocks in
+  project-view/; pass --timeout explicitly to override that calculation.
+
 Examples:
   cts ping --timeout 10
   cts status --timeout 10
   cts export --timeout 60
   cts compare --timeout 60
   cts import --dry-run --timeout 60
-  cts build --timeout 120
+  cts build
   cts connect --ip 192.0.2.10 --timeout 60
   cts plc-crc --build --timeout 120
   cts test --file arithmetic.json --timeout 120
@@ -127,7 +132,18 @@ Examples:
     )
 
     # -- build / PLC lifecycle ---------------------------------------------
-    add_daemon_parser(subparsers, "build", "Compile the active CODESYS application", 120)
+    p_build = subparsers.add_parser(
+        "build", help="Compile the active CODESYS application"
+    )
+    p_build.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help=(
+            "Timeout in seconds. By default it is calculated from the number "
+            "of ST blocks in project-view/."
+        ),
+    )
     p_connect = add_daemon_parser(subparsers, "connect", "Login/connect to PLC", 60)
     p_connect.add_argument("--ip", default="", help="PLC IP address")
     p_connect.add_argument(

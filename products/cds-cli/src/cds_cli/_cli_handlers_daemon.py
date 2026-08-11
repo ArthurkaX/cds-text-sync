@@ -17,11 +17,14 @@ Unlike the pure project/pou/visu routers, a few of these carry logic:
 
 from __future__ import annotations
 
+import math
+from pathlib import Path
 import sys
 
 from cds_cli._cli_io import (
     _format_output,
     _print_error,
+    _print_info,
     _print_rp_error,
     cmd_daemon,
     send_command_reverse,
@@ -44,6 +47,66 @@ _DAEMON_METHODS = {
     "project-info": "project_info",
     "permissions": "permissions",
 }
+
+
+# A build has a fixed startup cost, then CODESYS spends approximately the same
+# amount of time compiling each textual block.  The constants deliberately
+# include a generous margin: a client-side timeout never cancels app.build(),
+# it merely breaks the response pipe and hides the eventual diagnostics.
+_BUILD_STARTUP_SECONDS = 60
+_BUILD_SECONDS_PER_BLOCK = 0.55
+_BUILD_MIN_TIMEOUT_SECONDS = 120
+_BUILD_FALLBACK_TIMEOUT_SECONDS = 600
+
+
+def _find_project_view(start=None):
+    """Find the nearest project-view directory without contacting the IDE."""
+    current = Path(start or Path.cwd()).resolve()
+    for candidate in (current, *current.parents):
+        project_view = candidate / "project-view"
+        if project_view.is_dir():
+            return project_view
+    return None
+
+
+def _calculated_build_timeout(start=None):
+    """Return a safe build timeout calculated from local ST block count.
+
+    The CLI intentionally does not query the daemon here: it must be able to
+    choose the timeout before it submits the build request.  When launched
+    outside a sync folder we cannot know the project size, so use the safe
+    fallback rather than risking a broken response pipe.
+    """
+    project_view = _find_project_view(start)
+    if project_view is None:
+        return _BUILD_FALLBACK_TIMEOUT_SECONDS, None
+    try:
+        block_count = sum(1 for _ in project_view.rglob("*.st"))
+    except OSError:
+        return _BUILD_FALLBACK_TIMEOUT_SECONDS, None
+    timeout = max(
+        _BUILD_MIN_TIMEOUT_SECONDS,
+        int(math.ceil(_BUILD_STARTUP_SECONDS + block_count * _BUILD_SECONDS_PER_BLOCK)),
+    )
+    return timeout, block_count
+
+
+def _build_timeout(requested_timeout=None):
+    """Use an explicit timeout verbatim, otherwise calculate a safe one."""
+    if requested_timeout is not None:
+        return requested_timeout
+    timeout, block_count = _calculated_build_timeout()
+    if block_count is None:
+        _print_info(
+            "Build timeout: {0}s (project-view not found; safe fallback)".format(
+                timeout
+            )
+        )
+    else:
+        _print_info(
+            "Build timeout: {0}s for {1} ST block(s)".format(timeout, block_count)
+        )
+    return timeout
 
 
 def dispatch_daemon(args, output_fmt="json"):
@@ -69,11 +132,16 @@ def dispatch_daemon(args, output_fmt="json"):
         if command == "download" and getattr(args, "start", None) is not None:
             params["start"] = args.start
         if command == "plc-crc" and getattr(args, "build", False):
-            cmd_daemon("build", {}, timeout=args.timeout, output_fmt=output_fmt)
+            cmd_daemon("build", {}, timeout=_build_timeout(), output_fmt=output_fmt)
+        timeout = (
+            _build_timeout(getattr(args, "timeout", None))
+            if command == "build"
+            else getattr(args, "timeout", 15)
+        )
         cmd_daemon(
             _DAEMON_METHODS[command],
             params,
-            timeout=getattr(args, "timeout", 15),
+            timeout=timeout,
             output_fmt=output_fmt,
         )
         return True
