@@ -53,18 +53,19 @@ Connection state:
 
 Timeouts:
   Commands that talk to the CODESYS daemon accept --timeout SECONDS.
-  `cts build` calculates its default timeout from the number of ST blocks in
-  project-view/; pass --timeout explicitly to override that calculation.
+  All daemon operations calculate their default timeout from the number of ST
+  blocks counted once by the daemon at startup; pass --timeout explicitly to
+  override that calculation.
 
 Examples:
-  cts ping --timeout 10
-  cts status --timeout 10
-  cts export --timeout 60
-  cts compare --timeout 60
-  cts import --dry-run --timeout 60
+  cts ping
+  cts status
+  cts export
+  cts compare
+  cts import --dry-run
   cts build
-  cts connect --ip 192.0.2.10 --timeout 60
-  cts plc-crc --build --timeout 120
+  cts connect --ip 192.0.2.10
+  cts plc-crc --build
   cts test --file arithmetic.json --timeout 120
   cts raw application_tree --flat --output C:\\Temp\\vars.json --timeout 120
   cts engine validate --project-root ./MyProject
@@ -94,16 +95,16 @@ Examples:
     )
 
     # -- primary sync --------------------------------------------------------
-    add_daemon_parser(subparsers, "ping", "Daemon liveness check with cached PLC state", 10)
-    add_daemon_parser(subparsers, "status", "Show daemon, project, sync-folder, and PLC state", 10)
+    add_daemon_parser(subparsers, "ping", "Daemon liveness check with cached PLC state", None)
+    add_daemon_parser(subparsers, "status", "Show daemon, project, sync-folder, and PLC state", None)
     # Sync timeouts are sized for real projects, not demo ones. A 70 MB
     # snapshot takes ~1 min to export and each engine pass reads it again, so
     # import routinely needs 2-3 min end to end. Timing out early does not stop
     # the daemon -- it only hides the result -- so these ceilings are generous.
-    add_daemon_parser(subparsers, "export", "IDE -> disk: refresh project-view/", 300)
-    add_daemon_parser(subparsers, "compare", "IDE vs disk: compare against project-view/", 300)
+    add_daemon_parser(subparsers, "export", "IDE -> disk: refresh project-view/", None)
+    add_daemon_parser(subparsers, "compare", "IDE vs disk: compare against project-view/", None)
     p_import = add_daemon_parser(
-        subparsers, "import", "disk -> IDE: apply project-view/ changes", 600
+        subparsers, "import", "disk -> IDE: apply project-view/ changes", None
     )
     p_import.add_argument(
         "--dry-run",
@@ -140,27 +141,27 @@ Examples:
         type=float,
         default=None,
         help=(
-            "Timeout in seconds. By default it is calculated from the number "
-            "of ST blocks in project-view/."
+            "Timeout in seconds. By default it is calculated by the daemon "
+            "from ST blocks counted at its startup."
         ),
     )
-    p_connect = add_daemon_parser(subparsers, "connect", "Login/connect to PLC", 60)
+    p_connect = add_daemon_parser(subparsers, "connect", "Login/connect to PLC", None)
     p_connect.add_argument("--ip", default="", help="PLC IP address")
     p_connect.add_argument(
         "--gateway", default="Gateway-1", help="Gateway name (default: Gateway-1)"
     )
-    add_daemon_parser(subparsers, "disconnect", "Logout from PLC", 15)
-    p_download = add_daemon_parser(subparsers, "download", "Force full download to PLC", 120)
+    add_daemon_parser(subparsers, "disconnect", "Logout from PLC", None)
+    p_download = add_daemon_parser(subparsers, "download", "Force full download to PLC", None)
     p_download.add_argument(
         "--start",
         choices=["0", "1"],
         default=None,
         help="Start after download: 1 yes, 0 no",
     )
-    add_daemon_parser(subparsers, "start", "Start PLC application", 25)
-    add_daemon_parser(subparsers, "stop", "Stop PLC application", 25)
-    add_daemon_parser(subparsers, "app-state", "Show application online state", 10)
-    p_crc = add_daemon_parser(subparsers, "plc-crc", "Compare PLC CRC with local build output", 30)
+    add_daemon_parser(subparsers, "start", "Start PLC application", None)
+    add_daemon_parser(subparsers, "stop", "Stop PLC application", None)
+    add_daemon_parser(subparsers, "app-state", "Show application online state", None)
+    p_crc = add_daemon_parser(subparsers, "plc-crc", "Compare PLC CRC with local build output", None)
     p_crc.add_argument(
         "--build",
         action="store_true",
@@ -168,9 +169,9 @@ Examples:
     )
 
     # -- variables ----------------------------------------------------------
-    p_read = add_daemon_parser(subparsers, "read", "Read one PLC variable/expression", 25)
+    p_read = add_daemon_parser(subparsers, "read", "Read one PLC variable/expression", None)
     p_read.add_argument("name", help="Variable/expression name")
-    p_write = add_daemon_parser(subparsers, "write", "Write one PLC variable/expression", 25)
+    p_write = add_daemon_parser(subparsers, "write", "Write one PLC variable/expression", None)
     p_write.add_argument("name", help="Variable/expression name")
     p_write.add_argument("value", help="Value to write")
 
@@ -179,15 +180,15 @@ Examples:
         subparsers,
         "test",
         "Run JSON test plans from .test/ (see TEST_FORMAT.md)",
-        120,
+        None,
     )
     p_test.add_argument(
         "--file", default="", help="Test plan file (relative to .test/)"
     )
 
     # -- project/object tools ----------------------------------------------
-    add_daemon_parser(subparsers, "project-info", "Show open project metadata", 10)
-    p_ptree = add_daemon_parser(subparsers, "project-tree", "Show CODESYS project tree", 30)
+    add_daemon_parser(subparsers, "project-info", "Show open project metadata", None)
+    p_ptree = add_daemon_parser(subparsers, "project-tree", "Show CODESYS project tree", None)
     p_ptree.add_argument(
         "--depth", type=int, default=0, help="Tree depth, 0 = unlimited"
     )
@@ -195,7 +196,7 @@ Examples:
         subparsers,
         "read-object",
         "Read one project object by name/path/GUID (prefer --name)",
-        30,
+        None,
     )
     p_robj.add_argument(
         "--path",
@@ -209,7 +210,7 @@ Examples:
     p_robj.add_argument(
         "--guid", default="", help="Object GUID (rarely matches IDE GUID)"
     )
-    p_upou = add_daemon_parser(subparsers, "update-pou", "Update one POU from an .st file", 25)
+    p_upou = add_daemon_parser(subparsers, "update-pou", "Update one POU from an .st file", None)
     p_upou.add_argument("--name", required=True, help="Object name")
     p_upou.add_argument(
         "--st-path", dest="st_path", required=True, help="Path to .st file"
@@ -217,15 +218,15 @@ Examples:
     p_upou.add_argument(
         "--app", default="", help="Application name (default: active application)"
     )
-    p_dpou = add_daemon_parser(subparsers, "delete-pou", "Delete a POU/Function/FunctionBlock", 10)
+    p_dpou = add_daemon_parser(subparsers, "delete-pou", "Delete a POU/Function/FunctionBlock", None)
     p_dpou.add_argument("name", help="Object name")
     p_dpou.add_argument(
         "--app", default="", help="Application name (default: active application)"
     )
-    p_log = add_daemon_parser(subparsers, "read-log", "Read CODESYS IDE messages", 10)
+    p_log = add_daemon_parser(subparsers, "read-log", "Read CODESYS IDE messages", None)
     p_log.add_argument("--last", default="", help="Maximum messages to read")
     p_log.add_argument("--clear", action="store_true", help="Clear log after read")
-    add_daemon_parser(subparsers, "permissions", "Show daemon permissions", 5)
+    add_daemon_parser(subparsers, "permissions", "Show daemon permissions", None)
 
     # -- raw / engine / local utility commands -----------------------------
     register_utility(subparsers)

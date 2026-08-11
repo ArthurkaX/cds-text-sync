@@ -111,32 +111,36 @@ Rules:
 
 | Command | Meaning | Requires | Timeout |
 | --- | --- | --- | --- |
-| `build` | Compile the active application in the IDE. The default timeout is calculated from the number of ST blocks in `project-view/`; use `--timeout` to override it. | daemon | calculated |
-| `connect [--ip IP]` | Login/connect to the configured PLC or explicit IP. | daemon + device | 60s |
-| `disconnect` | Logout from the PLC. | daemon | 15s |
-| `download [--start 0|1]` | Force a full download to PLC. Use after adding new objects. | online/device | 120s |
-| `start` | Start PLC application. | online | 25s |
-| `stop` | Stop PLC application. | online | 25s |
-| `app-state` | Show application run/stop/login state. | daemon | 10s |
-| `plc-crc` | Compare PLC `Application.crc` with the local IDE build output. | online | 30s |
+| `build` | Compile the active application in the IDE. | daemon | automatic |
+| `connect [--ip IP]` | Login/connect to the configured PLC or explicit IP. | daemon + device | automatic |
+| `disconnect` | Logout from the PLC. | daemon | automatic |
+| `download [--start 0|1]` | Force a full download to PLC. Use after adding new objects. | online/device | automatic |
+| `start` | Start PLC application. | online | automatic |
+| `stop` | Stop PLC application. | online | automatic |
+| `app-state` | Show application run/stop/login state. | daemon | automatic |
+| `plc-crc` | Compare PLC `Application.crc` with the local IDE build output. | online | automatic |
+
+The daemon counts `project-view/*.st` once at startup and exposes a
+per-operation timeout profile. Every daemon-backed CLI command uses that
+profile unless `--timeout SECONDS` is supplied explicitly.
 
 Deploy existing online-changeable edits:
 
 ```bash
-cts import --timeout 120
+cts import
 cts build
-cts connect --timeout 60
-cts plc-crc --timeout 30
+cts connect
+cts plc-crc
 ```
 
 Deploy newly added objects:
 
 ```bash
-cts disconnect --timeout 15
-cts import --timeout 120
+cts disconnect
+cts import
 cts build
-cts download --timeout 120
-cts plc-crc --timeout 30
+cts download
+cts plc-crc
 ```
 
 `plc-crc --build` will build the project first, then compare CRCs.

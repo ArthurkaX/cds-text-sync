@@ -17,8 +17,6 @@ Unlike the pure project/pou/visu routers, a few of these carry logic:
 
 from __future__ import annotations
 
-import math
-from pathlib import Path
 import sys
 
 from cds_cli._cli_io import (
@@ -49,64 +47,30 @@ _DAEMON_METHODS = {
 }
 
 
-# A build has a fixed startup cost, then CODESYS spends approximately the same
-# amount of time compiling each textual block.  The constants deliberately
-# include a generous margin: a client-side timeout never cancels app.build(),
-# it merely breaks the response pipe and hides the eventual diagnostics.
-_BUILD_STARTUP_SECONDS = 60
-_BUILD_SECONDS_PER_BLOCK = 0.55
-_BUILD_MIN_TIMEOUT_SECONDS = 120
-_BUILD_FALLBACK_TIMEOUT_SECONDS = 600
+_PROFILE_LOOKUP_TIMEOUT = 10
 
 
-def _find_project_view(start=None):
-    """Find the nearest project-view directory without contacting the IDE."""
-    current = Path(start or Path.cwd()).resolve()
-    for candidate in (current, *current.parents):
-        project_view = candidate / "project-view"
-        if project_view.is_dir():
-            return project_view
-    return None
+def _daemon_timeout(method, requested_timeout=None, fallback=30):
+    """Resolve a daemon-owned automatic timeout; explicit values win.
 
-
-def _calculated_build_timeout(start=None):
-    """Return a safe build timeout calculated from local ST block count.
-
-    The CLI intentionally does not query the daemon here: it must be able to
-    choose the timeout before it submits the build request.  When launched
-    outside a sync folder we cannot know the project size, so use the safe
-    fallback rather than risking a broken response pipe.
+    ``status`` is intentionally a short, read-only preflight.  The daemon has
+    already counted blocks at startup, so this never rescans the project.
+    Older daemons simply lack the profile and retain the conservative fallback.
     """
-    project_view = _find_project_view(start)
-    if project_view is None:
-        return _BUILD_FALLBACK_TIMEOUT_SECONDS, None
-    try:
-        block_count = sum(1 for _ in project_view.rglob("*.st"))
-    except OSError:
-        return _BUILD_FALLBACK_TIMEOUT_SECONDS, None
-    timeout = max(
-        _BUILD_MIN_TIMEOUT_SECONDS,
-        int(math.ceil(_BUILD_STARTUP_SECONDS + block_count * _BUILD_SECONDS_PER_BLOCK)),
-    )
-    return timeout, block_count
-
-
-def _build_timeout(requested_timeout=None):
-    """Use an explicit timeout verbatim, otherwise calculate a safe one."""
     if requested_timeout is not None:
         return requested_timeout
-    timeout, block_count = _calculated_build_timeout()
-    if block_count is None:
-        _print_info(
-            "Build timeout: {0}s (project-view not found; safe fallback)".format(
-                timeout
-            )
-        )
-    else:
-        _print_info(
-            "Build timeout: {0}s for {1} ST block(s)".format(timeout, block_count)
-        )
-    return timeout
+    try:
+        response = send_command_reverse("status", {}, timeout=_PROFILE_LOOKUP_TIMEOUT)
+        profile = response.get("data", {}).get("timeout_profile", {})
+        value = profile.get("timeouts", {}).get(method, profile.get("default"))
+        if value is not None:
+            blocks = profile.get("block_count")
+            label = "unknown size" if blocks is None else "{0} ST block(s)".format(blocks)
+            _print_info("Timeout: {0}s for {1}".format(value, label))
+            return float(value)
+    except (RuntimeError, TypeError, ValueError, AttributeError):
+        pass
+    return fallback
 
 
 def dispatch_daemon(args, output_fmt="json"):
@@ -121,7 +85,9 @@ def dispatch_daemon(args, output_fmt="json"):
                 cmd_daemon(
                     "sync_compare_text",
                     {},
-                    timeout=getattr(args, "timeout", 60),
+                    timeout=_daemon_timeout(
+                        "sync_compare_text", getattr(args, "timeout", None), 60
+                    ),
                     output_fmt=output_fmt,
                 )
                 return True
@@ -132,11 +98,14 @@ def dispatch_daemon(args, output_fmt="json"):
         if command == "download" and getattr(args, "start", None) is not None:
             params["start"] = args.start
         if command == "plc-crc" and getattr(args, "build", False):
-            cmd_daemon("build", {}, timeout=_build_timeout(), output_fmt=output_fmt)
-        timeout = (
-            _build_timeout(getattr(args, "timeout", None))
-            if command == "build"
-            else getattr(args, "timeout", 15)
+            cmd_daemon(
+                "build",
+                {},
+                timeout=_daemon_timeout("build", getattr(args, "timeout", None)),
+                output_fmt=output_fmt,
+            )
+        timeout = _daemon_timeout(
+            _DAEMON_METHODS[command], getattr(args, "timeout", None), 30
         )
         cmd_daemon(
             _DAEMON_METHODS[command],
@@ -153,7 +122,7 @@ def dispatch_daemon(args, output_fmt="json"):
         if args.gateway:
             params["gatewayName"] = args.gateway
         cmd_daemon(
-            "connect_to_device", params, timeout=args.timeout, output_fmt=output_fmt
+            "connect_to_device", params, timeout=_daemon_timeout("connect_to_device", args.timeout, 60), output_fmt=output_fmt
         )
         return True
 
@@ -161,7 +130,7 @@ def dispatch_daemon(args, output_fmt="json"):
         cmd_daemon(
             "read_variable",
             {"name": args.name},
-            timeout=args.timeout,
+            timeout=_daemon_timeout("read_variable", args.timeout, 25),
             output_fmt=output_fmt,
         )
         return True
@@ -174,14 +143,14 @@ def dispatch_daemon(args, output_fmt="json"):
         params = {}
         if args.file:
             params["file"] = args.file
-        cmd_daemon("cicd", params, timeout=args.timeout, output_fmt=output_fmt)
+        cmd_daemon("cicd", params, timeout=_daemon_timeout("cicd", args.timeout, 120), output_fmt=output_fmt)
         return True
 
     if command == "project-tree":
         cmd_daemon(
             "project_tree",
             {"depth": args.depth},
-            timeout=args.timeout,
+            timeout=_daemon_timeout("project_tree", args.timeout, 30),
             output_fmt=output_fmt,
         )
         return True
@@ -194,7 +163,7 @@ def dispatch_daemon(args, output_fmt="json"):
             params["name"] = args.name
         if args.guid:
             params["guid"] = args.guid
-        cmd_daemon("read_object", params, timeout=args.timeout, output_fmt=output_fmt)
+        cmd_daemon("read_object", params, timeout=_daemon_timeout("read_object", args.timeout, 30), output_fmt=output_fmt)
         return True
 
     if command == "update-pou":
@@ -204,14 +173,14 @@ def dispatch_daemon(args, output_fmt="json"):
         }
         if args.app:
             params["app"] = args.app
-        cmd_daemon("update_pou", params, timeout=args.timeout, output_fmt=output_fmt)
+        cmd_daemon("update_pou", params, timeout=_daemon_timeout("update_pou", args.timeout, 25), output_fmt=output_fmt)
         return True
 
     if command == "delete-pou":
         params = {"name": args.name}
         if args.app:
             params["app"] = args.app
-        cmd_daemon("delete_pou", params, timeout=args.timeout, output_fmt=output_fmt)
+        cmd_daemon("delete_pou", params, timeout=_daemon_timeout("delete_pou", args.timeout, 10), output_fmt=output_fmt)
         return True
 
     if command == "read-log":
@@ -220,7 +189,7 @@ def dispatch_daemon(args, output_fmt="json"):
             params["last"] = args.last
         if args.clear:
             params["clear"] = True
-        cmd_daemon("read_log", params, timeout=args.timeout, output_fmt=output_fmt)
+        cmd_daemon("read_log", params, timeout=_daemon_timeout("read_log", args.timeout, 10), output_fmt=output_fmt)
         return True
 
     return False
@@ -232,16 +201,17 @@ def _handle_write(args, output_fmt):
     Both the write and the read-back are returned in one response.
     """
     try:
+        timeout = _daemon_timeout("write_variable", args.timeout, 25)
         wr = send_command_reverse(
             "write_variable",
             {"name": args.name, "value": args.value},
-            timeout=args.timeout,
+            timeout=timeout,
         )
         if not wr.get("ok"):
             _print_rp_error(wr, "write_variable")
             sys.exit(1)
         rb = send_command_reverse(
-            "read_variable", {"name": args.name}, timeout=args.timeout
+            "read_variable", {"name": args.name}, timeout=timeout
         )
         read_back = rb.get("data", {}) if rb.get("ok") else {}
         print(
