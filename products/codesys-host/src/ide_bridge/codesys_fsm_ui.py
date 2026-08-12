@@ -43,10 +43,13 @@ if Form is not None:
     _DIM_ALPHA = Color.FromArgb(90, 160, 160, 160)
 
 
-def _style_button(button):
+def _style_button(form, button):
     """Style a button with the shared picker look (reused, not retyped)."""
     if codesys_fmt_ui is not None and hasattr(codesys_fmt_ui, "ObjectPickerForm"):
-        codesys_fmt_ui.ObjectPickerForm._style_button(None, button)
+        # IronPython binds methods accessed through the class as unbound
+        # methods, so pass a real form instance even though the shared
+        # implementation only uses the button argument.
+        codesys_fmt_ui.ObjectPickerForm._style_button(form, button)
 
 
 def show_message(title, message, icon="info"):
@@ -158,7 +161,7 @@ class FsmDiagramForm(Form if Form is not None else object):
         close_button.Size = Size(90, 30)
         close_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         close_button.Click += self._close
-        _style_button(close_button)
+        _style_button(self, close_button)
         self.Controls.Add(close_button)
         self._close_button = close_button
 
@@ -167,7 +170,7 @@ class FsmDiagramForm(Form if Form is not None else object):
         copy_button.Size = Size(140, 30)
         copy_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         copy_button.Click += self._copy_mermaid
-        _style_button(copy_button)
+        _style_button(self, copy_button)
         self.Controls.Add(copy_button)
         self._copy_button = copy_button
 
