@@ -16,7 +16,7 @@ try:
     clr.AddReference("System.Drawing")
     from System.Windows.Forms import (
         Form, Label, Button, ListBox, ComboBox, ComboBoxStyle, Panel, MessageBox,
-        MessageBoxButtons, MessageBoxIcon, FormBorderStyle,
+        MessageBoxButtons, MessageBoxIcon, FormBorderStyle, FlatStyle,
         FormStartPosition, AnchorStyles, ControlStyles, Clipboard, Cursors
     )
     from System.Drawing import (
@@ -43,13 +43,16 @@ if Form is not None:
     _DIM_ALPHA = Color.FromArgb(90, 160, 160, 160)
 
 
-def _style_button(form, button):
-    """Style a button with the shared picker look (reused, not retyped)."""
-    if codesys_fmt_ui is not None and hasattr(codesys_fmt_ui, "ObjectPickerForm"):
-        # IronPython binds methods accessed through the class as unbound
-        # methods, so pass a real form instance even though the shared
-        # implementation only uses the button argument.
-        codesys_fmt_ui.ObjectPickerForm._style_button(form, button)
+def _style_button(button):
+    """Style a diagram button without crossing IronPython class boundaries."""
+    if Form is None:
+        return
+    button.BackColor = _BUTTON_BG
+    button.ForeColor = _TEXT
+    button.FlatStyle = FlatStyle.Flat
+    button.FlatAppearance.BorderColor = _BUTTON_BORDER
+    button.FlatAppearance.BorderSize = 1
+    button.UseVisualStyleBackColor = False
 
 
 def show_message(title, message, icon="info"):
@@ -161,7 +164,7 @@ class FsmDiagramForm(Form if Form is not None else object):
         close_button.Size = Size(90, 30)
         close_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         close_button.Click += self._close
-        _style_button(self, close_button)
+        _style_button(close_button)
         self.Controls.Add(close_button)
         self._close_button = close_button
 
@@ -170,7 +173,7 @@ class FsmDiagramForm(Form if Form is not None else object):
         copy_button.Size = Size(140, 30)
         copy_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         copy_button.Click += self._copy_mermaid
-        _style_button(self, copy_button)
+        _style_button(copy_button)
         self.Controls.Add(copy_button)
         self._copy_button = copy_button
 
