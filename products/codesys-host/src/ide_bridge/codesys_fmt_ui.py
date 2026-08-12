@@ -222,6 +222,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         search.Anchor = AnchorStyles.Top | AnchorStyles.Left
         search.Text = ""
         search.TextChanged += self._on_filter_changed
+        search.PreviewKeyDown += self._on_search_preview_key
         search.KeyDown += self._on_search_key_down
         self._search = search
         self.Controls.Add(search)
@@ -440,6 +441,17 @@ class ObjectPickerForm(Form if Form is not None else object):
 
     def _accept(self, sender, event):
         if not self._search_confirmed:
+            # Enter can still arrive here through AcceptButton on a build
+            # where the preview hook does not take. With an empty list there
+            # is nothing to open, so a filled search box is the confirmation
+            # it plainly is - bouncing the user back to a box that already
+            # holds the query is how this deadlocked.
+            if (self.labels["external_search"] and self.list.SelectedIndex < 0
+                    and (self._search.Text or "").strip()):
+                self._search_confirmed = True
+                self._status.Text = self.labels["scan_status"]
+                self._accept_all()
+                return
             self._status.Text = self.labels["search_prompt"]
             self._search.Focus()
             return
@@ -589,6 +601,15 @@ class ObjectPickerForm(Form if Form is not None else object):
             self._search_confirmed = False
         self._refresh_list()
         self.list.Invalidate()
+
+    def _on_search_preview_key(self, sender, event):
+        # A single-line TextBox answers IsInputKey(Enter) with False, so
+        # WinForms routes Enter as a dialog key: ProcessDialogKey reaches the
+        # form and clicks AcceptButton BEFORE KeyDown is ever raised.
+        # Suppressing the key in KeyDown cannot undo that - KeyDown does not
+        # run. Claiming Enter as an input key here is what makes it run.
+        if event.KeyCode == Keys.Enter:
+            event.IsInputKey = True
 
     def _on_search_key_down(self, sender, event):
         # Enter is the keyboard shortcut for Analyze. Compare against the enum,

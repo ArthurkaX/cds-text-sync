@@ -441,11 +441,23 @@ class _KeyEvent:
         self.KeyCode = key_code
         self.Handled = False
         self.SuppressKeyPress = False
+        self.IsInputKey = False
+
+
+class _List:
+    def __init__(self, selected=-1):
+        self.SelectedIndex = selected
+
+    def Invalidate(self):
+        pass
 
 
 class _Text:
     def __init__(self, text=""):
         self.Text = text
+
+    def Focus(self):
+        pass
 
 
 class _SearchPicker:
@@ -456,9 +468,11 @@ class _SearchPicker:
     """
 
     _on_search_key_down = fmt_ui.ObjectPickerForm._on_search_key_down
+    _on_search_preview_key = fmt_ui.ObjectPickerForm._on_search_preview_key
+    _accept = fmt_ui.ObjectPickerForm._accept
     _accept_all = fmt_ui.ObjectPickerForm._accept_all
 
-    def __init__(self, query="AERATION"):
+    def __init__(self, query="AERATION", selected=-1):
         self.labels = dict(fmt_ui.PICKER_LABELS)
         self.labels["require_search"] = True
         self.labels["external_search"] = True
@@ -467,12 +481,17 @@ class _SearchPicker:
         self._status = _Text()
         self._search_confirmed = False
         self._visible_indexes = []
+        self.list = _List(selected)
         self.analyzing = False
         self.UseWaitCursor = False
         self.selected_index = -1
         self.items = []
         self.calls = []
         self.refreshed = 0
+        self.analyzed = []
+
+    def _analyze_index(self, index):
+        self.analyzed.append(index)
 
     def scan_callback(self, index, visible_indexes=None, query=""):
         self.calls.append((index, visible_indexes, query))
@@ -513,4 +532,50 @@ def test_enter_on_a_blank_search_asks_for_a_term_and_runs_nothing(monkeypatch):
 
     assert picker.calls == []
     assert picker._search_confirmed is False
+    assert picker._status.Text == fmt_ui.PICKER_LABELS["search_prompt"]
+
+
+def test_the_search_box_claims_enter_so_key_down_is_reached_at_all(monkeypatch):
+    # A single-line TextBox reports IsInputKey(Enter) as False, so WinForms
+    # routes Enter to ProcessDialogKey - the form's AcceptButton - and never
+    # raises KeyDown. Everything the Enter path does hangs off this flag.
+    monkeypatch.setattr(fmt_ui, "Keys", _Keys, raising=False)
+    picker = _SearchPicker()
+
+    enter = _KeyEvent(_Keys.Enter)
+    picker._on_search_preview_key(picker, enter)
+    assert enter.IsInputKey is True
+
+    other = _KeyEvent(_Keys.Enter + 1)
+    picker._on_search_preview_key(picker, other)
+    assert other.IsInputKey is False, "only Enter may be taken from the dialog"
+
+
+def test_the_wiring_that_makes_enter_reachable_is_not_dropped():
+    # The bug was never in the handlers; it was that nothing called them.
+    # Only the subscription itself can catch that regression.
+    source = Path(fmt_ui.__file__).read_text(encoding="utf-8")
+    assert "search.PreviewKeyDown += self._on_search_preview_key" in source
+    assert "search.KeyDown += self._on_search_key_down" in source
+
+
+def test_accept_runs_the_search_when_there_is_nothing_to_open():
+    # If Enter still arrives through AcceptButton, an empty list plus a
+    # filled search box means "search", not "press Enter first" - which was
+    # a deadlock, since only the unreachable KeyDown could confirm.
+    picker = _SearchPicker(selected=-1)
+
+    picker._accept(picker, None)
+
+    assert picker.calls == [(0, [], "AERATION")]
+    assert picker._search_confirmed is True
+    assert picker.analyzed == []
+
+
+def test_accept_still_opens_a_selected_block_instead_of_researching():
+    picker = _SearchPicker(selected=0)
+
+    picker._accept(picker, None)
+
+    assert picker.calls == [], "a selected block must not trigger a new search"
     assert picker._status.Text == fmt_ui.PICKER_LABELS["search_prompt"]
