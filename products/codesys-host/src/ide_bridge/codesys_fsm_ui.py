@@ -14,10 +14,12 @@ try:
     import clr
     clr.AddReference("System.Windows.Forms")
     clr.AddReference("System.Drawing")
+    import System
     from System.Windows.Forms import (
         Form, Label, Button, ListBox, ComboBox, ComboBoxStyle, Panel, MessageBox,
         MessageBoxButtons, MessageBoxIcon, FormBorderStyle, FlatStyle,
-        FormStartPosition, AnchorStyles, ControlStyles, Clipboard, Cursors
+        FormStartPosition, AnchorStyles, ControlStyles, Clipboard, Cursors,
+        Timer
     )
     from System.Drawing import (
         Size, Point, Font, FontStyle, Color, SolidBrush, Rectangle, Pen
@@ -68,6 +70,14 @@ def show_message(title, message, icon="info"):
     elif icon == "error":
         message_icon = MessageBoxIcon.Error
     MessageBox.Show(message, title, MessageBoxButtons.OK, message_icon)
+
+
+class _Pt(object):
+    """A CLR-free point, so the diagram geometry stays testable headless."""
+
+    def __init__(self, x, y):
+        self.X = x
+        self.Y = y
 
 
 class _DiagramPanel(Panel if Form is not None else object):
@@ -157,6 +167,7 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._diagram.Paint += self._paint_diagram
         self._diagram.MouseClick += self._on_diagram_click
         self.Controls.Add(self._diagram)
+        self._update_scroll_size()
 
         # BOTTOM: buttons right-aligned.
         close_button = Button()
@@ -176,6 +187,10 @@ class FsmDiagramForm(Form if Form is not None else object):
         _style_button(copy_button)
         self.Controls.Add(copy_button)
         self._copy_button = copy_button
+
+        self._copy_reset = Timer()
+        self._copy_reset.Interval = 1200
+        self._copy_reset.Tick += self._reset_copy_caption
 
         warnings = self._current_machine().warnings
         self._warnings_label = Label()
@@ -220,6 +235,8 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._refresh_transition_list()
         self._guard.Text = ""
         self._update_warnings_label()
+        self._diagram.AutoScrollPosition = Point(0, 0)
+        self._update_scroll_size()
         self._diagram.Invalidate()
 
     def _on_transition_selected(self, sender, event):
@@ -258,6 +275,12 @@ class FsmDiagramForm(Form if Form is not None else object):
             return
         self._copy_button.Text = "Copied"
         self._copy_button.Invalidate()
+        self._copy_reset.Stop()
+        self._copy_reset.Start()
+
+    def _reset_copy_caption(self, sender, event):
+        self._copy_reset.Stop()
+        self._copy_button.Text = "Copy as mermaid"
 
     def _close(self, sender, event):
         self.Close()
@@ -321,15 +344,25 @@ class FsmDiagramForm(Form if Form is not None else object):
     def _any_row(self):
         return 0 if any(t.source is None for t in self._current_machine().transitions) else None
 
+    def _to_content(self, point):
+        """Client coordinates -> diagram coordinates.
+
+        ``AutoScrollPosition`` reads back as zero or negative, so subtracting
+        it moves a click down into the scrolled-away part of the diagram.
+        """
+        scroll = self._diagram.AutoScrollPosition
+        return _Pt(point.X - scroll.X, point.Y - scroll.Y)
+
     def _state_at(self, point):
         machine = self._current_machine()
         has_any = any(t.source is None for t in machine.transitions)
+        content = self._to_content(point)
         if has_any:
-            if self._box_contains(point, 0):
+            if self._box_contains(content, 0):
                 return None  # "(any state)" is not a selectable state
         for state in machine.states:
             row = self._state_row(state.label)
-            if row is not None and self._box_contains(point, row):
+            if row is not None and self._box_contains(content, row):
                 return state
         return None
 
@@ -350,23 +383,33 @@ class FsmDiagramForm(Form if Form is not None else object):
         if row is None:
             return
         y = self._row_y(row)
+        # The getter returns a negative offset but the setter expects a
+        # positive one, so the current X has to be flipped back on the way in.
         self._diagram.AutoScrollPosition = Point(
-            self._diagram.AutoScrollPosition.X, y
+            -self._diagram.AutoScrollPosition.X, y
         )
+
+    def _update_scroll_size(self):
+        """Publish the diagram extent so the panel can size its scrollbars."""
+        rows = self._row_count()
+        if rows <= 0:
+            self._diagram.AutoScrollMinSize = Size(0, 0)
+            return
+        content_height = self._row_y(rows - 1) + self._BOX_H + 20
+        content_width = self._BOX_X + self._BOX_W + 200
+        self._diagram.AutoScrollMinSize = Size(content_width, content_height)
 
     # -- painting -----------------------------------------------------------
 
     def _paint_diagram(self, sender, event):
         graphics = event.Graphics
         graphics.SmoothingMode = SmoothingMode.AntiAlias
+        # Everything below is drawn in diagram coordinates; the panel only
+        # scrolls owner-drawn content if the origin is shifted by hand.
+        scroll = self._diagram.AutoScrollPosition
+        graphics.TranslateTransform(scroll.X, scroll.Y)
         machine = self._current_machine()
         has_any = any(t.source is None for t in machine.transitions)
-
-        # Content size for scrolling.
-        rows = self._row_count()
-        content_height = self._row_y(rows - 1) + self._BOX_H + 20
-        content_width = self._BOX_X + self._BOX_W + 200
-        self._diagram.AutoScrollMinSize = Size(content_width, content_height)
 
         # Draw the "(any state)" box first.
         if has_any:
@@ -449,9 +492,9 @@ class FsmDiagramForm(Form if Form is not None else object):
             return
 
         x1 = self._BOX_X + self._BOX_W
-        y1 = self._row_y(source_row) + self._BOX_H / 2
+        y1 = self._row_y(source_row) + self._BOX_H // 2
         x2 = self._BOX_X + self._BOX_W
-        y2 = self._row_y(target_row) + self._BOX_H / 2
+        y2 = self._row_y(target_row) + self._BOX_H // 2
         bulge = 40 + 18 * min(6, abs(target_row - source_row))
         mid_x = x1 + bulge
 
@@ -470,7 +513,7 @@ class FsmDiagramForm(Form if Form is not None else object):
 
     def _draw_self_loop(self, graphics, row, color):
         x = self._BOX_X + self._BOX_W
-        y = self._row_y(row) + self._BOX_H / 2
+        y = self._row_y(row) + self._BOX_H // 2
         pen = Pen(color, 2)
         try:
             graphics.DrawEllipse(pen, x, y - 12, 26, 24)
@@ -481,11 +524,13 @@ class FsmDiagramForm(Form if Form is not None else object):
     def _draw_arrowhead(self, graphics, x, y, color):
         brush = SolidBrush(color)
         try:
-            points = [
-                Point(x, y),
-                Point(x - 7, y - 4),
-                Point(x - 7, y + 4),
-            ]
+            points = System.Array[Point](
+                [
+                    Point(x, y),
+                    Point(x - 7, y - 4),
+                    Point(x - 7, y + 4),
+                ]
+            )
             graphics.FillPolygon(brush, points)
         finally:
             brush.Dispose()

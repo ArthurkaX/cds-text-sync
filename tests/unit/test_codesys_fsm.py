@@ -113,3 +113,87 @@ def test_picker_labels_default_to_fmt_when_labels_omitted():
     assert fmt_ui.PICKER_LABELS["open_button"] == "Open selected"
     assert fmt_ui.PICKER_LABELS["scan_none"] == "No formatting changes were found."
     assert fmt_ui.PICKER_LABELS["message_title"] == "FMT"
+
+
+class _FakePanel:
+    """Stands in for the diagram Panel; only the scroll offset is read."""
+
+    def __init__(self, scroll_y=0):
+        # WinForms reports the offset as zero or negative.
+        self.AutoScrollPosition = fsm_ui._Pt(0, -scroll_y)
+
+
+class _Geometry:
+    """The pure geometry helpers of FsmDiagramForm, without WinForms.
+
+    The form itself cannot be constructed outside the IDE, so the layout
+    methods are borrowed onto a stub that only carries the machine list.
+    """
+
+    _BOX_X = fsm_ui.FsmDiagramForm._BOX_X
+    _BOX_W = fsm_ui.FsmDiagramForm._BOX_W
+    _BOX_H = fsm_ui.FsmDiagramForm._BOX_H
+    _GAP = fsm_ui.FsmDiagramForm._GAP
+
+    for _name in (
+        "_current_machine", "_row_count", "_row_y", "_state_row",
+        "_any_row", "_box_contains", "_to_content", "_state_at",
+    ):
+        locals()[_name] = getattr(fsm_ui.FsmDiagramForm, _name)
+    del _name
+
+    def __init__(self, machine, scroll_y=0):
+        self.machines = [machine]
+        self.current = 0
+        self._diagram = _FakePanel(scroll_y)
+
+
+def _sample_machine():
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  IDLE:\n"
+        "    next_state := RUN;\n"
+        "  RUN:\n"
+        "    next_state := DONE;\n"
+        "  DONE:\n"
+        "    next_state := IDLE;\n"
+        "END_CASE;\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
+def test_state_hit_test_follows_the_scroll_offset():
+    machine = _sample_machine()
+    assert [s.label for s in machine.states] == ["IDLE", "RUN", "DONE"]
+
+    unscrolled = _Geometry(machine)
+    row = unscrolled._state_row("DONE")
+    centre_y = unscrolled._row_y(row) + unscrolled._BOX_H // 2
+    click_x = unscrolled._BOX_X + 10
+
+    hit = unscrolled._state_at(fsm_ui._Pt(click_x, centre_y))
+    assert hit is not None and hit.label == "DONE"
+
+    # Scrolled down, the same box is drawn 120px higher on screen, so the
+    # click that lands on it arrives with a correspondingly smaller Y.
+    scrolled = _Geometry(machine, scroll_y=120)
+    hit = scrolled._state_at(fsm_ui._Pt(click_x, centre_y - 120))
+    assert hit is not None and hit.label == "DONE"
+
+    # Ignoring the offset is the bug this guards: the unshifted point now
+    # falls on a different row entirely.
+    stale = scrolled._state_at(fsm_ui._Pt(click_x, centre_y))
+    assert stale is None or stale.label != "DONE"
+
+
+def test_clicks_outside_any_box_select_nothing():
+    geometry = _Geometry(_sample_machine())
+    far_right = geometry._BOX_X + geometry._BOX_W + 50
+    assert geometry._state_at(fsm_ui._Pt(far_right, geometry._row_y(0) + 5)) is None
+    # The vertical gap between two boxes belongs to no state.
+    gap_y = geometry._row_y(0) + geometry._BOX_H + 5
+    assert geometry._state_at(fsm_ui._Pt(geometry._BOX_X + 10, gap_y)) is None
