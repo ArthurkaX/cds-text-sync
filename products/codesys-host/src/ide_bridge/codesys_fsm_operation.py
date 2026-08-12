@@ -58,9 +58,10 @@ def _analyze_item(item):
     return item
 
 
-def _scan_next_fsm(items, start_index):
+def _scan_next_fsm(items, start_index, visible_indexes=None):
     """Analyze objects from top to bottom until the first one with an FSM."""
-    for index in range(max(0, start_index), len(items)):
+    indexes = visible_indexes if visible_indexes is not None else range(len(items))
+    for index in list(indexes)[max(0, start_index):]:
         item = items[index]
         if item.get("analysis") is None:
             _analyze_item(item)
@@ -129,6 +130,8 @@ def main(params=None, runtime=None):
         "scan_status": "Scanning blocks from the top...",
         "scan_none": "No state machine was found in this project.",
         "message_title": "FSM",
+        "require_search": True,
+        "search_prompt": "Enter a search term and press Enter first.",
     }
 
     def analyze_selected(index):
@@ -136,8 +139,8 @@ def main(params=None, runtime=None):
             return _analyze_item(items[index])
         return None
 
-    def scan_from(index):
-        return _scan_next_fsm(items, index)
+    def scan_from(index, visible_indexes=None):
+        return _scan_next_fsm(items, index, visible_indexes)
 
     action, selected_index = codesys_fmt_ui.show_object_picker(
         items, selected_index, analyze_selected, scan_from, labels=labels

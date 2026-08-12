@@ -31,6 +31,7 @@ PICKER_LABELS = {
     "scan_status": "Scanning blocks from the top...",
     "scan_none": "No formatting changes were found.",
     "message_title": "FMT",
+    "require_search": False,
 }
 
 
@@ -152,6 +153,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._visible_indexes = list(range(len(items)))
         self._analysis_cursor = 0
         self._analysis_timer = None
+        self._search_confirmed = not merged.get("require_search", False)
 
         title = Label()
         title.Text = merged["heading"]
@@ -190,6 +192,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         search.Anchor = AnchorStyles.Top | AnchorStyles.Left
         search.Text = ""
         search.TextChanged += self._on_filter_changed
+        search.KeyDown += self._on_search_key_down
         self._search = search
         self.Controls.Add(search)
 
@@ -380,10 +383,16 @@ class ObjectPickerForm(Form if Form is not None else object):
                 self._status.Text = self._analysis_status()
 
     def _on_selection_changed(self, sender, event):
+        if not self._search_confirmed:
+            return
         if self.list.SelectedIndex >= 0:
             self._analyze_index(self._visible_indexes[self.list.SelectedIndex])
 
     def _accept(self, sender, event):
+        if not self._search_confirmed:
+            self._status.Text = self.labels.get("search_prompt", "Enter a search term and press Enter first.")
+            self._search.Focus()
+            return
         if self.list.SelectedIndex < 0:
             return
         visible = self.list.SelectedIndex
@@ -396,12 +405,19 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _accept_all(self, sender, event):
         if self.scan_callback is None:
             return
+        if not self._search_confirmed:
+            self._status.Text = self.labels.get("search_prompt", "Enter a search term and press Enter first.")
+            self._search.Focus()
+            return
         self._stop_background_analysis()
         self.analyzing = True
         self._status.Text = self.labels["scan_status"]
         self.UseWaitCursor = True
         try:
-            index = self.scan_callback(0)
+            try:
+                index = self.scan_callback(0, self._visible_indexes)
+            except TypeError:
+                index = self.scan_callback(0)
             if index < 0:
                 show_message(self.labels["message_title"], self.labels["scan_none"], "info")
                 self.list.Invalidate()
@@ -459,6 +475,23 @@ class ObjectPickerForm(Form if Form is not None else object):
         if not hasattr(self, "list"):
             return
         self._refresh_list()
+        self.list.Invalidate()
+
+    def _on_search_key_down(self, sender, event):
+        # FSM mode deliberately postpones all expensive ST parsing until the
+        # user has narrowed the project and confirms the query with Enter.
+        if event.KeyCode.ToString() != "Enter":
+            return
+        if not self.labels.get("require_search", False):
+            return
+        if not (self._search.Text or "").strip():
+            self._status.Text = self.labels.get("search_prompt", "Enter a search term and press Enter first.")
+            return
+        self._search_confirmed = True
+        self._stop_background_analysis()
+        self._status.Text = "Search confirmed: {0} block(s) ready for FSM search.".format(
+            len(self._visible_indexes)
+        )
         self.list.Invalidate()
 
     def _on_form_closed(self, sender, event):
