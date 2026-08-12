@@ -51,6 +51,8 @@ if Form is not None:
     _GUARD = Color.FromArgb(150, 190, 230)
     _PRIORITY = Color.FromArgb(235, 140, 120)
     _DIVIDER = Color.FromArgb(95, 100, 108)
+    _CHIP_FILL = Color.FromArgb(38, 41, 45)
+    _JUMP = Color.FromArgb(215, 170, 110)
 
     # A GRAFCET bar is perpendicular to its link. A vertical bar crossing a
     # horizontal link is drawn shorter than a horizontal one so it does not
@@ -358,8 +360,15 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._warnings_label.Location = Point(margin, button_y + 6)
         self._list.Size = Size(380, max(100, button_y - 100 - 6))
         guard_w = max(120, self._copy_button.Left - 10 - margin)
-        self._guard.Size = Size(guard_w, 30)
-        self._guard.Location = Point(margin, button_y - 34)
+        # One line only: at 30px the label wrapped and AutoEllipsis then
+        # trimmed the second line, so a long condition showed its middle
+        # instead of its start.
+        self._guard.Size = Size(guard_w, 18)
+        self._guard.Location = Point(margin, button_y - 26)
+        try:
+            self._guard.AutoEllipsis = True
+        except Exception:
+            pass
         self._diagram.Size = Size(
             max(100, width - 410 - margin), max(100, button_y - 100)
         )
@@ -450,6 +459,8 @@ class FsmDiagramForm(Form if Form is not None else object):
             return
         if self._grafcet.has_any:
             self._draw_any_block(graphics)
+        for chip in self._grafcet.chips:
+            self._draw_chip(graphics, chip)
         for step in self._grafcet.steps:
             self._draw_step(graphics, step)
         for link in self._grafcet.links:
@@ -459,10 +470,22 @@ class FsmDiagramForm(Form if Form is not None else object):
         x, y, w, h = self._grafcet.any_box
         self._fill_rect(graphics, _PANEL, x, y, w, h)
         self._stroke_rect(graphics, _PRIORITY, 2, x, y, w, h)
-        self._draw_text(graphics, "any", self._font_num, _PRIORITY,
-                        x + (w - 26) // 2, y + (h - fsm_layout.TEXT_H) // 2)
+        self._draw_centred(graphics, "any", self._font_num, _PRIORITY, x, y, w, h)
         self._draw_text(graphics, "priority - written outside the CASE",
                         self._font_guard, _DIM, x, y - 18)
+
+    def _draw_chip(self, graphics, chip):
+        """A priority transition's target, drawn small so the reader sees which
+        block it lands in without having to hunt for the number."""
+        self._fill_rect(graphics, _CHIP_FILL, chip.x, chip.y, chip.w, chip.h)
+        self._stroke_rect(graphics, _PRIORITY, 1, chip.x, chip.y, chip.w, chip.h)
+        divider_x = chip.x + fsm_layout.NUM_W
+        self._draw_line(graphics, _DIVIDER, 1, divider_x, chip.y,
+                        divider_x, chip.bottom)
+        self._draw_centred(graphics, str(chip.number), self._font_num, _TEXT,
+                           chip.x, chip.y, fsm_layout.NUM_W, chip.h)
+        self._draw_text(graphics, chip.label, self._font_step, _TEXT,
+                        divider_x + 10, chip.y + (chip.h - fsm_layout.TEXT_H) // 2)
 
     def _draw_step(self, graphics, step):
         selected = (self.selected_state == step.full_label)
@@ -482,9 +505,14 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._draw_text(graphics, step.label, self._font_step, _TEXT,
                         divider_x + 10, step.y + (step.h - fsm_layout.TEXT_H) // 2)
         if step.priority:
-            # A step a priority transition can jump to, marked so the reader
-            # does not have to scan the block above to find out.
             self._draw_arrowhead(graphics, step.x - 4, step.cy, "right", _PRIORITY)
+        if step.inbound:
+            # This step is reached by a connector, so nothing points at it on
+            # the page; name the steps that jump here.
+            text = ", ".join(str(number) for number in step.inbound)
+            self._draw_text(graphics, text, self._font_guard, _JUMP,
+                            step.x - fsm_layout.INBOUND_W,
+                            step.y + (step.h - fsm_layout.TEXT_H) // 2)
 
     def _draw_link(self, graphics, link):
         colour = self._link_colour(link)
@@ -514,11 +542,16 @@ class FsmDiagramForm(Form if Form is not None else object):
         if link.note_at and link.note_text:
             nx, ny = link.note_at
             self._draw_text(graphics, link.note_text, self._font_guard,
-                            self._text_colour(link, _TEXT), nx, ny)
+                            _JUMP, nx, ny)
 
     def _link_colour(self, link):
         """Selected first, then dimmed when something else is selected."""
-        base = _PRIORITY if link.kind == "global" else _LINK
+        if link.kind == "global":
+            base = _PRIORITY
+        elif link.kind == "jump":
+            base = _JUMP
+        else:
+            base = _LINK
         if self.selected_transition is link.transition:
             return _BEFORE
         if self.selected_state is not None:

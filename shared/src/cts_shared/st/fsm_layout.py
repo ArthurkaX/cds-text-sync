@@ -3,12 +3,18 @@
 This computes a GRAFCET-styled layout, not a strict grafcet: steps are
 numbered boxes, the initial step is double-bordered, a transition is a bar
 across the link with its receptivity beside it, flow runs top-to-bottom
-without arrowheads. But a CASE block is an arbitrary directed graph, so edges
-that do not join two consecutive steps are routed as directed links down the
-right, priority (source-is-None) transitions are summarised in a compact "any"
-block above the steps, one row per transition, each naming its target step by
-number, rather than drawn as links across the diagram, and there is no
-AND-divergence because exactly one state is ever active.
+without arrowheads. A CASE block is an arbitrary directed graph rather than
+a sequence, so it is cut into chains, one per column: the dominant path is
+the first column and each side sequence splits off into its own, starting at
+the row it branches from. A choice between two branches is drawn as two
+ordinary links leaving the same step, with no divergence bar - exactly one
+state is ever active, so a horizontal bar would wrongly read as two branches
+running at once. A backward hop within a column is drawn as a real link
+running down a lane in the gutter to its left; anything longer becomes a
+connector, a stub with an arrowhead naming its target, and the target step
+records who arrives there. Priority (source-is-None) transitions hang off an
+"any" box above the steps, each ending in a chip that shows the block it
+lands in.
 
 The module is pure: it imports nothing but the stdlib (and needs none of it).
 It duck-types the model from cts_shared/st/fsm.py:
@@ -33,11 +39,9 @@ NUM_W = 34
 TOP_MARGIN = 24
 BOTTOM_MARGIN = 28
 LEFT_MARGIN = 24
-SPINE_GAP = 58
 BRANCH_ROW_H = 26
 BRANCH_TOP = 16
 BRANCH_BAR_X = 26
-SPINE_BAR_UP = 26
 BAR_HALF = 15
 LANE_W = 24
 LANE_CLEAR = 24
@@ -46,16 +50,21 @@ GUARD_CHARS = 40
 TEXT_H = 15
 SELF_W = 24
 ANY_W = 96
-ANY_MIN_H = 34
-GLOBAL_ROW_H = 24
-GLOBAL_PAD = 14
-GLOBAL_STUB = 34
-GLOBAL_BAR_X = 16
-GLOBAL_BLOCK_GAP = 34
-NOTE_GAP = 16
 CHAR_W = 7
 HIT_TOL = 6
 ALWAYS = "=1"
+
+ROW_GAP = 62          # step bottom -> next step top, fits a bar and two text lines
+COL_GAP = 44          # gap between two columns of steps
+BAR_UP = 30           # the bar sits this far above the step it leads into
+FORK_DROP = 20        # a link drops this far before turning sideways
+CHIP_GAP = 34         # stem -> target chip in the priority block
+ANY_STEM = 22         # stem below the "any" box before the first bar
+GLOBAL_ROW_H = 58     # one priority transition
+JUMP_MAX_ROWS = 3     # a longer backward hop becomes a connector, not a line
+JUMP_H = 30           # height of a connector's arrow + caption
+JUMP_GAP = 10         # bar -> connector arrow
+INBOUND_W = 26        # left gutter for the "N -> " marker on a jump target
 
 
 def _estimate_width(text):
@@ -131,18 +140,21 @@ def initial_label(machine):
     return labels[0]
 
 
-def order_steps(machine):
-    """Vertical order of the steps: depth-first from the initial step.
+def build_chains(machine):
+    """Cut the graph into vertical chains, one per column.
 
-    Following each state's outgoing transitions in source order turns the
-    dominant path through the CASE into a straight vertical spine; anything
-    unreachable is appended in source order so no state is dropped.
+    A CASE block is not a sequence: it usually has one dominant path plus a
+    few side sequences that split off it and rejoin later. Walking the first
+    unvisited outgoing edge until it runs out gives one such chain; whatever
+    is left starts the next one, placed one row below where it splits off.
+    Reading the columns beats reading one tall column with links looping
+    across it.
     """
     labels = [s.label for s in machine.states]
     if not labels:
         return []
     known = set(labels)
-    outgoing = dict((label, []) for label in labels)
+    outgoing = {}                       # label -> [target, ...] in source order, deduped
     for t in sorted(machine.transitions, key=lambda t: t.offset):
         if t.source is None:
             continue
@@ -150,26 +162,48 @@ def order_steps(machine):
             continue
         if t.source not in known or t.target not in known:
             continue
-        targets = outgoing[t.source]
+        targets = outgoing.setdefault(t.source, [])
         if t.target not in targets:
             targets.append(t.target)
-    start = initial_label(machine)
-    order = []
-    seen = set()
-    stack = [start]
-    while stack:
-        label = stack.pop()
-        if label in seen:
+    visited = set()
+    chains = []
+    row_of = {}                         # label -> absolute row, filled as we go
+    seeds = [(initial_label(machine), None)]      # (label, entry_label)
+    while seeds:
+        label, entry = seeds.pop(0)
+        if label in visited:
             continue
-        seen.add(label)
-        order.append(label)
-        for target in reversed(outgoing[label]):
-            if target not in seen:
-                stack.append(target)
+        if entry is None:
+            start_row = 0
+        else:
+            start_row = row_of[entry] + 1
+        walk = []
+        row = start_row
+        cur = label
+        while cur is not None and cur not in visited:
+            visited.add(cur)
+            row_of[cur] = row
+            walk.append(cur)
+            row += 1
+            nxt = None
+            for target in outgoing.get(cur, []):
+                if target not in visited:
+                    nxt = target
+                    break
+            cur = nxt
+        chains.append({"labels": walk, "entry": entry, "entry_row": start_row})
+        # every unvisited target of anything just walked seeds a new chain
+        for source in walk:
+            for target in outgoing.get(source, []):
+                if target not in visited:
+                    seeds.append((target, source))
+    # anything unreachable gets its own chain at row 0, in source order
     for label in labels:
-        if label not in seen:
-            order.append(label)
-    return order
+        if label not in visited:
+            visited.add(label)
+            row_of[label] = 0
+            chains.append({"labels": [label], "entry": None, "entry_row": 0})
+    return chains
 
 
 def _near_segment(px, py, a, b, tol):
@@ -209,9 +243,34 @@ def _assign_lanes(spans):
     return result
 
 
+class Chip(object):
+    """A miniature step box: the target of a priority transition, drawn so
+    the reader sees which block it lands in without hunting for it."""
+
+    def __init__(self, number, label, x, y, w, h):
+        self.number = number
+        self.label = label
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+
+    @property
+    def right(self):
+        return self.x + self.w
+
+    @property
+    def bottom(self):
+        return self.y + self.h
+
+    @property
+    def cy(self):
+        return self.y + self.h // 2
+
+
 class Step(object):
     def __init__(self, number, label, full_label, x, y, w, h, initial,
-                 priority=False):
+                 priority=False, col=0, row=0):
         self.number = number
         self.label = label
         self.full_label = full_label
@@ -221,6 +280,9 @@ class Step(object):
         self.h = h
         self.initial = initial
         self.priority = priority
+        self.col = col
+        self.row = row
+        self.inbound = []     # numbers of steps that reach this one by connector
 
     @property
     def right(self):
@@ -274,7 +336,8 @@ class Link(object):
 
 
 class Layout(object):
-    def __init__(self, steps, links, width, height, prefix, any_box, dropped):
+    def __init__(self, steps, links, width, height, prefix, any_box, dropped,
+                 chips=None, columns=1):
         self.steps = steps
         self.links = links
         self.width = width
@@ -282,6 +345,8 @@ class Layout(object):
         self.prefix = prefix
         self.any_box = any_box
         self.dropped = dropped
+        self.chips = chips or []
+        self.columns = columns
 
     @property
     def has_any(self):
@@ -314,101 +379,186 @@ def build_layout(machine, measure=None, guard_measure=None):
     measure = _int_measure(measure)
     guard_measure = _int_measure(guard_measure)
 
-    order = order_steps(machine)
-    if not order:
+    chains = build_chains(machine)
+    if not chains:
         return Layout([], [], LEFT_MARGIN * 2, TOP_MARGIN + BOTTOM_MARGIN, "",
                       None, 0)
 
+    order = []              # labels in reading order: column by column
+    for chain in chains:
+        order.extend(chain["labels"])
     prefix = common_prefix(order)
-    row_of = dict((label, index) for index, label in enumerate(order))
+    number_of = dict((label, i + 1) for i, label in enumerate(order))
+    col_of = {}
+    row_of = {}
+    for index, chain in enumerate(chains):
+        for offset, label in enumerate(chain["labels"]):
+            col_of[label] = index
+            row_of[label] = chain["entry_row"] + offset
 
+    # 6a. partition the transitions
     globals_ = []
     selfs = []
     graph = []
     dropped = 0
     for t in sorted(machine.transitions, key=lambda t: t.offset):
-        if t.source is None and t.target in row_of:
+        if t.source is None and t.target in col_of:
             globals_.append(t)
-        elif t.source == t.target and t.source in row_of:
+        elif t.source == t.target and t.source in col_of:
             selfs.append(t)
-        elif (t.source in row_of and t.target in row_of and t.source != t.target):
+        elif (t.source in col_of and t.target in col_of and t.source != t.target):
             graph.append(t)
         else:
             dropped += 1
 
-    spine = {}
-    branches = []
+    # 6b. classify the graph transitions
+    chain_links = []
+    forks = []
+    sides = []
+    jumps = []
+    claimed = set()
     for t in graph:
-        s = row_of[t.source]
-        d = row_of[t.target]
-        if d == s + 1 and s not in spine:
-            spine[s] = t
+        s_col = col_of[t.source]
+        t_col = col_of[t.target]
+        s_row = row_of[t.source]
+        t_row = row_of[t.target]
+        if (s_col == t_col and t_row == s_row + 1
+                and (s_col, s_row) not in claimed):
+            chain_links.append(t)
+            claimed.add((s_col, s_row))
+        elif (s_col != t_col and t_row == s_row + 1
+              and t.target == chains[t_col]["labels"][0]):
+            forks.append(t)
+        elif s_col == t_col and abs(t_row - s_row) <= JUMP_MAX_ROWS:
+            sides.append(t)
         else:
-            branches.append(t)
-    branches_by_row = {}
-    for t in branches:
-        branches_by_row.setdefault(row_of[t.source], []).append(t)
+            jumps.append(t)
 
+    # 6c. step width and column x
     step_w = STEP_MIN_W
-    for index, label in enumerate(order):
-        caption = strip_prefix(label, prefix)
-        step_w = max(step_w, NUM_W + measure(caption) + STEP_PAD * 2)
+    for label in order:
+        step_w = max(step_w, NUM_W + measure(strip_prefix(label, prefix)) + STEP_PAD * 2)
     step_w = int(step_w)
 
-    step_x = LEFT_MARGIN
+    # A side link runs down a lane in the gutter to the LEFT of its column:
+    # the gutter to the right belongs to the next column's boxes.
+    side_count = {}
+    for t in sides:
+        col = col_of[t.source]
+        side_count[col] = side_count.get(col, 0) + 1
+    gutter = {}
+    for index in range(len(chains)):
+        gutter[index] = INBOUND_W + LANE_W * side_count.get(index, 0)
 
+    # Every receptivity is drawn to the right of its bar, so a column has to
+    # be at least as wide as the longest one or the text lands on its neighbour.
+    guard_room = 0
+    for t in chain_links + forks + sides + jumps:
+        guard_room = max(guard_room, BAR_HALF + GUARD_GAP
+                         + guard_measure(clip_guard(t.guard)))
+    guard_room = int(guard_room)
+
+    col_x = {}
+    x = LEFT_MARGIN
+    for index in range(len(chains)):
+        x += gutter[index]
+        col_x[index] = x
+        x += step_w + guard_room + COL_GAP
+
+    # 6d. the priority block, laid out VERTICALLY above the steps
+    links = []
+    chips = []
+    any_box = None
     if globals_:
-        any_x = LEFT_MARGIN
+        any_x = LEFT_MARGIN + INBOUND_W
         any_y = TOP_MARGIN
-        any_h = max(ANY_MIN_H, len(globals_) * GLOBAL_ROW_H + GLOBAL_PAD)
-        any_box = (any_x, any_y, ANY_W, any_h)
-        top = any_y + any_h + GLOBAL_BLOCK_GAP
+        any_box = (any_x, any_y, ANY_W, STEP_H)
+        stem_x = any_x + ANY_W // 2
+        chip_w = STEP_MIN_W
+        for t in globals_:
+            chip_w = max(chip_w, NUM_W + measure(strip_prefix(t.target, prefix)) + STEP_PAD * 2)
+        chip_w = int(chip_w)
+        # the chips clear the longest receptivity
+        chip_x = stem_x + BAR_HALF + GUARD_GAP
+        for t in globals_:
+            chip_x = max(chip_x, stem_x + BAR_HALF + GUARD_GAP
+                         + guard_measure(clip_guard(t.guard)) + CHIP_GAP)
+        chip_x = int(chip_x)
+        for k, t in enumerate(globals_):
+            bar_y = any_y + STEP_H + ANY_STEM + k * GLOBAL_ROW_H
+            exit_y = bar_y + FORK_DROP
+            text = clip_guard(t.guard)
+            guard_at = (stem_x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+            guard_w = guard_measure(text)
+            chip = Chip(number_of[t.target], strip_prefix(t.target, prefix),
+                        chip_x, exit_y - STEP_H // 2, chip_w, STEP_H)
+            chips.append(chip)
+            if k == 0:
+                start_y = any_y + STEP_H
+            else:
+                start_y = any_y + STEP_H + ANY_STEM + (k - 1) * GLOBAL_ROW_H + FORK_DROP
+            points = [(stem_x, start_y), (stem_x, exit_y), (chip.x, exit_y)]
+            bar = (stem_x, bar_y, "h")
+            arrow = (chip.x, exit_y, "right")
+            links.append(Link("global", t, points, bar, text, guard_at, guard_w,
+                              arrow))
+        top = max(chip.bottom for chip in chips) + ROW_GAP
     else:
-        any_box = None
         top = TOP_MARGIN
 
-    gaps = {}
-    for row in range(len(order)):
-        gaps[row] = SPINE_GAP + BRANCH_ROW_H * len(branches_by_row.get(row, []))
-    y = [0] * len(order)
-    y[0] = top
-    for row in range(1, len(order)):
-        y[row] = y[row - 1] + STEP_H + gaps[row - 1]
-
+    # 6e. the steps
+    row_y = {}   # absolute row -> y
+    max_row = max(row_of.values())
+    for r in range(max_row + 1):
+        row_y[r] = top + r * (STEP_H + ROW_GAP)
     priority_targets = set(t.target for t in globals_)
-
     steps = []
-    for row, label in enumerate(order):
-        steps.append(Step(number=row + 1,
-                          label=strip_prefix(label, prefix),
-                          full_label=label,
-                          x=step_x,
-                          y=y[row],
-                          w=step_w,
-                          h=STEP_H,
-                          initial=(row == 0),
-                          priority=(label in priority_targets)))
+    step_of = {}
+    for label in order:
+        step = Step(number=number_of[label],
+                    label=strip_prefix(label, prefix),
+                    full_label=label,
+                    x=col_x[col_of[label]],
+                    y=row_y[row_of[label]],
+                    w=step_w, h=STEP_H,
+                    initial=(label == order[0]),
+                    priority=(label in priority_targets),
+                    col=col_of[label], row=row_of[label])
+        steps.append(step)
+        step_of[label] = step
 
-    links = []
-
-    # SPINE
-    for r in sorted(spine):
-        t = spine[r]
-        source = steps[r]
-        target = steps[r + 1]
+    # 6f. chain links: a straight vertical run with the bar above the target
+    for t in chain_links:
+        source = step_of[t.source]
+        target = step_of[t.target]
         x = source.cx
         points = [(x, source.bottom), (x, target.y)]
-        bar_y = target.y - SPINE_BAR_UP
+        bar_y = target.y - BAR_UP
         bar = (x, bar_y, "h")
         text = clip_guard(t.guard)
         guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
-        guard_w = guard_measure(text)
-        links.append(Link("spine", t, points, bar, text, guard_at, guard_w,
-                          None))
+        links.append(Link("chain", t, points, bar, text, guard_at,
+                          guard_measure(text), None))
 
-    # SELF
+    # 6g. fork links: drop, turn sideways, drop into the other column
+    # There is NO divergence bar: exactly one state is active, so a selection is
+    # just two ordinary links leaving the same step.
+    for t in forks:
+        source = step_of[t.source]
+        target = step_of[t.target]
+        drop_y = source.bottom + FORK_DROP
+        bar_y = target.y - BAR_UP
+        points = [(source.cx, source.bottom), (source.cx, drop_y),
+                  (target.cx, drop_y), (target.cx, target.y)]
+        bar = (target.cx, bar_y, "h")
+        text = clip_guard(t.guard)
+        guard_at = (target.cx + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+        links.append(Link("fork", t, points, bar, text, guard_at,
+                          guard_measure(text), None))
+
+    # 6h. self links
     for t in selfs:
-        step = steps[row_of[t.source]]
+        step = step_of[t.source]
         cy = step.cy
         x0 = step.right
         x1 = x0 + SELF_W
@@ -421,76 +571,80 @@ def build_layout(machine, measure=None, guard_measure=None):
         links.append(Link("self", t, points, bar, text, guard_at, guard_w,
                           arrow))
 
-    # BRANCH
-    if branches:
-        branch_guards = []
-        for t in branches:
-            source_row = row_of[t.source]
-            j = branches_by_row[source_row].index(t)
-            source = steps[source_row]
-            target = steps[row_of[t.target]]
-            exit_y = source.bottom + BRANCH_TOP + j * BRANCH_ROW_H
-            entry_y = target.cy
-            bar = (source.cx + BRANCH_BAR_X, exit_y, "v")
-            text = clip_guard(t.guard)
-            guard_at = (source.cx + BRANCH_BAR_X + GUARD_GAP,
-                        exit_y - TEXT_H // 2)
-            guard_w = guard_measure(text)
-            branch_guards.append((t, bar, text, guard_at, guard_w,
-                                  (exit_y, entry_y)))
+    # 6i. side links: the existing lane logic, restricted to one column
+    if sides:
+        sides_by_source = {}
+        for t in sides:
+            sides_by_source.setdefault(t.source, []).append(t)
+        for col in range(len(chains)):
+            col_sides = [t for t in sides if col_of[t.source] == col]
+            if not col_sides:
+                continue
+            side_guards = []
+            for t in col_sides:
+                source = step_of[t.source]
+                target = step_of[t.target]
+                j = sides_by_source[t.source].index(t)
+                exit_y = source.bottom + BRANCH_TOP + j * BRANCH_ROW_H
+                entry_y = target.cy
+                bar = (source.cx - BRANCH_BAR_X, exit_y, "v")
+                text = clip_guard(t.guard)
+                guard_at = (source.right + GUARD_GAP, exit_y - TEXT_H // 2)
+                guard_w = guard_measure(text)
+                side_guards.append((t, source, target, bar, text, guard_at,
+                                    guard_w, (exit_y, entry_y)))
 
-        lane_base = step_x + step_w + 30
-        for t, bar, text, guard_at, guard_w, _ in branch_guards:
-            lane_base = max(lane_base, guard_at[0] + guard_w + LANE_CLEAR)
-        for link in links:
-            if link.kind in ("spine", "self", "branch") and link.guard_at is not None:
-                lane_base = max(lane_base,
-                                link.guard_at[0] + link.guard_w + LANE_CLEAR)
+            spans = [ys for _, _, _, _, _, _, _, ys in side_guards]
+            lanes = _assign_lanes(spans)
 
-        spans = [ys for _, _, _, _, _, ys in branch_guards]
-        lanes = _assign_lanes(spans)
+            for (t, source, target, bar, text, guard_at, guard_w,
+                 (exit_y, entry_y)), lane in zip(side_guards, lanes):
+                lane_base = col_x[source.col] - LANE_CLEAR
+                lane_x = lane_base - lane * LANE_W
+                points = [(source.cx, source.bottom),
+                          (source.cx, exit_y),
+                          (lane_x, exit_y),
+                          (lane_x, entry_y),
+                          (target.x, entry_y)]
+                arrow = (target.x, entry_y, "right")
+                links.append(Link("side", t, points, bar, text, guard_at,
+                                  guard_w, arrow))
 
-        for (t, bar, text, guard_at, guard_w, (exit_y, entry_y)), lane in zip(
-                branch_guards, lanes):
-            source_row = row_of[t.source]
-            source = steps[source_row]
-            target = steps[row_of[t.target]]
-            lane_x = lane_base + lane * LANE_W
-            points = [(source.cx, source.bottom),
-                      (source.cx, exit_y),
-                      (lane_x, exit_y),
-                      (lane_x, entry_y),
-                      (target.right, entry_y)]
-            arrow = (target.right, entry_y, "left")
-            links.append(Link("branch", t, points, bar, text, guard_at,
-                              guard_w, arrow))
+    # 6j. jump connectors
+    for t in jumps:
+        source = step_of[t.source]
+        target = step_of[t.target]
+        x = source.cx
+        bar_y = source.bottom + FORK_DROP
+        end_y = bar_y + JUMP_GAP + JUMP_H
+        points = [(x, source.bottom), (x, bar_y + JUMP_GAP)]
+        bar = (x, bar_y, "h")
+        text = clip_guard(t.guard)
+        guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+        if target.y < source.y:
+            direction = "up"
+            arrow_y = bar_y + JUMP_GAP
+        else:
+            direction = "down"
+            arrow_y = end_y
+        arrow = (x, arrow_y, direction)
+        note_text = "{0}  {1}".format(target.number, target.label)
+        note_at = (x + 14, bar_y + JUMP_GAP + 2)
+        links.append(Link("jump", t, points, bar, text, guard_at,
+                          guard_measure(text), arrow,
+                          note_text=note_text, note_at=note_at,
+                          note_w=guard_measure(note_text)))
+        target.inbound.append(source.number)
 
-    # GLOBAL
-    if globals_:
-        rows_top = any_y + (any_h - len(globals_) * GLOBAL_ROW_H) // 2
-        for k, t in enumerate(globals_):
-            target = steps[row_of[t.target]]
-            row_y = rows_top + k * GLOBAL_ROW_H + GLOBAL_ROW_H // 2
-            x0 = any_x + ANY_W
-            x1 = x0 + GLOBAL_STUB
-            points = [(x0, row_y), (x1, row_y)]
-            bar = (x0 + GLOBAL_BAR_X, row_y, "v")
-            guard_text = clip_guard(t.guard)
-            guard_w = guard_measure(guard_text)
-            guard_at = (x1 + GUARD_GAP, row_y - TEXT_H // 2)
-            note_text = "-> {0}  {1}".format(target.number, target.label)
-            note_w = guard_measure(note_text)
-            note_at = (guard_at[0] + guard_w + NOTE_GAP, row_y - TEXT_H // 2)
-            arrow = None
-            links.append(Link("global", t, points, bar, guard_text, guard_at,
-                              guard_w, arrow, note_text=note_text,
-                              note_at=note_at, note_w=note_w))
-
-    width = step_x + step_w + 60
+    # 6k. extent
+    width = LEFT_MARGIN + INBOUND_W + step_w + 60
     height = 0
     if any_box is not None:
         width = max(width, any_box[0] + any_box[2])
         height = max(height, any_box[1] + any_box[3])
+    for chip in chips:
+        width = max(width, chip.right)
+        height = max(height, chip.bottom)
     for step in steps:
         height = max(height, step.bottom)
     for link in links:
@@ -508,4 +662,4 @@ def build_layout(machine, measure=None, guard_measure=None):
     height += BOTTOM_MARGIN
 
     return Layout(steps, links, int(width), int(height), prefix, any_box,
-                  dropped)
+                  dropped, chips=chips, columns=len(chains))

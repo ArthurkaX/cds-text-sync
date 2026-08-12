@@ -177,6 +177,26 @@ def _prefixed_machine():
     return machines[0]
 
 
+def _returns_machine():
+    """A single chain whose steps keep falling back to earlier ones, so
+    several side links have to share the gutter without colliding."""
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  A:\n    IF g1 THEN state := B; END_IF\n"
+        "  B:\n    IF g2 THEN state := C; END_IF\n"
+        "    IF g3 THEN state := A; END_IF\n"
+        "  C:\n    IF g4 THEN state := D; END_IF\n"
+        "    IF g5 THEN state := A; END_IF\n"
+        "  D:\n    IF g6 THEN state := B; END_IF\n"
+        "END_CASE\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
 def test_pending_indexes_skips_already_analyzed_blocks():
     items = [
         {"analysis": None},
@@ -217,54 +237,63 @@ def test_a_state_entered_only_from_outside_the_case_is_not_the_initial_step():
     assert layout.steps[0].number == 1
 
 
-def test_priority_transitions_are_summarised_instead_of_drawn_across_the_page():
+def test_a_priority_transition_shows_the_block_it_lands_in():
     layout = fsm_layout.build_layout(_prefixed_machine())
     assert layout.has_any is True
     globals_ = [link for link in layout.links if link.kind == "global"]
     assert len(globals_) == 2
-    # Each row names its target by number rather than running a link to it.
     for link in globals_:
         assert link.transition.source is None
-        assert link.note_text.startswith("->")
-        assert len(link.points) == 2
-    # No priority transition leaks into the spine or the side links.
+        # The stem runs down out of the "any" box, then turns into the block.
+        assert link.points[0][0] == link.points[1][0]
+        assert link.bar[2] == "h"
+        assert link.arrow[2] == "right"
+    # Each row ends in a chip naming the target, so the reader never has to
+    # match a number against a step somewhere else on the page.
+    assert [chip.label for chip in layout.chips] == ["E_STOPPED", "WARNING_SIGNAL"]
+    by_label = dict((step.label, step.number) for step in layout.steps)
+    for chip in layout.chips:
+        assert chip.number == by_label[chip.label]
+    # No priority transition leaks into the ordinary links.
     for link in layout.links:
         if link.kind != "global":
             assert link.transition.source is not None
-    # The steps they land on are flagged so the reader can find them.
     flagged = sorted(s.label for s in layout.steps if s.priority)
     assert flagged == ["E_STOPPED", "WARNING_SIGNAL"]
 
 
-def test_consecutive_steps_are_joined_by_a_vertical_spine():
+def test_consecutive_steps_are_joined_by_a_straight_vertical_link():
     layout = fsm_layout.build_layout(_sample_machine())
-    spine = [link for link in layout.links if link.kind == "spine"]
-    assert len(spine) == 2
-    for link in spine:
+    assert layout.columns == 1
+    chain = [link for link in layout.links if link.kind == "chain"]
+    assert len(chain) == 2
+    for link in chain:
         (x0, y0), (x1, y1) = link.points
-        assert x0 == x1          # the spine runs straight down
+        assert x0 == x1            # the chain runs straight down
         assert y1 > y0
-        assert link.bar[2] == "h"   # the bar lies across the link
-        assert link.arrow is None   # top-to-bottom flow needs no arrowhead
-    # The link that closes the loop back to the top is a side link instead.
-    branches = [link for link in layout.links if link.kind == "branch"]
-    assert len(branches) == 1
-    assert branches[0].arrow is not None
+        assert link.bar[2] == "h"  # the bar lies across the link
+        assert link.arrow is None  # top-to-bottom flow needs no arrowhead
+    # The link closing the loop back to the top is a side link instead.
+    sides = [link for link in layout.links if link.kind == "side"]
+    assert len(sides) == 1
+    assert sides[0].arrow[2] == "right"
 
 
-def test_side_links_that_overlap_never_share_a_lane():
+def test_side_links_run_in_the_left_gutter_and_never_share_a_lane():
     # A link jumping UP the page arrives with its endpoints reversed; if
     # that is not normalised the lane assignment silently overlaps them.
-    layout = fsm_layout.build_layout(_prefixed_machine())
+    layout = fsm_layout.build_layout(_returns_machine())
+    sides = [link for link in layout.links if link.kind == "side"]
+    assert len(sides) == 3
+    leftmost_box = min(step.x for step in layout.steps)
     runs = []
-    for link in layout.links:
-        if link.kind != "branch":
-            continue
+    for link in sides:
         ys = [y for _, y in link.points]
-        # The long vertical run is the segment that occupies the lane.
-        lane_x = max(x for x, _ in link.points)
+        lane_x = min(x for x, _ in link.points)
+        # The gutter is to the LEFT: a lane on the right would have to
+        # cross the next column's boxes.
+        assert lane_x < leftmost_box
         runs.append((lane_x, min(ys), max(ys)))
-    assert len(runs) >= 3
     for i in range(len(runs)):
         for j in range(i + 1, len(runs)):
             ax, a0, a1 = runs[i]
@@ -291,12 +320,12 @@ def test_clicks_land_on_steps_links_and_their_receptivities():
     assert layout.step_at(step.cx, step.cy) is step
     assert layout.step_at(step.cx, step.y - 200) is None
 
-    spine = [link for link in layout.links if link.kind == "spine"][0]
-    (x0, y0), (x1, y1) = spine.points
-    assert layout.link_at(x0, (y0 + y1) // 2) is spine
+    chain = [link for link in layout.links if link.kind == "chain"][0]
+    (x0, y0), (x1, y1) = chain.points
+    assert layout.link_at(x0, (y0 + y1) // 2) is chain
     # The receptivity beside the bar is part of the transition's hit area.
-    gx, gy = spine.guard_at
-    assert layout.link_at(gx + 2, gy + 2) is spine
+    gx, gy = chain.guard_at
+    assert layout.link_at(gx + 2, gy + 2) is chain
     assert layout.link_at(x0 - 500, y0) is None
 
 
@@ -342,3 +371,62 @@ def test_a_click_is_translated_by_the_scroll_offset():
 
     moved = _Form(panel)._to_content(fsm_ui._Pt(50, 30))
     assert (moved.X, moved.Y) == (50, 150)
+
+
+def test_a_side_sequence_gets_its_own_column():
+    # A CASE is not one sequence: the branch at RUN starts a second chain,
+    # and reading two short columns beats one tall one full of long links.
+    layout = fsm_layout.build_layout(_prefixed_machine())
+    assert layout.columns >= 2
+    columns = dict((step.label, step.col) for step in layout.steps)
+    assert columns["CALL"] != columns["RUN"]
+    forks = [link for link in layout.links if link.kind == "fork"]
+    assert len(forks) == 1
+    fork = forks[0]
+    # An ordinary link, not a divergence bar: exactly one state is active,
+    # so a choice cannot mean two branches running at once.
+    assert len(fork.points) == 4
+    assert fork.arrow is None
+    assert fork.bar[2] == "h"
+    source = layout.step_for(fork.transition.source)
+    target = layout.step_for(fork.transition.target)
+    assert fork.points[0][0] == source.cx
+    assert fork.points[-1][0] == target.cx
+    assert fork.bar[0] == target.cx
+
+
+def test_a_distant_jump_becomes_a_connector_instead_of_a_line():
+    layout = fsm_layout.build_layout(_prefixed_machine())
+    jumps = [link for link in layout.links if link.kind == "jump"]
+    assert len(jumps) == 2
+    for link in jumps:
+        target = layout.step_for(link.transition.target)
+        source = layout.step_for(link.transition.source)
+        # The connector stops just below its source; it never reaches
+        # across the page to the block it names.
+        assert len(link.points) == 2
+        assert link.arrow[2] in ("up", "down")
+        assert link.note_text == "{0}  {1}".format(target.number, target.label)
+        # The target says who arrives here, since nothing points at it.
+        assert source.number in target.inbound
+
+
+def test_receptivity_text_never_runs_over_a_block():
+    # The receptivity is drawn to the right of its bar, so the column pitch
+    # has to reserve room for it or it lands on the neighbouring column.
+    layout = fsm_layout.build_layout(
+        _prefixed_machine(),
+        measure=lambda text: len(text) * 7,
+        guard_measure=lambda text: len(text) * 6,
+    )
+    boxes = [(s.x, s.y, s.x + s.w, s.y + s.h) for s in layout.steps]
+    boxes += [(c.x, c.y, c.x + c.w, c.y + c.h) for c in layout.chips]
+    for link in layout.links:
+        gx, gy = link.guard_at
+        gx2 = gx + link.guard_w
+        gy2 = gy + fsm_layout.TEXT_H
+        for bx, by, bx2, by2 in boxes:
+            overlaps = gx < bx2 and bx < gx2 and gy < by2 and by < gy2
+            assert not overlaps, (
+                "receptivity {0!r} lands on a block".format(link.guard_text)
+            )
