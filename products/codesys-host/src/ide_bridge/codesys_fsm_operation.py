@@ -143,7 +143,7 @@ def _workspace_item_index(items, relative_path, visible_indexes):
     return -1
 
 
-def _search_workspace(project, query):
+def _search_workspace(project, query, list_only=False):
     if _project_sync_folder is None:
         raise RuntimeError("CPython FSM search launcher is unavailable")
     sync_folder, error = _project_sync_folder(project)
@@ -153,6 +153,8 @@ def _search_workspace(project, query):
         _python_command(), "-m", "cds_text_sync.fsm_search",
         "--workspace", sync_folder, "--query", query,
     ]
+    if list_only:
+        command.append("--list-only")
     kwargs = {
         "cwd": _body_root(),
         "stdout": subprocess.PIPE,
@@ -226,12 +228,12 @@ def main(params=None, runtime=None):
     labels = {
         "title": "FSM - Select object",
         "heading": "Find a state machine in the exported workspace",
-        "subtitle": "Enter a path search and press Enter. FSM detection starts immediately in parallel in project-view, without reading CODESYS objects.",
+        "subtitle": "Enter a path search and press Enter to list matching project-view blocks. Then Find next FSM analyzes only that list in parallel.",
         "status": "Enter a search term and press Enter first.",
         "scan_button": "Find next FSM",
         "open_button": "Show diagram",
         "analyze_button": "Analyze filtered",
-        "scan_status": "Scanning blocks from the top...",
+        "scan_status": "Searching matching workspace files...",
         "scan_none": "No state machine was found in the matching blocks.",
         "analysis_done": "Analysis complete - {0} block(s) contain a state machine.",
         "analysis_hits": " {0} contain a state machine.",
@@ -247,24 +249,52 @@ def main(params=None, runtime=None):
             return _analyze_item(items[index])
         return None
 
+    search_state = {"query": ""}
+
     def scan_from(index, visible_indexes=None, query=""):
+        query = (query or "").strip()
+        if query != search_state["query"]:
+            result = _search_workspace(project, query, list_only=True)
+            del items[:]
+            search_state["query"] = query
+            for path in result.get("candidates", []):
+                items.append({
+                    "label": path,
+                    "display": path + "    [not analyzed]",
+                    "object": None,
+                    "status": None,
+                    "analysis": None,
+                })
+            return {
+                "status": "Found {0} matching block(s). Click Find next FSM to analyze them.".format(
+                    len(items)
+                )
+            }
+
         result = _search_workspace(project, query)
         for row in result.get("results", []):
-            item = {
-                "label": row.get("path", "Structured Text object"),
-                "display": row.get("path", "Structured Text object"),
-                "object": None,
-                "status": None,
-                "analysis": None,
-            }
+            path = row.get("path", "Structured Text object")
+            item_index = _workspace_item_index(items, path, visible_indexes)
+            if item_index < 0:
+                item = {
+                    "label": path,
+                    "display": path,
+                    "object": None,
+                    "status": None,
+                    "analysis": None,
+                }
+                items.append(item)
+                item_index = len(items) - 1
+            else:
+                item = items[item_index]
             item["machines"] = [
                 _WorkspaceMachine(payload) for payload in row.get("machines", [])
             ]
             item["status"] = "changed"
             item["suffix"] = "[{0} FSM]".format(len(item["machines"]))
             item["analysis"] = "done"
-            items.append(item)
-            return len(items) - 1
+            item["display"] = path + "    " + item["suffix"]
+            return item_index
         return -1
 
     action, selected_index = codesys_fmt_ui.show_object_picker(

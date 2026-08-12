@@ -479,6 +479,13 @@ class ObjectPickerForm(Form if Form is not None else object):
                     index = self.scan_callback(0, self._visible_indexes)
                 except TypeError:
                     index = self.scan_callback(0)
+            # External search can first populate this picker with paths, then
+            # use a later click to analyze those paths.  It deliberately does
+            # not close the dialog during the population phase.
+            if isinstance(index, dict):
+                self._refresh_list()
+                self._status.Text = index.get("status", "Search complete.")
+                return
             if index < 0:
                 show_message(self.labels["message_title"], self.labels["scan_none"], "info")
                 self.list.Invalidate()

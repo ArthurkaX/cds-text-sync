@@ -76,7 +76,8 @@ def _matching_files(root: Path, query: str) -> list[Path]:
     ]
 
 
-def search_workspace(workspace: str | os.PathLike[str], query: str, workers: int | None = None) -> dict:
+def search_workspace(workspace: str | os.PathLike[str], query: str,
+                     workers: int | None = None, parse: bool = True) -> dict:
     """Find FSMs in files selected by a path search.
 
     ``query`` filters relative workspace paths before parsing begins.  Results
@@ -86,6 +87,17 @@ def search_workspace(workspace: str | os.PathLike[str], query: str, workers: int
     if not root.is_dir():
         raise ValueError("Workspace/project-view does not exist: " + str(root))
     paths = _matching_files(root, query)
+    candidates = [path.relative_to(root).as_posix() for path in paths]
+    if not parse:
+        return {
+            "workspace": str(root),
+            "query": query,
+            "scanned": 0,
+            "workers": 0,
+            "candidates": candidates,
+            "results": [],
+            "errors": [],
+        }
     if workers is None:
         workers = min(6, os.cpu_count() or 1)
     workers = max(1, min(workers, len(paths) or 1))
@@ -107,6 +119,7 @@ def search_workspace(workspace: str | os.PathLike[str], query: str, workers: int
         "query": query,
         "scanned": len(paths),
         "workers": workers,
+        "candidates": candidates,
         "results": results,
         "errors": errors,
     }
@@ -117,9 +130,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--query", required=True)
     parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--list-only", action="store_true",
+                        help="return matching ST paths without parsing them")
     args = parser.parse_args(argv)
     try:
-        result = search_workspace(args.workspace, args.query, args.workers)
+        result = search_workspace(
+            args.workspace, args.query, args.workers, parse=not args.list_only
+        )
     except ValueError as error:
         parser.error(str(error))
     print(json.dumps(result, ensure_ascii=False))

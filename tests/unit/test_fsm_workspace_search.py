@@ -52,3 +52,14 @@ END_CASE;
 
     assert result["scanned"] == 1
     assert result["results"][0]["path"] == "One.st"
+
+
+def test_search_workspace_lists_matching_paths_without_parsing(tmp_path):
+    _write(tmp_path / "Machine.st", "this is not Structured Text")
+
+    result = search_workspace(tmp_path, "machine", parse=False)
+
+    assert result["scanned"] == 0
+    assert result["workers"] == 0
+    assert result["candidates"] == ["Machine.st"]
+    assert result["results"] == []
