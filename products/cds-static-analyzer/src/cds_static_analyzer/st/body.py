@@ -12,9 +12,8 @@ conversion a rule performs.
 
 from __future__ import annotations
 
-import re
-
-from cds_static_analyzer.st.blanking import blank_noise, trim_strings
+from cts_shared.st.blanking import blanked
+from cts_shared.st.statements import statements as _shared_statements
 
 
 class Section:
@@ -29,7 +28,7 @@ class Section:
     def __init__(self, raw, base):
         self.raw = raw
         self.base = base
-        self.text = trim_strings(blank_noise(raw))
+        self.text = blanked(raw)
 
     def __bool__(self):
         return bool(self.raw.strip())
@@ -43,14 +42,7 @@ class Section:
         statements in the blanked text, trailing ``;`` stripped and leading
         whitespace skipped. A ``;`` inside a string or comment is already
         blanked out, so it never splits a statement."""
-        start = 0
-        for match in re.finditer(r";", self.text):
-            raw = self.text[start : match.end()]
-            leading = len(raw) - len(raw.lstrip())
-            statement = raw.strip()
-            if statement:
-                yield self.base + start + leading, statement[:-1]
-            start = match.end()
+        return _shared_statements(self.text, base=self.base)
 
     def lines(self):
         """Yield ``(lineno, absolute_offset, line_text)`` -- 1-based lineno,
