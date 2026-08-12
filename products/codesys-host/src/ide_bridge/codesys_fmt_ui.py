@@ -37,6 +37,9 @@ PICKER_LABELS = {
     "analysis_hits": " {0} need formatting.",
     "message_title": "FMT",
     "deferred_analysis": False,
+    "require_search": False,
+    "search_prompt": "Enter a search term and press Enter first.",
+    "external_search": False,
 }
 
 # A sweep spends one full ST parse per block on the UI thread, so it is paced
@@ -165,6 +168,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.action = "cancel"
         self.analyze_callback = analyze_callback
         self.scan_callback = scan_callback
+        self._search_confirmed = not merged["require_search"]
         self.analyzing = False
         self._status = None
         self._visible_indexes = list(range(len(items)))
@@ -223,7 +227,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         analyze.Anchor = AnchorStyles.Top | AnchorStyles.Left
         analyze.Click += self._analyze_visible
         self._style_button(analyze)
-        analyze.Visible = self._deferred
+        analyze.Visible = self._deferred and not merged["external_search"]
         self.Controls.Add(analyze)
         self._analyze_button = analyze
 
@@ -418,6 +422,8 @@ class ObjectPickerForm(Form if Form is not None else object):
             timer.Dispose()
 
     def _on_selection_changed(self, sender, event):
+        if not self._search_confirmed:
+            return
         if self._deferred:
             # Typing in the filter re-selects a row on every keystroke, so
             # analyzing on selection would parse a block per keystroke. That
@@ -427,9 +433,18 @@ class ObjectPickerForm(Form if Form is not None else object):
             self._analyze_index(self._visible_indexes[self.list.SelectedIndex])
 
     def _accept(self, sender, event):
+        if not self._search_confirmed:
+            self._status.Text = self.labels["search_prompt"]
+            self._search.Focus()
+            return
         if self.list.SelectedIndex < 0:
             return
         visible = self.list.SelectedIndex
+        if self.labels["external_search"] and self.items[
+            self._visible_indexes[visible]
+        ].get("analysis") is None:
+            self._status.Text = "Click Find next FSM to search the matching workspace files."
+            return
         self._analyze_index(self._visible_indexes[visible])
         self.selected_index = self._visible_indexes[visible]
         self.action = "selected"
@@ -439,7 +454,12 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _accept_all(self, sender, event):
         if self.scan_callback is None:
             return
-        if not self._confirm_sweep(len(pending_indexes(self.items, self._visible_indexes))):
+        if not self._search_confirmed:
+            self._status.Text = self.labels["search_prompt"]
+            self._search.Focus()
+            return
+        if (not self.labels["external_search"] and not self._confirm_sweep(
+                len(pending_indexes(self.items, self._visible_indexes)))):
             return
         self._stop_background_analysis()
         self.analyzing = True
@@ -447,9 +467,12 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.UseWaitCursor = True
         try:
             try:
-                index = self.scan_callback(0, self._visible_indexes)
+                index = self.scan_callback(0, self._visible_indexes, self._search.Text)
             except TypeError:
-                index = self.scan_callback(0)
+                try:
+                    index = self.scan_callback(0, self._visible_indexes)
+                except TypeError:
+                    index = self.scan_callback(0)
             if index < 0:
                 show_message(self.labels["message_title"], self.labels["scan_none"], "info")
                 self.list.Invalidate()
@@ -483,6 +506,10 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _analyze_visible(self, sender=None, event=None):
         """Analyze exactly the blocks the current filter leaves visible."""
         if self.analyze_callback is None:
+            return
+        if not self._search_confirmed:
+            self._status.Text = self.labels["search_prompt"]
+            self._search.Focus()
             return
         if not self._visible_indexes:
             self._status.Text = "Nothing matches the filter."
@@ -545,6 +572,8 @@ class ObjectPickerForm(Form if Form is not None else object):
             # The queue was built from the previous filter. Per-item results
             # are cached, so nothing is lost by dropping the stale sweep.
             self._stop_background_analysis()
+        if self.labels["require_search"]:
+            self._search_confirmed = False
         self._refresh_list()
         self.list.Invalidate()
 
@@ -555,6 +584,17 @@ class ObjectPickerForm(Form if Form is not None else object):
         # to be swallowed, or the form's AcceptButton fires too and the dialog
         # closes on whichever block happens to be selected.
         if event.KeyCode != Keys.Enter:
+            return
+        if self.labels["require_search"]:
+            event.Handled = True
+            event.SuppressKeyPress = True
+            if not (self._search.Text or "").strip():
+                self._status.Text = self.labels["search_prompt"]
+                return
+            self._search_confirmed = True
+            self._status.Text = "Search confirmed: {0} matching block(s). Click Find next FSM.".format(
+                len(self._visible_indexes)
+            )
             return
         if not self._deferred:
             return

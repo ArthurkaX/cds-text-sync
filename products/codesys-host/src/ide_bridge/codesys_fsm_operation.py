@@ -7,6 +7,10 @@ diagram window. There is no apply path, no wizard, no rollback.
 """
 from __future__ import print_function
 
+import json
+import os
+import subprocess
+
 from codesys_runtime import resolve_runtime
 from codesys_utils import resolve_projects, safe_str
 from ide_st_objects import (
@@ -17,6 +21,17 @@ from ide_st_objects import (
 )
 from cts_shared.st.fsm import find_machines
 from cts_shared.st.fsm_mermaid import to_mermaid
+
+try:
+    from codesys_analyze_ui_launcher import (
+        _body_root,
+        _project_sync_folder,
+        _python_command,
+    )
+except Exception:
+    _body_root = None
+    _project_sync_folder = None
+    _python_command = None
 
 try:
     import codesys_fsm_ui
@@ -68,6 +83,91 @@ def _scan_next_fsm(items, start_index, visible_indexes=None):
         if item.get("status") == "changed":
             return index
     return -1
+
+
+class _WorkspaceState(object):
+    def __init__(self, payload):
+        self.label = payload["label"]
+        self.aliases = payload.get("aliases", [])
+        self.order = payload.get("order", 0)
+
+
+class _WorkspaceTransition(object):
+    def __init__(self, payload):
+        self.source = payload.get("source")
+        self.target = payload.get("target")
+        self.guard = payload.get("guard", "")
+        self.offset = payload.get("offset", 0)
+        self.lhs = payload.get("lhs", "")
+        self.deferred = payload.get("deferred", False)
+
+
+class _WorkspaceMachine(object):
+    def __init__(self, payload):
+        self.selector = payload["selector"]
+        self.states = [_WorkspaceState(state) for state in payload.get("states", [])]
+        self.transitions = [
+            _WorkspaceTransition(transition)
+            for transition in payload.get("transitions", [])
+        ]
+        self.deferred = payload.get("deferred", False)
+        self.numeric = payload.get("numeric", False)
+        self.warnings = payload.get("warnings", [])
+        self.is_fsm = bool(self.transitions)
+
+
+def _workspace_label_key(value):
+    """Comparable path key for an IDE object label or project-view file."""
+    value = (value or "").replace("\\", "/").strip().lower()
+    root, extension = os.path.splitext(value)
+    return root if extension == ".st" else value
+
+
+def _workspace_item_index(items, relative_path, visible_indexes):
+    """Map an exported .st path back to its CODESYS object without reading it."""
+    target = _workspace_label_key(relative_path)
+    target_name = target.rsplit("/", 1)[-1]
+    candidates = visible_indexes if visible_indexes is not None else range(len(items))
+    exact = []
+    name_matches = []
+    for index in candidates:
+        key = _workspace_label_key(items[index].get("label"))
+        if key == target or key.endswith("/" + target) or target.endswith("/" + key):
+            exact.append(index)
+        elif key.rsplit("/", 1)[-1] == target_name:
+            name_matches.append(index)
+    if len(exact) == 1:
+        return exact[0]
+    if len(name_matches) == 1:
+        return name_matches[0]
+    return -1
+
+
+def _search_workspace(project, query):
+    if _project_sync_folder is None:
+        raise RuntimeError("CPython FSM search launcher is unavailable")
+    sync_folder, error = _project_sync_folder(project)
+    if error:
+        raise RuntimeError(error)
+    command = [
+        _python_command(), "-m", "cds_text_sync.fsm_search",
+        "--workspace", sync_folder, "--query", query,
+    ]
+    kwargs = {
+        "cwd": _body_root(),
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+    process = subprocess.Popen(command, **kwargs)
+    stdout, stderr = process.communicate()
+    if process.returncode:
+        raise RuntimeError(safe_str(stderr) or "CPython FSM search failed")
+    try:
+        return json.loads(safe_str(stdout))
+    except Exception as error:
+        raise RuntimeError("Invalid CPython FSM search response: " + safe_str(error))
 
 
 def _machine_payload(machine):
@@ -123,8 +223,8 @@ def main(params=None, runtime=None):
     labels = {
         "title": "FSM - Select object",
         "heading": "Select an object to see its state machine",
-        "subtitle": "Filter the list first, then press Analyze to scan only the matching blocks. Find next FSM opens the first matching block that has one.",
-        "status": "Type a filter, then press Analyze.",
+        "subtitle": "Enter a path search and press Enter. FSM detection then runs in parallel in project-view, without reading every CODESYS object.",
+        "status": "Enter a search term and press Enter first.",
         "scan_button": "Find next FSM",
         "open_button": "Show diagram",
         "analyze_button": "Analyze filtered",
@@ -134,6 +234,9 @@ def main(params=None, runtime=None):
         "analysis_hits": " {0} contain a state machine.",
         "message_title": "FSM",
         "deferred_analysis": True,
+        "require_search": True,
+        "search_prompt": "Enter a non-empty path search and press Enter first.",
+        "external_search": True,
     }
 
     def analyze_selected(index):
@@ -141,8 +244,21 @@ def main(params=None, runtime=None):
             return _analyze_item(items[index])
         return None
 
-    def scan_from(index, visible_indexes=None):
-        return _scan_next_fsm(items, index, visible_indexes)
+    def scan_from(index, visible_indexes=None, query=""):
+        result = _search_workspace(project, query)
+        for row in result.get("results", []):
+            item_index = _workspace_item_index(items, row.get("path", ""), visible_indexes)
+            if item_index < 0:
+                continue
+            item = items[item_index]
+            item["machines"] = [
+                _WorkspaceMachine(payload) for payload in row.get("machines", [])
+            ]
+            item["status"] = "changed"
+            item["suffix"] = "[{0} FSM]".format(len(item["machines"]))
+            item["analysis"] = "done"
+            return item_index
+        return -1
 
     action, selected_index = codesys_fmt_ui.show_object_picker(
         items, selected_index, analyze_selected, scan_from, labels=labels
