@@ -50,6 +50,12 @@ ANALYSIS_BUDGET_MS = 60
 ANALYSIS_CONFIRM_LIMIT = 50
 
 
+# The review wizard opens a new dialog for every changed object.  Keep the
+# user-selected geometry at module scope so moving to the next object does not
+# make a maximized preview snap back to the default size.
+_FMT_PREVIEW_STATE = None
+
+
 def pending_indexes(items, indexes):
     """Indexes in *indexes* whose item has not been analyzed yet."""
     return [index for index in indexes if items[index].get("analysis") is None]
@@ -721,6 +727,25 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._tooltip = tooltip
         self._layout()
         self._highlight(before, after)
+        self._restore_preview_state()
+
+    def _restore_preview_state(self):
+        state = _FMT_PREVIEW_STATE
+        if not state:
+            return
+        self.StartPosition = FormStartPosition.Manual
+        self.Location = state["location"]
+        self.Size = state["size"]
+        self.WindowState = state["window_state"]
+
+    def remember_preview_state(self):
+        global _FMT_PREVIEW_STATE
+        bounds = self.RestoreBounds
+        _FMT_PREVIEW_STATE = {
+            "location": bounds.Location,
+            "size": bounds.Size,
+            "window_state": self.WindowState,
+        }
 
     def _stats_text(self, changed_lines):
         if self.wizard_mode:
@@ -883,6 +908,7 @@ def show_fmt_preview(object_name, before, after, changed_lines, wizard_mode=Fals
         object_name, before, after, changed_lines, wizard_mode=wizard_mode
     )
     form.ShowDialog()
+    form.remember_preview_state()
     return form.action
 
 
