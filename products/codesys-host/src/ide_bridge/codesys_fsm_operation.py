@@ -215,14 +215,17 @@ def main(params=None, runtime=None):
         return {"status": "error", "error": "No open project"}
 
     project = projects_obj.primary
-    items, selected_index = build_items(project, projects_obj, runtime.system)
-    if not items:
-        runtime.ui.warning("No editable Structured Text objects were found in the project.")
-        return {"status": "cancelled"}
+    # Do not enumerate the CODESYS object tree here.  On large projects that
+    # recursive API walk is slower than the actual FSM parse and makes the
+    # window look frozen before the user even supplies a search term.  The
+    # offline search below uses project-view as the source of truth and adds
+    # only the found item to this transient list.
+    items = []
+    selected_index = -1
 
     labels = {
         "title": "FSM - Select object",
-        "heading": "Select an object to see its state machine",
+        "heading": "Find a state machine in the exported workspace",
         "subtitle": "Enter a path search and press Enter. FSM detection then runs in parallel in project-view, without reading every CODESYS object.",
         "status": "Enter a search term and press Enter first.",
         "scan_button": "Find next FSM",
@@ -247,17 +250,21 @@ def main(params=None, runtime=None):
     def scan_from(index, visible_indexes=None, query=""):
         result = _search_workspace(project, query)
         for row in result.get("results", []):
-            item_index = _workspace_item_index(items, row.get("path", ""), visible_indexes)
-            if item_index < 0:
-                continue
-            item = items[item_index]
+            item = {
+                "label": row.get("path", "Structured Text object"),
+                "display": row.get("path", "Structured Text object"),
+                "object": None,
+                "status": None,
+                "analysis": None,
+            }
             item["machines"] = [
                 _WorkspaceMachine(payload) for payload in row.get("machines", [])
             ]
             item["status"] = "changed"
             item["suffix"] = "[{0} FSM]".format(len(item["machines"]))
             item["analysis"] = "done"
-            return item_index
+            items.append(item)
+            return len(items) - 1
         return -1
 
     action, selected_index = codesys_fmt_ui.show_object_picker(
@@ -269,7 +276,7 @@ def main(params=None, runtime=None):
         if selected_index < 0 or selected_index >= len(items):
             return {"status": "cancelled"}
         item = items[selected_index]
-        if item.get("analysis") is None:
+        if item.get("analysis") is None and item.get("object") is not None:
             _analyze_item(item)
         if item.get("status") == "error":
             runtime.ui.warning("The selected object could not be read as Structured Text.")

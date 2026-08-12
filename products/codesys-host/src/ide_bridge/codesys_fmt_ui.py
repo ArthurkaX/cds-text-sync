@@ -592,9 +592,12 @@ class ObjectPickerForm(Form if Form is not None else object):
                 self._status.Text = self.labels["search_prompt"]
                 return
             self._search_confirmed = True
-            self._status.Text = "Search confirmed: {0} matching block(s). Click Find next FSM.".format(
-                len(self._visible_indexes)
-            )
+            if self.labels["external_search"]:
+                self._status.Text = "Search confirmed. Click Find next FSM."
+            else:
+                self._status.Text = "Search confirmed: {0} matching block(s). Click Find next FSM.".format(
+                    len(self._visible_indexes)
+                )
             return
         if not self._deferred:
             return
