@@ -62,6 +62,7 @@ jobs:
             products/codesys-host/cds_bootstrap.py `
             products/codesys-host/Project_build.py `
             products/codesys-host/Project_fmt.py `
+            products/codesys-host/Project_fsm.py `
             products/codesys-host/Project_analyze_ui.py `
             products/codesys-host/Project_compare_ui.py `
             products/codesys-host/Project_directory.py `

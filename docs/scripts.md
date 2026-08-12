@@ -39,8 +39,8 @@ see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md)
 
 The active root entry points are `Project_directory.py`, `Project_options.py`,
 `Project_export.py`, `Project_import.py`, `Project_compare_ui.py`,
-`Project_build.py`, `Project_fmt.py`, `Project_discover.py`, and
-`Project_resources.py`.
+`Project_build.py`, `Project_fmt.py`, `Project_fsm.py`, `Project_discover.py`,
+and `Project_resources.py`.
 
 ## 3. `Project_fmt.py` (Quick ST formatting)
 
@@ -70,7 +70,32 @@ that changed after its preview was created. If the CODESYS version does not
 expose its tree selection to ScriptEngine, the script opens a list of textual
 project objects instead.
 
-## 4. `Project_options.py` (Advanced project options)
+## 4. `Project_fsm.py` (FSM transition map)
+
+Use this when you want to see the state machine(s) inside a Structured Text
+object as a diagram.
+
+1. Select a POU in the CODESYS project tree.
+2. Run `Project_fsm.py` from **Tools > Scripting**.
+3. The first screen loads object names only. Click a block to scan it; its row
+   then shows either `[N FSM]` or `[no FSM]`.
+4. Use the filter box when the project contains many objects. Choose
+   **Show diagram** for one scanned object, or **Find next FSM** to scan from
+   the top and open the first object that has a state machine.
+5. The diagram window lists the transitions of the current machine in source
+   order on the left — a later write overrides an earlier one — and draws the
+   state boxes and edges on the right. Click a state to highlight the edges
+   that touch it, or a transition row to highlight exactly that edge.
+6. **Copy as mermaid** puts a `stateDiagram-v2` rendering of the current
+   machine on the clipboard.
+
+`Project_fsm.py` is read-only: it never writes to any project object. It
+detects state machines implemented as a `CASE` over a state variable whose
+branches assign to the same variable (or its `next_`/`new_` twin). An object
+with no `textual_implementation` (a DUT, a GVL) is simply `[no FSM]`, not an
+error. The diagram does not jump to the source position in the CODESYS editor.
+
+## 5. `Project_options.py` (Advanced project options)
 
 The normal first export does not require this dialog: the default profile
 already enables every supported `.st` and `.csv` text projection. Use it after
@@ -94,7 +119,7 @@ selecting the sync root only when you need to change advanced project options.
 - **Git Ignore Helper**: Append recommended generated-state ignore rules without
   rewriting existing user rules.
 
-## 5. `Project_export.py` (CODESYS -> Disk)
+## 6. `Project_export.py` (CODESYS -> Disk)
 
 Exports the current project state into the XML-first workspace under the
 configured sync folder.
@@ -115,7 +140,7 @@ configured sync folder.
   silently overwritten — see
   [Overwrite protection](sync-modes.md#overwrite-protection-both-modes).
 
-## 6. `Project_import.py` (Disk -> CODESYS)
+## 7. `Project_import.py` (Disk -> CODESYS)
 
 Applies disk changes back into CODESYS using the XML-first bridge.
 
@@ -132,7 +157,7 @@ Applies disk changes back into CODESYS using the XML-first bridge.
   the object kind is clear from the source. This is also how a screen compiled by
   [`cts visu from-svg`](visu.md) reaches the IDE.
 
-## 7. `Project_compare_ui.py` (IDE vs Disk)
+## 8. `Project_compare_ui.py` (IDE vs Disk)
 
 Shows what differs between the current IDE state and the exported disk view,
 and lets you act on it.
@@ -152,7 +177,7 @@ and lets you act on it.
 For a compare without any dialog — in a shell, in CI, or from the daemon — use
 [`cts compare`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 
-## 8. Text projections
+## 9. Text projections
 
 Projections are editable views generated from XML-backed CODESYS objects. They
 are enabled by default in XML-first mode and can be adjusted in
@@ -181,7 +206,7 @@ object per application, so creating a second one from a new `.st` file is
 rejected before IDE apply. Graphical implementations are skipped by profile
 safety rules unless a safe textual representation is available.
 
-## 9. Diagnostics
+## 10. Diagnostics
 
 - **`Project_build.py`**: Builds the active or selected application and writes
   `.dump/build_<Application>.log` plus `.dump/build_report.json`.

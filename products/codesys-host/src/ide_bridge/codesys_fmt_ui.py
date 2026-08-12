@@ -17,6 +17,23 @@ except Exception:
     Form = None
 
 
+# Default copy strings for the object picker. Plain strings, defined outside
+# the CLR guard so they exist even when WinForms is unavailable. A caller may
+# pass a ``labels`` dict to override any subset; the FSM command reuses this
+# picker with its own wording.
+PICKER_LABELS = {
+    "title": "FMT - Select object",
+    "heading": "Select a Structured Text object from the project",
+    "subtitle": "Select a block to analyze it. Review All scans from the top and opens the first block that needs changes.",
+    "status": "Select a block to analyze it.",
+    "scan_button": "Review All",
+    "open_button": "Open selected",
+    "scan_status": "Scanning blocks from the top...",
+    "scan_none": "No formatting changes were found.",
+    "message_title": "FMT",
+}
+
+
 if Form is not None:
     _BG = Color.FromArgb(30, 30, 30)
     _PANEL = Color.FromArgb(37, 37, 38)
@@ -114,8 +131,12 @@ def _highlight_changed_characters(before_box, after_box, before, after, lines):
 
 
 class ObjectPickerForm(Form if Form is not None else object):
-    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None):
-        self.Text = "FMT - Select object"
+    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None, labels=None):
+        merged = dict(PICKER_LABELS)
+        if labels:
+            merged.update(labels)
+        self.labels = merged
+        self.Text = merged["title"]
         self.Size = Size(980, 660)
         self.MinimumSize = Size(700, 460)
         self.StartPosition = FormStartPosition.CenterScreen
@@ -133,7 +154,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._analysis_timer = None
 
         title = Label()
-        title.Text = "Select a Structured Text object from the project"
+        title.Text = merged["heading"]
         title.ForeColor = _TEXT
         title.Font = Font("Segoe UI", 12, FontStyle.Bold)
         title.Location = Point(16, 14)
@@ -141,14 +162,14 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.Controls.Add(title)
 
         subtitle = Label()
-        subtitle.Text = "Select a block to analyze it. Review All scans from the top and opens the first block that needs changes."
+        subtitle.Text = merged["subtitle"]
         subtitle.ForeColor = _DIM
         subtitle.Location = Point(18, 45)
         subtitle.AutoSize = True
         self.Controls.Add(subtitle)
 
         status = Label()
-        status.Text = "Select a block to analyze it."
+        status.Text = merged["status"]
         status.ForeColor = _DIM
         status.Location = Point(18, 63)
         status.AutoSize = True
@@ -202,7 +223,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._cancel_button = cancel
 
         all_button = Button()
-        all_button.Text = "Review All"
+        all_button.Text = merged["scan_button"]
         all_button.Size = Size(100, 30)
         all_button.Location = Point(750, 590)
         all_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
@@ -212,7 +233,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._all_button = all_button
 
         selected = Button()
-        selected.Text = "Open selected"
+        selected.Text = merged["open_button"]
         selected.Size = Size(120, 30)
         selected.Location = Point(860, 590)
         selected.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
@@ -247,16 +268,18 @@ class ObjectPickerForm(Form if Form is not None else object):
             color = _AFTER
         else:
             color = _TEXT if selected else _DIM
-        if status == "changed":
-            suffix = "[{0} line(s) to fix]".format(item.get("changed_lines", 0))
-        elif status == "ok":
-            suffix = "[OK]"
-        elif status == "error":
-            suffix = "[read error]"
-        elif item.get("analysis") == "running":
-            suffix = "[analyzing]"
-        else:
-            suffix = "[not analyzed]"
+        suffix = item.get("suffix")
+        if suffix is None:
+            if status == "changed":
+                suffix = "[{0} line(s) to fix]".format(item.get("changed_lines", 0))
+            elif status == "ok":
+                suffix = "[OK]"
+            elif status == "error":
+                suffix = "[read error]"
+            elif item.get("analysis") == "running":
+                suffix = "[analyzing]"
+            else:
+                suffix = "[not analyzed]"
         brush = SolidBrush(color)
         try:
             event.Graphics.DrawString(
@@ -375,12 +398,12 @@ class ObjectPickerForm(Form if Form is not None else object):
             return
         self._stop_background_analysis()
         self.analyzing = True
-        self._status.Text = "Scanning blocks from the top..."
+        self._status.Text = self.labels["scan_status"]
         self.UseWaitCursor = True
         try:
             index = self.scan_callback(0)
             if index < 0:
-                show_message("FMT", "No formatting changes were found.", "info")
+                show_message(self.labels["message_title"], self.labels["scan_none"], "info")
                 self.list.Invalidate()
                 return
             self.selected_index = index
@@ -694,7 +717,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._jump_change(1)
 
 
-def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None):
+def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None, labels=None):
     if Form is None:
         return "cancel", -1
     form = ObjectPickerForm(
@@ -702,6 +725,7 @@ def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_cal
         selected_index=selected_index,
         analyze_callback=analyze_callback,
         scan_callback=scan_callback,
+        labels=labels,
     )
     form.ShowDialog()
     return form.action, form.selected_index

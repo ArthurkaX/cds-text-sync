@@ -99,6 +99,7 @@ def _install_stubs() -> dict[str, ModuleType]:
         "System.Windows",
         "System.Windows.Forms",
         "System.Drawing",
+        "System.Drawing.Drawing2D",
         "System.Collections",
         "System.Collections.Generic",
         "System.Array",

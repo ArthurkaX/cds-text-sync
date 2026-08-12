@@ -4,12 +4,21 @@ from __future__ import print_function
 
 from codesys_runtime import resolve_runtime
 from codesys_utils import resolve_projects, safe_str
-from ide_runtime_common import object_guid, object_name
-from ide_daemon_helpers import _build_path
 from ide_handlers_sync import _replace_text_document
 from cts_shared.st.formatting import (
     format_declarations as _format_declarations,
     format_implementation as _format_implementation,
+)
+from ide_st_objects import (
+    build_items as _build_items,
+    has_text_document as _has_text_document,
+    iter_textual_objects as _iter_textual_objects,
+    object_key as _object_key,
+    object_label as _object_label,
+    read_document as _read_document,
+    repair_mojibake as _repair_mojibake,
+    selected_object as _selected_object,
+    text_of as _text,
 )
 
 try:
@@ -18,149 +27,9 @@ except Exception:
     codesys_fmt_ui = None
 
 
-try:
-    _UNICODE_TYPE = unicode
-except NameError:
-    _UNICODE_TYPE = str
-
-try:
-    _BYTE_TYPE = bytes
-except NameError:
-    _BYTE_TYPE = str
-
-
-def _repair_mojibake(text):
-    """Repair an obvious UTF-8 -> Latin-1 round trip in IDE text."""
-    def badness(value):
-        return sum(
-            1
-            for char in value
-            if "\x80" <= char <= "\x9f" or char in "ÃÂÐÑ"
-        )
-
-    current = text
-    for _ in range(2):
-        if any(ord(char) > 0xFF for char in current):
-            break
-        try:
-            candidate = current.encode("latin-1").decode("utf-8")
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            break
-        if badness(candidate) >= badness(current):
-            break
-        current = candidate
-    return current
-
-
-def _text(value):
-    """Return IDE text as Unicode while repairing obvious mojibake."""
-    if value is None:
-        return _UNICODE_TYPE()
-    if isinstance(value, _UNICODE_TYPE):
-        return _repair_mojibake(value)
-    if isinstance(value, _BYTE_TYPE):
-        try:
-            return _repair_mojibake(value.decode("utf-8"))
-        except UnicodeDecodeError:
-            return _repair_mojibake(value.decode("cp1251", "replace"))
-    try:
-        return _repair_mojibake(_UNICODE_TYPE(value))
-    except Exception:
-        return _repair_mojibake(_UNICODE_TYPE(str(value)))
-
-
 def format_text(text, declaration=False):
     """Format one pure text section using the shared analyzer core."""
     return _format_declarations(text) if declaration else _format_implementation(text)
-
-
-def _read_document(obj, attribute):
-    document = getattr(obj, attribute, None)
-    if document is None:
-        return None
-    try:
-        value = getattr(document, "text", document)
-        if callable(value):
-            value = value()
-        return _text(value)
-    except Exception as error:
-        raise RuntimeError(
-            "Could not read {0}: {1}".format(attribute, safe_str(error))
-        )
-
-
-def _has_text_document(obj):
-    """Check for a text document without reading its contents."""
-    for attribute in ("textual_declaration", "textual_implementation"):
-        try:
-            if getattr(obj, attribute, None) is not None:
-                return True
-        except Exception:
-            pass
-    return False
-
-
-def _object_key(obj):
-    guid = object_guid(obj)
-    return "guid:" + guid if guid else "id:" + str(id(obj))
-
-
-def _iter_textual_objects(project):
-    try:
-        children = list(project.get_children(recursive=True))
-    except Exception:
-        children = []
-    result = []
-    seen = set()
-    for obj in children:
-        key = _object_key(obj)
-        if key in seen or not _has_text_document(obj):
-            continue
-        seen.add(key)
-        result.append(obj)
-    return result
-
-
-def _selected_object(holder):
-    if holder is None:
-        return None
-    names = (
-        "get_selected_object", "get_selected_objects", "get_current_object",
-        "get_current_selection", "get_active_object", "selected_object",
-        "selected_objects", "current_object", "current_selection",
-        "active_object", "selection",
-    )
-    for name in names:
-        try:
-            value = getattr(holder, name, None)
-            if callable(value):
-                value = value()
-            if isinstance(value, (list, tuple)):
-                value = value[0] if value else None
-            elif value is not None and not _has_text_document(value):
-                try:
-                    value = list(value)[0]
-                except Exception:
-                    pass
-            if value is None:
-                continue
-            for wrapper in ("object", "Object", "value", "Value"):
-                candidate = getattr(value, wrapper, None)
-                if candidate is not None:
-                    value = candidate
-                    break
-            if _has_text_document(value):
-                return value
-        except Exception:
-            pass
-    return None
-
-
-def _object_label(obj):
-    name = object_name(obj) or safe_str(getattr(obj, "name", ""))
-    name = name or "Structured Text object"
-    path = _build_path(obj)
-    return path if path and path.endswith("/" + name) else name
 
 
 def _changed_lines(before, after):
@@ -262,35 +131,6 @@ def _apply_item(item):
                 pass
         return "Could not update: " + ", ".join(errors)
     return ""
-
-
-def _build_items(project, projects_obj, system):
-    objects = _iter_textual_objects(project)
-    selected = _selected_object(project) or _selected_object(projects_obj) or _selected_object(system)
-    if selected is not None and all(
-        _object_key(selected) != _object_key(obj) for obj in objects
-    ):
-        objects.insert(0, selected)
-
-    items = []
-    for obj in objects:
-        label = _object_label(obj)
-        items.append({
-            "object": obj,
-            "label": label,
-            "display": label,
-            "status": None,
-            "analysis": None,
-        })
-    selected_index = -1
-    if selected is not None:
-        for index, item in enumerate(items):
-            if _object_key(item["object"]) == _object_key(selected):
-                selected_index = index
-                break
-    if selected_index < 0 and items:
-        selected_index = 0
-    return items, selected_index
 
 
 def _show_preview(item, position=None, total=None, progress=None):
