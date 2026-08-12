@@ -19,7 +19,7 @@ try:
         Form, Label, Button, ListBox, ComboBox, ComboBoxStyle, Panel, MessageBox,
         MessageBoxButtons, MessageBoxIcon, FormBorderStyle, FlatStyle,
         FormStartPosition, AnchorStyles, ControlStyles, Clipboard, Cursors,
-        Timer
+        Timer, ToolTip
     )
     from System.Drawing import (
         Size, Point, Font, FontStyle, Color, SolidBrush, Rectangle, Pen
@@ -33,6 +33,8 @@ try:
 except Exception:
     codesys_fmt_ui = None
 
+from cts_shared.st import fsm_layout
+
 
 if Form is not None:
     _BG = Color.FromArgb(30, 30, 30)
@@ -43,6 +45,19 @@ if Form is not None:
     _BUTTON_BORDER = Color.FromArgb(115, 115, 125)
     _BEFORE = Color.FromArgb(245, 180, 100)
     _DIM_ALPHA = Color.FromArgb(90, 160, 160, 160)
+    _STEP_FILL = Color.FromArgb(45, 48, 52)
+    _STEP_BORDER = Color.FromArgb(150, 155, 165)
+    _LINK = Color.FromArgb(150, 155, 165)
+    _GUARD = Color.FromArgb(150, 190, 230)
+    _PRIORITY = Color.FromArgb(235, 140, 120)
+    _DIVIDER = Color.FromArgb(95, 100, 108)
+
+    # A GRAFCET bar is perpendicular to its link. A vertical bar crossing a
+    # horizontal link is drawn shorter than a horizontal one so it does not
+    # overshoot a self-loop.
+    _BAR_V_HALF = 9
+    _ARROW_LEN = 8
+    _ARROW_HALF = 5
 
 
 def _style_button(button):
@@ -102,6 +117,10 @@ class FsmDiagramForm(Form if Form is not None else object):
         self.BackColor = _BG
         self.machines = machines
         self.current = initial if 0 <= initial < len(machines) else 0
+        self._font_step = Font("Consolas", 9)
+        self._font_num = Font("Consolas", 9, FontStyle.Bold)
+        self._font_guard = Font("Consolas", 8.25)
+        self._grafcet = None
         self.selected_state = None
         self.selected_transition = None
         self._transitions = self._sorted_transitions()
@@ -144,6 +163,7 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._list.BackColor = _PANEL
         self._list.ForeColor = _TEXT
         self._list.Font = Font("Consolas", 9)
+        self._list.HorizontalScrollbar = True
         self._list.SelectedIndexChanged += self._on_transition_selected
         self.Controls.Add(self._list)
         self._refresh_transition_list()
@@ -152,12 +172,20 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._guard.ForeColor = _DIM
         self._guard.Location = Point(16, 606)
         self._guard.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
-        self._guard.AutoSize = True
+        self._guard.AutoSize = False
+        self._guard.Font = Font("Consolas", 8.25)
         self.Controls.Add(self._guard)
+        self._guard_tip = ToolTip()
 
         # RIGHT: the diagram panel.
+        self._diagram_caption = Label()
+        self._diagram_caption.ForeColor = _DIM
+        self._diagram_caption.Location = Point(410, 78)
+        self._diagram_caption.AutoSize = True
+        self.Controls.Add(self._diagram_caption)
+
         self._diagram = _DiagramPanel()
-        self._diagram.Location = Point(410, 78)
+        self._diagram.Location = Point(410, 100)
         self._diagram.Anchor = (
             AnchorStyles.Top | AnchorStyles.Bottom
             | AnchorStyles.Left | AnchorStyles.Right
@@ -167,7 +195,8 @@ class FsmDiagramForm(Form if Form is not None else object):
         self._diagram.Paint += self._paint_diagram
         self._diagram.MouseClick += self._on_diagram_click
         self.Controls.Add(self._diagram)
-        self._update_scroll_size()
+        self._rebuild_grafcet()
+        self._refresh_transition_list()
 
         # BOTTOM: buttons right-aligned.
         close_button = Button()
@@ -218,12 +247,18 @@ class FsmDiagramForm(Form if Form is not None else object):
         return sorted(self._current_machine().transitions, key=lambda t: t.offset)
 
     def _refresh_transition_list(self):
+        """Source-ordered transitions, with the shared enum prefix stripped."""
+        prefix = self._grafcet.prefix if self._grafcet is not None else ""
         self._list.BeginUpdate()
         try:
             self._list.Items.Clear()
             for transition in self._transitions:
-                source = transition.source if transition.source is not None else "(any)"
-                self._list.Items.Add("{0}  ->  {1}".format(source, transition.target))
+                if transition.source is None:
+                    source = "any"
+                else:
+                    source = fsm_layout.strip_prefix(transition.source, prefix)
+                target = fsm_layout.strip_prefix(transition.target, prefix)
+                self._list.Items.Add("{0}  ->  {1}".format(source, target))
         finally:
             self._list.EndUpdate()
 
@@ -232,11 +267,11 @@ class FsmDiagramForm(Form if Form is not None else object):
         self.selected_state = None
         self.selected_transition = None
         self._transitions = self._sorted_transitions()
+        self._rebuild_grafcet()
         self._refresh_transition_list()
         self._guard.Text = ""
         self._update_warnings_label()
         self._diagram.AutoScrollPosition = Point(0, 0)
-        self._update_scroll_size()
         self._diagram.Invalidate()
 
     def _on_transition_selected(self, sender, event):
@@ -246,22 +281,32 @@ class FsmDiagramForm(Form if Form is not None else object):
         transition = self._transitions[index]
         self.selected_transition = transition
         self.selected_state = None
-        self._guard.Text = transition.guard or "(no guard)"
+        text = transition.guard or "=1  (unconditional)"
+        self._guard.Text = text
+        self._guard_tip.SetToolTip(self._guard, text)
         self._diagram.Invalidate()
         self._scroll_to_source(transition)
 
     def _on_diagram_click(self, sender, event):
-        state = self._state_at(event.Location)
-        if state is None:
-            self.selected_state = None
-            self.selected_transition = None
-            self._list.ClearSelected()
-            self._guard.Text = ""
-        else:
-            self.selected_state = state.label
-            self.selected_transition = None
-            self._list.ClearSelected()
-            self._guard.Text = ""
+        """A click selects a transition when it lands on a link or its
+        receptivity, and a step otherwise."""
+        if self._grafcet is None:
+            return
+        point = self._to_content(event.Location)
+        link = self._grafcet.link_at(point.X, point.Y)
+        if link is not None:
+            for index, transition in enumerate(self._transitions):
+                if transition is link.transition:
+                    # Routing through the list keeps one selection path: it
+                    # fills the guard label and scrolls the diagram.
+                    self._list.SelectedIndex = index
+                    return
+        step = self._grafcet.step_at(point.X, point.Y)
+        self.selected_transition = None
+        self._list.ClearSelected()
+        self._guard.Text = ""
+        self._guard_tip.SetToolTip(self._guard, "")
+        self.selected_state = step.full_label if step is not None else None
         self._diagram.Invalidate()
 
     def _copy_mermaid(self, sender, event):
@@ -312,37 +357,14 @@ class FsmDiagramForm(Form if Form is not None else object):
         )
         self._warnings_label.Location = Point(margin, button_y + 6)
         self._list.Size = Size(380, max(100, button_y - 100 - 6))
-        self._guard.Location = Point(margin, button_y - 24)
+        guard_w = max(120, self._copy_button.Left - 10 - margin)
+        self._guard.Size = Size(guard_w, 30)
+        self._guard.Location = Point(margin, button_y - 34)
         self._diagram.Size = Size(
-            max(100, width - 410 - margin), max(100, button_y - 78)
+            max(100, width - 410 - margin), max(100, button_y - 100)
         )
 
     # -- diagram geometry ---------------------------------------------------
-
-    _BOX_X = 40
-    _BOX_W = 260
-    _BOX_H = 38
-    _GAP = 30
-
-    def _row_count(self):
-        machine = self._current_machine()
-        has_any = any(t.source is None for t in machine.transitions)
-        return len(machine.states) + (1 if has_any else 0)
-
-    def _row_y(self, row):
-        return 20 + row * (self._BOX_H + self._GAP)
-
-    def _state_row(self, label):
-        machine = self._current_machine()
-        has_any = any(t.source is None for t in machine.transitions)
-        offset = 1 if has_any else 0
-        for index, state in enumerate(machine.states):
-            if state.label == label:
-                return index + offset
-        return None
-
-    def _any_row(self):
-        return 0 if any(t.source is None for t in self._current_machine().transitions) else None
 
     def _to_content(self, point):
         """Client coordinates -> diagram coordinates.
@@ -353,51 +375,67 @@ class FsmDiagramForm(Form if Form is not None else object):
         scroll = self._diagram.AutoScrollPosition
         return _Pt(point.X - scroll.X, point.Y - scroll.Y)
 
-    def _state_at(self, point):
-        machine = self._current_machine()
-        has_any = any(t.source is None for t in machine.transitions)
-        content = self._to_content(point)
-        if has_any:
-            if self._box_contains(content, 0):
-                return None  # "(any state)" is not a selectable state
-        for state in machine.states:
-            row = self._state_row(state.label)
-            if row is not None and self._box_contains(content, row):
-                return state
-        return None
-
-    def _box_contains(self, point, row):
-        x = self._BOX_X
-        y = self._row_y(row)
-        return (
-            x <= point.X <= x + self._BOX_W
-            and y <= point.Y <= y + self._BOX_H
-        )
-
     def _scroll_to_source(self, transition):
-        row = None
-        if transition.source is not None:
-            row = self._state_row(transition.source)
-        else:
-            row = self._any_row()
-        if row is None:
+        # A priority transition has no source step, so scroll to where it lands.
+        label = transition.source
+        if label is None:
+            label = transition.target
+        step = self._grafcet.step_for(label)
+        if step is None:
             return
-        y = self._row_y(row)
         # The getter returns a negative offset but the setter expects a
         # positive one, so the current X has to be flipped back on the way in.
         self._diagram.AutoScrollPosition = Point(
-            -self._diagram.AutoScrollPosition.X, y
+            -self._diagram.AutoScrollPosition.X, max(0, step.y - 40)
         )
 
     def _update_scroll_size(self):
         """Publish the diagram extent so the panel can size its scrollbars."""
-        rows = self._row_count()
-        if rows <= 0:
+        if self._grafcet is None:
             self._diagram.AutoScrollMinSize = Size(0, 0)
             return
-        content_height = self._row_y(rows - 1) + self._BOX_H + 20
-        content_width = self._BOX_X + self._BOX_W + 200
-        self._diagram.AutoScrollMinSize = Size(content_width, content_height)
+        self._diagram.AutoScrollMinSize = Size(
+            self._grafcet.width, self._grafcet.height
+        )
+
+    def _measures(self):
+        """GDI+ text measurement for the layout, or (None, None, None) when the
+        panel has no device context yet -- the layout then falls back to its
+        own estimate."""
+        try:
+            graphics = self._diagram.CreateGraphics()
+        except Exception:
+            return None, None, None
+
+        def measure(text):
+            if not text:
+                return 0
+            return int(graphics.MeasureString(text, self._font_step).Width) + 2
+
+        def guard(text):
+            if not text:
+                return 0
+            return int(graphics.MeasureString(text, self._font_guard).Width) + 2
+
+        return measure, guard, graphics
+
+    def _rebuild_grafcet(self):
+        measure, guard, graphics = self._measures()
+        try:
+            self._grafcet = fsm_layout.build_layout(
+                self._current_machine(), measure, guard
+            )
+        finally:
+            if graphics is not None:
+                graphics.Dispose()
+        machine = self._current_machine()
+        caption = "CASE {0} OF".format(machine.selector)
+        if self._grafcet.prefix:
+            # The enum prefix is stripped from every step so the labels fit;
+            # say once what was stripped.
+            caption += "     " + self._grafcet.prefix + "*"
+        self._diagram_caption.Text = caption
+        self._update_scroll_size()
 
     # -- painting -----------------------------------------------------------
 
@@ -408,130 +446,163 @@ class FsmDiagramForm(Form if Form is not None else object):
         # scrolls owner-drawn content if the origin is shifted by hand.
         scroll = self._diagram.AutoScrollPosition
         graphics.TranslateTransform(scroll.X, scroll.Y)
-        machine = self._current_machine()
-        has_any = any(t.source is None for t in machine.transitions)
+        if self._grafcet is None:
+            return
+        if self._grafcet.has_any:
+            self._draw_any_block(graphics)
+        for step in self._grafcet.steps:
+            self._draw_step(graphics, step)
+        for link in self._grafcet.links:
+            self._draw_link(graphics, link)
 
-        # Draw the "(any state)" box first.
-        if has_any:
-            self._draw_box(graphics, 0, "(any state)", _DIM)
+    def _draw_any_block(self, graphics):
+        x, y, w, h = self._grafcet.any_box
+        self._fill_rect(graphics, _PANEL, x, y, w, h)
+        self._stroke_rect(graphics, _PRIORITY, 2, x, y, w, h)
+        self._draw_text(graphics, "any", self._font_num, _PRIORITY,
+                        x + (w - 26) // 2, y + (h - fsm_layout.TEXT_H) // 2)
+        self._draw_text(graphics, "priority - written outside the CASE",
+                        self._font_guard, _DIM, x, y - 18)
 
-        for state in machine.states:
-            row = self._state_row(state.label)
-            self._draw_box(graphics, row, state.label, _TEXT)
+    def _draw_step(self, graphics, step):
+        selected = (self.selected_state == step.full_label)
+        border = _BEFORE if selected else _STEP_BORDER
+        self._fill_rect(graphics, _STEP_FILL, step.x, step.y, step.w, step.h)
+        self._stroke_rect(graphics, border, 2 if selected else 1,
+                          step.x, step.y, step.w, step.h)
+        if step.initial:
+            # IEC 60848 marks the initial step with a double border.
+            self._stroke_rect(graphics, border, 1, step.x + 3, step.y + 3,
+                              step.w - 6, step.h - 6)
+        divider_x = step.x + fsm_layout.NUM_W
+        self._draw_line(graphics, _DIVIDER, 1, divider_x, step.y,
+                        divider_x, step.bottom)
+        self._draw_centred(graphics, str(step.number), self._font_num, _TEXT,
+                           step.x, step.y, fsm_layout.NUM_W, step.h)
+        self._draw_text(graphics, step.label, self._font_step, _TEXT,
+                        divider_x + 10, step.y + (step.h - fsm_layout.TEXT_H) // 2)
+        if step.priority:
+            # A step a priority transition can jump to, marked so the reader
+            # does not have to scan the block above to find out.
+            self._draw_arrowhead(graphics, step.x - 4, step.cy, "right", _PRIORITY)
 
-        # Edges.
-        for transition in machine.transitions:
-            self._draw_edge(graphics, transition, has_any)
-
-    def _draw_box(self, graphics, row, label, color):
-        x = self._BOX_X
-        y = self._row_y(row)
-        rect = Rectangle(x, y, self._BOX_W, self._BOX_H)
-        fill = SolidBrush(_PANEL)
+    def _draw_link(self, graphics, link):
+        colour = self._link_colour(link)
+        points = System.Array[Point](
+            [Point(int(px), int(py)) for px, py in link.points]
+        )
+        pen = Pen(colour, 2)
         try:
-            graphics.FillRectangle(fill, rect)
-        finally:
-            fill.Dispose()
-        pen = Pen(_BUTTON_BORDER, 1)
-        try:
-            graphics.DrawRectangle(pen, rect)
+            graphics.DrawLines(pen, points)
         finally:
             pen.Dispose()
-        text = self._truncate(graphics, label, self._BOX_W - 12)
-        brush = SolidBrush(color)
+        if link.bar is not None:
+            bx, by, orientation = link.bar
+            if orientation == "h":
+                self._draw_line(graphics, colour, 3, bx - fsm_layout.BAR_HALF,
+                                by, bx + fsm_layout.BAR_HALF, by)
+            else:
+                self._draw_line(graphics, colour, 3, bx, by - _BAR_V_HALF,
+                                bx, by + _BAR_V_HALF)
+        if link.arrow is not None:
+            ax, ay, direction = link.arrow
+            self._draw_arrowhead(graphics, ax, ay, direction, colour)
+        if link.guard_at:
+            gx, gy = link.guard_at
+            self._draw_text(graphics, link.guard_text, self._font_guard,
+                            self._text_colour(link, _GUARD), gx, gy)
+        if link.note_at and link.note_text:
+            nx, ny = link.note_at
+            self._draw_text(graphics, link.note_text, self._font_guard,
+                            self._text_colour(link, _TEXT), nx, ny)
+
+    def _link_colour(self, link):
+        """Selected first, then dimmed when something else is selected."""
+        base = _PRIORITY if link.kind == "global" else _LINK
+        if self.selected_transition is link.transition:
+            return _BEFORE
+        if self.selected_state is not None:
+            source = link.transition.source
+            if source == self.selected_state or link.transition.target == self.selected_state:
+                return _BEFORE
+            return _DIM_ALPHA
+        if self.selected_transition is not None:
+            return _DIM_ALPHA
+        return base
+
+    def _text_colour(self, link, normal):
+        colour = self._link_colour(link)
+        if colour.Equals(_DIM_ALPHA):
+            return _DIM_ALPHA
+        if colour.Equals(_BEFORE):
+            return _BEFORE
+        return normal
+
+    # -- small drawing primitives ------------------------------------------
+
+    def _fill_rect(self, graphics, colour, x, y, w, h):
+        brush = SolidBrush(colour)
         try:
-            size = graphics.MeasureString(text, self._label_font())
+            graphics.FillRectangle(brush, int(x), int(y), int(w), int(h))
+        finally:
+            brush.Dispose()
+
+    def _stroke_rect(self, graphics, colour, width, x, y, w, h):
+        pen = Pen(colour, width)
+        try:
+            graphics.DrawRectangle(pen, int(x), int(y), int(w), int(h))
+        finally:
+            pen.Dispose()
+
+    def _draw_line(self, graphics, colour, width, x1, y1, x2, y2):
+        pen = Pen(colour, width)
+        try:
+            graphics.DrawLine(pen, int(x1), int(y1), int(x2), int(y2))
+        finally:
+            pen.Dispose()
+
+    def _draw_text(self, graphics, text, font, colour, x, y):
+        brush = SolidBrush(colour)
+        try:
+            graphics.DrawString(text, font, brush, int(x), int(y))
+        finally:
+            brush.Dispose()
+
+    def _draw_centred(self, graphics, text, font, colour, x, y, w, h):
+        """DrawString centred inside the box (x, y, w, h) using MeasureString."""
+        brush = SolidBrush(colour)
+        try:
+            size = graphics.MeasureString(text, font)
             graphics.DrawString(
-                text, self._label_font(), brush,
-                x + (self._BOX_W - size.Width) / 2,
-                y + (self._BOX_H - size.Height) / 2,
+                text, font, brush,
+                int(x) + (int(w) - size.Width) / 2,
+                int(y) + (int(h) - size.Height) / 2,
             )
         finally:
             brush.Dispose()
 
-    def _label_font(self):
-        return Font("Consolas", 9)
-
-    def _truncate(self, graphics, text, max_width):
-        if graphics.MeasureString(text, self._label_font()).Width <= max_width:
-            return text
-        ellipsis = "..."
-        while text and graphics.MeasureString(text + ellipsis, self._label_font()).Width > max_width:
-            text = text[:-1]
-        return text + ellipsis
-
-    def _draw_edge(self, graphics, transition, has_any):
-        if transition.source is None:
-            source_row = self._any_row()
-        else:
-            source_row = self._state_row(transition.source)
-        target_row = self._state_row(transition.target)
-        if source_row is None or target_row is None:
-            return
-
-        highlighted = (
-            self.selected_transition is transition
-            or (
-                self.selected_state is not None
-                and (
-                    transition.source == self.selected_state
-                    or transition.target == self.selected_state
-                )
-            )
-        )
-
-        if self.selected_state is not None and not highlighted:
-            color = _DIM_ALPHA
-        elif self.selected_transition is not None and not highlighted:
-            color = _DIM_ALPHA
-        else:
-            color = _BEFORE if highlighted else _DIM
-
-        if transition.source is not None and transition.source == transition.target:
-            self._draw_self_loop(graphics, source_row, color)
-            return
-
-        x1 = self._BOX_X + self._BOX_W
-        y1 = self._row_y(source_row) + self._BOX_H // 2
-        x2 = self._BOX_X + self._BOX_W
-        y2 = self._row_y(target_row) + self._BOX_H // 2
-        bulge = 40 + 18 * min(6, abs(target_row - source_row))
-        mid_x = x1 + bulge
-
-        pen = Pen(color, 2)
+    def _draw_arrowhead(self, graphics, x, y, direction, colour):
+        """Filled triangle with its TIP at (x, y), pointing *direction*."""
+        x = int(x)
+        y = int(y)
+        if direction == "left":
+            points = [(x, y), (x + _ARROW_LEN, y - _ARROW_HALF),
+                      (x + _ARROW_LEN, y + _ARROW_HALF)]
+        elif direction == "right":
+            points = [(x, y), (x - _ARROW_LEN, y - _ARROW_HALF),
+                      (x - _ARROW_LEN, y + _ARROW_HALF)]
+        elif direction == "down":
+            points = [(x, y), (x - _ARROW_HALF, y - _ARROW_LEN),
+                      (x + _ARROW_HALF, y - _ARROW_LEN)]
+        else:  # up
+            points = [(x, y), (x - _ARROW_HALF, y + _ARROW_LEN),
+                      (x + _ARROW_HALF, y + _ARROW_LEN)]
+        brush = SolidBrush(colour)
         try:
-            graphics.DrawBezier(
-                pen,
-                Point(x1, y1),
-                Point(mid_x, y1),
-                Point(mid_x, y2),
-                Point(x2, y2),
+            arr = System.Array[Point](
+                [Point(int(px), int(py)) for px, py in points]
             )
-        finally:
-            pen.Dispose()
-        self._draw_arrowhead(graphics, x2, y2, color)
-
-    def _draw_self_loop(self, graphics, row, color):
-        x = self._BOX_X + self._BOX_W
-        y = self._row_y(row) + self._BOX_H // 2
-        pen = Pen(color, 2)
-        try:
-            graphics.DrawEllipse(pen, x, y - 12, 26, 24)
-        finally:
-            pen.Dispose()
-        self._draw_arrowhead(graphics, x + 26, y, color)
-
-    def _draw_arrowhead(self, graphics, x, y, color):
-        brush = SolidBrush(color)
-        try:
-            points = System.Array[Point](
-                [
-                    Point(x, y),
-                    Point(x - 7, y - 4),
-                    Point(x - 7, y + 4),
-                ]
-            )
-            graphics.FillPolygon(brush, points)
+            graphics.FillPolygon(brush, arr)
         finally:
             brush.Dispose()
 
