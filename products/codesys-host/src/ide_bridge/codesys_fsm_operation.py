@@ -123,15 +123,17 @@ def main(params=None, runtime=None):
     labels = {
         "title": "FSM - Select object",
         "heading": "Select an object to see its state machine",
-        "subtitle": "Select a block to scan it for a CASE state machine. Find next FSM scans from the top and opens the first object that has one.",
-        "status": "Select a block to scan it.",
+        "subtitle": "Filter the list first, then press Analyze to scan only the matching blocks. Find next FSM opens the first matching block that has one.",
+        "status": "Type a filter, then press Analyze.",
         "scan_button": "Find next FSM",
         "open_button": "Show diagram",
+        "analyze_button": "Analyze filtered",
         "scan_status": "Scanning blocks from the top...",
-        "scan_none": "No state machine was found in this project.",
+        "scan_none": "No state machine was found in the matching blocks.",
+        "analysis_done": "Analysis complete - {0} block(s) contain a state machine.",
+        "analysis_hits": " {0} contain a state machine.",
         "message_title": "FSM",
-        "require_search": True,
-        "search_prompt": "Enter a search term and press Enter first.",
+        "deferred_analysis": True,
     }
 
     def analyze_selected(index):

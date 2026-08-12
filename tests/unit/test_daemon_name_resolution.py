@@ -96,6 +96,7 @@ def _install_stubs() -> dict[str, ModuleType]:
         "System.IO",
         "System.IO.Pipes",
         "System.Threading",
+        "System.Diagnostics",
         "System.Windows",
         "System.Windows.Forms",
         "System.Drawing",

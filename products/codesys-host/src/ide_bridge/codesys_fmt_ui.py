@@ -10,9 +10,11 @@ try:
         Form, Label, Button, ListBox, RichTextBox, TextBox, MessageBox,
         MessageBoxButtons, MessageBoxIcon, DialogResult, FormBorderStyle,
         FormStartPosition, AnchorStyles, BorderStyle, RichTextBoxScrollBars,
-        FlatStyle, DrawMode, DrawItemState, AutoScaleMode, Timer, ToolTip
+        FlatStyle, DrawMode, DrawItemState, AutoScaleMode, Timer, ToolTip,
+        Keys
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, SolidBrush
+    from System.Diagnostics import Stopwatch
 except Exception:
     Form = None
 
@@ -28,11 +30,26 @@ PICKER_LABELS = {
     "status": "Select a block to analyze it.",
     "scan_button": "Review All",
     "open_button": "Open selected",
+    "analyze_button": "Analyze",
     "scan_status": "Scanning blocks from the top...",
     "scan_none": "No formatting changes were found.",
+    "analysis_done": "Analysis complete - {0} block(s) need formatting.",
+    "analysis_hits": " {0} need formatting.",
     "message_title": "FMT",
-    "require_search": False,
+    "deferred_analysis": False,
 }
+
+# A sweep spends one full ST parse per block on the UI thread, so it is paced
+# by a time budget per timer tick rather than one block per tick, and anything
+# larger than this has to be confirmed: an unattended sweep over a whole
+# project is what made this dialog look hung.
+ANALYSIS_BUDGET_MS = 60
+ANALYSIS_CONFIRM_LIMIT = 50
+
+
+def pending_indexes(items, indexes):
+    """Indexes in *indexes* whose item has not been analyzed yet."""
+    return [index for index in indexes if items[index].get("analysis") is None]
 
 
 if Form is not None:
@@ -151,9 +168,12 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.analyzing = False
         self._status = None
         self._visible_indexes = list(range(len(items)))
+        self._analysis_queue = []
         self._analysis_cursor = 0
         self._analysis_timer = None
-        self._search_confirmed = not merged.get("require_search", False)
+        # Deferred mode parses nothing until the user presses Analyze. On a
+        # large project the up-front sweep is what made this dialog unusable.
+        self._deferred = bool(merged.get("deferred_analysis", False))
 
         title = Label()
         title.Text = merged["heading"]
@@ -195,6 +215,17 @@ class ObjectPickerForm(Form if Form is not None else object):
         search.KeyDown += self._on_search_key_down
         self._search = search
         self.Controls.Add(search)
+
+        analyze = Button()
+        analyze.Text = merged["analyze_button"]
+        analyze.Size = Size(120, 26)
+        analyze.Location = Point(394, 81)
+        analyze.Anchor = AnchorStyles.Top | AnchorStyles.Left
+        analyze.Click += self._analyze_visible
+        self._style_button(analyze)
+        analyze.Visible = self._deferred
+        self.Controls.Add(analyze)
+        self._analyze_button = analyze
 
         self.list = ListBox()
         self.list.Location = Point(16, 114)
@@ -248,7 +279,8 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.Resize += self._layout
         self.FormClosed += self._on_form_closed
         self._layout()
-        self._start_background_analysis()
+        if not self._deferred:
+            self._start_background_analysis(range(len(items)))
 
     def _style_button(self, button):
         button.BackColor = _BUTTON_BG
@@ -320,29 +352,63 @@ class ObjectPickerForm(Form if Form is not None else object):
             self._status.Text = self._analysis_status()
 
     def _analysis_status(self):
+        # Report on the set the user is actually looking at: the queue while a
+        # sweep is in flight or finished, the filtered list otherwise.
+        scope = self._analysis_queue or self._visible_indexes
+        total = len(scope)
         analyzed = sum(
-            1 for item in self.items if item.get("analysis") in ("done", "error")
+            1 for index in scope
+            if self.items[index].get("analysis") in ("done", "error")
         )
-        changed = sum(1 for item in self.items if item.get("status") == "changed")
-        errors = sum(1 for item in self.items if item.get("status") == "error")
-        total = len(self.items)
-        if analyzed >= total:
-            return "Analysis complete — {0} block(s) need formatting.".format(changed)
+        changed = sum(1 for index in scope if self.items[index].get("status") == "changed")
+        errors = sum(1 for index in scope if self.items[index].get("status") == "error")
+        if total and analyzed >= total:
+            return self.labels["analysis_done"].format(changed)
         suffix = ""
         if changed:
-            suffix += " {0} need formatting.".format(changed)
+            suffix += self.labels["analysis_hits"].format(changed)
         if errors:
             suffix += " {0} could not be read.".format(errors)
         return "Analyzed {0}/{1} block(s).".format(analyzed, total) + suffix
 
-    def _start_background_analysis(self):
-        if self.analyze_callback is None or not self.items:
+    def _start_background_analysis(self, indexes):
+        if self.analyze_callback is None:
             return
+        queue = pending_indexes(self.items, indexes)
+        if not queue:
+            self._status.Text = self._analysis_status()
+            return
+        self._analysis_queue = list(queue)
+        self._analysis_cursor = 0
+        self._stop_background_analysis()
         timer = Timer()
-        timer.Interval = 75
+        timer.Interval = 15
         timer.Tick += self._on_analysis_tick
         self._analysis_timer = timer
         timer.Start()
+
+    def _on_analysis_tick(self, sender, event):
+        if self.analyzing:
+            return
+        watch = Stopwatch.StartNew()
+        self.analyzing = True
+        try:
+            while self._analysis_cursor < len(self._analysis_queue):
+                index = self._analysis_queue[self._analysis_cursor]
+                self._analysis_cursor += 1
+                item = self.items[index]
+                if item.get("analysis") is not None:
+                    continue
+                item["analysis"] = "running"
+                self.analyze_callback(index)
+                if watch.ElapsedMilliseconds >= ANALYSIS_BUDGET_MS:
+                    break
+        finally:
+            self.analyzing = False
+        if self._analysis_cursor >= len(self._analysis_queue):
+            self._stop_background_analysis()
+        self._status.Text = self._analysis_status()
+        self.list.Invalidate()
 
     def _stop_background_analysis(self):
         timer = self._analysis_timer
@@ -351,48 +417,16 @@ class ObjectPickerForm(Form if Form is not None else object):
             timer.Stop()
             timer.Dispose()
 
-    def _on_analysis_tick(self, sender, event):
-        if self.analyzing:
-            return
-        while (
-            self._analysis_cursor < len(self.items)
-            and self.items[self._analysis_cursor].get("analysis") in ("done", "error")
-        ):
-            self._analysis_cursor += 1
-        if self._analysis_cursor >= len(self.items):
-            self._stop_background_analysis()
-            self._status.Text = self._analysis_status()
-            self.list.Invalidate()
-            return
-
-        index = self._analysis_cursor
-        self._analysis_cursor += 1
-        item = self.items[index]
-        item["analysis"] = "running"
-        self._status.Text = "Analyzing {0}/{1}: {2}".format(
-            index + 1, len(self.items), item["label"]
-        )
-        self.list.Invalidate()
-        self.analyzing = True
-        try:
-            self.analyze_callback(index)
-        finally:
-            self.analyzing = False
-            self.list.Invalidate()
-            if self._analysis_cursor >= len(self.items):
-                self._status.Text = self._analysis_status()
-
     def _on_selection_changed(self, sender, event):
-        if not self._search_confirmed:
+        if self._deferred:
+            # Typing in the filter re-selects a row on every keystroke, so
+            # analyzing on selection would parse a block per keystroke. That
+            # is the lag the Analyze button exists to remove.
             return
         if self.list.SelectedIndex >= 0:
             self._analyze_index(self._visible_indexes[self.list.SelectedIndex])
 
     def _accept(self, sender, event):
-        if not self._search_confirmed:
-            self._status.Text = self.labels.get("search_prompt", "Enter a search term and press Enter first.")
-            self._search.Focus()
-            return
         if self.list.SelectedIndex < 0:
             return
         visible = self.list.SelectedIndex
@@ -405,9 +439,7 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _accept_all(self, sender, event):
         if self.scan_callback is None:
             return
-        if not self._search_confirmed:
-            self._status.Text = self.labels.get("search_prompt", "Enter a search term and press Enter first.")
-            self._search.Focus()
+        if not self._confirm_sweep(len(pending_indexes(self.items, self._visible_indexes))):
             return
         self._stop_background_analysis()
         self.analyzing = True
@@ -432,6 +464,40 @@ class ObjectPickerForm(Form if Form is not None else object):
             self.analyzing = False
             self.UseWaitCursor = False
 
+    def _confirm_sweep(self, count):
+        """Make the user opt in to a sweep large enough to look like a hang."""
+        if count <= ANALYSIS_CONFIRM_LIMIT:
+            return True
+        answer = MessageBox.Show(
+            "{0} block(s) still need analyzing. Each one is parsed in full, so "
+            "this can take a while.\n\nNarrow the filter first, or continue?".format(count),
+            self.labels["message_title"],
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question,
+        )
+        if answer != DialogResult.Yes:
+            self._search.Focus()
+            return False
+        return True
+
+    def _analyze_visible(self, sender=None, event=None):
+        """Analyze exactly the blocks the current filter leaves visible."""
+        if self.analyze_callback is None:
+            return
+        if not self._visible_indexes:
+            self._status.Text = "Nothing matches the filter."
+            self._search.Focus()
+            return
+        pending = pending_indexes(self.items, self._visible_indexes)
+        if not pending:
+            self._status.Text = self._analysis_status()
+            return
+        if not self._confirm_sweep(len(pending)):
+            return
+        self._analysis_queue = []
+        self._start_background_analysis(self._visible_indexes)
+        self._status.Text = "Analyzing {0} block(s)...".format(len(pending))
+
     def _layout(self, sender=None, event=None):
         width = self.ClientSize.Width
         height = self.ClientSize.Height
@@ -441,6 +507,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._search_label.Location = Point(margin, 86)
         self._search.Location = Point(margin + 50, 82)
         self._search.Size = Size(320, 24)
+        self._analyze_button.Location = Point(self._search.Right + 8, 81)
         self.list.Location = Point(margin, 114)
         self.list.Size = Size(max(100, width - margin * 2), max(100, button_y - 124))
         right = width - margin
@@ -474,25 +541,26 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _on_filter_changed(self, sender, event):
         if not hasattr(self, "list"):
             return
+        if self._deferred:
+            # The queue was built from the previous filter. Per-item results
+            # are cached, so nothing is lost by dropping the stale sweep.
+            self._stop_background_analysis()
         self._refresh_list()
         self.list.Invalidate()
 
     def _on_search_key_down(self, sender, event):
-        # FSM mode deliberately postpones all expensive ST parsing until the
-        # user has narrowed the project and confirms the query with Enter.
-        if event.KeyCode.ToString() != "Enter":
+        # Enter is the keyboard shortcut for Analyze. Compare against the enum,
+        # not its name: Keys.Enter and Keys.Return are the same value and the
+        # CLR prints it as "Return", so a string test never fires. It also has
+        # to be swallowed, or the form's AcceptButton fires too and the dialog
+        # closes on whichever block happens to be selected.
+        if event.KeyCode != Keys.Enter:
             return
-        if not self.labels.get("require_search", False):
+        if not self._deferred:
             return
-        if not (self._search.Text or "").strip():
-            self._status.Text = self.labels.get("search_prompt", "Enter a search term and press Enter first.")
-            return
-        self._search_confirmed = True
-        self._stop_background_analysis()
-        self._status.Text = "Search confirmed: {0} block(s) ready for FSM search.".format(
-            len(self._visible_indexes)
-        )
-        self.list.Invalidate()
+        event.Handled = True
+        event.SuppressKeyPress = True
+        self._analyze_visible()
 
     def _on_form_closed(self, sender, event):
         self._stop_background_analysis()

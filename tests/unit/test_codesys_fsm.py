@@ -197,3 +197,23 @@ def test_clicks_outside_any_box_select_nothing():
     # The vertical gap between two boxes belongs to no state.
     gap_y = geometry._row_y(0) + geometry._BOX_H + 5
     assert geometry._state_at(fsm_ui._Pt(geometry._BOX_X + 10, gap_y)) is None
+
+
+def test_pending_indexes_skips_already_analyzed_blocks():
+    items = [
+        {"analysis": None},
+        {"analysis": "done"},
+        {"analysis": None},
+        {"analysis": "error"},
+    ]
+    assert fmt_ui.pending_indexes(items, [0, 1, 2, 3]) == [0, 2]
+    # Only the filtered subset is ever swept.
+    assert fmt_ui.pending_indexes(items, [1, 3]) == []
+    assert fmt_ui.pending_indexes(items, []) == []
+
+
+def test_fsm_labels_defer_analysis_and_fmt_does_not():
+    assert fmt_ui.PICKER_LABELS["deferred_analysis"] is False
+    assert fmt_ui.PICKER_LABELS["analyze_button"] == "Analyze"
+    assert "{0}" in fmt_ui.PICKER_LABELS["analysis_done"]
+    assert "{0}" in fmt_ui.PICKER_LABELS["analysis_hits"]
