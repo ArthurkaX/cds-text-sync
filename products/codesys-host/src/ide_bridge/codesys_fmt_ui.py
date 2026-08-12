@@ -457,7 +457,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.DialogResult = DialogResult.OK
         self.Close()
 
-    def _accept_all(self, sender, event):
+    def _accept_all(self, sender=None, event=None):
         if self.scan_callback is None:
             return
         if not self._search_confirmed:

@@ -430,3 +430,87 @@ def test_receptivity_text_never_runs_over_a_block():
             assert not overlaps, (
                 "receptivity {0!r} lands on a block".format(link.guard_text)
             )
+
+
+class _Keys:
+    Enter = 13
+
+
+class _KeyEvent:
+    def __init__(self, key_code):
+        self.KeyCode = key_code
+        self.Handled = False
+        self.SuppressKeyPress = False
+
+
+class _Text:
+    def __init__(self, text=""):
+        self.Text = text
+
+
+class _SearchPicker:
+    """The picker reduced to what the Enter path actually touches.
+
+    Both handlers are the real ones, so the test fails if Enter can no longer
+    reach the search - which is exactly how it broke.
+    """
+
+    _on_search_key_down = fmt_ui.ObjectPickerForm._on_search_key_down
+    _accept_all = fmt_ui.ObjectPickerForm._accept_all
+
+    def __init__(self, query="AERATION"):
+        self.labels = dict(fmt_ui.PICKER_LABELS)
+        self.labels["require_search"] = True
+        self.labels["external_search"] = True
+        self.labels["deferred_analysis"] = True
+        self._search = _Text(query)
+        self._status = _Text()
+        self._search_confirmed = False
+        self._visible_indexes = []
+        self.analyzing = False
+        self.UseWaitCursor = False
+        self.selected_index = -1
+        self.items = []
+        self.calls = []
+        self.refreshed = 0
+
+    def scan_callback(self, index, visible_indexes=None, query=""):
+        self.calls.append((index, visible_indexes, query))
+        self.items.append({"label": "AERATION/AERATION.st", "display": "AERATION"})
+        return {"status": "Found 1 matching block(s)."}
+
+    def _stop_background_analysis(self):
+        pass
+
+    def _refresh_list(self):
+        self.refreshed += 1
+
+
+def test_enter_runs_the_external_search_instead_of_dying_on_arity(monkeypatch):
+    # Enter calls _accept_all() with no arguments, but WinForms binds it as a
+    # Click handler too. When it insisted on (sender, event) the call raised
+    # inside the message pump, the search never ran, and the picker just sat
+    # there with an empty list.
+    monkeypatch.setattr(fmt_ui, "Keys", _Keys, raising=False)
+    picker = _SearchPicker()
+
+    picker._on_search_key_down(picker, _KeyEvent(_Keys.Enter))
+
+    assert picker.calls == [(0, [], "AERATION")]
+    assert picker.refreshed == 1
+    assert picker._search_confirmed is True
+    assert picker._status.Text == "Found 1 matching block(s)."
+    assert len(picker.items) == 1
+    # The key must not reach the form, or AcceptButton closes the dialog.
+    assert picker.analyzing is False
+
+
+def test_enter_on_a_blank_search_asks_for_a_term_and_runs_nothing(monkeypatch):
+    monkeypatch.setattr(fmt_ui, "Keys", _Keys, raising=False)
+    picker = _SearchPicker(query="   ")
+
+    picker._on_search_key_down(picker, _KeyEvent(_Keys.Enter))
+
+    assert picker.calls == []
+    assert picker._search_confirmed is False
+    assert picker._status.Text == fmt_ui.PICKER_LABELS["search_prompt"]
