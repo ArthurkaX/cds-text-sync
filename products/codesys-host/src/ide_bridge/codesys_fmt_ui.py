@@ -617,7 +617,8 @@ class ObjectPickerForm(Form if Form is not None else object):
 
 
 class FmtPreviewForm(Form if Form is not None else object):
-    def __init__(self, object_name, before, after, changed_lines, wizard_mode=False):
+    def __init__(self, object_name, before, after, changed_lines, wizard_mode=False,
+                 wizard_callback=None):
         self.Text = "FMT Preview - " + (object_name or "Structured Text")
         self.Size = Size(1600, 980)
         self.MinimumSize = Size(1050, 650)
@@ -627,6 +628,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         self.BackColor = _BG
         self.action = "stop"
         self.wizard_mode = wizard_mode
+        self._wizard_callback = wizard_callback
 
         title = Label()
         title.Text = object_name or "Structured Text"
@@ -635,6 +637,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         title.Location = Point(16, 12)
         title.AutoSize = True
         self.Controls.Add(title)
+        self._title_label = title
 
         stats = Label()
         stats.Text = self._stats_text(changed_lines)
@@ -728,6 +731,35 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._layout()
         self._highlight(before, after)
         self._restore_preview_state()
+
+    def load_preview(self, object_name, before, after, changed_lines):
+        """Replace the current wizard page without closing the form."""
+        self.Text = "FMT Preview - " + (object_name or "Structured Text")
+        self._title_label.Text = object_name or "Structured Text"
+        self._stats_label.Text = self._stats_text(changed_lines)
+        self._before.Text = before or ""
+        self._after.Text = after or ""
+        self._jump_index = -1
+        self._highlight(before, after)
+        self._previous_button.Enabled = bool(changed_lines)
+        self._next_button.Enabled = bool(changed_lines)
+
+    def _advance_wizard(self, action):
+        if self._wizard_callback is None:
+            return False
+        outcome = self._wizard_callback(action) or {}
+        if outcome.get("next"):
+            preview = outcome["next"]
+            self.load_preview(
+                preview["object_name"], preview["before"], preview["after"],
+                preview["changed_lines"],
+            )
+        elif outcome.get("complete"):
+            self.action = "complete"
+            self.DialogResult = DialogResult.OK
+            self.Close()
+        # Errors are reported by the operation and leave this page open.
+        return True
 
     def _restore_preview_state(self):
         state = _FMT_PREVIEW_STATE
@@ -823,11 +855,15 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._layout()
 
     def _apply(self, sender, event):
+        if self._advance_wizard("apply"):
+            return
         self.action = "apply"
         self.DialogResult = DialogResult.OK
         self.Close()
 
     def _skip(self, sender, event):
+        if self._advance_wizard("skip"):
+            return
         self.action = "skip"
         self.DialogResult = DialogResult.OK
         self.Close()
@@ -906,6 +942,23 @@ def show_fmt_preview(object_name, before, after, changed_lines, wizard_mode=Fals
         return "stop"
     form = FmtPreviewForm(
         object_name, before, after, changed_lines, wizard_mode=wizard_mode
+    )
+    form.ShowDialog()
+    form.remember_preview_state()
+    return form.action
+
+
+def show_fmt_wizard(first_preview, advance_callback):
+    """Review several formatter changes in one persistent preview window."""
+    if Form is None:
+        return "stop"
+    form = FmtPreviewForm(
+        first_preview["object_name"],
+        first_preview["before"],
+        first_preview["after"],
+        first_preview["changed_lines"],
+        wizard_mode=True,
+        wizard_callback=advance_callback,
     )
     form.ShowDialog()
     form.remember_preview_state()

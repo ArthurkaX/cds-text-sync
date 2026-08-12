@@ -236,51 +236,70 @@ def main(params=None, runtime=None):
         runtime.ui.info("No formatting changes are needed in the project.")
         return {"status": "unchanged", "changed_objects": 0}
 
-    applied_count = 0
-    skipped_count = 0
-    position = 0
-    while current_index >= 0:
-        position += 1
-        item = items[current_index]
-        preview_action = _show_preview(
-            item,
-            position,
-            progress={"applied": applied_count, "skipped": skipped_count},
-        )
-        if preview_action == "stop":
-            codesys_fmt_ui.show_message(
-                "FMT",
-                "Wizard cancelled. Applied: {0}; skipped: {1}.".format(
-                    applied_count, skipped_count
-                ),
-                "warning",
-            )
-            return {
-                "status": "cancelled",
-                "applied": applied_count,
-                "skipped": skipped_count,
-                "total": position,
-            }
-        if preview_action == "skip":
-            skipped_count += 1
+    state = {
+        "current_index": current_index,
+        "applied": 0,
+        "skipped": 0,
+        "position": 1,
+    }
+
+    def preview_for_current():
+        item = items[state["current_index"]]
+        return {
+            "object_name": "{0}   [object {1}; applied {2}, skipped {3}]".format(
+                item["label"], state["position"], state["applied"], state["skipped"]
+            ),
+            "before": item["before"],
+            "after": item["after"],
+            "changed_lines": item["changed_lines"],
+        }
+
+    def advance_wizard(action):
+        item = items[state["current_index"]]
+        if action == "skip":
+            state["skipped"] += 1
         else:
             error = _apply_item(item)
             if error:
                 codesys_fmt_ui.show_message("FMT", item["label"] + ": " + error, "error")
-                return {"status": "error", "error": error, "applied": applied_count}
-            applied_count += 1
-        current_index = _scan_next_changed(items, current_index + 1)
+                return {"error": error}
+            state["applied"] += 1
+        state["current_index"] = _scan_next_changed(
+            items, state["current_index"] + 1
+        )
+        if state["current_index"] < 0:
+            return {"complete": True}
+        state["position"] += 1
+        return {"next": preview_for_current()}
+
+    preview_action = codesys_fmt_ui.show_fmt_wizard(
+        preview_for_current(), advance_wizard
+    )
+    if preview_action != "complete":
+        codesys_fmt_ui.show_message(
+            "FMT",
+            "Wizard cancelled. Applied: {0}; skipped: {1}.".format(
+                state["applied"], state["skipped"]
+            ),
+            "warning",
+        )
+        return {
+            "status": "cancelled",
+            "applied": state["applied"],
+            "skipped": state["skipped"],
+            "total": state["position"],
+        }
 
     codesys_fmt_ui.show_message(
         "FMT",
         "Wizard complete. Applied: {0}; skipped: {1}.".format(
-            applied_count, skipped_count
+            state["applied"], state["skipped"]
         ),
         "info",
     )
     return {
         "status": "success",
-        "applied": applied_count,
-        "skipped": skipped_count,
-        "total": position,
+        "applied": state["applied"],
+        "skipped": state["skipped"],
+        "total": state["position"],
     }
