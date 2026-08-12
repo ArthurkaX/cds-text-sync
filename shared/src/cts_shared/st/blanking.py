@@ -62,6 +62,16 @@ def blank_noise(text):
     return "".join(out)
 
 
+def blanked(text):
+    """The canonical blanking pipeline: ``trim_strings(blank_noise(text))``.
+
+    This composition - not ``blank_noise`` alone - is what the block scanner
+    and statement splitter consume. Keeping it in one place guarantees the
+    analyzer and the FSM extractor see identical text.
+    """
+    return trim_strings(blank_noise(text))
+
+
 def trim_strings(text):
     out = []
     i = 0
