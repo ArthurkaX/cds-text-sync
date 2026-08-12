@@ -226,7 +226,7 @@ def main(params=None, runtime=None):
     labels = {
         "title": "FSM - Select object",
         "heading": "Find a state machine in the exported workspace",
-        "subtitle": "Enter a path search and press Enter. FSM detection then runs in parallel in project-view, without reading every CODESYS object.",
+        "subtitle": "Enter a path search and press Enter. FSM detection starts immediately in parallel in project-view, without reading CODESYS objects.",
         "status": "Enter a search term and press Enter first.",
         "scan_button": "Find next FSM",
         "open_button": "Show diagram",
