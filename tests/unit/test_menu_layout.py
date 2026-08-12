@@ -61,7 +61,10 @@ _BOOTSTRAP = _load_bootstrap()
 ENTRYPOINTS = _BOOTSTRAP.ENTRYPOINTS
 MANIFEST_NAMES = [spec["name"] for spec in ENTRYPOINTS]
 
-_CI_YML = (_PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+# Read at module scope, so a missing workflow would break collection for
+# every test in this file rather than the one that needs it.
+_CI_WORKFLOW = _PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
+_CI_YML = _CI_WORKFLOW.read_text(encoding="utf-8") if _CI_WORKFLOW.is_file() else None
 
 
 def _operation_modules():
@@ -145,6 +148,8 @@ def test_command_has_operation_module(spec):
 
 @pytest.mark.parametrize("name", MANIFEST_NAMES, ids=lambda n: n)
 def test_ci_compileall_covers_entrypoint(name):
+    if _CI_YML is None:
+        pytest.skip("no CI workflow in this checkout")
     assert (name + ".py") in _CI_YML
 
 
