@@ -34,6 +34,14 @@ from cts_shared.st.formatting import (  # noqa: E402
     format_declarations,
     format_implementation,
 )
+import ide_st_objects as st_objects  # noqa: E402
+from fmt_session import (  # noqa: E402
+    FmtSession,
+    SessionError,
+    SessionState,
+)
+from fmt_diff import DiffModel, diff_lines  # noqa: E402
+from fmt_apply import build_apply_plan, execute_apply_plan  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +264,6 @@ def test_split_condition_does_not_mark_following_lines_as_replaced():
     after = "IF a\n    AND b\nTHEN\n    x := 1;\nEND_IF;\nafter := 2;\ntail := 3;\n"
 
     # The pure line-aware diff must classify the trailing lines as equal.
-    from fmt_diff import diff_lines  # noqa: E402
 
     rows = diff_lines(before, after)
     changed = [row for row in rows if row.kind != "equal"]
@@ -268,7 +275,6 @@ def test_split_condition_does_not_mark_following_lines_as_replaced():
 
 def test_unchanged_sections_are_absent_from_apply_plan():
     """A section whose before == after must not be in the write plan."""
-    from fmt_apply import build_apply_plan  # noqa: E402
 
     obj = FakeObject(
         "POU",
@@ -298,6 +304,150 @@ def test_unchanged_sections_are_absent_from_apply_plan():
     assert plan.sections[0].attribute == "textual_declaration"
 
 
+def test_diff_model_reports_same_change_count_across_views():
+    """All preview modes derive from one model and agree on the count."""
+    before = "IF a AND b THEN\n    x := 1;\nEND_IF;\nafter := 2;\n"
+    after = "IF a\n    AND b\nTHEN\n    x := 1;\nEND_IF;\nafter := 2;\n"
+
+    model = DiffModel(before, after)
+
+    # changed_count (rows) and changed_lines (source lines) both count the
+    # three genuinely changed lines: IF header, AND continuation, THEN.
+    assert model.changed_count == 3
+    assert model.changed_lines == 3
+    assert model.changed_indexes("old") == [0]
+    assert model.changed_indexes("new") == [0, 1, 2]
+    # Navigation groups: one contiguous change block.
+    assert model.navigation_groups() == [(0, 2)]
+
+
+def test_diff_navigation_uses_actual_diff_groups_not_shifted_indexes():
+    before = "a\nb\nc\nd\ne\n"
+    after = "a\nX\nY\nc\nd\ne\n"
+    model = DiffModel(before, after)
+
+    groups = model.navigation_groups()
+    assert groups == [(1, 2)]
+    # The equal lines after the insertion keep their own indexes.
+    equal_rows = [row for row in model.rows if row.kind == "equal"]
+    assert equal_rows[0].old_no == 1 and equal_rows[0].new_no == 1
+    line_e = [row for row in equal_rows if row.old == "e"]
+    assert line_e and line_e[0].old_no == 5 and line_e[0].new_no == 6
+
+
+def test_large_repeated_diff_falls_back_to_reduced_representation():
+    """Pathological repeated lines must not freeze the IDE."""
+    before = "\n".join(["END_IF;", "", "END_IF;"] * 8000)
+    after = before.replace("END_IF;", "END_FOR;", 1)
+
+    model = DiffModel(before, after, reduced=True)
+
+    assert model.reduced
+    assert model.changed_count > 0
+    # The reduced model still classifies the untouched tail as equal.
+    assert any(row.kind == "equal" for row in model.rows)
+
+
+def test_character_highlighting_is_bounded_to_replace_blocks():
+    before = "IF a THEN\n    x := 1;\nEND_IF;\n"
+    after = "IF a THEN\n  x := 1;\nEND_IF;\n"
+    model = DiffModel(before, after)
+
+    spans = [
+        model.character_spans(index)
+        for index, row in enumerate(model.rows)
+        if row.kind == "replace"
+    ]
+    assert spans and all(span is not None for span in spans)
+    # A huge replace block disables character highlighting.
+    big_before = "\n".join("line {0}".format(i) for i in range(500))
+    big_after = "\n".join("LINE {0}".format(i) for i in range(500))
+    big = DiffModel(big_before, big_after)
+    assert big.character_spans(0) is None
+
+
+def test_apply_plan_writes_only_validated_changed_sections():
+    """Stale content is never overwritten; partial apply is reported."""
+
+    obj = FakeObject(
+        "POU",
+        declaration="VAR\nx : INT;\nEND_VAR\n",
+        implementation="IF a THEN\n    x := 1;\nEND_IF;\n",
+    )
+    plan = build_apply_plan(
+        "obj",
+        obj,
+        [
+            (
+                "textual_declaration",
+                "VAR\nx : INT;\nEND_VAR\n",
+                "VAR\nx    : INT;\nEND_VAR\n",
+            ),
+            (
+                "textual_implementation",
+                "IF a THEN\n    x := 1;\nEND_IF;\n",
+                "IF a THEN\n  x := 1;\nEND_IF;\n",
+            ),
+        ],
+    )
+
+    # Make the implementation stale after analysis.
+    impl_doc = obj.textual_implementation
+    decl_doc = obj.textual_declaration
+    assert impl_doc is not None and decl_doc is not None
+    impl_doc.text = "IF a THEN\n    x := 999;\nEND_IF;\n"
+
+    results = execute_apply_plan(plan, obj)
+
+    # No writes at all: the stale target blocks the whole object.
+    assert all(r["result"] == "failed" for r in results)
+    assert decl_doc.text == "VAR\nx : INT;\nEND_VAR\n"
+    assert impl_doc.text == "IF a THEN\n    x := 999;\nEND_IF;\n"
+
+
+def test_apply_plan_reports_partial_write_with_rollback():
+    """A failed second write rolls back the first and reports it."""
+
+    obj = FakeObject(
+        "POU",
+        declaration="VAR\nx : INT;\nEND_VAR\n",
+        implementation="IF a THEN\n    x := 1;\nEND_IF;\n",
+    )
+    plan = build_apply_plan(
+        "obj",
+        obj,
+        [
+            (
+                "textual_declaration",
+                "VAR\nx : INT;\nEND_VAR\n",
+                "VAR\nx    : INT;\nEND_VAR\n",
+            ),
+            (
+                "textual_implementation",
+                "IF a THEN\n    x := 1;\nEND_IF;\n",
+                "IF a THEN\n  x := 1;\nEND_IF;\n",
+            ),
+        ],
+    )
+
+    def failing_replace(doc, text):
+        if doc is obj.textual_implementation:
+            return False
+        doc.text = text
+        return True
+
+    results = execute_apply_plan(plan, obj, replace_document=failing_replace)
+
+    kinds = [r["result"] for r in results]
+    assert "applied" in kinds
+    assert "failed" in kinds
+    # The first section was rolled back to its original text.
+    decl_doc = obj.textual_declaration
+    assert decl_doc is not None
+    assert decl_doc.text == "VAR\nx : INT;\nEND_VAR\n"
+    assert any(r["result"] == "rolled_back" for r in results)
+
+
 # ---------------------------------------------------------------------------
 # D8  Step 2: pure session controller
 # ---------------------------------------------------------------------------
@@ -305,7 +455,6 @@ def test_unchanged_sections_are_absent_from_apply_plan():
 
 def test_scan_review_apply_state_sequence_runs_without_winforms():
     """The full state machine must run in unit tests with no UI imports."""
-    from fmt_session import FmtSession, SessionState  # noqa: E402
 
     session = FmtSession(scope_indexes=[0, 1, 2])
     assert session.state is SessionState.CREATED
@@ -338,7 +487,6 @@ def test_scan_review_apply_state_sequence_runs_without_winforms():
 
 
 def test_cancel_is_idempotent_and_valid_from_every_active_state():
-    from fmt_session import FmtSession, SessionState  # noqa: E402
 
     for setup in ("created", "scanning", "previewing", "applying"):
         session = FmtSession(scope_indexes=[0])
@@ -363,7 +511,6 @@ def test_cancel_is_idempotent_and_valid_from_every_active_state():
 
 
 def test_only_one_scan_can_be_active():
-    from fmt_session import FmtSession, SessionState  # noqa: E402
 
     session = FmtSession(scope_indexes=[0, 1])
     session.start_scan()
@@ -373,7 +520,6 @@ def test_only_one_scan_can_be_active():
 
 
 def test_illegal_state_transitions_raise_one_controlled_error():
-    from fmt_session import FmtSession, SessionError  # noqa: E402
 
     session = FmtSession(scope_indexes=[0])
     with pytest.raises(SessionError):
@@ -387,12 +533,7 @@ def test_illegal_state_transitions_raise_one_controlled_error():
 
 def test_cancellation_prevents_the_next_object_read():
     """After cancel, the document-read counter must not increase."""
-    from fmt_session import FmtSession  # noqa: E402
 
-    objects = [
-        make_large_project(count=5).objects[0],
-        FakeObject("B", implementation="x := 1;\n"),
-    ]
     session = FmtSession(scope_indexes=[0, 1])
 
     class Scanner:
@@ -416,7 +557,6 @@ def test_cancellation_prevents_the_next_object_read():
 
 def test_closing_a_session_stops_and_disposes_its_timer():
     """The view adapter owns the timer; session close detaches and disposes."""
-    from fmt_session import FmtSession  # noqa: E402
 
     session = FmtSession(scope_indexes=[0])
 
@@ -451,7 +591,6 @@ def test_closing_a_session_stops_and_disposes_its_timer():
 
 def test_apply_skip_does_not_synchronously_scan_to_next_changed():
     """record_apply/record_skip must return immediately, not scan ahead."""
-    from fmt_session import FmtSession  # noqa: E402
 
     session = FmtSession(scope_indexes=[0, 1, 2, 3, 4])
     session.start_scan()
@@ -471,9 +610,7 @@ def test_apply_skip_does_not_synchronously_scan_to_next_changed():
 
 def test_review_all_respects_a_filtered_scope():
     """Only indexes captured in scope_indexes may be read or offered."""
-    from fmt_session import FmtSession  # noqa: E402
 
-    objects = make_large_project(count=6).objects
     # Filter leaves objects 1, 3, 5 visible.
     scope = [1, 3, 5]
     session = FmtSession(scope_indexes=scope)
@@ -493,7 +630,6 @@ def test_review_all_respects_a_filtered_scope():
 
 def test_callback_typeerror_is_reported_not_retried_as_another_signature():
     """An internal callback TypeError must surface once with its diagnostic."""
-    from fmt_session import FmtSession, SessionError  # noqa: E402
 
     session = FmtSession(scope_indexes=[0])
     session.start_scan()
@@ -508,3 +644,103 @@ def test_callback_typeerror_is_reported_not_retried_as_another_signature():
     assert "internal bug" in str(exc.value)
     # The state must be FAILED, not silently re-invoked with fewer args.
     assert session.state == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Step 3: explicit cheap discovery
+# ---------------------------------------------------------------------------
+
+
+def test_discovery_performs_zero_st_document_reads():
+    """Opening the picker must not read any declaration/implementation text."""
+
+    class Doc:
+        def __init__(self, text):
+            self.text = text
+
+    class Obj:
+        def __init__(self, name, guid):
+            self.name = name
+            self.guid = guid
+            self.textual_declaration = Doc("VAR\nx : INT;\nEND_VAR\n")
+            self.textual_implementation = Doc("IF a THEN\nx := 1;\nEND_IF;\n")
+
+        def get_name(self):
+            return self.name
+
+    class Project:
+        def __init__(self, objs, selected=None):
+            self.objs = objs
+            self.selected = selected
+
+        def get_children(self, recursive=True):
+            return list(self.objs)
+
+        def get_selected_object(self):
+            return self.selected
+
+    objs = [Obj("A", "{111}"), Obj("B", "{222}")]
+    project = Project(objs, selected=objs[1])
+    diagnostics = []
+
+    items, selected_index = st_objects.discover_items(
+        project, None, None, diagnostics=diagnostics
+    )
+
+    assert [item["label"] for item in items] == ["A", "B"]
+    assert selected_index == 1
+    assert len(items) == 2
+    assert diagnostics and "discovery:" in diagnostics[0]
+    # No document text was read: the fake documents have no read counter, and
+    # discovery only touched get_children/get_selected_object/get_name.
+    assert all(item["analysis"] is None for item in items)
+
+
+def test_discovery_inserts_selected_object_first_when_not_enumerated():
+    class Doc:
+        def __init__(self, text):
+            self.text = text
+
+    class Obj:
+        def __init__(self, name, guid):
+            self.name = name
+            self.guid = guid
+            self.textual_declaration = Doc("VAR\nx : INT;\nEND_VAR\n")
+            self.textual_implementation = Doc("IF a THEN\nx := 1;\nEND_IF;\n")
+
+        def get_name(self):
+            return self.name
+
+    class Project:
+        def __init__(self, objs, selected=None):
+            self.objs = objs
+            self.selected = selected
+
+        def get_children(self, recursive=True):
+            return list(self.objs)
+
+        def get_selected_object(self):
+            return self.selected
+
+    objs = [Obj("A", "{111}"), Obj("B", "{222}")]
+    outside = Obj("SelectedPOU", "{999}")
+    project = Project(objs, selected=outside)
+
+    items, selected_index = st_objects.discover_items(project, None, None)
+
+    assert [item["label"] for item in items] == ["SelectedPOU", "A", "B"]
+    assert selected_index == 0
+
+
+def test_read_document_has_no_debug_print_spam(capsys):
+    """A raising section getter is a capability result, not a logged error."""
+
+    class Object:
+        @property
+        def textual_implementation(self):
+            raise RuntimeError("not available for this object type")
+
+    assert st_objects.read_document(Object(), "textual_implementation") is None
+    captured = capsys.readouterr()
+    assert "fmt-read-debug" not in captured.out
+    assert captured.out == ""
