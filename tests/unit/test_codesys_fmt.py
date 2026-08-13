@@ -148,6 +148,48 @@ def test_text_mode_exposes_noninteractive_formatter_seam():
     assert result["after"] == "IF x THEN\n y := 1;\nEND_IF;\n"
 
 
+def test_implementation_formatting_expands_compound_if_and_inline_else():
+    source = (
+        "IF aAct.wCmd <> _NoCmd AND aAct.eDev <> _Alrm AND aAct.eDev <> _Bnk THEN\n"
+        "_Need2Lock := TRUE;\n"
+        "ELSE _Need2Lock := FALSE;\n"
+        "END_IF;\n"
+    )
+
+    formatted = fmt.format_text(source)
+
+    assert formatted == (
+        "IF aAct.wCmd <> _NoCmd\n"
+        "    AND aAct.eDev <> _Alrm\n"
+        "    AND aAct.eDev <> _Bnk\n"
+        "THEN\n"
+        "    _Need2Lock := TRUE;\n"
+        "ELSE\n"
+        "    _Need2Lock := FALSE;\n"
+        "END_IF;\n"
+    )
+    assert fmt.format_text(formatted) == formatted
+
+
+def test_compound_condition_does_not_split_operators_in_strings_or_parentheses():
+    source = (
+        "IF Check('AND') AND (a OR b) AND enabled THEN\n"
+        "result := TRUE;\n"
+        "END_IF;\n"
+    )
+
+    formatted = fmt.format_text(source)
+
+    assert formatted == (
+        "IF Check('AND')\n"
+        "    AND (a OR b)\n"
+        "    AND enabled\n"
+        "THEN\n"
+        "    result := TRUE;\n"
+        "END_IF;\n"
+    )
+
+
 def test_analyze_keeps_a_valid_section_when_other_section_is_unavailable():
     class Document:
         text = "IF x THEN\ny := 1;\nEND_IF;\n"

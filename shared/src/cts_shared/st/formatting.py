@@ -25,6 +25,9 @@ _CASE_LABEL = re.compile(r"^[^;:]+:(?!=)")
 _CONTINUATION_START = re.compile(
     r"^(?:[,.)\]}]|(?:AND|OR|XOR)\b|[+\-*/])", re.I
 )
+_CONDITION_HEADER = re.compile(r"^(?P<indent>[ \t]*)(?P<keyword>IF|ELSIF)\b", re.I)
+_HEADER_END = re.compile(r"^(?:THEN|DO|OF)\b", re.I)
+_INLINE_ELSE = re.compile(r"^(?P<indent>[ \t]*)ELSE\b", re.I)
 
 
 def _clean(text):
@@ -44,7 +47,84 @@ def _is_continuation(previous, current=""):
     )
 
 
-def scan_indentation(raw_lines, clean_lines):
+def _top_level_logical_operators(clean):
+    """Return ranges of top-level ``AND``/``OR``/``XOR`` operators.
+
+    *clean* has the same offsets as the source but strings and comments are
+    blanked.  This lets the formatter split a condition without treating an
+    operator in a string, comment, or parenthesized expression as a boundary.
+    """
+    operators = []
+    depth = 0
+    for match in re.finditer(r"\b(?:AND|OR|XOR)\b", clean, re.I):
+        before = clean[:match.start()]
+        # Count only punctuation before this candidate.  Quoted/comment text
+        # is spaces in *clean*, and each line is handled independently.
+        depth = before.count("(") - before.count(")")
+        if depth == 0:
+            operators.append((match.start(), match.end()))
+    return operators
+
+
+def _expand_condition_headers(raw_lines):
+    """Put compound IF/ELSIF headers into a readable multi-line form.
+
+    Only an entire single-line header ending in THEN is expanded.  Incomplete
+    or already multi-line expressions are left untouched, which keeps this a
+    whitespace-only transformation with no attempt to repair ST syntax.
+    """
+    expanded = []
+    for raw in raw_lines:
+        clean = _clean(raw)
+        header = _CONDITION_HEADER.match(clean)
+        then_match = re.search(r"\bTHEN\b", clean, re.I)
+        if header is None or then_match is None:
+            expanded.append(raw)
+            continue
+        # There must be no executable text after THEN.  A trailing comment is
+        # fine: blank_noise already turns it into spaces in *clean*.
+        if clean[then_match.end():].strip():
+            expanded.append(raw)
+            continue
+        condition_start = header.end()
+        condition_end = then_match.start()
+        condition_clean = clean[condition_start:condition_end]
+        operators = _top_level_logical_operators(condition_clean)
+        if not operators:
+            expanded.append(raw)
+            continue
+
+        indent = raw[:len(raw) - len(raw.lstrip(" \t"))]
+        continuation_indent = indent + "    "
+        parts = []
+        part_start = condition_start
+        for operator_start, operator_end in operators:
+            boundary = condition_start + operator_start
+            parts.append(raw[part_start:boundary].strip())
+            part_start = boundary
+        parts.append(raw[part_start:condition_end].strip())
+        if not all(parts):
+            expanded.append(raw)
+            continue
+
+        expanded.append(indent + header.group("keyword").upper() + " " + parts[0])
+        expanded.extend(continuation_indent + part for part in parts[1:])
+        trailing = raw[then_match.end():].rstrip()
+        expanded.append(indent + "THEN" + trailing)
+    result = []
+    for raw in expanded:
+        clean = _clean(raw)
+        branch = _INLINE_ELSE.match(clean)
+        if branch is None or not clean[branch.end():].strip():
+            result.append(raw)
+            continue
+        indent = raw[:len(raw) - len(raw.lstrip(" \t"))]
+        result.append(indent + "ELSE")
+        result.append(indent + "    " + raw[branch.end():].strip())
+    return result
+
+
+def scan_indentation(raw_lines, clean_lines, default_step=1):
     """Yield ``(index, actual, expected, mixed, prefix, level)`` records."""
     base = None
     step = None
@@ -63,6 +143,7 @@ def scan_indentation(raw_lines, clean_lines):
         continuation = _is_continuation(previous_code, code)
         is_close = bool(_CLOSER.match(upper))
         is_branch = bool(_BRANCH.match(upper))
+        is_header_end = bool(_HEADER_END.match(upper))
         is_case_label = (
             bool(_CASE_LABEL.match(upper))
             and bool(stack)
@@ -71,7 +152,7 @@ def scan_indentation(raw_lines, clean_lines):
 
         if not continuation:
             mixed = " " in prefix and "\t" in prefix
-            if is_close or is_branch:
+            if is_close or is_branch or is_header_end:
                 expected = stack[-1]["opener_indent"] if stack else base
             elif is_case_label:
                 if stack[-1]["label_indent"] is None:
@@ -88,7 +169,7 @@ def scan_indentation(raw_lines, clean_lines):
                     step = actual - reference
                     expected = actual
                 else:
-                    expected = reference + (step if step is not None else 1)
+                    expected = reference + (step if step is not None else default_step)
             else:
                 if base is None:
                     base = actual
@@ -118,9 +199,13 @@ def scan_indentation(raw_lines, clean_lines):
 
 
 def format_implementation(text):
-    raw_lines = text.split("\n")
-    clean_lines = _clean(text).split("\n")
-    records = list(scan_indentation(raw_lines, clean_lines))
+    original_lines = text.split("\n")
+    raw_lines = _expand_condition_headers(original_lines)
+    clean_lines = _clean("\n".join(raw_lines)).split("\n")
+    # A condition expanded by this formatter has an explicit four-space
+    # continuation indent; use that same unit for its newly exposed body.
+    default_step = 4 if len(raw_lines) != len(original_lines) else 1
+    records = list(scan_indentation(raw_lines, clean_lines, default_step=default_step))
     observed = [record[4] for record in records if record[4] and not record[3]]
     use_tabs = sum(value.count("\t") for value in observed) > sum(
         value.count(" ") for value in observed
