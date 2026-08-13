@@ -22,9 +22,7 @@ _CLOSER = re.compile(r"^END_(IF|FOR|WHILE|REPEAT|CASE)\b", re.I)
 _BRANCH = re.compile(r"^(ELSE|ELSIF)\b", re.I)
 _OPENER = re.compile(r"\b(IF|FOR|WHILE|REPEAT|CASE)\b", re.I)
 _CASE_LABEL = re.compile(r"^[^;:]+:(?!=)")
-_CONTINUATION_START = re.compile(
-    r"^(?:[,.)\]}]|(?:AND|OR|XOR)\b|[+\-*/])", re.I
-)
+_CONTINUATION_START = re.compile(r"^(?:[,.)\]}]|(?:AND|OR|XOR)\b|[+\-*/])", re.I)
 _CONDITION_HEADER = re.compile(r"^(?P<indent>[ \t]*)(?P<keyword>IF|ELSIF)\b", re.I)
 _HEADER_END = re.compile(r"^(?:THEN|DO|OF)\b", re.I)
 _INLINE_ELSE = re.compile(r"^(?P<indent>[ \t]*)ELSE\b", re.I)
@@ -86,9 +84,14 @@ def _expand_condition_headers(raw_lines):
     Only an entire single-line header ending in THEN is expanded.  Incomplete
     or already multi-line expressions are left untouched, which keeps this a
     whitespace-only transformation with no attempt to repair ST syntax.
+
+    Generated lines reuse the source line's own EOL marker (``\r`` for CRLF,
+    empty for LF) so a uniform newline convention survives byte-for-byte and
+    mixed documents do not gain a third convention.
     """
     expanded = []
     for raw in raw_lines:
+        eol = "\r" if raw.endswith("\r") else ""
         clean = _clean(raw)
         header = _CONDITION_HEADER.match(clean)
         then_match = re.search(r"\bTHEN\b", clean, re.I)
@@ -97,7 +100,7 @@ def _expand_condition_headers(raw_lines):
             continue
         # There must be no executable text after THEN.  A trailing comment is
         # fine: blank_noise already turns it into spaces in *clean*.
-        if clean[then_match.end():].strip():
+        if clean[then_match.end() :].strip():
             expanded.append(raw)
             continue
         condition_start = header.end()
@@ -108,7 +111,7 @@ def _expand_condition_headers(raw_lines):
             expanded.append(raw)
             continue
 
-        indent = raw[:len(raw) - len(raw.lstrip(" \t"))]
+        indent = raw[: len(raw) - len(raw.lstrip(" \t"))]
         continuation_indent = indent + "    "
         parts = []
         part_start = condition_start
@@ -121,20 +124,21 @@ def _expand_condition_headers(raw_lines):
             expanded.append(raw)
             continue
 
-        expanded.append(indent + header.group("keyword").upper() + " " + parts[0])
-        expanded.extend(continuation_indent + part for part in parts[1:])
-        trailing = raw[then_match.end():].rstrip()
-        expanded.append(indent + "THEN" + trailing)
+        expanded.append(indent + header.group("keyword").upper() + " " + parts[0] + eol)
+        expanded.extend(continuation_indent + part + eol for part in parts[1:])
+        trailing = raw[then_match.end() :].rstrip()
+        expanded.append(indent + "THEN" + trailing + eol)
     result = []
     for raw in expanded:
         clean = _clean(raw)
         branch = _INLINE_ELSE.match(clean)
-        if branch is None or not clean[branch.end():].strip():
+        if branch is None or not clean[branch.end() :].strip():
             result.append(raw)
             continue
-        indent = raw[:len(raw) - len(raw.lstrip(" \t"))]
-        result.append(indent + "ELSE")
-        result.append(indent + "    " + raw[branch.end():].strip())
+        eol = "\r" if raw.endswith("\r") else ""
+        indent = raw[: len(raw) - len(raw.lstrip(" \t"))]
+        result.append(indent + "ELSE" + eol)
+        result.append(indent + "    " + raw[branch.end() :].strip() + eol)
     return result
 
 
@@ -154,6 +158,7 @@ def scan_indentation(raw_lines, clean_lines, default_step=1):
         upper = code.upper()
         actual = _indent_width(prefix)
         level = len(stack)
+        expected = None
         continuation = _is_continuation(previous_code, code)
         is_close = bool(_CLOSER.match(upper))
         is_branch = bool(_BRANCH.match(upper))
@@ -200,7 +205,9 @@ def scan_indentation(raw_lines, clean_lines, default_step=1):
             ):
                 # Use the effective indentation of the opener.  This makes
                 # the cascade stable when the first nested line is repaired.
-                opener_indent = expected if not continuation else actual
+                # ``expected`` is assigned for every non-continuation line
+                # above; continuation lines use the actual prefix instead.
+                opener_indent = actual if continuation else expected
                 for opener in openers:
                     stack.append(
                         {
@@ -238,7 +245,7 @@ def format_implementation(text):
         for record in records
     ):
         if mixed or actual != expected:
-            raw_lines[index] = prefix_for(expected) + raw_lines[index][len(prefix):]
+            raw_lines[index] = prefix_for(expected) + raw_lines[index][len(prefix) :]
     return "\n".join(raw_lines)
 
 
@@ -297,7 +304,7 @@ def _trailing_comment_start(line, after=0):
                     break
                 index += 1
             continue
-        if line[index:index + 2] in ("//", "(*"):
+        if line[index : index + 2] in ("//", "(*"):
             return index
         index += 1
     return -1
@@ -323,7 +330,7 @@ def format_declarations(text, target_lines=None):
         )
         formatted_rows = []
         for _line_no, index, raw, match, name_end, colon in rows:
-            new_prefix = expected_indent + raw[len(match.group("indent")):name_end]
+            new_prefix = expected_indent + raw[len(match.group("indent")) : name_end]
             padding = max(1, expected_colon - len(new_prefix))
             formatted = new_prefix + (" " * padding) + raw[colon:]
             comment_start = _trailing_comment_start(
@@ -331,18 +338,25 @@ def format_declarations(text, target_lines=None):
             )
             formatted_rows.append((index, formatted, comment_start))
 
-        comment_column = max(
-            (len(formatted[:comment_start].rstrip()) + 2
-             for _index, formatted, comment_start in formatted_rows
-             if comment_start >= 0),
-            default=-1,
-        )
+        # ``max(iterable, default=...)`` is Python 3 only; IronPython 2.7's
+        # builtin has no ``default`` keyword.  Keep an explicit -1 sentinel.
+        comment_column = -1
+        for _index, formatted, comment_start in formatted_rows:
+            if comment_start >= 0:
+                column = len(formatted[:comment_start].rstrip()) + 2
+                if column > comment_column:
+                    comment_column = column
         for index, formatted, comment_start in formatted_rows:
             if comment_start >= 0:
                 comment = formatted[comment_start:]
                 formatted = (
                     formatted[:comment_start].rstrip()
-                    + (" " * max(2, comment_column - len(formatted[:comment_start].rstrip())))
+                    + (
+                        " "
+                        * max(
+                            2, comment_column - len(formatted[:comment_start].rstrip())
+                        )
+                    )
                     + comment
                 )
             raw_lines[index] = formatted
