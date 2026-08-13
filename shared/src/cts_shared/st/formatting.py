@@ -56,13 +56,27 @@ def _top_level_logical_operators(clean):
     """
     operators = []
     depth = 0
-    for match in re.finditer(r"\b(?:AND|OR|XOR)\b", clean, re.I):
-        before = clean[:match.start()]
-        # Count only punctuation before this candidate.  Quoted/comment text
-        # is spaces in *clean*, and each line is handled independently.
-        depth = before.count("(") - before.count(")")
-        if depth == 0:
-            operators.append((match.start(), match.end()))
+    index = 0
+    length = len(clean)
+    while index < length:
+        char = clean[index]
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if char.isalpha() or char == "_":
+            end = index + 1
+            while end < length and (clean[end].isalnum() or clean[end] == "_"):
+                end += 1
+            if depth == 0 and clean[index:end].upper() in ("AND", "OR", "XOR"):
+                operators.append((index, end))
+            index = end
+            continue
+        index += 1
     return operators
 
 

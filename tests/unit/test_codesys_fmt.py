@@ -190,6 +190,16 @@ def test_compound_condition_does_not_split_operators_in_strings_or_parentheses()
     )
 
 
+def test_large_compound_condition_is_processed_in_linear_time():
+    terms = ["flag_{0}".format(index) for index in range(3000)]
+    source = "IF " + " AND ".join(terms) + " THEN\nresult := TRUE;\nEND_IF;\n"
+
+    formatted = fmt.format_text(source)
+
+    assert formatted.startswith("IF flag_0\n    AND flag_1\n")
+    assert formatted.endswith("    result := TRUE;\nEND_IF;\n")
+
+
 def test_analyze_keeps_a_valid_section_when_other_section_is_unavailable():
     class Document:
         text = "IF x THEN\ny := 1;\nEND_IF;\n"
