@@ -13,7 +13,8 @@ for path in (str(SHARED), str(BRIDGE)):
 
 import codesys_fsm_operation as fsm  # noqa: E402
 import codesys_fsm_ui as fsm_ui  # noqa: E402
-import codesys_fmt_ui as fmt_ui  # noqa: E402
+import codesys_fsm_picker as fsm_picker  # noqa: E402
+import ide_picker_common as picker_common  # noqa: E402
 from cts_shared.st import fsm_layout  # noqa: E402
 
 
@@ -22,7 +23,6 @@ def test_modules_import_cleanly():
     assert hasattr(fsm_ui, "show_fsm_diagram")
     assert hasattr(fsm_ui, "show_message")
     assert hasattr(fsm_ui, "FsmDiagramForm")
-    assert fsm_ui.codesys_fmt_ui is not None
 
 
 def test_headless_text_mode_finds_struct_and_next_state_fsm():
@@ -101,19 +101,40 @@ def test_analyze_item_sets_suffix_and_status():
     assert no_impl["status"] == "ok"
     assert no_impl["analysis"] == "done"
 
-    broken = {"object": Object(None, raise_on_read=True), "label": "POU", "status": None, "analysis": None}
+    # A raising section getter means "no such section" (GVL/DUT have no
+    # textual_implementation), not a read error.
+    raising_getter = {"object": Object(None, raise_on_read=True), "label": "GVL", "status": None, "analysis": None}
+    fsm._analyze_item(raising_getter)
+    assert raising_getter["suffix"] == "[no FSM]"
+    assert raising_getter["status"] == "ok"
+    assert raising_getter["analysis"] == "done"
+
+    # A genuine read error is a document whose .text raises.
+    class RaisingDocument:
+        @property
+        def text(self):
+            raise RuntimeError("boom")
+
+    class BrokenObject:
+        @property
+        def textual_implementation(self):
+            return RaisingDocument()
+
+    broken = {"object": BrokenObject(), "label": "POU", "status": None, "analysis": None}
     fsm._analyze_item(broken)
     assert broken["suffix"] == "[read error]"
     assert broken["status"] == "error"
     assert broken["analysis"] == "error"
 
 
-def test_picker_labels_default_to_fmt_when_labels_omitted():
-    assert fmt_ui.PICKER_LABELS["title"] == "FMT - Select object"
-    assert fmt_ui.PICKER_LABELS["scan_button"] == "Review All"
-    assert fmt_ui.PICKER_LABELS["open_button"] == "Open selected"
-    assert fmt_ui.PICKER_LABELS["scan_none"] == "No formatting changes were found."
-    assert fmt_ui.PICKER_LABELS["message_title"] == "FMT"
+def test_fsm_picker_labels_carry_the_fsm_wording():
+    assert fsm_picker.FSM_PICKER_LABELS["title"] == "FSM - Select object"
+    assert fsm_picker.FSM_PICKER_LABELS["scan_button"] == "Find next FSM"
+    assert fsm_picker.FSM_PICKER_LABELS["open_button"] == "Show diagram"
+    assert fsm_picker.FSM_PICKER_LABELS["scan_none"] == "No state machine was found in the matching blocks."
+    assert fsm_picker.FSM_PICKER_LABELS["message_title"] == "FSM"
+    assert "{0}" in fsm_picker.FSM_PICKER_LABELS["analysis_done"]
+    assert "{0}" in fsm_picker.FSM_PICKER_LABELS["analysis_hits"]
 
 
 class _FakePanel:
@@ -204,17 +225,10 @@ def test_pending_indexes_skips_already_analyzed_blocks():
         {"analysis": None},
         {"analysis": "error"},
     ]
-    assert fmt_ui.pending_indexes(items, [0, 1, 2, 3]) == [0, 2]
+    assert picker_common.pending_indexes(items, [0, 1, 2, 3]) == [0, 2]
     # Only the filtered subset is ever swept.
-    assert fmt_ui.pending_indexes(items, [1, 3]) == []
-    assert fmt_ui.pending_indexes(items, []) == []
-
-
-def test_fsm_labels_defer_analysis_and_fmt_does_not():
-    assert fmt_ui.PICKER_LABELS["deferred_analysis"] is False
-    assert fmt_ui.PICKER_LABELS["analyze_button"] == "Analyze"
-    assert "{0}" in fmt_ui.PICKER_LABELS["analysis_done"]
-    assert "{0}" in fmt_ui.PICKER_LABELS["analysis_hits"]
+    assert picker_common.pending_indexes(items, [1, 3]) == []
+    assert picker_common.pending_indexes(items, []) == []
 
 
 def test_the_shared_enum_prefix_is_named_once_and_stripped_everywhere():
@@ -467,16 +481,13 @@ class _SearchPicker:
     reach the search - which is exactly how it broke.
     """
 
-    _on_search_key_down = fmt_ui.ObjectPickerForm._on_search_key_down
-    _on_search_preview_key = fmt_ui.ObjectPickerForm._on_search_preview_key
-    _accept = fmt_ui.ObjectPickerForm._accept
-    _accept_all = fmt_ui.ObjectPickerForm._accept_all
+    _on_search_key_down = fsm_picker.FsmObjectPickerForm._on_search_key_down
+    _on_search_preview_key = fsm_picker.FsmObjectPickerForm._on_search_preview_key
+    _accept = fsm_picker.FsmObjectPickerForm._accept
+    _accept_all = fsm_picker.FsmObjectPickerForm._accept_all
 
     def __init__(self, query="AERATION", selected=-1):
-        self.labels = dict(fmt_ui.PICKER_LABELS)
-        self.labels["require_search"] = True
-        self.labels["external_search"] = True
-        self.labels["deferred_analysis"] = True
+        self.labels = dict(fsm_picker.FSM_PICKER_LABELS)
         self._search = _Text(query)
         self._status = _Text()
         self._search_confirmed = False
@@ -510,7 +521,7 @@ def test_enter_runs_the_external_search_instead_of_dying_on_arity(monkeypatch):
     # Click handler too. When it insisted on (sender, event) the call raised
     # inside the message pump, the search never ran, and the picker just sat
     # there with an empty list.
-    monkeypatch.setattr(fmt_ui, "Keys", _Keys, raising=False)
+    monkeypatch.setattr(fsm_picker, "Keys", _Keys, raising=False)
     picker = _SearchPicker()
 
     picker._on_search_key_down(picker, _KeyEvent(_Keys.Enter))
@@ -525,21 +536,21 @@ def test_enter_runs_the_external_search_instead_of_dying_on_arity(monkeypatch):
 
 
 def test_enter_on_a_blank_search_asks_for_a_term_and_runs_nothing(monkeypatch):
-    monkeypatch.setattr(fmt_ui, "Keys", _Keys, raising=False)
+    monkeypatch.setattr(fsm_picker, "Keys", _Keys, raising=False)
     picker = _SearchPicker(query="   ")
 
     picker._on_search_key_down(picker, _KeyEvent(_Keys.Enter))
 
     assert picker.calls == []
     assert picker._search_confirmed is False
-    assert picker._status.Text == fmt_ui.PICKER_LABELS["search_prompt"]
+    assert picker._status.Text == fsm_picker.FSM_PICKER_LABELS["search_prompt"]
 
 
 def test_the_search_box_claims_enter_so_key_down_is_reached_at_all(monkeypatch):
     # A single-line TextBox reports IsInputKey(Enter) as False, so WinForms
     # routes Enter to ProcessDialogKey - the form's AcceptButton - and never
     # raises KeyDown. Everything the Enter path does hangs off this flag.
-    monkeypatch.setattr(fmt_ui, "Keys", _Keys, raising=False)
+    monkeypatch.setattr(fsm_picker, "Keys", _Keys, raising=False)
     picker = _SearchPicker()
 
     enter = _KeyEvent(_Keys.Enter)
@@ -554,7 +565,7 @@ def test_the_search_box_claims_enter_so_key_down_is_reached_at_all(monkeypatch):
 def test_the_wiring_that_makes_enter_reachable_is_not_dropped():
     # The bug was never in the handlers; it was that nothing called them.
     # Only the subscription itself can catch that regression.
-    source = Path(fmt_ui.__file__).read_text(encoding="utf-8")
+    source = Path(fsm_picker.__file__).read_text(encoding="utf-8")
     assert "search.PreviewKeyDown += self._on_search_preview_key" in source
     assert "search.KeyDown += self._on_search_key_down" in source
 
@@ -578,4 +589,4 @@ def test_accept_still_opens_a_selected_block_instead_of_researching():
     picker._accept(picker, None)
 
     assert picker.calls == [], "a selected block must not trigger a new search"
-    assert picker._status.Text == fmt_ui.PICKER_LABELS["search_prompt"]
+    assert picker._status.Text == fsm_picker.FSM_PICKER_LABELS["search_prompt"]

@@ -67,8 +67,31 @@ def text_of(value):
         return repair_mojibake(_UNICODE_TYPE(str(value)))
 
 
+def _debug_log(message):
+    """Temporary diagnostic logger for the read-error investigation.
+
+    Prints to the CODESYS Script Engine output window so the real exception
+    behind a [read error] row can be copied from the IDE. Remove once the
+    read-error root cause is fixed.
+    """
+    print("[fmt-read-debug] " + message)
+
+
 def read_document(obj, attribute):
-    document = getattr(obj, attribute, None)
+    # The section getter itself must be treated like has_text_document treats
+    # it: an object type that does not support the section raises instead of
+    # returning None (GVL/DUT have no textual_implementation). A raising getter
+    # means "no such section", not a read error — otherwise every such object
+    # in the project shows up as [read error].
+    try:
+        document = getattr(obj, attribute, None)
+    except Exception as error:
+        _debug_log(
+            "GETTER {0} on {1}: {2}".format(
+                attribute, safe_str(getattr(obj, "name", type(obj).__name__)), safe_str(error)
+            )
+        )
+        return None
     if document is None:
         return None
     try:
@@ -77,6 +100,14 @@ def read_document(obj, attribute):
             value = value()
         return text_of(value)
     except Exception as error:
+        _debug_log(
+            "READ {0} on {1} (doc={2}): {3}".format(
+                attribute,
+                safe_str(getattr(obj, "name", type(obj).__name__)),
+                safe_str(type(document).__name__),
+                safe_str(error),
+            )
+        )
         raise RuntimeError(
             "Could not read {0}: {1}".format(attribute, safe_str(error))
         )

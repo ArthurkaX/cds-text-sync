@@ -47,11 +47,19 @@ def _prepare_item(obj):
     before_parts = []
     after_parts = []
     writes = []
+    read_errors = []
     for attribute, is_declaration in (
         ("textual_declaration", True),
         ("textual_implementation", False),
     ):
-        before = _read_document(obj, attribute)
+        # One unreadable section must not discard the section that did read —
+        # a graphical implementation still has a Structured Text declaration
+        # worth formatting.
+        try:
+            before = _read_document(obj, attribute)
+        except Exception as error:
+            read_errors.append(safe_str(error))
+            continue
         if before is None:
             continue
         after = format_text(before, declaration=is_declaration)
@@ -59,6 +67,8 @@ def _prepare_item(obj):
         after_parts.append(after)
         writes.append((attribute, before, after))
     if not writes:
+        if read_errors:
+            raise RuntimeError("; ".join(read_errors))
         return None
 
     # A synthetic source comment here made the preview look as if the IDE had
@@ -76,6 +86,7 @@ def _prepare_item(obj):
         "after": after_all,
         "writes": writes,
         "changed_lines": changed,
+        "read_errors": read_errors,
     }
 
 
@@ -93,15 +104,27 @@ def _analyze_item(item):
         item["status"] = "error"
         item["display"] = item["label"] + "    [not editable]"
         item["analysis"] = "error"
+        item["error"] = "CODESYS did not expose a readable Structured Text section."
         return item
     item.update(prepared)
     item["status"] = "changed" if item["changed_lines"] else "ok"
     item["analysis"] = "done"
-    item["display"] = (
-        item["label"] + "    [{0} line(s) to fix]".format(item["changed_lines"])
-        if item["changed_lines"]
-        else item["label"] + "    [OK]"
-    )
+    if item.get("read_errors"):
+        suffix = (
+            "[{0} line(s) to fix, partial]".format(item["changed_lines"])
+            if item["changed_lines"]
+            else "[OK, partial]"
+        )
+        item["error"] = "; ".join(item["read_errors"])
+        item["suffix"] = suffix
+    else:
+        item["suffix"] = None
+        suffix = (
+            "[{0} line(s) to fix]".format(item["changed_lines"])
+            if item["changed_lines"]
+            else "[OK]"
+        )
+    item["display"] = item["label"] + "    " + suffix
     return item
 
 
@@ -131,6 +154,27 @@ def _apply_item(item):
                 pass
         return "Could not update: " + ", ".join(errors)
     return ""
+
+
+def _mark_item_applied(item):
+    """Update picker state without rereading a CODESYS object wrapper.
+
+    Some IDE versions invalidate the document wrapper immediately after a
+    successful write.  The preview already holds the exact text that was
+    applied, so rereading only to paint ``[OK]`` can turn a valid apply into a
+    misleading "could not be read" row.
+    """
+    item["before"] = item["after"]
+    item["writes"] = [
+        (attribute, after, after)
+        for attribute, _before, after in item.get("writes", [])
+    ]
+    item["changed_lines"] = 0
+    item["status"] = "ok"
+    item["analysis"] = "done"
+    item["suffix"] = None
+    item["display"] = item["label"] + "    [OK]"
+    return item
 
 
 def _show_preview(item, position=None, total=None, progress=None):
@@ -203,12 +247,14 @@ def main(params=None, runtime=None):
     def scan_from(index):
         return _scan_next_changed(items, index)
 
-    action, selected_index = codesys_fmt_ui.show_object_picker(
-        items, selected_index, analyze_selected, scan_from
-    )
-    if action == "cancel":
-        return {"status": "cancelled"}
-    if action == "selected":
+    while True:
+        action, selected_index = codesys_fmt_ui.show_object_picker(
+            items, selected_index, analyze_selected, scan_from
+        )
+        if action == "cancel":
+            return {"status": "cancelled"}
+        if action != "selected":
+            break
         if selected_index < 0 or selected_index >= len(items):
             return {"status": "cancelled"}
         item = items[selected_index]
@@ -216,18 +262,24 @@ def main(params=None, runtime=None):
             _analyze_item(item)
         if item.get("status") == "error":
             runtime.ui.warning("The selected object could not be read as editable Structured Text.")
-            return {"status": "error", "error": item.get("error", "No editable text")}
+            continue
         if not item.get("changed_lines", 0):
             runtime.ui.info("No formatting changes are needed for '" + item["label"] + "'.")
-            return {"status": "unchanged", "object": item["label"]}
+            continue
         if _show_preview(item) != "apply":
-            return {"status": "cancelled", "object": item["label"]}
+            # Closing a one-object preview is navigation, not cancellation of
+            # Project_fmt. Reopen the picker with the same selection.
+            continue
         error = _apply_item(item)
         if error:
             codesys_fmt_ui.show_message("FMT", error, "error")
-            return {"status": "error", "error": error}
+            continue
         codesys_fmt_ui.show_message("FMT", "Formatting applied to '" + item["label"] + "'.", "info")
-        return {"status": "success", "object": item["label"], "changed_lines": item["changed_lines"]}
+        # Keep the chooser open after a one-object apply as well. Do not read
+        # the CODESYS object again here: some IDE wrappers become stale after
+        # writing, while the preview already tells us the applied result.
+        _mark_item_applied(item)
+        continue
 
     current_index = selected_index
     if current_index < 0 or current_index >= len(items) or items[current_index].get("status") != "changed":

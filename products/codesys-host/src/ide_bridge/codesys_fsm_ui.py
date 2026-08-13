@@ -28,11 +28,6 @@ try:
 except Exception:
     Form = None
 
-try:
-    import codesys_fmt_ui
-except Exception:
-    codesys_fmt_ui = None
-
 from cts_shared.st import fsm_layout
 
 
@@ -75,9 +70,7 @@ def _style_button(button):
 
 
 def show_message(title, message, icon="info"):
-    """Delegate to the fmt module's message box; do not clone it."""
-    if codesys_fmt_ui is not None:
-        return codesys_fmt_ui.show_message(title, message, icon)
+    """Show a message box without depending on the fmt module."""
     if Form is None:
         print("[FSM] " + str(message))
         return

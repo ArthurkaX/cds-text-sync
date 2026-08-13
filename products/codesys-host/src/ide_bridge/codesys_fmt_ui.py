@@ -2,6 +2,8 @@
 """WinForms dialogs used by the lightweight CODESYS ``fmt`` command."""
 from __future__ import print_function
 
+from ide_picker_common import pending_indexes, sort_item_indexes
+
 try:
     import clr
     clr.AddReference("System.Windows.Forms")
@@ -11,7 +13,7 @@ try:
         MessageBoxButtons, MessageBoxIcon, DialogResult, FormBorderStyle,
         FormStartPosition, AnchorStyles, BorderStyle, RichTextBoxScrollBars,
         FlatStyle, DrawMode, DrawItemState, AutoScaleMode, Timer, ToolTip,
-        Keys
+        Keys, Cursors
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, SolidBrush
     from System.Diagnostics import Stopwatch
@@ -19,10 +21,8 @@ except Exception:
     Form = None
 
 
-# Default copy strings for the object picker. Plain strings, defined outside
-# the CLR guard so they exist even when WinForms is unavailable. A caller may
-# pass a ``labels`` dict to override any subset; the FSM command reuses this
-# picker with its own wording.
+# Copy strings for the FMT object picker. Plain strings, defined outside the
+# CLR guard so they exist even when WinForms is unavailable.
 PICKER_LABELS = {
     "title": "FMT - Select object",
     "heading": "Select a Structured Text object from the project",
@@ -30,16 +30,11 @@ PICKER_LABELS = {
     "status": "Select a block to analyze it.",
     "scan_button": "Review All",
     "open_button": "Open selected",
-    "analyze_button": "Analyze",
     "scan_status": "Scanning blocks from the top...",
     "scan_none": "No formatting changes were found.",
     "analysis_done": "Analysis complete - {0} block(s) need formatting.",
     "analysis_hits": " {0} need formatting.",
     "message_title": "FMT",
-    "deferred_analysis": False,
-    "require_search": False,
-    "search_prompt": "Enter a search term and press Enter first.",
-    "external_search": False,
 }
 
 # A sweep spends one full ST parse per block on the UI thread, so it is paced
@@ -54,11 +49,6 @@ ANALYSIS_CONFIRM_LIMIT = 50
 # user-selected geometry at module scope so moving to the next object does not
 # make a maximized preview snap back to the default size.
 _FMT_PREVIEW_STATE = None
-
-
-def pending_indexes(items, indexes):
-    """Indexes in *indexes* whose item has not been analyzed yet."""
-    return [index for index in indexes if items[index].get("analysis") is None]
 
 
 if Form is not None:
@@ -90,6 +80,32 @@ def _changed_line_sets(before, after):
     }
     right_changed = set(left_changed)
     return left_changed, right_changed
+
+
+def _line_by_line_diff(before, after):
+    """Render a compact, one-column view of the formatter's line changes.
+
+    Formatting deliberately preserves the number of source lines.  Keeping
+    unchanged lines once and placing the old/new forms next to each other in
+    the sequence makes a long formatting-only edit easier to scan than two
+    distant panes.
+    """
+    left = (before or "").split("\n")
+    right = (after or "").split("\n")
+    rendered = []
+    removed = set()
+    added = set()
+    for index in range(max(len(left), len(right))):
+        old = left[index].rstrip("\r") if index < len(left) else ""
+        new = right[index].rstrip("\r") if index < len(right) else ""
+        if old == new:
+            rendered.append("  " + old)
+            continue
+        removed.add(len(rendered))
+        rendered.append("- " + old)
+        added.add(len(rendered))
+        rendered.append("+ " + new)
+    return "\n".join(rendered), removed, added
 
 
 def _highlight_lines(box, line_numbers, color):
@@ -158,12 +174,9 @@ def _highlight_changed_characters(before_box, after_box, before, after, lines):
 
 
 class ObjectPickerForm(Form if Form is not None else object):
-    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None, labels=None):
-        merged = dict(PICKER_LABELS)
-        if labels:
-            merged.update(labels)
-        self.labels = merged
-        self.Text = merged["title"]
+    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None):
+        self.labels = dict(PICKER_LABELS)
+        self.Text = PICKER_LABELS["title"]
         self.Size = Size(980, 660)
         self.MinimumSize = Size(700, 460)
         self.StartPosition = FormStartPosition.CenterScreen
@@ -174,19 +187,17 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.action = "cancel"
         self.analyze_callback = analyze_callback
         self.scan_callback = scan_callback
-        self._search_confirmed = not merged["require_search"]
         self.analyzing = False
         self._status = None
         self._visible_indexes = list(range(len(items)))
         self._analysis_queue = []
         self._analysis_cursor = 0
         self._analysis_timer = None
-        # Deferred mode parses nothing until the user presses Analyze. On a
-        # large project the up-front sweep is what made this dialog unusable.
-        self._deferred = bool(merged.get("deferred_analysis", False))
+        self._sort_key = None
+        self._sort_descending = False
 
         title = Label()
-        title.Text = merged["heading"]
+        title.Text = PICKER_LABELS["heading"]
         title.ForeColor = _TEXT
         title.Font = Font("Segoe UI", 12, FontStyle.Bold)
         title.Location = Point(16, 14)
@@ -194,18 +205,20 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.Controls.Add(title)
 
         subtitle = Label()
-        subtitle.Text = merged["subtitle"]
+        subtitle.Text = PICKER_LABELS["subtitle"]
         subtitle.ForeColor = _DIM
         subtitle.Location = Point(18, 45)
         subtitle.AutoSize = True
         self.Controls.Add(subtitle)
 
         status = Label()
-        status.Text = merged["status"]
+        status.Text = PICKER_LABELS["status"]
         status.ForeColor = _DIM
         status.Location = Point(18, 63)
         status.AutoSize = True
         self._status = status
+        status.Cursor = Cursors.Hand
+        status.Click += self._show_error_report
         self.Controls.Add(status)
 
         search_label = Label()
@@ -223,20 +236,28 @@ class ObjectPickerForm(Form if Form is not None else object):
         search.Text = ""
         search.TextChanged += self._on_filter_changed
         search.PreviewKeyDown += self._on_search_preview_key
-        search.KeyDown += self._on_search_key_down
         self._search = search
         self.Controls.Add(search)
 
-        analyze = Button()
-        analyze.Text = merged["analyze_button"]
-        analyze.Size = Size(120, 26)
-        analyze.Location = Point(394, 81)
-        analyze.Anchor = AnchorStyles.Top | AnchorStyles.Left
-        analyze.Click += self._analyze_visible
-        self._style_button(analyze)
-        analyze.Visible = self._deferred and not merged["external_search"]
-        self.Controls.Add(analyze)
-        self._analyze_button = analyze
+        self._sort_buttons = []
+        for text, key, tip in (
+            ("A↑", "name", "Sort by name; click again to reverse the order"),
+            ("#↑", "changes", "Sort by change count; click again to reverse the order"),
+        ):
+            button = Button()
+            button.Text = text
+            button.Size = Size(30, 24)
+            button.Anchor = AnchorStyles.Top | AnchorStyles.Right
+            button.Tag = key
+            button.Click += self._on_sort
+            self._style_button(button)
+            self.Controls.Add(button)
+            self._sort_buttons.append((button, tip))
+
+        tooltip = ToolTip()
+        for button, tip in self._sort_buttons:
+            tooltip.SetToolTip(button, tip)
+        self._sort_tooltip = tooltip
 
         self.list = ListBox()
         self.list.Location = Point(16, 114)
@@ -268,7 +289,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._cancel_button = cancel
 
         all_button = Button()
-        all_button.Text = merged["scan_button"]
+        all_button.Text = PICKER_LABELS["scan_button"]
         all_button.Size = Size(100, 30)
         all_button.Location = Point(750, 590)
         all_button.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
@@ -278,7 +299,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._all_button = all_button
 
         selected = Button()
-        selected.Text = merged["open_button"]
+        selected.Text = PICKER_LABELS["open_button"]
         selected.Size = Size(120, 30)
         selected.Location = Point(860, 590)
         selected.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
@@ -290,8 +311,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.Resize += self._layout
         self.FormClosed += self._on_form_closed
         self._layout()
-        if not self._deferred:
-            self._start_background_analysis(range(len(items)))
+        self._start_background_analysis(range(len(items)))
 
     def _style_button(self, button):
         button.BackColor = _BUTTON_BG
@@ -379,8 +399,26 @@ class ObjectPickerForm(Form if Form is not None else object):
         if changed:
             suffix += self.labels["analysis_hits"].format(changed)
         if errors:
-            suffix += " {0} could not be read.".format(errors)
+            suffix += " {0} could not be read (click for details).".format(errors)
         return "Analyzed {0}/{1} block(s).".format(analyzed, total) + suffix
+
+    def _show_error_report(self, sender=None, event=None):
+        lines = []
+        count = 0
+        for item in self.items:
+            if item.get("status") == "error" or item.get("read_errors"):
+                count += 1
+                lines.append(item.get("label", ""))
+                lines.append("    " + item.get("error", "No detail was reported."))
+                lines.append("")
+        if not lines:
+            self._status.Text = "No read errors were reported."
+            return
+        header = "{0} object(s) could not be fully read:".format(count)
+        show_text_report(
+            self.labels["message_title"] + " - read errors",
+            header + "\n\n" + "\n".join(lines),
+        )
 
     def _start_background_analysis(self, indexes):
         if self.analyze_callback is None:
@@ -399,6 +437,15 @@ class ObjectPickerForm(Form if Form is not None else object):
         timer.Start()
 
     def _on_analysis_tick(self, sender, event):
+        # A WinForms Timer is rooted by its Tick delegate and keeps ticking in
+        # the host's message pump for the life of the process. FormClosed
+        # normally stops it, but it does not run on every way out of a modal
+        # dialog (a ScriptEngine abort unwinds ShowDialog without it). Without
+        # this guard a leaked timer walks the whole project on every tick,
+        # forever, inside CODESYS. Self-terminate as soon as the form is gone.
+        if self.IsDisposed or self.Disposing:
+            self._stop_background_analysis()
+            return
         if self.analyzing:
             return
         watch = Stopwatch.StartNew()
@@ -419,7 +466,10 @@ class ObjectPickerForm(Form if Form is not None else object):
         if self._analysis_cursor >= len(self._analysis_queue):
             self._stop_background_analysis()
         self._status.Text = self._analysis_status()
-        self.list.Invalidate()
+        if self._sort_key == "changes":
+            self._refresh_list()
+        else:
+            self.list.Invalidate()
 
     def _stop_background_analysis(self):
         timer = self._analysis_timer
@@ -429,40 +479,24 @@ class ObjectPickerForm(Form if Form is not None else object):
             timer.Dispose()
 
     def _on_selection_changed(self, sender, event):
-        if not self._search_confirmed:
-            return
-        if self._deferred:
-            # Typing in the filter re-selects a row on every keystroke, so
-            # analyzing on selection would parse a block per keystroke. That
-            # is the lag the Analyze button exists to remove.
-            return
         if self.list.SelectedIndex >= 0:
-            self._analyze_index(self._visible_indexes[self.list.SelectedIndex])
+            index = self._visible_indexes[self.list.SelectedIndex]
+            item = self.items[index]
+            if item.get("status") == "error":
+                self._status.Text = "Read error: " + item.get(
+                    "error", "CODESYS did not expose editable Structured Text."
+                )
+                return
+            self._analyze_index(index)
+            if item.get("status") == "error":
+                self._status.Text = "Read error: " + item.get(
+                    "error", "CODESYS did not expose editable Structured Text."
+                )
 
     def _accept(self, sender, event):
-        if not self._search_confirmed:
-            # Enter can still arrive here through AcceptButton on a build
-            # where the preview hook does not take. With an empty list there
-            # is nothing to open, so a filled search box is the confirmation
-            # it plainly is - bouncing the user back to a box that already
-            # holds the query is how this deadlocked.
-            if (self.labels["external_search"] and self.list.SelectedIndex < 0
-                    and (self._search.Text or "").strip()):
-                self._search_confirmed = True
-                self._status.Text = self.labels["scan_status"]
-                self._accept_all()
-                return
-            self._status.Text = self.labels["search_prompt"]
-            self._search.Focus()
-            return
         if self.list.SelectedIndex < 0:
             return
         visible = self.list.SelectedIndex
-        if self.labels["external_search"] and self.items[
-            self._visible_indexes[visible]
-        ].get("analysis") is None:
-            self._status.Text = "Click Find next FSM to search the matching workspace files."
-            return
         self._analyze_index(self._visible_indexes[visible])
         self.selected_index = self._visible_indexes[visible]
         self.action = "selected"
@@ -472,12 +506,8 @@ class ObjectPickerForm(Form if Form is not None else object):
     def _accept_all(self, sender=None, event=None):
         if self.scan_callback is None:
             return
-        if not self._search_confirmed:
-            self._status.Text = self.labels["search_prompt"]
-            self._search.Focus()
-            return
-        if (not self.labels["external_search"] and not self._confirm_sweep(
-                len(pending_indexes(self.items, self._visible_indexes)))):
+        if not self._confirm_sweep(
+                len(pending_indexes(self.items, self._visible_indexes))):
             return
         self._stop_background_analysis()
         self.analyzing = True
@@ -491,13 +521,6 @@ class ObjectPickerForm(Form if Form is not None else object):
                     index = self.scan_callback(0, self._visible_indexes)
                 except TypeError:
                     index = self.scan_callback(0)
-            # External search can first populate this picker with paths, then
-            # use a later click to analyze those paths.  It deliberately does
-            # not close the dialog during the population phase.
-            if isinstance(index, dict):
-                self._refresh_list()
-                self._status.Text = index.get("status", "Search complete.")
-                return
             if index < 0:
                 show_message(self.labels["message_title"], self.labels["scan_none"], "info")
                 self.list.Invalidate()
@@ -528,28 +551,6 @@ class ObjectPickerForm(Form if Form is not None else object):
             return False
         return True
 
-    def _analyze_visible(self, sender=None, event=None):
-        """Analyze exactly the blocks the current filter leaves visible."""
-        if self.analyze_callback is None:
-            return
-        if not self._search_confirmed:
-            self._status.Text = self.labels["search_prompt"]
-            self._search.Focus()
-            return
-        if not self._visible_indexes:
-            self._status.Text = "Nothing matches the filter."
-            self._search.Focus()
-            return
-        pending = pending_indexes(self.items, self._visible_indexes)
-        if not pending:
-            self._status.Text = self._analysis_status()
-            return
-        if not self._confirm_sweep(len(pending)):
-            return
-        self._analysis_queue = []
-        self._start_background_analysis(self._visible_indexes)
-        self._status.Text = "Analyzing {0} block(s)...".format(len(pending))
-
     def _layout(self, sender=None, event=None):
         width = self.ClientSize.Width
         height = self.ClientSize.Height
@@ -557,9 +558,17 @@ class ObjectPickerForm(Form if Form is not None else object):
         gap = 10
         button_y = max(0, height - 42)
         self._search_label.Location = Point(margin, 86)
-        self._search.Location = Point(margin + 50, 82)
-        self._search.Size = Size(320, 24)
-        self._analyze_button.Location = Point(self._search.Right + 8, 81)
+        search_left = margin + 50
+        sort_width = sum(button.Width for button, _tip in self._sort_buttons)
+        sort_width += max(0, len(self._sort_buttons) - 1) * 2
+        sort_left = width - margin - sort_width
+        analyze_left = sort_left
+        search_width = max(150, min(320, analyze_left - 8 - search_left))
+        self._search.Location = Point(search_left, 82)
+        self._search.Size = Size(search_width, 24)
+        for button, _tip in self._sort_buttons:
+            button.Location = Point(sort_left, 82)
+            sort_left = button.Right + 2
         self.list.Location = Point(margin, 114)
         self.list.Size = Size(max(100, width - margin * 2), max(100, button_y - 124))
         right = width - margin
@@ -571,13 +580,16 @@ class ObjectPickerForm(Form if Form is not None else object):
 
     def _refresh_list(self):
         query = (self._search.Text or "").strip().lower()
-        self._visible_indexes = [
-            index for index, item in enumerate(self.items)
-            if not query or query in item["label"].lower()
-        ]
         selected_object = None
         if self.list.SelectedIndex >= 0 and self.list.SelectedIndex < len(self._visible_indexes):
             selected_object = self._visible_indexes[self.list.SelectedIndex]
+        visible = [
+            index for index, item in enumerate(self.items)
+            if not query or query in item["label"].lower()
+        ]
+        self._visible_indexes = sort_item_indexes(
+            self.items, visible, self._sort_key, self._sort_descending
+        )
         self.list.BeginUpdate()
         try:
             self.list.Items.Clear()
@@ -590,58 +602,45 @@ class ObjectPickerForm(Form if Form is not None else object):
         elif self.list.Items.Count:
             self.list.SelectedIndex = 0
 
+    def _on_sort(self, sender, event):
+        key = sender.Tag
+        if self._sort_key == key:
+            self._sort_descending = not self._sort_descending
+        else:
+            self._sort_key = key
+            self._sort_descending = False
+        for button, _tip in self._sort_buttons:
+            if button.Tag == self._sort_key:
+                button.Text = (
+                    ("A↓" if self._sort_descending else "A↑")
+                    if button.Tag == "name"
+                    else ("#↓" if self._sort_descending else "#↑")
+                )
+            else:
+                button.Text = "A↑" if button.Tag == "name" else "#↑"
+        self._refresh_list()
+        self.list.Invalidate()
+
     def _on_filter_changed(self, sender, event):
         if not hasattr(self, "list"):
             return
-        if self._deferred:
-            # The queue was built from the previous filter. Per-item results
-            # are cached, so nothing is lost by dropping the stale sweep.
-            self._stop_background_analysis()
-        if self.labels["require_search"]:
-            self._search_confirmed = False
         self._refresh_list()
         self.list.Invalidate()
 
     def _on_search_preview_key(self, sender, event):
         # A single-line TextBox answers IsInputKey(Enter) with False, so
         # WinForms routes Enter as a dialog key: ProcessDialogKey reaches the
-        # form and clicks AcceptButton BEFORE KeyDown is ever raised.
-        # Suppressing the key in KeyDown cannot undo that - KeyDown does not
-        # run. Claiming Enter as an input key here is what makes it run.
+        # form and clicks AcceptButton. Claiming Enter as an input key here
+        # keeps a single-line TextBox from routing it to the form's
+        # AcceptButton.
         if event.KeyCode == Keys.Enter:
             event.IsInputKey = True
 
-    def _on_search_key_down(self, sender, event):
-        # Enter is the keyboard shortcut for Analyze. Compare against the enum,
-        # not its name: Keys.Enter and Keys.Return are the same value and the
-        # CLR prints it as "Return", so a string test never fires. It also has
-        # to be swallowed, or the form's AcceptButton fires too and the dialog
-        # closes on whichever block happens to be selected.
-        if event.KeyCode != Keys.Enter:
-            return
-        if self.labels["require_search"]:
-            event.Handled = True
-            event.SuppressKeyPress = True
-            if not (self._search.Text or "").strip():
-                self._status.Text = self.labels["search_prompt"]
-                return
-            self._search_confirmed = True
-            if self.labels["external_search"]:
-                self._status.Text = "Searching matching workspace files..."
-                self._accept_all()
-            else:
-                self._status.Text = "Search confirmed: {0} matching block(s). Click Find next FSM.".format(
-                    len(self._visible_indexes)
-                )
-            return
-        if not self._deferred:
-            return
-        event.Handled = True
-        event.SuppressKeyPress = True
-        self._analyze_visible()
-
     def _on_form_closed(self, sender, event):
         self._stop_background_analysis()
+        # Temporary diagnostic marker: anything printed after this line means
+        # work outlived the picker. Remove with _debug_log in ide_st_objects.
+        print("[fmt-read-debug] ==== picker form closed, analysis timer stopped ====")
 
 
 class FmtPreviewForm(Form if Form is not None else object):
@@ -692,13 +691,19 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._changed_left = set()
         self._changed_right = set()
         self._jump_index = -1
+        self._view_style = (
+            (_FMT_PREVIEW_STATE or {}).get("view_style", "side_by_side")
+        )
 
         self._before = self._text_box(before or "")
         self._after = self._text_box(after or "")
+        self._line_by_line = self._text_box("")
         self._before.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         self._after.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+        self._line_by_line.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         self.Controls.Add(self._before)
         self.Controls.Add(self._after)
+        self.Controls.Add(self._line_by_line)
         self._before.VScroll += self._sync_scroll
         self._after.VScroll += self._sync_scroll
         self._before.HScroll += self._sync_scroll
@@ -752,10 +757,36 @@ class FmtPreviewForm(Form if Form is not None else object):
         next_button.Enabled = bool(changed_lines)
         self.Controls.Add(next_button)
         self._next_button = next_button
+        view_label = Label()
+        view_label.Text = "View:"
+        view_label.ForeColor = _DIM
+        view_label.AutoSize = True
+        self.Controls.Add(view_label)
+        self._view_label = view_label
+        side_by_side = Button()
+        side_by_side.Text = "Two panes"
+        side_by_side.Size = Size(95, 26)
+        side_by_side.Anchor = AnchorStyles.Top | AnchorStyles.Right
+        side_by_side.Click += self._show_side_by_side
+        self._style_button(side_by_side)
+        self.Controls.Add(side_by_side)
+        self._side_by_side_button = side_by_side
+        line_by_line = Button()
+        line_by_line.Text = "By line"
+        line_by_line.Size = Size(80, 26)
+        line_by_line.Anchor = AnchorStyles.Top | AnchorStyles.Right
+        line_by_line.Click += self._show_line_by_line
+        self._style_button(line_by_line)
+        self.Controls.Add(line_by_line)
+        self._line_by_line_button = line_by_line
         tooltip = ToolTip()
         tooltip.SetToolTip(previous, "Jump to the previous changed line in this block")
         tooltip.SetToolTip(next_button, "Jump to the next changed line in this block")
+        tooltip.SetToolTip(side_by_side, "Show Before and After in two synchronized panes")
+        tooltip.SetToolTip(line_by_line, "Show unchanged lines once and each change as Before/After rows")
         self._tooltip = tooltip
+        self._set_line_by_line_text(before, after)
+        self._set_view_style(self._view_style)
         self._layout()
         self._highlight(before, after)
         self._restore_preview_state()
@@ -767,6 +798,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._stats_label.Text = self._stats_text(changed_lines)
         self._before.Text = before or ""
         self._after.Text = after or ""
+        self._set_line_by_line_text(before, after)
         self._jump_index = -1
         self._highlight(before, after)
         self._previous_button.Enabled = bool(changed_lines)
@@ -805,6 +837,7 @@ class FmtPreviewForm(Form if Form is not None else object):
             "location": bounds.Location,
             "size": bounds.Size,
             "window_state": self.WindowState,
+            "view_style": self._view_style,
         }
 
     def _stats_text(self, changed_lines):
@@ -841,6 +874,30 @@ class FmtPreviewForm(Form if Form is not None else object):
             self._before, self._after, before, after, sorted(left)
         )
 
+    def _set_line_by_line_text(self, before, after):
+        text, removed, added = _line_by_line_diff(before, after)
+        self._line_by_line.Text = text
+        self._inline_change_rows = sorted(removed)
+        _highlight_lines(self._line_by_line, removed, _CHANGED_BG)
+        _highlight_lines(self._line_by_line, added, _ADDED_BG)
+
+    def _set_view_style(self, style):
+        self._view_style = "line_by_line" if style == "line_by_line" else "side_by_side"
+        inline = self._view_style == "line_by_line"
+        self._before.Visible = not inline
+        self._after.Visible = not inline
+        self._line_by_line.Visible = inline
+        self._after_label.Visible = not inline
+        self._side_by_side_button.Enabled = inline
+        self._line_by_line_button.Enabled = not inline
+        self._layout()
+
+    def _show_side_by_side(self, sender, event):
+        self._set_view_style("side_by_side")
+
+    def _show_line_by_line(self, sender, event):
+        self._set_view_style("line_by_line")
+
     def _style_button(self, button):
         button.BackColor = _BUTTON_BG
         button.ForeColor = _TEXT
@@ -860,7 +917,14 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._before.Size = Size(half, box_height)
         self._after.Location = Point(left + half + gap, 100)
         self._after.Size = Size(half, box_height)
+        self._line_by_line.Location = Point(left, 100)
+        self._line_by_line.Size = Size(width - left * 2, box_height)
         self._after_label.Location = Point(left + half + gap, 76)
+        self._line_by_line_button.Location = Point(width - left - self._line_by_line_button.Width, 70)
+        self._side_by_side_button.Location = Point(
+            self._line_by_line_button.Left - 6 - self._side_by_side_button.Width, 70
+        )
+        self._view_label.Location = Point(self._side_by_side_button.Left - 42, 76)
         button_y = max(0, height - 48)
         self._stop_button.Location = Point(width - 16 - self._stop_button.Width, button_y)
         self._skip_button.Location = Point(
@@ -931,6 +995,14 @@ class FmtPreviewForm(Form if Form is not None else object):
             target = candidates[-1] if candidates else changes[-1]
         self._jump_index = target
         self._stats_label.Text = self._stats_text_with_position(target)
+        if self._view_style == "line_by_line":
+            position = self._changed_left.index(target)
+            if position < len(self._inline_change_rows):
+                row = self._inline_change_rows[position]
+                start = self._line_by_line.GetFirstCharIndexFromLine(row)
+                self._line_by_line.Select(max(0, start), len(self._line_by_line.Lines[row]))
+                self._line_by_line.ScrollToCaret()
+            return
         for box in (self._before, self._after):
             if target < box.Lines.Length:
                 start = box.GetFirstCharIndexFromLine(target)
@@ -951,7 +1023,7 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._jump_change(1)
 
 
-def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None, labels=None):
+def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None):
     if Form is None:
         return "cancel", -1
     form = ObjectPickerForm(
@@ -959,7 +1031,6 @@ def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_cal
         selected_index=selected_index,
         analyze_callback=analyze_callback,
         scan_callback=scan_callback,
-        labels=labels,
     )
     form.ShowDialog()
     return form.action, form.selected_index
@@ -991,6 +1062,53 @@ def show_fmt_wizard(first_preview, advance_callback):
     form.ShowDialog()
     form.remember_preview_state()
     return form.action
+
+
+def show_text_report(title, text):
+    if Form is None:
+        print("[FMT] " + str(text))
+        return
+    form = Form()
+    form.Text = title
+    form.Size = Size(900, 600)
+    form.MinimumSize = Size(500, 300)
+    form.StartPosition = FormStartPosition.CenterScreen
+    form.FormBorderStyle = FormBorderStyle.Sizable
+    form.BackColor = _BG
+
+    box = RichTextBox()
+    box.ReadOnly = True
+    box.WordWrap = False
+    box.ScrollBars = RichTextBoxScrollBars.Both
+    box.BackColor = _PANEL
+    box.ForeColor = _TEXT
+    box.BorderStyle = getattr(BorderStyle, "None")
+    box.Font = Font("Consolas", 9)
+    box.Location = Point(12, 12)
+    box.Size = Size(864, 500)
+    box.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+    box.Text = text
+    form.Controls.Add(box)
+
+    close = Button()
+    close.Text = "Close"
+    close.Size = Size(90, 30)
+    close.Location = Point(770, 524)
+    close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
+    close.DialogResult = DialogResult.Cancel
+    close.BackColor = _BUTTON_BG
+    close.ForeColor = _TEXT
+    close.FlatStyle = FlatStyle.Flat
+    close.FlatAppearance.BorderColor = _BUTTON_BORDER
+    close.FlatAppearance.BorderSize = 1
+    close.UseVisualStyleBackColor = False
+    form.Controls.Add(close)
+    form.CancelButton = close
+
+    try:
+        form.ShowDialog()
+    finally:
+        form.Dispose()
 
 
 def show_message(title, message, icon="info"):

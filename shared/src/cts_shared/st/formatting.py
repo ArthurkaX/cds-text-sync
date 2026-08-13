@@ -176,6 +176,34 @@ def _declaration_groups(raw_lines, clean_lines):
         yield group
 
 
+def _trailing_comment_start(line, after=0):
+    """Return the first comment delimiter after a declaration's type.
+
+    A comment marker inside a quoted default value is not a comment.  ST
+    doubles quotes to escape them, so skip those pairs while looking for a
+    trailing ``//`` or ``(*`` comment.
+    """
+    index = max(0, after)
+    while index < len(line):
+        char = line[index]
+        if char in ("'", '"'):
+            quote = char
+            index += 1
+            while index < len(line):
+                if line[index] == quote:
+                    if index + 1 < len(line) and line[index + 1] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if line[index:index + 2] in ("//", "(*"):
+            return index
+        index += 1
+    return -1
+
+
 def format_declarations(text, target_lines=None):
     """Align declaration groups, optionally limiting them to source lines."""
     raw_lines = text.split("\n")
@@ -194,10 +222,31 @@ def format_declarations(text, target_lines=None):
             )
             + 1
         )
+        formatted_rows = []
         for _line_no, index, raw, match, name_end, colon in rows:
             new_prefix = expected_indent + raw[len(match.group("indent")):name_end]
             padding = max(1, expected_colon - len(new_prefix))
-            raw_lines[index] = new_prefix + (" " * padding) + raw[colon:]
+            formatted = new_prefix + (" " * padding) + raw[colon:]
+            comment_start = _trailing_comment_start(
+                formatted, after=len(new_prefix) + padding
+            )
+            formatted_rows.append((index, formatted, comment_start))
+
+        comment_column = max(
+            (len(formatted[:comment_start].rstrip()) + 2
+             for _index, formatted, comment_start in formatted_rows
+             if comment_start >= 0),
+            default=-1,
+        )
+        for index, formatted, comment_start in formatted_rows:
+            if comment_start >= 0:
+                comment = formatted[comment_start:]
+                formatted = (
+                    formatted[:comment_start].rstrip()
+                    + (" " * max(2, comment_column - len(formatted[:comment_start].rstrip())))
+                    + comment
+                )
+            raw_lines[index] = formatted
     return "\n".join(raw_lines)
 
 

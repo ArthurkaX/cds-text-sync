@@ -39,9 +39,9 @@ except Exception:
     codesys_fsm_ui = None
 
 try:
-    import codesys_fmt_ui
+    import codesys_fsm_picker
 except Exception:
-    codesys_fmt_ui = None
+    codesys_fsm_picker = None
 
 
 def _analyze_item(item):
@@ -225,25 +225,6 @@ def main(params=None, runtime=None):
     items = []
     selected_index = -1
 
-    labels = {
-        "title": "FSM - Select object",
-        "heading": "Find a state machine in the exported workspace",
-        "subtitle": "Enter a path search and press Enter to list matching project-view blocks. Then Find next FSM analyzes only that list in parallel.",
-        "status": "Enter a search term and press Enter first.",
-        "scan_button": "Find next FSM",
-        "open_button": "Show diagram",
-        "analyze_button": "Analyze filtered",
-        "scan_status": "Searching matching workspace files...",
-        "scan_none": "No state machine was found in the matching blocks.",
-        "analysis_done": "Analysis complete - {0} block(s) contain a state machine.",
-        "analysis_hits": " {0} contain a state machine.",
-        "message_title": "FSM",
-        "deferred_analysis": True,
-        "require_search": True,
-        "search_prompt": "Enter a non-empty path search and press Enter first.",
-        "external_search": True,
-    }
-
     def analyze_selected(index):
         if 0 <= index < len(items):
             return _analyze_item(items[index])
@@ -297,8 +278,8 @@ def main(params=None, runtime=None):
             return item_index
         return -1
 
-    action, selected_index = codesys_fmt_ui.show_object_picker(
-        items, selected_index, analyze_selected, scan_from, labels=labels
+    action, selected_index = codesys_fsm_picker.show_fsm_object_picker(
+        items, selected_index, analyze_selected, scan_from
     )
     if action == "cancel":
         return {"status": "cancelled"}
