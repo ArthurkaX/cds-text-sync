@@ -35,6 +35,7 @@ from cts_shared.st.formatting import (  # noqa: E402
     format_implementation,
 )
 import ide_st_objects as st_objects  # noqa: E402
+import codesys_fmt_operation as fmt_operation  # noqa: E402
 from fmt_session import (  # noqa: E402
     FmtSession,
     SessionError,
@@ -346,6 +347,16 @@ def test_large_repeated_diff_falls_back_to_reduced_representation():
     assert model.changed_count > 0
     # The reduced model still classifies the untouched tail as equal.
     assert any(row.kind == "equal" for row in model.rows)
+
+
+def test_large_pou_format_and_preview_stay_bounded():
+    """Representative large input produces bounded pure-model output."""
+    source = make_large_pou(2000).textual_implementation.text
+    formatted = format_implementation(source)
+    model = DiffModel(source, formatted)
+    assert len(source) > 20_000
+    assert len(model.rows) <= len(source.splitlines()) * 2
+    assert model.changed_count >= 0
 
 
 def test_character_highlighting_is_bounded_to_replace_blocks():
@@ -846,3 +857,32 @@ def test_read_document_has_no_debug_print_spam(capsys):
     captured = capsys.readouterr()
     assert "fmt-read-debug" not in captured.out
     assert captured.out == ""
+
+
+def test_default_text_read_preserves_mojibake_without_repair():
+    corrupted = "// Сброс".encode("utf-8").decode("latin-1")
+    assert st_objects.text_of(corrupted) == corrupted
+    assert st_objects.repair_mojibake(corrupted) != corrupted
+
+
+def test_wizard_scan_step_analyzes_at_most_one_object():
+    items = [
+        {"object": FakeObject("A", implementation="x := 1;\n"), "label": "A"},
+        {"object": FakeObject("B", implementation="y := 1;\n"), "label": "B"},
+    ]
+    next_index = fmt_operation._scan_one_changed(items, 0)
+    assert next_index == 1
+    assert items[0].get("analysis") == "done"
+    assert items[1].get("analysis") is None
+
+
+def test_formatting_is_idempotent_for_compound_condition():
+    source = (
+        "IF aAct.wCmd <> _NoCmd AND aAct.eDev <> _Alrm THEN\n"
+        "    _Need2Lock := TRUE;\n"
+        "ELSE\n"
+        "    _Need2Lock := FALSE;\n"
+        "END_IF;\n"
+    )
+    once = format_implementation(source)
+    assert format_implementation(once) == once

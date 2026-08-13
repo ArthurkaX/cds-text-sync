@@ -68,10 +68,14 @@ def repair_mojibake(text):
 
 
 def text_of(value):
-    """Return IDE text as Unicode while repairing obvious mojibake."""
+    """Return IDE text as Unicode without changing source content.
+
+    Encoding repair is intentionally opt-in; Project_fmt must not silently
+    rewrite user text that merely looks like mojibake.
+    """
     if value is None:
         return _UNICODE_TYPE()
-    return repair_mojibake(_as_unicode(value))
+    return _as_unicode(value)
 
 
 def read_document(obj, attribute):

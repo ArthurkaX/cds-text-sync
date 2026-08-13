@@ -208,6 +208,34 @@ def _scan_next_changed(items, start_index):
     return -1
 
 
+def _scan_one_changed(items, start_index):
+    """Analyze at most one item; the UI can schedule the next call."""
+    index = max(0, start_index)
+    if index >= len(items):
+        return -1
+    item = items[index]
+    if item.get("analysis") is None:
+        _analyze_item(item)
+    return index if item.get("status") == "changed" else index + 1
+
+
+def _log_summary(runtime, status, total, applied=0, skipped=0, errors=0):
+    """Emit one bounded diagnostic line for a completed UI session."""
+    message = (
+        "Project_fmt summary: status={0}; objects={1}; applied={2}; "
+        "skipped={3}; errors={4}."
+    ).format(status, total, applied, skipped, errors)
+    try:
+        runtime.ui.info(message)
+    except Exception:
+        # Diagnostics must never change the formatting result.
+        pass
+
+
+def _error_count(items):
+    return sum(1 for item in items if item.get("status") == "error")
+
+
 def main(params=None, runtime=None):
     params = params or {}
     if params.get("text") is not None:
@@ -244,14 +272,12 @@ def main(params=None, runtime=None):
             return _analyze_item(items[index])
         return None
 
-    def scan_from(index):
-        return _scan_next_changed(items, index)
-
     while True:
         action, selected_index = codesys_fmt_ui.show_object_picker(
-            items, selected_index, analyze_selected, scan_from
+            items, selected_index, analyze_selected
         )
         if action == "cancel":
+            _log_summary(runtime, "cancelled", len(items), errors=_error_count(items))
             return {"status": "cancelled"}
         if action != "selected":
             break
@@ -286,6 +312,7 @@ def main(params=None, runtime=None):
         current_index = _scan_next_changed(items, 0)
     if current_index < 0:
         runtime.ui.info("No formatting changes are needed in the project.")
+        _log_summary(runtime, "unchanged", len(items), errors=_error_count(items))
         return {"status": "unchanged", "changed_objects": 0}
 
     state = {
@@ -293,6 +320,7 @@ def main(params=None, runtime=None):
         "applied": 0,
         "skipped": 0,
         "position": 1,
+        "searching": False,
     }
 
     def preview_for_current():
@@ -307,20 +335,24 @@ def main(params=None, runtime=None):
         }
 
     def advance_wizard(action):
-        item = items[state["current_index"]]
-        if action == "skip":
-            state["skipped"] += 1
-        else:
-            error = _apply_item(item)
-            if error:
-                codesys_fmt_ui.show_message("FMT", item["label"] + ": " + error, "error")
-                return {"error": error}
-            state["applied"] += 1
-        state["current_index"] = _scan_next_changed(
-            items, state["current_index"] + 1
-        )
-        if state["current_index"] < 0:
+        if not state["searching"]:
+            item = items[state["current_index"]]
+            if action == "skip":
+                state["skipped"] += 1
+            else:
+                error = _apply_item(item)
+                if error:
+                    codesys_fmt_ui.show_message("FMT", item["label"] + ": " + error, "error")
+                    return {"error": error}
+                state["applied"] += 1
+            state["current_index"] += 1
+            state["searching"] = True
+        state["current_index"] = _scan_one_changed(items, state["current_index"])
+        if state["current_index"] < 0 or state["current_index"] >= len(items):
             return {"complete": True}
+        if items[state["current_index"]].get("status") != "changed":
+            return {"continue": True}
+        state["searching"] = False
         state["position"] += 1
         return {"next": preview_for_current()}
 
@@ -335,6 +367,14 @@ def main(params=None, runtime=None):
             ),
             "warning",
         )
+        _log_summary(
+            runtime,
+            "cancelled",
+            len(items),
+            applied=state["applied"],
+            skipped=state["skipped"],
+            errors=_error_count(items),
+        )
         return {
             "status": "cancelled",
             "applied": state["applied"],
@@ -348,6 +388,14 @@ def main(params=None, runtime=None):
             state["applied"], state["skipped"]
         ),
         "info",
+    )
+    _log_summary(
+        runtime,
+        "success",
+        len(items),
+        applied=state["applied"],
+        skipped=state["skipped"],
+        errors=_error_count(items),
     )
     return {
         "status": "success",

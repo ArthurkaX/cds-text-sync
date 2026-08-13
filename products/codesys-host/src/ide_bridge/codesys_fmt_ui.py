@@ -174,7 +174,7 @@ def _highlight_changed_characters(before_box, after_box, before, after, lines):
 
 
 class ObjectPickerForm(Form if Form is not None else object):
-    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None):
+    def __init__(self, items, selected_index=-1, analyze_callback=None):
         self.labels = dict(PICKER_LABELS)
         self.Text = PICKER_LABELS["title"]
         self.Size = Size(980, 660)
@@ -186,13 +186,15 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.selected_index = selected_index
         self.action = "cancel"
         self.analyze_callback = analyze_callback
-        self.scan_callback = scan_callback
         self.analyzing = False
         self._status = None
         self._visible_indexes = list(range(len(items)))
         self._analysis_queue = []
         self._analysis_cursor = 0
         self._analysis_timer = None
+        self._review_queue = []
+        self._review_cursor = 0
+        self._review_active = False
         self._is_closing = False
         self._sort_key = None
         self._sort_descending = False
@@ -445,7 +447,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         # dialog (a ScriptEngine abort unwinds ShowDialog without it). Without
         # this guard a leaked timer walks the whole project on every tick,
         # forever, inside CODESYS. Self-terminate as soon as the form is gone.
-        if self._is_closing or self.IsDisposed or self.Disposing:
+        if getattr(self, "_is_closing", False) or self.IsDisposed or self.Disposing:
             self._stop_background_analysis()
             return
         if self.analyzing:
@@ -518,36 +520,60 @@ class ObjectPickerForm(Form if Form is not None else object):
         self.Close()
 
     def _accept_all(self, sender=None, event=None):
-        if self.scan_callback is None:
+        if self.analyze_callback is None:
             return
         if not self._confirm_sweep(
                 len(pending_indexes(self.items, self._visible_indexes))):
             return
         self._stop_background_analysis()
+        self._review_queue = list(self._visible_indexes)
+        self._review_cursor = 0
+        self._review_active = True
         self.analyzing = True
         self._status.Text = self.labels["scan_status"]
         self.UseWaitCursor = True
-        try:
-            try:
-                index = self.scan_callback(0, self._visible_indexes, self._search.Text)
-            except TypeError:
-                try:
-                    index = self.scan_callback(0, self._visible_indexes)
-                except TypeError:
-                    index = self.scan_callback(0)
-            if index < 0:
-                show_message(self.labels["message_title"], self.labels["scan_none"], "info")
-                self.list.Invalidate()
-                return
-            self.selected_index = index
-            if index in self._visible_indexes:
-                self.list.SelectedIndex = self._visible_indexes.index(index)
-            self.action = "all"
-            self.DialogResult = DialogResult.OK
-            self.Close()
-        finally:
+        timer = Timer()
+        timer.Interval = 15
+        timer.Tick += self._on_review_tick
+        self._analysis_timer = timer
+        timer.Start()
+
+    def _on_review_tick(self, sender, event):
+        if self._is_closing or self.IsDisposed or self.Disposing:
+            self._review_active = False
+            self._stop_background_analysis()
+            return
+        if not self._review_active or self._review_cursor >= len(self._review_queue):
+            self._review_active = False
             self.analyzing = False
             self.UseWaitCursor = False
+            self._stop_background_analysis()
+            show_message(self.labels["message_title"], self.labels["scan_none"], "info")
+            self.list.Invalidate()
+            return
+        index = self._review_queue[self._review_cursor]
+        self._review_cursor += 1
+        try:
+            if self.items[index].get("analysis") is None:
+                self.items[index]["analysis"] = "running"
+                self.analyze_callback(index)
+        except Exception as error:
+            self.items[index]["analysis"] = "error"
+            self.items[index]["status"] = "error"
+            self.items[index]["error"] = str(error)
+        self._status.Text = self._analysis_status()
+        self.list.Invalidate()
+        item = self.items[index]
+        if item.get("status") == "changed":
+            self._review_active = False
+            self.analyzing = False
+            self.UseWaitCursor = False
+            self.selected_index = index
+            self.list.SelectedIndex = self._visible_indexes.index(index)
+            self.action = "all"
+            self._stop_background_analysis()
+            self.DialogResult = DialogResult.OK
+            self.Close()
 
     def _confirm_sweep(self, count):
         """Make the user opt in to a sweep large enough to look like a hang."""
@@ -617,6 +643,8 @@ class ObjectPickerForm(Form if Form is not None else object):
             self.list.SelectedIndex = 0
 
     def _on_sort(self, sender, event):
+        if self._review_active:
+            return
         key = sender.Tag
         if self._sort_key == key:
             self._sort_descending = not self._sort_descending
@@ -637,6 +665,8 @@ class ObjectPickerForm(Form if Form is not None else object):
 
     def _on_filter_changed(self, sender, event):
         if not hasattr(self, "list"):
+            return
+        if self._review_active:
             return
         self._refresh_list()
         self.list.Invalidate()
@@ -667,6 +697,13 @@ class FmtPreviewForm(Form if Form is not None else object):
         self.action = "stop"
         self.wizard_mode = wizard_mode
         self._wizard_callback = wizard_callback
+        self._wizard_timer = None
+        self._wizard_pending_action = None
+        # The wizard timer's Tick reads this before touching the form. Without
+        # it the first tick raises AttributeError *before* stopping the timer,
+        # so the timer keeps firing every 15 ms with Apply/Skip left disabled —
+        # a live window that can no longer advance.
+        self._is_closing = False
 
         title = Label()
         title.Text = object_name or "Structured Text"
@@ -814,11 +851,24 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._highlight(before, after)
         self._previous_button.Enabled = bool(changed_lines)
         self._next_button.Enabled = bool(changed_lines)
+        self._apply_button.Enabled = True
+        self._skip_button.Enabled = self.wizard_mode
 
     def _advance_wizard(self, action):
         if self._wizard_callback is None:
             return False
         outcome = self._wizard_callback(action) or {}
+        if outcome.get("continue"):
+            self._wizard_pending_action = action
+            self._apply_button.Enabled = False
+            self._skip_button.Enabled = False
+            if self._wizard_timer is None:
+                timer = Timer()
+                timer.Interval = 15
+                timer.Tick += self._on_wizard_tick
+                self._wizard_timer = timer
+            self._wizard_timer.Start()
+            return True
         if outcome.get("next"):
             preview = outcome["next"]
             self.load_preview(
@@ -826,11 +876,30 @@ class FmtPreviewForm(Form if Form is not None else object):
                 preview["changed_lines"],
             )
         elif outcome.get("complete"):
+            self._stop_wizard_timer()
             self.action = "complete"
             self.DialogResult = DialogResult.OK
             self.Close()
         # Errors are reported by the operation and leave this page open.
         return True
+
+    def _on_wizard_tick(self, sender, event):
+        if self._is_closing or self.IsDisposed or self.Disposing:
+            self._stop_wizard_timer()
+            return
+        action = self._wizard_pending_action
+        self._wizard_pending_action = None
+        self._stop_wizard_timer()
+        self._advance_wizard(action)
+
+    def _stop_wizard_timer(self):
+        timer = self._wizard_timer
+        if timer is None:
+            return
+        timer.Stop()
+        timer.Tick -= self._on_wizard_tick
+        timer.Dispose()
+        self._wizard_timer = None
 
     def _restore_preview_state(self):
         state = _FMT_PREVIEW_STATE
@@ -980,8 +1049,8 @@ class FmtPreviewForm(Form if Form is not None else object):
             # SelectionStart is not the viewport position.  Using it makes a
             # scrollbar event move the other pane to an unrelated line,
             # especially after jumping to a change.  The character at the
-            # top-left client point is the first visible line in both panes;
-            # the formatter preserves line count, so the line can be shared.
+            # top-left client point is the first visible line in the sender;
+            # map it to the corresponding pane when that line exists.
             top_left = sender.GetCharIndexFromPosition(Point(2, 2))
             line = sender.GetLineFromCharIndex(top_left)
             if line < 0 or line >= other.Lines.Length:
@@ -1034,14 +1103,13 @@ class FmtPreviewForm(Form if Form is not None else object):
         self._jump_change(1)
 
 
-def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None):
+def show_object_picker(items, selected_index=-1, analyze_callback=None):
     if Form is None:
         return "cancel", -1
     form = ObjectPickerForm(
         items,
         selected_index=selected_index,
         analyze_callback=analyze_callback,
-        scan_callback=scan_callback,
     )
     try:
         form.ShowDialog()
@@ -1061,9 +1129,14 @@ def show_fmt_preview(object_name, before, after, changed_lines, wizard_mode=Fals
     form = FmtPreviewForm(
         object_name, before, after, changed_lines, wizard_mode=wizard_mode
     )
-    form.ShowDialog()
-    form.remember_preview_state()
-    return form.action
+    try:
+        form.ShowDialog()
+        form.remember_preview_state()
+        return form.action
+    finally:
+        form._is_closing = True
+        form._stop_wizard_timer()
+        form.Dispose()
 
 
 def show_fmt_wizard(first_preview, advance_callback):
@@ -1078,9 +1151,14 @@ def show_fmt_wizard(first_preview, advance_callback):
         wizard_mode=True,
         wizard_callback=advance_callback,
     )
-    form.ShowDialog()
-    form.remember_preview_state()
-    return form.action
+    try:
+        form.ShowDialog()
+        form.remember_preview_state()
+        return form.action
+    finally:
+        form._is_closing = True
+        form._stop_wizard_timer()
+        form.Dispose()
 
 
 def show_text_report(title, text):

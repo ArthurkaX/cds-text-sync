@@ -6,6 +6,8 @@ and the CPython engine use the same lexical behavior without depending on one
 another.
 """
 
+from __future__ import print_function
+
 __all__ = ["blank_noise", "trim_strings", "comment_spans"]
 
 
@@ -140,4 +142,3 @@ def comment_spans(text):
             continue
         i += 1
     return out
-
