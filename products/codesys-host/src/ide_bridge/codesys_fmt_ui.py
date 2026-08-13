@@ -193,6 +193,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._analysis_queue = []
         self._analysis_cursor = 0
         self._analysis_timer = None
+        self._is_closing = False
         self._sort_key = None
         self._sort_descending = False
 
@@ -283,6 +284,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         cancel.Location = Point(650, 590)
         cancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         cancel.DialogResult = DialogResult.Cancel
+        cancel.Click += self._cancel
         self._style_button(cancel)
         self.Controls.Add(cancel)
         self.CancelButton = cancel
@@ -309,9 +311,9 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._selected_button = selected
         self.AcceptButton = selected
         self.Resize += self._layout
+        self.FormClosing += self._on_form_closing
         self.FormClosed += self._on_form_closed
         self._layout()
-        self._start_background_analysis(range(len(items)))
 
     def _style_button(self, button):
         button.BackColor = _BUTTON_BG
@@ -443,7 +445,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         # dialog (a ScriptEngine abort unwinds ShowDialog without it). Without
         # this guard a leaked timer walks the whole project on every tick,
         # forever, inside CODESYS. Self-terminate as soon as the form is gone.
-        if self.IsDisposed or self.Disposing:
+        if self._is_closing or self.IsDisposed or self.Disposing:
             self._stop_background_analysis()
             return
         if self.analyzing:
@@ -478,6 +480,17 @@ class ObjectPickerForm(Form if Form is not None else object):
             timer.Stop()
             timer.Dispose()
 
+    def _cancel(self, sender=None, event=None):
+        self._is_closing = True
+        self._stop_background_analysis()
+
+    def _on_form_closing(self, sender, event):
+        # FormClosed is not guaranteed when a CODESYS ScriptEngine abort
+        # unwinds a modal dialog. Stop the WinForms timer before that can
+        # happen, so it cannot continue walking project objects afterwards.
+        self._is_closing = True
+        self._stop_background_analysis()
+
     def _on_selection_changed(self, sender, event):
         if self.list.SelectedIndex >= 0:
             index = self._visible_indexes[self.list.SelectedIndex]
@@ -500,6 +513,7 @@ class ObjectPickerForm(Form if Form is not None else object):
         self._analyze_index(self._visible_indexes[visible])
         self.selected_index = self._visible_indexes[visible]
         self.action = "selected"
+        self._stop_background_analysis()
         self.DialogResult = DialogResult.OK
         self.Close()
 
@@ -638,9 +652,6 @@ class ObjectPickerForm(Form if Form is not None else object):
 
     def _on_form_closed(self, sender, event):
         self._stop_background_analysis()
-        # Temporary diagnostic marker: anything printed after this line means
-        # work outlived the picker. Remove with _debug_log in ide_st_objects.
-        print("[fmt-read-debug] ==== picker form closed, analysis timer stopped ====")
 
 
 class FmtPreviewForm(Form if Form is not None else object):
@@ -1032,8 +1043,16 @@ def show_object_picker(items, selected_index=-1, analyze_callback=None, scan_cal
         analyze_callback=analyze_callback,
         scan_callback=scan_callback,
     )
-    form.ShowDialog()
-    return form.action, form.selected_index
+    try:
+        form.ShowDialog()
+        return form.action, form.selected_index
+    finally:
+        # Be defensive: CODESYS can unwind ShowDialog without delivering the
+        # normal close events. A live Timer delegate would otherwise retain
+        # the form and continue scanning in the Scripting Engine.
+        form._is_closing = True
+        form._stop_background_analysis()
+        form.Dispose()
 
 
 def show_fmt_preview(object_name, before, after, changed_lines, wizard_mode=False):
