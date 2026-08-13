@@ -344,9 +344,9 @@ def test_cancel_is_idempotent_and_valid_from_every_active_state():
         session = FmtSession(scope_indexes=[0])
         if setup in ("scanning", "previewing", "applying"):
             session.start_scan()
-            if setup == "previewing":
+            if setup in ("previewing", "applying"):
                 session.analyze_next(result={"analysis": "changed"})
-            elif setup == "applying":
+            if setup == "applying":
                 session.record_apply(index=0)
 
         first = session.cancel(reason="user closed the window")
