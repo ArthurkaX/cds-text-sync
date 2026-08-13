@@ -49,6 +49,7 @@ def _state_stub():
 def _helpers_stub():
     module = type(sys)("ide_daemon_helpers")
     module._get_sync_folder = lambda *args, **kwargs: ""
+    module._build_path = lambda obj: ""
     return module
 
 
