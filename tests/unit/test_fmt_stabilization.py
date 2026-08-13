@@ -603,6 +603,108 @@ def test_apply_skip_does_not_synchronously_scan_to_next_changed():
     assert outcome.item_index is None
 
 
+def test_timer_stops_when_a_changed_item_is_ready_for_preview():
+    """The timer must not keep ticking while a preview is open."""
+
+    session = FmtSession(scope_indexes=[0, 1])
+
+    class FakeTimer:
+        def __init__(self):
+            self.started = 0
+            self.stopped = 0
+            self.disposed = 0
+
+        def start(self):
+            self.started += 1
+
+        def stop(self):
+            self.stopped += 1
+
+        def dispose(self):
+            self.disposed += 1
+
+    timer = FakeTimer()
+    session.attach_timer(timer)
+    session.start_scan()
+    assert timer.started == 1
+
+    session.analyze_next(result={"analysis": "unchanged"})
+    # Still scanning: the timer keeps running.
+    assert timer.stopped == 0
+
+    outcome = session.analyze_next(result={"analysis": "changed", "changed_lines": 2})
+    assert outcome.action == "preview"
+    # The timer is stopped (paused) as soon as a preview is ready; the
+    # reference is kept so resume() can restart the same timer.
+    assert timer.stopped == 1
+    assert timer.disposed == 0
+    assert session.timer_ref is timer
+
+
+def test_resume_restarts_the_same_incremental_scanner():
+    """After a decision the adapter resumes the owned timer; no new timer."""
+
+    session = FmtSession(scope_indexes=[0, 1, 2])
+
+    class FakeTimer:
+        def __init__(self):
+            self.started = 0
+            self.stopped = 0
+            self.disposed = 0
+
+        def start(self):
+            self.started += 1
+
+        def stop(self):
+            self.stopped += 1
+
+        def dispose(self):
+            self.disposed += 1
+
+    timer = FakeTimer()
+    session.attach_timer(timer)
+    session.start_scan()
+    session.analyze_next(result={"analysis": "changed", "changed_lines": 1})
+    assert timer.stopped == 1  # stopped for the preview
+
+    session.record_apply(index=0)
+    outcome = session.resume()
+    assert outcome.action == "scanning"
+    # The same timer object is restarted, not replaced.
+    assert timer.started == 2
+    assert session.timer_ref is timer
+
+
+def test_attach_timer_replaces_and_disposes_the_previous_timer():
+    """At most one live analysis timer exists for the session."""
+
+    session = FmtSession(scope_indexes=[0])
+
+    class FakeTimer:
+        def __init__(self):
+            self.started = 0
+            self.stopped = 0
+            self.disposed = 0
+
+        def start(self):
+            self.started += 1
+
+        def stop(self):
+            self.stopped += 1
+
+        def dispose(self):
+            self.disposed += 1
+
+    first = FakeTimer()
+    second = FakeTimer()
+    session.attach_timer(first)
+    session.attach_timer(second)
+    assert first.stopped == 1 and first.disposed == 1
+    assert session.timer_ref is second
+    session.close()
+    assert second.stopped == 1 and second.disposed == 1
+
+
 # ---------------------------------------------------------------------------
 # D1 / D9  Step 5: deterministic scope and one callback signature
 # ---------------------------------------------------------------------------

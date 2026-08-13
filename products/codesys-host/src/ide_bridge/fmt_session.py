@@ -113,13 +113,39 @@ class FmtSession(object):
 
         *timer* must expose ``start()``, ``stop()`` and ``dispose()``; the
         adapter wraps the WinForms ``System.Windows.Forms.Timer`` to that
-        contract so this module stays UI-free.
+        contract so this module stays UI-free.  Attaching a new timer stops
+        and disposes any previously attached one, so at most one live
+        analysis timer exists for the session.
         """
+        self._stop_timer()
         self.timer_ref = timer
+
+    def stop_timer(self):
+        """Stop and detach the owned timer without changing session state."""
+        self._stop_timer()
+
+    def resume(self):
+        """Restart the owned timer after a decision; valid while scanning.
+
+        ``record_apply``/``record_skip`` return control to the UI
+        immediately; the view adapter calls ``resume`` to continue the same
+        incremental scanner on the next tick.
+        """
+        if self.state not in (SessionState.SCANNING, SessionState.APPLYING):
+            raise SessionError("resume is only valid while scanning")
+        if self.cancelled:
+            return Outcome("cancelled", reason=self.cancel_reason)
+        self._start_timer()
+        return Outcome("scanning", item_index=None)
 
     def _start_timer(self):
         if self.timer_ref is not None:
             self.timer_ref.start()
+
+    def _pause_timer(self):
+        """Stop the owned timer but keep the reference for a later resume."""
+        if self.timer_ref is not None:
+            self.timer_ref.stop()
 
     def _stop_timer(self):
         timer = self.timer_ref
@@ -204,6 +230,9 @@ class FmtSession(object):
         if item["analysis"] == ANALYSIS_CHANGED:
             self.preview_index = index
             self.state = SessionState.PREVIEWING
+            # Stop the timer as soon as a changed item is ready for preview;
+            # the reference is kept so resume() can restart the same timer.
+            self._pause_timer()
             return Outcome("preview", item_index=index, item=item)
         return Outcome("next", item_index=index, item=item)
 
