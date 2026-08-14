@@ -3,6 +3,11 @@
 This module deliberately has no CODESYS dependency.  The IDE shell supplies a
 workspace path and renders the returned machines, while CPython reads and
 parses the ``project-view`` files in worker processes.
+
+TEMPORARY SEAM: the CPython FSM logic now lives in the ``cds_text_sync.fsm``
+package and this module only delegates to it.  Section 12 of spec.md deletes
+this module once the new ``cts fsm`` scanner covers path search and single-file
+scan.  It must not grow a second implementation.
 """
 
 from __future__ import annotations
@@ -16,56 +21,33 @@ from concurrent.futures import ProcessPoolExecutor
 from itertools import islice
 from pathlib import Path
 
-from cts_shared.st.fsm import find_machines
-from cds_text_sync.engine.variable_map import split_decl_impl
+from cds_text_sync.fsm.analyzer import analyze_path
+from cds_text_sync.fsm.model import machine_payload
+from cds_text_sync.fsm.workspace import source_root
 
 
 def _source_root(workspace: Path) -> Path:
     """Prefer the exported view, but accept a project-view path directly."""
-    if workspace.name.casefold() == "project-view" and workspace.is_dir():
-        return workspace
-    candidate = workspace / "project-view"
-    return candidate if candidate.is_dir() else workspace
+    return source_root(workspace)
 
 
 def _machine_payload(machine):
-    return {
-        "selector": machine.selector,
-        "states": [
-            {"label": state.label, "aliases": state.aliases, "order": state.order}
-            for state in machine.states
-        ],
-        "transitions": [
-            {
-                "source": transition.source,
-                "target": transition.target,
-                "guard": transition.guard,
-                "offset": transition.offset,
-                "lhs": transition.lhs,
-                "deferred": transition.deferred,
-            }
-            for transition in machine.transitions
-        ],
-        "deferred": machine.deferred,
-        "numeric": machine.numeric,
-        "warnings": machine.warnings,
-    }
+    return machine_payload(machine)
 
 
 def _scan_file(path_text: str) -> dict:
-    """Worker entry point: it must stay module-level for Windows spawning."""
-    path = Path(path_text)
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        _declaration, implementation = split_decl_impl(text)
-        machines = [
-            _machine_payload(machine)
-            for machine in find_machines(implementation if implementation is not None else text)
-            if machine.is_fsm
-        ]
-        return {"path": str(path), "machines": machines}
-    except Exception as error:
-        return {"path": str(path), "machines": [], "error": str(error)}
+    """Worker entry point: it must stay module-level for Windows spawning.
+
+    Delegates to ``cds_text_sync.fsm.analyzer.analyze_path`` and reshapes the
+    richer section 8.2 result back into this module's OLD return shape -
+    ``{"path", "machines"}`` plus ``"error"`` on failure - because
+    ``search_workspace`` and its tests depend on exactly those keys.
+    """
+    result = analyze_path(path_text)
+    row = {"path": result["path"], "machines": result["machines"]}
+    if result["error"]:
+        row["error"] = result["error"]
+    return row
 
 
 def _matching_files(root: Path, query: str) -> list[Path]:

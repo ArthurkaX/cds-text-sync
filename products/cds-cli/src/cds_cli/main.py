@@ -239,6 +239,13 @@ def main():
         if code:
             sys.exit(code)
 
+    elif args.command == "fsm":
+        from cds_text_sync.fsm.cli import dispatch_fsm
+
+        code = dispatch_fsm(args)
+        if code:
+            sys.exit(code)
+
     elif args.command == "visu-lint":
         from visu_lint.cli import cmd_visu_lint
 
