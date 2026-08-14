@@ -40,6 +40,12 @@ def _payload(text):
     return machine_payload(_first_machine(text))
 
 
+def _data_values(svg, name):
+    """The values of one ``data-*`` attribute across every SVG element."""
+    root = ET.fromstring(svg)
+    return [element.get(name) for element in root.iter() if element.get(name) is not None]
+
+
 # ---------------------------------------------------------------------------
 # layout_payload: JSON-safe geometry
 # ---------------------------------------------------------------------------
@@ -121,6 +127,102 @@ def test_to_svg_escapes_title():
     assert "A &amp; &lt;B&gt; &quot;title&quot;" in svg
     assert "<title>" in svg
     ET.fromstring(svg)
+
+
+def test_to_svg_preserves_non_ascii_text():
+    # Rename state "1" everywhere it is referenced so the machine stays
+    # connected and every transition is still drawn.
+    cyr_label = "Состояние"
+    payload = _payload(SAMPLE_ST)
+    payload["states"][1]["label"] = cyr_label
+    payload["transitions"][0]["target"] = cyr_label        # 0 -> 1
+    payload["transitions"][1]["source"] = cyr_label        # 1 -> 2
+    payload["transitions"][1]["guard"] = "завершено И готово"
+
+    svg = to_svg(payload)
+    assert cyr_label in svg
+    assert "завершено И готово" in svg
+    ET.fromstring(svg)
+
+
+def test_to_svg_preserves_non_ascii_in_data_state():
+    cyr_label = "Состояние"
+    payload = _payload(SAMPLE_ST)
+    payload["states"][1]["label"] = cyr_label
+    payload["transitions"][0]["target"] = cyr_label
+    payload["transitions"][1]["source"] = cyr_label
+
+    assert cyr_label in _data_values(to_svg(payload), "data-state")
+
+
+# ---------------------------------------------------------------------------
+# determinism: identical input -> byte-identical output
+# ---------------------------------------------------------------------------
+
+
+def test_to_svg_deterministic_across_calls():
+    payload = _payload(SAMPLE_ST)
+    assert to_svg(payload) == to_svg(payload)
+
+
+def test_to_svg_deterministic_across_independent_payloads():
+    # Two separately-built payloads from the same source must render the
+    # same bytes - dict ordering and object identity must not leak into SVG.
+    assert to_svg(_payload(SAMPLE_ST)) == to_svg(_payload(SAMPLE_ST))
+
+
+def test_layout_payload_deterministic():
+    payload = _payload(SAMPLE_ST)
+    assert layout_payload(payload) == layout_payload(payload)
+    assert layout_payload(_payload(SAMPLE_ST)) == layout_payload(_payload(SAMPLE_ST))
+
+
+# ---------------------------------------------------------------------------
+# stable selection ids: data-transition / data-state
+# ---------------------------------------------------------------------------
+
+
+def test_svg_data_transition_indices_are_payload_relative():
+    payload = _payload(SAMPLE_ST)
+    assert len(payload["transitions"]) >= 3
+    indices = [int(value) for value in _data_values(to_svg(payload), "data-transition")]
+    assert indices
+    for index in indices:
+        assert 0 <= index < len(payload["transitions"])
+    # Every payload transition is drawn exactly once, so the set of emitted
+    # indices is exactly the payload's transition range.
+    assert set(indices) == set(range(len(payload["transitions"])))
+
+
+def test_layout_payload_transition_index_matches_payload_order():
+    payload = _payload(SAMPLE_ST)
+    geometry = layout_payload(payload)
+    seen = set()
+    for link in geometry["links"]:
+        assert set(link) >= {"transition_index", "kind", "points"}
+        index = link["transition_index"]
+        assert index is not None
+        assert 0 <= index < len(payload["transitions"])
+        seen.add(index)
+    assert seen == set(range(len(payload["transitions"])))
+
+
+def test_svg_and_layout_agree_on_transition_indices():
+    payload = _payload(SAMPLE_ST)
+    svg_indices = {int(v) for v in _data_values(to_svg(payload), "data-transition")}
+    geometry = layout_payload(payload)
+    layout_indices = {
+        link["transition_index"]
+        for link in geometry["links"]
+        if link["transition_index"] is not None
+    }
+    assert svg_indices == layout_indices
+
+
+def test_svg_data_state_covers_every_state_label():
+    payload = _payload(SAMPLE_ST)
+    states = set(_data_values(to_svg(payload), "data-state"))
+    assert states == {state["label"] for state in payload["states"]}
 
 
 # ---------------------------------------------------------------------------

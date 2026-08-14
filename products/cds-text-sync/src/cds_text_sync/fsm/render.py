@@ -11,6 +11,12 @@ the WinForms GDI+ reference renderer (``ide_bridge.codesys_fsm_ui``) as a
 standalone SVG document.  ``to_mermaid_text`` forwards to the shared mermaid
 renderer.
 
+Stable selection: every element a link draws carries ``data-transition`` with
+the payload-relative index of that transition (matching ``transition_index``
+in :func:`layout_payload`), and every element a step draws carries
+``data-state`` with the step's full source label, so the frontend can map a
+click back to a transition row or state row.
+
 SAFETY: every string that originates in the ST source (state labels, guard
 text, note text, the title) is XML-escaped before it is emitted.  The output
 never contains a raw ``<``, ``>``, ``&`` or ``"`` from source-derived text,
@@ -78,6 +84,14 @@ def layout_payload(payload, title=None):
     """
     machine = machine_from_payload(payload)
     layout = build_layout(machine)
+    # Transition rows are payload-relative, not link-relative: the frontend
+    # indexes transition rows by the payload's ``transitions`` order (source
+    # offset order), while ``layout.links`` reorders by drawing kind and drops
+    # transitions whose endpoints are not known states.  Resolve the index by
+    # object identity against the adapter's transitions, which
+    # ``machine_from_payload`` appends in exactly the payload's order, so the
+    # index matches the position of the same transition in ``payload``.
+    index_by_id = {id(t): i for i, t in enumerate(machine.transitions)}
     return {
         "width": int(layout.width),
         "height": int(layout.height),
@@ -89,7 +103,7 @@ def layout_payload(payload, title=None):
         ),
         "steps": [_step_dict(step) for step in layout.steps],
         "chips": [_chip_dict(chip) for chip in layout.chips],
-        "links": [_link_dict(link) for link in layout.links],
+        "links": [_link_dict(link, index_by_id) for link in layout.links],
     }
 
 
@@ -121,9 +135,10 @@ def _chip_dict(chip):
     }
 
 
-def _link_dict(link):
+def _link_dict(link, index_by_id):
     return {
         "kind": link.kind,
+        "transition_index": index_by_id.get(id(link.transition)),
         "points": [[int(px), int(py)] for px, py in link.points],
         "bar": (
             None
@@ -170,6 +185,11 @@ def to_svg(payload, title=None):
     """
     machine = machine_from_payload(payload)
     layout = build_layout(machine)
+    # Same payload-relative index map as layout_payload (see its docstring for
+    # why the index is not the layout.links position): every element a link
+    # draws carries data-transition so a click maps straight back to the
+    # payload transition row.
+    index_by_id = {id(t): i for i, t in enumerate(machine.transitions)}
     width = int(layout.width)
     height = int(layout.height)
     out = ['<?xml version="1.0" encoding="UTF-8"?>']
@@ -193,7 +213,7 @@ def to_svg(payload, title=None):
     for step in layout.steps:
         out.append(_draw_step(step))
     for link in layout.links:
-        out.append(_draw_link(link))
+        out.append(_draw_link(link, index_by_id.get(id(link.transition))))
     out.append("</svg>")
     return "\n".join(out)
 
@@ -222,56 +242,79 @@ def _draw_chip(chip):
 
 
 def _draw_step(step):
-    """One numbered GRAFCET step box, double-bordered when it is initial."""
-    out = [_rect(step.x, step.y, step.w, step.h, _STEP_FILL, _STEP_STROKE, 1)]
+    """One numbered GRAFCET step box, double-bordered when it is initial.
+
+    Every element carries ``data-state`` with the step's full (unprefixed)
+    source label, XML-escaped, so the frontend can map a click back to the
+    payload state row regardless of which visual the user hit.
+    """
+    data_state = step.full_label
+    out = [_rect(step.x, step.y, step.w, step.h, _STEP_FILL, _STEP_STROKE, 1,
+                 data_state=data_state)]
     if step.initial:
         out.append(_rect(step.x + 3, step.y + 3, step.w - 6, step.h - 6,
-                         _STEP_FILL, _STEP_STROKE, 1))
+                         _STEP_FILL, _STEP_STROKE, 1, data_state=data_state))
     divider_x = int(step.x) + fsm_layout.NUM_W
     out.append(_line(divider_x, step.y, divider_x,
-                     int(step.y) + int(step.h), _DIVIDER, 1))
+                     int(step.y) + int(step.h), _DIVIDER, 1,
+                     data_state=data_state))
     out.append(_centre_text(step.x, step.y, fsm_layout.NUM_W, step.h,
-                            str(step.number), _TEXT, 13))
+                            str(step.number), _TEXT, 13,
+                            data_state=data_state))
     out.append(_text(divider_x + 10,
                      int(step.y) + (int(step.h) - fsm_layout.TEXT_H) // 2,
-                     step.label, _TEXT, 13))
+                     step.label, _TEXT, 13, data_state=data_state))
     if step.priority:
         out.append(_arrowhead(int(step.x) - 4,
                               int(step.y) + int(step.h) // 2,
-                              "right", _PRIORITY))
+                              "right", _PRIORITY, data_state=data_state))
     if step.inbound:
         text = ", ".join(str(number) for number in step.inbound)
         out.append(_text(int(step.x) - fsm_layout.INBOUND_W,
                          int(step.y) + (int(step.h) - fsm_layout.TEXT_H) // 2,
-                         text, _JUMP, 11))
+                         text, _JUMP, 11, data_state=data_state))
     return "\n".join(out)
 
 
-def _draw_link(link):
-    """A link polyline with its bar, arrowhead, guard text and note text."""
+def _draw_link(link, transition_index):
+    """A link polyline with its bar, arrowhead, guard text and note text.
+
+    Every element carries ``data-transition`` with the payload-relative index
+    of the transition (see ``layout_payload`` for why the index is payload-
+    relative rather than link-relative).  A link that does not correspond to a
+    payload transition (*transition_index* is None) emits no attribute rather
+    than a wrong one.
+    """
     colour = _link_colour(link)
     out = []
     points = " ".join("{0},{1}".format(int(px), int(py))
                       for px, py in link.points)
     out.append('<polyline points="{0}" fill="none" stroke="{1}" '
-               'stroke-width="2"/>'.format(points, colour))
+               'stroke-width="2"{2}/>'
+               .format(points, colour,
+                       _data_attrs(data_transition=transition_index)))
     if link.bar is not None:
         bx, by, orientation = link.bar
         if orientation == "h":
             out.append(_line(int(bx) - fsm_layout.BAR_HALF, by,
-                             int(bx) + fsm_layout.BAR_HALF, by, colour, 3))
+                             int(bx) + fsm_layout.BAR_HALF, by, colour, 3,
+                             data_transition=transition_index))
         else:
             out.append(_line(bx, int(by) - _BAR_V_HALF,
-                             bx, int(by) + _BAR_V_HALF, colour, 3))
+                             bx, int(by) + _BAR_V_HALF, colour, 3,
+                             data_transition=transition_index))
     if link.arrow is not None:
         ax, ay, direction = link.arrow
-        out.append(_arrowhead(ax, ay, direction, colour))
+        out.append(_arrowhead(ax, ay, direction, colour,
+                              data_transition=transition_index))
     if link.guard_at:
         gx, gy = link.guard_at
-        out.append(_text(gx, gy, link.guard_text, _GUARD, 12))
+        out.append(_text(gx, gy, link.guard_text, _GUARD, 12,
+                         data_transition=transition_index))
     if link.note_at and link.note_text:
         nx, ny = link.note_at
-        out.append(_text(nx, ny, link.note_text, _JUMP, 12))
+        out.append(_text(nx, ny, link.note_text, _JUMP, 12,
+                         data_transition=transition_index))
     return "\n".join(out)
 
 
@@ -288,37 +331,63 @@ def _link_colour(link):
 # ---------------------------------------------------------------------------
 
 
-def _rect(x, y, w, h, fill, stroke, stroke_width):
+def _data_attrs(data_transition=None, data_state=None):
+    """The ``data-*`` attribute fragment for stable frontend selection.
+
+    ``data-transition`` is the payload-relative index of a transition (an
+    int); ``data-state`` is a full state label and is XML-escaped like every
+    other source-derived string.  When neither is given the fragment is empty
+    and the caller emits a plain element - a chip or the "any" box has no
+    payload transition to index, so it must not carry a wrong attribute.
+    """
+    attrs = []
+    if data_transition is not None:
+        attrs.append('data-transition="{0}"'.format(int(data_transition)))
+    if data_state is not None:
+        attrs.append('data-state="{0}"'.format(_escape(data_state)))
+    if attrs:
+        return " " + " ".join(attrs)
+    return ""
+
+
+def _rect(x, y, w, h, fill, stroke, stroke_width,
+          data_transition=None, data_state=None):
     return ('<rect x="{0}" y="{1}" width="{2}" height="{3}" fill="{4}" '
-            'stroke="{5}" stroke-width="{6}"/>'
-            .format(int(x), int(y), int(w), int(h), fill, stroke, stroke_width))
+            'stroke="{5}" stroke-width="{6}"{7}/>'
+            .format(int(x), int(y), int(w), int(h), fill, stroke, stroke_width,
+                    _data_attrs(data_transition, data_state)))
 
 
-def _line(x1, y1, x2, y2, stroke, stroke_width):
+def _line(x1, y1, x2, y2, stroke, stroke_width,
+          data_transition=None, data_state=None):
     return ('<line x1="{0}" y1="{1}" x2="{2}" y2="{3}" stroke="{4}" '
-            'stroke-width="{5}"/>'
-            .format(int(x1), int(y1), int(x2), int(y2), stroke, stroke_width))
+            'stroke-width="{5}"{6}/>'
+            .format(int(x1), int(y1), int(x2), int(y2), stroke, stroke_width,
+                    _data_attrs(data_transition, data_state)))
 
 
-def _text(x, y, content, fill, size, anchor="start"):
+def _text(x, y, content, fill, size, anchor="start",
+          data_transition=None, data_state=None):
     """Top-anchored text.  GDI+ draws with the text top at (x, y); an SVG
     ``<text>`` y is the baseline, so shift down by roughly the cap height."""
     baseline = int(y) + size
     return ('<text x="{0}" y="{1}" font-family="Consolas, monospace" '
-            'font-size="{2}" fill="{3}" text-anchor="{4}">{5}</text>'
-            .format(int(x), baseline, size, fill, anchor, _escape(content)))
+            'font-size="{2}" fill="{3}" text-anchor="{4}"{5}>{6}</text>'
+            .format(int(x), baseline, size, fill, anchor,
+                    _data_attrs(data_transition, data_state), _escape(content)))
 
 
-def _centre_text(x, y, w, h, content, fill, size):
+def _centre_text(x, y, w, h, content, fill, size,
+                 data_transition=None, data_state=None):
     """Text centred inside the box (x, y, w, h)."""
     return ('<text x="{0}" y="{1}" font-family="Consolas, monospace" '
             'font-size="{2}" fill="{3}" text-anchor="middle" '
-            'dominant-baseline="central">{4}</text>'
+            'dominant-baseline="central"{4}>{5}</text>'
             .format(int(x) + int(w) // 2, int(y) + int(h) // 2, size, fill,
-                    _escape(content)))
+                    _data_attrs(data_transition, data_state), _escape(content)))
 
 
-def _arrowhead(x, y, direction, fill):
+def _arrowhead(x, y, direction, fill, data_transition=None, data_state=None):
     """Filled triangle with its TIP at (x, y), pointing *direction*."""
     x = int(x)
     y = int(y)
@@ -335,7 +404,8 @@ def _arrowhead(x, y, direction, fill):
         pts = [(x, y), (x - _ARROW_HALF, y + _ARROW_LEN),
                (x + _ARROW_HALF, y + _ARROW_LEN)]
     points = " ".join("{0},{1}".format(px, py) for px, py in pts)
-    return '<polygon points="{0}" fill="{1}"/>'.format(points, fill)
+    return '<polygon points="{0}" fill="{1}"{2}/>'.format(
+        points, fill, _data_attrs(data_transition, data_state))
 
 
 # ---------------------------------------------------------------------------

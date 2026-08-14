@@ -231,8 +231,12 @@ def test_snapshot_accepts_a_project_view_path_directly(tmp_path):
     created = time.strftime("%Y-%m-%dT%H:%M:%S")
     _write_manifest(workspace, created)
 
-    assert snapshot(workspace / "project-view") == snapshot(workspace)
-    assert snapshot(workspace / "project-view")["state"] == "fresh"
+    direct = snapshot(workspace / "project-view")
+    # age_seconds is sampled per call, so compare the classification, not the
+    # whole dict -- the two calls straddle the clock.
+    assert direct["state"] == snapshot(workspace)["state"] == "fresh"
+    assert direct["created"] == created
+    assert direct["message"] == snapshot(workspace)["message"]
 
 
 def test_snapshot_stale_for_an_old_stamp(tmp_path):
