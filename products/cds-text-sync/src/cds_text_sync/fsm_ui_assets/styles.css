@@ -1,0 +1,334 @@
+/* CTS FSM map - light theme.
+
+   The diagram SVG the backend emits is a light-theme drawing, so the window
+   around it is light too; a dark chrome would leave the diagram floating in a
+   bright rectangle. Token names match ui_assets so the two windows read as
+   siblings. */
+:root {
+  color-scheme: light;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --line: #d3dae4;
+  --line-strong: #b6c0ce;
+  --text: #16202b;
+  --text-2: #3d4b5c;
+  --muted: #6b7a8d;
+  --accent: #1f6feb;
+  --accent-ink: #ffffff;
+  --danger: #b42318;
+  --danger-bg: #fdeceb;
+  --good: #1a7f5a;
+  --warn: #8a5a00;
+  --warn-bg: #fff6e5;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+}
+
+.hidden { display: none !important; }
+
+/* ---- header ------------------------------------------------------------ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.titles { min-width: 0; flex: 1; }
+
+.topbar h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Paths can be long and are never abbreviated in the payload; clip the
+   presentation only. */
+.path {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions { display: flex; gap: 6px; flex: none; }
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { background: var(--surface-2); }
+button:disabled { color: var(--muted); cursor: default; }
+
+/* ---- banners ----------------------------------------------------------- */
+
+.banner {
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.banner.fresh { background: var(--surface-2); color: var(--text-2); }
+.banner.stale, .banner.unknown { background: var(--warn-bg); color: var(--warn); }
+.banner.missing, .banner.error { background: var(--danger-bg); color: var(--danger); }
+.banner.success { background: var(--surface-2); color: var(--good); }
+
+/* ---- layout ------------------------------------------------------------ */
+
+.panes {
+  flex: 1;
+  display: grid;
+  /* 300px keeps the path list usable at the 980px minimum window width. */
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  min-height: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.files {
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+
+/* ---- file list --------------------------------------------------------- */
+
+.filters { padding: 8px; border-bottom: 1px solid var(--line); }
+
+#filter {
+  width: 100%;
+  font: inherit;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+.chip { padding: 2px 8px; font-size: 12px; }
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.progress {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.file-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--surface-2);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-row:hover { background: var(--surface-2); }
+.file-row.selected { background: var(--accent); color: var(--accent-ink); }
+.file-row.selected .badge { color: inherit; }
+
+/* Long relative paths are clipped visually only; the full path stays in the
+   DOM and in the title attribute. */
+.file-row .name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge { flex: none; font-size: 11px; color: var(--muted); }
+.badge.fsm { color: var(--good); }
+.badge.error { color: var(--danger); }
+
+/* ---- diagram ----------------------------------------------------------- */
+
+.diagram-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.machine-picker { display: flex; align-items: center; gap: 6px; }
+.machine-picker label { color: var(--muted); }
+.zoom { display: flex; gap: 4px; }
+
+select {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.summary {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.diagram-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 300px);
+  min-height: 0;
+}
+
+.canvas {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  cursor: grab;
+}
+
+.canvas.panning { cursor: grabbing; }
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.svg-host {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.svg-host svg { display: block; }
+
+/* Highlighting toggles a class on the elements the renderer tagged with
+   data-transition; it never re-renders the diagram. */
+.svg-host [data-transition].selected {
+  stroke: var(--accent) !important;
+  fill: var(--accent) !important;
+  stroke-width: 3;
+}
+
+.details {
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  overflow: auto;
+  padding: 0 10px 12px;
+}
+
+.details h2 {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  padding: 8px 0 4px;
+  background: var(--surface);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+
+.transition-list, .warning-list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.transition-row {
+  display: block;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--surface-2);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.transition-row:hover { background: var(--surface-2); }
+.transition-row.selected { background: var(--accent); color: var(--accent-ink); }
+
+.transition-row .edge { font-weight: 600; }
+
+/* The full guard text is always in the DOM: it wraps rather than clipping,
+   because a half-shown guard is a misleading guard. */
+.transition-row .guard {
+  display: block;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.transition-row.selected .guard { color: inherit; }
+.transition-row .deferred { color: var(--warn); }
+
+.warning-list li {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--surface-2);
+  color: var(--warn);
+  overflow-wrap: anywhere;
+}
+
+.warning-list .offset { color: var(--muted); }
+
+.empty-note { padding: 4px 6px; color: var(--muted); }
