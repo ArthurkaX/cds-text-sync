@@ -10,10 +10,22 @@ optional UI dependency.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from cds_text_sync.webui import shell
 
 from .api import FsmApi
+
+# The assets sit at the package root next to ``ui_assets``, one level above
+# this module.  ``shell.package_page(__file__, ...)`` resolves a sibling of the
+# calling module, so it would point inside ``fsm/`` and the window would open
+# on ERR_FILE_NOT_FOUND; anchor on the package directory instead.
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+
+
+def page_path() -> Path:
+    """Return the packaged page this window loads."""
+    return PACKAGE_ROOT / "fsm_ui_assets" / "index.html"
 
 
 def _resolve_initial_workspace(initial_workspace: str = "") -> str:
@@ -28,7 +40,7 @@ def _resolve_initial_workspace(initial_workspace: str = "") -> str:
 def launch(initial_workspace: str = "") -> int:
     """Create the native FSM window, or explain how to install the UI extra."""
     initial_workspace = _resolve_initial_workspace(initial_workspace)
-    page = shell.package_page(__file__, "fsm_ui_assets")
+    page = page_path()
     return shell.start_window(
         "CTS FSM Map",
         page,

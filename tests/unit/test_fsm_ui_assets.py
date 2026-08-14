@@ -8,19 +8,31 @@ escaped.
 """
 
 import re
-from pathlib import Path
 
 import cds_text_sync.fsm.ui as fsm_ui
 
 
-# fsm.ui resolves the page with ``shell.package_page(__file__, ...)``, so
-# anchoring on that module points at the same directory the window loads --
-# unlike the root ``cds_text_sync`` shim, whose __file__ is the shim itself.
-ASSETS = Path(fsm_ui.__file__).parent.parent / "fsm_ui_assets"
+ASSETS = fsm_ui.page_path().parent
 
 
 def _read(name):
     return (ASSETS / name).read_text(encoding="utf-8")
+
+
+def test_the_page_the_window_loads_exists():
+    # A page path that does not resolve is invisible to every other test here:
+    # the window simply opens on ERR_FILE_NOT_FOUND.
+    page = fsm_ui.page_path()
+    assert page.is_file(), page
+
+
+def test_the_analyzer_page_the_window_loads_exists():
+    import cds_text_sync.ui as analyzer_ui
+
+    from cds_text_sync.webui import shell
+
+    page = shell.package_page(analyzer_ui.__file__, "ui_assets")
+    assert page.is_file(), page
 
 
 def test_assets_are_present_and_packaged():
