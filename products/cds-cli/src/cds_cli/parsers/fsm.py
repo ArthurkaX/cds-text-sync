@@ -14,12 +14,15 @@ def register(subparsers):
 Subcommands:
   cts fsm scan [options]              scan the workspace and report FSMs
   cts fsm show [options]              render one file's machine
+  cts fsm ui [options]                open the local FSM map window
 
 Exit codes:
   0 - output produced, including "no FSM found" (absence is reported in the
-      payload, never through the exit status)
-  2 - invalid workspace, invalid/traversing path, bad machine index, or a
-      read/parse failure
+      payload, never through the exit status); for "ui", the window opened
+      and closed normally
+  2 - invalid workspace, invalid/traversing path, bad machine index, a
+      read/parse failure, or (for "ui") a startup failure or missing UI
+      dependency
 """,
     )
     nested = parser.add_subparsers(dest="fsm_action", metavar="SUBCOMMAND")
@@ -60,6 +63,21 @@ Exit codes:
     show.add_argument("--format", choices=["json", "mermaid", "svg"],
                       default="json",
                       help="Output format (default: json)")
+
+    ui = nested.add_parser(
+        "ui",
+        help="Open the local FSM desktop interface",
+        description=(
+            "Open the offline FSM map window. Requires the optional UI "
+            "dependency: pip install 'cds-text-sync[ui]'. An omitted "
+            "--workspace opens the folder picker."
+        ),
+    )
+    ui.add_argument("--workspace", default="",
+                    help="Sync folder containing project-view/ (optional)")
+    ui.add_argument("--project-file", default="",
+                    help="CODESYS project file path (accepted for the "
+                         "launcher; unused for now)")
 
 
 __all__ = ["register"]

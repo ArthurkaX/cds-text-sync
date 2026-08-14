@@ -1,16 +1,18 @@
-"""``cts fsm`` command handlers: offline scan and single-file render.
+"""``cts fsm`` command handlers: offline scan, single-file render, desktop UI.
 
 ``dispatch_fsm(args)`` routes the parsed ``fsm`` subcommand (registered by
-``cds_cli.parsers.fsm``) to a scan or show handler.  Everything here is CPython
-only; the CODESYS host never imports this module.
+``cds_cli.parsers.fsm``) to a scan, show, or ui handler.  Everything here is
+CPython only; the CODESYS host never imports this module.
 
 EXIT CODES - load-bearing, do not "fix":
   0 - the command produced its output, INCLUDING "this file has no FSM" and
       "this workspace has no FSM".  Absence is reported in the payload (an
       empty machine list for json, a stderr diagnostic for mermaid/svg), never
-      through the exit status.
-  2 - invalid workspace, invalid/traversing path, bad machine index, or a
-      read/parse failure.
+      through the exit status.  For ``ui``: the window opened and closed
+      normally.
+  2 - invalid workspace, invalid/traversing path, bad machine index, a
+      read/parse failure, or (for ``ui``) a startup failure or a missing
+      pywebview dependency.
   NEVER use 1 for "no FSM found".  In this repository 1 already means "the
   analysis found something" (cds_static_analyzer.runner.exit_code: 0 clean,
   1 violations, 2 config, 3 incomplete), and reusing it for "nothing found"
@@ -57,8 +59,10 @@ def dispatch_fsm(args) -> int:
         return _cmd_scan(args)
     if action == "show":
         return _cmd_show(args)
+    if action == "ui":
+        return _cmd_ui(args)
     _print_error(
-        f"unknown fsm action: {action!r}; available actions: scan, show"
+        f"unknown fsm action: {action!r}; available actions: scan, show, ui"
     )
     return 2
 
@@ -225,3 +229,27 @@ def _cmd_show(args) -> int:
         _print_error(f"unknown format: {fmt}")
         return 2
     return 0
+
+
+# ---------------------------------------------------------------------------
+# ui
+# ---------------------------------------------------------------------------
+
+
+def _cmd_ui(args) -> int:
+    """Open the local FSM desktop window.
+
+    ``--workspace`` is optional: an omitted path opens the window with the
+    folder picker.  Exit codes are load-bearing: 0 = window opened and closed
+    normally; 2 = invalid workspace, missing pywebview, or startup failure.
+    """
+    workspace = getattr(args, "workspace", "") or ""
+    try:
+        # Imported here so the CLI stays usable (and testable) without the
+        # optional pywebview dependency.
+        from cds_text_sync.fsm import ui as fsm_ui
+
+        return int(fsm_ui.launch(workspace))
+    except Exception as error:
+        _print_error(str(error))
+        return 2

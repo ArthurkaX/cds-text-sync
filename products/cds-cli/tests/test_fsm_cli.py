@@ -1,4 +1,4 @@
-"""test_fsm_cli.py - ``cts fsm`` command surface: scan, show, exit codes."""
+"""test_fsm_cli.py - ``cts fsm`` command surface: scan, show, ui, exit codes."""
 
 import json
 import xml.etree.ElementTree as ET
@@ -219,3 +219,48 @@ def test_fsm_show_mermaid_no_fsm_diagnostic(tmp_path):
     assert code == 0  # no FSM is not an error
     assert out == ""
     assert err.strip() != ""
+
+
+# ---------------------------------------------------------------------------
+# ui
+# ---------------------------------------------------------------------------
+
+
+def test_fsm_ui_dispatch_calls_launch_with_workspace(monkeypatch, tmp_path):
+    import cds_text_sync.fsm.ui as fsm_ui
+
+    calls = []
+    monkeypatch.setattr(
+        fsm_ui, "launch", lambda workspace: calls.append(workspace) or 0
+    )
+    code, out, err = run_cli(["fsm", "ui", "--workspace", str(tmp_path)])
+    assert code == 0
+    assert calls == [str(tmp_path)]
+    assert out == ""
+    assert err == ""
+
+
+def test_fsm_ui_propagates_launch_exit_code(monkeypatch, tmp_path):
+    import cds_text_sync.fsm.ui as fsm_ui
+
+    monkeypatch.setattr(fsm_ui, "launch", lambda workspace: 2)
+    code, out, err = run_cli(["fsm", "ui", "--workspace", str(tmp_path)])
+    assert code == 2
+    assert out == ""
+    assert err == ""  # the monkeypatched launch decides the code on its own
+
+
+def test_fsm_ui_allows_omitted_workspace_and_project_file(monkeypatch):
+    import cds_text_sync.fsm.ui as fsm_ui
+
+    calls = []
+    monkeypatch.setattr(
+        fsm_ui, "launch", lambda workspace: calls.append(workspace) or 0
+    )
+    code, out, err = run_cli(["fsm", "ui"])
+    assert code == 0
+    assert calls == [""]
+
+    code, out, err = run_cli(["fsm", "ui", "--project-file", "x.project"])
+    assert code == 0
+    assert calls == ["", ""]
