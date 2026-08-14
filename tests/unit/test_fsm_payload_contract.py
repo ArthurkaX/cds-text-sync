@@ -11,7 +11,8 @@ keep passing unchanged.
 
 import json
 
-from cds_text_sync.fsm_search import _machine_payload, _source_root
+from cds_text_sync.fsm import machine_payload
+from cds_text_sync.fsm.workspace import source_root
 from cds_text_sync.engine.variable_map import split_decl_impl
 from cts_shared.st.fsm import find_machines
 from cts_shared.st.fsm_mermaid import to_mermaid
@@ -55,7 +56,7 @@ def _body(text):
 
 
 def _payloads(text):
-    return [_machine_payload(m) for m in find_machines(_body(text)) if m.is_fsm]
+    return [machine_payload(m) for m in find_machines(_body(text)) if m.is_fsm]
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +181,7 @@ def test_only_is_fsm_machines_are_serialized():
     machines = find_machines(_body(dispatch))
     assert machines
     assert all(not m.is_fsm for m in machines)
-    assert [_machine_payload(m) for m in machines if m.is_fsm] == []
+    assert [machine_payload(m) for m in machines if m.is_fsm] == []
     assert all(m.warnings == [] for m in machines)
 
 
@@ -246,8 +247,8 @@ def test_source_root_prefers_project_view(tmp_path):
     workspace.mkdir()
     project_view = workspace / "project-view"
     project_view.mkdir()
-    assert _source_root(workspace) == project_view
-    assert _source_root(project_view) == project_view
+    assert source_root(workspace) == project_view
+    assert source_root(project_view) == project_view
     bare = tmp_path / "bare"
     bare.mkdir()
-    assert _source_root(bare) == bare
+    assert source_root(bare) == bare

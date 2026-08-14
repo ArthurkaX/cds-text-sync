@@ -1,11 +1,11 @@
 """FSM model: the single payload definitions and the round-trip adapter.
 
 ``machine_payload`` is the single definition of the machine payload shape
-(section 8.3 of the migration spec) - its body is carried verbatim from the
-old ``fsm_search._machine_payload`` so the two cannot drift while that seam is
-still in the tree.  ``file_result`` is the section 8.2 per-file payload.
-``machine_from_payload`` reverses ``machine_payload`` into attribute-accessible
-objects so the shared layout and mermaid renderers can consume a payload.
+(section 8.3 of the migration spec).  Its body was carried verbatim from the
+old ``fsm_search._machine_payload``; that seam module was deleted in section 12.
+``file_result`` is the section 8.2 per-file payload.  ``machine_from_payload``
+reverses ``machine_payload`` into attribute-accessible objects so the shared
+layout and mermaid renderers can consume a payload.
 """
 
 from __future__ import annotations

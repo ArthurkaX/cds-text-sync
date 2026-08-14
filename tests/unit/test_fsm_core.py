@@ -73,16 +73,53 @@ def _write_manifest(workspace: Path, created: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# machine_payload: anti-regression seam against fsm_search
+# machine_payload: the serialized shape, pinned to golden literals
 # ---------------------------------------------------------------------------
 
 
-def test_machine_payload_matches_fsm_search():
-    from cds_text_sync.fsm_search import _machine_payload as legacy_payload
-
+def test_machine_payload_pins_the_payload_shape():
     machine = _first_machine(SAMPLE_ST)
-    assert machine_payload(machine) == legacy_payload(machine)
-    assert json.loads(json.dumps(machine_payload(machine))) == machine_payload(machine)
+    payload = machine_payload(machine)
+    # Golden literals captured from the implementation; a behaviour-preserving
+    # refactor must keep these bytes identical.
+    assert payload == {
+        "selector": "state",
+        "states": [
+            {"label": "0", "aliases": ["0"], "order": 0},
+            {"label": "1", "aliases": ["1"], "order": 1},
+            {"label": "2", "aliases": ["2"], "order": 2},
+        ],
+        "transitions": [
+            {
+                "source": "0",
+                "target": "1",
+                "guard": "start",
+                "offset": 33,
+                "lhs": "state",
+                "deferred": False,
+            },
+            {
+                "source": "1",
+                "target": "2",
+                "guard": "done",
+                "offset": 70,
+                "lhs": "state",
+                "deferred": False,
+            },
+            {
+                "source": "2",
+                "target": "0",
+                "guard": "",
+                "offset": 94,
+                "lhs": "state",
+                "deferred": False,
+            },
+        ],
+        "deferred": False,
+        "numeric": True,
+        "warnings": [],
+    }
+    assert json.loads(json.dumps(payload)) == payload
 
 
 def test_machine_from_payload_feeds_layout_and_mermaid():
