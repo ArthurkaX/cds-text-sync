@@ -22,6 +22,7 @@ from cds_static_analyzer.service import analyze as run_service
 from cds_static_analyzer.triage import TriageError, apply_decisions
 from cds_static_analyzer.workspace import WorkspaceError, WorkspaceResolver
 from cds_text_sync import __version__
+from cds_text_sync.webui import shell
 
 
 def _repair_mojibake(text: str) -> str:
@@ -119,30 +120,23 @@ class AnalyzerApi:
         self._last_project_view = ""
         self._last_analysis = None
         self._last_result = None
-        self._progress = dict(self.IDLE_PROGRESS)
+        self._progress = shell.ProgressChannel(self.IDLE_PROGRESS)
 
     def initial_state(self) -> dict:
         return {"workspace": self.initial_workspace, "analyzer_version": __version__}
 
     def progress(self) -> dict:
-        """Snapshot of the run currently in flight, polled by the page.
-
-        pywebview dispatches every bridge call on its own thread, so this is
-        read while :meth:`analyze` is still working.  ``_record`` replaces the
-        whole dict instead of mutating it, so a poll either sees the previous
-        report or the next one, never a half-written one, and no lock is
-        needed on either side.
-        """
-        return dict(self._progress)
+        """Snapshot of the run in flight; see ``webui.shell.ProgressChannel``."""
+        return self._progress.snapshot()
 
     def _record_progress(self, phase, done, total, detail) -> None:
-        self._progress = {
+        self._progress.record({
             "running": True,
             "phase": str(phase),
             "done": int(done),
             "total": int(total),
             "detail": str(detail),
-        }
+        })
 
     def analyze(self, workspace_path: str) -> dict:
         self._record_progress("start", 0, 0, "")
@@ -170,7 +164,7 @@ class AnalyzerApi:
         finally:
             # A poll that arrives after the answer must not keep the page
             # showing a phase that is already over.
-            self._progress = dict(self.IDLE_PROGRESS)
+            self._progress.reset()
 
     def rules(self, workspace_path: str) -> dict:
         """Return the human-analyzer rule catalog and project settings."""
@@ -209,10 +203,7 @@ class AnalyzerApi:
 
     def choose_workspace(self) -> str:
         """Open a native folder dialog; called only from the local window."""
-        import webview
-
-        folders = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
-        return folders[0] if folders else ""
+        return shell.choose_folder()
 
     def open_file(self, relative_path: str, line: int | None = None) -> dict:
         """Open an analyzed source file, preferably at its finding line."""
@@ -264,11 +255,8 @@ class AnalyzerApi:
 
     @staticmethod
     def _source_target(project_view, relative_path):
-        root = Path(project_view).resolve()
-        target = (root / str(relative_path or "")).resolve()
-        try:
-            target.relative_to(root)
-        except ValueError:
+        target = shell.resolve_under_root(project_view, relative_path)
+        if target is None:
             return None, {"ok": False, "error": "Invalid source path."}
         if target.suffix.lower() != ".st":
             return None, {"ok": False, "error": "Only .st source context is available."}
@@ -531,24 +519,16 @@ def _resolve_initial_workspace(initial_workspace: str = "") -> str:
 def launch(initial_workspace: str = "") -> int:
     """Create the native window, or explain how to install the UI extra."""
     initial_workspace = _resolve_initial_workspace(initial_workspace)
-    try:
-        import webview
-    except ImportError:
-        print(
-            "[ERROR] The desktop UI is optional. Install it with: "
-            'pip install -e ".[ui]"',
-            file=__import__("sys").stderr,
-        )
-        return 2
-
-    page = Path(__file__).with_name("ui_assets") / "index.html"
-    webview.create_window(
+    page = shell.package_page(__file__, "ui_assets")
+    return shell.start_window(
         "CTS Static Analysis",
-        page.as_uri(),
+        page,
         js_api=AnalyzerApi(initial_workspace),
         width=1240,
         height=780,
         min_size=(980, 640),
+        install_hint=(
+            "[ERROR] The desktop UI is optional. Install it with: "
+            'pip install -e ".[ui]"'
+        ),
     )
-    webview.start()
-    return 0
