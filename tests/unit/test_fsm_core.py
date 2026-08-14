@@ -129,6 +129,9 @@ def test_package_exports_contract():
         "bootstrap",
         "analyze_text",
         "analyze_path",
+        "layout_payload",
+        "to_svg",
+        "to_mermaid_text",
     ]
 
 
