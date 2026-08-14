@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Start the CPython/pywebview analyzer UI from a CODESYS menu entry.
+"""Start the offline FSM map UI from the CODESYS ``Project_fsm`` menu entry.
 
 This module runs under the CODESYS IronPython ScriptEngine, but it deliberately
-contains no UI and imports no analyzer modules.  Its only responsibility is to
-read the active project's configured sync folder and start the separate
-CPython process that hosts the WebView2 window.
+contains no UI and imports no FSM machinery: neither the shared FSM grammar
+modules, nor the offline FSM package, nor WinForms, nor the picker.  Its only
+responsibility is to resolve the active project's configured sync folder and
+start the separate CPython process that hosts the webview window.
 """
 from __future__ import print_function
 
@@ -23,4 +24,4 @@ def main(params=None, caller_globals=None):
         message = "No CODESYS project is open."
         notify(runtime, message, is_error=True)
         return {"status": "error", "error": message}
-    return start_ui(runtime, project, ["ui"], "the analyzer UI")
+    return start_ui(runtime, project, ["fsm", "ui"], "the FSM map")

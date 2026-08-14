@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
 from pathlib import Path
 
@@ -40,22 +39,9 @@ class _Project:
         return self._info
 
 
-def test_project_sync_folder_resolves_relative_property():
-    launcher = _load_launcher()
-
-    path, error = launcher._project_sync_folder(_Project(r".\sync"))
-
-    assert error is None
-    assert path == os.path.normpath(r"C:\Projects\Demo\sync")
-
-
-def test_main_passes_workspace_to_process_and_environment(monkeypatch):
-    launcher = _load_launcher()
-    project = _Project(r".\sync")
-    captured = {}
-
+def _make_runtime():
     class _Projects:
-        primary = project
+        primary = _Project(r".\sync")
 
     class _Ui:
         def info(self, _message):
@@ -69,28 +55,48 @@ def test_main_passes_workspace_to_process_and_environment(monkeypatch):
         caller_globals = {}
         ui = _Ui()
 
-    class _Process:
-        pid = 123
+    return _Runtime()
 
-        @staticmethod
-        def poll():
-            return None
 
-    def fake_popen(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
-        return _Process()
+def test_main_delegates_to_the_shared_start_ui_with_the_ui_command(monkeypatch):
+    launcher = _load_launcher()
+    runtime = _make_runtime()
+    captured = {}
 
-    monkeypatch.setattr(launcher, "resolve_runtime", lambda **_kwargs: _Runtime())
-    monkeypatch.setattr(launcher, "resolve_projects", lambda *_args: _Projects())
-    monkeypatch.setattr(launcher, "_body_root", lambda: r"C:\cds-text-sync")
-    monkeypatch.setattr(launcher, "_python_command", lambda: r"C:\Python\python.exe")
-    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(launcher.time, "sleep", lambda _seconds: None)
+    def fake_start_ui(_runtime, project, command_args, label):
+        captured["project"] = project
+        captured["command_args"] = command_args
+        captured["label"] = label
+        return {"status": "started", "pid": 123, "sync_folder": r"C:\sync"}
+
+    monkeypatch.setattr(launcher, "resolve_runtime", lambda **_kwargs: runtime)
+    monkeypatch.setattr(launcher, "resolve_projects", lambda *_args: runtime.projects)
+    monkeypatch.setattr(launcher, "start_ui", fake_start_ui)
 
     result = launcher.main()
 
-    workspace = os.path.normpath(r"C:\Projects\Demo\sync")
     assert result["status"] == "started"
-    assert captured["command"][-2:] == ["--workspace", workspace]
-    assert captured["kwargs"]["env"]["CTS_INITIAL_WORKSPACE"] == workspace
+    assert captured["command_args"] == ["ui"]
+    assert captured["label"] == "the analyzer UI"
+    assert captured["project"] is runtime.projects.primary
+
+
+def test_main_reports_an_error_when_no_project_is_open(monkeypatch):
+    launcher = _load_launcher()
+    runtime = _make_runtime()
+    messages = []
+
+    class _FakeNotify:
+        def __call__(self, _runtime, message, is_error=False):
+            messages.append((message, is_error))
+
+    monkeypatch.setattr(launcher, "resolve_runtime", lambda **_kwargs: runtime)
+    monkeypatch.setattr(launcher, "resolve_projects", lambda *_args: None)
+    monkeypatch.setattr(launcher, "notify", _FakeNotify())
+
+    result = launcher.main()
+
+    assert result["status"] == "error"
+    assert "No CODESYS project is open." in result["error"]
+    assert messages[0][0] == "No CODESYS project is open."
+    assert messages[0][1] is True
