@@ -72,21 +72,21 @@ project objects instead.
 
 ## 4. `Project_fsm.py` (FSM transition map)
 
-Use this when you want to see the state machine(s) inside a Structured Text
-object as a diagram.
+Use this when you want to see state machine(s) from the exported
+`project-view` workspace as a diagram.
 
-1. Select a POU in the CODESYS project tree.
+1. Configure the sync folder and export the project.
 2. Run `Project_fsm.py` from **Tools > Scripting**.
-3. The first screen loads object names only. Click a block to scan it; its row
-   then shows either `[N FSM]` or `[no FSM]`.
-4. Use the filter box when the project contains many objects. Choose
-   **Show diagram** for one scanned object, or **Find next FSM** to scan from
-   the top and open the first object that has a state machine.
-5. The diagram window lists the transitions of the current machine in source
+3. Verify the exported workspace snapshot timestamp shown in the picker;
+   re-export if the open project changed after that snapshot.
+4. Enter a non-empty project-view path search and press Enter.
+5. Select a candidate and use **Show diagram**, or use **Find next FSM** to
+   analyze the visible matches in parallel.
+6. The diagram window lists the transitions of the current machine in source
    order on the left — a later write overrides an earlier one — and draws the
    state boxes and edges on the right. Click a state to highlight the edges
    that touch it, or a transition row to highlight exactly that edge.
-6. **Copy as mermaid** puts a `stateDiagram-v2` rendering of the current
+7. **Copy as mermaid** puts a `stateDiagram-v2` rendering of the current
    machine on the clipboard.
 
 `Project_fsm.py` is read-only: it never writes to any project object. It

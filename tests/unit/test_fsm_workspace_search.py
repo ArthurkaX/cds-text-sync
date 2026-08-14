@@ -63,3 +63,49 @@ def test_search_workspace_lists_matching_paths_without_parsing(tmp_path):
     assert result["workers"] == 0
     assert result["candidates"] == ["Machine.st"]
     assert result["results"] == []
+
+
+def test_search_workspace_stops_at_the_first_block_with_a_machine(tmp_path):
+    view = tmp_path / "project-view"
+    _write(view / "A_Plain.st", "value := 1;\n")
+    _write(
+        view / "B_Motor.st",
+        """CASE state OF
+  IDLE: state := RUN;
+  RUN: state := IDLE;
+END_CASE;
+""",
+    )
+    _write(
+        view / "C_Other.st",
+        """CASE mode OF
+  ON: mode := OFF;
+  OFF: mode := ON;
+END_CASE;
+""",
+    )
+
+    result = search_workspace(tmp_path, "", workers=1, stop_at_first=True)
+
+    assert result["scanned"] == 2
+    assert [row["path"] for row in result["results"]] == ["A_Plain.st", "B_Motor.st"]
+    assert result["stopped_early"] is True
+    assert result["candidates"] == ["A_Plain.st", "B_Motor.st", "C_Other.st"]
+
+
+def test_search_workspace_without_stop_at_first_parses_every_match(tmp_path):
+    view = tmp_path / "project-view"
+    _write(view / "A_Plain.st", "value := 1;\n")
+    _write(
+        view / "B_Motor.st",
+        """CASE state OF
+  IDLE: state := RUN;
+  RUN: state := IDLE;
+END_CASE;
+""",
+    )
+
+    result = search_workspace(tmp_path, "", workers=1)
+
+    assert result["scanned"] == 2
+    assert result["stopped_early"] is False

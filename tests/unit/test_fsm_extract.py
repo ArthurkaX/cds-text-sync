@@ -374,3 +374,57 @@ def test_a_numeric_act_next_step_machine_is_detected():
     assert global_t[0].target == "0"
     assert m.commit_offset is not None
     assert not any("next_step" in w[1] for w in m.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Cost: the body is walked once, not once per CASE site
+# ---------------------------------------------------------------------------
+
+
+def _many_case_bodies(count):
+    """A body with *count* independent CASE machines, each with its own name."""
+    parts = []
+    for index in range(count):
+        parts.append(
+            "CASE state_{0} OF\n"
+            " 0: IF go THEN state_{0} := 10; END_IF\n"
+            " 10: IF done THEN state_{0} := 0; END_IF\n"
+            "END_CASE\n"
+            "other_{0} := 1;\n".format(index)
+        )
+    return "".join(parts)
+
+
+def test_the_body_is_scanned_for_assignments_once_per_call():
+    """Guards the fix for the quadratic scan that hung the picker.
+
+    ``_build_machine`` used to walk every statement in the file, so a block
+    with N CASE sites paid N full passes and a large function block sat in
+    "analyzing" for a minute. The index is built once and shared.
+    """
+    import cts_shared.st.fsm as fsm
+
+    calls = []
+    real = fsm.statements
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    fsm.statements = counting
+    try:
+        machines = fsm.find_machines(_many_case_bodies(5))
+    finally:
+        fsm.statements = real
+    assert len(machines) == 5
+    assert all(m.is_fsm for m in machines)
+    assert len(calls) == 1
+
+
+def test_each_case_site_still_sees_only_its_own_family():
+    machines = _machines(_many_case_bodies(3))
+    assert [m.selector for m in machines] == ["state_0", "state_1", "state_2"]
+    for m in machines:
+        assert len(m.transitions) == 2
+        assert all(t.lhs == m.selector for t in m.transitions)
+        assert m.warnings == []

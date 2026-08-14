@@ -12,9 +12,10 @@ state is ever active, so a horizontal bar would wrongly read as two branches
 running at once. A backward hop within a column is drawn as a real link
 running down a lane in the gutter to its left; anything longer becomes a
 connector, a stub with an arrowhead naming its target, and the target step
-records who arrives there. Priority (source-is-None) transitions hang off an
-"any" box above the steps, each ending in a chip that shows the block it
-lands in.
+records who arrives there. Priority (source-is-None) transitions form a
+divergence under an "any" box above the steps: one stem down to a horizontal
+rail, then one drop per transition into a chip that shows the block it lands
+in.
 
 The module is pure: it imports nothing but the stdlib (and needs none of it).
 It duck-types the model from cts_shared/st/fsm.py:
@@ -58,9 +59,8 @@ ROW_GAP = 62          # step bottom -> next step top, fits a bar and two text li
 COL_GAP = 44          # gap between two columns of steps
 BAR_UP = 30           # the bar sits this far above the step it leads into
 FORK_DROP = 20        # a link drops this far before turning sideways
-CHIP_GAP = 34         # stem -> target chip in the priority block
-ANY_STEM = 22         # stem below the "any" box before the first bar
-GLOBAL_ROW_H = 58     # one priority transition
+ANY_STEM = 22         # stem below the "any" box down to the rail
+BRANCH_GAP = 44       # gap between two priority branches
 JUMP_MAX_ROWS = 3     # a longer backward hop becomes a connector, not a line
 JUMP_H = 30           # height of a connector's arrow + caption
 JUMP_GAP = 10         # bar -> connector arrow
@@ -465,43 +465,49 @@ def build_layout(machine, measure=None, guard_measure=None):
         col_x[index] = x
         x += step_w + guard_room + COL_GAP
 
-    # 6d. the priority block, laid out VERTICALLY above the steps
+    # 6d. the priority block, drawn as an ordinary GRAFCET divergence.
+    # One stem drops out of the "any" box onto a single horizontal rail, and
+    # every priority transition drops straight off that rail into its target.
+    # It used to cascade down the stem and turn right into each target, which
+    # reads as a chain of turns rather than as "any one of these can fire".
     links = []
     chips = []
     any_box = None
     if globals_:
-        any_x = LEFT_MARGIN + INBOUND_W
-        any_y = TOP_MARGIN
-        any_box = (any_x, any_y, ANY_W, STEP_H)
-        stem_x = any_x + ANY_W // 2
         chip_w = STEP_MIN_W
         for t in globals_:
             chip_w = max(chip_w, NUM_W + measure(strip_prefix(t.target, prefix)) + STEP_PAD * 2)
         chip_w = int(chip_w)
-        # the chips clear the longest receptivity
-        chip_x = stem_x + BAR_HALF + GUARD_GAP
+        # A receptivity is drawn to the right of its own bar, so a branch has
+        # to be wide enough for the longest one as well as for its chip.
+        any_guard_room = 0
         for t in globals_:
-            chip_x = max(chip_x, stem_x + BAR_HALF + GUARD_GAP
-                         + guard_measure(clip_guard(t.guard)) + CHIP_GAP)
-        chip_x = int(chip_x)
+            any_guard_room = max(any_guard_room, BAR_HALF + GUARD_GAP
+                                 + guard_measure(clip_guard(t.guard)))
+        branch_pitch = int(max(chip_w, chip_w // 2 + any_guard_room) + BRANCH_GAP)
+        first_x = LEFT_MARGIN + INBOUND_W + chip_w // 2
+        branch_x = [first_x + k * branch_pitch for k in range(len(globals_))]
+        any_y = TOP_MARGIN
+        rail_y = any_y + STEP_H + ANY_STEM
+        bar_y = rail_y + FORK_DROP
+        chip_y = bar_y + BAR_UP
+        # The box sits over the middle of the rail, so the stem never doubles
+        # back on itself and a lone priority transition draws as one drop.
+        any_cx = (branch_x[0] + branch_x[-1]) // 2
+        any_box = (any_cx - ANY_W // 2, any_y, ANY_W, STEP_H)
         for k, t in enumerate(globals_):
-            bar_y = any_y + STEP_H + ANY_STEM + k * GLOBAL_ROW_H
-            exit_y = bar_y + FORK_DROP
-            text = clip_guard(t.guard)
-            guard_at = (stem_x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
-            guard_w = guard_measure(text)
+            x = branch_x[k]
             chip = Chip(number_of[t.target], strip_prefix(t.target, prefix),
-                        chip_x, exit_y - STEP_H // 2, chip_w, STEP_H)
+                        x - chip_w // 2, chip_y, chip_w, STEP_H)
             chips.append(chip)
-            if k == 0:
-                start_y = any_y + STEP_H
-            else:
-                start_y = any_y + STEP_H + ANY_STEM + (k - 1) * GLOBAL_ROW_H + FORK_DROP
-            points = [(stem_x, start_y), (stem_x, exit_y), (chip.x, exit_y)]
-            bar = (stem_x, bar_y, "h")
-            arrow = (chip.x, exit_y, "right")
-            links.append(Link("global", t, points, bar, text, guard_at, guard_w,
-                              arrow))
+            text = clip_guard(t.guard)
+            points = [(any_cx, any_y + STEP_H), (any_cx, rail_y),
+                      (x, rail_y), (x, chip.y)]
+            bar = (x, bar_y, "h")
+            guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+            arrow = (x, chip.y, "down")
+            links.append(Link("global", t, points, bar, text, guard_at,
+                              guard_measure(text), arrow))
         top = max(chip.bottom for chip in chips) + ROW_GAP
     else:
         top = TOP_MARGIN

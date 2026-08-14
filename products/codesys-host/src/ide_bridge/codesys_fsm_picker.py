@@ -14,23 +14,15 @@ try:
         Form, Label, Button, ListBox, RichTextBox, TextBox, MessageBox,
         MessageBoxButtons, MessageBoxIcon, DialogResult, FormBorderStyle,
         FormStartPosition, AnchorStyles, BorderStyle, RichTextBoxScrollBars,
-        FlatStyle, DrawMode, DrawItemState, AutoScaleMode, Timer, ToolTip,
-        Keys, Cursors
+        FlatStyle, DrawMode, DrawItemState, AutoScaleMode, Application, ToolTip,
+        Keys, Cursors, TextRenderer
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, SolidBrush
-    from System.Diagnostics import Stopwatch
 except Exception:
     Form = None
+    Application = None
 
 from ide_picker_common import pending_indexes, sort_item_indexes
-
-
-# A sweep spends one full ST parse per block on the UI thread, so it is paced
-# by a time budget per timer tick rather than one block per tick, and anything
-# larger than this has to be confirmed: an unattended sweep over a whole
-# project is what made this dialog look hung.
-ANALYSIS_BUDGET_MS = 60
-ANALYSIS_CONFIRM_LIMIT = 50
 
 
 # Copy strings for the FSM object picker. Plain strings, defined outside the
@@ -41,13 +33,16 @@ ANALYSIS_CONFIRM_LIMIT = 50
 FSM_PICKER_LABELS = {
     "title": "FSM - Select object",
     "heading": "Find a state machine in the exported workspace",
-    "subtitle": "Enter a path search and press Enter to list matching project-view blocks. Then Find next FSM analyzes only that list in parallel.",
+    "subtitle": "Enter a path search and press Enter to list matching project-view blocks. Then Find next FSM analyzes them one at a time, stopping at each state machine.",
     "status": "Enter a search term and press Enter first.",
     "scan_button": "Find next FSM",
+    "stop_button": "Stop",
     "open_button": "Show diagram",
     "analyze_button": "Analyze filtered",
     "scan_status": "Searching matching workspace files...",
     "scan_none": "No state machine was found in the matching blocks.",
+    "scan_hit": "State machine found in '{0}'. Find next FSM continues from the next block.",
+    "scan_stopped": "Scan stopped. Find next FSM resumes from where it stopped.",
     "analysis_done": "Analysis complete - {0} block(s) contain a state machine.",
     "analysis_hits": " {0} contain a state machine.",
     "message_title": "FSM",
@@ -67,7 +62,8 @@ if Form is not None:
 
 
 class FsmObjectPickerForm(Form if Form is not None else object):
-    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None):
+    def __init__(self, items, selected_index=-1, analyze_callback=None, scan_callback=None,
+                 snapshot_notice=None, view_callback=None):
         self.labels = dict(FSM_PICKER_LABELS)
         self.Text = FSM_PICKER_LABELS["title"]
         self.Size = Size(980, 660)
@@ -80,13 +76,21 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         self.action = "cancel"
         self.analyze_callback = analyze_callback
         self.scan_callback = scan_callback
+        # With a view callback the diagram opens on top of this window and the
+        # picker survives it, so one sitting can walk through many machines.
+        self.view_callback = view_callback
+        self.viewed_count = 0
         self._search_confirmed = False
         self.analyzing = False
+        self._is_closing = False
+        self._scanning = False
+        self._stop_requested = False
         self._status = None
+        self._listed_query = None
+        self._snapshot_notice = snapshot_notice
         self._visible_indexes = list(range(len(items)))
         self._analysis_queue = []
         self._analysis_cursor = 0
-        self._analysis_timer = None
         self._sort_key = None
         self._sort_descending = False
         # Deferred mode parses nothing until the user presses Analyze. On a
@@ -108,10 +112,18 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         subtitle.AutoSize = True
         self.Controls.Add(subtitle)
 
+        snapshot = Label()
+        snapshot.Text = snapshot_notice or ""
+        snapshot.ForeColor = _BEFORE
+        snapshot.Location = Point(18, 63)
+        snapshot.AutoSize = True
+        self._snapshot_label = snapshot
+        self.Controls.Add(snapshot)
+
         status = Label()
         status.Text = FSM_PICKER_LABELS["status"]
         status.ForeColor = _DIM
-        status.Location = Point(18, 63)
+        status.Location = Point(18, 80)
         status.AutoSize = True
         self._status = status
         status.Cursor = Cursors.Hand
@@ -119,15 +131,15 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         self.Controls.Add(status)
 
         search_label = Label()
-        search_label.Text = "Filter:"
+        search_label.Text = "Path search:"
         search_label.ForeColor = _DIM
-        search_label.Location = Point(16, 86)
+        search_label.Location = Point(16, 103)
         search_label.AutoSize = True
         self._search_label = search_label
         self.Controls.Add(search_label)
 
         search = TextBox()
-        search.Location = Point(66, 82)
+        search.Location = Point(66, 99)
         search.Size = Size(320, 24)
         search.Anchor = AnchorStyles.Top | AnchorStyles.Left
         search.Text = ""
@@ -158,7 +170,7 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         self._sort_tooltip = tooltip
 
         self.list = ListBox()
-        self.list.Location = Point(16, 114)
+        self.list.Location = Point(16, 131)
         self.list.Size = Size(940, 462)
         self.list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         self.list.BackColor = _PANEL
@@ -274,6 +286,13 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         try:
             self.analyze_callback(index)
             self.list.Invalidate()
+        except Exception as error:
+            item = self.items[index]
+            item["analysis"] = "error"
+            item["status"] = "error"
+            item["suffix"] = "[read error]"
+            item["error"] = str(error)
+            self._status.Text = "FSM search failed: " + str(error)
         finally:
             self.analyzing = False
             self.UseWaitCursor = False
@@ -318,7 +337,14 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         )
 
     def _start_background_analysis(self, indexes):
-        if self.analyze_callback is None:
+        """Sweep the listed blocks, stopping at the first state machine.
+
+        Driven straight from the click and paced by DoEvents rather than by a
+        WinForms timer: WM_TIMER is the lowest-priority message there is, and
+        inside the IDE's nested modal pump a queued tick could sit unserved -
+        the click retitled the button and then nothing ever happened.
+        """
+        if self.analyze_callback is None or self._scanning:
             return
         queue = pending_indexes(self.items, indexes)
         if not queue:
@@ -326,62 +352,106 @@ class FsmObjectPickerForm(Form if Form is not None else object):
             return
         self._analysis_queue = list(queue)
         self._analysis_cursor = 0
-        self._stop_background_analysis()
-        timer = Timer()
-        timer.Interval = 15
-        timer.Tick += self._on_analysis_tick
-        self._analysis_timer = timer
-        timer.Start()
+        self._run_scan()
 
-    def _on_analysis_tick(self, sender, event):
-        if self.analyzing:
-            return
-        watch = Stopwatch.StartNew()
+    def _run_scan(self):
+        """Walk the queue from the cursor to the next hit, stop or exhaustion."""
+        self._scanning = True
+        self._stop_requested = False
         self.analyzing = True
+        self._set_scan_button_text(FSM_PICKER_LABELS["stop_button"])
+        hit = -1
         try:
             while self._analysis_cursor < len(self._analysis_queue):
+                if self._stop_requested or self._closed_or_closing():
+                    break
                 index = self._analysis_queue[self._analysis_cursor]
                 self._analysis_cursor += 1
-                item = self.items[index]
-                if item.get("analysis") is not None:
+                if self.items[index].get("analysis") is not None:
                     continue
-                item["analysis"] = "running"
-                self.analyze_callback(index)
-                if watch.ElapsedMilliseconds >= ANALYSIS_BUDGET_MS:
+                self._analyze_queued(index)
+                self._report_progress(index)
+                if self.items[index].get("status") == "changed":
+                    hit = index
                     break
         finally:
+            self._scanning = False
             self.analyzing = False
+            self._set_scan_button_text(FSM_PICKER_LABELS["scan_button"])
+        if self._closed_or_closing():
+            return
+        if hit >= 0:
+            self._open_scan_hit(hit)
+            return
         if self._analysis_cursor >= len(self._analysis_queue):
-            self._stop_background_analysis()
-        self._status.Text = self._analysis_status()
+            self._status.Text = FSM_PICKER_LABELS["scan_none"]
+        else:
+            self._status.Text = FSM_PICKER_LABELS["scan_stopped"]
+        self._refresh_after_scan()
+
+    def _closed_or_closing(self):
+        return bool(
+            getattr(self, "_is_closing", False) or self.IsDisposed or self.Disposing
+        )
+
+    def _analyze_queued(self, index):
+        item = self.items[index]
+        item["analysis"] = "running"
+        try:
+            self.analyze_callback(index)
+        except Exception as error:
+            item["analysis"] = "error"
+            item["status"] = "error"
+            item["suffix"] = "[read error]"
+            item["error"] = str(error)
+
+    def _report_progress(self, index):
+        self._status.Text = "Analyzing {0}/{1}: {2}".format(
+            self._analysis_cursor, len(self._analysis_queue), self.items[index]["label"]
+        )
+        self._pump()
+
+    def _pump(self):
+        """Repaint and let the click that stops the sweep through."""
+        if Application is None:
+            return
+        try:
+            self._status.Refresh()
+            self.list.Invalidate()
+            Application.DoEvents()
+        except Exception:
+            pass
+
+    def _refresh_after_scan(self):
         if self._sort_key == "changes":
             self._refresh_list()
         else:
             self.list.Invalidate()
 
+    def _set_scan_button_text(self, text):
+        """The scan button doubles as Stop, so it is retitled while a scan runs."""
+        button = getattr(self, "_all_button", None)
+        if button is None or self.IsDisposed or self.Disposing:
+            return
+        button.Text = text
+
     def _stop_background_analysis(self):
-        timer = self._analysis_timer
-        self._analysis_timer = None
-        if timer is not None:
-            timer.Stop()
-            timer.Dispose()
+        """Ask a running sweep to stop; safe to call when none is running."""
+        self._stop_requested = True
 
     def _on_selection_changed(self, sender, event):
         if not self._search_confirmed:
             return
         if self._deferred:
-            # Typing in the filter re-selects a row on every keystroke, so
-            # analyzing on selection would parse a block per keystroke. That
-            # is the lag the Analyze button exists to remove.
             return
 
     def _accept(self, sender, event):
+        if self._scanning:
+            # Reached through DoEvents from inside the sweep. Opening a diagram
+            # on top of a running sweep would nest the two.
+            self._status.Text = "A scan is running - press Stop first."
+            return
         if not self._search_confirmed:
-            # Enter can still arrive here through AcceptButton on a build
-            # where the preview hook does not take. With an empty list there
-            # is nothing to open, so a filled search box is the confirmation
-            # it plainly is - bouncing the user back to a box that already
-            # holds the query is how this deadlocked.
             if (self.list.SelectedIndex < 0
                     and (self._search.Text or "").strip()):
                 self._search_confirmed = True
@@ -394,13 +464,17 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         if self.list.SelectedIndex < 0:
             return
         visible = self.list.SelectedIndex
-        if self.items[
-            self._visible_indexes[visible]
-        ].get("analysis") is None:
-            self._status.Text = "Click Find next FSM to search the matching workspace files."
+        index = self._visible_indexes[visible]
+        self._analyze_index(index)
+        item = self.items[index]
+        if item.get("status") in ("error", "ok"):
+            self._status.Text = item.get("error") or "No state machine was found in '{0}'.".format(item["label"])
+            self.list.Invalidate()
             return
-        self._analyze_index(self._visible_indexes[visible])
-        self.selected_index = self._visible_indexes[visible]
+        self.selected_index = index
+        if self.view_callback is not None:
+            self._show_diagram(index)
+            return
         self.action = "selected"
         self.DialogResult = DialogResult.OK
         self.Close()
@@ -412,22 +486,25 @@ class FsmObjectPickerForm(Form if Form is not None else object):
             self._status.Text = FSM_PICKER_LABELS["search_prompt"]
             self._search.Focus()
             return
+        current_query = (self._search.Text or "").strip()
+        if current_query == self._listed_query:
+            if self._scanning:
+                # Re-entered through DoEvents from inside the sweep: the sweep
+                # itself checks this flag between blocks.
+                self._stop_requested = True
+                return
+            self._start_background_analysis(self._visible_indexes)
+            return
         self._stop_background_analysis()
         self.analyzing = True
         self._status.Text = FSM_PICKER_LABELS["scan_status"]
         self.UseWaitCursor = True
         try:
-            try:
-                index = self.scan_callback(0, self._visible_indexes, self._search.Text)
-            except TypeError:
-                try:
-                    index = self.scan_callback(0, self._visible_indexes)
-                except TypeError:
-                    index = self.scan_callback(0)
-            # External search can first populate this picker with paths, then
-            # use a later click to analyze those paths.  It deliberately does
-            # not close the dialog during the population phase.
+            index = self.scan_callback(0, self._visible_indexes, self._search.Text)
             if isinstance(index, dict):
+                self._listed_query = (self._search.Text or "").strip()
+                self._analysis_queue = []
+                self._analysis_cursor = 0
                 self._refresh_list()
                 self._status.Text = index.get("status", "Search complete.")
                 return
@@ -435,15 +512,45 @@ class FsmObjectPickerForm(Form if Form is not None else object):
                 show_message(FSM_PICKER_LABELS["message_title"], FSM_PICKER_LABELS["scan_none"], "info")
                 self.list.Invalidate()
                 return
-            self.selected_index = index
-            if index in self._visible_indexes:
-                self.list.SelectedIndex = self._visible_indexes.index(index)
-            self.action = "all"
-            self.DialogResult = DialogResult.OK
-            self.Close()
+            self._open_scan_hit(index)
+        except Exception as error:
+            self._status.Text = "FSM search failed: " + str(error)
         finally:
             self.analyzing = False
             self.UseWaitCursor = False
+
+    def _open_scan_hit(self, index):
+        """Select the block the scan settled on and show it, without closing."""
+        self.selected_index = index
+        if index in self._visible_indexes:
+            self.list.SelectedIndex = self._visible_indexes.index(index)
+        self._refresh_after_scan()
+        if self.view_callback is None:
+            self.action = "all"
+            self.DialogResult = DialogResult.OK
+            self.Close()
+            return
+        self._status.Text = FSM_PICKER_LABELS["scan_hit"].format(self.items[index]["label"])
+        self._show_diagram(index)
+
+    def _show_diagram(self, index):
+        """Open the diagram on top of this window and come back to it."""
+        if self.view_callback is None:
+            return False
+        item = self.items[index]
+        try:
+            shown = self.view_callback(index)
+        except Exception as error:
+            self._status.Text = "FSM diagram failed: " + str(error)
+            return False
+        if not shown:
+            self._status.Text = item.get("error") or "No state machine was found in '{0}'.".format(item["label"])
+            self.list.Invalidate()
+            return False
+        self.viewed_count += 1
+        self._status.Text = FSM_PICKER_LABELS["scan_hit"].format(item["label"])
+        self.list.Invalidate()
+        return True
 
     def _layout(self, sender=None, event=None):
         width = self.ClientSize.Width
@@ -451,20 +558,23 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         margin = 16
         gap = 10
         button_y = max(0, height - 42)
-        self._search_label.Location = Point(margin, 86)
-        search_left = margin + 50
+        self._search_label.Location = Point(margin, 103)
+        label_width = TextRenderer.MeasureText(
+            self._search_label.Text, self._search_label.Font
+        ).Width
+        search_left = margin + label_width + 8
         sort_width = sum(button.Width for button, _tip in self._sort_buttons)
         sort_width += max(0, len(self._sort_buttons) - 1) * 2
         sort_left = width - margin - sort_width
         analyze_left = sort_left
         search_width = max(150, min(320, analyze_left - 8 - search_left))
-        self._search.Location = Point(search_left, 82)
+        self._search.Location = Point(search_left, 99)
         self._search.Size = Size(search_width, 24)
         for button, _tip in self._sort_buttons:
-            button.Location = Point(sort_left, 82)
+            button.Location = Point(sort_left, 99)
             sort_left = button.Right + 2
-        self.list.Location = Point(margin, 114)
-        self.list.Size = Size(max(100, width - margin * 2), max(100, button_y - 124))
+        self.list.Location = Point(margin, 131)
+        self.list.Size = Size(max(100, width - margin * 2), max(100, button_y - 141))
         right = width - margin
         self._selected_button.Location = Point(right - self._selected_button.Width, button_y)
         right -= self._selected_button.Width + gap
@@ -526,20 +636,10 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         self.list.Invalidate()
 
     def _on_search_preview_key(self, sender, event):
-        # A single-line TextBox answers IsInputKey(Enter) with False, so
-        # WinForms routes Enter as a dialog key: ProcessDialogKey reaches the
-        # form and clicks AcceptButton BEFORE KeyDown is ever raised.
-        # Suppressing the key in KeyDown cannot undo that - KeyDown does not
-        # run. Claiming Enter as an input key here is what makes it run.
         if event.KeyCode == Keys.Enter:
             event.IsInputKey = True
 
     def _on_search_key_down(self, sender, event):
-        # Enter is the keyboard shortcut for Analyze. Compare against the enum,
-        # not its name: Keys.Enter and Keys.Return are the same value and the
-        # CLR prints it as "Return", so a string test never fires. It also has
-        # to be swallowed, or the form's AcceptButton fires too and the dialog
-        # closes on whichever block happens to be selected.
         if event.KeyCode != Keys.Enter:
             return
         event.Handled = True
@@ -552,10 +652,12 @@ class FsmObjectPickerForm(Form if Form is not None else object):
         self._accept_all()
 
     def _on_form_closed(self, sender, event):
+        self._is_closing = True
         self._stop_background_analysis()
 
 
-def show_fsm_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None):
+def show_fsm_object_picker(items, selected_index=-1, analyze_callback=None, scan_callback=None,
+                           snapshot_notice=None, view_callback=None):
     if Form is None:
         return "cancel", -1
     form = FsmObjectPickerForm(
@@ -563,6 +665,8 @@ def show_fsm_object_picker(items, selected_index=-1, analyze_callback=None, scan
         selected_index=selected_index,
         analyze_callback=analyze_callback,
         scan_callback=scan_callback,
+        snapshot_notice=snapshot_notice,
+        view_callback=view_callback,
     )
     form.ShowDialog()
     return form.action, form.selected_index

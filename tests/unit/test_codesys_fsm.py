@@ -1,6 +1,9 @@
 """Regression tests for the pure Project_fsm seams."""
 
+import json
+import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -258,10 +261,10 @@ def test_a_priority_transition_shows_the_block_it_lands_in():
     assert len(globals_) == 2
     for link in globals_:
         assert link.transition.source is None
-        # The stem runs down out of the "any" box, then turns into the block.
+        # One stem out of the "any" box, then the rail, then the drop.
         assert link.points[0][0] == link.points[1][0]
         assert link.bar[2] == "h"
-        assert link.arrow[2] == "right"
+        assert link.arrow[2] == "down"
     # Each row ends in a chip naming the target, so the reader never has to
     # match a number against a step somewhere else on the page.
     assert [chip.label for chip in layout.chips] == ["E_STOPPED", "WARNING_SIGNAL"]
@@ -274,6 +277,60 @@ def test_a_priority_transition_shows_the_block_it_lands_in():
             assert link.transition.source is not None
     flagged = sorted(s.label for s in layout.steps if s.priority)
     assert flagged == ["E_STOPPED", "WARNING_SIGNAL"]
+
+
+def test_the_priority_block_is_a_divergence_rather_than_a_cascade():
+    # It used to walk down the stem and turn right into each target, one row
+    # per transition. GRAFCET draws this as a divergence: down, across, down.
+    layout = fsm_layout.build_layout(_prefixed_machine())
+    globals_ = [link for link in layout.links if link.kind == "global"]
+    any_x, any_y, any_w, any_h = layout.any_box
+
+    rails = set()
+    drops = []
+    for link in globals_:
+        (stem_x, stem_y), (rail_x, rail_y), (turn_x, turn_y), (drop_x, drop_y) = link.points
+        assert stem_x == rail_x == any_x + any_w // 2, "the stem leaves the any box"
+        assert stem_y == any_y + any_h
+        assert turn_y == rail_y, "the middle run is horizontal"
+        assert turn_x == drop_x and drop_y > turn_y, "then it drops into the target"
+        rails.add(rail_y)
+        drops.append(drop_x)
+    assert len(rails) == 1, "every branch hangs off one rail"
+    assert drops == sorted(drops), "branches read left to right, in source order"
+
+    # The chips stand side by side under the rail, not stacked down the page.
+    tops = set(chip.y for chip in layout.chips)
+    assert len(tops) == 1
+    ordered = sorted(layout.chips, key=lambda chip: chip.x)
+    for left, right in zip(ordered, ordered[1:]):
+        assert right.x > left.right, "chips must not overlap"
+    for chip, drop_x in zip(layout.chips, drops):
+        assert chip.x < drop_x < chip.right, "the drop lands on its own chip"
+    # The box is centred over the rail, so the stem never doubles back.
+    assert layout.width >= max(chip.right for chip in layout.chips)
+
+
+def test_a_single_priority_transition_draws_as_one_straight_drop():
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "IF stop THEN\n"
+        "  state := IDLE;\n"
+        "END_IF\n"
+        "CASE state OF\n"
+        "  IDLE:\n"
+        "    IF start THEN state := RUN; END_IF\n"
+        "  RUN:\n"
+        "    IF done THEN state := IDLE; END_IF\n"
+        "END_CASE\n"
+    )
+    machine = [m for m in find_machines(source) if m.is_fsm][0]
+    layout = fsm_layout.build_layout(machine)
+    globals_ = [link for link in layout.links if link.kind == "global"]
+    assert len(globals_) == 1
+    xs = set(x for x, _y in globals_[0].points)
+    assert len(xs) == 1, "with one branch there is nothing to fan out to"
 
 
 def test_consecutive_steps_are_joined_by_a_straight_vertical_link():
@@ -485,12 +542,14 @@ class _SearchPicker:
     _on_search_preview_key = fsm_picker.FsmObjectPickerForm._on_search_preview_key
     _accept = fsm_picker.FsmObjectPickerForm._accept
     _accept_all = fsm_picker.FsmObjectPickerForm._accept_all
+    _show_diagram = fsm_picker.FsmObjectPickerForm._show_diagram
 
     def __init__(self, query="AERATION", selected=-1):
         self.labels = dict(fsm_picker.FSM_PICKER_LABELS)
         self._search = _Text(query)
         self._status = _Text()
         self._search_confirmed = False
+        self._listed_query = None
         self._visible_indexes = []
         self.list = _List(selected)
         self.analyzing = False
@@ -500,6 +559,19 @@ class _SearchPicker:
         self.calls = []
         self.refreshed = 0
         self.analyzed = []
+        self._scanning = False
+        self._stop_requested = False
+        self._analysis_queue = []
+        self._analysis_cursor = 0
+        self.started = []
+        self.view_callback = None
+        self.viewed_count = 0
+        self.action = "cancel"
+        self.DialogResult = None
+        self.closed = 0
+
+    def Close(self):
+        self.closed += 1
 
     def _analyze_index(self, index):
         self.analyzed.append(index)
@@ -508,6 +580,12 @@ class _SearchPicker:
         self.calls.append((index, visible_indexes, query))
         self.items.append({"label": "AERATION/AERATION.st", "display": "AERATION"})
         return {"status": "Found 1 matching block(s)."}
+
+    def _start_background_analysis(self, indexes):
+        self.started.append(list(indexes))
+
+    def _analysis_status(self):
+        return "status line"
 
     def _stop_background_analysis(self):
         pass
@@ -590,3 +668,332 @@ def test_accept_still_opens_a_selected_block_instead_of_researching():
 
     assert picker.calls == [], "a selected block must not trigger a new search"
     assert picker._status.Text == fsm_picker.FSM_PICKER_LABELS["search_prompt"]
+
+
+def test_a_broad_search_returns_instead_of_deadlocking_on_a_full_pipe(tmp_path, monkeypatch):
+    view = tmp_path / "project-view"
+    view.mkdir()
+    for index in range(400):
+        (view / ("Application_Block%03d.st" % index)).write_text(
+            "value := 1;\n", encoding="utf-8"
+        )
+    (view / "Насос_Automat.st").write_text("value := 1;\n", encoding="utf-8")
+
+    cds_src = ROOT / "products" / "cds-text-sync" / "src"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(cds_src), str(SHARED)]))
+    monkeypatch.setattr(fsm, "_project_sync_folder", lambda project: (str(tmp_path), None))
+    monkeypatch.setattr(fsm, "_python_command", lambda: sys.executable)
+    monkeypatch.setattr(fsm, "_body_root", lambda: str(cds_src))
+    # Fail fast: a regression must not stall the suite for the real 120s.
+    monkeypatch.setattr(fsm, "FSM_SEARCH_TIMEOUT_SECONDS", 60)
+
+    result = fsm._search_workspace(object(), "a", list_only=True)
+
+    assert len(result["candidates"]) == 401
+    assert "Насос_Automat.st" in result["candidates"]
+
+
+def test_the_second_click_hands_analysis_to_the_timer_instead_of_blocking():
+    picker = _SearchPicker(query="a")
+    picker._search_confirmed = True
+    picker._listed_query = "a"
+    picker._visible_indexes = [0, 1, 2]
+
+    picker._accept_all()
+
+    assert picker.started == [[0, 1, 2]]
+    assert picker.calls == []
+
+
+def test_a_click_while_the_scan_runs_stops_it():
+    picker = _SearchPicker(query="a")
+    picker._search_confirmed = True
+    picker._listed_query = "a"
+    picker._scanning = True
+
+    picker._accept_all()
+
+    assert picker._stop_requested is True
+    assert picker.started == []
+    assert picker.calls == []
+
+
+class _DialogResult:
+    OK = "ok"
+
+
+class _ScanPicker:
+    """The picker reduced to what the Find-next-FSM sweep touches."""
+
+    _start_background_analysis = fsm_picker.FsmObjectPickerForm._start_background_analysis
+    _run_scan = fsm_picker.FsmObjectPickerForm._run_scan
+    _closed_or_closing = fsm_picker.FsmObjectPickerForm._closed_or_closing
+    _analyze_queued = fsm_picker.FsmObjectPickerForm._analyze_queued
+    _report_progress = fsm_picker.FsmObjectPickerForm._report_progress
+    _pump = fsm_picker.FsmObjectPickerForm._pump
+    _refresh_after_scan = fsm_picker.FsmObjectPickerForm._refresh_after_scan
+    _set_scan_button_text = fsm_picker.FsmObjectPickerForm._set_scan_button_text
+    _stop_background_analysis = fsm_picker.FsmObjectPickerForm._stop_background_analysis
+    _analysis_status = fsm_picker.FsmObjectPickerForm._analysis_status
+    _open_scan_hit = fsm_picker.FsmObjectPickerForm._open_scan_hit
+    _show_diagram = fsm_picker.FsmObjectPickerForm._show_diagram
+
+    def __init__(self, items, view_callback=None):
+        self.items = items
+        self.analyzing = False
+        self.IsDisposed = False
+        self.Disposing = False
+        self._is_closing = False
+        self._scanning = False
+        self._stop_requested = False
+        self._analysis_queue = []
+        self._analysis_cursor = 0
+        self._visible_indexes = list(range(len(items)))
+        self._sort_key = None
+        self._status = _Text()
+        self.list = _List(-1)
+        self.selected_index = -1
+        self.action = "cancel"
+        self.DialogResult = None
+        self.view_callback = view_callback
+        self.viewed_count = 0
+        self.analyzed = []
+        self.closed = 0
+
+    def analyze_callback(self, index):
+        self.analyzed.append(index)
+        item = self.items[index]
+        item["analysis"] = "done"
+        item["status"] = "changed" if item.get("fsm") else "ok"
+
+    def _refresh_list(self):
+        pass
+
+    def Close(self):
+        self.closed += 1
+
+
+def _blocks(count):
+    return [{"label": "B%d.st" % index, "analysis": None} for index in range(count)]
+
+
+def test_the_sweep_runs_on_the_click_instead_of_waiting_for_a_timer_tick():
+    # The sweep used to be handed to a WinForms timer, and inside the IDE's
+    # nested modal pump that tick never arrived: the button said Stop and
+    # nothing was ever analyzed. The click itself has to do the work.
+    picker = _ScanPicker(_blocks(5), view_callback=lambda index: True)
+
+    picker._start_background_analysis([0, 1, 2, 3, 4])
+
+    assert picker.analyzed == [0, 1, 2, 3, 4]
+    assert picker._status.Text == fsm_picker.FSM_PICKER_LABELS["scan_none"]
+    assert picker.closed == 0
+    assert picker._scanning is False
+
+
+def test_the_sweep_stops_at_the_first_machine_and_shows_it_without_closing():
+    items = _blocks(5)
+    items[2]["fsm"] = True
+    viewed = []
+    picker = _ScanPicker(items, view_callback=lambda index: viewed.append(index) or True)
+
+    picker._start_background_analysis([0, 1, 2, 3, 4])
+
+    assert picker.analyzed == [0, 1, 2]
+    assert viewed == [2], "the diagram opens on top of the picker"
+    assert picker.closed == 0, "closing the picker is what stranded the user in the IDE"
+    assert picker.selected_index == 2
+    assert picker.viewed_count == 1
+
+
+def test_the_next_click_resumes_at_the_block_after_the_last_machine():
+    items = _blocks(5)
+    items[1]["fsm"] = True
+    items[3]["fsm"] = True
+    viewed = []
+    picker = _ScanPicker(items, view_callback=lambda index: viewed.append(index) or True)
+
+    picker._start_background_analysis([0, 1, 2, 3, 4])
+    picker._start_background_analysis([0, 1, 2, 3, 4])
+
+    assert picker.analyzed == [0, 1, 2, 3]
+    assert viewed == [1, 3]
+    assert picker.closed == 0
+
+
+def test_a_sweep_without_a_view_callback_still_hands_the_hit_to_the_caller(monkeypatch):
+    monkeypatch.setattr(fsm_picker, "DialogResult", _DialogResult, raising=False)
+    items = _blocks(3)
+    items[1]["fsm"] = True
+    picker = _ScanPicker(items)
+
+    picker._start_background_analysis([0, 1, 2])
+
+    assert picker.action == "all"
+    assert picker.selected_index == 1
+    assert picker.closed == 1
+
+
+def test_stop_halts_the_sweep_between_blocks():
+    picker = _ScanPicker(_blocks(5), view_callback=lambda index: True)
+    plain = picker.analyze_callback
+
+    def analyze_then_stop(index):
+        plain(index)
+        picker._stop_background_analysis()
+
+    picker.analyze_callback = analyze_then_stop
+    picker._start_background_analysis([0, 1, 2, 3, 4])
+
+    assert picker.analyzed == [0]
+    assert picker._status.Text == fsm_picker.FSM_PICKER_LABELS["scan_stopped"]
+    assert picker._analysis_cursor == 1
+
+
+def test_a_block_that_cannot_be_read_is_marked_and_does_not_stop_the_sweep():
+    picker = _ScanPicker(_blocks(3), view_callback=lambda index: True)
+
+    def analyze(index):
+        picker.analyzed.append(index)
+        if index == 1:
+            raise IOError("locked")
+        picker.items[index]["analysis"] = "done"
+        picker.items[index]["status"] = "ok"
+
+    picker.analyze_callback = analyze
+    picker._start_background_analysis([0, 1, 2])
+
+    assert picker.analyzed == [0, 1, 2]
+    assert picker.items[1]["status"] == "error"
+    assert picker.items[1]["error"] == "locked"
+
+
+def test_show_diagram_keeps_the_picker_open_instead_of_returning_to_the_ide():
+    picker = _SearchPicker(selected=0)
+    picker._search_confirmed = True
+    picker._visible_indexes = [0]
+    picker.items = [{"label": "A.st", "analysis": "done", "status": "changed"}]
+    viewed = []
+    picker.view_callback = lambda index: viewed.append(index) or True
+
+    picker._accept(picker, None)
+
+    assert viewed == [0]
+    assert picker.closed == 0
+    assert picker.viewed_count == 1
+    assert picker.selected_index == 0
+
+
+def test_a_diagram_that_cannot_be_shown_leaves_the_picker_up_with_a_reason():
+    picker = _SearchPicker(selected=0)
+    picker._search_confirmed = True
+    picker._visible_indexes = [0]
+    picker.items = [{"label": "A.st", "analysis": "done", "status": "changed"}]
+    picker.view_callback = lambda index: False
+
+    picker._accept(picker, None)
+
+    assert picker.closed == 0
+    assert picker.viewed_count == 0
+    assert "A.st" in picker._status.Text
+
+
+def test_the_operation_hands_the_picker_a_view_callback():
+    # Without this wiring the picker closes to show a diagram, and closing the
+    # diagram drops the user back into CODESYS instead of the picker.
+    source = Path(fsm.__file__).read_text(encoding="utf-8")
+    assert "view_callback=view_selected" in source
+    assert "codesys_fsm_ui.show_fsm_diagram(item[\"label\"], machines)" in source
+
+
+def test_a_workspace_block_is_parsed_in_process_without_spawning_python(tmp_path):
+    # The picker analyzes one block per timer tick, so a block has to be cheap.
+    view = tmp_path / "project-view" / "App"
+    view.mkdir(parents=True)
+    (view / "Насос.st").write_text(
+        "FUNCTION_BLOCK Насос\nVAR\n    state : INT;\nEND_VAR\n"
+        "// --- implementation ---\n"
+        "CASE state OF\n  0: state := 1;\n  1: state := 0;\nEND_CASE;\n",
+        encoding="utf-8",
+    )
+    (view / "Plain.st").write_text(
+        "FUNCTION_BLOCK Plain\nVAR\n    x : INT;\nEND_VAR\n"
+        "// --- implementation ---\nx := x + 1;\n",
+        encoding="utf-8",
+    )
+
+    hit = fsm._analyze_workspace_item({"label": "App/Насос.st"}, str(tmp_path))
+    miss = fsm._analyze_workspace_item({"label": "App/Plain.st"}, str(tmp_path))
+    gone = fsm._analyze_workspace_item({"label": "App/Missing.st"}, str(tmp_path))
+
+    assert hit["status"] == "changed"
+    assert hit["suffix"] == "[1 FSM]"
+    assert hit["analysis"] == "done"
+    assert len(hit["machines"]) == 1
+    assert hasattr(hit["machines"][0], "selector")
+    assert miss["status"] == "ok"
+    assert miss["suffix"] == "[no FSM]"
+    assert gone["status"] == "error"
+    assert gone["analysis"] == "error"
+
+
+def _snapshot_workspace(tmp_path, created):
+    (tmp_path / "project-view").mkdir()
+    dump = tmp_path / ".dump"
+    dump.mkdir()
+    (dump / "manifest.json").write_text(
+        json.dumps({"created": created}), encoding="utf-8"
+    )
+    return str(tmp_path)
+
+
+def test_a_snapshot_from_this_sitting_is_not_nagged_about(tmp_path):
+    created = time.strftime("%Y-%m-%dT%H:%M:%S")
+    folder = _snapshot_workspace(tmp_path, created)
+
+    notice, error = fsm._snapshot_notice(folder)
+
+    assert error is None
+    assert "moments ago" in notice
+    assert "Re-export" not in notice
+    assert created in notice
+
+
+def test_an_old_snapshot_still_asks_for_a_re_export(tmp_path):
+    stamp = time.time() - (3 * 86400 + 12 * 3600)
+    created = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(stamp))
+    folder = _snapshot_workspace(tmp_path, created)
+
+    notice, error = fsm._snapshot_notice(folder)
+
+    assert error is None
+    assert "3 days ago" in notice
+    assert "Re-export the project" in notice
+
+
+def test_a_project_saved_after_a_fresh_export_is_flagged(tmp_path):
+    created = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 60))
+    folder = _snapshot_workspace(tmp_path, created)
+    project_file = tmp_path / "Machine.project"
+    project_file.write_text("saved after the export", encoding="utf-8")
+
+    class _Project(object):
+        path = str(project_file)
+
+    notice, error = fsm._snapshot_notice(folder, _Project())
+
+    assert error is None
+    assert "has been saved since" in notice
+    quiet, _quiet_error = fsm._snapshot_notice(folder)
+    assert "Re-export" not in quiet
+    assert "saved since" not in quiet
+
+
+def test_an_unparseable_stamp_keeps_the_re_export_hint(tmp_path):
+    folder = _snapshot_workspace(tmp_path, "yesterday, around noon")
+
+    notice, error = fsm._snapshot_notice(folder)
+
+    assert error is None
+    assert "yesterday, around noon" in notice
+    assert "Re-export the project" in notice

@@ -104,12 +104,6 @@ def _contains(outer, inner):
 # a <circle> is snapped through cx/cy/r, not through the derived x/y/width.
 
 
-# ``parse_svg`` files every plain shape under the type ``rectangle`` and keeps
-# what is actually drawn in ``params["shape"]``, so a <circle> and a <rect> come
-# back indistinguishable by type alone. That is right for the compiler and wrong
-# for a message: "rectangle #1" sends an author hunting for a rectangle they
-# never wrote, and the control-tag rule below would promise a plain rectangle
-# where the screen will show an ellipse.
 _SHAPE_NAMES = {"ellipse": "ellipse", "rounded": "rounded rectangle"}
 
 
@@ -191,11 +185,6 @@ def _rule_grid(index, spec, source, findings):
                 fixes[attr] = str(int(radius))
             continue
         if attr == "y" and spec["type"] in ("label", "textfield"):
-            # An SVG <text> y is a *baseline*; the compiled box top is derived
-            # from it (minus the font size, or minus half the height when
-            # centred). Snapping the baseline would push the box off the grid,
-            # which is the opposite of what this rule is for -- so grade the
-            # compiled top and shift the baseline by the same delta.
             try:
                 top = float(spec["params"].get("y", value))
             except (TypeError, ValueError):
@@ -966,13 +955,6 @@ def _rule_crowding(elements, sources, findings):
 # ---------------------------------------------------------------------------
 
 _DEFS_RE = re.compile(r"<defs\b.*?</defs\s*>", re.DOTALL | re.IGNORECASE)
-# Comments have to be masked for the same reason <defs> is: parse_svg does not
-# see them, so anything in here that *looks* like a start tag would add an entry
-# to the index that has no element behind it -- and every finding after that
-# point would then be attributed to its neighbour, with --fix rewriting the
-# wrong element's attributes. Sketches explain themselves in comments, and a
-# comment about a tag naturally names the tag ("a pipe is a rect, not a
-# <line>"), so this is reached by writing an ordinary remark.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _TAG_RE = re.compile(r"<(rect|circle|ellipse|line|text)\b[^>]*?/?>", re.IGNORECASE)
 _ATTR_RE_CACHE = {}

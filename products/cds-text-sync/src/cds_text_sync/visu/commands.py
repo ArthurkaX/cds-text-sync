@@ -42,9 +42,6 @@ def _warn(msg):
     print("[WARN] {0}".format(msg), file=sys.stderr)
 
 
-# How many times ``lint --fix`` re-runs itself before giving up. Fixes feed each
-# other -- a new font size moves the box top the grid rule grades -- so one pass
-# leaves work behind; a handful reaches a fixed point on any sketch that has one.
 _FIX_PASSES = 5
 
 
@@ -648,13 +645,6 @@ def lint_svg(
     )
 
     if fix:
-        # One pass does not settle it. The font-scale rule rewrites font-size,
-        # and a <text> baseline is graded through its box top -- which is the
-        # baseline minus that very font size. So snapping the grid has to happen
-        # again against the new size, and an author who ran --fix once was left
-        # holding a file the next lint still complained about. Iterate to a
-        # fixed point instead, bounded so a rule that ever disagrees with itself
-        # cannot spin here.
         total = 0
         for _ in range(_FIX_PASSES):
             try:
