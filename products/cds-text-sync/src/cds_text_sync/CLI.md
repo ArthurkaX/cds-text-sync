@@ -351,6 +351,69 @@ reason:
 `cts ui` opens the same offline analysis in a local desktop interface. It
 requires the optional UI dependency (`pip install 'cds-text-sync[ui]'`).
 
+## FSM Transition Maps (`cts fsm`)
+
+`cts fsm` scans the exported `project-view/` tree for state machines and
+renders them offline. Like `cts analyze`, it never talks to the daemon and
+never reads `.dump/`, so it works with no CODESYS running. All three
+subcommands share the same exit-code contract: `0` means the command produced
+its output, `2` means it could not run. `1` is deliberately never used here —
+in this repository it already means "the analysis found something"
+(`cts analyze` exits `1` on findings), so "nothing found" is reported in the
+payload, never through the exit status.
+
+| Subcommand | Meaning |
+| --- | --- |
+| `fsm scan [options]` | Scan the workspace and report every machine found. |
+| `fsm show [options]` | Render one file's machine as JSON, mermaid, or SVG. |
+| `fsm ui [options]` | Open the local FSM map window. |
+
+`cts fsm scan`:
+
+| Flag | Meaning |
+| --- | --- |
+| `--workspace DIR` | Sync folder containing `project-view/` (required). |
+| `--query TEXT` | Only scan files whose relative path contains this case-insensitive substring. |
+| `--workers N` | Worker process count (default: `min(6, cpu_count)`). |
+| `--json` | Emit exactly one JSON document to stdout. |
+
+By default `scan` prints one human-readable line per matching file plus a
+summary line; diagnostics go to stderr. With `--json`, stdout carries exactly
+one JSON document (`workspace`, `source_root`, `snapshot`, `counts`,
+`results`). A scan that finds zero FSMs still exits `0`.
+
+`cts fsm show`:
+
+| Flag | Meaning |
+| --- | --- |
+| `--workspace DIR` | Sync folder containing `project-view/` (required). |
+| `--file RELATIVE_PATH` | Path relative to `project-view`, e.g. `Application/PLC_PRG.st` (required). |
+| `--machine INDEX` | Machine index in the file (default: `0`). |
+| `--format json\|mermaid\|svg` | Output format (default: `json`). |
+
+`--file` is always resolved relative to `project-view/`; a path that escapes
+the source root is rejected. A valid ST file with no FSM is still a successful
+run: with `--format json` the payload reports the empty machine list, for
+mermaid/svg the absence goes to stderr, and the exit code stays `0`.
+
+`cts fsm ui`:
+
+| Flag | Meaning |
+| --- | --- |
+| `--workspace DIR` | Sync folder containing `project-view/` (optional; omitted opens the folder picker). |
+| `--project-file PATH` | CODESYS project file path, accepted for the CODESYS launcher; unused for now. |
+
+The UI is an optional dependency: `pip install 'cds-text-sync[ui]'`. The window
+is non-modal and scans in a bounded worker pool, so the interface stays
+interactive while a large function block is analysed.
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Output produced — including a scan with zero FSMs and a file with no machine — or, for `ui`, the window opened and closed normally. |
+| `2` | Invalid workspace, invalid/traversing path, bad machine index, read/parse failure, or (for `ui`) a startup failure or missing pywebview dependency. |
+
 ## Project And Object Tools
 
 These commands are useful for diagnostics and targeted maintenance, but they
@@ -479,6 +542,7 @@ The simplified CLI maps to daemon methods as follows:
 | `test` | `cicd` |
 | `patch save` | `sync_compare_text` (then local file copying) |
 | `analyze` | offline — no daemon method |
+| `fsm scan/show/ui` | offline — no daemon method |
 | `visu-lint` | offline — no daemon method |
 
 ## Timeouts

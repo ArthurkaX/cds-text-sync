@@ -87,6 +87,26 @@ enabled`/`severity`/`options`, and `[[rule_scope]]`. State lives in
 `.cts-analyze/` (baseline.json, suppressions.toml, session.json); source files
 opt out with `// cts:ignore-file CTS0001 -- reason`.
 
+## FSM Transition Maps
+
+| Goal | Command |
+|---|---|
+| Scan the workspace for state machines | `cts fsm scan` |
+| Render one file's machine | `cts fsm show` |
+| Open the local FSM map window | `cts fsm ui` |
+
+`cts fsm` runs offline over `project-view/` and never talks to the daemon.
+`scan --query TEXT` filters files by case-insensitive relative-path substring
+and `--json` emits exactly one JSON document; `show --file RELATIVE_PATH
+--format json|mermaid|svg` renders one machine and rejects paths that escape
+the source root; `ui` opens a non-modal window and needs the optional UI
+dependency (`pip install 'cds-text-sync[ui]'`). Exit codes: 0 means output
+produced, including "no FSM found", and for `ui` the window opened and closed
+normally; 2 means the command could not run (invalid workspace, bad path or
+machine index, read/parse failure, or a missing UI dependency). Exit code 1 is
+never used here — it already means "the analysis found something" for
+`cts analyze`.
+
 ## Tests, Offline Engine, and Escape Hatch
 
 | Goal | Command |

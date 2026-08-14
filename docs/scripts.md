@@ -77,23 +77,34 @@ Use this when you want to see state machine(s) from the exported
 
 1. Configure the sync folder and export the project.
 2. Run `Project_fsm.py` from **Tools > Scripting**.
-3. Verify the exported workspace snapshot timestamp shown in the picker;
-   re-export if the open project changed after that snapshot.
-4. Enter a non-empty project-view path search and press Enter.
-5. Select a candidate and use **Show diagram**, or use **Find next FSM** to
-   analyze the visible matches in parallel.
-6. The diagram window lists the transitions of the current machine in source
-   order on the left — a later write overrides an earlier one — and draws the
-   state boxes and edges on the right. Click a state to highlight the edges
-   that touch it, or a transition row to highlight exactly that edge.
-7. **Copy as mermaid** puts a `stateDiagram-v2` rendering of the current
+3. The menu entry starts a separate CPython process against the project's
+   configured sync folder and opens the FSM map window. The CODESYS
+   ScriptEngine only launches that process; it does not host the window.
+4. Filter the exported `.st` files in the left-hand list, then scan the
+   filtered set or open one file directly.
+5. Select a machine to draw the state boxes and edges on the right. The
+   transition rows in source order sit on the left — a later write overrides
+   an earlier one. Click a state to highlight the edges that touch it, or a
+   transition row to highlight exactly that edge.
+6. **Copy as mermaid** puts a `stateDiagram-v2` rendering of the current
    machine on the clipboard.
 
-`Project_fsm.py` is read-only: it never writes to any project object. It
-detects state machines implemented as a `CASE` over a state variable whose
-branches assign to the same variable (or its `next_`/`new_` twin). An object
-with no `textual_implementation` (a DUT, a GVL) is simply `[no FSM]`, not an
-error. The diagram does not jump to the source position in the CODESYS editor.
+The window is non-modal and stays interactive while a scan runs: the analysis
+happens in a separate bounded worker pool, so a large function block no longer
+freezes the IDE. `Project_fsm.py` is read-only: it never writes to any project
+object. It detects state machines implemented as a `CASE` over a state
+variable whose branches assign to the same variable (or its `next_`/`new_`
+twin). An object with no `textual_implementation` (a DUT, a GVL) is simply
+`[no FSM]`, not an error. The diagram does not jump to the source position in
+the CODESYS editor.
+
+Because the window runs as a separate CPython process, `python` must be
+available on the `PATH` (or `CDS_PYTHON` must point at `python.exe`), and the
+optional UI dependency must be installed once with `pip install -e ".[ui]"`.
+If the interpreter cannot be started, CODESYS reports the failed launch and
+how to set `CDS_PYTHON`; if the UI dependency is missing, the window explains
+how to install it. The command-line equivalent is
+[`cts fsm ui`](../products/cds-text-sync/src/cds_text_sync/CLI.md#fsm-transition-maps-cts-fsm).
 
 ## 5. `Project_options.py` (Advanced project options)
 
