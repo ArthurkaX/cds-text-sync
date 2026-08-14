@@ -176,6 +176,12 @@ class Scanner:
         index.  A new scan supersedes any previous job: the old one is marked
         cancelled and its later results are ignored.
         """
+        # The index is built by bootstrap(), which the window always calls
+        # first.  A caller that does not - a script, a test - would otherwise
+        # get a job that "completes" over zero files and reports nothing wrong,
+        # so build the index here rather than scanning an empty workspace.
+        if paths is None and not self._file_index:
+            self.bootstrap()
         with self._lock:
             if self._closed:
                 raise RuntimeError("Scanner is closed")

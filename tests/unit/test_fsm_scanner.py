@@ -78,6 +78,21 @@ def test_start_scan_reaches_completed_with_correct_hits(tmp_path):
         scanner.close()
 
 
+def test_start_scan_builds_the_index_without_an_explicit_bootstrap(tmp_path):
+    # A caller that skips bootstrap would otherwise get a job that "completes"
+    # over zero files and reports nothing wrong.
+    workspace = _make_workspace(tmp_path)
+    scanner = scanner_mod.Scanner(workspace, max_workers=1)
+    try:
+        started = scanner.start_scan()
+        assert started["total"] == 3
+        result = _wait_done(scanner, started["job_id"])
+        assert result["state"] == "completed"
+        assert result["hits"] == 2
+    finally:
+        scanner.close()
+
+
 def test_poll_scan_cursor_returns_only_new_events(tmp_path):
     workspace = _make_workspace(tmp_path)
     scanner = scanner_mod.Scanner(workspace, max_workers=1)
