@@ -430,8 +430,21 @@
       "translate(" + state.panX + "px," + state.panY + "px) scale(" + state.zoom + ")";
   }
 
-  function setZoom(factor) {
-    state.zoom = Math.min(6, Math.max(0.1, state.zoom * factor));
+  /* Scale by `factor`, keeping the canvas point (anchorX, anchorY) still. The
+     anchor is in canvas-relative pixels; omit it to zoom about the centre. */
+  function setZoom(factor, anchorX, anchorY) {
+    var canvas = $("canvas");
+    var next = Math.min(6, Math.max(0.1, state.zoom * factor));
+    if (next === state.zoom) return;
+    if (anchorX === undefined) anchorX = canvas.clientWidth / 2;
+    if (anchorY === undefined) anchorY = canvas.clientHeight / 2;
+    /* The point under the anchor, in unscaled diagram coordinates, must land
+       back under the anchor once the new scale is applied. */
+    var contentX = (anchorX - state.panX) / state.zoom;
+    var contentY = (anchorY - state.panY) / state.zoom;
+    state.zoom = next;
+    state.panX = anchorX - contentX * next;
+    state.panY = anchorY - contentY * next;
     applyTransform();
   }
 
@@ -469,6 +482,21 @@
       drag = null;
       canvas.classList.remove("panning");
     });
+    /* Ctrl+wheel zooms about the pointer. passive:false so preventDefault can
+       suppress the WebView's own page zoom. */
+    canvas.addEventListener("wheel", function (event) {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      if (!event.deltaY) return;
+      var rect = canvas.getBoundingClientRect();
+      /* deltaMode 1 is lines and 2 is pages; normalise to a single notch. */
+      var steps = event.deltaMode === 0 ? event.deltaY / 100 : event.deltaY;
+      setZoom(
+        Math.pow(0.85, Math.max(-4, Math.min(4, steps))),
+        event.clientX - rect.left,
+        event.clientY - rect.top
+      );
+    }, { passive: false });
   }
 
   /* ---- clipboard ------------------------------------------------------- */

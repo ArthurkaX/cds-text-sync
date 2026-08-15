@@ -76,3 +76,13 @@ def test_app_js_calls_every_bridge_method_the_api_exposes():
     ]
     missing = [name for name in exposed if '"' + name + '"' not in app]
     assert missing == []
+
+
+def test_app_js_wires_ctrl_wheel_zoom_on_the_canvas():
+    app = _read("app.js")
+    # A passive wheel listener silently loses preventDefault and the WebView
+    # zooms the whole page instead of the diagram.
+    assert 'canvas.addEventListener("wheel"' in app
+    assert "{ passive: false }" in app
+    assert "event.preventDefault()" in app
+    assert "event.ctrlKey" in app
