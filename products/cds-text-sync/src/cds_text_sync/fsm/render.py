@@ -9,7 +9,7 @@ produced by ``model.machine_payload`` and never looks at source text.
 as a JSON-safe dict.  ``to_svg`` draws the same shapes in the same places as
 the WinForms GDI+ reference renderer (``ide_bridge.codesys_fsm_ui``) as a
 standalone SVG document.  ``to_mermaid_text`` forwards to the shared mermaid
-renderer.
+renderer and ``to_plantuml_text`` to the shared PlantUML renderer.
 
 Stable selection: every element a link draws carries ``data-transition`` with
 the payload-relative index of that transition (matching ``transition_index``
@@ -31,6 +31,7 @@ from xml.sax.saxutils import escape
 from cts_shared.st import fsm_layout
 from cts_shared.st.fsm_layout import build_layout
 from cts_shared.st.fsm_mermaid import to_mermaid
+from cts_shared.st.fsm_plantuml import to_plantuml
 
 from .model import machine_from_payload
 
@@ -409,7 +410,7 @@ def _arrowhead(x, y, direction, fill, data_transition=None, data_state=None):
 
 
 # ---------------------------------------------------------------------------
-# to_mermaid_text
+# to_mermaid_text / to_plantuml_text
 # ---------------------------------------------------------------------------
 
 
@@ -421,3 +422,13 @@ def to_mermaid_text(payload, title=None):
     """
     machine = machine_from_payload(payload)
     return to_mermaid(machine, title=title)
+
+
+def to_plantuml_text(payload, title=None):
+    """Render a machine *payload* as a PlantUML state-diagram block.
+
+    Exists so callers never need to know about the ``machine_from_payload``
+    adapter or the shared ``cts_shared.st.fsm_plantuml`` module.
+    """
+    machine = machine_from_payload(payload)
+    return to_plantuml(machine, title=title)

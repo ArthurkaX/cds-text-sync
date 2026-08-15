@@ -256,6 +256,7 @@ def test_render_svg_data_transition_matches_transitions(tmp_path, api_cls):
         assert result["count"] == 1
         assert result["svg"]
         assert result["mermaid"].startswith("stateDiagram-v2")
+        assert result["plantuml"].startswith("@startuml")
         assert result["summary"] == {
             "selector": "state",
             "state_count": 3,
@@ -291,6 +292,7 @@ def test_render_file_with_no_fsm_is_ok_count_zero(tmp_path, api_cls):
         assert result["count"] == 0
         assert result["svg"] == ""
         assert result["mermaid"] == ""
+        assert result["plantuml"] == ""
         assert result["summary"] is None
         assert result["warnings"] == []
         assert result["transitions"] == []

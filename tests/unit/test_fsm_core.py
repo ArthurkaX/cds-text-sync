@@ -169,6 +169,7 @@ def test_package_exports_contract():
         "layout_payload",
         "to_svg",
         "to_mermaid_text",
+        "to_plantuml_text",
     ]
 
 

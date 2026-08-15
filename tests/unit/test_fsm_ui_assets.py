@@ -86,3 +86,13 @@ def test_app_js_wires_ctrl_wheel_zoom_on_the_canvas():
     assert "{ passive: false }" in app
     assert "event.preventDefault()" in app
     assert "event.ctrlKey" in app
+
+
+def test_the_copy_buttons_are_wired_in_the_page_and_the_script():
+    html = _read("index.html")
+    app = _read("app.js")
+    # The bridge returns both encodings, so a copy button the script never
+    # wires would leave the second one unreachable from the window.
+    assert 'id="copy-plantuml"' in html
+    assert '$("copy-mermaid").addEventListener("click",' in app
+    assert '$("copy-plantuml").addEventListener("click",' in app

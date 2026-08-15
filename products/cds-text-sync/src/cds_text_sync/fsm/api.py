@@ -16,7 +16,7 @@ import sys
 from cds_text_sync.webui import shell
 
 from .model import STATE_ERROR
-from .render import to_mermaid_text, to_svg
+from .render import to_mermaid_text, to_plantuml_text, to_svg
 from .scanner import Scanner
 
 
@@ -167,7 +167,7 @@ class FsmApi:
         return row
 
     def render(self, relative_path, machine=0) -> dict:
-        """Render one machine of one file as SVG and mermaid, with its rows.
+        """Render one machine of one file as SVG and text, with its rows.
 
         ``transitions`` is the payload's transition list in payload order, and
         each row's ``index`` is the payload index, so a row matches the
@@ -199,6 +199,7 @@ class FsmApi:
                     "count": 0,
                     "svg": "",
                     "mermaid": "",
+                    "plantuml": "",
                     "summary": None,
                     "warnings": [],
                     "transitions": [],
@@ -220,6 +221,7 @@ class FsmApi:
                 "count": len(machines),
                 "svg": to_svg(payload),
                 "mermaid": to_mermaid_text(payload),
+                "plantuml": to_plantuml_text(payload),
                 "summary": {
                     "selector": payload["selector"],
                     "state_count": len(payload["states"]),

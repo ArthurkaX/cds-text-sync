@@ -8,7 +8,7 @@ def register(subparsers):
         description=(
             "Offline FSM search and rendering over project-view/. Never talks "
             "to the daemon. Scan reports every machine; show renders one "
-            "file's machine as JSON, mermaid, or SVG."
+            "file's machine as JSON, mermaid, PlantUML, or SVG."
         ),
         epilog="""
 Subcommands:
@@ -47,7 +47,7 @@ Exit codes:
 
     show = nested.add_parser(
         "show",
-        help="Render one file's machine as JSON, mermaid, or SVG",
+        help="Render one file's machine as JSON, mermaid, PlantUML, or SVG",
         description=(
             "Analyse a single project-view .st file and render the chosen "
             "machine. The file path is always relative to project-view."
@@ -60,7 +60,7 @@ Exit codes:
                            "Application/PLC_PRG.st")
     show.add_argument("--machine", type=int, default=0,
                       help="Machine index in the file (default: 0)")
-    show.add_argument("--format", choices=["json", "mermaid", "svg"],
+    show.add_argument("--format", choices=["json", "mermaid", "plantuml", "svg"],
                       default="json",
                       help="Output format (default: json)")
 

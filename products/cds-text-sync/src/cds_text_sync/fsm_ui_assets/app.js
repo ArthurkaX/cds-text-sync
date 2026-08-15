@@ -501,24 +501,24 @@
 
   /* ---- clipboard ------------------------------------------------------- */
 
-  function copyMermaid() {
+  function copyDiagram(field, label) {
     var payload = state.render;
-    if (!payload || !payload.mermaid) {
+    if (!payload || !payload[field]) {
       notify("There is no machine to copy.", "error");
       return;
     }
     /* navigator.clipboard is unavailable on some WebView2 configurations, and
        it rejects rather than throwing; report both outcomes. */
     if (!navigator.clipboard) {
-      window.prompt("Copy the mermaid diagram:", payload.mermaid);
+      window.prompt("Copy the " + label + " diagram:", payload[field]);
       return;
     }
-    navigator.clipboard.writeText(payload.mermaid).then(function () {
-      notify("Mermaid diagram copied to the clipboard.", "success");
+    navigator.clipboard.writeText(payload[field]).then(function () {
+      notify(label + " diagram copied to the clipboard.", "success");
     }, function (error) {
       notify("Could not copy to the clipboard: "
         + String((error && error.message) || error), "error");
-      window.prompt("Copy the mermaid diagram:", payload.mermaid);
+      window.prompt("Copy the " + label + " diagram:", payload[field]);
     });
   }
 
@@ -580,7 +580,12 @@
     $("zoom-in").addEventListener("click", function () { setZoom(1.25); });
     $("zoom-out").addEventListener("click", function () { setZoom(0.8); });
     $("zoom-fit").addEventListener("click", zoomToFit);
-    $("copy-mermaid").addEventListener("click", copyMermaid);
+    $("copy-mermaid").addEventListener("click", function () {
+      copyDiagram("mermaid", "Mermaid");
+    });
+    $("copy-plantuml").addEventListener("click", function () {
+      copyDiagram("plantuml", "PlantUML");
+    });
 
     wireCanvas();
   }

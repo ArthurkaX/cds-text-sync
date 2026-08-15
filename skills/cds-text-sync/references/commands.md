@@ -98,8 +98,8 @@ opt out with `// cts:ignore-file CTS0001 -- reason`.
 `cts fsm` runs offline over `project-view/` and never talks to the daemon.
 `scan --query TEXT` filters files by case-insensitive relative-path substring
 and `--json` emits exactly one JSON document; `show --file RELATIVE_PATH
---format json|mermaid|svg` renders one machine and rejects paths that escape
-the source root; `ui` opens a non-modal window and needs the optional UI
+--format json|mermaid|plantuml|svg` renders one machine and rejects paths that
+escape the source root; `ui` opens a non-modal window and needs the optional UI
 dependency (`pip install 'cds-text-sync[ui]'`). Exit codes: 0 means output
 produced, including "no FSM found", and for `ui` the window opened and closed
 normally; 2 means the command could not run (invalid workspace, bad path or

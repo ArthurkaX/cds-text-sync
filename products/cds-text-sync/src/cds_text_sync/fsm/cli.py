@@ -7,9 +7,9 @@ CPython only; the CODESYS host never imports this module.
 EXIT CODES - load-bearing, do not "fix":
   0 - the command produced its output, INCLUDING "this file has no FSM" and
       "this workspace has no FSM".  Absence is reported in the payload (an
-      empty machine list for json, a stderr diagnostic for mermaid/svg), never
-      through the exit status.  For ``ui``: the window opened and closed
-      normally.
+      empty machine list for json, a stderr diagnostic for the text and SVG
+      formats), never through the exit status.  For ``ui``: the window opened
+      and closed normally.
   2 - invalid workspace, invalid/traversing path, bad machine index, a
       read/parse failure, or (for ``ui``) a startup failure or a missing
       pywebview dependency.
@@ -26,7 +26,7 @@ import sys
 import time
 
 from .model import STATE_ERROR, STATE_FSM
-from .render import to_mermaid_text, to_svg
+from .render import to_mermaid_text, to_plantuml_text, to_svg
 from .scanner import Scanner
 from .workspace import resolve_in_root
 
@@ -223,6 +223,8 @@ def _cmd_show(args) -> int:
         _write_json(result)
     elif fmt == "mermaid":
         _out().write(to_mermaid_text(machine) + "\n")
+    elif fmt == "plantuml":
+        _out().write(to_plantuml_text(machine) + "\n")
     elif fmt == "svg":
         _out().write(to_svg(machine) + "\n")
     else:

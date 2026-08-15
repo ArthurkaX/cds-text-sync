@@ -365,7 +365,7 @@ payload, never through the exit status.
 | Subcommand | Meaning |
 | --- | --- |
 | `fsm scan [options]` | Scan the workspace and report every machine found. |
-| `fsm show [options]` | Render one file's machine as JSON, mermaid, or SVG. |
+| `fsm show [options]` | Render one file's machine as JSON, mermaid, PlantUML, or SVG. |
 | `fsm ui [options]` | Open the local FSM map window. |
 
 `cts fsm scan`:
@@ -389,12 +389,12 @@ one JSON document (`workspace`, `source_root`, `snapshot`, `counts`,
 | `--workspace DIR` | Sync folder containing `project-view/` (required). |
 | `--file RELATIVE_PATH` | Path relative to `project-view`, e.g. `Application/PLC_PRG.st` (required). |
 | `--machine INDEX` | Machine index in the file (default: `0`). |
-| `--format json\|mermaid\|svg` | Output format (default: `json`). |
+| `--format json\|mermaid\|plantuml\|svg` | Output format (default: `json`). |
 
 `--file` is always resolved relative to `project-view/`; a path that escapes
 the source root is rejected. A valid ST file with no FSM is still a successful
-run: with `--format json` the payload reports the empty machine list, for
-mermaid/svg the absence goes to stderr, and the exit code stays `0`.
+run: with `--format json` the payload reports the empty machine list, for the
+text and SVG formats the absence goes to stderr, and the exit code stays `0`.
 
 `cts fsm ui`:
 

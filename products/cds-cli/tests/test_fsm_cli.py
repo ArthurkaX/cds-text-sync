@@ -185,6 +185,18 @@ def test_fsm_show_svg(tmp_path):
     ET.fromstring(out)  # parses as XML
 
 
+def test_fsm_show_plantuml(tmp_path):
+    code, out, err = run_cli(
+        [
+            "fsm", "show", "--workspace", str(_workspace(tmp_path)),
+            "--file", "Motor.st", "--format", "plantuml",
+        ]
+    )
+    assert code == 0
+    assert out.startswith("@startuml")
+    assert out.rstrip().endswith("@enduml")
+
+
 def test_fsm_show_traversal_exits_2(tmp_path):
     code, out, err = run_cli(
         [

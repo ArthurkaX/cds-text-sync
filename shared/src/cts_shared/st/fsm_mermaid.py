@@ -12,7 +12,8 @@ _WS = re.compile(r"\s+")
 _SANITIZE = re.compile(r"[:;#\"\n]")
 
 
-def _sanitize_guard(guard):
+def sanitize_guard(guard):
+    """Collapse whitespace, strip syntax-breaking characters, truncate to 60."""
     text = _WS.sub(" ", guard or "").strip()
     text = _SANITIZE.sub(" ", text)
     if len(text) > 60:
@@ -42,7 +43,7 @@ def to_mermaid(machine, title=None):
     for t in sorted(machine.transitions, key=lambda t: t.offset):
         src = index.get(t.source) if t.source is not None else "ANY"
         dst = index.get(t.target, "s0")
-        guard = _sanitize_guard(t.guard)
+        guard = sanitize_guard(t.guard)
         if guard:
             lines.append("    {0} --> {1} : {2}".format(src, dst, guard))
         else:
