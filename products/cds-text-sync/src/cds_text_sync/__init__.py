@@ -22,4 +22,4 @@ _VISU_LINT_SRC = _REPO_ROOT / "products" / "visu-lint" / "src"
 if _VISU_LINT_SRC.is_dir() and str(_VISU_LINT_SRC) not in sys.path:
     sys.path.insert(0, str(_VISU_LINT_SRC))
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"

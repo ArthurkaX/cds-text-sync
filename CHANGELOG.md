@@ -4,7 +4,79 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
+### Version 3.1.0 (2026-08-16)
+
+**`cts fsm` - read a `CASE` state machine as a GRAFCET diagram.**
+
+Understanding an unfamiliar state machine means holding a `CASE` block in your
+head: which branch writes the state variable, what has to be true for it to
+fire, and where the flow can get back to. `cts fsm` reads that off the exported
+`.st` files and draws it. Like `cts analyze` it is offline — only
+`project-view/` is read, no daemon, no `.dump/`, no CODESYS running, and
+nothing is sent anywhere.
+
+`fsm scan` reports every machine in the workspace, `fsm show` renders one as
+JSON, mermaid, PlantUML or SVG, and `fsm ui` opens the map window.
+`Project_fsm.py` opens that same window from **Tools > Scripting** for the
+project's configured sync folder.
+
+The diagram follows IEC 60848: numbered steps, one bar per transition with its
+receptivity beside it, a step with several ways out fanned sideways as an OR
+divergence, and branches that end in the same place brought back together as a
+convergence rather than sent down a lane in the gutter. Transitions are listed
+in source order, because a later write to the state variable overrides an
+earlier one. Click a step or a transition row to highlight it and the step it
+leads into; right-click either one to read the Structured Text it was drawn
+from; ctrl+wheel zooms around the pointer and dragging pans.
+
+The window is CPython and pywebview started as a separate process — the
+ScriptEngine only launches it, and both desktop UIs now come up through one
+shared readiness handshake with a bound on the wait. It needs the optional UI
+dependency (`pip install 'cds-text-sync[ui]'`) and `python` on `PATH`, or
+`CDS_PYTHON` pointing at one. The IronPython FSM picker and window that
+preceded it are removed: they ran inside the single-threaded IDE, where one
+large function block froze the window that was analysing it.
+
+**Fixed: the `Project_fmt.py` review lost its place between changes.**
+
+Each Apply or Skip closed the review dialog and opened a new one, so the window
+went back to its default size and position and **Review All** picked up from
+somewhere other than where you were. The dialog now stays open across decisions
+and keeps the geometry you gave it.
+
+Underneath, the wizard was split into a pure session controller, a line-aware
+diff and a two-phase apply plan, so what the preview shows and what is written
+back are the same thing — the formatter still refuses to overwrite a section
+that changed after its preview was made, and it no longer drops the trailing
+newline under IronPython 2.7. Scanning follows the filter, analysing only the
+blocks the list actually shows, and stops when the picker closes instead of
+running on against a window that is gone. Project discovery is explicit and
+cheap now, which also ends the read-error spam in the log.
+
+**Compound `IF`/`ELSIF` conditions are laid out across lines.**
+
+A condition joined by top-level `AND`/`OR`/`XOR` is put one operand per line
+with the operator leading. Only a complete single-line header ending in `THEN`
+is touched, so this stays a whitespace-only change with no attempt to repair ST
+syntax: an operator inside parentheses, a string, or a comment is not a
+boundary, and an already multi-line or unfinished expression is left alone.
+
+**Fixed: `export_st` exported nothing at all.**
+
+The walk started from the root project object, which has no `Name`, so it
+returned immediately and the command exported nothing for anyone. Repairing
+that surfaced the reason it had never been noticed: the fallback chain
+(`.save()` / `export_native()`) is behind the same Owner-group access control
+as **Project > Export**, and calling it on a restricted project raises a modal
+login dialog — which freezes the single-threaded daemon with no way to answer
+it. `export_st` now uses only the read-only text-document path that
+`Project_fmt` already relies on, and skips objects that have no text document.
+
+**Removed: the GitHub repository furniture.**
+
+`.github/` is gone: the CI and release workflows, the issue templates, the code
+of conduct and the security policy. Releases are tagged by hand, as
+[docs/releases.md](docs/releases.md) describes.
 
 **Fixed: one command with no PLC attached took the whole daemon down with it.**
 
