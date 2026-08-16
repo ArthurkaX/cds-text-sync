@@ -230,7 +230,8 @@ def _draw_any(any_box):
 
 def _draw_chip(chip):
     """A priority transition's target, drawn as a small numbered box."""
-    out = [_rect(chip.x, chip.y, chip.w, chip.h, _CHIP_FILL, _PRIORITY, 1)]
+    out = [_rect(chip.x, chip.y, chip.w, chip.h, _CHIP_FILL, _PRIORITY, 1,
+                 dash="5 3")]
     divider_x = int(chip.x) + fsm_layout.NUM_W
     out.append(_line(divider_x, chip.y, divider_x,
                      int(chip.y) + int(chip.h), _DIVIDER, 1))
@@ -271,7 +272,7 @@ def _draw_step(step):
                               "right", _PRIORITY, data_state=data_state))
     if step.inbound:
         text = ", ".join(str(number) for number in step.inbound)
-        out.append(_text(int(step.x) - fsm_layout.INBOUND_W,
+        out.append(_text(int(step.inbound_x),
                          int(step.y) + (int(step.h) - fsm_layout.TEXT_H) // 2,
                          text, _JUMP, 11, data_state=data_state))
     return "\n".join(out)
@@ -352,11 +353,14 @@ def _data_attrs(data_transition=None, data_state=None):
 
 
 def _rect(x, y, w, h, fill, stroke, stroke_width,
-          data_transition=None, data_state=None):
+          data_transition=None, data_state=None, dash=None):
+    dash_attr = ""
+    if dash is not None:
+        dash_attr = ' stroke-dasharray="{0}"'.format(dash)
     return ('<rect x="{0}" y="{1}" width="{2}" height="{3}" fill="{4}" '
-            'stroke="{5}" stroke-width="{6}"{7}/>'
+            'stroke="{5}" stroke-width="{6}"{7}{8}/>'
             .format(int(x), int(y), int(w), int(h), fill, stroke, stroke_width,
-                    _data_attrs(data_transition, data_state)))
+                    dash_attr, _data_attrs(data_transition, data_state)))
 
 
 def _line(x1, y1, x2, y2, stroke, stroke_width,

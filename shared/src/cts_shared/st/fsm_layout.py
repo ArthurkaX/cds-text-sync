@@ -6,17 +6,19 @@ across the link with its receptivity beside it, flow runs top-to-bottom
 without arrowheads. A CASE block is an arbitrary directed graph rather than
 a sequence, so it is cut into chains, one per column: the dominant path is
 the first column and each side sequence splits off into its own, starting at
-the row it branches from. A choice between two branches is drawn as two
-ordinary links leaving the same step, with no divergence bar - exactly one
-state is ever active, so a horizontal bar would wrongly read as two branches
-running at once. Branches that stand side by side on one row and fall into
+the row it branches from. A step with more than one way out is drawn as an
+OR divergence: one stem down to a single horizontal rail and one branch per
+transition, side by side in source order, each carrying its own bar and
+receptivity. The rail is single, not double: IEC 60848 draws an AND
+divergence double, and exactly one step is ever active here. Branches that
+stand side by side on one row and fall into
 the same step below them are drawn as an OR convergence instead: each keeps
 its own bar and receptivity, they meet on a shared rail just above the step
-and one stem enters it. A backward hop within a column is drawn as a real link
-running down a lane in the gutter to its left; anything longer becomes a
-connector - a hook that drops out of the step, turns right and comes back up
-into an arrowhead naming its target - and the target step records who arrives
-there. Priority (source-is-None) transitions form a
+and one stem enters it. A forward skip within a column is drawn as a real link
+running down a lane in the gutter to its left; a backward hop, and anything
+longer, becomes a connector - a hook that drops out of the step, turns right
+and comes back up into an arrowhead naming its target - and the target step
+records who arrives there. Priority (source-is-None) transitions form a
 divergence under an "any" box above the steps: one stem down to a horizontal
 rail, then one drop per transition into a chip that shows the block it lands
 in.
@@ -71,6 +73,12 @@ JUMP_GAP = 10         # bar -> connector arrow
 JUMP_W = 22           # the connector hook's horizontal run
 INBOUND_W = 26        # left gutter for the "N -> " marker on a jump target
 MERGE_RAIL = 20       # shared convergence rail, this far above the target
+ROW_TAIL = 28         # clearance between the last outgoing row and the next step
+FORK_TURN = 14        # a fork turns sideways this far below its own bar, clear
+                      # of the receptivity standing beside it
+FAN_RAIL = 20         # the OR divergence rail, this far below its step
+FAN_BAR = 14          # a branch's own bar, this far below the rail
+FAN_GAP = 14          # clear space between one branch's text and the next
 
 
 def _estimate_width(text):
@@ -276,7 +284,7 @@ class Chip(object):
 
 class Step(object):
     def __init__(self, number, label, full_label, x, y, w, h, initial,
-                 priority=False, col=0, row=0):
+                 priority=False, col=0, row=0, inbound=None, inbound_x=0):
         self.number = number
         self.label = label
         self.full_label = full_label
@@ -288,7 +296,9 @@ class Step(object):
         self.priority = priority
         self.col = col
         self.row = row
-        self.inbound = []     # numbers of steps that reach this one by connector
+        self.inbound = list(inbound or [])  # steps that reach this one by connector
+        self.inbound_x = inbound_x          # left of every side lane, so the marker
+                                            # and the lane arrowheads never collide
 
     @property
     def right(self):
@@ -435,7 +445,11 @@ def build_layout(machine, measure=None, guard_measure=None):
         elif (s_col != t_col and t_row == s_row + 1
               and t.target == chains[t_col]["labels"][0]):
             forks.append(t)
-        elif s_col == t_col and abs(t_row - s_row) <= JUMP_MAX_ROWS:
+        # Forward only. A hop back up the column used to run down a lane in
+        # the gutter and re-enter its target from the left, which drags the
+        # eye against the flow; going back is a named hand-off like any other
+        # distant target, so it falls through to a connector below.
+        elif s_col == t_col and s_row < t_row <= s_row + JUMP_MAX_ROWS:
             sides.append(t)
         else:
             jumps.append(t)
@@ -472,11 +486,104 @@ def build_layout(machine, measure=None, guard_measure=None):
         jumps = [t for t in jumps if id(t) not in merged]
         merges.sort(key=lambda t: col_of[t.source])
 
+    # 6b". the OR divergence. A step with more than one way out fans its
+    # transitions out sideways: one stem down to a rail, one branch each, in
+    # source order, so the receptivities read as the IF/ELSIF list they came
+    # from. They used to be stacked down one stem, which reads as transitions
+    # in series - all of them fire, in order - rather than as a choice.
+    jump_ids = set(id(t) for t in jumps)
+    chain_ids = set(id(t) for t in chain_links)
+    fork_ids = set(id(t) for t in forks)
+    outgoing_links = {}
+    for t in chain_links + forks + sides + jumps + merges:
+        outgoing_links.setdefault(t.source, []).append(t)
+    branch_dx = {}   # id(transition) -> its branch's x, relative to source.cx
+    fan_trunk = set()  # id(transition) -> this branch draws the shared trunk
+    fan_pitch = {}   # source label -> the gap between two of its branches
+    demand = {}      # source label -> vertical room its divergence needs
+    for label in outgoing_links:
+        group = outgoing_links[label]
+        group.sort(key=lambda t: t.offset)
+        if len(group) < 2:
+            continue
+        # A fork's x is its target column's axis, so it needs no slot here:
+        # the rail already has to reach that column, and a branch dropping
+        # off it there lands straight in the step it enters. Given a slot
+        # instead it had to turn sideways a second time lower down, and those
+        # runs overlapped into a second long line beside the rail.
+        slotted = [t for t in group if id(t) not in fork_ids]
+        if slotted:
+            # Every receptivity is drawn to the right of its own bar, so the
+            # branches stand as far apart as the widest of them reaches.
+            pitch = 0
+            for t in slotted:
+                pitch = max(pitch, BAR_HALF + GUARD_GAP
+                            + guard_measure(clip_guard(t.guard)))
+                if id(t) in jump_ids:
+                    note = "{0}  {1}".format(number_of[t.target],
+                                             strip_prefix(t.target, prefix))
+                    pitch = max(pitch, JUMP_W + 10 + guard_measure(note))
+            pitch = int(pitch) + FAN_GAP
+            # The branch that carries the column on stays on the column's
+            # axis so the sequence still reads straight down, and the rest
+            # spread around it; with no such branch the whole fan is centred
+            # instead.
+            anchor = (len(slotted) - 1) / 2.0
+            for index in range(len(slotted)):
+                if id(slotted[index]) in chain_ids:
+                    anchor = index
+                    break
+            for index in range(len(slotted)):
+                dx = int(round((index - anchor) * pitch))
+                branch_dx[id(slotted[index])] = dx
+            fan_pitch[label] = pitch
+        # A connector starts at the rail so the trunk keeps the ordinary link
+        # colour, so a fan of nothing but connectors would leave the rail
+        # hanging free under the step: the first of them draws the trunk.
+        every = True
+        for t in group:
+            if id(t) not in jump_ids:
+                every = False
+                break
+        if every:
+            fan_trunk.add(id(group[0]))
+        need = FAN_RAIL + FAN_BAR + TEXT_H // 2 + 6
+        for t in group:
+            if id(t) in jump_ids:
+                need = max(need, FAN_RAIL + FAN_BAR + JUMP_GAP + JUMP_H)
+            else:
+                need = max(need, FAN_RAIL + FAN_BAR + FORK_TURN)
+        demand[label] = need
+
+    # Only a connector leaves nothing pointing at its target, so only a
+    # connector needs the "who reaches me" marker. It is worked out here
+    # rather than while drawing, because the gutter has to be wide enough
+    # for it before any column x is fixed.
+    inbound_of = {}
+    for t in jumps:
+        inbound_of.setdefault(t.target, []).append(number_of[t.source])
+    for label in inbound_of:
+        inbound_of[label].sort()
+
     # 6c. step width and column x
     step_w = STEP_MIN_W
     for label in order:
         step_w = max(step_w, NUM_W + measure(strip_prefix(label, prefix)) + STEP_PAD * 2)
     step_w = int(step_w)
+
+    # A fan is measured from the middle of its box, so a wide one hangs over
+    # the box's left edge and the column has to make room for it.
+    fan_left = {}
+    for label in fan_pitch:
+        col = col_of[label]
+        reach = 0
+        for t in outgoing_links[label]:
+            if id(t) not in branch_dx:
+                continue
+            reach = max(reach, -branch_dx[id(t)] + BAR_HALF)
+        over = int(reach) - step_w // 2
+        if over > 0:
+            fan_left[col] = max(fan_left.get(col, 0), over)
 
     # A side link runs down a lane in the gutter to the LEFT of its column:
     # the gutter to the right belongs to the next column's boxes.
@@ -484,24 +591,53 @@ def build_layout(machine, measure=None, guard_measure=None):
     for t in sides:
         col = col_of[t.source]
         side_count[col] = side_count.get(col, 0) + 1
+    # The marker sits to the LEFT of every lane in the gutter: drawn at a
+    # fixed INBOUND_W it ran right, straight through the lanes and the
+    # arrowheads landing on the box.
+    inbound_w = {}
+    for index in range(len(chains)):
+        inbound_w[index] = INBOUND_W
+    for label in inbound_of:
+        text = ", ".join(str(number) for number in inbound_of[label])
+        col = col_of[label]
+        inbound_w[col] = max(inbound_w[col], int(guard_measure(text)) + 10)
     gutter = {}
     for index in range(len(chains)):
-        gutter[index] = INBOUND_W + LANE_W * side_count.get(index, 0)
+        gutter[index] = (inbound_w[index]
+                         + LANE_W * side_count.get(index, 0)
+                         + fan_left.get(index, 0))
 
     # Every receptivity is drawn to the right of its bar, so a column has to
-    # be at least as wide as the longest one or the text lands on its neighbour.
-    guard_room = 0
+    # be at least as wide as the longest one or the text lands on its
+    # neighbour. Per column, not one figure for all of them: a single wide
+    # divergence would otherwise push every column on the page apart by its
+    # own width.
+    guard_room = {}
+    for index in range(len(chains)):
+        guard_room[index] = 0
     for t in chain_links + forks + sides + jumps + merges:
-        guard_room = max(guard_room, BAR_HALF + GUARD_GAP
-                         + guard_measure(clip_guard(t.guard)))
-    guard_room = int(guard_room)
+        col = col_of[t.source]
+        if id(t) in fork_ids:
+            # Its bar stands on the target column's axis, so its receptivity
+            # eats into the room to the right of that column, not this one.
+            col = col_of[t.target]
+            room = BAR_HALF + GUARD_GAP + guard_measure(clip_guard(t.guard))
+        elif id(t) in branch_dx:
+            room = branch_dx[id(t)] + fan_pitch[t.source] - FAN_GAP
+        else:
+            room = BAR_HALF + GUARD_GAP + guard_measure(clip_guard(t.guard))
+            if id(t) in jump_ids:
+                note = "{0}  {1}".format(number_of[t.target],
+                                         strip_prefix(t.target, prefix))
+                room = max(room, JUMP_W + 10 + guard_measure(note))
+        guard_room[col] = max(guard_room[col], int(room))
 
     col_x = {}
     x = LEFT_MARGIN
     for index in range(len(chains)):
         x += gutter[index]
         col_x[index] = x
-        x += step_w + guard_room + COL_GAP
+        x += step_w + guard_room[index] + COL_GAP
 
     # 6d. the priority block, drawn as an ordinary GRAFCET divergence.
     # One stem drops out of the "any" box onto a single horizontal rail, and
@@ -546,15 +682,26 @@ def build_layout(machine, measure=None, guard_measure=None):
             arrow = (x, chip.y, "down")
             links.append(Link("global", t, points, bar, text, guard_at,
                               guard_measure(text), arrow))
-        top = max(chip.bottom for chip in chips) + ROW_GAP
+        # Half a row: nothing is drawn between the chips and the first step,
+        # and a full row of blank page reads as a missing link.
+        top = max(chip.bottom for chip in chips) + ROW_GAP // 2
     else:
         top = TOP_MARGIN
 
     # 6e. the steps
+    # A row is as tall as the busiest step in it needs: a step with three
+    # outgoing transitions carries three rows of bars below it, and a fixed
+    # ROW_GAP would push them into the step underneath.
+    row_demand = {}
+    for label in order:
+        r = row_of[label]
+        row_demand[r] = max(row_demand.get(r, 0), demand.get(label, 0))
     row_y = {}   # absolute row -> y
     max_row = max(row_of.values())
+    y_cursor = top
     for r in range(max_row + 1):
-        row_y[r] = top + r * (STEP_H + ROW_GAP)
+        row_y[r] = y_cursor
+        y_cursor += STEP_H + max(ROW_GAP, row_demand.get(r, 0) + ROW_TAIL)
     priority_targets = set(t.target for t in globals_)
     steps = []
     step_of = {}
@@ -567,7 +714,9 @@ def build_layout(machine, measure=None, guard_measure=None):
                     w=step_w, h=STEP_H,
                     initial=(label == order[0]),
                     priority=(label in priority_targets),
-                    col=col_of[label], row=row_of[label])
+                    col=col_of[label], row=row_of[label],
+                    inbound=inbound_of.get(label, []),
+                    inbound_x=col_x[col_of[label]] - gutter[col_of[label]])
         steps.append(step)
         step_of[label] = step
 
@@ -575,28 +724,40 @@ def build_layout(machine, measure=None, guard_measure=None):
     for t in chain_links:
         source = step_of[t.source]
         target = step_of[t.target]
-        x = source.cx
-        points = [(x, source.bottom), (x, target.y)]
-        bar_y = target.y - BAR_UP
+        if id(t) not in branch_dx:
+            # the only way out, so the classic bar just above the step it
+            # leads into
+            x = source.cx
+            bar_y = target.y - BAR_UP
+            points = [(x, source.bottom), (x, target.y)]
+        else:
+            rail_y = source.bottom + FAN_RAIL
+            x = source.cx + branch_dx[id(t)]
+            bar_y = rail_y + FAN_BAR
+            points = [(source.cx, source.bottom), (source.cx, rail_y),
+                      (x, rail_y), (x, target.y)]
         bar = (x, bar_y, "h")
         text = clip_guard(t.guard)
         guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
         links.append(Link("chain", t, points, bar, text, guard_at,
                           guard_measure(text), None))
 
-    # 6g. fork links: drop, turn sideways, drop into the other column
-    # There is NO divergence bar: exactly one state is active, so a selection is
-    # just two ordinary links leaving the same step.
+    # 6g. fork links: a branch of the divergence that lands in another column.
+    # It leaves the trunk, runs along the rail to its target's axis and drops
+    # straight in, with its bar directly above the step it enters. Given its
+    # own slot near the source it had to turn sideways a second time to reach
+    # the column, and those runs overlapped into a second horizontal line.
     for t in forks:
         source = step_of[t.source]
         target = step_of[t.target]
-        drop_y = source.bottom + FORK_DROP
-        bar_y = target.y - BAR_UP
-        points = [(source.cx, source.bottom), (source.cx, drop_y),
-                  (target.cx, drop_y), (target.cx, target.y)]
-        bar = (target.cx, bar_y, "h")
+        rail_y = source.bottom + FAN_RAIL
+        x = target.cx
+        bar_y = rail_y + FAN_BAR
+        points = [(source.cx, source.bottom), (source.cx, rail_y),
+                  (x, rail_y), (x, target.y)]
+        bar = (x, bar_y, "h")
         text = clip_guard(t.guard)
-        guard_at = (target.cx + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+        guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
         links.append(Link("fork", t, points, bar, text, guard_at,
                           guard_measure(text), None))
 
@@ -615,11 +776,8 @@ def build_layout(machine, measure=None, guard_measure=None):
         links.append(Link("self", t, points, bar, text, guard_at, guard_w,
                           arrow))
 
-    # 6i. side links: the existing lane logic, restricted to one column
+    # 6i. side links: a forward skip down a lane in the gutter to the left
     if sides:
-        sides_by_source = {}
-        for t in sides:
-            sides_by_source.setdefault(t.source, []).append(t)
         for col in range(len(chains)):
             col_sides = [t for t in sides if col_of[t.source] == col]
             if not col_sides:
@@ -628,28 +786,41 @@ def build_layout(machine, measure=None, guard_measure=None):
             for t in col_sides:
                 source = step_of[t.source]
                 target = step_of[t.target]
-                j = sides_by_source[t.source].index(t)
-                exit_y = source.bottom + BRANCH_TOP + j * BRANCH_ROW_H
                 entry_y = target.cy
-                bar = (source.cx - BRANCH_BAR_X, exit_y, "v")
+                if id(t) in branch_dx:
+                    rail_y = source.bottom + FAN_RAIL
+                    x = source.cx + branch_dx[id(t)]
+                    bar_y = rail_y + FAN_BAR
+                    exit_y = bar_y + FORK_TURN
+                    bar = (x, bar_y, "h")
+                    guard_at = (x + BAR_HALF + GUARD_GAP,
+                                bar_y - TEXT_H // 2)
+                    head = [(source.cx, source.bottom), (source.cx, rail_y),
+                            (x, rail_y), (x, exit_y)]
+                else:
+                    exit_y = source.bottom + FORK_DROP
+                    bar = (source.cx - BRANCH_BAR_X, exit_y, "v")
+                    # Beside the stem, not off the far side of the box: at
+                    # source.right the text was a whole box away from the bar
+                    # it belongs to.
+                    guard_at = (source.cx + GUARD_GAP, exit_y - TEXT_H // 2)
+                    head = [(source.cx, source.bottom), (source.cx, exit_y)]
                 text = clip_guard(t.guard)
-                guard_at = (source.right + GUARD_GAP, exit_y - TEXT_H // 2)
                 guard_w = guard_measure(text)
                 side_guards.append((t, source, target, bar, text, guard_at,
-                                    guard_w, (exit_y, entry_y)))
+                                    guard_w, (exit_y, entry_y), head))
 
-            spans = [ys for _, _, _, _, _, _, _, ys in side_guards]
+            spans = [ys for _, _, _, _, _, _, _, ys, _ in side_guards]
             lanes = _assign_lanes(spans)
 
             for (t, source, target, bar, text, guard_at, guard_w,
-                 (exit_y, entry_y)), lane in zip(side_guards, lanes):
-                lane_base = col_x[source.col] - LANE_CLEAR
+                 (exit_y, entry_y), head), lane in zip(side_guards, lanes):
+                lane_base = (col_x[source.col] - LANE_CLEAR
+                             - fan_left.get(source.col, 0))
                 lane_x = lane_base - lane * LANE_W
-                points = [(source.cx, source.bottom),
-                          (source.cx, exit_y),
-                          (lane_x, exit_y),
-                          (lane_x, entry_y),
-                          (target.x, entry_y)]
+                points = head + [(lane_x, exit_y),
+                                 (lane_x, entry_y),
+                                 (target.x, entry_y)]
                 arrow = (target.x, entry_y, "right")
                 links.append(Link("side", t, points, bar, text, guard_at,
                                   guard_w, arrow))
@@ -664,13 +835,26 @@ def build_layout(machine, measure=None, guard_measure=None):
     for t in jumps:
         source = step_of[t.source]
         target = step_of[t.target]
-        x = source.cx
-        bar_y = source.bottom + FORK_DROP
+        if id(t) in branch_dx:
+            rail_y = source.bottom + FAN_RAIL
+            x = source.cx + branch_dx[id(t)]
+            bar_y = rail_y + FAN_BAR
+            # From the rail rather than from the step: the trunk of the
+            # divergence belongs to every branch, and drawing it here would
+            # paint it in the connector's colour.
+            if id(t) in fan_trunk:
+                head = [(source.cx, source.bottom), (source.cx, rail_y),
+                        (x, rail_y)]
+            else:
+                head = [(source.cx, rail_y), (x, rail_y)]
+        else:
+            x = source.cx
+            bar_y = source.bottom + FORK_DROP
+            head = [(x, source.bottom)]
         tip_y = bar_y + JUMP_GAP
         foot_y = tip_y + JUMP_H
         hook_x = x + JUMP_W
-        points = [(x, source.bottom), (x, foot_y),
-                  (hook_x, foot_y), (hook_x, tip_y)]
+        points = head + [(x, foot_y), (hook_x, foot_y), (hook_x, tip_y)]
         bar = (x, bar_y, "h")
         text = clip_guard(t.guard)
         guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
@@ -683,7 +867,6 @@ def build_layout(machine, measure=None, guard_measure=None):
                           guard_measure(text), arrow,
                           note_text=note_text, note_at=note_at,
                           note_w=guard_measure(note_text)))
-        target.inbound.append(source.number)
 
     # 6k. merge links: the OR convergence. Each branch drops out of its step
     # through its own bar and receptivity onto one shared rail just above the
@@ -694,12 +877,21 @@ def build_layout(machine, measure=None, guard_measure=None):
         source = step_of[t.source]
         target = step_of[t.target]
         rail_y = target.y - MERGE_RAIL
-        bar_y = source.bottom + FORK_DROP
-        points = [(source.cx, source.bottom), (source.cx, rail_y),
-                  (target.cx, rail_y), (target.cx, target.y)]
-        bar = (source.cx, bar_y, "h")
+        if id(t) in branch_dx:
+            fan_y = source.bottom + FAN_RAIL
+            x = source.cx + branch_dx[id(t)]
+            bar_y = fan_y + FAN_BAR
+            points = [(source.cx, source.bottom), (source.cx, fan_y),
+                      (x, fan_y), (x, rail_y),
+                      (target.cx, rail_y), (target.cx, target.y)]
+        else:
+            x = source.cx
+            bar_y = source.bottom + FORK_DROP
+            points = [(x, source.bottom), (x, rail_y),
+                      (target.cx, rail_y), (target.cx, target.y)]
+        bar = (x, bar_y, "h")
         text = clip_guard(t.guard)
-        guard_at = (source.cx + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+        guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
         links.append(Link("merge", t, points, bar, text, guard_at,
                           guard_measure(text), None))
 

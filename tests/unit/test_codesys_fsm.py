@@ -77,7 +77,7 @@ def _prefixed_machine():
 
 def _returns_machine():
     """A single chain whose steps keep falling back to earlier ones, so
-    several side links have to share the gutter without colliding."""
+    several backward hops have to become connectors without colliding."""
     from cts_shared.st.fsm import find_machines
 
     source = (
@@ -88,6 +88,27 @@ def _returns_machine():
         "  C:\n    IF g4 THEN state := D; END_IF\n"
         "    IF g5 THEN state := A; END_IF\n"
         "  D:\n    IF g6 THEN state := B; END_IF\n"
+        "END_CASE\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
+def _skips_machine():
+    """A single chain whose steps skip FORWARD over the ones below them, so
+    several side links have to share the gutter without colliding."""
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  A:\n    IF g1 THEN state := B; END_IF\n"
+        "    IF g2 THEN state := D; END_IF\n"
+        "  B:\n    IF g3 THEN state := C; END_IF\n"
+        "    IF g4 THEN state := E; END_IF\n"
+        "  C:\n    IF g5 THEN state := D; END_IF\n"
+        "  D:\n    IF g6 THEN state := E; END_IF\n"
+        "  E:\n    IF g7 THEN state := A; END_IF\n"
         "END_CASE\n"
     )
     machines = [m for m in find_machines(source) if m.is_fsm]
@@ -112,6 +133,66 @@ def _merge_machine():
         "  MID:\n    IF d2 THEN state := DONE; END_IF\n"
         "  RIGHT:\n    IF d3 THEN state := DONE; END_IF\n"
         "  DONE:\n    IF rst THEN state := IDLE; END_IF\n"
+        "END_CASE\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
+def _branching_machine():
+    """A traffic light: two steps have three outgoing transitions each, so
+    their bars, receptivities and connector captions have to share the gap
+    below the step without landing on one another."""
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  TRAFFIC_OFF:\n    IF xRun THEN state := TRAFFIC_RED; END_IF\n"
+        "  TRAFFIC_RED:\n"
+        "    IF NOT xRun THEN state := TRAFFIC_OFF;\n"
+        "    ELSIF xNightMode THEN state := TRAFFIC_FLASHING;\n"
+        "    ELSIF xTimerDone THEN state := TRAFFIC_RED_YELLOW; END_IF\n"
+        "  TRAFFIC_FLASHING:\n"
+        "    IF NOT xRun THEN state := TRAFFIC_OFF;\n"
+        "    ELSIF NOT xNightMode THEN state := TRAFFIC_RED; END_IF\n"
+        "  TRAFFIC_RED_YELLOW:\n"
+        "    IF xTimerDone THEN state := TRAFFIC_GREEN; END_IF\n"
+        "  TRAFFIC_GREEN:\n"
+        "    IF NOT xRun THEN state := TRAFFIC_OFF;\n"
+        "    ELSIF xNightMode THEN state := TRAFFIC_FLASHING;\n"
+        "    ELSIF xTimerDone THEN state := TRAFFIC_YELLOW; END_IF\n"
+        "  TRAFFIC_YELLOW:\n"
+        "    IF xTimerDone THEN state := TRAFFIC_RED; END_IF\n"
+        "END_CASE\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
+def _routing_machine():
+    """A three-way route: one step whose branches each start a column of their
+    own and then rejoin.  Both a divergence and the convergence under it, so
+    each rail has to be the only horizontal of its kind on its own row."""
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  STATE_IDLE:\n"
+        "    IF xStart THEN state := STATE_EXIT; END_IF\n"
+        "  STATE_EXIT:\n"
+        "    IF xLeft THEN state := STATE_ROUTE_LEFT;\n"
+        "    ELSIF xForward THEN state := STATE_ROUTE_FORWARD;\n"
+        "    ELSIF xRight THEN state := STATE_ROUTE_RIGHT; END_IF\n"
+        "  STATE_ROUTE_LEFT:\n"
+        "    IF xDone THEN state := STATE_DONE; END_IF\n"
+        "  STATE_ROUTE_FORWARD:\n"
+        "    IF xDone THEN state := STATE_DONE; END_IF\n"
+        "  STATE_ROUTE_RIGHT:\n"
+        "    IF xDone THEN state := STATE_DONE; END_IF\n"
+        "  STATE_DONE:\n"
+        "    IF xReset THEN state := STATE_IDLE; END_IF\n"
         "END_CASE\n"
     )
     machines = [m for m in find_machines(source) if m.is_fsm]
@@ -242,18 +323,21 @@ def test_consecutive_steps_are_joined_by_a_straight_vertical_link():
         assert y1 > y0
         assert link.bar[2] == "h"  # the bar lies across the link
         assert link.arrow is None  # top-to-bottom flow needs no arrowhead
-    # The link closing the loop back to the top is a side link instead.
-    sides = [link for link in layout.links if link.kind == "side"]
-    assert len(sides) == 1
-    assert sides[0].arrow[2] == "right"
+    # The link closing the loop back to the top is a connector instead: a
+    # line drawn back up the page drags the eye against the flow.
+    jumps = [link for link in layout.links if link.kind == "jump"]
+    assert len(jumps) == 1
+    assert jumps[0].arrow[2] == "up"
+    target = layout.step_for(jumps[0].transition.target)
+    assert target.inbound == [3]
 
 
 def test_side_links_run_in_the_left_gutter_and_never_share_a_lane():
-    # A link jumping UP the page arrives with its endpoints reversed; if
-    # that is not normalised the lane assignment silently overlaps them.
-    layout = fsm_layout.build_layout(_returns_machine())
+    # Only a forward skip still runs in a lane; two of them whose spans
+    # overlap must not be handed the same one.
+    layout = fsm_layout.build_layout(_skips_machine())
     sides = [link for link in layout.links if link.kind == "side"]
-    assert len(sides) == 3
+    assert len(sides) == 2
     leftmost_box = min(step.x for step in layout.steps)
     runs = []
     for link in sides:
@@ -337,29 +421,37 @@ def test_a_side_sequence_gets_its_own_column():
     forks = [link for link in layout.links if link.kind == "fork"]
     assert len(forks) == 1
     fork = forks[0]
-    # An ordinary link, not a divergence bar: exactly one state is active,
-    # so a choice cannot mean two branches running at once.
-    assert len(fork.points) == 4
+    # A branch of its step's divergence that lands in another column: it
+    # leaves the trunk, runs along the rail and drops straight into its
+    # target, carrying its bar directly above the step it enters. Given a
+    # slot near the source it turned sideways a second time, and those runs
+    # overlapped into a second horizontal line beside the rail.
     assert fork.arrow is None
     assert fork.bar[2] == "h"
     source = layout.step_for(fork.transition.source)
     target = layout.step_for(fork.transition.target)
+    assert len(fork.points) == 4
     assert fork.points[0][0] == source.cx
     assert fork.points[-1][0] == target.cx
     assert fork.bar[0] == target.cx
+    assert fork.guard_at[0] > fork.bar[0], "the receptivity stays with its bar"
 
 
 def test_a_distant_jump_becomes_a_connector_instead_of_a_line():
     layout = fsm_layout.build_layout(_prefixed_machine())
     jumps = [link for link in layout.links if link.kind == "jump"]
-    assert len(jumps) == 2
+    assert len(jumps) == 3
     for link in jumps:
         target = layout.step_for(link.transition.target)
         source = layout.step_for(link.transition.source)
         # The connector stops just below its source; it never reaches
         # across the page to the block it names.
         assert len(link.points) == 4
-        assert max(py for _, py in link.points) <= source.bottom + 60
+        # The hook lives in the gap under its own step: it never runs down
+        # into the row below, however many transitions share that gap.
+        below = [s.y for s in layout.steps if s.y > source.bottom]
+        if below:
+            assert max(py for _, py in link.points) < min(below)
         # Down, right, back up: the same hook whichever way the target lies,
         # so the arrowhead reads as "go to", not as a direction on the page.
         (x0, y0), (x1, y1), (x2, y2), (x3, y3) = link.points
@@ -430,3 +522,190 @@ def test_branches_that_rejoin_are_drawn_as_one_convergence():
 
     guards = sorted(link.guard_text for link in merges)
     assert guards == ["a AND d1", "b AND d2", "c AND d3"] or len(set(guards)) == 3
+
+
+def test_every_transition_leaving_a_step_gets_its_own_branch():
+    # They all used to be drawn one fixed offset below the step, in a heap,
+    # and then stacked down one stem - a row each, which reads as
+    # transitions in series rather than as a choice between them.
+    layout = fsm_layout.build_layout(_branching_machine())
+    groups = {}
+    for link in layout.links:
+        if link.transition.source is None:
+            continue
+        groups.setdefault(link.transition.source, []).append(link)
+
+    branching = 0
+    for links in groups.values():
+        if len(links) < 2:
+            continue
+        if len(links) >= 3:
+            branching += 1
+        bars = sorted((link.transition.offset, link.bar[0], link.bar[1])
+                      for link in links)
+        bar_x = [x for _, x, _ in bars]
+        bar_y = [y for _, _, y in bars]
+        assert len(set(bar_y)) == 1, "one divergence, so one rail"
+        assert len(set(bar_x)) == len(bar_x), "branches must not share an x"
+        assert bar_x == sorted(bar_x), (
+            "branches read in the order the IF/ELSIF chain does"
+        )
+        rects = []
+        for link in links:
+            gx, gy = link.guard_at
+            rects.append((gx, gy, gx + link.guard_w, gy + fsm_layout.TEXT_H))
+        for i in range(len(rects)):
+            for j in range(i + 1, len(rects)):
+                ax, ay, ax2, ay2 = rects[i]
+                bx, by, bx2, by2 = rects[j]
+                assert not (ax < bx2 and bx < ax2 and ay < by2 and by < ay2), (
+                    "receptivities in the gap overlap"
+                )
+    assert branching >= 1, "the machine must actually branch"
+
+
+def test_a_divergence_hangs_off_one_trunk_below_its_step():
+    # Every branch starts on the rail so the trunk keeps the ordinary link
+    # colour; with nothing but connectors leaving a step there was no branch
+    # left to draw the trunk, and the rail floated free under the box.
+    machines = (
+        ("branching", _branching_machine()),
+        ("skips", _skips_machine()),
+        ("merge", _merge_machine()),
+    )
+    for name, machine in machines:
+        layout = fsm_layout.build_layout(machine)
+        groups = {}
+        for link in layout.links:
+            if link.transition.source is None:
+                continue
+            groups.setdefault(link.transition.source, []).append(link)
+        for label, links in groups.items():
+            if len(links) < 2:
+                continue
+            step = layout.step_for(label)
+            rail_y = step.bottom + fsm_layout.FAN_RAIL
+            joined = False
+            for link in links:
+                for (ax, ay), (bx, by) in zip(link.points, link.points[1:]):
+                    if (ax == bx == step.cx
+                            and min(ay, by) <= step.bottom
+                            and max(ay, by) >= rail_y):
+                        joined = True
+            assert joined, (
+                "the divergence at {0} in {1} floats free of its step"
+                .format(label, name)
+            )
+
+
+def test_a_divergence_draws_one_rail_and_drops_each_branch_on_its_own_axis():
+    # A fork used to take a slot beside its source and then turn sideways a
+    # second time to reach its column, so a three-way route drew the rail plus
+    # a second horizontal made of the overlapping turns, with all three
+    # receptivities bunched at the left instead of over the steps they name.
+    layout = fsm_layout.build_layout(_routing_machine())
+    step = layout.step_for("STATE_EXIT")
+    branches = [link for link in layout.links
+                if link.transition.source == "STATE_EXIT"]
+    assert len(branches) == 3
+    targets = [layout.step_for(link.transition.target) for link in branches]
+    floor = min(target.y for target in targets)
+
+    rails = set()
+    for link in branches:
+        for (ax, ay), (bx, by) in zip(link.points, link.points[1:]):
+            if ay == by and ax != bx and step.bottom < ay < floor:
+                rails.add(ay)
+    assert rails == set([step.bottom + fsm_layout.FAN_RAIL]), rails
+
+    # Each branch drops off that one rail straight into its target, so its bar
+    # stands on the target's own axis rather than somewhere in between.
+    for link, target in zip(branches, targets):
+        assert link.bar[0] == target.cx, link.transition.target
+        assert link.points[-1] == (target.cx, target.y)
+
+
+def test_two_connectors_from_one_step_do_not_share_one_hook():    # A step's connectors used to share one fixed hook, so two captions
+    # naming different targets landed on top of each other.
+    layout = fsm_layout.build_layout(_branching_machine())
+    by_source = {}
+    for link in layout.links:
+        if link.kind == "jump":
+            by_source.setdefault(link.transition.source, []).append(link)
+    pairs = [links for links in by_source.values() if len(links) >= 2]
+    assert pairs, "no step has two connectors"
+    for links in pairs:
+        shapes = [tuple(point for point in link.points) for link in links]
+        assert len(set(shapes)) == len(shapes), "connectors share one hook"
+        rects = []
+        for link in links:
+            nx, ny = link.note_at
+            rects.append((nx, ny, nx + link.note_w, ny + fsm_layout.TEXT_H))
+        for i in range(len(rects)):
+            for j in range(i + 1, len(rects)):
+                ax, ay, ax2, ay2 = rects[i]
+                bx, by, bx2, by2 = rects[j]
+                assert not (ax < bx2 and bx < ax2 and ay < by2 and by < ay2), (
+                    "connector captions overlap"
+                )
+
+
+def test_nothing_drawn_below_a_step_reaches_the_next_one():
+    # A branching step's bars, receptivities and connector hooks used to
+    # run down into the row below them.
+    machines = (
+        ("branching", _branching_machine()),
+        ("prefixed", _prefixed_machine()),
+        ("merge", _merge_machine()),
+        ("returns", _returns_machine()),
+        ("skips", _skips_machine()),
+    )
+    for name, machine in machines:
+        layout = fsm_layout.build_layout(
+            machine,
+            measure=lambda text: len(text) * 7,
+            guard_measure=lambda text: len(text) * 6,
+        )
+        boxes = [(s.x, s.y, s.x + s.w, s.y + s.h) for s in layout.steps]
+        boxes += [(c.x, c.y, c.x + c.w, c.y + c.h) for c in layout.chips]
+        for link in layout.links:
+            for px, py in link.points:
+                for bx, by, bx2, by2 in boxes:
+                    assert not (bx < px < bx2 and by < py < by2), (
+                        "vertex inside a block in {0}".format(name)
+                    )
+            if link.note_at is not None:
+                nx, ny = link.note_at
+                nx2, ny2 = nx + link.note_w, ny + fsm_layout.TEXT_H
+                for bx, by, bx2, by2 in boxes:
+                    assert not (nx < bx2 and bx < nx2 and ny < by2 and by < ny2), (
+                        "connector caption on a block in {0}".format(name)
+                    )
+
+
+def test_the_inbound_marker_never_runs_into_a_side_lane():
+    # The "N -> " marker used to sit at a fixed INBOUND_W; on a column with
+    # lanes it ran right through them into the step's own arrowheads.
+    layout = fsm_layout.build_layout(_skips_machine())
+    # Lanes belong to a COLUMN, not to the step that opened them: the marker
+    # on step 1 sits in the same gutter as the lanes leaving steps 2 and 3.
+    side_lanes = {}
+    for link in layout.links:
+        if link.kind == "side":
+            col = layout.step_for(link.transition.source).col
+            side_lanes.setdefault(col, []).append(
+                min(px for px, _ in link.points)
+            )
+    marked = 0
+    for step in layout.steps:
+        if not step.inbound:
+            continue
+        marked += 1
+        text = ", ".join(str(number) for number in step.inbound)
+        right_edge = step.inbound_x + len(text) * fsm_layout.CHAR_W
+        assert step.inbound_x < step.x
+        for lane_x in side_lanes.get(step.col, []):
+            assert right_edge <= lane_x, (
+                "marker for step {0} runs into a lane".format(step.number)
+            )
+    assert marked >= 1, "no step carries an inbound marker"
