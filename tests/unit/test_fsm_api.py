@@ -429,3 +429,76 @@ def _wait_terminal(api, job_id, timeout=30.0):
     raise AssertionError(
         f"scan did not finish within {timeout}s (last state: {last['state'] if last else None})"
     )
+
+
+# ---------------------------------------------------------------------------
+# source: the code behind a step and behind a transition
+# ---------------------------------------------------------------------------
+
+
+def test_source_of_a_state_is_its_branch_body(tmp_path, api_cls):
+    api = api_cls(str(_workspace(tmp_path)))
+    try:
+        api.bootstrap()
+        result = api.source("Motor.st", 0, "state", "0")
+        assert result["ok"] is True
+        assert result["kind"] == "state"
+        assert result["title"] == "0"
+        assert result["block"] is True
+        assert result["code"] == "0: IF start THEN state := 1; END_IF"
+        # The file line, not the offset into the implementation section: the
+        # declaration and the marker are seven lines, so the CASE head is on
+        # line 8 and the first branch on line 9.
+        assert result["line"] == 9
+    finally:
+        api.close()
+
+
+def test_source_of_a_transition_is_the_arm_it_fires_inside(tmp_path, api_cls):
+    api = api_cls(str(_workspace(tmp_path)))
+    try:
+        api.bootstrap()
+        rows = api.render("Motor.st")["transitions"]
+        guarded = next(row for row in rows if row["guard"] == "done")
+        result = api.source("Motor.st", 0, "transition", guarded["index"])
+        assert result["ok"] is True
+        assert result["kind"] == "transition"
+        assert result["title"] == "1 → 2"
+        assert result["subtitle"] == "done"
+        # The whole arm, so actions that run with the transition are visible
+        # and not just the assignment the guard text implies.
+        assert result["block"] is True
+        assert result["code"] == "IF done THEN state := 2;"
+        assert result["line"] == 10
+    finally:
+        api.close()
+
+
+def test_source_of_an_unconditional_transition_falls_back_to_the_statement(
+    tmp_path, api_cls
+):
+    api = api_cls(str(_workspace(tmp_path)))
+    try:
+        api.bootstrap()
+        rows = api.render("Motor.st")["transitions"]
+        plain = next(row for row in rows if row["guard"] == "")
+        result = api.source("Motor.st", 0, "transition", plain["index"])
+        assert result["ok"] is True
+        assert result["block"] is False
+        assert result["code"] == "state := 0;"
+    finally:
+        api.close()
+
+
+def test_source_rejects_unknown_keys_and_kinds(tmp_path, api_cls):
+    api = api_cls(str(_workspace(tmp_path)))
+    try:
+        api.bootstrap()
+        assert api.source("Motor.st", 0, "banana", "0")["ok"] is False
+        assert api.source("Motor.st", 0, "state", "nope")["ok"] is False
+        assert api.source("Motor.st", 0, "transition", 99)["ok"] is False
+        assert api.source("Motor.st", 7, "state", "0")["ok"] is False
+        # Traversal is the Scanner's rule and it still holds on this path.
+        assert api.source("../outside.st", 0, "state", "0")["ok"] is False
+    finally:
+        api.close()

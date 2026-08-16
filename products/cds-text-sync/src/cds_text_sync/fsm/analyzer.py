@@ -19,12 +19,29 @@ from .model import file_result, machine_payload
 from .workspace import fingerprint, read_source
 
 
+def implementation_view(text: str):
+    """Return ``(analysed_text, whole_text)`` for ST *text*.
+
+    Every offset a machine payload carries is an offset into the first item:
+    the implementation section when the marker is present, the whole text when
+    it is not. The second item is the same blob with line endings normalised
+    the way ``split_decl_impl`` normalises them, and the first is a suffix of
+    it - which is what lets a caller turn an offset into a file line number
+    without re-deriving where the implementation starts.
+    """
+    declaration, implementation = split_decl_impl(text)
+    if implementation is None:
+        return declaration, declaration
+    whole = text.replace("\r\n", "\n").replace("\r", "\n")
+    return implementation, whole
+
+
 def analyze_text(text: str) -> list[dict]:
     """Analyse ST text and return a machine payload for every FSM found."""
-    _declaration, implementation = split_decl_impl(text)
+    analysed, _whole = implementation_view(text)
     machines = [
         machine_payload(machine)
-        for machine in find_machines(implementation if implementation is not None else text)
+        for machine in find_machines(analysed)
         if machine.is_fsm
     ]
     return machines

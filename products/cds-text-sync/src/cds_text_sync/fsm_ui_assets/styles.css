@@ -262,11 +262,97 @@ select {
 .svg-host svg { display: block; }
 
 /* Highlighting toggles a class on the elements the renderer tagged with
-   data-transition; it never re-renders the diagram. */
-.svg-host [data-transition].selected {
+   data-transition or data-state; it never re-renders the diagram.
+
+   Colour only: the line widths stay exactly as the renderer drew them, so a
+   selected link keeps its shape and a selected step keeps its border. A
+   thicker stroke smears the glyphs of the guard text next to it and turns
+   double-bordered initial steps into a blot. */
+.svg-host [data-transition].selected,
+.svg-host [data-state].selected {
   stroke: var(--accent) !important;
+}
+
+/* fill only where the renderer actually fills: arrowheads are polygons and
+   labels are text. Setting fill on a polyline would flood the area its
+   segments enclose, because links are drawn fill="none". */
+.svg-host polygon[data-transition].selected,
+.svg-host text[data-transition].selected,
+.svg-host polygon[data-state].selected,
+.svg-host text[data-state].selected {
   fill: var(--accent) !important;
-  stroke-width: 3;
+}
+
+/* Polylines are drawn fill:none, so without this the pointer only ever hits
+   the stroke of a shape and most of a step box is dead space. */
+.svg-host [data-transition],
+.svg-host [data-state] {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+/* The right-click code popup. It lives inside the canvas so it can be placed
+   at the pointer, but outside .svg-host so pan and zoom never move or scale
+   it - a code listing that shrinks with the diagram is unreadable. */
+.code-popup {
+  position: absolute;
+  z-index: 2;
+  max-width: min(560px, 90%);
+  max-height: 70%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 6px 24px rgba(22, 32, 43, 0.18);
+  cursor: default;
+}
+
+.code-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.code-titles {
+  min-width: 0;
+  flex: 1;
+}
+
+.code-titles strong { display: block; }
+
+.code-titles span {
+  display: block;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.code-line {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.code-head button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.code-body {
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  font: 12px/1.45 Consolas, monospace;
+  /* ST source keeps its own indentation; wrapping long lines beats a
+     horizontal scrollbar for reading a branch body. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
 }
 
 .details {
@@ -308,6 +394,13 @@ select {
 
 .transition-row:hover { background: var(--surface-2); }
 .transition-row.selected { background: var(--accent); color: var(--accent-ink); }
+
+/* Clicking a step marks the transitions touching it: a left rule rather than
+   a fill, so it never reads as the single selected row. */
+.transition-row.related {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 
 .transition-row .edge { font-weight: 600; }
 

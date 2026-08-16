@@ -85,9 +85,12 @@ def test_machine_payload_pins_the_payload_shape():
     assert payload == {
         "selector": "state",
         "states": [
-            {"label": "0", "aliases": ["0"], "order": 0},
-            {"label": "1", "aliases": ["1"], "order": 1},
-            {"label": "2", "aliases": ["2"], "order": 2},
+            {"label": "0", "aliases": ["0"], "order": 0,
+             "start_offset": 16, "end_offset": 54},
+            {"label": "1", "aliases": ["1"], "order": 1,
+             "start_offset": 54, "end_offset": 91},
+            {"label": "2", "aliases": ["2"], "order": 2,
+             "start_offset": 91, "end_offset": 106},
         ],
         "transitions": [
             {
@@ -97,6 +100,8 @@ def test_machine_payload_pins_the_payload_shape():
                 "offset": 33,
                 "lhs": "state",
                 "deferred": False,
+                "block_start": 19,
+                "block_end": 45,
             },
             {
                 "source": "1",
@@ -105,6 +110,8 @@ def test_machine_payload_pins_the_payload_shape():
                 "offset": 70,
                 "lhs": "state",
                 "deferred": False,
+                "block_start": 57,
+                "block_end": 82,
             },
             {
                 "source": "2",
@@ -113,6 +120,9 @@ def test_machine_payload_pins_the_payload_shape():
                 "offset": 94,
                 "lhs": "state",
                 "deferred": False,
+                # Unconditional: nothing encloses it but the state branch.
+                "block_start": None,
+                "block_end": None,
             },
         ],
         "deferred": False,

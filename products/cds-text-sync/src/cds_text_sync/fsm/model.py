@@ -22,7 +22,14 @@ def machine_payload(machine) -> dict:
     return {
         "selector": machine.selector,
         "states": [
-            {"label": state.label, "aliases": state.aliases, "order": state.order}
+            {
+                "label": state.label,
+                "aliases": state.aliases,
+                "order": state.order,
+                # The branch body, so the window can show the code a step runs.
+                "start_offset": state.start_offset,
+                "end_offset": state.end_offset,
+            }
             for state in machine.states
         ],
         "transitions": [
@@ -33,6 +40,10 @@ def machine_payload(machine) -> dict:
                 "offset": transition.offset,
                 "lhs": transition.lhs,
                 "deferred": transition.deferred,
+                # The arm body the transition fires inside; None when the
+                # transition is unconditional (see fsm._action_span).
+                "block_start": transition.block_start,
+                "block_end": transition.block_end,
             }
             for transition in machine.transitions
         ],
@@ -85,6 +96,8 @@ def machine_from_payload(payload):
             label=state["label"],
             aliases=state["aliases"],
             order=state["order"],
+            start_offset=state.get("start_offset"),
+            end_offset=state.get("end_offset"),
         ))
     for transition in payload["transitions"]:
         machine.transitions.append(SimpleNamespace(
@@ -94,5 +107,7 @@ def machine_from_payload(payload):
             guard=transition["guard"],
             lhs=transition["lhs"],
             deferred=transition["deferred"],
+            block_start=transition.get("block_start"),
+            block_end=transition.get("block_end"),
         ))
     return machine

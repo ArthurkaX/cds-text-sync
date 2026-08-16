@@ -65,13 +65,20 @@ class State(object):
 class Transition(object):
     """One state-variable assignment that targets a known state."""
 
-    def __init__(self, source, target, guard, offset, lhs, deferred):
+    def __init__(self, source, target, guard, offset, lhs, deferred,
+                 block_start=None, block_end=None):
         self.source = source
         self.target = target
         self.guard = guard
         self.offset = offset
         self.lhs = lhs
         self.deferred = deferred
+        # Span of the code that runs together with this transition: the body
+        # of the innermost enclosing arm, which is where the transition's
+        # actions live. None when nothing encloses the assignment more tightly
+        # than the state's own branch - there is no separate action block then.
+        self.block_start = block_start
+        self.block_end = block_end
 
 
 def _iter_cases(node):
@@ -111,6 +118,34 @@ def _branch_label_containing(node, offset):
         if start <= offset < (end or offset + 1):
             return label
     return None
+
+
+def _branch_span_containing(node, offset):
+    for _label, start, end in node.branches:
+        if start <= offset < (end or offset + 1):
+            return (start, end)
+    return None
+
+
+def _action_span(root, case, offset):
+    """Span of the arm body a transition at *offset* fires inside.
+
+    A transition rarely stands alone: the IF arm that decides it usually also
+    does the work that goes with it (resetting timers, dropping outputs). That
+    arm body is what a reader needs next to the guard, so it is recorded here.
+
+    Returns ``(None, None)`` when the innermost enclosing block is the
+    machine's own CASE or the root: an unconditional transition has no action
+    block of its own, and returning the whole state branch would pretend it
+    does.
+    """
+    node = _innermost_containing(root, offset)
+    if node is case or node is root:
+        return (None, None)
+    span = _branch_span_containing(node, offset)
+    if span is not None:
+        return span
+    return (node.start_offset, node.end_offset)
 
 
 def _guard_for(root, case, offset):
@@ -222,8 +257,10 @@ def _build_machine(text, work, root, case, base, assignments=None):
             source = _source_for_offset(state_branches, lhs_local + base, case_start, case_end)
             deferred = lhs.upper() != head.upper()
             guard = _guard_for(root, case, lhs_local + base)
+            block_start, block_end = _action_span(root, case, lhs_local + base)
             machine.transitions.append(
-                Transition(source, target, guard, lhs_local + base, lhs, deferred)
+                Transition(source, target, guard, lhs_local + base, lhs, deferred,
+                           block_start, block_end)
             )
         elif normalize(rhs) == normalize(head) and same_family(rhs, head):
             if machine.commit_offset is None:

@@ -70,9 +70,12 @@ def test_machine_payload_shape():
         {
             "selector": "state",
             "states": [
-                {"label": "0", "aliases": ["0"], "order": 0},
-                {"label": "1", "aliases": ["1"], "order": 1},
-                {"label": "2", "aliases": ["2"], "order": 2},
+                {"label": "0", "aliases": ["0"], "order": 0,
+                 "start_offset": 16, "end_offset": 54},
+                {"label": "1", "aliases": ["1"], "order": 1,
+                 "start_offset": 54, "end_offset": 91},
+                {"label": "2", "aliases": ["2"], "order": 2,
+                 "start_offset": 91, "end_offset": 106},
             ],
             "transitions": [
                 {
@@ -82,6 +85,8 @@ def test_machine_payload_shape():
                     "offset": 33,
                     "lhs": "state",
                     "deferred": False,
+                    "block_start": 19,
+                    "block_end": 45,
                 },
                 {
                     "source": "1",
@@ -90,6 +95,8 @@ def test_machine_payload_shape():
                     "offset": 70,
                     "lhs": "state",
                     "deferred": False,
+                    "block_start": 57,
+                    "block_end": 82,
                 },
                 {
                     "source": "2",
@@ -98,6 +105,8 @@ def test_machine_payload_shape():
                     "offset": 94,
                     "lhs": "state",
                     "deferred": False,
+                    "block_start": None,
+                    "block_end": None,
                 },
             ],
             "deferred": False,
@@ -127,8 +136,10 @@ def test_symbolic_payload_shape():
         {
             "selector": "step",
             "states": [
-                {"label": "ST.Idle", "aliases": ["ST.Idle"], "order": 0},
-                {"label": "ST.Run", "aliases": ["ST.Run"], "order": 1},
+                {"label": "ST.Idle", "aliases": ["ST.Idle"], "order": 0,
+                 "start_offset": 15, "end_offset": 65},
+                {"label": "ST.Run", "aliases": ["ST.Run"], "order": 1,
+                 "start_offset": 65, "end_offset": 115},
             ],
             "transitions": [
                 {
@@ -138,6 +149,8 @@ def test_symbolic_payload_shape():
                     "offset": 35,
                     "lhs": "next_step",
                     "deferred": True,
+                    "block_start": 24,
+                    "block_end": 56,
                 },
                 {
                     "source": "ST.Run",
@@ -146,6 +159,8 @@ def test_symbolic_payload_shape():
                     "offset": 86,
                     "lhs": "next_step",
                     "deferred": True,
+                    "block_start": 73,
+                    "block_end": 108,
                 },
             ],
             "deferred": True,

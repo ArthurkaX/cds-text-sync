@@ -15,9 +15,62 @@ import sys
 
 from cds_text_sync.webui import shell
 
+from .analyzer import implementation_view
 from .model import STATE_ERROR
 from .render import to_mermaid_text, to_plantuml_text, to_svg
 from .scanner import Scanner
+from .workspace import read_source, resolve_in_root
+
+
+def _find_state(payload, label):
+    """The payload state row whose full label is *label*, or None."""
+    for state in payload["states"]:
+        if state["label"] == label:
+            return state
+    return None
+
+
+def _find_transition(payload, index):
+    """The payload transition row at *index*, or None when out of range."""
+    try:
+        index = int(index)
+    except (TypeError, ValueError):
+        return None
+    transitions = payload["transitions"]
+    if 0 <= index < len(transitions):
+        return transitions[index]
+    return None
+
+
+def _statement_span(text, offset):
+    """The single statement starting at *offset*, up to and with its ``;``.
+
+    The fallback for an unconditional transition, which has no arm of its own.
+    A statement with no terminator (a truncated file) runs to the end of text.
+    """
+    end = text.find(";", offset)
+    return (offset, len(text) if end < 0 else end + 1)
+
+
+def _trim_block(code):
+    """Drop blank edges and the common indent, keeping the code's own shape.
+
+    The first line is measured separately: a branch body starts right after
+    the ``:`` of its label, so its first line carries no indent of its own and
+    would otherwise pin the common indent at zero.
+    """
+    lines = code.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return ""
+    rest = [line for line in lines[1:] if line.strip()]
+    indent = min((len(line) - len(line.lstrip()) for line in rest), default=0)
+    out = [lines[0].strip()]
+    out.extend(line[indent:] if line.strip() else "" for line in lines[1:])
+    return "\n".join(out).rstrip()
 
 
 class FsmApi:
@@ -246,7 +299,92 @@ class FsmApi:
         except Exception as exc:
             return {"ok": False, "error": f"Render failed unexpectedly: {exc}"}
 
+    def source(self, relative_path, machine=0, kind="state", key=None) -> dict:
+        """Return the ST code behind one step or one transition.
+
+        ``kind="state"`` takes the full state label as *key* and returns the
+        CASE branch body - the code the step runs. ``kind="transition"`` takes
+        the payload transition index and returns the arm the transition fires
+        inside, which is where its actions live; an unconditional transition
+        has no arm, so the single assignment statement is returned instead and
+        ``block`` is False.
+
+        The file is re-read and re-analysed here rather than sliced from what
+        the page already holds: an offset from the page could point anywhere,
+        and the file may have changed since it was drawn.
+        """
+        try:
+            try:
+                machine_index = int(machine)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": f"Machine index is not an integer: {machine!r}"}
+            kind = str(kind)
+            if kind not in ("state", "transition"):
+                return {"ok": False, "error": f"Unknown source kind: {kind!r}"}
+
+            scanner = self._ensure_scanner()
+            row = scanner.analyze_file(relative_path)
+            if row["state"] == STATE_ERROR:
+                return {
+                    "ok": False,
+                    "error": row["error"] or f"Could not analyse {relative_path}",
+                }
+            machines = row["machines"]
+            if machine_index < 0 or machine_index >= len(machines):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"machine index {machine_index} is out of range "
+                        f"({len(machines)} machine(s) in {relative_path})"
+                    ),
+                }
+            payload = machines[machine_index]
+
+            resolved = resolve_in_root(scanner.source_root, str(relative_path))
+            if resolved is None or not resolved.is_file():
+                return {"ok": False, "error": f"Source file is unreadable: {relative_path}"}
+            analysed, whole = implementation_view(read_source(resolved))
+
+            if kind == "state":
+                found = _find_state(payload, key)
+                if found is None:
+                    return {"ok": False, "error": f"No state named {key!r} in this machine."}
+                start, end = found["start_offset"], found["end_offset"]
+                header = {"title": found["label"], "subtitle": "state body", "block": True}
+            else:
+                found = _find_transition(payload, key)
+                if found is None:
+                    return {"ok": False, "error": f"No transition {key!r} in this machine."}
+                start, end = found["block_start"], found["block_end"]
+                block = start is not None
+                if not block:
+                    start, end = _statement_span(analysed, found["offset"])
+                header = {
+                    "title": (found["source"] or "(any)") + " → " + found["target"],
+                    "subtitle": found["guard"] or "unconditional",
+                    "block": block,
+                }
+
+            code = _trim_block(analysed[start:end if end is not None else len(analysed)])
+            # analysed is a suffix of whole, so the offset difference is the
+            # number of characters the declaration took up.
+            absolute = len(whole) - len(analysed) + (start or 0)
+            result = {
+                "ok": True,
+                "error": None,
+                "path": str(relative_path),
+                "machine": machine_index,
+                "kind": kind,
+                "code": code,
+                "line": whole.count("\n", 0, absolute) + 1,
+            }
+            result.update(header)
+            return result
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not read the source: {exc}"}
+
     # ------------------------------------------------------------------ status
+
 
     def progress(self) -> dict:
         """Snapshot of the last reported status; see ``webui.shell.ProgressChannel``."""

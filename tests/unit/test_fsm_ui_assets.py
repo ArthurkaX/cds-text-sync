@@ -96,3 +96,33 @@ def test_the_copy_buttons_are_wired_in_the_page_and_the_script():
     assert 'id="copy-plantuml"' in html
     assert '$("copy-mermaid").addEventListener("click",' in app
     assert '$("copy-plantuml").addEventListener("click",' in app
+
+
+def test_the_diagram_maps_clicks_back_to_the_data_attributes_it_carries():
+    app = _read("app.js")
+    # The renderer stamps data-transition and data-state on every shape so a
+    # click can find its row; without a hit test the diagram is read-only and
+    # data-state has no reader at all.
+    assert "function hitTest(" in app
+    assert 'target.closest("[data-transition]")' in app
+    assert 'target.closest("[data-state]")' in app
+    assert "hitTest(event.target)" in app
+
+
+def test_clicking_the_diagram_is_told_apart_from_panning():
+    app = _read("app.js")
+    # Without a movement threshold every pan would end in a selection change.
+    assert "CLICK_SLOP" in app
+    assert "drag.moved" in app
+
+
+def test_right_click_asks_the_backend_for_the_code():
+    app = _read("app.js")
+    html = _read("index.html")
+    # The popup is markup the page owns; the code inside it is user ST source
+    # and must land through textContent, which the innerHTML guard above pins.
+    assert 'id="code-popup"' in html
+    assert 'canvas.addEventListener("contextmenu"' in app
+    assert "event.preventDefault()" in app
+    assert '"source", path, machine, kind, key' in app
+    assert '$("code-body").textContent' in app

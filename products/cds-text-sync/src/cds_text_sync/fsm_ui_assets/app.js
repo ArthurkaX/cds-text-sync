@@ -28,6 +28,7 @@
     machine: 0,
     render: null,
     transition: null,
+    stateLabel: null,
     zoom: 1,
     panX: 0,
     panY: 0,
@@ -255,6 +256,8 @@
   function loadRender() {
     var path = state.selected;
     var machine = state.machine;
+    /* Whatever the popup was showing belongs to the previous drawing. */
+    closePopup();
     call("render", path, machine).then(function (payload) {
       if (state.selected !== path || state.machine !== machine) return;
       if (failed(payload, "Could not render " + path)) {
@@ -264,6 +267,7 @@
       }
       state.render = payload;
       state.transition = null;
+      state.stateLabel = null;
       renderDiagram();
       zoomToFit();
     });
@@ -293,6 +297,9 @@
 
     empty.classList.add("hidden");
     drawDiagram(payload.svg);
+    /* drawDiagram replaces the SVG wholesale, so any highlight classes on it
+       are gone; repaint them from state. */
+    applyHighlight();
     renderMachinePicker(payload.count);
     renderSummary(payload.summary);
     renderTransitions();
@@ -354,11 +361,14 @@
       return;
     }
     rows.forEach(function (row) {
+      var related = state.stateLabel !== null
+        && (row.source === state.stateLabel || row.target === state.stateLabel);
       var item = document.createElement("li");
       var button = document.createElement("button");
       button.type = "button";
       button.className = "transition-row"
-        + (row.index === state.transition ? " selected" : "");
+        + (row.index === state.transition ? " selected" : "")
+        + (related ? " related" : "");
 
       var edge = document.createElement("span");
       edge.className = "edge";
@@ -409,21 +419,180 @@
   }
 
   function selectTransition(index) {
-    state.transition = state.transition === index ? null : index;
-    var host = $("svg-host");
-    host.querySelectorAll("[data-transition]").forEach(function (node) {
-      node.classList.remove("selected");
-    });
-    if (state.transition !== null) {
-      var selector = '[data-transition="' + state.transition + '"]';
-      host.querySelectorAll(selector).forEach(function (node) {
-        node.classList.add("selected");
-      });
+    var same = state.transition === index;
+    state.transition = same ? null : index;
+    state.stateLabel = null;
+    applyHighlight();
+    renderTransitions();
+    if (state.transition !== null) scrollRowIntoView(state.transition);
+  }
+
+  /* Clicking a step selects that state: the step lights up and so does every
+     transition that leaves or enters it, which is what makes the diagram
+     answer "what can happen here". */
+  function selectState(label) {
+    var same = state.stateLabel === label;
+    state.stateLabel = same ? null : label;
+    state.transition = null;
+    applyHighlight();
+    renderTransitions();
+    if (state.stateLabel !== null) {
+      var rows = incidentTransitions(state.stateLabel);
+      if (rows.length) scrollRowIntoView(rows[0]);
     }
+  }
+
+  function clearSelection() {
+    if (state.transition === null && state.stateLabel === null) return;
+    state.transition = null;
+    state.stateLabel = null;
+    applyHighlight();
     renderTransitions();
   }
 
+  /* Payload indices of the transitions touching *label*, in payload order. */
+  function incidentTransitions(label) {
+    var rows = (state.render && state.render.transitions) || [];
+    var hits = [];
+    rows.forEach(function (row) {
+      if (row.source === label || row.target === label) hits.push(row.index);
+    });
+    return hits;
+  }
+
+  /* Paint the current selection onto the SVG in place; never re-renders it. */
+  function applyHighlight() {
+    var host = $("svg-host");
+    host.querySelectorAll(".selected").forEach(function (node) {
+      node.classList.remove("selected");
+    });
+    var indices = [];
+    if (state.transition !== null) {
+      indices = [state.transition];
+    } else if (state.stateLabel !== null) {
+      indices = incidentTransitions(state.stateLabel);
+      /* CSS.escape covers labels with quotes or brackets in them. */
+      var stateSelector = "[data-state=" + CSS.escape(state.stateLabel) + "]";
+      host.querySelectorAll(stateSelector).forEach(function (node) {
+        node.classList.add("selected");
+      });
+    }
+    indices.forEach(function (index) {
+      var selector = '[data-transition="' + index + '"]';
+      host.querySelectorAll(selector).forEach(function (node) {
+        node.classList.add("selected");
+      });
+    });
+  }
+
+  function scrollRowIntoView(index) {
+    var rows = $("transition-list").querySelectorAll(".transition-row");
+    var row = rows[transitionRowPosition(index)];
+    if (row) row.scrollIntoView({ block: "nearest" });
+  }
+
+  /* The list is rendered in payload order, so a payload index is also its
+     position - unless a row was dropped, hence the lookup rather than [index]. */
+  function transitionRowPosition(index) {
+    var rows = (state.render && state.render.transitions) || [];
+    for (var i = 0; i < rows.length; i += 1) {
+      if (rows[i].index === index) return i;
+    }
+    return -1;
+  }
+
+  /* Map a click on the diagram back to a payload row using the data-* the
+     renderer stamped on every shape it drew. Anything else on the canvas is
+     background, and clicking background clears the selection. */
+  function hitTest(target) {
+    var canvas = $("canvas");
+    if (!target || !target.closest || !canvas.contains(target)) return;
+    var link = target.closest("[data-transition]");
+    if (link) {
+      selectTransition(Number(link.getAttribute("data-transition")));
+      return;
+    }
+    var step = target.closest("[data-state]");
+    if (step) {
+      selectState(step.getAttribute("data-state"));
+      return;
+    }
+    clearSelection();
+  }
+
+  /* ---- source popup ---------------------------------------------------- */
+
+  /* Right-click asks the backend for the ST behind what was hit: a step's
+     branch body, or the arm a transition fires inside - a transition often
+     carries actions besides the assignment, and the guard text alone hides
+     them. The backend re-reads the file, so this is the code on disk now. */
+  function showSourceFor(target, clientX, clientY) {
+    var canvas = $("canvas");
+    if (!target || !target.closest || !canvas.contains(target)) return false;
+    var link = target.closest("[data-transition]");
+    var step = link ? null : target.closest("[data-state]");
+    if (!link && !step) return false;
+
+    var kind = link ? "transition" : "state";
+    var key = link
+      ? Number(link.getAttribute("data-transition"))
+      : step.getAttribute("data-state");
+    /* Right-click selects too, so the diagram shows what the popup is about. */
+    if (link) {
+      if (state.transition !== key) selectTransition(key);
+    } else if (state.stateLabel !== key) {
+      selectState(key);
+    }
+
+    var path = state.selected;
+    var machine = state.machine;
+    openPopup(clientX, clientY, "Loading…", "", "", "");
+    call("source", path, machine, kind, key).then(function (payload) {
+      if (state.selected !== path || state.machine !== machine) return;
+      if (failed(payload, "Could not read the source for " + path)) {
+        closePopup();
+        return;
+      }
+      openPopup(
+        clientX,
+        clientY,
+        payload.code || "(empty)",
+        payload.title,
+        payload.block ? payload.subtitle : payload.subtitle + " - no action block",
+        "line " + payload.line
+      );
+    });
+    return true;
+  }
+
+  function openPopup(clientX, clientY, code, title, subtitle, line) {
+    var popup = $("code-popup");
+    /* Every field is user ST source: textContent, never innerHTML. */
+    $("code-body").textContent = code;
+    $("code-title").textContent = title || "";
+    $("code-subtitle").textContent = subtitle || "";
+    $("code-line").textContent = line || "";
+    popup.classList.remove("hidden");
+
+    /* Place it at the pointer, then pull it back inside the canvas so a step
+       near the right or bottom edge does not open a popup half off-screen. */
+    var canvas = $("canvas").getBoundingClientRect();
+    var x = clientX - canvas.left + 12;
+    var y = clientY - canvas.top + 12;
+    popup.style.left = "0px";
+    popup.style.top = "0px";
+    var width = popup.offsetWidth;
+    var height = popup.offsetHeight;
+    popup.style.left = Math.max(4, Math.min(x, canvas.width - width - 4)) + "px";
+    popup.style.top = Math.max(4, Math.min(y, canvas.height - height - 4)) + "px";
+  }
+
+  function closePopup() {
+    $("code-popup").classList.add("hidden");
+  }
+
   /* ---- zoom and pan ---------------------------------------------------- */
+
 
   function applyTransform() {
     $("svg-host").style.transform =
@@ -468,17 +637,36 @@
   function wireCanvas() {
     var canvas = $("canvas");
     var drag = null;
+    /* A press that never moves more than this is a click on the diagram, not
+       a pan; without the threshold every selection would also nudge the view. */
+    var CLICK_SLOP = 4;
     canvas.addEventListener("mousedown", function (event) {
-      drag = { x: event.clientX - state.panX, y: event.clientY - state.panY };
+      /* The right button opens the code popup; only the left one pans. */
+      if (event.button !== 0) return;
+      if (event.target.closest("#code-popup")) return;
+      closePopup();
+      drag = {
+        x: event.clientX - state.panX,
+        y: event.clientY - state.panY,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+      };
       canvas.classList.add("panning");
     });
     window.addEventListener("mousemove", function (event) {
       if (!drag) return;
+      if (Math.abs(event.clientX - drag.startX) > CLICK_SLOP
+          || Math.abs(event.clientY - drag.startY) > CLICK_SLOP) {
+        drag.moved = true;
+      }
+      if (!drag.moved) return;
       state.panX = event.clientX - drag.x;
       state.panY = event.clientY - drag.y;
       applyTransform();
     });
-    window.addEventListener("mouseup", function () {
+    window.addEventListener("mouseup", function (event) {
+      if (drag && !drag.moved) hitTest(event.target);
       drag = null;
       canvas.classList.remove("panning");
     });
@@ -497,6 +685,21 @@
         event.clientY - rect.top
       );
     }, { passive: false });
+
+    /* The WebView's own context menu has nothing to offer over a diagram, so
+       it is replaced by the code popup; a right-click on empty canvas just
+       closes whatever is open. */
+    canvas.addEventListener("contextmenu", function (event) {
+      event.preventDefault();
+      if (event.target.closest("#code-popup")) return;
+      if (!showSourceFor(event.target, event.clientX, event.clientY)) {
+        closePopup();
+      }
+    });
+    $("code-close").addEventListener("click", closePopup);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") closePopup();
+    });
   }
 
   /* ---- clipboard ------------------------------------------------------- */

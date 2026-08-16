@@ -56,10 +56,23 @@
       </div>
       <p id="summary" class="summary"></p>
       <div class="diagram-body">
-        <div id="canvas" class="canvas" title="Drag to pan. Ctrl+wheel to zoom.">
+        <div id="canvas" class="canvas"
+             title="Drag to pan. Ctrl+wheel to zoom. Right-click a step or a transition for its code.">
           <p id="empty-state" class="empty">Select a file on the left to draw its
             state machine.</p>
           <div id="svg-host" class="svg-host"></div>
+          <div id="code-popup" class="code-popup hidden" role="dialog"
+               aria-label="Source code">
+            <div class="code-head">
+              <div class="code-titles">
+                <strong id="code-title"></strong>
+                <span id="code-subtitle"></span>
+              </div>
+              <span id="code-line" class="code-line"></span>
+              <button id="code-close" type="button" title="Close">×</button>
+            </div>
+            <pre id="code-body" class="code-body"></pre>
+          </div>
         </div>
         <aside class="details">
           <h2>Transitions</h2>
