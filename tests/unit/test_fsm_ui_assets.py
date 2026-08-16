@@ -109,6 +109,16 @@ def test_the_diagram_maps_clicks_back_to_the_data_attributes_it_carries():
     assert "hitTest(event.target)" in app
 
 
+def test_selecting_a_transition_lights_up_the_step_it_leads_into():
+    app = _read("app.js")
+    # A connector names its target instead of reaching it and a fork lands in
+    # another column, so a selected transition that lit up only its own line
+    # left the reader hunting the page for where it goes.
+    assert "function transitionRow(" in app
+    assert "labels = [row.target]" in app
+    assert 'var selector = "[data-state=" + CSS.escape(label) + "]"' in app
+
+
 def test_clicking_the_diagram_is_told_apart_from_panning():
     app = _read("app.js")
     # Without a movement threshold every pan would end in a selection change.

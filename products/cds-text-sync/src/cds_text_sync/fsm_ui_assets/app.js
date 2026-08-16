@@ -467,22 +467,41 @@
       node.classList.remove("selected");
     });
     var indices = [];
+    var labels = [];
     if (state.transition !== null) {
       indices = [state.transition];
+      /* The step it leads into lights up with it. A connector names its
+         target instead of reaching it, and a fork lands in another column,
+         so otherwise the eye has to hunt the page for where this goes. */
+      var row = transitionRow(state.transition);
+      if (row && row.target) labels = [row.target];
     } else if (state.stateLabel !== null) {
       indices = incidentTransitions(state.stateLabel);
+      labels = [state.stateLabel];
+    }
+    labels.forEach(function (label) {
       /* CSS.escape covers labels with quotes or brackets in them. */
-      var stateSelector = "[data-state=" + CSS.escape(state.stateLabel) + "]";
-      host.querySelectorAll(stateSelector).forEach(function (node) {
+      var selector = "[data-state=" + CSS.escape(label) + "]";
+      host.querySelectorAll(selector).forEach(function (node) {
         node.classList.add("selected");
       });
-    }
+    });
     indices.forEach(function (index) {
       var selector = '[data-transition="' + index + '"]';
       host.querySelectorAll(selector).forEach(function (node) {
         node.classList.add("selected");
       });
     });
+  }
+
+  /* The payload transition row carrying *index*, or null when it was dropped
+     from the diagram. */
+  function transitionRow(index) {
+    var rows = (state.render && state.render.transitions) || [];
+    for (var i = 0; i < rows.length; i += 1) {
+      if (rows[i].index === index) return rows[i];
+    }
+    return null;
   }
 
   function scrollRowIntoView(index) {
