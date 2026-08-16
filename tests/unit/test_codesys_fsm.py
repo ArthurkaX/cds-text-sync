@@ -140,6 +140,28 @@ def _merge_machine():
     return machines[0]
 
 
+def _rejoining_machine():
+    """A check whose IF and ELSIF both lead to the same next step, with an
+    ELSE going back to waiting - the shape of a scanner that accepts a part
+    on either of two readings."""
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  IDLE:\n    IF xTrig THEN state := CHECK; END_IF\n"
+        "  CHECK:\n"
+        "    IF xOccupied THEN state := SEND;\n"
+        "    ELSIF xPassing THEN state := SEND;\n"
+        "    ELSE state := IDLE; END_IF\n"
+        "  SEND:\n    IF xSent THEN state := SCAN; END_IF\n"
+        "  SCAN:\n    IF xRead THEN state := IDLE; END_IF\n"
+        "END_CASE\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
 def _branching_machine():
     """A traffic light: two steps have three outgoing transitions each, so
     their bars, receptivities and connector captions have to share the gap
@@ -522,6 +544,42 @@ def test_branches_that_rejoin_are_drawn_as_one_convergence():
 
     guards = sorted(link.guard_text for link in merges)
     assert guards == ["a AND d1", "b AND d2", "c AND d3"] or len(set(guards)) == 3
+
+
+def test_a_second_route_into_the_same_step_rejoins_instead_of_detouring():
+    # CHECK's IF and its ELSIF both end in SEND. The first took the column's
+    # straight link, and the second, finding that slot claimed, counted as a
+    # forward skip: it ran down a lane in the gutter and re-entered SEND from
+    # the left - a U-turn across the page to reach the step directly below.
+    layout = fsm_layout.build_layout(_rejoining_machine())
+    assert [link for link in layout.links if link.kind == "side"] == []
+
+    step = layout.step_for("CHECK")
+    target = layout.step_for("SEND")
+    rejoining = [link for link in layout.links
+                 if link.transition.source == "CHECK"
+                 and link.transition.target == "SEND"]
+    assert len(rejoining) == 2
+    assert set(link.kind for link in rejoining) == set(["merge"])
+
+    # Two branches of one divergence that meet again: they leave the step
+    # together, part on its rail and come back onto a shared rail just above
+    # the step they both enter, which one stem then carries in.
+    rails = set()
+    for link in rejoining:
+        assert link.points[0] == (step.cx, step.bottom)
+        assert link.points[-1] == (target.cx, target.y)
+        assert link.arrow is None, "the flow still runs top to bottom"
+        rails.add(link.points[-2][1])
+    assert len(rails) == 1, "both branches meet on one rail"
+    assert step.bottom < list(rails)[0] < target.y
+
+    # Each keeps its own bar and receptivity on the divergence's own row, so
+    # the pair still reads as the IF/ELSIF it came from, and the first stays
+    # on the column's axis so the sequence reads straight down.
+    assert len(set(link.bar[1] for link in rejoining)) == 1
+    bars = sorted(link.bar[0] for link in rejoining)
+    assert bars[0] == step.cx and bars[1] > step.cx
 
 
 def test_every_transition_leaving_a_step_gets_its_own_branch():

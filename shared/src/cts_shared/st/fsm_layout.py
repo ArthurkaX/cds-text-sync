@@ -471,9 +471,17 @@ def build_layout(machine, measure=None, guard_measure=None):
             continue
         rows = set(row_of[t.source] for t in group)
         cols = set(col_of[t.source] for t in group)
-        # One row and one column each: anything else is not a side-by-side
-        # divergence rejoining, and a rail drawn across it would cross boxes.
-        if len(rows) != 1 or len(cols) != len(group):
+        sources = set(t.source for t in group)
+        # The branches have to stand side by side, each on its own x, or the
+        # rail drawn across them would cross boxes. Either they leave
+        # different columns, or they are branches of one step's divergence,
+        # which the fan below gives a slot each. A step's second route into
+        # the same next step - the ELSIF of an IF/ELSIF that ends in the same
+        # place - passed neither test and ran down a gutter lane instead,
+        # re-entering the step from the left.
+        if len(rows) != 1:
+            continue
+        if len(cols) != len(group) and len(sources) != 1:
             continue
         if row_of[target_label] != list(rows)[0] + 1:
             continue
@@ -492,7 +500,16 @@ def build_layout(machine, measure=None, guard_measure=None):
     # from. They used to be stacked down one stem, which reads as transitions
     # in series - all of them fire, in order - rather than as a choice.
     jump_ids = set(id(t) for t in jumps)
-    chain_ids = set(id(t) for t in chain_links)
+    # A branch that carries its column on: same column, one row further
+    # down. A chain link is one by construction, and so is a merge that
+    # rejoins the step directly below, which is why the test is on the rows
+    # and not on the class - after a convergence is pulled out there is no
+    # chain link left to keep the sequence on the column's axis.
+    axis_ids = set()
+    for t in chain_links + sides + jumps + merges:
+        if (col_of[t.source] == col_of[t.target]
+                and row_of[t.target] == row_of[t.source] + 1):
+            axis_ids.add(id(t))
     fork_ids = set(id(t) for t in forks)
     outgoing_links = {}
     for t in chain_links + forks + sides + jumps + merges:
@@ -530,7 +547,7 @@ def build_layout(machine, measure=None, guard_measure=None):
             # instead.
             anchor = (len(slotted) - 1) / 2.0
             for index in range(len(slotted)):
-                if id(slotted[index]) in chain_ids:
+                if id(slotted[index]) in axis_ids:
                     anchor = index
                     break
             for index in range(len(slotted)):
