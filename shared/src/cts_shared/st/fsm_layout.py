@@ -9,10 +9,14 @@ the first column and each side sequence splits off into its own, starting at
 the row it branches from. A choice between two branches is drawn as two
 ordinary links leaving the same step, with no divergence bar - exactly one
 state is ever active, so a horizontal bar would wrongly read as two branches
-running at once. A backward hop within a column is drawn as a real link
+running at once. Branches that stand side by side on one row and fall into
+the same step below them are drawn as an OR convergence instead: each keeps
+its own bar and receptivity, they meet on a shared rail just above the step
+and one stem enters it. A backward hop within a column is drawn as a real link
 running down a lane in the gutter to its left; anything longer becomes a
-connector, a stub with an arrowhead naming its target, and the target step
-records who arrives there. Priority (source-is-None) transitions form a
+connector - a hook that drops out of the step, turns right and comes back up
+into an arrowhead naming its target - and the target step records who arrives
+there. Priority (source-is-None) transitions form a
 divergence under an "any" box above the steps: one stem down to a horizontal
 rail, then one drop per transition into a chip that shows the block it lands
 in.
@@ -64,7 +68,9 @@ BRANCH_GAP = 44       # gap between two priority branches
 JUMP_MAX_ROWS = 3     # a longer backward hop becomes a connector, not a line
 JUMP_H = 30           # height of a connector's arrow + caption
 JUMP_GAP = 10         # bar -> connector arrow
+JUMP_W = 22           # the connector hook's horizontal run
 INBOUND_W = 26        # left gutter for the "N -> " marker on a jump target
+MERGE_RAIL = 20       # shared convergence rail, this far above the target
 
 
 def _estimate_width(text):
@@ -434,6 +440,38 @@ def build_layout(machine, measure=None, guard_measure=None):
         else:
             jumps.append(t)
 
+    # 6b'. convergence: several branches standing side by side on one row that
+    # all fall into the same step below them. IEC 60848 draws that as an OR
+    # convergence - every branch keeps its own receptivity, they meet on a
+    # shared rail and one stem enters the step - so the group is pulled out of
+    # the ordinary classes and laid out together. Without this the branch in
+    # the target's own column reads as the sequence and the rest arrive as
+    # unrelated connectors, hiding the fact that the routes rejoin.
+    merges = []
+    by_target = {}
+    for t in graph:
+        by_target.setdefault(t.target, []).append(t)
+    for target_label in sorted(by_target.keys()):
+        group = by_target[target_label]
+        if len(group) < 2:
+            continue
+        rows = set(row_of[t.source] for t in group)
+        cols = set(col_of[t.source] for t in group)
+        # One row and one column each: anything else is not a side-by-side
+        # divergence rejoining, and a rail drawn across it would cross boxes.
+        if len(rows) != 1 or len(cols) != len(group):
+            continue
+        if row_of[target_label] != list(rows)[0] + 1:
+            continue
+        merges.extend(group)
+    if merges:
+        merged = set(id(t) for t in merges)
+        chain_links = [t for t in chain_links if id(t) not in merged]
+        forks = [t for t in forks if id(t) not in merged]
+        sides = [t for t in sides if id(t) not in merged]
+        jumps = [t for t in jumps if id(t) not in merged]
+        merges.sort(key=lambda t: col_of[t.source])
+
     # 6c. step width and column x
     step_w = STEP_MIN_W
     for label in order:
@@ -453,7 +491,7 @@ def build_layout(machine, measure=None, guard_measure=None):
     # Every receptivity is drawn to the right of its bar, so a column has to
     # be at least as wide as the longest one or the text lands on its neighbour.
     guard_room = 0
-    for t in chain_links + forks + sides + jumps:
+    for t in chain_links + forks + sides + jumps + merges:
         guard_room = max(guard_room, BAR_HALF + GUARD_GAP
                          + guard_measure(clip_guard(t.guard)))
     guard_room = int(guard_room)
@@ -616,33 +654,56 @@ def build_layout(machine, measure=None, guard_measure=None):
                 links.append(Link("side", t, points, bar, text, guard_at,
                                   guard_w, arrow))
 
-    # 6j. jump connectors
+    # 6j. jump connectors, drawn as the "external link" glyph: down out of the
+    # step, right, then back up into an arrowhead, with the target named
+    # beside the tip. The hook is the same whether the target sits above or
+    # below on the page: a connector is a named hand-off, not a direction, and
+    # two mirrored glyphs would leave the reader weighing the geometry against
+    # the caption. The whole hook stays inside the old stub's footprint, so a
+    # connector still never reaches across the page to the block it names.
     for t in jumps:
         source = step_of[t.source]
         target = step_of[t.target]
         x = source.cx
         bar_y = source.bottom + FORK_DROP
-        end_y = bar_y + JUMP_GAP + JUMP_H
-        points = [(x, source.bottom), (x, bar_y + JUMP_GAP)]
+        tip_y = bar_y + JUMP_GAP
+        foot_y = tip_y + JUMP_H
+        hook_x = x + JUMP_W
+        points = [(x, source.bottom), (x, foot_y),
+                  (hook_x, foot_y), (hook_x, tip_y)]
         bar = (x, bar_y, "h")
         text = clip_guard(t.guard)
         guard_at = (x + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
-        if target.y < source.y:
-            direction = "up"
-            arrow_y = bar_y + JUMP_GAP
-        else:
-            direction = "down"
-            arrow_y = end_y
-        arrow = (x, arrow_y, direction)
+        arrow = (hook_x, tip_y, "up")
         note_text = "{0}  {1}".format(target.number, target.label)
-        note_at = (x + 14, bar_y + JUMP_GAP + 2)
+        # Below the tip rather than level with it: level would collide with
+        # the receptivity, which is drawn to the right of the bar just above.
+        note_at = (hook_x + 10, tip_y + 2)
         links.append(Link("jump", t, points, bar, text, guard_at,
                           guard_measure(text), arrow,
                           note_text=note_text, note_at=note_at,
                           note_w=guard_measure(note_text)))
         target.inbound.append(source.number)
 
-    # 6k. extent
+    # 6k. merge links: the OR convergence. Each branch drops out of its step
+    # through its own bar and receptivity onto one shared rail just above the
+    # target, and a single stem carries them into it. The branch already in
+    # the target's column draws the same way; its rail run is zero-length, so
+    # the three paths still read as one arrival rather than as a special case.
+    for t in merges:
+        source = step_of[t.source]
+        target = step_of[t.target]
+        rail_y = target.y - MERGE_RAIL
+        bar_y = source.bottom + FORK_DROP
+        points = [(source.cx, source.bottom), (source.cx, rail_y),
+                  (target.cx, rail_y), (target.cx, target.y)]
+        bar = (source.cx, bar_y, "h")
+        text = clip_guard(t.guard)
+        guard_at = (source.cx + BAR_HALF + GUARD_GAP, bar_y - TEXT_H // 2)
+        links.append(Link("merge", t, points, bar, text, guard_at,
+                          guard_measure(text), None))
+
+    # 6l. extent
     width = LEFT_MARGIN + INBOUND_W + step_w + 60
     height = 0
     if any_box is not None:

@@ -95,6 +95,30 @@ def _returns_machine():
     return machines[0]
 
 
+def _merge_machine():
+    """Three routes chosen at one step and rejoining at the next - the shape
+    of a sorter that weighs a part, sends it left/forward/right and delivers
+    all three the same way."""
+    from cts_shared.st.fsm import find_machines
+
+    source = (
+        "CASE state OF\n"
+        "  IDLE:\n    IF go THEN state := PICK; END_IF\n"
+        "  PICK:\n"
+        "    IF a THEN state := LEFT; END_IF\n"
+        "    IF b THEN state := MID; END_IF\n"
+        "    IF c THEN state := RIGHT; END_IF\n"
+        "  LEFT:\n    IF d1 THEN state := DONE; END_IF\n"
+        "  MID:\n    IF d2 THEN state := DONE; END_IF\n"
+        "  RIGHT:\n    IF d3 THEN state := DONE; END_IF\n"
+        "  DONE:\n    IF rst THEN state := IDLE; END_IF\n"
+        "END_CASE\n"
+    )
+    machines = [m for m in find_machines(source) if m.is_fsm]
+    assert len(machines) == 1
+    return machines[0]
+
+
 def test_pending_indexes_skips_already_analyzed_blocks():
     items = [
         {"analysis": None},
@@ -334,8 +358,16 @@ def test_a_distant_jump_becomes_a_connector_instead_of_a_line():
         source = layout.step_for(link.transition.source)
         # The connector stops just below its source; it never reaches
         # across the page to the block it names.
-        assert len(link.points) == 2
-        assert link.arrow[2] in ("up", "down")
+        assert len(link.points) == 4
+        assert max(py for _, py in link.points) <= source.bottom + 60
+        # Down, right, back up: the same hook whichever way the target lies,
+        # so the arrowhead reads as "go to", not as a direction on the page.
+        (x0, y0), (x1, y1), (x2, y2), (x3, y3) = link.points
+        assert x0 == x1 == source.cx
+        assert y1 > y0
+        assert x2 == x3 > x1
+        assert y2 == y1 and y3 < y2
+        assert link.arrow == (x3, y3, "up")
         assert link.note_text == "{0}  {1}".format(target.number, target.label)
         # The target says who arrives here, since nothing points at it.
         assert source.number in target.inbound
@@ -360,3 +392,41 @@ def test_receptivity_text_never_runs_over_a_block():
             assert not overlaps, (
                 "receptivity {0!r} lands on a block".format(link.guard_text)
             )
+
+
+def test_branches_that_rejoin_are_drawn_as_one_convergence():
+    # Three routes leave PICK and all end in DONE. Drawn as ordinary links
+    # that would be one sequence plus two connectors, and the reader would
+    # have to notice the captions to see that the routes rejoin at all.
+    layout = fsm_layout.build_layout(_merge_machine())
+    merges = [link for link in layout.links if link.kind == "merge"]
+    assert len(merges) == 3
+    target = layout.step_for(merges[0].transition.target)
+    assert target.label == "DONE"
+
+    rails = set()
+    for link in merges:
+        source = layout.step_for(link.transition.source)
+        assert layout.step_for(link.transition.target) is target
+        (x0, y0), (x1, y1), (x2, y2), (x3, y3) = link.points
+        assert x0 == x1 == source.cx, "the branch leaves its own step"
+        assert y0 == source.bottom and y1 > y0
+        assert y2 == y1, "the middle run is the shared rail"
+        assert x2 == x3 == target.cx and y3 == target.y, "one stem enters"
+        assert y3 > y2
+        # Its own receptivity, above the rail, beside its own bar.
+        assert link.bar[0] == source.cx and link.bar[2] == "h"
+        assert link.bar[1] < y1
+        assert link.arrow is None, "flow runs top-to-bottom"
+        rails.add(y1)
+    assert len(rails) == 1, "every branch meets on one rail"
+
+    # The convergence replaces the connectors: nothing arrives at DONE by
+    # caption any more, so the step needs no "who reaches me" marker.
+    assert target.inbound == []
+    for link in layout.links:
+        if link.transition.target == target.full_label:
+            assert link.kind == "merge"
+
+    guards = sorted(link.guard_text for link in merges)
+    assert guards == ["a AND d1", "b AND d2", "c AND d3"] or len(set(guards)) == 3
