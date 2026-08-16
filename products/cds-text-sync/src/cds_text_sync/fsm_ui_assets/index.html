@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CTS FSM Map</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="titles">
+      <h1>FSM transition map</h1>
+      <p id="workspace-path" class="path">No workspace</p>
+    </div>
+    <div class="actions">
+      <button id="browse" type="button">Change folder…</button>
+      <button id="refresh" type="button">Refresh</button>
+      <button id="rescan" type="button">Rescan</button>
+      <button id="stop" type="button" disabled>Stop</button>
+    </div>
+  </header>
+
+  <p id="snapshot" class="banner hidden"></p>
+  <p id="notice" class="banner hidden"></p>
+
+  <main class="panes">
+    <section class="pane files" aria-label="Workspace files">
+      <div class="filters">
+        <input id="filter" type="search" placeholder="Filter by path…"
+               autocomplete="off" spellcheck="false" aria-label="Filter by path">
+        <div id="state-filters" class="chips" role="group" aria-label="State filter">
+          <button type="button" data-filter="all" class="chip active">All</button>
+          <button type="button" data-filter="fsm" class="chip">FSM</button>
+          <button type="button" data-filter="none" class="chip">No FSM</button>
+          <button type="button" data-filter="pending" class="chip">Pending</button>
+          <button type="button" data-filter="error" class="chip">Errors</button>
+        </div>
+      </div>
+      <p id="progress" class="progress">Loading…</p>
+      <ul id="file-list" class="file-list"></ul>
+    </section>
+
+    <section class="pane diagram" aria-label="Diagram">
+      <div class="diagram-head">
+        <div class="machine-picker">
+          <label for="machine-select">Machine</label>
+          <select id="machine-select" class="hidden"></select>
+        </div>
+        <div class="zoom">
+          <button id="zoom-out" type="button" title="Zoom out">−</button>
+          <button id="zoom-in" type="button" title="Zoom in">+</button>
+          <button id="zoom-fit" type="button">Fit</button>
+          <button id="copy-mermaid" type="button">Copy Mermaid</button>
+          <button id="copy-plantuml" type="button">Copy PlantUML</button>
+        </div>
+      </div>
+      <p id="summary" class="summary"></p>
+      <div class="diagram-body">
+        <div id="canvas" class="canvas"
+             title="Drag to pan. Ctrl+wheel to zoom. Right-click a step or a transition for its code.">
+          <p id="empty-state" class="empty">Select a file on the left to draw its
+            state machine.</p>
+          <div id="svg-host" class="svg-host"></div>
+          <div id="code-popup" class="code-popup hidden" role="dialog"
+               aria-label="Source code">
+            <div class="code-head">
+              <div class="code-titles">
+                <strong id="code-title"></strong>
+                <span id="code-subtitle"></span>
+              </div>
+              <span id="code-line" class="code-line"></span>
+              <button id="code-close" type="button" title="Close">×</button>
+            </div>
+            <pre id="code-body" class="code-body"></pre>
+          </div>
+        </div>
+        <aside class="details">
+          <h2>Transitions</h2>
+          <ul id="transition-list" class="transition-list"></ul>
+          <h2>Warnings</h2>
+          <ul id="warning-list" class="warning-list"></ul>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

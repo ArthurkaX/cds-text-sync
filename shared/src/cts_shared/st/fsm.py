@@ -19,7 +19,7 @@ import re
 from .blanking import blanked
 from .blocks import scan
 from .statements import statements
-from .fsm_rules import normalize, same_family
+from .fsm_rules import family_key, normalize, same_family
 
 _HEAD = re.compile(r"^[A-Za-z_][\w.\[\]]*$")
 _OF = re.compile(r"\bOF\b", re.IGNORECASE)
@@ -65,13 +65,20 @@ class State(object):
 class Transition(object):
     """One state-variable assignment that targets a known state."""
 
-    def __init__(self, source, target, guard, offset, lhs, deferred):
+    def __init__(self, source, target, guard, offset, lhs, deferred,
+                 block_start=None, block_end=None):
         self.source = source
         self.target = target
         self.guard = guard
         self.offset = offset
         self.lhs = lhs
         self.deferred = deferred
+        # Span of the code that runs together with this transition: the body
+        # of the innermost enclosing arm, which is where the transition's
+        # actions live. None when nothing encloses the assignment more tightly
+        # than the state's own branch - there is no separate action block then.
+        self.block_start = block_start
+        self.block_end = block_end
 
 
 def _iter_cases(node):
@@ -113,6 +120,34 @@ def _branch_label_containing(node, offset):
     return None
 
 
+def _branch_span_containing(node, offset):
+    for _label, start, end in node.branches:
+        if start <= offset < (end or offset + 1):
+            return (start, end)
+    return None
+
+
+def _action_span(root, case, offset):
+    """Span of the arm body a transition at *offset* fires inside.
+
+    A transition rarely stands alone: the IF arm that decides it usually also
+    does the work that goes with it (resetting timers, dropping outputs). That
+    arm body is what a reader needs next to the guard, so it is recorded here.
+
+    Returns ``(None, None)`` when the innermost enclosing block is the
+    machine's own CASE or the root: an unconditional transition has no action
+    block of its own, and returning the whole state branch would pretend it
+    does.
+    """
+    node = _innermost_containing(root, offset)
+    if node is case or node is root:
+        return (None, None)
+    span = _branch_span_containing(node, offset)
+    if span is not None:
+        return span
+    return (node.start_offset, node.end_offset)
+
+
 def _guard_for(root, case, offset):
     """Collect the enclosing IF-branch labels for a transition at *offset*.
 
@@ -136,7 +171,40 @@ def _guard_for(root, case, offset):
     return _WS.sub(" ", guard).strip()
 
 
-def _build_machine(text, work, root, case, base):
+def _collect_assignments(work, base):
+    """Index every ``lhs :=`` in the body by the family of its LHS.
+
+    Built once per :func:`find_machines` call and shared by every CASE site.
+    It used to be rebuilt inside each site, so a body with N sites and M
+    assignments cost N*M regex matches and N*M name folds -- quadratic in
+    file size, which is how a large function block came to sit in
+    "analyzing" for a minute under IronPython.
+
+    Control-flow headers (CASE..OF, labels, IF..THEN) are not
+    semicolon-terminated, so a statement can span several lines and hold
+    several assignments; named call arguments (``f(CMD := x)``) are dropped
+    here by looking at the character before the LHS. Values are
+    ``(lhs, lhs_local, rhs_start, rhs_end)`` with offsets local to the text,
+    in source order.
+    """
+    index = {}
+    for abs_offset, stmt in statements(work, base=base):
+        local = abs_offset - base
+        for am in _ASSIGN_IN_STMT.finditer(stmt):
+            lhs = am.group(1)
+            lhs_local = local + am.start(1)
+            prev = lhs_local - 1
+            while prev >= 0 and work[prev] in " \t\n":
+                prev -= 1
+            if prev >= 0 and work[prev] in "(,":
+                continue
+            index.setdefault(family_key(lhs), []).append(
+                (lhs, lhs_local, local + am.end(), local + len(stmt))
+            )
+    return index
+
+
+def _build_machine(text, work, root, case, base, assignments=None):
     local_cs = case.start_offset - base
     kw_end = local_cs + len("CASE")
     of_match = _OF.search(work, kw_end)
@@ -173,50 +241,37 @@ def _build_machine(text, work, root, case, base):
         _NUMERIC_LABEL.match(label) for label, _s, _e in state_branches
     )
 
-    # Assignments, one statement at a time. Control-flow headers (CASE..OF,
-    # labels, IF..THEN) are not semicolon-terminated, so a statement can span
-    # several lines and hold several assignments; scan each statement for
-    # ``lhs :=`` and skip named call arguments (``f(CMD := x)``) by checking
-    # the character before the LHS.
-    for abs_offset, stmt in statements(work, base=base):
-        local = abs_offset - base
-        for am in _ASSIGN_IN_STMT.finditer(stmt):
-            lhs = am.group(1)
-            lhs_local = local + am.start(1)
-            # Skip named function-call arguments: the previous non-space char
-            # before the LHS is "(" or ",".
-            prev = lhs_local - 1
-            while prev >= 0 and work[prev] in " \t\n":
-                prev -= 1
-            if prev >= 0 and work[prev] in "(,":
-                continue
-            if not same_family(lhs, head):
-                continue
-            rhs_start = local + am.end()
-            rhs_end = local + len(stmt)
-            # Match on the blanked text: an inline comment between ":=" and
-            # ";" (``:= ST.B (* go *);``) must not hide the label. The raw
-            # slice is kept only for the human-readable warning.
-            rhs = work[rhs_start:rhs_end].strip()
-            rhs_raw = text[rhs_start:rhs_end].strip()
-            if rhs.upper() in labelset:
-                target = _state_label_for_rhs(machine.states, rhs)
-                source = _source_for_offset(state_branches, lhs_local + base, case_start, case_end)
-                deferred = lhs.upper() != head.upper()
-                guard = _guard_for(root, case, lhs_local + base)
-                machine.transitions.append(
-                    Transition(source, target, guard, lhs_local + base, lhs, deferred)
+    # Assignments to this selector's family, in source order. The index is
+    # keyed by exactly what ``same_family`` compares, so looking the head up
+    # is the same test, run once for the whole file instead of per statement.
+    if assignments is None:
+        assignments = _collect_assignments(work, base)
+    for lhs, lhs_local, rhs_start, rhs_end in assignments.get(family_key(head), ()):
+        # Match on the blanked text: an inline comment between ":=" and
+        # ";" (``:= ST.B (* go *);``) must not hide the label. The raw
+        # slice is kept only for the human-readable warning.
+        rhs = work[rhs_start:rhs_end].strip()
+        rhs_raw = text[rhs_start:rhs_end].strip()
+        if rhs.upper() in labelset:
+            target = _state_label_for_rhs(machine.states, rhs)
+            source = _source_for_offset(state_branches, lhs_local + base, case_start, case_end)
+            deferred = lhs.upper() != head.upper()
+            guard = _guard_for(root, case, lhs_local + base)
+            block_start, block_end = _action_span(root, case, lhs_local + base)
+            machine.transitions.append(
+                Transition(source, target, guard, lhs_local + base, lhs, deferred,
+                           block_start, block_end)
+            )
+        elif normalize(rhs) == normalize(head) and same_family(rhs, head):
+            if machine.commit_offset is None:
+                machine.commit_offset = lhs_local + base
+        else:
+            machine.warnings.append(
+                (
+                    lhs_local + base,
+                    "assigns {0} to the state variable but no branch handles it".format(rhs_raw),
                 )
-            elif normalize(rhs) == normalize(head) and same_family(rhs, head):
-                if machine.commit_offset is None:
-                    machine.commit_offset = lhs_local + base
-            else:
-                machine.warnings.append(
-                    (
-                        lhs_local + base,
-                        "assigns {0} to the state variable but no branch handles it".format(rhs_raw),
-                    )
-                )
+            )
 
     machine.deferred = any(t.deferred for t in machine.transitions)
     machine.is_fsm = len(machine.transitions) > 0
@@ -251,9 +306,10 @@ def find_machines(text, base=0):
     """
     work = blanked(text)
     root = scan(work, base=base)
+    assignments = _collect_assignments(work, base)
     machines = []
     for case in _iter_cases(root):
-        machine = _build_machine(text, work, root, case, base)
+        machine = _build_machine(text, work, root, case, base, assignments)
         if machine is not None:
             machines.append(machine)
     return machines

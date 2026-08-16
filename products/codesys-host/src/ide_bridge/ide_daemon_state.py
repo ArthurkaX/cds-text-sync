@@ -139,7 +139,13 @@ def _get_active_project():
 def _obj_name(obj):
     for attr in ("get_name", "Name", "Title"):
         try:
-            n = getattr(obj, attr)
+            # Pass a default: a missing attribute is the normal case here (an
+            # IScriptProject has neither Name nor Title), and letting getattr
+            # raise makes the ScriptEngine tracer print a traceback per miss —
+            # six figures of Script Messages for one project walk. The
+            # try/except stays for .NET properties that raise something other
+            # than AttributeError.
+            n = getattr(obj, attr, None)
             if callable(n):
                 n = n()
             if n:
@@ -160,7 +166,10 @@ def _project_file_path(prj):
     """
     for attr in ("path", "filename", "FileName", "FullName", "Path"):
         try:
-            val = getattr(prj, attr)
+            # Defaulted getattr for the same reason as _obj_name: four of these
+            # five names miss on any given build, and a raising getattr costs a
+            # traced traceback each time.
+            val = getattr(prj, attr, None)
             if val:
                 return str(val)
         except Exception:

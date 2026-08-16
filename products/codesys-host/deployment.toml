@@ -6,6 +6,7 @@ test_paths = [
   "../../tests/unit/test_bridge_import_order.py",
   "../../tests/unit/test_cli_daemon_protocol.py",
   "../../tests/unit/test_codesys_analyze_ui_launcher.py",
+  "../../tests/unit/test_codesys_external_ui_launcher.py",
   "../../tests/unit/test_daemon_name_resolution.py",
   "../../tests/unit/test_discover_report.py",
   "../../tests/unit/test_find_child_transparent_locale.py",

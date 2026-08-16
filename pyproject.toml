@@ -48,7 +48,7 @@ where = [
 include-package-data = true
 
 [tool.setuptools.package-data]
-cds_text_sync = ["CLI.md", "TEST_FORMAT.md", "ui_assets/*"]
+cds_text_sync = ["CLI.md", "TEST_FORMAT.md", "ui_assets/*", "fsm_ui_assets/*"]
 "cds_text_sync.engine" = ["sys_funcs.json"]
 "cds_text_sync.visu" = [
   "catalog/*.json",

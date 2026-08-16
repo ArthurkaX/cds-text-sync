@@ -1,33 +1,36 @@
-/__pycache__
-/__pycache__/*
-
-/.dev_tools/
-/.dev_tools/*
-/.github/.dev_tools/
-/.github/.dev_tools/*
-
+# Python
 __pycache__
-
-/old_scripts/
-/old_scripts/*
-
-pf
-/profiles/astra.json
-nul
-.playwright-mcp/
-_get_codesys_args.ps1
-plan.md
 *.egg-info/
 build/
 dist/
 .pytest_cache/
 .ruff_cache/
-offline-regression-*/
-*.log
-.handoff/
-temp/
-.claude/
-.mu/
+
+# Internal / scratch tooling
+/.dev_tools/
+/.github/.dev_tools/
+/old_scripts/
 static_analyze/
 probe/
+
+# AI assistant artifacts
+.claude/
+.mu/
+.handoff/
+plan.md
 spec.md
+fix_specs.md
+
+# Logs and temp output
+*.log
+temp/
+offline-regression-*/
+
+# Local dev environment
+.playwright-mcp/
+_get_codesys_args.ps1
+/profiles/astra.json
+
+# Stray / accidental files
+pf
+nul

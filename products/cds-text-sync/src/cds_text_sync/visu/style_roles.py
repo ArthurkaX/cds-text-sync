@@ -36,10 +36,6 @@ from __future__ import print_function
 # (role, [canonical candidates...], literal_fallback)
 _ROLE_DEFS = [
     # --- screen / surface ---------------------------------------------------
-    # ``screen`` is the field the generated visualisation is painted on. It is
-    # deliberately NOT anchored to Element-Background-Color: several shipped
-    # styles use a saturated tint there (flat-style: #FFFFE1) which reads as a
-    # dated screen. ``cts visu from-svg --background style`` opts back in.
     ("screen", [], "#F4F5F7"),
     ("surface", ["Element-Background-Color"], "#F5F5F5"),
     ("screen.background", ["Element-Background-Color"], "#F5F5F5"),
@@ -72,10 +68,6 @@ _ROLE_DEFS = [
     # --- native textfield / text editor -------------------------------------
     ("field.fill", ["Element-Fill-Color"], "#FFFFFF"),
     ("field.frame", ["Element-Frame-Color"], "#BEBEBE"),
-    # The font a textfield draws its value in. Same anchor as ``text``, but a
-    # role of its own: the field box and the text inside it have to be chosen
-    # together, and naming the pair makes that a testable contract rather than
-    # an implicit one (see svg_import's textfield font-colour default).
     ("field.text", ["Font-Default-Color"], "#1F1F1F"),
 
     # --- accent / active ----------------------------------------------------
@@ -86,19 +78,10 @@ _ROLE_DEFS = [
     ("secondary", ["Element-Frame-Color"], "#6A6A6A"),
 
     # --- native button ------------------------------------------------------
-    # Listed *after* the accent block on purpose: ``button.fill`` shares
-    # accent's anchors, and ``_CANONICAL_TO_ROLE`` keeps the first role that
-    # claims a CanonicalName, so moving it earlier would make svg_export
-    # decompile every highlight-coloured element as a button fill.
     ("button.fill", ["Element-Control-HighlightColor", "Dialog-HeaderColor"], "#007ACC"),
     ("button.text", ["Element-Button-FontColor"], "#FFFFFF"),
 
     # --- status / alarm -----------------------------------------------------
-    # Status colours carry *meaning*, so they are curated rather than sampled.
-    # The Element-Control-Color_* anchors are control accents, not semantics:
-    # flat-style resolves _Green to #ADE204 (acid), which reads as decoration
-    # rather than "healthy". Anchors are kept for style-linking; the literal is
-    # what the palette actually serves.
     ("success", ["Element-Control-Color_Green"], "#3F9142"),
     ("warning", ["Element-Control-Color_Yellow"], "#C8860D"),
     ("error", ["Element-Alarm-Frame-Color", "BasicElement-Alarm-Frame-Color"], "#C0392B"),
@@ -147,20 +130,7 @@ CURATED_ROLES = frozenset([
 # The dark scheme
 # ---------------------------------------------------------------------------
 #
-# A second opinion about what each role resolves to, kept as an overlay rather
-# than a fourth element in the ``_ROLE_DEFS`` triples so that "which roles have
-# a dark value" stays a single reviewable list.
-#
-# Every shipped CODESYS style is light, so in dark the palette is authoritative
-# for each role it names -- sampling a light style for ``text`` while we paint
-# the panel behind it dark is exactly how white-on-white happens. ``--scheme
-# light`` (the default) still defers to the project style, and an inline
-# ``<defs><style>:root{...}</style></defs>`` block still overrides everything.
-#
-# Surfaces rise screen -> panel -> card; status colours are lifted from their
-# light values because a dark ground needs more luminance to read as the same
-# signal. Lamps are NOT here: their colour comes from ``Element-Lamp-*``, and
-# an indicator that changes meaning with the scheme would be a safety problem.
+# Dark-scheme overrides for roles that need explicit contrast.
 _DARK_LITERALS = {
     # surfaces
     "screen": "#10141A",

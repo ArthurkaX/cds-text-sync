@@ -23,6 +23,11 @@ from ide_daemon_helpers import (
     _get_sync_folder,
 )
 
+from ide_st_objects import (
+    has_text_document as _has_text_document,
+    read_document as _read_document,
+)
+
 
 def _cmd_export(params):
     project, err = _get_active_project()
@@ -362,35 +367,26 @@ def _cmd_export_st(params):
         errors = []
 
         def _walk_export(obj, folder=""):
-            """Recursively walk project and export POU-like objects."""
+            """Recursively walk project and export objects with ST text.
+
+            An empty name (the root project object has neither Name nor
+            Title) must not stop the walk here -- only skip the export
+            attempt for this particular node and still recurse into its
+            children, or nothing under the project root is ever reached.
+
+            Only the read-only text-document path is used, deliberately.
+            The native ``.save()``/``export_native()`` APIs are gated by the
+            same ``Owner``-group access control as the IDE's Project > Export
+            action; calling them on a restricted project pops a *modal*,
+            thread-blocking login dialog that freezes the whole
+            single-threaded daemon (not a catchable Python exception). An
+            object without a text document has no .st content to produce
+            anyway, so it is skipped rather than handed to those APIs.
+            """
             name = _obj_name(obj)
-            if not name:
-                return
-
-            # Check if this is a POU-like object (has code to export)
             obj_type = str(type(obj).__name__)
-            is_pou = False
-            for t in [
-                "Program",
-                "FunctionBlock",
-                "Function",
-                "Gvl",
-                "Dut",
-                "POU",
-                "IecTask",
-                "Action",
-                "Method",
-                "Property",
-                "GlobalVariableList",
-                "IoConfig",
-                "Device",
-            ]:
-                if t.lower() in obj_type.lower():
-                    is_pou = True
-                    break
 
-            if is_pou:
-                # Try to export via export_native on just this object
+            if name and _has_text_document(obj):
                 safe_name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
                 subfolder = folder
                 if subfolder:
@@ -401,12 +397,14 @@ def _cmd_export_st(params):
                     os.makedirs(obj_dir)
 
                 st_path = os.path.join(obj_dir, safe_name + ".st")
-                xml_path = os.path.join(obj_dir, safe_name + ".xml")
 
                 try:
-                    # Try save to file first (some objects support this)
-                    if hasattr(obj, "save"):
-                        obj.save(st_path)
+                    declaration = _read_document(obj, "textual_declaration")
+                    implementation = _read_document(obj, "textual_implementation")
+                    parts = [part for part in (declaration, implementation) if part]
+                    if parts:
+                        with open(st_path, "wb") as f:
+                            f.write("\n\n".join(parts).encode("utf-8"))
                         if os.path.exists(st_path):
                             size = os.path.getsize(st_path)
                             exported.append(
@@ -418,38 +416,8 @@ def _cmd_export_st(params):
                                 }
                             )
                             return
-
-                    if hasattr(obj, "export_native"):
-                        obj.export_native(st_path)
-                        if os.path.exists(st_path):
-                            size = os.path.getsize(st_path)
-                            exported.append(
-                                {
-                                    "name": name,
-                                    "path": st_path,
-                                    "size": size,
-                                    "type": obj_type,
-                                }
-                            )
-                            return
-
-                    # Fallback: use project.export_native with just this object
-                    if hasattr(project, "export_native"):
-                        project.export_native([obj], xml_path, recursive=False)
-                        if os.path.exists(xml_path):
-                            size = os.path.getsize(xml_path)
-                            exported.append(
-                                {
-                                    "name": name,
-                                    "path": xml_path,
-                                    "size": size,
-                                    "type": obj_type + " (xml)",
-                                }
-                            )
-                            return
-
                     errors.append(
-                        "No export method for: {0} ({1})".format(name, obj_type)
+                        "No readable text for: {0} ({1})".format(name, obj_type)
                     )
                 except Exception as e:
                     errors.append(

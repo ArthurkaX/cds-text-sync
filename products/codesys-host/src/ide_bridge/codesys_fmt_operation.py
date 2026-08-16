@@ -4,12 +4,21 @@ from __future__ import print_function
 
 from codesys_runtime import resolve_runtime
 from codesys_utils import resolve_projects, safe_str
-from ide_runtime_common import object_guid, object_name
-from ide_daemon_helpers import _build_path
 from ide_handlers_sync import _replace_text_document
 from cts_shared.st.formatting import (
     format_declarations as _format_declarations,
     format_implementation as _format_implementation,
+)
+from ide_st_objects import (
+    build_items as _build_items,
+    has_text_document as _has_text_document,
+    iter_textual_objects as _iter_textual_objects,
+    object_key as _object_key,
+    object_label as _object_label,
+    read_document as _read_document,
+    repair_mojibake as _repair_mojibake,
+    selected_object as _selected_object,
+    text_of as _text,
 )
 
 try:
@@ -18,149 +27,9 @@ except Exception:
     codesys_fmt_ui = None
 
 
-try:
-    _UNICODE_TYPE = unicode
-except NameError:
-    _UNICODE_TYPE = str
-
-try:
-    _BYTE_TYPE = bytes
-except NameError:
-    _BYTE_TYPE = str
-
-
-def _repair_mojibake(text):
-    """Repair an obvious UTF-8 -> Latin-1 round trip in IDE text."""
-    def badness(value):
-        return sum(
-            1
-            for char in value
-            if "\x80" <= char <= "\x9f" or char in "ÃÂÐÑ"
-        )
-
-    current = text
-    for _ in range(2):
-        if any(ord(char) > 0xFF for char in current):
-            break
-        try:
-            candidate = current.encode("latin-1").decode("utf-8")
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            break
-        if badness(candidate) >= badness(current):
-            break
-        current = candidate
-    return current
-
-
-def _text(value):
-    """Return IDE text as Unicode while repairing obvious mojibake."""
-    if value is None:
-        return _UNICODE_TYPE()
-    if isinstance(value, _UNICODE_TYPE):
-        return _repair_mojibake(value)
-    if isinstance(value, _BYTE_TYPE):
-        try:
-            return _repair_mojibake(value.decode("utf-8"))
-        except UnicodeDecodeError:
-            return _repair_mojibake(value.decode("cp1251", "replace"))
-    try:
-        return _repair_mojibake(_UNICODE_TYPE(value))
-    except Exception:
-        return _repair_mojibake(_UNICODE_TYPE(str(value)))
-
-
 def format_text(text, declaration=False):
     """Format one pure text section using the shared analyzer core."""
     return _format_declarations(text) if declaration else _format_implementation(text)
-
-
-def _read_document(obj, attribute):
-    document = getattr(obj, attribute, None)
-    if document is None:
-        return None
-    try:
-        value = getattr(document, "text", document)
-        if callable(value):
-            value = value()
-        return _text(value)
-    except Exception as error:
-        raise RuntimeError(
-            "Could not read {0}: {1}".format(attribute, safe_str(error))
-        )
-
-
-def _has_text_document(obj):
-    """Check for a text document without reading its contents."""
-    for attribute in ("textual_declaration", "textual_implementation"):
-        try:
-            if getattr(obj, attribute, None) is not None:
-                return True
-        except Exception:
-            pass
-    return False
-
-
-def _object_key(obj):
-    guid = object_guid(obj)
-    return "guid:" + guid if guid else "id:" + str(id(obj))
-
-
-def _iter_textual_objects(project):
-    try:
-        children = list(project.get_children(recursive=True))
-    except Exception:
-        children = []
-    result = []
-    seen = set()
-    for obj in children:
-        key = _object_key(obj)
-        if key in seen or not _has_text_document(obj):
-            continue
-        seen.add(key)
-        result.append(obj)
-    return result
-
-
-def _selected_object(holder):
-    if holder is None:
-        return None
-    names = (
-        "get_selected_object", "get_selected_objects", "get_current_object",
-        "get_current_selection", "get_active_object", "selected_object",
-        "selected_objects", "current_object", "current_selection",
-        "active_object", "selection",
-    )
-    for name in names:
-        try:
-            value = getattr(holder, name, None)
-            if callable(value):
-                value = value()
-            if isinstance(value, (list, tuple)):
-                value = value[0] if value else None
-            elif value is not None and not _has_text_document(value):
-                try:
-                    value = list(value)[0]
-                except Exception:
-                    pass
-            if value is None:
-                continue
-            for wrapper in ("object", "Object", "value", "Value"):
-                candidate = getattr(value, wrapper, None)
-                if candidate is not None:
-                    value = candidate
-                    break
-            if _has_text_document(value):
-                return value
-        except Exception:
-            pass
-    return None
-
-
-def _object_label(obj):
-    name = object_name(obj) or safe_str(getattr(obj, "name", ""))
-    name = name or "Structured Text object"
-    path = _build_path(obj)
-    return path if path and path.endswith("/" + name) else name
 
 
 def _changed_lines(before, after):
@@ -178,11 +47,19 @@ def _prepare_item(obj):
     before_parts = []
     after_parts = []
     writes = []
+    read_errors = []
     for attribute, is_declaration in (
         ("textual_declaration", True),
         ("textual_implementation", False),
     ):
-        before = _read_document(obj, attribute)
+        # One unreadable section must not discard the section that did read —
+        # a graphical implementation still has a Structured Text declaration
+        # worth formatting.
+        try:
+            before = _read_document(obj, attribute)
+        except Exception as error:
+            read_errors.append(safe_str(error))
+            continue
         if before is None:
             continue
         after = format_text(before, declaration=is_declaration)
@@ -190,6 +67,8 @@ def _prepare_item(obj):
         after_parts.append(after)
         writes.append((attribute, before, after))
     if not writes:
+        if read_errors:
+            raise RuntimeError("; ".join(read_errors))
         return None
 
     # A synthetic source comment here made the preview look as if the IDE had
@@ -207,6 +86,7 @@ def _prepare_item(obj):
         "after": after_all,
         "writes": writes,
         "changed_lines": changed,
+        "read_errors": read_errors,
     }
 
 
@@ -224,15 +104,27 @@ def _analyze_item(item):
         item["status"] = "error"
         item["display"] = item["label"] + "    [not editable]"
         item["analysis"] = "error"
+        item["error"] = "CODESYS did not expose a readable Structured Text section."
         return item
     item.update(prepared)
     item["status"] = "changed" if item["changed_lines"] else "ok"
     item["analysis"] = "done"
-    item["display"] = (
-        item["label"] + "    [{0} line(s) to fix]".format(item["changed_lines"])
-        if item["changed_lines"]
-        else item["label"] + "    [OK]"
-    )
+    if item.get("read_errors"):
+        suffix = (
+            "[{0} line(s) to fix, partial]".format(item["changed_lines"])
+            if item["changed_lines"]
+            else "[OK, partial]"
+        )
+        item["error"] = "; ".join(item["read_errors"])
+        item["suffix"] = suffix
+    else:
+        item["suffix"] = None
+        suffix = (
+            "[{0} line(s) to fix]".format(item["changed_lines"])
+            if item["changed_lines"]
+            else "[OK]"
+        )
+    item["display"] = item["label"] + "    " + suffix
     return item
 
 
@@ -264,33 +156,25 @@ def _apply_item(item):
     return ""
 
 
-def _build_items(project, projects_obj, system):
-    objects = _iter_textual_objects(project)
-    selected = _selected_object(project) or _selected_object(projects_obj) or _selected_object(system)
-    if selected is not None and all(
-        _object_key(selected) != _object_key(obj) for obj in objects
-    ):
-        objects.insert(0, selected)
+def _mark_item_applied(item):
+    """Update picker state without rereading a CODESYS object wrapper.
 
-    items = []
-    for obj in objects:
-        label = _object_label(obj)
-        items.append({
-            "object": obj,
-            "label": label,
-            "display": label,
-            "status": None,
-            "analysis": None,
-        })
-    selected_index = -1
-    if selected is not None:
-        for index, item in enumerate(items):
-            if _object_key(item["object"]) == _object_key(selected):
-                selected_index = index
-                break
-    if selected_index < 0 and items:
-        selected_index = 0
-    return items, selected_index
+    Some IDE versions invalidate the document wrapper immediately after a
+    successful write.  The preview already holds the exact text that was
+    applied, so rereading only to paint ``[OK]`` can turn a valid apply into a
+    misleading "could not be read" row.
+    """
+    item["before"] = item["after"]
+    item["writes"] = [
+        (attribute, after, after)
+        for attribute, _before, after in item.get("writes", [])
+    ]
+    item["changed_lines"] = 0
+    item["status"] = "ok"
+    item["analysis"] = "done"
+    item["suffix"] = None
+    item["display"] = item["label"] + "    [OK]"
+    return item
 
 
 def _show_preview(item, position=None, total=None, progress=None):
@@ -322,6 +206,34 @@ def _scan_next_changed(items, start_index):
         if item.get("status") == "changed":
             return index
     return -1
+
+
+def _scan_one_changed(items, start_index):
+    """Analyze at most one item; the UI can schedule the next call."""
+    index = max(0, start_index)
+    if index >= len(items):
+        return -1
+    item = items[index]
+    if item.get("analysis") is None:
+        _analyze_item(item)
+    return index if item.get("status") == "changed" else index + 1
+
+
+def _log_summary(runtime, status, total, applied=0, skipped=0, errors=0):
+    """Emit one bounded diagnostic line for a completed UI session."""
+    message = (
+        "Project_fmt summary: status={0}; objects={1}; applied={2}; "
+        "skipped={3}; errors={4}."
+    ).format(status, total, applied, skipped, errors)
+    try:
+        runtime.ui.info(message)
+    except Exception:
+        # Diagnostics must never change the formatting result.
+        pass
+
+
+def _error_count(items):
+    return sum(1 for item in items if item.get("status") == "error")
 
 
 def main(params=None, runtime=None):
@@ -360,15 +272,15 @@ def main(params=None, runtime=None):
             return _analyze_item(items[index])
         return None
 
-    def scan_from(index):
-        return _scan_next_changed(items, index)
-
-    action, selected_index = codesys_fmt_ui.show_object_picker(
-        items, selected_index, analyze_selected, scan_from
-    )
-    if action == "cancel":
-        return {"status": "cancelled"}
-    if action == "selected":
+    while True:
+        action, selected_index = codesys_fmt_ui.show_object_picker(
+            items, selected_index, analyze_selected
+        )
+        if action == "cancel":
+            _log_summary(runtime, "cancelled", len(items), errors=_error_count(items))
+            return {"status": "cancelled"}
+        if action != "selected":
+            break
         if selected_index < 0 or selected_index >= len(items):
             return {"status": "cancelled"}
         item = items[selected_index]
@@ -376,71 +288,118 @@ def main(params=None, runtime=None):
             _analyze_item(item)
         if item.get("status") == "error":
             runtime.ui.warning("The selected object could not be read as editable Structured Text.")
-            return {"status": "error", "error": item.get("error", "No editable text")}
+            continue
         if not item.get("changed_lines", 0):
             runtime.ui.info("No formatting changes are needed for '" + item["label"] + "'.")
-            return {"status": "unchanged", "object": item["label"]}
+            continue
         if _show_preview(item) != "apply":
-            return {"status": "cancelled", "object": item["label"]}
+            # Closing a one-object preview is navigation, not cancellation of
+            # Project_fmt. Reopen the picker with the same selection.
+            continue
         error = _apply_item(item)
         if error:
             codesys_fmt_ui.show_message("FMT", error, "error")
-            return {"status": "error", "error": error}
+            continue
         codesys_fmt_ui.show_message("FMT", "Formatting applied to '" + item["label"] + "'.", "info")
-        return {"status": "success", "object": item["label"], "changed_lines": item["changed_lines"]}
+        # Keep the chooser open after a one-object apply as well. Do not read
+        # the CODESYS object again here: some IDE wrappers become stale after
+        # writing, while the preview already tells us the applied result.
+        _mark_item_applied(item)
+        continue
 
     current_index = selected_index
     if current_index < 0 or current_index >= len(items) or items[current_index].get("status") != "changed":
         current_index = _scan_next_changed(items, 0)
     if current_index < 0:
         runtime.ui.info("No formatting changes are needed in the project.")
+        _log_summary(runtime, "unchanged", len(items), errors=_error_count(items))
         return {"status": "unchanged", "changed_objects": 0}
 
-    applied_count = 0
-    skipped_count = 0
-    position = 0
-    while current_index >= 0:
-        position += 1
-        item = items[current_index]
-        preview_action = _show_preview(
-            item,
-            position,
-            progress={"applied": applied_count, "skipped": skipped_count},
+    state = {
+        "current_index": current_index,
+        "applied": 0,
+        "skipped": 0,
+        "position": 1,
+        "searching": False,
+    }
+
+    def preview_for_current():
+        item = items[state["current_index"]]
+        return {
+            "object_name": "{0}   [object {1}; applied {2}, skipped {3}]".format(
+                item["label"], state["position"], state["applied"], state["skipped"]
+            ),
+            "before": item["before"],
+            "after": item["after"],
+            "changed_lines": item["changed_lines"],
+        }
+
+    def advance_wizard(action):
+        if not state["searching"]:
+            item = items[state["current_index"]]
+            if action == "skip":
+                state["skipped"] += 1
+            else:
+                error = _apply_item(item)
+                if error:
+                    codesys_fmt_ui.show_message("FMT", item["label"] + ": " + error, "error")
+                    return {"error": error}
+                state["applied"] += 1
+            state["current_index"] += 1
+            state["searching"] = True
+        state["current_index"] = _scan_one_changed(items, state["current_index"])
+        if state["current_index"] < 0 or state["current_index"] >= len(items):
+            return {"complete": True}
+        if items[state["current_index"]].get("status") != "changed":
+            return {"continue": True}
+        state["searching"] = False
+        state["position"] += 1
+        return {"next": preview_for_current()}
+
+    preview_action = codesys_fmt_ui.show_fmt_wizard(
+        preview_for_current(), advance_wizard
+    )
+    if preview_action != "complete":
+        codesys_fmt_ui.show_message(
+            "FMT",
+            "Wizard cancelled. Applied: {0}; skipped: {1}.".format(
+                state["applied"], state["skipped"]
+            ),
+            "warning",
         )
-        if preview_action == "stop":
-            codesys_fmt_ui.show_message(
-                "FMT",
-                "Wizard cancelled. Applied: {0}; skipped: {1}.".format(
-                    applied_count, skipped_count
-                ),
-                "warning",
-            )
-            return {
-                "status": "cancelled",
-                "applied": applied_count,
-                "skipped": skipped_count,
-                "total": position,
-            }
-        if preview_action == "skip":
-            skipped_count += 1
-        else:
-            error = _apply_item(item)
-            if error:
-                codesys_fmt_ui.show_message("FMT", item["label"] + ": " + error, "error")
-                return {"status": "error", "error": error, "applied": applied_count}
-            applied_count += 1
-        current_index = _scan_next_changed(items, current_index + 1)
+        _log_summary(
+            runtime,
+            "cancelled",
+            len(items),
+            applied=state["applied"],
+            skipped=state["skipped"],
+            errors=_error_count(items),
+        )
+        return {
+            "status": "cancelled",
+            "applied": state["applied"],
+            "skipped": state["skipped"],
+            "total": state["position"],
+        }
 
     codesys_fmt_ui.show_message(
         "FMT",
         "Wizard complete. Applied: {0}; skipped: {1}.".format(
-            applied_count, skipped_count
+            state["applied"], state["skipped"]
         ),
         "info",
     )
+    _log_summary(
+        runtime,
+        "success",
+        len(items),
+        applied=state["applied"],
+        skipped=state["skipped"],
+        errors=_error_count(items),
+    )
     return {
         "status": "success",
-        "applied": applied_count,
-        "skipped": skipped_count,
-        "total": position,
+        "applied": state["applied"],
+        "skipped": state["skipped"],
+        "total": state["position"],
     }
