@@ -4,13 +4,19 @@ runtime = "codesys-ironpython"
 artifact = "flat-deployment-tree"
 test_paths = [
   "../../tests/unit/test_bridge_import_order.py",
+  "../../tests/unit/test_build_message_identifier.py",
   "../../tests/unit/test_cli_daemon_protocol.py",
   "../../tests/unit/test_codesys_analyze_ui_launcher.py",
   "../../tests/unit/test_codesys_external_ui_launcher.py",
+  "../../tests/unit/test_codesys_fmt.py",
+  "../../tests/unit/test_codesys_fsm.py",
   "../../tests/unit/test_daemon_name_resolution.py",
   "../../tests/unit/test_discover_report.py",
   "../../tests/unit/test_find_child_transparent_locale.py",
+  "../../tests/unit/test_fmt_stabilization.py",
   "../../tests/unit/test_ide_sync_apply.py",
+  "../../tests/unit/test_ide_sync_import_refresh.py",
+  "../../tests/unit/test_object_selector_precedence.py",
   "../../tests/unit/test_online_session_guard.py",
   "../../tests/unit/test_project_file_path.py",
   "../../tests/unit/test_project_snapshooter.py",
@@ -20,6 +26,8 @@ test_paths = [
   "../../tests/unit/test_command_registry.py",
   "../../tests/unit/test_snapshot_store.py",
   "../../tests/unit/test_snapshot_retention.py",
+  "../../tests/unit/test_timeout_profile.py",
+  "../../tests/unit/test_ui_attribute_initialization.py",
   "../../tests/regression/ide_apply_patch_regression.py",
   "../../tests/regression/ide_backup_regression.py",
 ]
