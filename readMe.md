@@ -123,6 +123,26 @@ in the open IDE object.
 More details: [Project_fmt script guide](docs/scripts.md#3-project_fmtpy-quick-st-formatting).
 </details>
 
+<details>
+<summary><strong>▶ Click to open the animation: FSM transition map</strong></summary>
+
+If your code is built around state machines and you often have to read one
+quickly — an unfamiliar `CASE`, or your own from six months ago — run
+**`Project_fsm.py`** from **Tools > Scripting**, or `cts fsm ui` from the shell.
+It reads the exported `.st` files offline and draws each machine as a GRAFCET
+diagram: numbered steps, one bar per transition with its receptivity beside it,
+and a step with several ways out fanned out as a divergence. Click a step or a
+transition row to highlight it; right-click either one to read the Structured
+Text it was drawn from.
+
+<p><img src="img/fsm_demo.gif"
+   alt="FSM transition map window"
+   width="100%"></p>
+
+More details: [Project_fsm.py script guide](docs/scripts.md#4-project_fsmpy-fsm-transition-map)
+and [`cts fsm`](products/cds-text-sync/src/cds_text_sync/CLI.md#fsm-transition-maps-cts-fsm).
+</details>
+
 ## 4. I want an LLM agent to control the project
 
 Start **`Project_daemon.py`** from CODESYS Tools > Scripting. It exposes the

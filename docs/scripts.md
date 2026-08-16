@@ -86,7 +86,10 @@ Use this when you want to see state machine(s) from the exported
    transition rows in source order sit on the left — a later write overrides
    an earlier one. Click a state to highlight the edges that touch it, or a
    transition row to highlight exactly that edge.
-6. **Copy Mermaid** puts a `stateDiagram-v2` rendering of the current machine
+6. Right-click a state or a transition to read the Structured Text it was
+   drawn from, in a popup over the diagram. Ctrl+wheel zooms the diagram
+   around the pointer; dragging pans it.
+7. **Copy Mermaid** puts a `stateDiagram-v2` rendering of the current machine
    on the clipboard; **Copy PlantUML** puts the same machine there as a
    `@startuml` block. Both are text only — nothing is sent anywhere.
 
