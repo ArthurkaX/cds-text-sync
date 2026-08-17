@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 3.1.1 (2026-08-17)
+
+**Daemon Settings could never save (GH #64):**
+
+- Unchecking a default-denied operation in the daemon's Settings window always failed with "Failed to save settings", on every project and for every combination of checkboxes. `SettingsForm._save_config()` reached for `_save_daemon_config` through `ide_reverse_pipe_loop`, which re-exports only the `_load_daemon_config` twin — the save half lives in `ide_daemon_state` and was never in the loop's import list. The resulting `ImportError` went into a bare `except Exception: return False`, so it surfaced only as the generic error dialog. Because the load path *was* re-exported, the window opened normally and showed the default deny list, which is what made the broken save easy to miss: the deny list was effectively hard-coded to the defaults.
+- Both helpers now come straight from `ide_daemon_state`. The loop was only ever a pass-through here, and routing through it is what let the two halves drift apart.
+- The same shape had already broken `_cmd_help()`: it imports `HELP_TEXT` from `command_registry`, which defined the dict as `help_text`. That import site is the dict's only reader anywhere in the tree, and every other module-level constant in the file is upper case, so the definition is renamed rather than the import.
+- Regression guard: `tests/unit/test_daemon_deferred_imports.py`. The existing `test_daemon_name_resolution` cannot see either defect — it walks bytecode for `LOAD_GLOBAL` after importing the module, but a deferred `from X import Y` inside a function compiles to `IMPORT_FROM` and binds a local, and `ide_daemon_ui` is skipped outright as WinForms-only. The new guard parses instead of importing: for every `from <sibling> import <name>` at any depth it checks the name against the target's top-level bindings, so the UI modules are covered too.
+- Daemon `VERSION` moves to 2.8.4 so `cts status` and the startup banner distinguish a fixed daemon from a broken one.
+- The CPython packages are **unchanged from 3.1.0** and still report `3.1.0`: nothing outside `products/codesys-host` was touched, and the daemon carries its own version. `cts --version` therefore reads `3.1.0` on a v3.1.1 install — check the daemon version instead.
+
+Verified live on a real project: the deny list saves, `cts permissions` reports it, and it survives closing and reopening the project — so `get_project_info()` hands back a live reference and the write reaches the stored property.
+
+Reported and diagnosed by eddiedon in #64.
+
+---
+
 ### Version 3.1.0 (2026-08-16)
 
 **`cts fsm` - read a `CASE` state machine as a GRAFCET diagram.**
