@@ -1,6 +1,5 @@
 # cds-text-sync
 
-[![CI](https://github.com/ArthurkaX/cds-text-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/ArthurkaX/cds-text-sync/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ArthurkaX/cds-text-sync?include_prereleases&sort=semver)](https://github.com/ArthurkaX/cds-text-sync/releases)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
 
