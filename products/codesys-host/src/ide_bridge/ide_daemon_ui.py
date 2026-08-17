@@ -50,7 +50,7 @@ class SettingsForm(Form):
     def _load_config(self):
         """Load config from the daemon's storage."""
         try:
-            from ide_reverse_pipe_loop import _load_daemon_config
+            from ide_daemon_state import _load_daemon_config
             return _load_daemon_config()
         except Exception:
             return {"poll_ms": 200, "deny": []}
@@ -58,7 +58,7 @@ class SettingsForm(Form):
     def _save_config(self, config):
         """Save config to the daemon's storage."""
         try:
-            from ide_reverse_pipe_loop import _save_daemon_config
+            from ide_daemon_state import _save_daemon_config
             return _save_daemon_config(config)
         except Exception:
             return False

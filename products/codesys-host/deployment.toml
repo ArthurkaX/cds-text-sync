@@ -10,6 +10,7 @@ test_paths = [
   "../../tests/unit/test_codesys_external_ui_launcher.py",
   "../../tests/unit/test_codesys_fmt.py",
   "../../tests/unit/test_codesys_fsm.py",
+  "../../tests/unit/test_daemon_deferred_imports.py",
   "../../tests/unit/test_daemon_name_resolution.py",
   "../../tests/unit/test_discover_report.py",
   "../../tests/unit/test_find_child_transparent_locale.py",

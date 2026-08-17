@@ -109,7 +109,7 @@ DISPATCH_SPECS = {
     "discover": ("direct", "_cmd_discover"),
 }
 
-help_text = {
+HELP_TEXT = {
 "ping": "Check daemon liveness and cached PLC state",
 "status": "Get daemon, project, sync-folder, and cached PLC state",
 "stop": "Stop the daemon",
