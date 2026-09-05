@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**Sync-folder setup is now agent-controllable:**
+
+- `cts set-sync-folder [PATH] [--save]` writes the active project's `cds-sync-folder` property through the daemon. Omitting `PATH` automatically selects the saved project directory (`.`); explicit `./...` paths remain project-relative, while absolute paths are accepted directly.
+- The response reports both stored and resolved paths and calls out unsaved project state. `--save` persists the setting, with the same warning as import that saving also commits other pending IDE edits.
+
+---
+
 ### Version 3.1.1 (2026-08-17)
 
 **Daemon Settings could never save (GH #64):**

@@ -150,6 +150,8 @@ change, compare, import and build without clicking through the IDE:
 
 ```powershell
 cts status                 # check daemon, project and sync folder
+cts set-sync-folder C:\path\to\sync --save  # configure it through the agent
+cts set-sync-folder --save # or automatically use the saved project directory
 cts export                 # CODESYS -> project-view/
 cts compare                # inspect IDE vs disk
 cts import                 # project-view/ -> CODESYS

@@ -8,6 +8,7 @@ Use this reference as a routing guide. Confirm exact syntax with the installed `
 |---|---|
 | Check daemon liveness and cached PLC state | `cts ping` |
 | Inspect daemon, project, sync folder, and PLC state | `cts status` |
+| Configure the project sync folder through the daemon | `cts set-sync-folder [PATH] [--save]` |
 | Read CODESYS IDE messages | `cts read-log` |
 | Inspect daemon permissions | `cts permissions` |
 

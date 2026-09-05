@@ -27,6 +27,7 @@ test_paths = [
   "../../tests/unit/test_command_registry.py",
   "../../tests/unit/test_snapshot_store.py",
   "../../tests/unit/test_snapshot_retention.py",
+  "../../tests/unit/test_set_sync_folder.py",
   "../../tests/unit/test_timeout_profile.py",
   "../../tests/unit/test_ui_attribute_initialization.py",
   "../../tests/regression/ide_apply_patch_regression.py",

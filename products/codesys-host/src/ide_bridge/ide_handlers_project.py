@@ -78,6 +78,104 @@ def _cmd_project_info():
         return {"ok": False, "error": "Project info error: {0}".format(e)}
 
 
+def _cmd_set_sync_folder(params):
+    """Set the active project's ``cds-sync-folder`` property.
+
+    An omitted path deliberately means ``.``: the folder containing the saved
+    CODESYS project.  This gives headless callers a useful automatic setup
+    while keeping the stored value portable when the project is moved.
+    """
+    project, err = _get_active_project()
+    if err:
+        return err
+
+    raw_path = params.get("path", "")
+    try:
+        text_type = unicode
+    except NameError:
+        text_type = str
+    path = text_type(raw_path or "").strip()
+    automatic = not path
+    if automatic:
+        path = "."
+    if "\x00" in path:
+        return {"ok": False, "error": "Sync folder path contains a null byte"}
+
+    # Bare relative paths are ambiguous: CODESYS historically resolves them
+    # against its process working directory.  Require the established ./ form
+    # so every daemon consumer anchors the value against the project file.
+    portable_relative = (
+        path == "." or path.startswith("./") or path.startswith(".\\")
+    )
+    if not os.path.isabs(path) and not portable_relative:
+        return {
+            "ok": False,
+            "error": (
+                "Relative sync folder must be '.' or start with './'. "
+                "Pass an absolute path for a folder outside the project directory."
+            ),
+        }
+
+    project_file = _project_file_path(project)
+    if portable_relative and not project_file:
+        return {
+            "ok": False,
+            "error": (
+                "Cannot use an automatic or relative sync folder because the "
+                "project has not been saved. Save it first, or pass an absolute path."
+            ),
+        }
+
+    try:
+        proj_info = _get_project_info_object(project)
+        if proj_info is None:
+            return {"ok": False, "error": "Project info not available"}
+        props = getattr(proj_info, "values", proj_info)
+        if not hasattr(props, "__setitem__"):
+            return {"ok": False, "error": "Project properties are not writable"}
+
+        stored_path = os.path.normpath(path)
+        props["cds-sync-folder"] = stored_path
+        try:
+            import socket
+
+            props["cds-sync-pc"] = socket.gethostname()
+        except Exception as hostname_error:
+            _log("Could not record sync-folder host: {0}".format(hostname_error))
+
+        resolved_path = stored_path
+        if portable_relative:
+            resolved_path = os.path.normpath(
+                os.path.join(os.path.dirname(project_file), stored_path)
+            )
+
+        saved = False
+        save_error = ""
+        if params.get("save") in (True, 1, "1", "true", "True", "yes", "on"):
+            try:
+                project.save()
+                saved = True
+            except Exception as save_exception:
+                save_error = str(save_exception)
+
+        data = {
+            "sync_folder": stored_path,
+            "resolved_sync_folder": resolved_path,
+            "automatic": automatic,
+            "saved": saved,
+        }
+        if not saved:
+            data["unsaved"] = (
+                "The sync-folder setting changed in memory but was not saved. "
+                "Save the project in CODESYS or re-run with --save."
+            )
+            if save_error:
+                data["save_error"] = save_error
+        return {"ok": True, "data": data}
+    except Exception as e:
+        return {"ok": False, "error": "Could not set sync folder: {0}".format(e)}
+
+
 def _cmd_project_tree(params):
     project, err = _get_active_project()
     if err:

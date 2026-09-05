@@ -50,6 +50,7 @@ These are the primary commands for editing CODESYS projects as text.
 | Command | Direction | Meaning | Timeout |
 | --- | --- | --- | --- |
 | `status` | daemon -> CLI | Show daemon, project, and sync-folder state. | 10s |
+| `set-sync-folder [PATH] [--save]` | CLI -> daemon | Set `cds-sync-folder`; without `PATH`, use the saved project directory. | automatic |
 | `export` | IDE -> disk | Export the open IDE project and refresh `project-view/`; locally modified files are kept by default. | 300s |
 | `compare` | IDE vs disk | Compare the open IDE project against `project-view/`. | 300s |
 | `import` | disk -> IDE | Build `IMPORT.xml` from `project-view/` and apply it to the IDE project. | 600s |

@@ -43,6 +43,7 @@ _DAEMON_METHODS = {
     "app-state": "application_state",
     "plc-crc": "plc_crc",
     "project-info": "project_info",
+    "set-sync-folder": "set_sync_folder",
     "permissions": "permissions",
 }
 
@@ -82,6 +83,11 @@ def dispatch_daemon(args, output_fmt="json"):
 
     if command in _DAEMON_METHODS:
         params = {}
+        if command == "set-sync-folder":
+            if getattr(args, "path", ""):
+                params["path"] = args.path
+            if getattr(args, "save", False):
+                params["save"] = True
         if command == "import":
             if getattr(args, "dry_run", False):
                 # Dry-run shows the same preview as compare.

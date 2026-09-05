@@ -50,6 +50,20 @@ def test_export_maps_to_sync_method(daemon_calls):
     assert daemon_calls == [("sync_export_text", {})]
 
 
+def test_set_sync_folder_maps_path_and_save(daemon_calls):
+    d.dispatch_daemon(
+        _args(command="set-sync-folder", path=r"C:\Sync\Demo", save=True)
+    )
+    assert daemon_calls == [
+        ("set_sync_folder", {"path": r"C:\Sync\Demo", "save": True})
+    ]
+
+
+def test_set_sync_folder_omits_path_for_automatic_setup(daemon_calls):
+    d.dispatch_daemon(_args(command="set-sync-folder", path="", save=False))
+    assert daemon_calls == [("set_sync_folder", {})]
+
+
 def test_import_dry_run_previews_compare(daemon_calls):
     handled = d.dispatch_daemon(
         _args(command="import", dry_run=True, force_online=False)

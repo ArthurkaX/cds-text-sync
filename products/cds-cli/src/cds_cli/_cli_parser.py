@@ -219,6 +219,29 @@ Examples:
 
     # -- project/object tools ----------------------------------------------
     add_daemon_parser(subparsers, "project-info", "Show open project metadata", None)
+    p_sync_folder = add_daemon_parser(
+        subparsers,
+        "set-sync-folder",
+        "Configure sync folder through the daemon (default: saved project directory)",
+        None,
+    )
+    p_sync_folder.add_argument(
+        "path",
+        nargs="?",
+        default="",
+        help=(
+            "Absolute path, or ./path relative to the CODESYS project file. "
+            "Omit to use the project file's directory."
+        ),
+    )
+    p_sync_folder.add_argument(
+        "--save",
+        action="store_true",
+        help=(
+            "Save the CODESYS project after changing the property. This also "
+            "saves any other pending IDE edits."
+        ),
+    )
     p_ptree = add_daemon_parser(subparsers, "project-tree", "Show CODESYS project tree", None)
     p_ptree.add_argument(
         "--depth", type=int, default=0, help="Tree depth, 0 = unlimited"

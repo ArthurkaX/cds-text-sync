@@ -89,6 +89,7 @@ from ide_handlers_build import (
 
 from ide_handlers_project import (
     _cmd_project_info,
+    _cmd_set_sync_folder,
     _cmd_project_tree,
     _cmd_application_state,
     _cmd_connect_to_device,
