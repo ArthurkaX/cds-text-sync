@@ -215,6 +215,8 @@ class AnalyzerApi:
             target.relative_to(root)
         except ValueError:
             return {"ok": False, "error": "Invalid source path."}
+        if target.suffix.lower() not in (".st", ".xml"):
+            return {"ok": False, "error": f"Invalid source file type: {target.suffix}"}
         if not target.is_file():
             return {"ok": False, "error": f"Source file no longer exists: {relative_path}"}
         if line:

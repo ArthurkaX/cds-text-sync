@@ -287,6 +287,14 @@ def _print_rp_error(resp, command):
         _print_info("Diagnostics: {0}".format(json.dumps(diag, ensure_ascii=False)))
 
 
+def _is_negative_number(token: str) -> bool:
+    try:
+        float(token)
+        return token.startswith("-")
+    except ValueError:
+        return False
+
+
 def _parse_key_value_args(args: list[str]) -> dict:
     params = {}
     i = 0
@@ -294,14 +302,18 @@ def _parse_key_value_args(args: list[str]) -> dict:
         arg = args[i]
         if arg.startswith("--"):
             key = arg[2:].replace("-", "_")
-            if i + 1 < len(args) and not args[i + 1].startswith("--"):
+            if i + 1 < len(args) and (not args[i + 1].startswith("--") or _is_negative_number(args[i + 1])):
                 params[key] = args[i + 1]
                 i += 2
             else:
                 params[key] = True
                 i += 1
+        elif _is_negative_number(arg):
+            _print_error(f"Unexpected positional argument: {arg}")
+            sys.exit(1)
         else:
-            i += 1
+            _print_error(f"Unexpected positional argument: {arg}")
+            sys.exit(1)
     return params
 
 

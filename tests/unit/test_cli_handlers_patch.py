@@ -225,3 +225,93 @@ def test_a_failed_compare_exits_non_zero(sync_folder, monkeypatch):
     with pytest.raises(SystemExit) as excinfo:
         p.cmd_patch_save()
     assert excinfo.value.code == 1
+
+
+class TestPatchPathSafety:
+    """Step 2.3 regression tests for patch path containment and validation."""
+
+    def test_normal_nested_st_path(self, tmp_path):
+        root = tmp_path / "view"
+        root.mkdir()
+        resolved = p.resolve_patch_path("sub/nested/file.st", root)
+        assert resolved == (root / "sub" / "nested" / "file.st").resolve()
+
+    def test_parent_traversal_rejected(self, tmp_path):
+        root = tmp_path / "view"
+        root.mkdir()
+        with pytest.raises(ValueError, match="escapes allowed root"):
+            p.resolve_patch_path("../outside.st", root)
+
+    def test_traversal_outside_patch_output(self, tmp_path):
+        root = tmp_path / "patch_root"
+        root.mkdir()
+        with pytest.raises(ValueError, match="escapes allowed root"):
+            p.resolve_patch_path("dir/../../outside.st", root)
+
+    def test_absolute_windows_drive_path_rejected(self, tmp_path):
+        root = tmp_path / "view"
+        root.mkdir()
+        with pytest.raises(ValueError, match="Unsafe absolute"):
+            p.resolve_patch_path(r"C:\Windows\System32\calc.exe", root)
+        with pytest.raises(ValueError, match="Unsafe absolute"):
+            p.resolve_patch_path("C:/Windows/System32/calc.exe", root)
+
+    def test_unc_path_rejected(self, tmp_path):
+        root = tmp_path / "view"
+        root.mkdir()
+        with pytest.raises(ValueError, match="Unsafe absolute"):
+            p.resolve_patch_path(r"\\server\share\file.st", root)
+        with pytest.raises(ValueError, match="Unsafe absolute"):
+            p.resolve_patch_path("//server/share/file.st", root)
+
+    def test_mixed_slash_separators(self, tmp_path):
+        root = tmp_path / "view"
+        root.mkdir()
+        resolved = p.resolve_patch_path(r"sub/nested\file.st", root)
+        assert resolved == (root / "sub" / "nested" / "file.st").resolve()
+
+    def test_symlink_parent_outside_root(self, tmp_path):
+        root = tmp_path / "view"
+        root.mkdir()
+        outside = tmp_path / "outside_dir"
+        outside.mkdir()
+        symlink_dir = root / "symlink_dir"
+        try:
+            symlink_dir.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("Symlink creation not permitted in this environment")
+
+        with pytest.raises(ValueError, match="escapes allowed root"):
+            p.resolve_patch_path("symlink_dir/secret.st", root)
+
+    def test_dry_run_rejection_without_writes(self, sync_folder, stub_daemon, monkeypatch):
+        stub_daemon["objects"]["modified"].append(
+            {
+                "guid": "bad1",
+                "name": "Bad",
+                "type_guid": POU_GUID,
+                "path": "Application/Bad",
+                "projection_diff": {"path": "../escape.st", "format": "st"},
+            }
+        )
+        with pytest.raises(SystemExit) as exc:
+            p.cmd_patch_save(dry_run=True)
+        assert exc.value.code == 1
+        assert _patch_dirs(sync_folder) == []
+    def test_no_partial_patch_output_when_one_entry_is_unsafe(
+        self, sync_folder, stub_daemon, monkeypatch
+    ):
+        stub_daemon["objects"]["modified"].append(
+            {
+                "guid": "bad2",
+                "name": "Bad2",
+                "type_guid": POU_GUID,
+                "path": "Application/Bad2",
+                "projection_diff": {"path": r"C:\escaped.st", "format": "st"},
+            }
+        )
+        with pytest.raises(SystemExit) as exc:
+            p.cmd_patch_save()
+        assert exc.value.code == 1
+        # No partial patch folder created
+        assert _patch_dirs(sync_folder) == []

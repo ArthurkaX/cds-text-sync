@@ -670,20 +670,30 @@ def _merge_enabled(ctx, rule):
 
 def _merge_adjacent(group):
     """Group findings that occupy a contiguous run of source lines."""
-    group = sorted(
-        group, key=lambda f: ((f.location.line or 0), (f.location.column or 0))
+    if not group:
+        return []
+    file_level = [f for f in group if f.location.line is None]
+    line_level = [f for f in group if f.location.line is not None]
+
+    merged = list(file_level)
+    if not line_level:
+        return merged
+
+    line_level = sorted(
+        line_level, key=lambda f: (f.location.line, (f.location.column or 0))
     )
-    runs, current = [], [group[0]]
-    for finding in group[1:]:
+    runs, current = [], [line_level[0]]
+    for finding in line_level[1:]:
         previous = current[-1].location
         previous_end = previous.end_line or previous.line or 0
-        if (finding.location.line or 0) <= previous_end + 1:
+        if finding.location.line <= previous_end + 1:
             current.append(finding)
         else:
             runs.append(current)
             current = [finding]
     runs.append(current)
-    return [_collapse(run, span=True) for run in runs]
+    merged.extend(_collapse(run, span=True) for run in runs)
+    return merged
 
 
 def _merge_identical(group):

@@ -264,3 +264,42 @@ def test_to_dict_carries_the_merge_fields_only_when_merged():
     single = run_rule("CTS0001", snapshot, options={"merge": False})[0].to_dict()
     assert "member_count" not in single
     assert "member_lines" not in single
+
+
+def test_adjacent_merge_leaves_file_level_findings_separate():
+    from cds_static_analyzer.model import Finding, Location
+    from cds_static_analyzer.runner import _merge_adjacent
+
+    f_file = Finding(
+        rule_id="RULE1",
+        severity="warning",
+        message="File-level issue",
+        location=Location("file.st", line=None, column=None),
+    )
+    f_line1 = Finding(
+        rule_id="RULE1",
+        severity="warning",
+        message="Line 1 issue",
+        location=Location("file.st", line=1, column=1),
+    )
+    f_line2 = Finding(
+        rule_id="RULE1",
+        severity="warning",
+        message="Line 2 issue",
+        location=Location("file.st", line=2, column=1),
+    )
+
+    merged = _merge_adjacent([f_file, f_line1, f_line2])
+    assert len(merged) == 2
+    # One is the file-level finding with line=None
+    file_findings = [f for f in merged if f.location.line is None]
+    assert len(file_findings) == 1
+    assert file_findings[0].message == "File-level issue"
+    assert file_findings[0].member_count is None
+
+    # The other is the merged line 1-2 finding
+    line_findings = [f for f in merged if f.location.line is not None]
+    assert len(line_findings) == 1
+    assert line_findings[0].location.line == 1
+    assert line_findings[0].location.end_line == 2
+    assert line_findings[0].member_count == 2

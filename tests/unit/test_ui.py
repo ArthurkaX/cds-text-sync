@@ -70,6 +70,31 @@ def test_open_file_accepts_optional_line(tmp_path, monkeypatch):
     assert calls and calls[0][0:2] == ["code", "-g"]
 
 
+def test_open_file_rejects_disallowed_extensions(tmp_path):
+    api = AnalyzerApi()
+    api._last_project_view = str(tmp_path)
+
+    for disallowed in ("malicious.bat", "run.cmd", "app.exe", "shortcut.lnk", "doc.txt"):
+        f = tmp_path / disallowed
+        f.write_text("dummy", encoding="utf-8")
+        res = api.open_file(disallowed)
+        assert res["ok"] is False
+        assert "Invalid source file type" in res["error"]
+
+
+def test_open_file_accepts_st_and_xml_case_insensitively(tmp_path, monkeypatch):
+    api = AnalyzerApi()
+    api._last_project_view = str(tmp_path)
+    calls = []
+    monkeypatch.setattr("cds_text_sync.ui.os.startfile", lambda path: calls.append(path), raising=False)
+
+    for allowed in ("POU.st", "DATA.ST", "screen.xml", "VISU.XML"):
+        f = tmp_path / allowed
+        f.write_text("content", encoding="utf-8")
+        res = api.open_file(allowed)
+        assert res["ok"] is True
+
+
 def test_source_context_is_limited_to_st_files_and_project_view(tmp_path):
     source = tmp_path / "Main.st"
     source.write_text("PROGRAM Main\nvalue := 1;\nEND_PROGRAM\n", encoding="utf-8")

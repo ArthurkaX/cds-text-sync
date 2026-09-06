@@ -19,12 +19,14 @@ needed its declaration emits a Diagnostic instead of silently ignoring it.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from cds_static_analyzer import progress as progress_mod
 from cds_static_analyzer.file_directives import directive_info
 from cds_static_analyzer.model import Diagnostic, Location, line_col_of
 from cds_static_analyzer.st import kinds as K
+from cts_shared.st.blanking import blanked
 
 # The two implementation markers the engine family understands.
 _IMPLEMENTATION_KEYWORD = "IMPLEMENTATION"
@@ -133,31 +135,25 @@ def _split_st_with_offsets(text):
     """
     normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
 
-    kw_marker = "\n" + _IMPLEMENTATION_KEYWORD + "\n"
-    idx = normalized.find(kw_marker)
-    if idx >= 0:
-        decl = normalized[:idx]
-        impl_start = idx + len(kw_marker)
-        raw_impl = normalized[impl_start:]
-        lead = len(raw_impl) - len(raw_impl.lstrip("\n"))
-        impl = raw_impl[lead:]
-        decl_span = SourceSpan(0, idx, normalized, "declaration")
-        impl_span = SourceSpan(
-            impl_start + lead, len(normalized), normalized, "implementation"
-        )
-        return decl, decl_span, impl, impl_span
+    blank = blanked(normalized)
+    m = re.search(r"^[ \t]*IMPLEMENTATION[ \t]*(?:\n|$)", blank, re.IGNORECASE | re.MULTILINE)
+    if not m:
+        m = re.search(r"^[ \t]*// --- implementation ---[ \t]*(?:\n|$)", normalized, re.IGNORECASE | re.MULTILINE)
 
-    comment_marker = "\n" + _COMMENT_MARKER + "\n"
-    idx = normalized.find(comment_marker)
-    if idx >= 0:
-        decl = normalized[:idx]
-        impl_start = idx + len(comment_marker)
-        raw_impl = normalized[impl_start:]
+    if m:
+        match_start, match_end = m.span()
+        decl_end = (
+            match_start - 1
+            if (match_start > 0 and normalized[match_start - 1] == "\n")
+            else match_start
+        )
+        decl = normalized[:decl_end]
+        raw_impl = normalized[match_end:]
         lead = len(raw_impl) - len(raw_impl.lstrip("\n"))
         impl = raw_impl[lead:]
-        decl_span = SourceSpan(0, idx, normalized, "declaration")
+        decl_span = SourceSpan(0, decl_end, normalized, "declaration")
         impl_span = SourceSpan(
-            impl_start + lead, len(normalized), normalized, "implementation"
+            match_end + lead, len(normalized), normalized, "implementation"
         )
         return decl, decl_span, impl, impl_span
 

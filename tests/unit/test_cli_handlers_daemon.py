@@ -187,3 +187,108 @@ def test_write_failure_exits_nonzero(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         d.dispatch_daemon(_args(command="write", name="X", value="1"))
     assert exc.value.code == 1
+
+
+# ===================================================================
+# Phase 3 Step 3.4: Raw CLI Parsing Tests
+# ===================================================================
+
+
+class TestRawCliParsing:
+    def test_valid_key_value_pairs(self):
+        from cds_cli._cli_io import _parse_key_value_args
+
+        args = ["--timeout", "10", "--name", "Main", "--app_dir", "Device/Plc"]
+        params = _parse_key_value_args(args)
+        assert params == {
+            "timeout": "10",
+            "name": "Main",
+            "app_dir": "Device/Plc",
+        }
+
+    def test_boolean_flags(self):
+        from cds_cli._cli_io import _parse_key_value_args
+
+        args = ["--verbose", "--force", "--timeout", "5"]
+        params = _parse_key_value_args(args)
+        assert params == {
+            "verbose": True,
+            "force": True,
+            "timeout": "5",
+        }
+
+    def test_negative_numeric_values(self):
+        from cds_cli._cli_io import _parse_key_value_args
+
+        args = ["--offset", "-5", "--scale", "-1.25", "--flag"]
+        params = _parse_key_value_args(args)
+        assert params == {
+            "offset": "-5",
+            "scale": "-1.25",
+            "flag": True,
+        }
+
+    def test_unexpected_positional_arguments_exit_nonzero(self, capsys):
+        from cds_cli._cli_io import _parse_key_value_args
+
+        with pytest.raises(SystemExit) as exc:
+            _parse_key_value_args(["extra_arg"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "Unexpected positional argument: extra_arg" in err
+
+    def test_multiple_unexpected_positional_arguments(self, capsys):
+        from cds_cli._cli_io import _parse_key_value_args
+
+        with pytest.raises(SystemExit) as exc:
+            _parse_key_value_args(["arg1", "arg2"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "Unexpected positional argument: arg1" in err
+
+    def test_positional_argument_following_valid_pair(self, capsys):
+        from cds_cli._cli_io import _parse_key_value_args
+
+        with pytest.raises(SystemExit) as exc:
+            _parse_key_value_args(["--key", "value", "stray_arg"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "Unexpected positional argument: stray_arg" in err
+
+    def test_identical_failure_behavior_through_raw_and_rp(self, monkeypatch, capsys):
+        from cds_cli._cli_io import cmd_rp_command
+        import cds_cli.main as cli_main
+
+        # Ensure send_command_reverse is never reached
+        def _must_not_call(*args, **kwargs):
+            pytest.fail("send_command_reverse should not be called when arguments are invalid")
+
+        monkeypatch.setattr("cds_cli._cli_io.send_command_reverse", _must_not_call)
+        monkeypatch.setattr("cds_cli.main.send_command_reverse", _must_not_call)
+
+        # 1. Direct cmd_rp_command invocation with invalid positional
+        with pytest.raises(SystemExit) as exc1:
+            cmd_rp_command(["ping", "unexpected_positional"])
+        assert exc1.value.code == 1
+        err1 = capsys.readouterr().err
+        assert "Unexpected positional argument: unexpected_positional" in err1
+
+        # 2. Dispatch through main() with "raw"
+        monkeypatch.setattr(
+            sys, "argv", ["cts", "raw", "ping", "unexpected_positional"]
+        )
+        with pytest.raises(SystemExit) as exc2:
+            cli_main.main()
+        assert exc2.value.code == 1
+        err2 = capsys.readouterr().err
+        assert "Unexpected positional argument: unexpected_positional" in err2
+
+        # 3. Dispatch through main() with deprecated "rp" alias
+        monkeypatch.setattr(
+            sys, "argv", ["cts", "rp", "ping", "unexpected_positional"]
+        )
+        with pytest.raises(SystemExit) as exc3:
+            cli_main.main()
+        assert exc3.value.code == 1
+        err3 = capsys.readouterr().err
+        assert "Unexpected positional argument: unexpected_positional" in err3

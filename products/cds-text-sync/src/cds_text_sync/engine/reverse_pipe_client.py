@@ -35,15 +35,32 @@ PIPE_UNLIMITED_INSTANCES = 255
 
 INVALID_HANDLE_VALUE = -1
 
+WAIT_OBJECT_0 = 0x00000000
+WAIT_TIMEOUT = 0x00000102
+
 ERROR_PIPE_CONNECTED = 535
 ERROR_FILE_NOT_FOUND = 2
 ERROR_PIPE_BUSY = 231
 ERROR_BROKEN_PIPE = 109
 ERROR_IO_PENDING = 997
+ERROR_OPERATION_ABORTED = 995
 
 # ── Win32 API ──────────────────────────────────────────────────────────────
 
 kernel32 = ctypes.windll.kernel32
+
+
+class OVERLAPPED(ctypes.Structure):
+    _fields_ = [
+        ("Internal", ctypes.c_size_t),
+        ("InternalHigh", ctypes.c_size_t),
+        ("Offset", wintypes.DWORD),
+        ("OffsetHigh", wintypes.DWORD),
+        ("hEvent", wintypes.HANDLE),
+    ]
+
+
+LPOVERLAPPED = ctypes.POINTER(OVERLAPPED)
 
 CreateNamedPipeW = kernel32.CreateNamedPipeW
 CreateNamedPipeW.argtypes = [
@@ -59,7 +76,7 @@ CreateNamedPipeW.argtypes = [
 CreateNamedPipeW.restype = wintypes.HANDLE
 
 ConnectNamedPipe = kernel32.ConnectNamedPipe
-ConnectNamedPipe.argtypes = [wintypes.HANDLE, wintypes.LPVOID]
+ConnectNamedPipe.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
 ConnectNamedPipe.restype = wintypes.BOOL
 
 DisconnectNamedPipe = kernel32.DisconnectNamedPipe
@@ -76,7 +93,7 @@ ReadFile.argtypes = [
     wintypes.LPVOID,
     wintypes.DWORD,
     ctypes.POINTER(wintypes.DWORD),
-    wintypes.LPVOID,
+    LPOVERLAPPED,
 ]
 ReadFile.restype = wintypes.BOOL
 
@@ -86,7 +103,7 @@ WriteFile.argtypes = [
     wintypes.LPVOID,
     wintypes.DWORD,
     ctypes.POINTER(wintypes.DWORD),
-    wintypes.LPVOID,
+    LPOVERLAPPED,
 ]
 WriteFile.restype = wintypes.BOOL
 
@@ -113,7 +130,7 @@ WaitForSingleObject.restype = wintypes.DWORD
 GetOverlappedResult = kernel32.GetOverlappedResult
 GetOverlappedResult.argtypes = [
     wintypes.HANDLE,
-    wintypes.LPVOID,
+    LPOVERLAPPED,
     ctypes.POINTER(wintypes.DWORD),
     wintypes.BOOL,
 ]
@@ -123,15 +140,9 @@ CancelIo = kernel32.CancelIo
 CancelIo.argtypes = [wintypes.HANDLE]
 CancelIo.restype = wintypes.BOOL
 
-
-class OVERLAPPED(ctypes.Structure):
-    _fields_ = [
-        ("Internal", ctypes.POINTER(ctypes.c_ulong)),
-        ("InternalHigh", ctypes.POINTER(ctypes.c_ulong)),
-        ("Offset", wintypes.DWORD),
-        ("OffsetHigh", wintypes.DWORD),
-        ("hEvent", wintypes.HANDLE),
-    ]
+CancelIoEx = kernel32.CancelIoEx
+CancelIoEx.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
+CancelIoEx.restype = wintypes.BOOL
 
 
 # ── Pipe name ──────────────────────────────────────────────────────────────
@@ -144,22 +155,136 @@ def reverse_pipe_name(user: str | None = None) -> str:
     return r"\\.\pipe\cds-cli-" + user
 
 
+# ── Overlapped Operation Primitive ─────────────────────────────────────────
+
+
+def _overlapped_op(
+    handle: int,
+    buf: Any,
+    length: int,
+    is_read: bool,
+    deadline: float,
+    cmd_name: str = "",
+) -> int:
+    """Perform one overlapped ReadFile or WriteFile operation with a deadline.
+
+    Returns the actual number of transferred bytes.
+    """
+    event = CreateEventW(None, True, False, None)
+    if not event:
+        err = GetLastError()
+        raise RuntimeError(f"CreateEventW failed (error {err})")
+
+    overlapped = OVERLAPPED()
+    overlapped.hEvent = event
+    transferred = wintypes.DWORD(0)
+
+    try:
+        if is_read:
+            ok = ReadFile(
+                handle,
+                buf,
+                length,
+                ctypes.byref(transferred),
+                ctypes.byref(overlapped),
+            )
+        else:
+            ok = WriteFile(
+                handle,
+                buf,
+                length,
+                ctypes.byref(transferred),
+                ctypes.byref(overlapped),
+            )
+
+        if ok:
+            # Immediate synchronous completion
+            return transferred.value
+
+        err = GetLastError()
+        if is_read and err == ERROR_BROKEN_PIPE:
+            return 0
+        if err != ERROR_IO_PENDING:
+            op_name = "ReadFile" if is_read else "WriteFile"
+            raise RuntimeError(f"{op_name} failed (error {err})")
+
+        # Asynchronous I/O pending: wait until event is signaled or deadline expires
+        remaining_s = deadline - time.monotonic()
+        remaining_ms = max(0, int(remaining_s * 1000))
+        wait_res = WaitForSingleObject(event, remaining_ms)
+
+        if wait_res == WAIT_OBJECT_0:
+            ok = GetOverlappedResult(
+                handle,
+                ctypes.byref(overlapped),
+                ctypes.byref(transferred),
+                False,
+            )
+            if ok:
+                return transferred.value
+            err = GetLastError()
+            if is_read and err == ERROR_BROKEN_PIPE:
+                return 0
+            op_name = "ReadFile" if is_read else "WriteFile"
+            raise RuntimeError(f"{op_name} overlapped completion failed (error {err})")
+
+        # Timeout or wait failure
+        with contextlib.suppress(Exception):
+            CancelIoEx(handle, ctypes.byref(overlapped))
+        with contextlib.suppress(Exception):
+            GetOverlappedResult(
+                handle,
+                ctypes.byref(overlapped),
+                ctypes.byref(transferred),
+                True,
+            )
+
+        if wait_res == WAIT_TIMEOUT or remaining_s <= 0:
+            if is_read:
+                raise RuntimeError(
+                    f"Timeout waiting for IDE response to "
+                    f"'{cmd_name}'. Giving up here does NOT cancel the command: "
+                    f"the daemon keeps running it, so the IDE may still change "
+                    f"after this error. On a large project export/compare/"
+                    f"import legitimately take minutes -- retry with a bigger "
+                    f"--timeout before assuming a hang. A real hang looks "
+                    f"different: 'cts ping' stops answering too, and then you "
+                    f"check CODESYS for a modal dialog or restart "
+                    f"Project_daemon.py."
+                )
+            raise RuntimeError(f"Timeout writing to IDE pipe for '{cmd_name}'")
+
+        raise RuntimeError(f"WaitForSingleObject failed (result {wait_res})")
+
+    finally:
+        with contextlib.suppress(Exception):
+            CloseHandle(event)
+
+
 # ── Helper: read/write length-prefixed JSON via raw pipe handle ────────────
 
 
-def _write_msg(handle, data: dict) -> None:
+def _write_msg(handle: int, data: dict, deadline: float, cmd_name: str = "") -> None:
     msg = json.dumps(data, ensure_ascii=False).encode("utf-8")
     header = struct.pack("<I", len(msg))
-    written = wintypes.DWORD(0)
-    ok = WriteFile(
-        handle, header + msg, len(header) + len(msg), ctypes.byref(written), None
-    )
-    if not ok:
-        err = GetLastError()
-        raise RuntimeError(f"WriteFile failed (error {err})")
-    # No FlushFileBuffers: local named pipe with FILE_FLAG_OVERLAPPED | PIPE_WAIT
-    # already provides reliable message framing, and a flush forces pointless
-    # kernel round-trips/filter-driver wake-ups on every command.
+    data_to_send = header + msg
+    total_len = len(data_to_send)
+    offset = 0
+
+    while offset < total_len:
+        chunk = data_to_send[offset:]
+        buf = ctypes.create_string_buffer(chunk)
+        written = _overlapped_op(
+            handle,
+            buf,
+            len(chunk),
+            is_read=False,
+            deadline=deadline,
+            cmd_name=cmd_name,
+        )
+        if written <= 0:
+            raise RuntimeError("Pipe disconnected or broken during write")
+        offset += written
 
 
 # Default maximum single response size (bytes). Raised to 32 MiB to support
@@ -167,37 +292,53 @@ def _write_msg(handle, data: dict) -> None:
 DEFAULT_MAX_RESPONSE_SIZE = 32 * 1024 * 1024
 
 
-def _read_msg(handle, max_size: int = DEFAULT_MAX_RESPONSE_SIZE) -> dict:
+def _read_msg(
+    handle: int,
+    deadline: float,
+    cmd_name: str = "",
+    max_size: int = DEFAULT_MAX_RESPONSE_SIZE,
+) -> dict:
     # Read 4-byte length
-    raw_len = b""
+    raw_len = bytearray()
     while len(raw_len) < 4:
-        buf = ctypes.create_string_buffer(4)
-        read = wintypes.DWORD(0)
-        ok = ReadFile(handle, buf, 4 - len(raw_len), ctypes.byref(read), None)
-        if not ok:
-            err = GetLastError()
-            raise RuntimeError(f"ReadFile failed reading header (error {err})")
-        raw_len += buf.raw[: read.value]
+        needed = 4 - len(raw_len)
+        buf = ctypes.create_string_buffer(needed)
+        n = _overlapped_op(
+            handle,
+            buf,
+            needed,
+            is_read=True,
+            deadline=deadline,
+            cmd_name=cmd_name,
+        )
+        if n == 0:
+            raise RuntimeError("Pipe disconnected while reading header")
+        raw_len.extend(buf.raw[:n])
 
-    msg_len = struct.unpack("<I", raw_len[:4])[0]
+    (msg_len,) = struct.unpack("<I", bytes(raw_len[:4]))
     if msg_len == 0:
         return {}
     if msg_len > max_size:
         raise RuntimeError(f"Response too large: {msg_len} bytes")
 
     # Read body
-    raw_msg = b""
+    raw_msg = bytearray()
     while len(raw_msg) < msg_len:
-        chunk = min(msg_len - len(raw_msg), 65536)
-        buf = ctypes.create_string_buffer(chunk)
-        read = wintypes.DWORD(0)
-        ok = ReadFile(handle, buf, chunk, ctypes.byref(read), None)
-        if not ok:
-            err = GetLastError()
-            raise RuntimeError(f"ReadFile failed reading body (error {err})")
-        raw_msg += buf.raw[: read.value]
+        chunk_size = min(msg_len - len(raw_msg), 65536)
+        buf = ctypes.create_string_buffer(chunk_size)
+        n = _overlapped_op(
+            handle,
+            buf,
+            chunk_size,
+            is_read=True,
+            deadline=deadline,
+            cmd_name=cmd_name,
+        )
+        if n == 0:
+            raise RuntimeError("Pipe disconnected while reading body")
+        raw_msg.extend(buf.raw[:n])
 
-    return json.loads(raw_msg.decode("utf-8"))
+    return json.loads(bytes(raw_msg).decode("utf-8"))
 
 
 # ── Reverse Pipe Client ────────────────────────────────────────────────────
@@ -209,8 +350,8 @@ _last_ide_pid: int | None = None
 class ReversePipeClient:
     """CLI creates a pipe server, IDE connects as client.
 
-    Uses overlapped I/O for ConnectNamedPipe so we can timeout
-    without blocking the calling thread.
+    Uses overlapped I/O for ConnectNamedPipe, ReadFile, and WriteFile
+    with a single end-to-end timeout budget.
     """
 
     def __init__(self, user: str | None = None, timeout: float = 30):
@@ -376,10 +517,9 @@ class ReversePipeClient:
                     # Waiting for connection — wait with remaining budget
                     remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                     wait_result = WaitForSingleObject(event, remaining_ms)
-                    if wait_result != 0:  # 0 = WAIT_OBJECT_0
-                        # Timeout — check IDE process status for a helpful hint
+                    if wait_result != WAIT_OBJECT_0:
                         hint = self._diagnose_ide_timeout()
-                        CancelIo(pipe_handle)
+                        CancelIoEx(pipe_handle, ctypes.byref(overlapped))
                         raise RuntimeError(
                             f"Timeout ({self._timeout}s) waiting for IDE to connect to "
                             f"{self._pipe_path}. The daemon never picked up this "
@@ -398,51 +538,18 @@ class ReversePipeClient:
                     )
                     if not ok:
                         err = GetLastError()
-                        CancelIo(pipe_handle)
+                        CancelIoEx(pipe_handle, ctypes.byref(overlapped))
                         raise RuntimeError(
                             f"Overlapped ConnectNamedPipe failed (error {err})"
                         )
                 else:
-                    CancelIo(pipe_handle)
+                    CancelIoEx(pipe_handle, ctypes.byref(overlapped))
                     raise RuntimeError(f"ConnectNamedPipe failed (error {err})")
 
-            # Connected! Use blocking I/O for the rest of the exchange.
-
-            # Write command
+            # Connected! Write command and read response directly in calling thread
             cmd = {"method": method, "params": params}
-            _write_msg(pipe_handle, cmd)
-
-            # Read response with the same deadline. CODESYS API calls can
-            # block after the IDE has already accepted the pipe request.
-            box: dict[str, Any] = {}
-
-            def _reader():
-                try:
-                    box["response"] = _read_msg(pipe_handle)
-                except Exception as exc:
-                    box["error"] = exc
-
-            reader = threading.Thread(target=_reader, daemon=True)
-            reader.start()
-            reader.join(max(0, deadline - time.monotonic()))
-            if reader.is_alive():
-                CancelIo(pipe_handle)
-                CloseHandle(pipe_handle)
-                pipe_handle = -1
-                raise RuntimeError(
-                    f"Timeout ({self._timeout}s) waiting for IDE response to "
-                    f"'{method}'. Giving up here does NOT cancel the command: "
-                    f"the daemon keeps running it, so the IDE may still change "
-                    f"after this error. On a large project export/compare/"
-                    f"import legitimately take minutes -- retry with a bigger "
-                    f"--timeout before assuming a hang. A real hang looks "
-                    f"different: 'cts ping' stops answering too, and then you "
-                    f"check CODESYS for a modal dialog or restart "
-                    f"Project_daemon.py."
-                )
-            if "error" in box:
-                raise box["error"]
-            response = box.get("response", {})
+            _write_msg(pipe_handle, cmd, deadline=deadline, cmd_name=method)
+            response = _read_msg(pipe_handle, deadline=deadline, cmd_name=method)
 
             # Cache PID from responses that include it
             if isinstance(response, dict):
@@ -455,15 +562,17 @@ class ReversePipeClient:
             return response
 
         finally:
-            # Clean up
-            with contextlib.suppress(Exception):
-                CancelIo(pipe_handle)
-            with contextlib.suppress(Exception):
-                DisconnectNamedPipe(pipe_handle)
-            with contextlib.suppress(Exception):
-                CloseHandle(pipe_handle)
-            with contextlib.suppress(Exception):
-                CloseHandle(event)
+            # Clean up idempotently
+            if pipe_handle > 0 and pipe_handle != INVALID_HANDLE_VALUE:
+                with contextlib.suppress(Exception):
+                    CancelIo(pipe_handle)
+                with contextlib.suppress(Exception):
+                    DisconnectNamedPipe(pipe_handle)
+                with contextlib.suppress(Exception):
+                    CloseHandle(pipe_handle)
+            if event:
+                with contextlib.suppress(Exception):
+                    CloseHandle(event)
 
 
 # ── Convenience ────────────────────────────────────────────────────────────

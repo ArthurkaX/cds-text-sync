@@ -6,6 +6,7 @@ folder_writer.py - Writes the in-memory ProjectModel to a Git-friendly folder st
 import codecs
 import json
 import os
+import tempfile
 import time
 
 from _dirty_scan import dirty_view_paths
@@ -36,6 +37,35 @@ def _timestamp():
 
 def _log(message):
     print("[{0}] {1}".format(_timestamp(), message))
+
+
+def _atomic_write_text(dest_path, content, encoding="utf-8", newline=""):
+    """Atomically write text content to dest_path via a uniquely named temp file."""
+    parent = os.path.dirname(dest_path)
+    if parent:
+        ensure_dir(parent)
+    temp_path = None
+    try:
+        temp_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=parent or None,
+            delete=False,
+            encoding=encoding,
+            newline=newline,
+        )
+        temp_path = temp_file.name
+        with temp_file as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, dest_path)
+    except Exception:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        raise
 
 
 def _normalize_fs_path(path):
@@ -273,11 +303,11 @@ class FolderWriter:
                             full_path, root_path=target_root
                         )
                     except Exception as e:
-                        _log(
-                            "Warning: Could not remove managed view file: {0} {1}".format(
+                        raise RuntimeError(
+                            "Failed to delete previously managed file {0}: {1}".format(
                                 full_path, e
                             )
-                        )
+                        ) from e
         return removed
 
     def _ensure_view_root_not_changed(self, previous_root):
@@ -538,8 +568,7 @@ class FolderWriter:
                 write_content = pragma_line + "\n" + content
             else:
                 write_content = content
-            with codecs.open(full_path, "w", "utf-8") as f:
-                f.write(write_content)
+            _atomic_write_text(full_path, write_content, encoding="utf-8")
             _log("Projection emitted: {0} -> {1}".format(node.name, projection_path))
             projection_paths.append(projection_path)
             projection_hashes[projection_path] = sha1_hex(write_content)
@@ -708,8 +737,7 @@ class FolderWriter:
         else:
             ensure_dir(os.path.dirname(full_path))
             self._canonicalize_existing_path(full_path)
-            with codecs.open(full_path, "w", "utf-8") as handle:
-                handle.write(xml_text)
+            _atomic_write_text(full_path, xml_text, encoding="utf-8")
             emitted_paths.add(full_path)
             if projection_paths and self._has_st_projection(projection_options):
                 _log("XML externalized for projection: {0}".format(xml_path))
@@ -762,8 +790,8 @@ class FolderWriter:
             manifest["sync_mode"] = self.sync_mode
 
         ensure_dir(self.dump_path)
-        with open(self.manifest_path, "w") as f:
-            json.dump(manifest, f, indent=2)
+        manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+        _atomic_write_text(self.manifest_path, manifest_json, encoding="utf-8")
 
         if self._skipped_dirty:
             print(

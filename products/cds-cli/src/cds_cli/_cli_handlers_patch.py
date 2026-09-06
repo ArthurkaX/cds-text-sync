@@ -19,6 +19,7 @@ import os
 import shutil
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from cds_cli._cli_handlers_vars import _resolve_sync_folder
 from cds_cli._cli_io import (
@@ -33,6 +34,31 @@ PATCH_DIRNAME = "patch"
 PATCH_PREFIX = "patch_"
 MANIFEST_FILENAME = "patch.json"
 README_FILENAME = "README.txt"
+
+
+def resolve_patch_path(relative_str: str, root_dir: str | Path) -> Path:
+    """Resolve and validate that relative_str stays safely within root_dir.
+
+    Rejects empty paths, paths without filename, absolute drive paths, UNC
+    paths, rooted paths, and directory traversal outside root_dir. Resolves
+    existing symlinks and junctions.
+    """
+    if not relative_str or not str(relative_str).strip():
+        raise ValueError("Patch path cannot be empty")
+    s = str(relative_str).replace("/", os.sep)
+    # Reject absolute drive, UNC, or root-prefixed paths before Path normalization
+    p = Path(s)
+    if p.is_absolute() or p.drive or s.startswith(("\\\\", os.sep, "/")):
+        raise ValueError(f"Unsafe absolute, rooted, or UNC patch path: {relative_str}")
+
+    root_resolved = Path(root_dir).resolve()
+    # Resolve against explicit root
+    target = (root_resolved / p).resolve()
+    if not target.is_relative_to(root_resolved) or target == root_resolved:
+        raise ValueError(f"Patch path escapes allowed root: {relative_str}")
+    if not target.name or target.name in (".", ".."):
+        raise ValueError(f"Patch path contains no file name: {relative_str}")
+    return target
 
 
 def _timestamp():
@@ -171,13 +197,20 @@ def cmd_patch_save(
         layout.dump_root, PATCH_DIRNAME, PATCH_PREFIX + _timestamp()
     )
     out_dir = os.path.abspath(out_dir)
+    target_root = os.path.join(out_dir, view_dirname) if view_dirname else out_dir
 
     files = []
     missing = []
     for item in changeset.get("files") or []:
         relative_path = item["path"]
-        source = os.path.join(layout.view_root, relative_path.replace("/", os.sep))
-        if not os.path.isfile(source):
+        try:
+            source_path = resolve_patch_path(relative_path, layout.view_root)
+            resolve_patch_path(relative_path, target_root)
+        except ValueError as err:
+            _print_error(f"Unsafe patch path rejected: {err}")
+            sys.exit(1)
+
+        if not source_path.is_file():
             missing.append(relative_path)
             continue
         files.append(item)
@@ -207,15 +240,19 @@ def cmd_patch_save(
         print(_format_output(summary, fmt=output_fmt, title="patch_save"))
         return
 
-    target_root = os.path.join(out_dir, view_dirname) if view_dirname else out_dir
     for item in files:
-        relative_path = item["path"].replace("/", os.sep)
-        source = os.path.join(layout.view_root, relative_path)
-        destination = os.path.join(target_root, relative_path)
-        parent = os.path.dirname(destination)
-        if parent and not os.path.isdir(parent):
-            os.makedirs(parent)
-        shutil.copy2(source, destination)
+        relative_path = item["path"]
+        try:
+            source_path = resolve_patch_path(relative_path, layout.view_root)
+            dest_path = resolve_patch_path(relative_path, target_root)
+        except ValueError as err:
+            _print_error(f"Unsafe patch path rejected: {err}")
+            sys.exit(1)
+
+        parent = dest_path.parent
+        if not parent.is_dir():
+            parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(source_path), str(dest_path))
 
     if not bare:
         with open(

@@ -9,9 +9,12 @@ Uses ``tmp_path`` but keeps tests small.  Uses minimal
 import codecs
 import json
 import os
+import tempfile
+from unittest.mock import patch
+import pytest
 
 from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
-from cds_text_sync.engine.folder_writer import FolderWriter
+from cds_text_sync.engine.folder_writer import FolderWriter, _atomic_write_text
 
 
 def _write_manifest(dump_path, manifest_data):
@@ -575,3 +578,170 @@ class TestTextFirstExport:
         assert not os.path.exists(os.path.join(dump, "xml", "Folder", "MyObj.xml"))
         assert os.path.exists(os.path.join(views, "Folder", "Renamed.st"))
         assert os.path.exists(os.path.join(dump, "xml", "Folder", "Renamed.xml"))
+
+
+# ===================================================================
+# Phase 2 Step 2.7: Atomic write helper & export reliability tests
+# ===================================================================
+
+
+class TestExportAtomicAndReliability:
+    def test_atomic_write_byte_equivalence(self, tmp_path):
+        dest = str(tmp_path / "sub" / "file.txt")
+        text = "Hello\nWorld\r\nTest\u00e9\n"
+        _atomic_write_text(dest, text, encoding="utf-8")
+        assert os.path.exists(dest)
+        with open(dest, "rb") as f:
+            written_bytes = f.read()
+        assert written_bytes == text.encode("utf-8")
+
+    def test_atomic_write_failure_during_write_leaves_destination_unchanged(self, tmp_path):
+        dest = str(tmp_path / "test.txt")
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write("original content")
+
+        original_named_temp_file = tempfile.NamedTemporaryFile
+
+        def _mock_named_temp_file(*args, **kwargs):
+            tf = original_named_temp_file(*args, **kwargs)
+            # Patch file.write on the underlying file object to raise an error
+            original_write = tf.file.write
+
+            def _bad_write(s):
+                raise IOError("Disk full simulation")
+
+            tf.file.write = _bad_write
+            return tf
+
+        with patch("cds_text_sync.engine.folder_writer.tempfile.NamedTemporaryFile", side_effect=_mock_named_temp_file):
+            with pytest.raises(IOError, match="Disk full simulation"):
+                _atomic_write_text(dest, "new content")
+
+        with open(dest, "r", encoding="utf-8") as f:
+            assert f.read() == "original content"
+        # Ensure no stray temp files left in directory
+        assert os.listdir(str(tmp_path)) == ["test.txt"]
+
+    def test_atomic_write_failed_replace_leaves_destination_and_cleans_temp(self, tmp_path):
+        dest = str(tmp_path / "test.txt")
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write("original content")
+
+        with patch("os.replace", side_effect=OSError("Replace locked")):
+            with pytest.raises(OSError, match="Replace locked"):
+                _atomic_write_text(dest, "new content")
+
+        with open(dest, "r", encoding="utf-8") as f:
+            assert f.read() == "original content"
+        assert os.listdir(str(tmp_path)) == ["test.txt"]
+
+    def test_manifest_publication_remains_last(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        model, profile, projections = _pou_model_and_profile()
+
+        order_of_writes = []
+        original_atomic = _atomic_write_text
+
+        def _tracking_atomic(dest_path, content, encoding="utf-8", newline=""):
+            order_of_writes.append(os.path.basename(dest_path))
+            return original_atomic(dest_path, content, encoding=encoding, newline=newline)
+
+        with patch("cds_text_sync.engine.folder_writer._atomic_write_text", side_effect=_tracking_atomic):
+            writer = FolderWriter(views, dump, profile=profile, projections=projections)
+            writer.write(model)
+
+        assert order_of_writes[-1] == "manifest.json"
+        assert "MyObj.st" in order_of_writes[:-1]
+
+    def test_manifest_write_failure_does_not_truncate_previous_manifest(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        model, profile, projections = _pou_model_and_profile()
+        writer = FolderWriter(views, dump, profile=profile, projections=projections)
+        writer.write(model)
+
+        manifest_path = os.path.join(dump, "manifest.json")
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            original_manifest_content = f.read()
+
+        original_atomic = _atomic_write_text
+
+        def _fail_on_manifest(dest_path, content, encoding="utf-8", newline=""):
+            if "manifest.json" in dest_path:
+                raise IOError("Manifest disk full")
+            return original_atomic(dest_path, content, encoding=encoding, newline=newline)
+
+        with patch("cds_text_sync.engine.folder_writer._atomic_write_text", side_effect=_fail_on_manifest):
+            node = model.nodes["g1"]
+            node.name = "ModifiedObj"
+            with pytest.raises(IOError, match="Manifest disk full"):
+                FolderWriter(views, dump, profile=profile, projections=projections).write(model)
+
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            assert f.read() == original_manifest_content
+
+    def test_projection_or_xml_write_failure_does_not_truncate_previous_file(self, tmp_path):
+        dest = str(tmp_path / "file.st")
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write("original st content")
+
+        with patch("os.replace", side_effect=OSError("Replace locked")):
+            with pytest.raises(OSError, match="Replace locked"):
+                _atomic_write_text(dest, "corrupted partial content")
+
+        with open(dest, "r", encoding="utf-8") as f:
+            assert f.read() == "original st content"
+
+    def test_managed_file_deletion_failure_aborts_and_manifest_not_updated(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        model, profile, projections = _pou_model_and_profile()
+        FolderWriter(views, dump, profile=profile, projections=projections).write(model)
+
+        manifest_path = os.path.join(dump, "manifest.json")
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            original_manifest_data = json.load(f)
+
+        # Rename node so old file needs to be pruned
+        node = model.nodes["g1"]
+        node.name = "RenamedObj"
+        node.output_name = None
+
+        with patch("os.remove", side_effect=PermissionError("File locked by process")):
+            with pytest.raises(RuntimeError, match="Failed to delete previously managed file.*File locked by process"):
+                FolderWriter(views, dump, profile=profile, projections=projections).write(model)
+
+        # Manifest must NOT have been updated with RenamedObj
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            current_manifest_data = json.load(f)
+        assert current_manifest_data == original_manifest_data
+        entry_names = [e["name"] for e in current_manifest_data["entries"]]
+        assert "MyObj" in entry_names
+        assert "RenamedObj" not in entry_names
+
+    def test_dirty_files_preserved_during_export(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        model, profile, projections = _pou_model_and_profile()
+        FolderWriter(views, dump, profile=profile, projections=projections).write(model)
+
+        st_file = os.path.join(views, "Folder", "MyObj.st")
+        dirty_content = "(* user dirty edit *)\nPROGRAM MyObj\nEND_PROGRAM"
+        with open(st_file, "w", encoding="utf-8") as f:
+            f.write(dirty_content)
+
+        # Export again with default overwrite_dirty=False
+        writer = FolderWriter(views, dump, profile=profile, projections=projections)
+        writer.write(model)
+
+        with open(st_file, "r", encoding="utf-8") as f:
+            assert f.read() == dirty_content
