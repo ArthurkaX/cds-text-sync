@@ -14,6 +14,10 @@ import json
 import os
 import tempfile
 import time
+import re
+import hashlib
+import io
+import datetime
 
 import ide_runtime_common as _common
 
@@ -41,6 +45,147 @@ from ide_st_text import split_st_text
 # and even `import --dry-run` each write one, at well over a megabyte a piece.
 # Matches the default of backup_retention_count so the two limits agree.
 SNAPSHOT_RETENTION_COUNT = 10
+_DOC_SOURCE_EXTENSIONS = (".st", ".library", ".compiled-library", ".xml", ".csv")
+_DOC_PROJECT_EXTENSIONS = (".st", ".csv")
+_DOC_LIBRARY_EXTENSIONS = _DOC_SOURCE_EXTENSIONS + (".html", ".htm", ".md", ".json", ".txt")
+_DOC_LIBRARY_SUBDIRECTORIES = ("LibDoc", "Managed Libraries")
+
+
+def _doc_library_roots(root):
+    """Return documentation-bearing subtrees of a CODESYS installation."""
+    root_name = os.path.basename(os.path.normpath(root)).lower()
+    if root_name in [name.lower() for name in _DOC_LIBRARY_SUBDIRECTORIES]:
+        return [root]
+    existing = [os.path.join(root, name) for name in _DOC_LIBRARY_SUBDIRECTORIES
+                if os.path.isdir(os.path.join(root, name))]
+    return existing or [root]
+
+
+def _doc_file_allowed(name, root):
+    lower = name.lower()
+    if lower == "browsercache":
+        return True
+    root_name = os.path.basename(root).lower()
+    if root_name == "managed libraries":
+        extensions = (".md",)
+    elif root_name == "libdoc":
+        extensions = ()
+    else:
+        extensions = _DOC_LIBRARY_EXTENSIONS
+    return lower.endswith(extensions)
+
+
+def _cmd_generate_docs(params=None):
+    """Generate an LLM-friendly documentation bundle from the sync folder.
+
+    This daemon-side fallback deliberately uses only Python 2.7-compatible
+    code. It mirrors the CPython generator's manifest, index, symbol records,
+    and source bundle so either execution path has the same output contract.
+    """
+    sync_dir, error = _get_sync_folder()
+    if not sync_dir:
+        return {"ok": False, "error": "Cannot resolve sync folder: {0}".format(error or "unknown")}
+    params = params or {}
+    library_root = params.get("library_path") or r"C:\ProgramData\CODESYS"
+    output_root = params.get("output") or os.path.join(sync_dir, ".cts-docs")
+    if not os.path.isabs(output_root):
+        output_root = os.path.join(sync_dir, output_root)
+    if not os.path.isdir(output_root):
+        os.makedirs(output_root)
+    project_root = os.path.join(sync_dir, "project-view")
+    if not os.path.isdir(project_root):
+        project_root = sync_dir
+    declaration = re.compile(
+        r"^\s*<?\s*(FUNCTION_BLOCK|FUNCTION|PROGRAM|INTERFACE|STRUCT|TYPE|ENUM|ALIAS)\s+([A-Za-z_]\w*)",
+        re.I | re.M,
+    )
+    rows = []
+    file_counts = {"project": 0, "library": 0, "declarations": 0}
+    groups = [("project", project_root, _DOC_PROJECT_EXTENSIONS)]
+    groups.extend(("library", root, _DOC_LIBRARY_EXTENSIONS)
+                  for root in _doc_library_roots(library_root))
+    symbols_path = os.path.join(output_root, "symbols.jsonl")
+    bundle_path = os.path.join(output_root, "bundle.md")
+    with io.open(symbols_path, "w", encoding="utf-8") as symbols, \
+            io.open(bundle_path, "w", encoding="utf-8") as bundle:
+        bundle.write("# CODESYS source bundle\n\n")
+        bundle.write("This file is generated. Use the source/path headings to cite a file.\n\n")
+        for source_name, root, _extensions in groups:
+            if not os.path.isdir(root):
+                continue
+            for current, _dirs, names in os.walk(root):
+                names.sort(key=lambda item: item.lower())
+                for name in names:
+                    if source_name == "project":
+                        allowed = name.lower().endswith(_DOC_PROJECT_EXTENSIONS)
+                    else:
+                        allowed = _doc_file_allowed(name, root)
+                    if not allowed:
+                        continue
+                    path = os.path.join(current, name)
+                    try:
+                        with open(path, "rb") as stream:
+                            content = stream.read()
+                        binary = content.startswith("PK") or "\x00" in content[:4096]
+                        text = (u"[binary library artifact; textual documentation unavailable]"
+                                if binary else content.decode("utf-8", "replace"))
+                        parse_text = text.lstrip(u"\ufeff")
+                        relative = os.path.relpath(path, root).replace("\\", "/")
+                        declarations = [
+                            {"kind": m.group(1).upper(), "name": m.group(2),
+                             "line": parse_text[:m.start()].count("\n") + 1}
+                            for m in declaration.finditer(parse_text)
+                        ]
+                        row = {
+                            "source": source_name,
+                            "path": relative,
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                            "bytes": len(content),
+                            "declarations": declarations,
+                            "text_available": not binary,
+                        }
+                        rows.append(row)
+                        file_counts[source_name] += 1
+                        file_counts["declarations"] += len(declarations)
+                        symbols.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + u"\n")
+                        bundle.write("## {0}: `{1}`\n\n".format(source_name, relative))
+                        bundle.write("SHA-256: `{0}`  \n".format(row["sha256"]))
+                        names_text = ", ".join("{0} {1}".format(item["kind"], item["name"])
+                                              for item in declarations) or "none"
+                        bundle.write("Declarations: {0}\n\n```text\n".format(names_text))
+                        bundle.write(text.rstrip("\n"))
+                        bundle.write("\n```\n\n")
+                    except Exception:
+                        continue
+    rows.sort(key=lambda row: (row["source"], row["path"].lower()))
+    generated_at = datetime.datetime.utcnow().isoformat() + "Z"
+    manifest = {
+        "format": "cts-docs/v1",
+        "generated_at": generated_at,
+        "project_view": project_root,
+        "libraries": library_root,
+        "library_path_exists": os.path.isdir(library_root),
+        "counts": {
+                "files": len(rows),
+                "project_files": file_counts["project"],
+                "library_files": file_counts["library"],
+                "declarations": file_counts["declarations"],
+        },
+    }
+    manifest_path = os.path.join(output_root, "manifest.json")
+    with io.open(manifest_path, "w", encoding="utf-8") as stream:
+        stream.write(json.dumps(manifest, indent=2, ensure_ascii=False) + u"\n")
+    with io.open(os.path.join(output_root, "index.md"), "w", encoding="utf-8") as stream:
+        stream.write("# CODESYS documentation bundle\n\n")
+        stream.write("Generated: `{0}`\n\n".format(generated_at))
+        stream.write("- Project view: `{0}`\n- Libraries: `{1}`\n\n".format(project_root, library_root))
+        stream.write("- Files: {0}\n- Declarations: {1}\n\n".format(
+            manifest["counts"]["files"], manifest["counts"]["declarations"]))
+        stream.write("| Source | Path | Declarations | SHA-256 |\n|---|---|---:|---|\n")
+        for row in rows:
+            stream.write("| {0} | `{1}` | {2} | `{3}` |\n".format(
+                row["source"], row["path"], len(row["declarations"]), row["sha256"][:16]))
+    return {"ok": True, "data": {"output": output_root, "manifest": manifest}}
 
 
 def _is_snapshot_name(name):

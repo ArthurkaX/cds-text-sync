@@ -246,6 +246,26 @@ def main():
         if code:
             sys.exit(code)
 
+    elif args.command == "docs":
+        if getattr(args, "daemon", False):
+            from cds_cli._cli_io import cmd_daemon
+
+            params = {}
+            if getattr(args, "library_path", ""):
+                params["library_path"] = args.library_path
+            if getattr(args, "output", ""):
+                params["output"] = args.output
+            cmd_daemon("generate_docs", params, timeout=args.timeout, output_fmt="json")
+            return
+        from cds_text_sync.docgen import generate_docs
+
+        result = generate_docs(
+            getattr(args, "workspace", "") or ".",
+            library_path=getattr(args, "library_path", "") or None,
+            output=getattr(args, "output", "") or None,
+        )
+        print(result["output"])
+
     elif args.command == "visu-lint":
         from visu_lint.cli import cmd_visu_lint
 

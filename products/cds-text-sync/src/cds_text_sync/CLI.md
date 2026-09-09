@@ -602,3 +602,27 @@ If the installed command is not found, use the source form:
 ```bash
 python -m cds_cli.main status --timeout 10
 ```
+
+## Documentation bundle
+
+Generate an LLM-friendly inventory of the exported project and installed
+CODESYS libraries:
+
+```powershell
+cts docs --workspace C:\path\to\sync
+cts docs --workspace C:\path\to\sync --libraries "C:\ProgramData\CODESYS"
+cts docs --daemon --libraries "C:\ProgramData\CODESYS"
+```
+
+The library path defaults to `C:\ProgramData\CODESYS`. Output is written to
+`.cts-docs/`:
+
+- `index.md` is a small inventory for browsing;
+- `bundle.md` contains the source text in stable, path-labelled Markdown
+  sections suitable for an LLM context;
+- `symbols.jsonl` contains one machine-readable record per file;
+- `manifest.json` records source roots, counts, and whether the library path
+  exists.
+
+The daemon endpoint is `generate_docs`. Its output uses the same files and
+format, so a daemon run and a local CPython run can be consumed identically.
