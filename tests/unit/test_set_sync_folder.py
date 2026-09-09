@@ -3,6 +3,9 @@
 
 import os
 import sys
+from types import SimpleNamespace
+
+import pytest
 
 
 _IDE_BRIDGE = os.path.normpath(
@@ -83,15 +86,34 @@ def test_explicit_unicode_absolute_path_is_stored_without_saving(monkeypatch, tm
     assert project.save_calls == 0
 
 
-def test_bare_relative_path_is_rejected(monkeypatch, tmp_path):
+@pytest.mark.parametrize("path", ["sync", "../sync", "./../sync", r"..\sync"])
+def test_relative_setting_round_trips_through_daemon(monkeypatch, tmp_path, path):
+    import ide_daemon_helpers as helpers
+
     project = _Project(str(tmp_path / "Demo.project"))
     _install_project(monkeypatch, project)
 
-    result = handlers._cmd_set_sync_folder({"path": "sync"})
+    result = handlers._cmd_set_sync_folder({"path": path})
+
+    assert result["ok"] is True
+    expected = os.path.normpath(os.path.join(str(tmp_path), path.replace("\\", os.sep)))
+    assert result["data"]["resolved_sync_folder"] == expected
+    assert helpers._get_sync_folder() == (expected, None)
+    assert project.save_calls == 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows path semantics")
+@pytest.mark.parametrize("path", ["D:sync", "C:", r"\sync", "/sync", "bad\x00path"])
+def test_invalid_setting_preserves_existing_property(monkeypatch, tmp_path, path):
+    project = _Project(str(tmp_path / "Demo.project"))
+    project.info.values["cds-sync-folder"] = "original"
+    _install_project(monkeypatch, project)
+
+    result = handlers._cmd_set_sync_folder({"path": path, "save": True})
 
     assert result["ok"] is False
-    assert "start with './'" in result["error"]
-    assert "cds-sync-folder" not in project.info.values
+    assert project.info.values == {"cds-sync-folder": "original"}
+    assert project.save_calls == 0
 
 
 def test_automatic_path_requires_a_saved_project(monkeypatch):
@@ -102,3 +124,29 @@ def test_automatic_path_requires_a_saved_project(monkeypatch):
 
     assert result["ok"] is False
     assert "project has not been saved" in result["error"]
+
+
+@pytest.mark.parametrize("saved", [True, False])
+def test_menu_validates_relative_path_before_updating_properties(monkeypatch, tmp_path, saved):
+    import codesys_directory_operation as directory
+
+    project = _Project(str(tmp_path / "Demo.project") if saved else "")
+    project.info.values["cds-sync-folder"] = "original"
+    errors = []
+    runtime = SimpleNamespace(
+        system=SimpleNamespace(ui=SimpleNamespace(browse_directory_dialog=lambda *args: "../sync")),
+        ui=SimpleNamespace(error=errors.append, info=lambda message: None),
+    )
+    monkeypatch.setitem(sys.modules, "codesys_ui", SimpleNamespace(show_directory_choice_dialog=lambda *args: "yes"))
+
+    result = directory.set_base_directory(runtime, _Projects(project))
+
+    if saved:
+        assert result["status"] == "ok"
+        assert result["relative"] is True
+        assert project.info.values["cds-sync-folder"] == os.path.normpath("../sync")
+        assert not errors
+    else:
+        assert result["status"] == "error"
+        assert errors
+        assert project.info.values == {"cds-sync-folder": "original"}

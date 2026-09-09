@@ -15,6 +15,8 @@ import subprocess
 import threading
 import time
 
+from codesys_utils import _path_text, resolve_sync_folder
+
 READY_LINE = "CTS-UI-READY"
 READY_TIMEOUT_SECONDS = 8.0
 _INSTALL_HINT = 'Install the optional UI dependency with: pip install -e ".[ui]"'
@@ -38,28 +40,16 @@ def project_sync_folder(project):
             value = props.get("cds-sync-folder", "")
         except Exception:
             value = ""
-    sync_folder = str(value or "").strip()
+    sync_folder = _path_text(value)
     if not sync_folder:
         return None, (
             "Sync folder is not configured. Run Project_directory.py first."
         )
 
-    relative = not os.path.isabs(sync_folder)
-    if relative:
-        project_path = str(getattr(project, "path", "") or "").strip()
-        if not project_path:
-            return None, (
-                "Cannot resolve the relative sync folder because the project "
-                "has no saved file path. Save it, or configure an absolute "
-                "folder with Project_directory.py."
-            )
-        sync_folder = os.path.normpath(
-            os.path.join(
-                os.path.dirname(project_path),
-                sync_folder.replace("/", os.sep).replace("\\", os.sep),
-            )
-        )
-    return os.path.abspath(sync_folder), None
+    try:
+        return resolve_sync_folder(sync_folder, project), None
+    except ValueError as error:
+        return None, str(error)
 
 
 def body_root():

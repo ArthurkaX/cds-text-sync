@@ -15,7 +15,7 @@ from __future__ import print_function
 import os
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import log_info, resolve_projects
+from codesys_utils import log_info, resolve_projects, resolve_sync_folder
 
 
 def main(params=None, runtime=None):
@@ -97,7 +97,7 @@ def set_base_directory(runtime, projects_obj):
                                    "  ./                          - Project directory\n" + \
                                    "  ./folderName/      - 'folderName' folder in project directory\n" + \
                                    "  C:\\MySync\\         - Absolute path\n\n" + \
-                                   "Relative paths (starting with ./) are resolved relative to the project file location."
+                                   "Relative paths (sync, ./sync, ../sync) use the saved project file location."
             lbl_instructions.Location = Point(20, 15)
             lbl_instructions.Size = Size(460, 100)
             form.Controls.Add(lbl_instructions)
@@ -152,8 +152,13 @@ def set_base_directory(runtime, projects_obj):
     # Normalize path separators
     selected_path = selected_path.replace('/', os.sep).replace('\\', os.sep)
 
-    # Check if path is relative
-    is_relative = selected_path.startswith('.' + os.sep) or selected_path == '.'
+    try:
+        resolve_sync_folder(selected_path, proj)
+    except ValueError as error:
+        message = str(error)
+        runtime.ui.error(message)
+        return {"status": "error", "error": message}
+    is_relative = not os.path.isabs(selected_path)
 
     # Save strictly to project properties
     try:

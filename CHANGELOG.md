@@ -8,8 +8,14 @@ All notable changes to this project will be documented in this file.
 
 **Sync-folder setup is now agent-controllable:**
 
-- `cts set-sync-folder [PATH] [--save]` writes the active project's `cds-sync-folder` property through the daemon. Omitting `PATH` automatically selects the saved project directory (`.`); explicit `./...` paths remain project-relative, while absolute paths are accepted directly.
+- `cts set-sync-folder [PATH] [--save]` writes the active project's `cds-sync-folder` property through the daemon. Omitting `PATH` automatically selects the saved project directory (`.`); relative paths (`sync`, `./sync`, `../sync`) use that directory, while fully qualified absolute paths are accepted directly.
 - The response reports both stored and resolved paths and calls out unsaved project state. `--save` persists the setting, with the same warning as import that saving also commits other pending IDE edits.
+
+**Consistent project-relative sync directories (GH #65):**
+
+- `../sync` and `./../sync` now select the same absolute directory in daemon operations, legacy menus, external UI, project discovery and snapshooter settings/logs. Previously some consumers used the process working directory, potentially missing the intended Text-first settings.
+- All consumers share the saved-project path lookup, including `FullName`/`filename` fallbacks and Unicode paths. Relative folders require an absolute saved project path; fully qualified drive and UNC paths work without a saved project.
+- Ambiguous Windows paths (`D:sync`, `D:`, `\sync`) are rejected explicitly, independent of Python's version-dependent `isabs` behavior. Menu and CLI validation happens before updating project properties.
 
 ---
 

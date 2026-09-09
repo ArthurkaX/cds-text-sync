@@ -17,6 +17,8 @@ import os
 import sys
 import time
 
+from codesys_utils import project_file_path
+
 # ── Configuration ──────────────────────────────────────────────────────────
 
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
@@ -164,17 +166,7 @@ def _project_file_path(prj):
     call sites did) leaves relative sync-folder resolution unanchored on builds
     such as SP18, which then falls through to a misleading "Access denied".
     """
-    for attr in ("path", "filename", "FileName", "FullName", "Path"):
-        try:
-            # Defaulted getattr for the same reason as _obj_name: four of these
-            # five names miss on any given build, and a raising getattr costs a
-            # traced traceback each time.
-            val = getattr(prj, attr, None)
-            if val:
-                return str(val)
-        except Exception:
-            pass
-    return ""
+    return project_file_path(prj)
 
 
 def _json_safe(value):

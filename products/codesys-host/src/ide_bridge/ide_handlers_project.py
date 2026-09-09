@@ -12,6 +12,8 @@ import os
 import sys
 import traceback
 
+from codesys_utils import resolve_sync_folder
+
 import ide_online_helpers as _helpers
 import ide_runtime_common as _common  # noqa: F401 – imported for completeness; bodies may use _common
 
@@ -101,30 +103,10 @@ def _cmd_set_sync_folder(params):
     if "\x00" in path:
         return {"ok": False, "error": "Sync folder path contains a null byte"}
 
-    # Bare relative paths are ambiguous: CODESYS historically resolves them
-    # against its process working directory.  Require the established ./ form
-    # so every daemon consumer anchors the value against the project file.
-    portable_relative = (
-        path == "." or path.startswith("./") or path.startswith(".\\")
-    )
-    if not os.path.isabs(path) and not portable_relative:
-        return {
-            "ok": False,
-            "error": (
-                "Relative sync folder must be '.' or start with './'. "
-                "Pass an absolute path for a folder outside the project directory."
-            ),
-        }
-
-    project_file = _project_file_path(project)
-    if portable_relative and not project_file:
-        return {
-            "ok": False,
-            "error": (
-                "Cannot use an automatic or relative sync folder because the "
-                "project has not been saved. Save it first, or pass an absolute path."
-            ),
-        }
+    try:
+        resolved_path = resolve_sync_folder(path, project)
+    except ValueError as error:
+        return {"ok": False, "error": str(error)}
 
     try:
         proj_info = _get_project_info_object(project)
@@ -134,7 +116,7 @@ def _cmd_set_sync_folder(params):
         if not hasattr(props, "__setitem__"):
             return {"ok": False, "error": "Project properties are not writable"}
 
-        stored_path = os.path.normpath(path)
+        stored_path = os.path.normpath(path.replace("/", os.sep).replace("\\", os.sep))
         props["cds-sync-folder"] = stored_path
         try:
             import socket
@@ -142,12 +124,6 @@ def _cmd_set_sync_folder(params):
             props["cds-sync-pc"] = socket.gethostname()
         except Exception as hostname_error:
             _log("Could not record sync-folder host: {0}".format(hostname_error))
-
-        resolved_path = stored_path
-        if portable_relative:
-            resolved_path = os.path.normpath(
-                os.path.join(os.path.dirname(project_file), stored_path)
-            )
 
         saved = False
         save_error = ""
@@ -709,14 +685,14 @@ def _cmd_probe_oa(params):
 
 
 def _sync_folder_for_project(project):
-    """Read the project's cds-sync-folder property, or "" if unavailable."""
+    """Resolve the project's sync root, or return "" if unavailable."""
     try:
         proj_info = _get_project_info_object(project)
         if proj_info is not None:
             props = _project_info_properties(proj_info)
             sf = props.get("cds-sync-folder", "")
             if sf:
-                return str(sf)
+                return resolve_sync_folder(sf, project)
     except Exception as error:
         _log("Could not read project sync-folder property: {0}".format(error))
     return ""
