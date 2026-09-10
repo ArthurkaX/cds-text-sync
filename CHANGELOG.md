@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Unreleased
 
+**`cts docs` produces compact documentation instead of a source dump:**
+
+- The generator no longer walks the whole CODESYS installation tree and no longer emits raw source text. It now documents the project's own POUs and **only the libraries the project actually references**, each as symbol + description + interface table.
+- Referenced libraries are read from the exported Library Manager objects (`project-view/**/Library Manager.xml`). Every manager is read and merged — a project typically has more than one (application plus visualization), and reading only one silently loses libraries.
+- Library descriptions and interfaces come from the installed LibDoc trees under `C:\ProgramData\CODESYS\LibDoc`. The `Scope` column there is emitted with `rowspan` over a group of rows, so the parser carries the last seen scope forward; without that, parameters quietly land in the wrong scope.
+- Unresolved references are reported, not worked around: a referenced library with no LibDoc on the machine is listed under **Missing LibDoc** rather than resolved to some other version. Installed-but-unreferenced libraries are listed by name only, with an explicit note that adding one is a user action in the IDE.
+- **Breaking:** `bundle.md` is gone (a stale copy is deleted on the next run) and `symbols.jsonl` changed from one record per file to one record per symbol: `{source, library, version, kind, name, path, line, description, interface}`. `manifest.json` is now `format: "cts-docs/v2"` with symbol-level counts and `libraries_missing`.
+- The daemon endpoint `generate_docs` was a full IronPython 2.7 mirror of the old generator, kept format-compatible by hand. It is now a sync-folder resolver only; generation always runs locally in CPython.
+
 **Sync-folder setup is now agent-controllable:**
 
 - `cts set-sync-folder [PATH] [--save]` writes the active project's `cds-sync-folder` property through the daemon. Omitting `PATH` automatically selects the saved project directory (`.`); explicit `./...` paths remain project-relative, while absolute paths are accepted directly.

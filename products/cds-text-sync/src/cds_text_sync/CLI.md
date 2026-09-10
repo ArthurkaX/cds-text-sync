@@ -605,8 +605,8 @@ python -m cds_cli.main status --timeout 10
 
 ## Documentation bundle
 
-Generate an LLM-friendly inventory of the exported project and installed
-CODESYS libraries:
+Generate compact, LLM-friendly documentation for the exported project and for
+the libraries the project actually references:
 
 ```powershell
 cts docs --workspace C:\path\to\sync
@@ -615,14 +615,49 @@ cts docs --daemon --libraries "C:\ProgramData\CODESYS"
 ```
 
 The library path defaults to `C:\ProgramData\CODESYS`. Output is written to
-`.cts-docs/`:
+`.cts-docs/` in format `cts-docs/v2`:
 
-- `index.md` is a small inventory for browsing;
-- `bundle.md` contains the source text in stable, path-labelled Markdown
-  sections suitable for an LLM context;
-- `symbols.jsonl` contains one machine-readable record per file;
-- `manifest.json` records source roots, counts, and whether the library path
-  exists.
+- `project.md` — one section per project POU: kind, name, source path, the
+  doc comment, and an interface table (`Scope | Name | Type | Initial | Comment`).
+- `libraries/<Name>-<Version>.md` — one file per referenced library, with the
+  same per-POU sections plus the declared signature. Descriptions and
+  interfaces come from the installed LibDoc tree
+  (`<libraries>\LibDoc\<Vendor>\<Library>\<Version>\<locale>\`), preferring the
+  `en` locale and falling back to `Default`.
+- `index.md` — the symbol-level index: counts, a table of documented
+  libraries, a **Missing LibDoc** section, and a **Not referenced** section.
+- `symbols.jsonl` — one record per *symbol* (not per file):
+  `{source, library, version, kind, name, path, line, description, interface}`.
+- `manifest.json` — source roots, symbol counts, `libraries_missing`, and any
+  gaps encountered while reading the Library Manager.
 
-The daemon endpoint is `generate_docs`. Its output uses the same files and
-format, so a daemon run and a local CPython run can be consumed identically.
+**No source text is emitted.** Earlier versions wrote a `bundle.md` containing
+the full text of every file; that file is gone and a stale copy is deleted on
+the next run. `symbols.jsonl` changed from one row per file to one row per
+symbol — consumers of the old schema must be updated.
+
+### Which libraries are documented
+
+The library list comes from the exported Library Manager objects
+(`project-view/**/Library Manager.xml`). Every manager in the project view is
+read and the entries are merged, deduplicated on name and version. A project
+commonly has more than one — for example an application-level manager plus a
+visualization one — so a single-manager read would silently lose libraries.
+
+Two failure modes are reported rather than papered over:
+
+- **Missing LibDoc** — the library is referenced but no documentation is
+  installed for it on this machine. The generator does **not** substitute a
+  different version or widen the search; the reference is listed as missing.
+- **Not referenced** — libraries installed on the machine that this project
+  does not reference. Only their names and versions are listed; their contents
+  are not exported. To use one, it has to be added to the Library Manager
+  first, which is a user action inside the IDE.
+
+### Daemon endpoint
+
+The daemon endpoint `generate_docs` no longer generates anything. It resolves
+and returns the sync folder (`sync_folder`, `project_view`, `generated: false`);
+the documentation itself is always produced locally by `cts docs` in CPython.
+This keeps a single implementation instead of an IronPython 2.7 mirror that had
+to be kept format-compatible by hand.

@@ -158,7 +158,7 @@ HELP_TEXT = {
 "sync_export_text": "IDE->disk: export Native XML and refresh project-view/ text files (local edits are kept by default)",
 "sync_import_text": "disk->IDE (preferred): build IMPORT.xml from project-view/ and apply to project. Disk wins on conflicts; requires offline (disconnect first)",
 "sync_compare_text": "Compare project against project-view/ (diff report)",
-"generate_docs": "Generate LLM-friendly project and installed-library documentation in .cts-docs/ [--library_path PATH] [--output PATH]",
+"generate_docs": "Resolve the sync folder for local documentation generation (cts docs runs the generator)",
 "cicd": "Run CI/CD test plan --file path [--timeout N]",
 "permissions": "Show daemon security config (read-only)",
 "plc_log": "Read PLC log [--file codesyscontrol.log] [--tail N] [--output DIR]",

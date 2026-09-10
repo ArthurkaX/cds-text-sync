@@ -247,20 +247,26 @@ def main():
             sys.exit(code)
 
     elif args.command == "docs":
-        if getattr(args, "daemon", False):
-            from cds_cli._cli_io import cmd_daemon
-
-            params = {}
-            if getattr(args, "library_path", ""):
-                params["library_path"] = args.library_path
-            if getattr(args, "output", ""):
-                params["output"] = args.output
-            cmd_daemon("generate_docs", params, timeout=args.timeout, output_fmt="json")
-            return
         from cds_text_sync.docgen import generate_docs
 
+        workspace = getattr(args, "workspace", "") or "."
+        if getattr(args, "daemon", False):
+            from cds_cli._cli_io import _print_error, _print_rp_error
+            from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
+
+            try:
+                resp = send_command_reverse("generate_docs", {}, timeout=args.timeout)
+            except RuntimeError as e:
+                _print_error("Reverse pipe error: {0}".format(e))
+                sys.exit(1)
+
+            if not resp.get("ok"):
+                _print_rp_error(resp, "generate_docs")
+                sys.exit(1)
+            workspace = resp.get("data", {}).get("sync_folder") or workspace
+
         result = generate_docs(
-            getattr(args, "workspace", "") or ".",
+            workspace,
             library_path=getattr(args, "library_path", "") or None,
             output=getattr(args, "output", "") or None,
         )
