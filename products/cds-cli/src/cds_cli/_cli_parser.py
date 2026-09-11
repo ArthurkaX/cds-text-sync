@@ -14,6 +14,7 @@ from cds_text_sync import __version__
 from cds_cli.parsers._common import add_daemon_parser
 from cds_cli.parsers.analyze import register as register_analyze
 from cds_cli.parsers.fsm import register as register_fsm
+from cds_cli.parsers.docs import register as register_docs
 from cds_cli.parsers.utility import register as register_utility
 from cds_cli.parsers.patch import register as register_patch
 from cds_cli.parsers.project import register as register_project
@@ -327,6 +328,9 @@ Examples:
 
     # -- fsm subcommand (offline FSM search and rendering) -----------------
     register_fsm(subparsers)
+
+    # -- documentation bundle ----------------------------------------------
+    register_docs(subparsers)
 
     subparsers._choices_actions = [
         action

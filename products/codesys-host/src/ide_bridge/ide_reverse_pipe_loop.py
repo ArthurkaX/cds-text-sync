@@ -131,6 +131,7 @@ from ide_handlers_sync import (
     _cmd_sync_export_text,
     _cmd_sync_import_text,
     _cmd_sync_compare_text,
+    _cmd_generate_docs,
     _cmd_update_pou,
     _cmd_delete_pou,
 )

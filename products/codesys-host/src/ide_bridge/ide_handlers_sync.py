@@ -43,6 +43,28 @@ from ide_st_text import split_st_text
 SNAPSHOT_RETENTION_COUNT = 10
 
 
+def _cmd_generate_docs(params=None):
+    """Resolve the sync folder for the local documentation generator.
+
+    The daemon no longer writes any documentation files: ``cts docs`` runs the
+    CPython generator locally against the folder resolved here. ``params``
+    (``library_path`` / ``output``) is accepted for compatibility and ignored.
+    """
+    del params
+    sync_dir, error = _get_sync_folder()
+    if not sync_dir:
+        return {"ok": False, "error": "Cannot resolve sync folder: {0}".format(error or "unknown")}
+    project_view = os.path.join(sync_dir, "project-view")
+    if not os.path.isdir(project_view):
+        project_view = sync_dir
+    return {"ok": True, "data": {
+        "sync_folder": sync_dir,
+        "project_view": project_view,
+        "generated": False,
+        "note": "Documentation is generated locally by cts docs; the daemon only resolves the sync folder.",
+    }}
+
+
 def _is_snapshot_name(name):
     """Match the file set that _cmd_sync_import selects from."""
     return name.startswith("snapshot-") and name.endswith(".xml")
