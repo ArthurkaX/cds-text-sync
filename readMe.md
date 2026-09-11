@@ -170,6 +170,29 @@ cts analyze --workspace .  # offline check; daemon is not required
 The CLI also exposes project-tree operations, PLC interaction, tests and
 diagnostics. Read the [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md).
 
+### Give an LLM agent the full picture of the project
+
+An agent working on the project blind — with no visibility into its own POUs
+or the library functions it calls — has to guess signatures or grep raw
+sources. `cts docs` reads the exported project and the libraries it actually
+references, and writes compact per-symbol markdown so the agent knows every
+POU's kind, interface and doc comment, and every referenced library
+function's signature, without ever opening the raw CODESYS sources:
+
+```powershell
+cts docs --workspace C:\path\to\sync
+cts docs --daemon --libraries "C:\ProgramData\CODESYS"
+```
+
+Output goes to `.cts-docs/`: `project.md` and `libraries/*.md` (one section
+per POU — kind, name, doc comment, interface table), an `index.md` summary
+with a **Missing LibDoc** and **Not referenced** section, and machine-readable
+`symbols.jsonl` / `manifest.json`. Only libraries the Library Manager actually
+references are documented; nothing outside the project's own dependencies is
+pulled in.
+
+Details: [documentation bundle](products/cds-text-sync/src/cds_text_sync/CLI.md#documentation-bundle).
+
 ### Generate visualization screens from SVG
 
 An agent can create an SVG sketch as plain text, lint and preview it, compile it

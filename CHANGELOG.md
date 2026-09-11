@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Unresolved references are reported, not worked around: a referenced library with no LibDoc on the machine is listed under **Missing LibDoc** rather than resolved to some other version. Installed-but-unreferenced libraries are listed by name only, with an explicit note that adding one is a user action in the IDE.
 - **Breaking:** `bundle.md` is gone (a stale copy is deleted on the next run) and `symbols.jsonl` changed from one record per file to one record per symbol: `{source, library, version, kind, name, path, line, description, interface}`. `manifest.json` is now `format: "cts-docs/v2"` with symbol-level counts and `libraries_missing`.
 - The daemon endpoint `generate_docs` was a full IronPython 2.7 mirror of the old generator, kept format-compatible by hand. It is now a sync-folder resolver only; generation always runs locally in CPython.
+- Fixed two rendering nuances: triple-slash (`///`) doc comments no longer leave a leading `/` in the rendered description, and project `FUNCTION`/`METHOD`/`PROPERTY` declarations now get a leading `Return` row in the interface table, matching how library functions are documented.
 
 **Sync-folder setup is now agent-controllable:**
 

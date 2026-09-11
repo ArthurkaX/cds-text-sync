@@ -35,6 +35,8 @@ How to use:
   cts can run from any folder, but works best from the exported project folder.
   If project-view/ is available, treat the folder as the single source of truth.
   Prefer full imports: edit folder -> cts import -> cts build -> cts download/connect.
+  Before editing, run `cts docs` for a compact map of the project's own POUs
+  and the library functions it calls -- cheaper than reading raw sources.
 
 State model:
   There are three independent states: folder, CODESYS IDE, and PLC.
@@ -70,6 +72,7 @@ Timeouts:
 Examples:
   cts ping
   cts status
+  cts docs
   cts export
   cts compare
   cts import --dry-run
