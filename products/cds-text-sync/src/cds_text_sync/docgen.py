@@ -24,7 +24,8 @@ DEFAULT_LIBRARY_PATH = Path(r"C:\ProgramData\CODESYS")
 
 POU_HEADER_RE = re.compile(
     r"^[ \t]*(FUNCTION_BLOCK|FUNCTION|PROGRAM|INTERFACE|METHOD|PROPERTY|ACTION|TYPE)"
-    r"[ \t]+([A-Za-z_]\w*)",
+    r"[ \t]+([A-Za-z_]\w*)"
+    r"(?:[ \t]*:[ \t]*([A-Za-z_][\w.]*))?",
     re.IGNORECASE | re.MULTILINE,
 )
 INTERFACE_COLUMNS = ("scope", "name", "type", "initial", "comment")
@@ -54,12 +55,14 @@ def _pou_sections(text, stem):
         section_text = text[match.start():end]
         kind = match.group(1).upper()
         name = match.group(2)
+        return_type = match.group(3) or ""
         section = {
             "kind": kind,
             "name": name,
             "start": match.start(),
             "text": section_text,
             "line": text[: match.start()].count("\n") + 1,
+            "return_type": return_type,
         }
         if kind == "TYPE":
             try:
@@ -122,8 +125,9 @@ def _clean_comment(content):
         line = raw.strip()
         if line.startswith("*"):
             line = line[1:]
-        elif line.startswith("//"):
-            line = line[2:]
+        else:
+            while line.startswith("/"):
+                line = line[1:]
         if line.startswith(" "):
             line = line[1:]
         lines.append(line.rstrip())
@@ -209,11 +213,24 @@ def _section_interface(section):
 
     A ``dut`` section yields one ``FIELD`` row per DUT field; anything else
     is resolved through ``parse_var_blocks`` with the per-member trailing
-    comment attached.
+    comment attached. FUNCTION/METHOD/PROPERTY sections with a captured
+    return type get a leading ``Return`` row, matching the LibDoc-sourced
+    library tables.
     """
+    rows = []
+    return_type = section.get("return_type")
+    if return_type and section.get("kind") in ("FUNCTION", "METHOD", "PROPERTY"):
+        rows.append(
+            {
+                "scope": "Return",
+                "name": "",
+                "type": return_type,
+                "initial": "",
+                "comment": "",
+            }
+        )
     dut = section.get("dut")
     if dut:
-        rows = []
         for field in dut.get("fields") or []:
             name = str(field.get("name") or "")
             if not name:
@@ -231,8 +248,7 @@ def _section_interface(section):
     try:
         blocks = parse_var_blocks(section["text"])
     except Exception:
-        return []
-    rows = []
+        return rows
     for block in blocks:
         for member in block.get("members") or []:
             name = str(member.get("name") or "")
