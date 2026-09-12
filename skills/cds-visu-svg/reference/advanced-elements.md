@@ -144,4 +144,3 @@ expressions (usually a variable name):
 
 AlarmTable, Group, and Polygon are intentionally not supported (too complex or
 rarely needed for sketch authoring) and will raise a clear error if attempted.
-(Dialog openers are decompile-only — see above.)

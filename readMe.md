@@ -206,7 +206,7 @@ cts visu from-svg --svg line1.svg --create-screen --screen-name Line1
 cts import
 ```
 
-![Visualization generated from an SVG sketch](img/visu_preview.png)
+![Screen drawn as an SVG sketch and imported into the CODESYS IDE](img/visu_example_metal_panel_ide.png)
 
 Details: [HMI screens from SVG](docs/visu.md).
 

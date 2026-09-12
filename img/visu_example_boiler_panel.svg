@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+<rect x="0" y="0" width="800" height="480" fill="#F4F5F7"/>
+<defs><linearGradient id="cts-grad-0" x1="14.6%" y1="14.6%" x2="85.4%" y2="85.4%"><stop offset="0%" stop-color="#F4F6F8"/><stop offset="100%" stop-color="#646A72"/></linearGradient><linearGradient id="cts-grad-1" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#DCE0E5"/><stop offset="100%" stop-color="#A4ABB4"/></linearGradient><radialGradient id="cts-grad-2" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#555B63"/></radialGradient><radialGradient id="cts-grad-3" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#555B63"/></radialGradient><radialGradient id="cts-grad-4" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#555B63"/></radialGradient><radialGradient id="cts-grad-5" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#555B63"/></radialGradient><linearGradient id="cts-grad-6" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#6A727D"/><stop offset="100%" stop-color="#23272D"/></linearGradient><linearGradient id="cts-grad-16" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#949AA3"/><stop offset="100%" stop-color="#C8CDD4"/></linearGradient><radialGradient id="cts-grad-22" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F4F6F9"/><stop offset="100%" stop-color="#69717B"/></radialGradient><radialGradient id="cts-grad-23" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFEA9F"/><stop offset="100%" stop-color="#CF3B00"/></radialGradient><linearGradient id="cts-grad-25" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#F4F6F8"/><stop offset="100%" stop-color="#7D848E"/></linearGradient><linearGradient id="cts-grad-26" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#7D848E"/><stop offset="100%" stop-color="#F4F6F8"/></linearGradient><linearGradient id="cts-grad-28" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-29" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#FF9944"/><stop offset="100%" stop-color="#B33600"/></linearGradient><linearGradient id="cts-grad-32" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-33" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#FF9944"/><stop offset="100%" stop-color="#B33600"/></linearGradient><linearGradient id="cts-grad-36" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-37" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#4EA5E9"/><stop offset="100%" stop-color="#144D7A"/></linearGradient><linearGradient id="cts-grad-39" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#949AA3"/><stop offset="100%" stop-color="#C8CDD4"/></linearGradient><linearGradient id="cts-grad-41" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-42" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#4EA5E9"/><stop offset="100%" stop-color="#144D7A"/></linearGradient><linearGradient id="cts-grad-46" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-49" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-50" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#4EA5E9"/><stop offset="100%" stop-color="#144D7A"/></linearGradient><linearGradient id="cts-grad-53" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-54" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#FF9944"/><stop offset="100%" stop-color="#B33600"/></linearGradient><linearGradient id="cts-grad-57" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-58" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#FF9944"/><stop offset="100%" stop-color="#B33600"/></linearGradient><linearGradient id="cts-grad-60" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#949AA3"/><stop offset="100%" stop-color="#C8CDD4"/></linearGradient><linearGradient id="cts-grad-62" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><radialGradient id="cts-grad-63" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F4F6F9"/><stop offset="100%" stop-color="#69717B"/></radialGradient><linearGradient id="cts-grad-67" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><radialGradient id="cts-grad-68" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F4F6F9"/><stop offset="100%" stop-color="#69717B"/></radialGradient><linearGradient id="cts-grad-73" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC3"/><stop offset="100%" stop-color="#EDF0F4"/></linearGradient><linearGradient id="cts-grad-74" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#4EA5E9"/><stop offset="100%" stop-color="#144D7A"/></linearGradient><linearGradient id="cts-grad-83" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#6C737D"/><stop offset="100%" stop-color="#B2B9C2"/></linearGradient><linearGradient id="cts-grad-88" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#2D5238"/><stop offset="100%" stop-color="#122417"/></linearGradient></defs>
+<rect x="4" y="4" width="792" height="472" rx="0" fill="url(#cts-grad-0)" stroke="#4A5057" stroke-width="1"/>
+<rect x="8" y="8" width="784" height="464" rx="0" fill="url(#cts-grad-1)" stroke="#6F767E" stroke-width="1"/>
+<ellipse cx="16.0" cy="16.0" rx="4.0" ry="4.0" fill="url(#cts-grad-2)" stroke="#3E434A" stroke-width="1"/>
+<ellipse cx="784.0" cy="16.0" rx="4.0" ry="4.0" fill="url(#cts-grad-3)" stroke="#3E434A" stroke-width="1"/>
+<ellipse cx="16.0" cy="464.0" rx="4.0" ry="4.0" fill="url(#cts-grad-4)" stroke="#3E434A" stroke-width="1"/>
+<ellipse cx="784.0" cy="464.0" rx="4.0" ry="4.0" fill="url(#cts-grad-5)" stroke="#3E434A" stroke-width="1"/>
+<rect x="24" y="16" width="752" height="48" rx="0" fill="url(#cts-grad-6)" stroke="#23272C" stroke-width="1"/>
+<line x1="24" y1="64" x2="776" y2="64" stroke="#E4E8EC" stroke-width="1"/>
+<text x="36.0" y="46.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#FFFFFF" text-anchor="start">BOILER UNIT #1</text>
+<text x="360.0" y="43.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="start">BOILER CONTROL SYSTEM</text>
+<circle cx="550.0" cy="38.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="564.0" y="43.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="start">READY</text>
+<circle cx="630.0" cy="38.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="644.0" y="43.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="start">RUN</text>
+<circle cx="714.0" cy="38.0" r="10.0" fill="#D64545" stroke="#505050" stroke-width="1"/>
+<text x="728.0" y="43.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#FFFFFF" text-anchor="start">ALARM</text>
+<rect x="20" y="72" width="244" height="324" rx="0" fill="url(#cts-grad-16)" stroke="#7A8189" stroke-width="1"/>
+<text x="36.0" y="96.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">COMBUSTION</text>
+<circle cx="46.0" cy="122.0" r="10.0" fill="#E0B020" stroke="#505050" stroke-width="1"/>
+<text x="64.0" y="128.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">Flame Detected</text>
+<circle cx="46.0" cy="150.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="64.0" y="156.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">Ignition Active</text>
+<ellipse cx="216.0" cy="136.0" rx="20.0" ry="20.0" fill="url(#cts-grad-22)" stroke="#4A5057" stroke-width="1"/>
+<ellipse cx="216.0" cy="136.0" rx="14.0" ry="14.0" fill="url(#cts-grad-23)" stroke="#23272C" stroke-width="1"/>
+<line x1="36" y1="168" x2="248" y2="168" stroke="#8A9199" stroke-width="1"/>
+<rect x="36" y="176" width="212" height="8" rx="0" fill="url(#cts-grad-25)" stroke="#D5D9DF" stroke-width="1"/>
+<rect x="36" y="184" width="212" height="8" rx="0" fill="url(#cts-grad-26)" stroke="#D5D9DF" stroke-width="1"/>
+<text x="36.0" y="212.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">BURNER FIRING RATE</text>
+<rect x="36" y="220" width="212" height="44" rx="0" fill="url(#cts-grad-28)" stroke="#6F767E" stroke-width="1"/>
+<rect x="36" y="220" width="8" height="44" rx="0" fill="url(#cts-grad-29)" stroke="#8A3000" stroke-width="1"/>
+<rect x="52" y="228" width="188" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="54.0" y="250.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%3.1f %%</text>
+<text x="36.0" y="276.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">GAS PRESSURE</text>
+<rect x="36" y="284" width="212" height="44" rx="0" fill="url(#cts-grad-32)" stroke="#6F767E" stroke-width="1"/>
+<rect x="36" y="284" width="8" height="44" rx="0" fill="url(#cts-grad-33)" stroke="#8A3000" stroke-width="1"/>
+<rect x="52" y="292" width="188" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="54.0" y="314.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%2.2f bar</text>
+<text x="36.0" y="340.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">AIR PRESSURE</text>
+<rect x="36" y="348" width="212" height="40" rx="0" fill="url(#cts-grad-36)" stroke="#6F767E" stroke-width="1"/>
+<rect x="36" y="348" width="8" height="40" rx="0" fill="url(#cts-grad-37)" stroke="#123E60" stroke-width="1"/>
+<rect x="52" y="356" width="188" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="54.0" y="378.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%3.1f kPa</text>
+<rect x="276" y="72" width="248" height="324" rx="0" fill="url(#cts-grad-39)" stroke="#7A8189" stroke-width="1"/>
+<text x="292.0" y="96.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">DRUM &amp; STEAM</text>
+<rect x="292" y="108" width="216" height="76" rx="0" fill="url(#cts-grad-41)" stroke="#6F767E" stroke-width="1"/>
+<rect x="292" y="108" width="8" height="76" rx="0" fill="url(#cts-grad-42)" stroke="#144D7A" stroke-width="1"/>
+<text x="308.0" y="128.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">STEAM PRESSURE</text>
+<rect x="308" y="140" width="192" height="36" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="310.0" y="168.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="28" fill="#000000" text-anchor="start">%2.2f bar</text>
+<text x="292.0" y="203.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#000000" text-anchor="start">SETPOINT</text>
+<rect x="292" y="212" width="104" height="44" rx="0" fill="url(#cts-grad-46)" stroke="#6F767E" stroke-width="1"/>
+<rect x="296" y="224" width="96" height="24" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="298.0" y="240.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">%2.2f bar</text>
+<text x="404.0" y="203.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#000000" text-anchor="start">WATER LEVEL</text>
+<rect x="404" y="212" width="104" height="44" rx="0" fill="url(#cts-grad-49)" stroke="#6F767E" stroke-width="1"/>
+<rect x="404" y="212" width="4" height="44" rx="0" fill="url(#cts-grad-50)" stroke="#144D7A" stroke-width="1"/>
+<rect x="412" y="224" width="92" height="24" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="414.0" y="240.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">%+3.0f mm</text>
+<text x="292.0" y="272.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">STEAM TEMP</text>
+<rect x="292" y="280" width="216" height="44" rx="0" fill="url(#cts-grad-53)" stroke="#6F767E" stroke-width="1"/>
+<rect x="292" y="280" width="8" height="44" rx="0" fill="url(#cts-grad-54)" stroke="#8A3000" stroke-width="1"/>
+<rect x="308" y="288" width="192" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="310.0" y="310.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%3.1f °C</text>
+<text x="292.0" y="336.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">FLUE GAS TEMP</text>
+<rect x="292" y="344" width="216" height="44" rx="0" fill="url(#cts-grad-57)" stroke="#6F767E" stroke-width="1"/>
+<rect x="292" y="344" width="8" height="44" rx="0" fill="url(#cts-grad-58)" stroke="#8A3000" stroke-width="1"/>
+<rect x="308" y="352" width="192" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="310.0" y="374.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%3.1f °C</text>
+<rect x="536" y="72" width="244" height="324" rx="0" fill="url(#cts-grad-60)" stroke="#7A8189" stroke-width="1"/>
+<text x="552.0" y="96.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">AUXILIARIES</text>
+<rect x="552" y="108" width="212" height="48" rx="0" fill="url(#cts-grad-62)" stroke="#6F767E" stroke-width="1"/>
+<ellipse cx="572.0" cy="132.0" rx="14.0" ry="14.0" fill="url(#cts-grad-63)" stroke="#4A5057" stroke-width="1"/>
+<circle cx="606.0" cy="130.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<circle cx="630.0" cy="130.0" r="10.0" fill="#D64545" stroke="#505050" stroke-width="1"/>
+<text x="648.0" y="136.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">FEED PUMP 1</text>
+<rect x="552" y="164" width="212" height="48" rx="0" fill="url(#cts-grad-67)" stroke="#6F767E" stroke-width="1"/>
+<ellipse cx="572.0" cy="188.0" rx="14.0" ry="14.0" fill="url(#cts-grad-68)" stroke="#4A5057" stroke-width="1"/>
+<circle cx="606.0" cy="186.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<circle cx="630.0" cy="186.0" r="10.0" fill="#D64545" stroke="#505050" stroke-width="1"/>
+<text x="648.0" y="192.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">FEED PUMP 2</text>
+<text x="552.0" y="228.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">FEEDWATER VALVE</text>
+<rect x="552" y="236" width="212" height="44" rx="0" fill="url(#cts-grad-73)" stroke="#6F767E" stroke-width="1"/>
+<rect x="552" y="236" width="8" height="44" rx="0" fill="url(#cts-grad-74)" stroke="#144D7A" stroke-width="1"/>
+<rect x="568" y="244" width="188" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="570.0" y="266.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%3.1f %%</text>
+<line x1="552" y1="288" x2="764" y2="288" stroke="#8A9199" stroke-width="1"/>
+<circle cx="562.0" cy="310.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="580.0" y="316.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">Forced Draft Fan</text>
+<circle cx="562.0" cy="342.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="580.0" y="348.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">Induced Draft Fan</text>
+<circle cx="562.0" cy="374.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="580.0" y="380.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">Auto Feedwater</text>
+<rect x="16" y="404" width="768" height="56" rx="0" fill="url(#cts-grad-83)" stroke="#555A62" stroke-width="1"/>
+<rect x="24" y="408" width="140" height="48" rx="2" fill="#505050" stroke="#505050" stroke-width="1"/>
+<text x="94.0" y="436.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">START</text>
+<rect x="176" y="408" width="140" height="48" rx="2" fill="#505050" stroke="#505050" stroke-width="1"/>
+<text x="246.0" y="436.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">STOP</text>
+<rect x="328" y="408" width="140" height="48" rx="2" fill="#505050" stroke="#505050" stroke-width="1"/>
+<text x="398.0" y="436.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">RESET</text>
+<rect x="480" y="408" width="140" height="48" rx="2" fill="#505050" stroke="#505050" stroke-width="1"/>
+<text x="550.0" y="436.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">AUTO / MAN</text>
+<rect x="632" y="408" width="144" height="48" rx="0" fill="url(#cts-grad-88)" stroke="#1B3D24" stroke-width="1"/>
+<text x="640.0" y="435.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#73E696" text-anchor="start">BOILER ONLINE</text>
+</svg>

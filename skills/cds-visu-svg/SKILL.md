@@ -48,6 +48,11 @@ cts visu lint --svg <screen>.svg --sync-folder C:\path\to\project
    `examples/` folder (`status-panel.svg`, `pid-schematic.svg`) — both of them
    lint clean, so they are safe to imitate.
    The screen background is set for you; never add a full-screen background rect.
+   You can set binding attributes (`data-text-var`, `data-cds-tap`,
+   `data-cds-action`, ...) inline here, or defer them to a separate pass with
+   `cts visu bind --svg <screen>.svg --elem N ...` once the layout itself is
+   drawn and previewed — useful for touching one element's wiring without
+   risking its geometry.
 3. **Check the design** with `cts visu lint`. It reports the things that make a
    technically valid screen look unfinished — off-grid coordinates, text wider
    than its box, a font size outside the scale, a button too small to press, a
@@ -539,8 +544,8 @@ level under `Hotkeys`, not inside the button element.
 ## Unsupported (will raise a clear error)
 
 - `<polygon>`, `<polyline>`, `<image>`
-- `transform`, nested `<svg>`, `viewBox` scaling, gradients, filters, masks,
-  animation
+- `transform`, nested `<svg>`, `viewBox` scaling, filters, masks, animation
+- Gradients (linear/radial, on `<rect>`/`<circle>`/`<ellipse>`) are supported.
 - `stroke-width` — a CODESYS line has no width member. Draw a thick run as a
   `<rect>` instead.
 - Table, TabControl, GroupBox, Checkbox, RadioButton,

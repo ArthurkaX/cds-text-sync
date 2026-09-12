@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+<rect x="0" y="0" width="800" height="480" fill="#F4F5F7"/>
+<defs><linearGradient id="cts-grad-0" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#DCE0E5"/><stop offset="100%" stop-color="#A9AFB7"/></linearGradient><linearGradient id="cts-grad-1" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#767D86"/><stop offset="100%" stop-color="#2F343A"/></linearGradient><linearGradient id="cts-grad-5" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#9BA1A9"/><stop offset="100%" stop-color="#C8CDD3"/></linearGradient><linearGradient id="cts-grad-7" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B9BFC6"/><stop offset="100%" stop-color="#6A7078"/></linearGradient><linearGradient id="cts-grad-8" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#E8EBEE"/><stop offset="100%" stop-color="#8E949B"/></linearGradient><linearGradient id="cts-grad-9" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#8E949B"/><stop offset="100%" stop-color="#E8EBEE"/></linearGradient><radialGradient id="cts-grad-10" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F2F4F6"/><stop offset="100%" stop-color="#5A6067"/></radialGradient><radialGradient id="cts-grad-11" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F2F4F6"/><stop offset="100%" stop-color="#5A6067"/></radialGradient><radialGradient id="cts-grad-12" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F2F4F6"/><stop offset="100%" stop-color="#5A6067"/></radialGradient><radialGradient id="cts-grad-13" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F2F4F6"/><stop offset="100%" stop-color="#5A6067"/></radialGradient><radialGradient id="cts-grad-14" cx="35%" cy="35%" r="50%"><stop offset="0%" stop-color="#F2F4F6"/><stop offset="100%" stop-color="#5A6067"/></radialGradient><linearGradient id="cts-grad-21" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#9BA1A9"/><stop offset="100%" stop-color="#C8CDD3"/></linearGradient><linearGradient id="cts-grad-23" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#B4BAC2"/><stop offset="100%" stop-color="#EDF0F3"/></linearGradient><linearGradient id="cts-grad-32" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#E6E9ED"/><stop offset="100%" stop-color="#BFC5CC"/></linearGradient><linearGradient id="cts-grad-36" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#E6E9ED"/><stop offset="100%" stop-color="#BFC5CC"/></linearGradient><linearGradient id="cts-grad-40" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#E6E9ED"/><stop offset="100%" stop-color="#BFC5CC"/></linearGradient><linearGradient id="cts-grad-47" x1="50.0%" y1="0.0%" x2="50.0%" y2="100.0%"><stop offset="0%" stop-color="#C9CFD6"/><stop offset="100%" stop-color="#8E959D"/></linearGradient></defs>
+<rect x="8" y="8" width="784" height="464" rx="0" fill="url(#cts-grad-0)" stroke="#6F767E" stroke-width="1"/>
+<rect x="8" y="8" width="784" height="56" rx="0" fill="url(#cts-grad-1)" stroke="#23272C" stroke-width="1"/>
+<line x1="8" y1="64" x2="792" y2="64" stroke="#E4E8EC" stroke-width="1"/>
+<text x="28.0" y="46.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">WEIGHT CLASSIFIER</text>
+<text x="696.0" y="44.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#000000" text-anchor="middle">LINE 1 / SHIFT A</text>
+<rect x="24" y="80" width="468" height="232" rx="0" fill="url(#cts-grad-5)" stroke="#7A8189" stroke-width="1"/>
+<text x="40.0" y="108.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">CONVEYOR</text>
+<rect x="276" y="108" width="56" height="32" rx="0" fill="url(#cts-grad-7)" stroke="#4A5057" stroke-width="1"/>
+<rect x="48" y="140" width="420" height="16" rx="0" fill="url(#cts-grad-8)" stroke="#D5D9DF" stroke-width="1"/>
+<rect x="48" y="156" width="420" height="16" rx="0" fill="url(#cts-grad-9)" stroke="#D5D9DF" stroke-width="1"/>
+<ellipse cx="72.0" cy="200.0" rx="14.0" ry="14.0" fill="url(#cts-grad-10)" stroke="#4A5057" stroke-width="1"/>
+<ellipse cx="168.0" cy="200.0" rx="14.0" ry="14.0" fill="url(#cts-grad-11)" stroke="#4A5057" stroke-width="1"/>
+<ellipse cx="264.0" cy="200.0" rx="14.0" ry="14.0" fill="url(#cts-grad-12)" stroke="#4A5057" stroke-width="1"/>
+<ellipse cx="360.0" cy="200.0" rx="14.0" ry="14.0" fill="url(#cts-grad-13)" stroke="#4A5057" stroke-width="1"/>
+<ellipse cx="456.0" cy="200.0" rx="14.0" ry="14.0" fill="url(#cts-grad-14)" stroke="#4A5057" stroke-width="1"/>
+<text x="48.0" y="239.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#000000" text-anchor="start">DRIVE ROLLERS</text>
+<line x1="48" y1="248" x2="468" y2="248" stroke="#8A9199" stroke-width="1"/>
+<circle cx="58.0" cy="270.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="80.0" y="276.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">RUNNING</text>
+<circle cx="58.0" cy="298.0" r="10.0" fill="#D64545" stroke="#505050" stroke-width="1"/>
+<text x="80.0" y="304.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">JAM / FAULT</text>
+<rect x="508" y="80" width="268" height="232" rx="0" fill="url(#cts-grad-21)" stroke="#7A8189" stroke-width="1"/>
+<text x="524.0" y="108.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="16" fill="#000000" text-anchor="start">NET WEIGHT</text>
+<rect x="524" y="124" width="236" height="64" rx="0" fill="url(#cts-grad-23)" stroke="#6F767E" stroke-width="1"/>
+<rect x="536" y="136" width="212" height="40" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="538.0" y="164.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="28" fill="#000000" text-anchor="start">%3.3f kg</text>
+<text x="524.0" y="212.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">TARGET</text>
+<rect x="524" y="224" width="112" height="32" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="526.0" y="236.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">%3.2f kg</text>
+<text x="648.0" y="212.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">TOLERANCE</text>
+<rect x="648" y="224" width="112" height="32" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="650.0" y="236.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">%2.1f %%</text>
+<line x1="524" y1="272" x2="760" y2="272" stroke="#8A9199" stroke-width="1"/>
+<circle cx="534.0" cy="290.0" r="10.0" fill="#4CAF50" stroke="#505050" stroke-width="1"/>
+<text x="556.0" y="300.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">AUTO MODE</text>
+<rect x="24" y="336" width="240" height="64" rx="0" fill="url(#cts-grad-32)" stroke="#8A9199" stroke-width="1"/>
+<rect x="24" y="336" width="8" height="64" rx="0" fill="#3F9142" stroke="#D5D9DF" stroke-width="1"/>
+<text x="48.0" y="360.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">ACCEPTED</text>
+<rect x="152" y="360" width="104" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="154.0" y="382.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%d</text>
+<rect x="280" y="336" width="240" height="64" rx="0" fill="url(#cts-grad-36)" stroke="#8A9199" stroke-width="1"/>
+<rect x="280" y="336" width="8" height="64" rx="0" fill="#C8860D" stroke="#D5D9DF" stroke-width="1"/>
+<text x="304.0" y="360.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">REJECTED</text>
+<rect x="408" y="360" width="104" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="410.0" y="382.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%d</text>
+<rect x="536" y="336" width="240" height="64" rx="0" fill="url(#cts-grad-40)" stroke="#8A9199" stroke-width="1"/>
+<rect x="536" y="336" width="8" height="64" rx="0" fill="#C0392B" stroke="#8E2B20" stroke-width="1"/>
+<text x="560.0" y="360.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="12" fill="#000000" text-anchor="start">OVERWEIGHT</text>
+<rect x="664" y="360" width="104" height="28" fill="#FFFFFF" stroke="#BEBEBE" stroke-width="1"/>
+<text x="666.0" y="382.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="22" fill="#000000" text-anchor="start">%d</text>
+<rect x="24" y="412" width="160" height="48" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="1"/>
+<text x="104.0" y="440.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">Start</text>
+<rect x="200" y="412" width="160" height="48" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="1"/>
+<text x="280.0" y="440.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">Stop</text>
+<rect x="376" y="412" width="160" height="48" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="1"/>
+<text x="456.0" y="440.3" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">Tare</text>
+<rect x="560" y="412" width="216" height="48" rx="0" fill="url(#cts-grad-47)" stroke="#6F767E" stroke-width="1"/>
+<text x="668.0" y="444.0" font-family="Arial, Arial, Helvetica, sans-serif" font-size="11" fill="#000000" text-anchor="middle">FIO / SORTING BY WEIGHT</text>
+</svg>

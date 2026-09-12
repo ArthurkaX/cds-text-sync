@@ -40,5 +40,4 @@ start. These pages are the detail.
   availability, safety rules.
 - **[SVG authoring contract](../skills/cds-visu-svg/SKILL.md)** — layout rules,
   the type scale, and the conventions an authoring model is expected to follow.
-- **[Changelog](../CHANGELOG.md)** · **[Contributing](../.github/CONTRIBUTING.md)** ·
-  **[Security](../.github/SECURITY.md)**
+- **[Changelog](../CHANGELOG.md)**

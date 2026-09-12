@@ -17,7 +17,7 @@ contract an LLM is expected to follow, see
 
 - **The CLI is installed**: `python -m pip install -e <cds-text-sync-folder>`,
   then `cts --help` works. See [Installation](install.md).
-- **`new`, `lint` and `preview` need nothing else.** No IDE, no project, no
+- **`new`, `lint`, `preview` and `bind` need nothing else.** No IDE, no project, no
   daemon — they read the sketch file and a style. You can author and iterate on a
   screen offline, on a machine without CODESYS.
 - **`from-svg`, `to-svg`, `check`, `add`, `list`, `create-screen` need a sync
@@ -88,6 +88,22 @@ A screen that only draws is a picture. Three attributes make it live:
 | `data-cds-tap="HMI.StartPump"` | `<rect data-cds-type="button">` | the native button tap/toggle variable |
 | `data-cds-action="OnMouseUp: screen CoolingTower"` | `<rect data-cds-type="button">` | a native input action — `TAP`, `TOGGLE`, `ST …`, screen change; several separated by `\|\|` |
 
+Set them with `cts visu bind` instead of hand-editing the sketch — it patches
+only these attributes on one element (by index, from `cts visu describe --screen
+... --elem N` or the element's position in the file) and refuses anything that
+would touch geometry:
+
+```powershell
+cts visu bind --svg line1.svg --elem 3 --var HMI.Temperature      # data-text-var
+cts visu bind --svg line1.svg --elem 5 --tap HMI.StartPump        # data-cds-tap
+cts visu bind --svg line1.svg --elem 5 --action "OnMouseUp: screen CoolingTower"
+cts visu bind --svg line1.svg --elem 5 --clear                    # remove all bindings
+```
+
+Draw first, bind second: finish the layout, `preview`/`lint` it with nothing
+wired, then run `bind` on each interactive element as its own pass before the
+final `from-svg --replace`.
+
 Every variable a control references **must** be declared in a GVL. Let the
 compiler write them:
 
@@ -125,11 +141,9 @@ unwired field gets caught before the IDE sees it.
 style your project actually uses. The same sketch, with nothing else changed,
 comes out light or dark.
 
-![A sorting-line overview screen compiled from an SVG sketch](../img/visu_preview.png)
-
-That is `cts visu preview` output — the colours the compiler emits, rendered
-before anything reaches the IDE. Render your own; the two shipped examples are a
-good place to start:
+`cts visu preview` renders the colours the compiler emits, before anything
+reaches the IDE. Render your own; the two shipped examples are a good place
+to start:
 
 ```powershell
 cts visu preview --svg skills/cds-visu-svg/examples/pid-schematic.svg
@@ -200,8 +214,10 @@ is the obvious shape for an indicator light, but `<circle data-cds-type="lamp">`
 is just an ellipse. Draw the lamp as a square `<rect>`; the native bitmap is
 round anyway. `lint` reports this as `control-tag`.
 
-Not supported: polygon, polyline, image, transform, gradients, filters, masks,
-animation, viewBox scaling, Table, TabControl, GroupBox, Checkbox.
+Not supported: polygon, polyline, image, transform, filters, masks,
+animation, viewBox scaling, Table, TabControl, GroupBox, Checkbox. Linear and
+radial gradients are supported on `rect`/`circle`/`ellipse` (see
+[Colours, styles and schemes](#colours-styles-and-schemes)).
 
 ---
 
@@ -218,6 +234,7 @@ animation, viewBox scaling, Table, TabControl, GroupBox, Checkbox.
 | `types` | list the element vocabulary | no |
 | `describe` | describe a type, or an element of a screen (`--screen --elem N`) | for `--screen` |
 | `create-screen` | create a new empty screen without going through SVG | yes |
+| `bind` | patch only the binding attributes on one sketch element | no |
 | `add` | add one element to a compiled screen | yes |
 | `list` | list the elements of a compiled screen | yes |
 | `capture-frame` | capture a `VisuFbFrame` instance as a golden template + catalog | yes |
@@ -246,6 +263,17 @@ margin, bands, type scale, touch targets, the text-baseline rule), the ordered
 workflow with the approval pause before compiling, two lint-clean example
 sketches to imitate, and the per-class text-box geometry. Point your agent at
 `SKILL.md` and describe the screen you want.
+
+Two real runs, sketch on the left, the same screen after `from-svg` and an
+actual import into the CODESYS IDE on the right — no manual touch-up either
+side:
+
+| Sketch (`cts visu new` → agent edits → `preview`) | Compiled and imported |
+| --- | --- |
+| ![Metal panel sketch](../img/visu_example_metal_panel.svg) | ![Metal panel imported into the CODESYS IDE](../img/visu_example_metal_panel_ide.png) |
+| Sonnet, medium effort | |
+| ![Boiler panel sketch](../img/visu_example_boiler_panel.svg) | ![Boiler panel imported into the CODESYS IDE](../img/visu_example_boiler_panel_ide.png) |
+| gemini3.8flash, high effort | |
 
 ---
 
