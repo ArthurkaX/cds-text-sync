@@ -4,7 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
+### Version 3.2.0 (2026-09-12)
+
+**`cts visu bind` splits "draw" from "wire signals":**
+
+- New offline subcommand: `cts visu bind --svg <sketch> --elem N [--var|--text-var|--tap|--toggle|--color|--action NAME] [--clear]` patches only the binding `data-*` attributes on one already-drawn SVG element — geometry, fill, stroke and gradients are structurally untouched, and passing a flag the element type doesn't support (e.g. `--tap` on a lamp) is refused.
+- `cts visu --help` is now a two-phase workflow: PHASE 1 draws (small steps: add an element, `preview`, `lint`, repeat, then `from-svg --create-screen`), PHASE 2 wires signals (`bind`, then `from-svg --replace --gvl` to recompile in place). The top-level `cts --help` nudges the same split.
+- `cts visu lint` findings for unbound buttons/textfields/lamps and static-looking text now name `cts visu bind` directly instead of only describing the problem.
+
+**Gradient fills and light/dark colour schemes for `from-svg`:**
+
+- `<linearGradient>`/`<radialGradient>` in `<defs>`, referenced via `fill="url(#id)"` on `rect`/`circle`/`ellipse`, compile to CODESYS's native gradient fill (two colour stops, angle from the SVG vector, `stop-opacity` as the alpha byte). Round-trips through `to-svg` as well.
+- `--scheme light|dark` (also `data-cds-scheme` recorded by `cts visu new`) resolves the stylesheet's CSS-variable palette against either scheme for preview/lint/from-svg.
+
+**`.visu/` becomes the default sketch folder:**
+
+- `cts visu new` with no `--out` now writes into `.visu/` (auto-created) instead of the current directory, so sketch `.svg`/`.preview.svg`/`.preview.png` scratch files stop cluttering the project root; `preview`/`lint`/`from-svg` follow the sketch's own location automatically.
+- `.visu/` was added to the CODESYS-host options dialog's recommended `.gitignore` entries.
+
+**Clearer guidance for `cts import`'s modal dialog and daemon timeouts:**
+
+- `cts import --help` and the top-level `cts --help` now spell out that creating/replacing a native object (a screen, a POU, ...) commonly pops a CODESYS confirmation dialog, that the daemon is single-threaded so a stuck dialog stalls every other command including `cts ping`, and that killing the CLI does not cancel the operation — check `cts status`/`cts compare` instead of blind-retrying.
+- `cts visu-lint --help` (the compiled-XML validator) now distinguishes itself from `cts visu lint` (the SVG-sketch validator) by name.
 
 **`cts docs` produces compact documentation instead of a source dump:**
 
