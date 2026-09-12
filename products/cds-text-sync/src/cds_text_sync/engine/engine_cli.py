@@ -119,7 +119,7 @@ def _read_manifest(dump_path):
     if not os.path.exists(manifest_path):
         return None
     try:
-        with open(manifest_path, "r") as f:
+        with open(manifest_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as error:
         print("Warning: Could not read manifest:", error)

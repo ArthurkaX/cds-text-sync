@@ -377,7 +377,7 @@ class FolderReader:
         if not os.path.exists(self.manifest_path):
             print("Manifest not found at:", self.manifest_path)
             return None
-        with open(self.manifest_path, "r") as handle:
+        with open(self.manifest_path, "r", encoding="utf-8") as handle:
             manifest = json.load(handle)
         self._ensure_view_root_is_current(manifest)
         return manifest
