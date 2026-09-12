@@ -486,7 +486,8 @@ def _rule_unbound_field(index, spec, findings):
         findings.append(
             Finding(
                 "unbound-field", "warn", index,
-                "textfield has no data-text-var; it will show static text only",
+                "textfield has no data-text-var; it will show static text only "
+                "-- `cts visu bind --elem {0} --text-var NAME`".format(index),
             )
         )
 
@@ -549,9 +550,10 @@ def _rule_static_state(index, spec, source, findings):
         Finding(
             "static-state", "warn", index,
             '{0} reports "{1}" as static text: it is compiled into a Text ID '
-            "and will read the same whether or not that is true. Bind it -- a "
-            "textfield with data-text-var, or a lamp with data-var".format(
-                _name(spec, source), claim
+            "and will read the same whether or not that is true. Bind it with "
+            "`cts visu bind --elem {2} --text-var NAME` (textfield) or "
+            "`--var NAME` (lamp)".format(
+                _name(spec, source), claim, index
             ),
         )
     )
@@ -591,7 +593,10 @@ def _rule_button_contract(index, spec, source, findings):
             Finding(
                 "inert-button", "warn", index,
                 '{0} does nothing when pressed; add data-cds-tap="Var" or '
-                'data-cds-action="..."'.format(_name(spec, source)),
+                'data-cds-action="..." -- '
+                "`cts visu bind --elem {1} --tap NAME`".format(
+                    _name(spec, source), index
+                ),
             )
         )
 
@@ -677,7 +682,8 @@ def _rule_unbound_lamp(index, spec, findings):
         findings.append(
             Finding(
                 "unbound-lamp", "info", index,
-                'lamp has no data-var; it will stay in its off state',
+                'lamp has no data-var; it will stay in its off state '
+                "-- `cts visu bind --elem {0} --var NAME`".format(index),
             )
         )
 

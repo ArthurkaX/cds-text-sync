@@ -119,6 +119,23 @@ def dispatch_visu(args):
             )
         return
 
+    if args.visu_action == "bind":
+        if not args.svg:
+            _print_error("--svg is required")
+            sys.exit(1)
+        visu_cmds.bind_element(
+            svg_path=args.svg,
+            elem_index=getattr(args, "elem", None),
+            var=getattr(args, "var", None),
+            text_var=getattr(args, "text_var", None),
+            tap_var=getattr(args, "tap", None),
+            toggle_var=getattr(args, "toggle", None),
+            color=getattr(args, "color", None),
+            action=getattr(args, "action", None),
+            clear=getattr(args, "clear", False),
+        )
+        return
+
     pv, _ = _resolve_project_view(sync_folder)
 
     if args.visu_action == "create-screen":

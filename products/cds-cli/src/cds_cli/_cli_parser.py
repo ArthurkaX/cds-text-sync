@@ -37,6 +37,10 @@ How to use:
   Prefer full imports: edit folder -> cts import -> cts build -> cts download/connect.
   Before editing, run `cts docs` for a compact map of the project's own POUs
   and the library functions it calls -- cheaper than reading raw sources.
+  To draw or change an HMI screen, read `cts visu --help`: it carries the
+  whole offline SVG -> screen workflow and the full SVG contract. Work in
+  small steps: draw one element, preview, lint, repeat -- then wire signals
+  as a separate pass with `cts visu bind`.
 
 State model:
   There are three independent states: folder, CODESYS IDE, and PLC.

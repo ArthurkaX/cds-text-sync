@@ -10,6 +10,7 @@ They never touch the daemon or import.
 from __future__ import print_function
 
 import os
+import re
 import sys
 
 from . import builder, svg_export, svg_import, themes
@@ -683,6 +684,172 @@ def lint_svg(
     _ok("{0} finding(s): {1}".format(len(findings), summary))
     if errors or (strict and findings):
         raise VisuCommandError("visu lint found errors")
+
+
+# ---------------------------------------------------------------------------
+# bind
+# ---------------------------------------------------------------------------
+
+_BIND_ALLOWED_TYPES = {
+    "var": ("lamp", "combobox", "image-switcher"),
+    "color": ("lamp",),
+    "text-var": ("textfield",),
+    "tap": ("button",),
+    "toggle": ("button",),
+    "action": ("button", "rectangle"),
+}
+
+
+def _xml_attr_escape(value):
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
+
+
+def _tag_attr(tag_text, name):
+    m = re.search(r'\b{0}\s*=\s*"([^"]*)"'.format(re.escape(name)), tag_text)
+    return m.group(1) if m else ""
+
+
+def _set_tag_attr(tag_text, name, value):
+    from . import lint as _lint
+
+    value = _xml_attr_escape(value)
+    pattern = _lint._attr_re(name)
+    if pattern.search(tag_text):
+        return pattern.sub(lambda m: m.group(1) + value + m.group(3), tag_text, count=1)
+    closing = "/>" if tag_text.rstrip().endswith("/>") else ">"
+    idx = tag_text.rfind(closing)
+    return tag_text[:idx] + ' {0}="{1}"'.format(name, value) + tag_text[idx:]
+
+
+def _remove_tag_attr(tag_text, name):
+    pattern = re.compile(r'\s+{0}\s*=\s*"[^"]*"'.format(re.escape(name)))
+    return pattern.sub("", tag_text, count=1)
+
+
+def _check_binding_type(elem_type, flag, allowed):
+    if elem_type not in allowed:
+        _err(
+            "--{0} applies to {1} element(s), not '{2}'".format(
+                flag, "/".join(allowed), elem_type
+            )
+        )
+
+
+def bind_element(
+    svg_path,
+    elem_index,
+    var=None,
+    text_var=None,
+    tap_var=None,
+    toggle_var=None,
+    color=None,
+    action=None,
+    clear=False,
+):
+    """Attach (or clear) one PLC variable binding on an existing SVG element.
+
+    This is the "wire signals" half of the workflow, kept deliberately blind
+    to geometry: it only ever rewrites ``data-var``/``data-text-var``/
+    ``data-cds-tap``/``data-cds-action``/``data-color`` on the flagged
+    element's own start-tag, spliced back at its exact source offset (same
+    technique as ``lint --fix``, see ``lint.apply_fixes``) -- position, size,
+    fill, stroke and every other byte of the sketch survive untouched. That
+    is what keeps "draw" (``add``/``from-svg``) and "wire signals" (this
+    command) two separate passes over the same file instead of one
+    undifferentiated edit.
+    """
+    from . import svg_import as _svg_import
+
+    if not os.path.isfile(svg_path):
+        _err("SVG file not found: {0}".format(svg_path))
+    with open(svg_path, "r", encoding="utf-8") as handle:
+        svg_text = handle.read()
+
+    try:
+        parsed = _svg_import.parse_svg(svg_text)
+    except ValueError as exc:
+        _err(str(exc))
+    elements = parsed["elements"]
+
+    if elem_index is None:
+        _err("--elem is required")
+    if elem_index < 0 or elem_index >= len(elements):
+        _err(
+            "--elem {0} out of range: screen has {1} element(s) (0..{2})".format(
+                elem_index, len(elements), len(elements) - 1
+            )
+        )
+
+    from . import lint as _lint
+
+    tags = _lint.index_source_tags(svg_text)
+    if len(tags) != len(elements):
+        _err("internal: sketch element count does not match its source tags")
+    start, end, tag_text = tags[elem_index]
+    elem_type = elements[elem_index]["type"]
+
+    changes = []
+    if clear:
+        for attr in (
+            "data-var",
+            "data-text-var",
+            "data-cds-tap",
+            "data-cds-action",
+            "data-color",
+        ):
+            tag_text = _remove_tag_attr(tag_text, attr)
+        changes.append("cleared all bindings")
+    else:
+        if var is not None:
+            _check_binding_type(elem_type, "var", _BIND_ALLOWED_TYPES["var"])
+            tag_text = _set_tag_attr(tag_text, "data-var", var)
+            changes.append("data-var={0}".format(var))
+        if color is not None:
+            _check_binding_type(elem_type, "color", _BIND_ALLOWED_TYPES["color"])
+            tag_text = _set_tag_attr(tag_text, "data-color", color)
+            changes.append("data-color={0}".format(color))
+        if text_var is not None:
+            _check_binding_type(elem_type, "text-var", _BIND_ALLOWED_TYPES["text-var"])
+            tag_text = _set_tag_attr(tag_text, "data-text-var", text_var)
+            changes.append("data-text-var={0}".format(text_var))
+        if tap_var is not None:
+            _check_binding_type(elem_type, "tap", _BIND_ALLOWED_TYPES["tap"])
+            tag_text = _set_tag_attr(tag_text, "data-cds-tap", "tap:{0}".format(tap_var))
+            changes.append("data-cds-tap=tap:{0}".format(tap_var))
+        if toggle_var is not None:
+            _check_binding_type(elem_type, "toggle", _BIND_ALLOWED_TYPES["toggle"])
+            tag_text = _set_tag_attr(
+                tag_text, "data-cds-tap", "toggle:{0}".format(toggle_var)
+            )
+            changes.append("data-cds-tap=toggle:{0}".format(toggle_var))
+        if action is not None:
+            _check_binding_type(elem_type, "action", _BIND_ALLOWED_TYPES["action"])
+            existing = _tag_attr(tag_text, "data-cds-action")
+            merged = "{0} || {1}".format(existing, action) if existing else action
+            tag_text = _set_tag_attr(tag_text, "data-cds-action", merged)
+            changes.append("data-cds-action={0}".format(merged))
+
+    if not changes:
+        _err(
+            "nothing to do: pass --var/--text-var/--tap/--toggle/--color/"
+            "--action, or --clear"
+        )
+
+    new_svg = svg_text[:start] + tag_text + svg_text[end:]
+
+    # Fail loudly on a malformed edit before writing anything, and confirm the
+    # element count did not shift.
+    try:
+        reparsed = _svg_import.parse_svg(new_svg)
+    except ValueError as exc:
+        _err("edit produced invalid SVG: {0}".format(exc))
+    if len(reparsed["elements"]) != len(elements):
+        _err("internal: bind changed the element count; sketch left untouched")
+
+    with open(svg_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(new_svg)
+    _ok("Element {0} ({1}): {2}".format(elem_index, elem_type, ", ".join(changes)))
+    print(svg_path)
 
 
 # ---------------------------------------------------------------------------
