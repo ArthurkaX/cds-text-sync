@@ -149,6 +149,7 @@ def run_verify(args, output_fmt="json"):
         build_timeout=getattr(args, "build_timeout", None),
         test_timeout=getattr(args, "test_timeout", None),
         test_file=getattr(args, "test_file", "") or "",
+        fail_on=getattr(args, "fail_on", "") or "",
     )
 
     report = VerifyReport(sync_folder=sync_folder)

@@ -59,6 +59,14 @@ def register(subparsers):
         help="What an incomplete run means (default: warn)",
     )
     parser.add_argument(
+        "--fail-on",
+        dest="fail_on",
+        choices=["danger", "suspicious", "style"],
+        default="",
+        help="Severity that fails the analyze stage (default: analyzer's own "
+        "setting, normally suspicious)",
+    )
+    parser.add_argument(
         "--probe-timeout",
         dest="probe_timeout",
         type=float,

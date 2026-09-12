@@ -145,6 +145,19 @@ def test_findings_fail_the_gate(findings_workspace, dead_daemon):
     assert code == 1
 
 
+def test_fail_on_raises_the_bar(findings_workspace, dead_daemon):
+    # The fixture has style/suspicious findings but nothing at danger.
+    code, doc, _err = _verify_json(
+        findings_workspace, ["--only", "analyze", "--fail-on", "danger"]
+    )
+    stage = _stage(doc, "analyze")
+    assert stage["status"] == "pass"
+    assert stage["summary"]["fail_on"] == "danger"
+    assert stage["summary"]["findings"] > 0
+    assert doc["verdict"] == "pass"
+    assert code == 0
+
+
 def test_findings_are_capped(findings_workspace, dead_daemon):
     cap = verify_model.MAX_PROBLEMS_PER_STAGE
     _code, doc, _err = _verify_json(findings_workspace, ["--only", "analyze"])

@@ -57,6 +57,7 @@ class VerifyContext:
         build_timeout=None,
         test_timeout=None,
         test_file="",
+        fail_on="",
     ):
         self.sync_folder = sync_folder
         self.project_view = project_view
@@ -64,6 +65,7 @@ class VerifyContext:
         self.build_timeout = build_timeout
         self.test_timeout = test_timeout
         self.test_file = test_file
+        self.fail_on = fail_on
         # Cached daemon liveness: probing once keeps a multi-stage run from
         # paying the timeout for every daemon-backed stage.
         self._daemon_alive = None
@@ -110,6 +112,9 @@ def stage_analyze(ctx):
     from cds_static_analyzer import runner, service
 
     workspace, config, result = service.analyze(ctx.sync_folder)
+
+    if ctx.fail_on:
+        config.fail_on = ctx.fail_on
 
     # ``incomplete_override="ignore"`` keeps this to a pass/fail answer about
     # the *code*; incompleteness is the report's business, not the stage's.
