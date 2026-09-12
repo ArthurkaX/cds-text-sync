@@ -276,8 +276,15 @@ starts an application.
 | `--with-test` | Also run the `.test/` plans |
 | `--test-file PATH` | Run one test plan instead of all of them |
 | `--incomplete warn\|error\|ignore` | What a partial run means (default: `warn`) |
+| `--fail-on danger\|suspicious\|style` | Severity that fails the `analyze` stage (default: the analyzer's own setting, normally `suspicious`) |
 | `--probe-timeout SEC` | Daemon liveness probe (default: 2.0) |
 | `--build-timeout SEC` / `--test-timeout SEC` | Per-stage daemon timeouts (default: 120) |
+
+Static analysis is deliberately opinionated, and not every project wants every
+opinion to block it. `--fail-on danger` keeps the gate on genuine defects and
+lets style findings through as information; they are still reported, only no
+longer fatal. The effective threshold is echoed back in the stage's
+`summary.fail_on`.
 
 ### Statuses and the verdict
 

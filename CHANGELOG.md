@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 - A stage that could not run is `skipped`, never `fail`: an agent with no CODESYS open is not told it broke the project. Skipped and errored stages set `complete: false` instead, and `--incomplete error` turns that into exit code 3 for CI. Exit codes: `0` pass, `1` real problems, `2` could not start, `3` incomplete.
 - `build` only runs when a 2 s `ping` probe (`--probe-timeout`) says the daemon is answering, so a dead daemon costs ~2 s instead of stalling the run. `test` is opt-in via `--with-test` because it reaches past the project — it connects to a PLC and starts an application.
 - A daemon refusal (no project open) is reported as `error`, distinct from a genuine compile failure (`fail`). Per-stage problem lists are capped at 20 with `problem_count`/`truncated` preserved, and the report ends with `next` — concrete commands for the detail behind whatever failed.
+- `--fail-on danger|suspicious|style` sets the severity that fails the `analyze` stage. Static analysis is opinionated and not every project wants every opinion to block it, so a team with a looser style can dial the gate down per run (`--fail-on danger` gates on defects and lets style findings through as information) without editing the analyzer's own config. The effective threshold is echoed in `summary.fail_on`.
+- `TYPE X EXTENDS Y : STRUCT` is now parsed as the struct inheritance it is. Every declaration parser in the repository shares one implementation, so the missing `EXTENDS` clause made each inheriting struct look unparseable — on one real project that alone accounted for 366 spurious diagnostics.
+- `manifest.json` is read as UTF-8 instead of the platform default, so a project whose object names carry non-ASCII characters no longer fails to load on a Windows console codepage.
 
 ---
 
