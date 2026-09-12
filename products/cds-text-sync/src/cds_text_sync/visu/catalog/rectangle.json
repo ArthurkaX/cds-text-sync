@@ -154,6 +154,12 @@
       "member_id": 2565699834,
       "kind": "string",
       "doc": "Vertical align: TOP|VCENTER|BOTTOM"
+    },
+    "gradient": {
+      "member_id": 494542316,
+      "use_member_id": 1375557818,
+      "kind": "gradient",
+      "doc": "Gradient fill override: {color1, color2, angle(0-360), center_x(0-100), center_y(0-100), type(linear|radial|axial)}. Colors are 0xAARRGGBB and the alpha byte is opacity (255 = opaque). Replaces the plain 'fill' color when set; see products/cds-text-sync memory codesys-visu-gradient-fill."
     }
   },
 

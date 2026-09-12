@@ -489,6 +489,31 @@ def test_dark_textfield_text_tracks_the_field_not_the_panel():
     assert _explicit_color(descriptor) == _hex_to_uint(palette["field.text"])
 
 
+def test_a_hand_written_fill_unlinks_even_in_light():
+    """A colour the author typed is a request, so it must beat the style in
+    every scheme -- otherwise fill="#FFFFFF" over a dark panel silently comes
+    back in the style's default text colour, because the NamedColor link still
+    overrides ExplicitColor."""
+    descriptor = _font_descriptor(
+        _compile_one('<text x="40" y="200" fill="#FFFFFF">Hi</text>', "light")
+    )
+    assert '<Null Name="NamedColor" />' in descriptor
+    assert "Font-Default-Color" not in descriptor
+    assert _explicit_color(descriptor) == 0xFFFFFFFF
+
+
+def test_a_class_derived_fill_does_not_unlink_in_light():
+    """The counterweight to the test above: a class expands to a ``fill`` too,
+    but that is the stylesheet speaking, not the author. Keying the unlink off
+    the resolved colour alone cuts every label and button loose from the
+    project style and empties out the whole light contract."""
+    descriptor = _font_descriptor(
+        _compile_one('<text class="h2" x="40" y="200">Hi</text>', "light")
+    )
+    assert "Font-Default-Color" in descriptor
+    assert '<Null Name="NamedColor" />' not in descriptor
+
+
 # ---------------------------------------------------------------------------
 # Preview and skeleton
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ plan.md section 4 (SVG schema).
 
 from __future__ import print_function
 
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -120,11 +121,122 @@ def _resolve(value, theme_colors):
 
 
 # ---------------------------------------------------------------------------
+# Gradient fills -- the "reverse procedure": an SVG <linearGradient> /
+# <radialGradient> referenced by fill="url(#id)" becomes a CODESYS
+# m_bUseGradient/m_GradientData member pair (see builder._render_gradient_members
+# and products/cds-text-sync memory "codesys-visu-gradient-fill").
+# ---------------------------------------------------------------------------
+
+_URL_REF_RE = re.compile(r"url\(#([^)]+)\)")
+
+
+def _percent_or_frac(value, default):
+    """Parse an SVG gradient coordinate: ``"37%"`` -> 37.0, ``"0.5"`` -> 50.0."""
+    if value is None:
+        return default
+    text = str(value).strip()
+    if text.endswith("%"):
+        text = text[:-1]
+        try:
+            return float(text)
+        except ValueError:
+            return default
+    try:
+        return float(text) * 100.0
+    except ValueError:
+        return default
+
+
+def _parse_gradient_defs(root):
+    """Collect every ``<linearGradient>``/``<radialGradient>`` in the document.
+
+    Returns a dict keyed by the gradient's ``id`` (the fragment a shape's
+    ``fill="url(#id)"`` refers to). Ignores ``xlink:href`` template inheritance
+    and non-objectBoundingBox ``gradientUnits`` -- neither appears in the
+    interchange contract's SVG subset.
+    """
+    gradients = {}
+    for elem in root.iter():
+        tag = _strip_ns(elem.tag)
+        if tag not in ("linearGradient", "radialGradient"):
+            continue
+        gid = elem.get("id")
+        if not gid:
+            continue
+        stops = []
+        for stop in elem:
+            if _strip_ns(stop.tag) != "stop":
+                continue
+            offset = _percent_or_frac(stop.get("offset"), 0.0)
+            color = stop.get("stop-color") or "#000000"
+            stops.append((offset, _apply_opacity(color, stop.get("stop-opacity"))))
+        if not stops:
+            continue
+        stops.sort(key=lambda item: item[0])
+        entry = {"kind": tag, "stops": stops}
+        if tag == "linearGradient":
+            entry["x1"] = _percent_or_frac(elem.get("x1"), 0.0)
+            entry["y1"] = _percent_or_frac(elem.get("y1"), 0.0)
+            entry["x2"] = _percent_or_frac(elem.get("x2"), 100.0)
+            entry["y2"] = _percent_or_frac(elem.get("y2"), 0.0)
+        else:
+            entry["cx"] = _percent_or_frac(elem.get("cx"), 50.0)
+            entry["cy"] = _percent_or_frac(elem.get("cy"), 50.0)
+        gradients[gid] = entry
+    return gradients
+
+
+def _gradient_from_fill(fill_attr, gradients, theme_colors, type_override=None):
+    """Turn a ``fill="url(#id)"`` reference into a builder ``gradient`` param dict.
+
+    Returns ``None`` when *fill_attr* is not a ``url(#...)`` reference, or the
+    id is not a known gradient def (the caller then falls back to plain solid
+    fill resolution on the literal string).
+
+    *type_override* carries ``data-cds-gradient-type``, which ``to-svg`` stamps
+    on a shape whose CODESYS gradient is **axial** -- SVG has no axial
+    construct, so the def itself is written as the closest linear one and the
+    marker is what keeps a round trip from downgrading it.
+    """
+    if not fill_attr:
+        return None
+    match = _URL_REF_RE.match(fill_attr.strip())
+    if not match:
+        return None
+    grad = gradients.get(match.group(1))
+    if grad is None:
+        return None
+    stops = grad["stops"]
+    color1 = _resolve(stops[0][1], theme_colors)
+    color2 = _resolve(stops[-1][1], theme_colors)
+    if grad["kind"] == "radialGradient":
+        return {
+            "color1": color1,
+            "color2": color2,
+            "angle": 0,
+            "center_x": int(round(grad.get("cx", 50.0))),
+            "center_y": int(round(grad.get("cy", 50.0))),
+            "type": "radial",
+        }
+    dx = grad["x2"] - grad["x1"]
+    dy = grad["y2"] - grad["y1"]
+    angle = int(round(math.degrees(math.atan2(dy, dx)))) % 360
+    return {
+        "color1": color1,
+        "color2": color2,
+        "angle": angle,
+        "center_x": 50,
+        "center_y": 50,
+        "type": "axial" if (type_override or "").strip() == "axial" else "linear",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Element parsers (each returns an ElementSpec dict)
 # ---------------------------------------------------------------------------
 
 
-def _parse_rect(elem, theme):
+def _parse_rect(elem, theme, gradients=None):
     """Parse a plain ``<rect>`` -> rectangle / rounded-rectangle."""
     x = _float(elem.get("x"), 0)
     y = _float(elem.get("y"), 0)
@@ -132,7 +244,15 @@ def _parse_rect(elem, theme):
     h = _float(elem.get("height"), 100)
     rx = elem.get("rx")
 
-    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    gradient = _gradient_from_fill(
+        elem.get("fill"),
+        gradients or {},
+        theme,
+        elem.get("data-cds-gradient-type"),
+    )
+    fill = None
+    if gradient is None:
+        fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
     stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
@@ -148,7 +268,9 @@ def _parse_rect(elem, theme):
     else:
         params["shape"] = "rectangle"
 
-    if fill is not None:
+    if gradient is not None:
+        params["gradient"] = gradient
+    elif fill is not None:
         params["fill"] = fill
     if stroke is not None:
         params["frame"] = stroke
@@ -156,7 +278,7 @@ def _parse_rect(elem, theme):
     return {"type": "rectangle", "params": params}
 
 
-def _parse_circle(elem, theme):
+def _parse_circle(elem, theme, gradients=None):
     """Parse a ``<circle>`` -> rectangle with shape=ellipse (via bounding-box)."""
     cx = _float(elem.get("cx"), 0)
     cy = _float(elem.get("cy"), 0)
@@ -167,7 +289,15 @@ def _parse_circle(elem, theme):
     w = 2.0 * r
     h = 2.0 * r
 
-    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    gradient = _gradient_from_fill(
+        elem.get("fill"),
+        gradients or {},
+        theme,
+        elem.get("data-cds-gradient-type"),
+    )
+    fill = None
+    if gradient is None:
+        fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
     stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
@@ -178,7 +308,9 @@ def _parse_circle(elem, theme):
         "shape": "ellipse",
     }
 
-    if fill is not None:
+    if gradient is not None:
+        params["gradient"] = gradient
+    elif fill is not None:
         params["fill"] = fill
     if stroke is not None:
         params["frame"] = stroke
@@ -186,7 +318,7 @@ def _parse_circle(elem, theme):
     return {"type": "rectangle", "params": params}
 
 
-def _parse_ellipse(elem, theme):
+def _parse_ellipse(elem, theme, gradients=None):
     """Parse an ``<ellipse>`` -> rectangle with shape=ellipse (via bounding-box)."""
     cx = _float(elem.get("cx"), 0)
     cy = _float(elem.get("cy"), 0)
@@ -198,7 +330,15 @@ def _parse_ellipse(elem, theme):
     w = 2.0 * rx
     h = 2.0 * ry
 
-    fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    gradient = _gradient_from_fill(
+        elem.get("fill"),
+        gradients or {},
+        theme,
+        elem.get("data-cds-gradient-type"),
+    )
+    fill = None
+    if gradient is None:
+        fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
     stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
@@ -209,7 +349,9 @@ def _parse_ellipse(elem, theme):
         "shape": "ellipse",
     }
 
-    if fill is not None:
+    if gradient is not None:
+        params["gradient"] = gradient
+    elif fill is not None:
         params["fill"] = fill
     if stroke is not None:
         params["frame"] = stroke
@@ -217,7 +359,7 @@ def _parse_ellipse(elem, theme):
     return {"type": "rectangle", "params": params}
 
 
-def _parse_line(elem, theme):
+def _parse_line(elem, theme, gradients=None):
     """Parse a ``<line>`` -> line with endpoint geometry."""
     x1 = _int(elem.get("x1"), 0)
     y1 = _int(elem.get("y1"), 0)
@@ -319,7 +461,7 @@ TRANSPARENT_ARGB = "#00000000"
 _int_attrs = ("x", "y", "width", "height")
 
 
-def _parse_text(elem, theme):
+def _parse_text(elem, theme, gradients=None):
     """Parse a ``<text>`` -> label with caption text.
 
     SVG ``x``/``y`` uses top-left origin for x and **baseline** for y.
@@ -382,6 +524,8 @@ def _parse_text(elem, theme):
 
     if font_color is not None:
         params["font_color"] = font_color
+        if _author_set(elem, "fill"):
+            params["font_color_explicit"] = True
 
     if fs is not None:
         params["font_size"] = str(font_size)
@@ -393,7 +537,7 @@ def _parse_text(elem, theme):
     return {"type": "label", "params": params}
 
 
-def _parse_button(elem, theme):
+def _parse_button(elem, theme, gradients=None):
     """Parse a ``<rect data-cds-type="button">`` -> button control.
 
     Emits fill/frame as overridable uint literals (themeable) so buttons
@@ -542,7 +686,7 @@ def _parse_event_action(event, body):
     )
 
 
-def _parse_textfield(elem, theme):
+def _parse_textfield(elem, theme, gradients=None):
     """Parse a ``<text data-cds-type="textfield">`` -> textfield control.
 
     Textfield is like Label but can show runtime variable values.
@@ -569,6 +713,7 @@ def _parse_textfield(elem, theme):
     y_top = y - font_size
 
     font_color = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
+    font_color_explicit = font_color is not None and _author_set(elem, "fill")
     if font_color is None:
         # Native controls skip class expansion, so a textfield never picks up
         # ``fill: var(--text)`` the way a plain <text> does -- and the builder's
@@ -603,6 +748,8 @@ def _parse_textfield(elem, theme):
 
     if font_color is not None:
         params["font_color"] = font_color
+        if font_color_explicit:
+            params["font_color_explicit"] = True
 
     return {"type": "textfield", "params": params}
 
@@ -623,7 +770,7 @@ _LAMP_COLOR_ROLES = {
 }
 
 
-def _parse_lamp(elem, theme):
+def _parse_lamp(elem, theme, gradients=None):
     """Parse a ``<rect data-cds-type="lamp">`` -> indicator lamp control.
 
     A lamp is a native status light bound to a BOOL variable. The friendly
@@ -650,7 +797,7 @@ def _parse_lamp(elem, theme):
     return {"type": "lamp", "params": params}
 
  
-def _parse_image_switcher(elem, theme):
+def _parse_image_switcher(elem, theme, gradients=None):
     """Parse a <rect data-cds-type="image-switcher"> -> ImageSwitcher control.
 
     An ImageSwitcher shows one of two ImagePool images based on a BOOL
@@ -678,7 +825,7 @@ def _parse_image_switcher(elem, theme):
     return {"type": "image-switcher", "params": params}
 
 
-def _parse_combobox(elem, theme):
+def _parse_combobox(elem, theme, gradients=None):
     """Parse a <rect data-cds-type="combobox"> -> ComboBoxInteger control.
 
     A combobox is a dropdown bound to an INT variable, using labels from
@@ -703,7 +850,7 @@ def _parse_combobox(elem, theme):
     return {"type": "combobox", "params": params}
 
 
-def _parse_alarm_banner(elem, theme):
+def _parse_alarm_banner(elem, theme, gradients=None):
     """Parse a ``<rect data-cds-type="alarm-banner">`` -> AlarmBanner control.
 
     An AlarmBanner is a native scrolling alarm ticker. It has no bound
@@ -724,7 +871,7 @@ def _parse_alarm_banner(elem, theme):
     return {"type": "alarm-banner", "params": params}
 
 
-def _parse_frame(elem, theme):
+def _parse_frame(elem, theme, gradients=None):
     """Parse a ``<rect data-cds-type="frame">`` -> VisuFbFrame element.
 
     A frame embeds a sub-visualisation (visu). Geometry only; all other
@@ -843,13 +990,34 @@ def _apply_class_attributes(elem, sheet):
     not already carry an explicit attribute, so a hand-written ``fill``/
     ``stroke`` always wins (escape hatch / back-compat). Colours stay as
     ``var(--role)`` and resolve through the theme like any other value.
+
+    Whatever this injects is recorded in ``data-cds-class-attrs`` so later
+    parsing can still tell a class-derived value from one the author typed --
+    the font colour needs that distinction, see :func:`_author_set`.
     """
     class_value = elem.get("class")
     if not class_value:
         return
+    injected = []
     for attr, value in _stylesheet.class_attributes(class_value, sheet).items():
         if elem.get(attr) is None:
             elem.set(attr, value)
+            injected.append(attr)
+    if injected:
+        elem.set("data-cds-class-attrs", ",".join(injected))
+
+
+def _author_set(elem, attr):
+    """True when *attr* was typed on the element, not injected by its class.
+
+    ``class="h2"`` expanding to a ``fill`` is the stylesheet speaking; a
+    hand-written ``fill="#FFFFFF"`` is the author speaking. Only the latter
+    counts as a request to override the CODESYS visual style's own font colour.
+    """
+    if elem.get(attr) is None:
+        return False
+    from_class = (elem.get("data-cds-class-attrs") or "").split(",")
+    return attr not in from_class
 
 
 def read_scheme(svg_text, override=None):
@@ -975,13 +1143,18 @@ def parse_svg(svg_text, theme=None, project_dir=None, background=None, scheme=No
     # Semantic class stylesheet (bundled defaults + optional project visu.css).
     sheet = _stylesheet.load_stylesheet(project_dir)
 
+    # <linearGradient>/<radialGradient> defs, collected up front so a gradient
+    # declared after the shape that references it (or nested under a non-root
+    # <defs>) still resolves.
+    gradients = _parse_gradient_defs(root)
+
     # -- SVG elements ------------------------------------------------------
     elements = []
 
     for child in root:
         tag = _strip_ns(child.tag)
         if tag == "defs":
-            continue  # already handled by _parse_inline_theme
+            continue  # already handled by _parse_inline_theme / _parse_gradient_defs
 
         # Expand class="..." into fill/stroke/font-size before parsing, so the
         # existing per-element parsers see plain attributes and need no change.
@@ -999,7 +1172,7 @@ def parse_svg(svg_text, theme=None, project_dir=None, background=None, scheme=No
                     tag, ", ".join(sorted(_SUPPORTED))
                 )
             )
-        elements.append(parser(child, merged_theme))
+        elements.append(parser(child, merged_theme, gradients))
         _apply_dialog_attrs(child, elements[-1])
 
     # Determine background colour from theme.

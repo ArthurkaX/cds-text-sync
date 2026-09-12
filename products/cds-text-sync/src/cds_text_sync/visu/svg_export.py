@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import print_function
 
+import math
 import re
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
@@ -225,9 +226,157 @@ _MID_Y2 = 669032122
 _MID_FONT_NAME = 1603690730
 _MID_FONT_SIZE = 4253639993
 _MID_H_ALIGN = 2340015797
+_MID_USE_GRADIENT = 1375557818
+_MID_GRADIENT_DATA = 494542316
 
 # Same fallback the builder uses when a label carries no font_size.
 _DEFAULT_FONT_SIZE = 12
+
+
+# ---------------------------------------------------------------------------
+# Gradient fills -- the inverse of svg_import._parse_gradient_defs /
+# _gradient_from_fill (see builder._render_gradient_members and
+# products/cds-text-sync memory "codesys-visu-gradient-fill" for the slot
+# layout). Without this a to-svg / from-svg round trip silently flattened every
+# gradient back to its plain solid fill.
+# ---------------------------------------------------------------------------
+
+# m_GradientData slot 5.
+_GRADIENT_TYPES = {0: "linear", 1: "radial", 2: "axial"}
+
+
+def _member_list_values(element, member_id):
+    """Return an ArrayList member's positional slot values, or ``None``.
+
+    ``_member_value`` only understands scalars and the colour struct; the
+    gradient member is a flat ``System.Collections.ArrayList`` of 9 slots.
+
+    A colour slot is normally a plain scalar, but screens generated before the
+    encoding was understood carry the named-style colour *struct* there instead
+    (the form that crashes CODESYS's property view). Such a slot is unwrapped to
+    its ``Color`` field so those screens still decompile with their real colours
+    -- reading the struct's outer text would hand back whitespace and flatten
+    every gradient to black/white, which is exactly the repair case.
+    """
+    member_container = find_named(element, "Single", "VisualElemMemberList")
+    mlist = (
+        find_named(member_container, "List", "VisualElemMemberList")
+        if member_container is not None
+        else None
+    )
+    if mlist is None:
+        return None
+    for member in list(mlist):
+        if strip_ns(member.tag) != "Single":
+            continue
+        idc = find_named(member, "Single", "Id")
+        if idc is None or not idc.text:
+            continue
+        try:
+            if int(idc.text.strip()) != member_id:
+                continue
+        except (ValueError, TypeError):
+            continue
+        listval = find_named(member, "List", "Value")
+        if listval is None:
+            return None
+        slots = []
+        for child in list(listval):
+            if strip_ns(child.tag) != "Single":
+                continue
+            color_el = find_named(child, "Single", "Color")
+            if color_el is not None:
+                slots.append((color_el.text or "").strip())
+            else:
+                slots.append((child.text or "").strip())
+        return slots
+    return None
+
+
+def _stop_markup(uint_str, fallback):
+    """Render one ``<stop>`` body attrs from a slot's ARGB integer string.
+
+    The alpha byte leaves as ``stop-opacity`` rather than an 8-digit
+    ``stop-color``: ``svg_import._apply_opacity`` overwrites a hex alpha with
+    the (defaulted-to-1.0) opacity attribute, so an 8-digit colour would come
+    back opaque.
+    """
+    try:
+        val = int(uint_str) & 0xFFFFFFFF
+    except (ValueError, TypeError):
+        return '<stop offset="{0}" stop-color="{1}"/>'.format(fallback[0], fallback[1])
+    alpha = (val >> 24) & 0xFF
+    rgb = "#{:02x}{:02x}{:02x}".format(
+        (val >> 16) & 0xFF, (val >> 8) & 0xFF, val & 0xFF
+    )
+    out = '<stop offset="{0}" stop-color="{1}"'.format(fallback[0], rgb)
+    if alpha != 0xFF:
+        out += ' stop-opacity="{0:.4f}"'.format(alpha / 255.0)
+    return out + "/>"
+
+
+def _gradient_def(element, gid):
+    """Decompile an element's gradient member pair into an SVG gradient def.
+
+    Returns the ``<linearGradient>``/``<radialGradient>`` markup, or ``None``
+    when the element has no gradient (or has one switched off).
+
+    CODESYS's "axial" type has no SVG construct, so it is written as the
+    closest linear gradient plus a ``data-cds-gradient-type="axial"`` marker on
+    the shape -- which ``from-svg`` reads back, so a round trip keeps the axial
+    instead of quietly downgrading it.
+    """
+    use = _member_value(element, _MID_USE_GRADIENT)
+    if not isinstance(use, str) or use.strip().lower() != "true":
+        return None
+    slots = _member_list_values(element, _MID_GRADIENT_DATA)
+    if not slots or len(slots) < 6:
+        return None
+
+    def _int(index, default):
+        try:
+            return int(slots[index])
+        except (ValueError, TypeError, IndexError):
+            return default
+
+    stop1 = _stop_markup(slots[0], ("0%", "#000000"))
+    stop2 = _stop_markup(slots[1], ("100%", "#ffffff"))
+    gtype = _GRADIENT_TYPES.get(_int(5, 0), "linear")
+
+    if gtype == "radial":
+        return (
+            '<radialGradient id="{0}" cx="{1}%" cy="{2}%" r="50%">{3}{4}'
+            "</radialGradient>"
+        ).format(gid, _int(3, 50), _int(4, 50), stop1, stop2)
+
+    # Linear/axial: turn the angle back into an objectBoundingBox line through
+    # the shape's centre -- the same convention preview._gradient_def uses, and
+    # the exact inverse of the import's atan2(dy, dx).
+    angle = math.radians(_int(2, 0))
+    dx, dy = math.cos(angle), math.sin(angle)
+    return (
+        '<linearGradient id="{0}" x1="{1:.1f}%" y1="{2:.1f}%" '
+        'x2="{3:.1f}%" y2="{4:.1f}%">{5}{6}</linearGradient>'
+    ).format(
+        gid,
+        50 - dx * 50,
+        50 - dy * 50,
+        50 + dx * 50,
+        50 + dy * 50,
+        stop1,
+        stop2,
+    )
+
+
+def _gradient_axial(element):
+    """True when the element's gradient type slot says axial (type 2)."""
+    slots = _member_list_values(element, _MID_GRADIENT_DATA)
+    if not slots or len(slots) < 6:
+        return False
+    try:
+        return int(slots[5]) == 2
+    except (ValueError, TypeError):
+        return False
 
 
 def _text_geometry(element, y, h, font_size):
@@ -272,7 +421,7 @@ def _text_geometry(element, y, h, font_size):
     return anchor, str(int(y_val + fs))
 
 
-def _render_rect(x, y, w, h, element, rx=None):
+def _render_rect(x, y, w, h, element, rx=None, gradient_ref=None):
     """Render a ``<rect>`` from a simple shape element."""
     fill = _resolve_color_value(_member_value(element, _MID_FILL))
     stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
@@ -287,7 +436,13 @@ def _render_rect(x, y, w, h, element, rx=None):
     }
     if rx is not None:
         attrs["rx"] = str(rx)
-    if fill:
+    if gradient_ref:
+        # A live gradient hides the solid fill member entirely, so the
+        # reference replaces it rather than sitting beside it.
+        attrs["fill"] = gradient_ref
+        if _gradient_axial(element):
+            attrs["data-cds-gradient-type"] = "axial"
+    elif fill:
         attrs["fill"] = fill
     if stroke:
         attrs["stroke"] = stroke
@@ -301,7 +456,7 @@ def _render_rect(x, y, w, h, element, rx=None):
     return _svg_tag("rect", attrs)
 
 
-def _render_circle(cx, cy, r, element):
+def _render_circle(cx, cy, r, element, gradient_ref=None):
     """Render a ``<circle>`` from a simple shape element (VISU_ST_CIRCLE)."""
     fill = _resolve_color_value(_member_value(element, _MID_FILL))
     stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
@@ -309,7 +464,11 @@ def _render_circle(cx, cy, r, element):
     sw = _sw if isinstance(_sw, str) else None
 
     attrs = {"cx": str(cx), "cy": str(cy), "r": str(r)}
-    if fill:
+    if gradient_ref:
+        attrs["fill"] = gradient_ref
+        if _gradient_axial(element):
+            attrs["data-cds-gradient-type"] = "axial"
+    elif fill:
         attrs["fill"] = fill
     if stroke:
         attrs["stroke"] = stroke
@@ -496,7 +655,7 @@ def _render_button(element):
     return _svg_tag("rect", attrs)
 
 
-def _simple_to_svg(element):
+def _simple_to_svg(element, gradient_ref=None):
     """Convert a ``VisuFbElemSimple`` element to SVG based on its shape."""
     _shape = _member_value(element, _MID_SHAPE)
     shape = _shape if isinstance(_shape, str) else "VISU_ST_RECTANGLE"
@@ -512,7 +671,7 @@ def _simple_to_svg(element):
     h = int(_h) if isinstance(_h, str) else 0
 
     if shape == "VISU_ST_RECTANGLE":
-        return _render_rect(x, y, w, h, element)
+        return _render_rect(x, y, w, h, element, gradient_ref=gradient_ref)
     elif shape == "VISU_ST_ROUNDRECT":
         _rx = _member_value(element, _MID_CORNER_RADIUS)
         if isinstance(_rx, str):
@@ -522,12 +681,12 @@ def _simple_to_svg(element):
                 rx = None
         else:
             rx = None
-        return _render_rect(x, y, w, h, element, rx=rx)
+        return _render_rect(x, y, w, h, element, rx=rx, gradient_ref=gradient_ref)
     elif shape == "VISU_ST_CIRCLE":
         cx = x + w // 2
         cy = y + h // 2
         r = min(w, h) // 2
-        return _render_circle(cx, cy, r, element)
+        return _render_circle(cx, cy, r, element, gradient_ref=gradient_ref)
     else:
         raise SvgExportError("Unsupported shape variant: '{0}'".format(shape))
 
@@ -986,7 +1145,7 @@ _ELEMENT_RENDERERS = {
 }
 
 
-def _element_to_svg(element):
+def _element_to_svg(element, gradient_ref=None):
     """Dispatch a CODESYS visual element to the appropriate SVG renderer."""
     type_name = named_text(element, "VisualElementTypeName")
     if not type_name:
@@ -1004,7 +1163,7 @@ def _element_to_svg(element):
             "VisuFbElemSlider, "
             "{0})".format(", ".join(CODESYS_TYPES))
         )
-    svg = renderer(element)
+    svg = renderer(element, gradient_ref=gradient_ref) if gradient_ref else renderer(element)
 
     # Cross-cutting: inject dialog-open data attributes.
     info = _read_dialog_action(element)
@@ -1186,13 +1345,23 @@ def screen_to_svg(xml_text, theme_colors=None, scheme=None):
 
     # Convert each element.
     elements_svg = []
+    gradient_defs = []
     if velist is not None:
+        index = 0
         for child in list(velist):
             if strip_ns(child.tag) != "Single":
                 continue
             try:
-                svg = _element_to_svg(child)
+                gid = "cts-grad-{0}".format(index)
+                grad_markup = _gradient_def(child, gid)
+                if grad_markup:
+                    gradient_defs.append(grad_markup)
+                svg = _element_to_svg(
+                    child,
+                    gradient_ref="url(#{0})".format(gid) if grad_markup else None,
+                )
                 elements_svg.append(svg)
+                index += 1
             except SvgExportError:
                 raise
             except Exception as exc:
@@ -1220,6 +1389,11 @@ def screen_to_svg(xml_text, theme_colors=None, scheme=None):
     ]
     if theme_block:
         lines.append("  <defs><style>{0}</style></defs>".format(theme_block))
+    if gradient_defs:
+        lines.append("  <defs>")
+        for grad in gradient_defs:
+            lines.append("    " + grad)
+        lines.append("  </defs>")
     for elem_svg in elements_svg:
         lines.append("  " + elem_svg)
     lines.append("</svg>")

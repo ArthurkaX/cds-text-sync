@@ -10,6 +10,7 @@ _cli_handlers_vars handler modules.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -79,9 +80,23 @@ def dispatch_visu(args):
         return
 
     if args.visu_action == "new":
-        out = getattr(args, "out", "") or (
-            (args.name or "screen").strip().replace(" ", "_") + ".svg"
-        )
+        out = getattr(args, "out", "")
+        if not out:
+            # Default into .visu/ rather than the current directory: an SVG
+            # sketch and its preview.svg/.png are scratch authoring files,
+            # not project deliverables, and dropping them loose in whatever
+            # folder the command happened to run from clutters it with files
+            # nothing else looks for.
+            os.makedirs(".visu", exist_ok=True)
+            out = os.path.join(
+                ".visu", (args.name or "screen").strip().replace(" ", "_") + ".svg"
+            )
+            print(
+                "[i] no --out given, writing sketch under .visu/ "
+                "(preview/lint/from-svg will follow it there); pass --out "
+                "to choose a different path",
+                file=sys.stderr,
+            )
         visu_cmds.new_svg(
             out_path=out,
             name=args.name,

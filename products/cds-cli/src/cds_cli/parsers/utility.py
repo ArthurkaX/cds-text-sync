@@ -35,8 +35,10 @@ def register(subparsers):
 
     visu_lint = subparsers.add_parser(
         "visu-lint",
-        help="Machine-only validation of generated visualization XML",
-        description="JSON-only validator for the SVG-to-XML generation pipeline.",
+        help="Validate a COMPILED visualization .xml (not the SVG: that is `cts visu lint`)",
+        description="JSON-only validator for the SVG-to-XML generation pipeline. "
+        "This checks the compiled CODESYS XML. To check an SVG sketch's layout "
+        "and typography before compiling, use `cts visu lint --svg` instead.",
     )
     visu_lint.add_argument("--xml", required=True, help="Generated visualization XML file")
 

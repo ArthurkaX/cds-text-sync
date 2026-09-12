@@ -62,10 +62,24 @@ Connection state:
 IDE-interactive PLC commands:
   cts connect   CODESYS may ask you to approve Login or connection details.
   cts download  CODESYS may ask you to confirm Download or Online Change.
+  cts import    Creating/replacing objects (e.g. a visualization screen) may
+                pop up a CODESYS confirmation dialog ("Objects will be
+                overwritten/created" or similar). This is the common case, not
+                the exception -- expect it whenever import creates or replaces
+                a native object.
   These IDE questions are modal: the CLI waits and cannot answer them for you.
-  If either command appears stuck, open CODESYS and answer the pending dialog.
+  If any of these commands appears stuck, it is one of two things: a modal
+  dialog waiting in the CODESYS window, or a command that is simply slow
+  (import of a big project routinely needs 2-3 minutes). Both look identical
+  from the CLI side, and the daemon is single-threaded, so either one makes
+  every other command -- including cts ping -- time out too. Raise --timeout
+  first; if it still does not return, check the CODESYS window for a dialog.
+  Killing the CLI does NOT cancel the operation: the daemon keeps working and
+  finishes it. Never blind-retry an import after a timeout -- run cts status,
+  then cts compare, to see whether it already landed.
   For unattended work, complete Online -> Login in the IDE before starting the
-  daemon; a download may still require confirmation depending on the project.
+  daemon; a download may still require confirmation depending on the project,
+  and an import that creates objects will still need someone at the IDE.
 
 Timeouts:
   Commands that talk to the CODESYS daemon accept --timeout SECONDS.
@@ -123,6 +137,21 @@ Examples:
     p_import = add_daemon_parser(
         subparsers, "import", "disk -> IDE: apply project-view/ changes", None
     )
+    p_import.description = (
+        "disk -> IDE: apply project-view/ changes.\n\n"
+        "In most cases this needs you at the CODESYS IDE: creating or "
+        "replacing a native object (a visualization screen, a POU, ...) "
+        "commonly pops up a CODESYS confirmation dialog. That dialog blocks "
+        "the daemon -- and every other command, including cts ping -- until "
+        "someone clicks it. If import (or ping right after it) seems to "
+        "hang, raise --timeout first -- import of a big project routinely "
+        "needs 2-3 minutes -- and if it still does not return, switch to the "
+        "CODESYS window and look for the dialog. Killing the CLI does not "
+        "cancel the import: the daemon finishes it anyway, so check with cts "
+        "status and cts compare before re-running. Keep the CODESYS window "
+        "reachable during import instead of assuming it runs unattended."
+    )
+    p_import.formatter_class = argparse.RawDescriptionHelpFormatter
     p_import.add_argument(
         "--dry-run",
         action="store_true",

@@ -21,6 +21,7 @@ RECOMMENDED_GITIGNORE_ENTRIES = [
     "!.dump/manifest.json",
     ".backup/",
     ".diff/",
+    ".visu/",
     "sync_debug.log",
     "compare.log",
     "build.log",

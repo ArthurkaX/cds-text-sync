@@ -22,6 +22,7 @@ is viewable.
 
 from __future__ import print_function
 
+import math
 import os
 import subprocess
 import sys
@@ -179,6 +180,65 @@ def _paint(fill, fill_a, frame, frame_a, stroke_width=1):
     return " ".join(out)
 
 
+def _paint_gradient(gradient_id, frame, frame_a, stroke_width=1):
+    """Same as ``_paint`` but the fill is a ``url(#id)`` gradient reference."""
+    out = ['fill="url(#{0})"'.format(gradient_id)]
+    if frame and frame_a > 0:
+        out.append('stroke="{0}" stroke-width="{1}"'.format(frame, stroke_width))
+        if frame_a < 1.0:
+            out.append('stroke-opacity="{0:.3f}"'.format(frame_a))
+    return " ".join(out)
+
+
+def _gradient_def(gradient, index, theme_colors):
+    """Build a ``<linearGradient>``/``<radialGradient>`` def for one element.
+
+    Mirrors ``builder._render_gradient_members``'s field reading (``color1``/
+    ``color2``/``angle``/``center_x``/``center_y``/``type``) so the preview and
+    the compiled screen resolve the same colours from the same expressions --
+    the gradient only differs in *where* it ends up (an SVG def here, the
+    m_GradientData member there), not in what it says.
+
+    Angle is turned into an objectBoundingBox line via cos/sin around the
+    shape's centre, which reproduces the direction CODESYS paints a linear/
+    axial gradient at. Radial uses a plain 50% radius: CODESYS's own radial
+    fill may extend further (see the "pale radial on round shapes" note in
+    memory codesys-visu-gradient-fill) -- this preview intentionally shows
+    the *authored* gradient, not that engine quirk, so a design can still be
+    judged on its own colours instead of on an unconfirmed engine bug.
+    """
+    color1_uint = _builder._resolve_uint_color(gradient.get("color1"), theme_colors, "4278190080")
+    color2_uint = _builder._resolve_uint_color(gradient.get("color2"), theme_colors, "4294967295")
+    color1, _ = uint_to_rgba(color1_uint)
+    color2, _ = uint_to_rgba(color2_uint)
+    color1 = color1 or "#000000"
+    color2 = color2 or "#FFFFFF"
+    gid = "cts-grad-{0}".format(index)
+    gtype = (gradient.get("type") or "linear").lower()
+    if gtype == "radial":
+        cx = _num(gradient, "center_x", 50)
+        cy = _num(gradient, "center_y", 50)
+        markup = (
+            '<radialGradient id="{0}" cx="{1}%" cy="{2}%" r="50%">'
+            '<stop offset="0%" stop-color="{3}"/>'
+            '<stop offset="100%" stop-color="{4}"/>'
+            "</radialGradient>"
+        ).format(gid, cx, cy, color1, color2)
+    else:
+        angle = math.radians(_num(gradient, "angle", 0))
+        dx, dy = math.cos(angle), math.sin(angle)
+        x1, y1 = 50 - dx * 50, 50 - dy * 50
+        x2, y2 = 50 + dx * 50, 50 + dy * 50
+        markup = (
+            '<linearGradient id="{0}" x1="{1:.1f}%" y1="{2:.1f}%" '
+            'x2="{3:.1f}%" y2="{4:.1f}%">'
+            '<stop offset="0%" stop-color="{5}"/>'
+            '<stop offset="100%" stop-color="{6}"/>'
+            "</linearGradient>"
+        ).format(gid, x1, y1, x2, y2, color1, color2)
+    return gid, markup
+
+
 def _text_node(params, x, y, w, h, color, size, content, weight=None, inset=0):
     """Place text inside a box using the CODESYS h_align / v_align semantics.
 
@@ -292,7 +352,7 @@ _ELEMENT_RENDERERS = {
 }
 
 
-def _render_element(spec, theme_colors, scheme="light"):
+def _render_element(spec, theme_colors, scheme="light", gradient_id=None):
     """Return the SVG markup for one parsed element (may be several nodes)."""
     type_name = spec.get("type")
     params = dict(spec.get("params", {}))
@@ -300,7 +360,11 @@ def _render_element(spec, theme_colors, scheme="light"):
     x, y = _num(params, "x"), _num(params, "y")
     w, h = _num(params, "width"), _num(params, "height")
     fill, fill_a, frame, frame_a, font = _resolved_colors(spec, theme_colors, scheme)
-    context = (x, y, w, h, _paint(fill, fill_a, frame, frame_a), fill, fill_a, frame, frame_a, font, theme_colors)
+    if gradient_id:
+        paint = _paint_gradient(gradient_id, frame, frame_a)
+    else:
+        paint = _paint(fill, fill_a, frame, frame_a)
+    context = (x, y, w, h, paint, fill, fill_a, frame, frame_a, font, theme_colors)
     return _ELEMENT_RENDERERS.get(type_name, _render_placeholder)(params, context)
 
 # ---------------------------------------------------------------------------
@@ -334,6 +398,18 @@ def render(parsed, theme_colors=None, grid=0, scheme=None):
         ),
     ]
 
+    elements = parsed.get("elements", [])
+    gradient_ids = {}
+    defs = []
+    for i, spec in enumerate(elements):
+        gradient = (spec.get("params") or {}).get("gradient")
+        if gradient:
+            gid, markup = _gradient_def(gradient, i, theme_colors)
+            gradient_ids[i] = gid
+            defs.append(markup)
+    if defs:
+        parts.append("<defs>" + "".join(defs) + "</defs>")
+
     if grid > 0:
         lines = []
         for gx in range(0, width, grid):
@@ -350,8 +426,8 @@ def render(parsed, theme_colors=None, grid=0, scheme=None):
             )
         )
 
-    for spec in parsed.get("elements", []):
-        parts.extend(_render_element(spec, theme_colors, scheme))
+    for i, spec in enumerate(elements):
+        parts.extend(_render_element(spec, theme_colors, scheme, gradient_ids.get(i)))
 
     parts.append("</svg>")
     return "\n".join(parts) + "\n"

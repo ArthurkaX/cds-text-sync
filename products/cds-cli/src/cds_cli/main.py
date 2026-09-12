@@ -251,9 +251,6 @@ def main():
 
         workspace = getattr(args, "workspace", "") or "."
         if getattr(args, "daemon", False):
-            from cds_cli._cli_io import _print_error, _print_rp_error
-            from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
-
             try:
                 resp = send_command_reverse("generate_docs", {}, timeout=args.timeout)
             except RuntimeError as e:

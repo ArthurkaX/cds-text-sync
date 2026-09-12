@@ -17,27 +17,30 @@ def register(subparsers):
 
     PHASE 1 -- draw (geometry, style, gradients; no variables yet)
       1. scaffold a sketch (records canvas size + colour scheme):
-           cts visu new --name Overview --w 1024 --h 768 \\
-             --out overview.svg
-      2. edit overview.svg -- add ONE or TWO elements, not the whole screen
+           cts visu new --name Overview --w 1024 --h 768
+         with no --out this writes .visu/Overview.svg -- a sketch and its
+         preview.svg/.png are scratch authoring files, not project
+         deliverables, so they default into that folder instead of wherever
+         the command happened to run; pass --out to put it somewhere else
+      2. edit .visu/Overview.svg -- add ONE or TWO elements, not the whole screen
       3. look at it before adding more:
-           cts visu preview --svg overview.svg      # resolved SVG + PNG
-           cts visu lint --svg overview.svg [--fix] # grid/type/overflow
+           cts visu preview --svg .visu/Overview.svg      # resolved SVG + PNG
+           cts visu lint --svg .visu/Overview.svg [--fix] # grid/type/overflow
       4. repeat 2-3 a few elements at a time until the layout is right
       5. compile into project-view/ as a NEW screen:
-           cts visu from-svg --svg overview.svg --create-screen \\
+           cts visu from-svg --svg .visu/Overview.svg --create-screen \\
              --screen-name Overview \\
              --folder "Runtime/PLC Logic/Application/HMI" \\
              --sync-folder <project>/project-view
 
     PHASE 2 -- wire signals (attach PLC variables, one element at a time)
-      6. cts visu bind --svg overview.svg --elem 2 --var VisuVars.xRunning
+      6. cts visu bind --svg .visu/Overview.svg --elem 2 --var VisuVars.xRunning
          (bind only ever touches data-var/data-text-var/data-cds-tap/
          data-cds-action on the ONE flagged element -- it cannot move,
          resize, recolor or gradient anything, so it is safe to run
          between preview/lint checks without re-reviewing the layout)
       7. recompile in place, keeping the screen's Guid, and emit the GVL:
-           cts visu from-svg --svg overview.svg --replace \\
+           cts visu from-svg --svg .visu/Overview.svg --replace \\
              --screen Overview \\
              --folder "Runtime/PLC Logic/Application/HMI" \\
              --sync-folder <project>/project-view \\

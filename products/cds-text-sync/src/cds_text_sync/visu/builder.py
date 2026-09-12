@@ -209,6 +209,79 @@ def _replace_color_struct_with_literal(block, member_id, color_uint):
     return pattern.sub(_short_form, block, count=1)
 
 
+_GRADIENT_TYPE_MAP = {"linear": 0, "radial": 1, "axial": 2}
+
+
+def _render_gradient_members(params, theme_colors):
+    """Render the m_bUseGradient + m_GradientData member pair, or "" if unused.
+
+    ``params["gradient"]`` is a dict: ``color1``/``color2`` (color exprs, default
+    black/white), ``angle``/``center_x``/``center_y`` (int, default 0/50/50),
+    ``type`` (linear/radial/axial, default linear).
+
+    The 9-slot layout was reverse-engineered from 6 gradients hand-built in
+    CODESYS's own Gradient Editor and is live-verified rendering correctly --
+    see products/cds-text-sync memory "codesys-visu-gradient-fill" for the
+    ground-truth tables and the dead ends. Slots 0-5 are the dialog's own
+    fields; slots 6 and 7 are ``0`` in every real sample (the dialog has no
+    control for either), and slot 8 is Color1's alpha byte alone with RGB
+    zeroed, ``(color1 >> 24) << 24``.
+
+    Colours are ``0xAARRGGBB``. The dialog's "Transparency 0-255" field is the
+    alpha byte directly, uninverted, so 255 = opaque despite the label.
+
+    Color1/Color2 must be plain ``<Single Type="uint">`` scalars -- no struct,
+    no ``CanonicalName``. That is what the dialog's custom "..." RGB picker
+    writes, and this tool only ever receives literal colours. The struct form
+    is for named-style picks and needs a genuinely resolvable ``CanonicalName``;
+    a placeholder or a signed ``int`` scalar crashes CODESYS's property view,
+    which casts every slot to ``INamedStyleColor``.
+    """
+    gradient = params.get("gradient")
+    if not gradient:
+        return ""
+
+    color1_uint = _resolve_uint_color(gradient.get("color1"), theme_colors, "4278190080")
+    color2_uint = _resolve_uint_color(gradient.get("color2"), theme_colors, "4294967295")
+    angle = int(gradient.get("angle", 0))
+    center_x = int(gradient.get("center_x", 50))
+    center_y = int(gradient.get("center_y", 50))
+    gtype = _GRADIENT_TYPE_MAP.get(gradient.get("type", "linear"), 0)
+    # Position 8 is Color1's alpha byte alone, RGB zeroed -- see the docstring.
+    alpha_only = str(((int(color1_uint) >> 24) & 0xFF) << 24)
+
+    return (
+        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
+        '{mb}  <Single Name="Id" Type="long">1375557818</Single>\n'
+        '{mb}  <Single Name="Value" Type="bool">True</Single>\n'
+        "{mb}</Single>\n"
+        '{mb}<Single Type="{mt}" Method="IArchivable">\n'
+        '{mb}  <Single Name="Id" Type="long">494542316</Single>\n'
+        '{mb}  <List Name="Value" Type="System.Collections.ArrayList">\n'
+        '{mb}    <Single Type="uint">{c1}</Single>\n'
+        '{mb}    <Single Type="uint">{c2}</Single>\n'
+        '{mb}    <Single Type="int">{angle}</Single>\n'
+        '{mb}    <Single Type="int">{cx}</Single>\n'
+        '{mb}    <Single Type="int">{cy}</Single>\n'
+        '{mb}    <Single Type="int">{gtype}</Single>\n'
+        '{mb}    <Single Type="int">0</Single>\n'
+        '{mb}    <Single Type="int">0</Single>\n'
+        '{mb}    <Single Type="uint">{alpha_only}</Single>\n'
+        "{mb}  </List>\n"
+        "{mb}</Single>\n"
+    ).format(
+        mb=_MB,
+        mt=_MEMBER_TYPE,
+        c1=color1_uint,
+        c2=color2_uint,
+        angle=angle,
+        cx=center_x,
+        cy=center_y,
+        gtype=gtype,
+        alpha_only=alpha_only,
+    )
+
+
 def _render_font_color_struct(member_id, signed_int):
     """Render a font colour member as struct form.
 
@@ -612,8 +685,18 @@ def _render_golden_element(
         )
 
     # The colour the sketch asked for only reaches the screen once the font
-    # descriptor stops pointing at the style's Font-Default-Color.
-    if not _font_defers_to_style(scheme):
+    # descriptor stops pointing at the style's Font-Default-Color. Scheme
+    # curation covers elements that never asked for a colour (they should keep
+    # following the style), but a font colour the *author* typed -- an SVG
+    # fill="#FFFFFF" rather than one a class or the role palette supplied -- is
+    # a request, so honour it in every scheme, not only dark. Without this an
+    # explicit white label over a dark panel silently comes back in the style's
+    # default text colour in the (default) light scheme, because the NamedColor
+    # link still overrides ExplicitColor. The distinction matters: keying off
+    # ``font_color`` alone unlinks every label and every button, since classes
+    # and the button/field text roles always resolve to something, and that
+    # quietly cuts the whole light scheme loose from the project style.
+    if params.get("font_color_explicit") or not _font_defers_to_style(scheme):
         block = _unlink_font_color_from_style(
             block, _signed_color(font_color_uint)
         )
@@ -639,6 +722,12 @@ def _render_golden_element(
         if value is None:
             value = spec.get("default", "")
         block = block.replace(token, _esc(str(value)))
+
+    if "@@GRADIENT_MEMBERS@@" in block:
+        block = block.replace(
+            "@@GRADIENT_MEMBERS@@",
+            _render_gradient_members(params, theme_colors),
+        )
 
     # Frame param members.
     if "@@PARAM_MEMBERS@@" in block:
