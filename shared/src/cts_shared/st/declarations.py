@@ -180,10 +180,15 @@ def parse_dut(declaration):
     strict_attribute = bool(re.search(r"(?is)\{\s*attribute\s+'strict'\s*\}", declaration or ""))
     """Parse a TYPE declaration into a neutral DUT description."""
     text = blank_noise(declaration or "")
-    match = re.search(r"(?is)\bTYPE\s+([A-Za-z_]\w*)\s*:(.*?)\bEND_TYPE\b", text)
+    match = re.search(
+        r"(?is)\bTYPE\s+([A-Za-z_]\w*)\s*"
+        r"(?:\bEXTENDS\s+([A-Za-z_][\w.]*)\s*)?"
+        r":(.*?)\bEND_TYPE\b",
+        text,
+    )
     if not match:
         return None
-    name, body = match.group(1), match.group(2)
+    name, extends_base, body = match.group(1), match.group(2), match.group(3)
     upper = body.upper()
     for keyword, end_keyword in (("STRUCT", "END_STRUCT"), ("UNION", "END_UNION")):
         if keyword not in upper or end_keyword not in upper:
@@ -195,7 +200,7 @@ def parse_dut(declaration):
             if parsed:
                 for field in parsed[0]:
                     fields.append({"name": field, "type": parsed[1], "initial": parsed[2]})
-        return {"name": name, "kind": "struct", "fields": fields, "base": None}
+        return {"name": name, "kind": "struct", "fields": fields, "base": extends_base}
 
     strict = strict_attribute
     stripped = re.sub(r"(?is)^\s*\{\s*attribute\s+'strict'\s*\}\s*", "", body).strip()
