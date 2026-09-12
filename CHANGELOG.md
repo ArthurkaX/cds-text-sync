@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Version 3.2.0 (2026-09-12)
+### Version 3.1.5 (2026-09-12)
 
 **`cts visu bind` splits "draw" from "wire signals":**
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cds-cli"
-version = "3.2.0"
+version = "3.1.5"
 description = "Command-line composition layer for cds-text-sync products"
 requires-python = ">=3.11"
 dependencies = [
