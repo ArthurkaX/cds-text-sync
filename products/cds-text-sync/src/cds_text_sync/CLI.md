@@ -241,6 +241,85 @@ cts import --timeout 120
 Deleted objects cannot be shipped as files. They are listed in `patch.json` and
 in `README.txt` so the receiver can remove them by hand.
 
+## One Gate (`cts verify`)
+
+`cts verify` runs every applicable check and returns **one verdict with one exit
+code**. Use it instead of remembering which checks exist: it is the answer to
+"is this project in a shippable state?".
+
+The offline stages are **read-only** — they do not rewrite sources, baseline or
+suppression files. `build` changes IDE build state, and `--with-test` executes
+plans against the configured target (including writes/resets requested by a
+plan), so those modes are not read-only.
+
+```bash
+cts verify --sync-folder C:\Projects\Plant            # JSON
+cts --pretty verify --sync-folder C:\Projects\Plant   # human-readable
+```
+
+Stages, in run order (cheap and offline first, the IDE last):
+
+| Stage | What it does | When it runs |
+| --- | --- | --- |
+| `analyze` | `cts analyze` over `project-view/` | always |
+| `visu-sketch` | `cts visu lint` over every SVG in `.visu/` | always |
+| `build` | compiles the active application through the daemon; when supported, verifies `sync_folder` and a content fingerprint against the requested workspace | if the daemon answers a 2 s ping |
+| `test` | runs the `.test/` plans on the PLC | only with `--with-test` |
+
+`test` is opt-in because it reaches past the project: it connects to a PLC and
+starts an application.
+
+| Flag | Meaning |
+| --- | --- |
+| `--sync-folder PATH` | Sync folder or `project-view/` (default: search up from cwd) |
+| `--only a,b` | Run just these stages (registry order is kept regardless of typing order) |
+| `--with-test` | Also run the `.test/` plans |
+| `--test-file PATH` | Run one test plan instead of all of them |
+| `--incomplete warn\|error\|ignore` | What a partial run means (default: `warn`) |
+| `--probe-timeout SEC` | Daemon liveness probe (default: 2.0) |
+| `--build-timeout SEC` / `--test-timeout SEC` | Per-stage daemon timeouts (default: 120) |
+
+### Statuses and the verdict
+
+| Stage status | Meaning |
+| --- | --- |
+| `pass` | the stage ran and found nothing |
+| `fail` | the stage found real problems |
+| `skipped` | the stage could not run (no daemon, nothing to check) |
+| `error` | the stage itself broke, or the daemon refused |
+
+`verdict` is `fail` **only** when a stage is `fail`. `skipped` and `error` never
+fail the gate — they set `complete: false`. That is deliberate: an agent with no
+IDE open must not be told it broke the project. Stages may also carry a stable
+`reason_code` alongside the human-readable `reason`.
+
+For a build response from a recent daemon, `summary.workspace_fingerprint`
+records the SHA-256 content fingerprint used for the workspace handshake. A
+mismatch is reported as `skipped` with `reason_code: "stale_ide"`; older
+daemons may omit the field and remain protocol-compatible. The daemon also
+reports `summary.import_freshness`: `verified` means the current workspace
+matches the last successful daemon import, `stale` means it changed afterwards,
+and `unknown` means no usable attestation could be read. An import without
+`--save` is trusted only while the same daemon process remains alive; after a
+restart it becomes `unknown`. The latter two are skipped with `stale_ide` /
+`identity_unknown`; re-run `cts import --save` before verifying. This
+attestation proves the disk snapshot accepted by the daemon, but does not yet
+cover every IDE setting or library resolution.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | `pass` |
+| 1 | `fail` — a stage found real problems |
+| 2 | `verify` could not start (no sync folder, no `project-view/`, bad `--only`) |
+| 3 | `complete: false` **and** `--incomplete error` |
+
+Use `--incomplete error` in CI, where a run without a compiler verdict is not
+good enough. The default `warn` keeps exit 0 and prints a note to `stderr`.
+
+Per-stage problem lists are capped at 20; `problem_count` keeps the real total
+and `truncated` says it was cut. The report ends with `next` — concrete commands
+to run for the full detail of whatever failed.
+
 ## Static Analysis (`cts analyze`)
 
 `cts analyze` runs offline static analysis over the exported `project-view/`
@@ -544,6 +623,7 @@ The simplified CLI maps to daemon methods as follows:
 | `test` | `cicd` |
 | `patch save` | `sync_compare_text` (then local file copying) |
 | `analyze` | offline — no daemon method |
+| `verify` | `ping` + `build` (+ `cicd` with `--with-test`); offline stages need no daemon |
 | `fsm scan/show/ui` | offline — no daemon method |
 | `visu-lint` | offline — no daemon method |
 

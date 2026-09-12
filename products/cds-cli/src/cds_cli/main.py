@@ -232,6 +232,13 @@ def main():
         if code:
             sys.exit(code)
 
+    elif args.command == "verify":
+        from cds_cli.verify import run_verify
+
+        code = run_verify(args, output_fmt)
+        if code:
+            sys.exit(code)
+
     elif args.command == "ui":
         from cds_text_sync.ui import launch
 

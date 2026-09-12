@@ -19,6 +19,7 @@ from cds_cli.parsers.utility import register as register_utility
 from cds_cli.parsers.patch import register as register_patch
 from cds_cli.parsers.project import register as register_project
 from cds_cli.parsers.variables import register as register_variables
+from cds_cli.parsers.verify import register as register_verify
 from cds_cli.parsers.visu import register as register_visu
 
 
@@ -35,6 +36,10 @@ How to use:
   cts can run from any folder, but works best from the exported project folder.
   If project-view/ is available, treat the folder as the single source of truth.
   Prefer full imports: edit folder -> cts import -> cts build -> cts download/connect.
+  To find out whether the project is in a shippable state, run `cts verify`:
+  one command, one verdict, one exit code. It runs the offline checks plus the
+  compiler when CODESYS is open, is read-only, and reports a check it could
+  not run as `skipped` rather than as a failure.
   Before editing, run `cts docs` for a compact map of the project's own POUs
   and the library functions it calls -- cheaper than reading raw sources.
   To draw or change an HMI screen, read `cts visu --help`: it carries the
@@ -367,6 +372,9 @@ Examples:
 
     # -- documentation bundle ----------------------------------------------
     register_docs(subparsers)
+
+    # -- verify subcommand (one gate over every applicable check) ----------
+    register_verify(subparsers)
 
     subparsers._choices_actions = [
         action

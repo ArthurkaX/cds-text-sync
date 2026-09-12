@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**`cts verify` — one gate, one verdict:**
+
+- New command `cts verify [--sync-folder PATH]` runs every applicable check and reduces them to a single verdict with a single exit code, so an agent no longer has to know the names of four separate checks, run them in the right order and combine four outputs. Stages run cheapest-first: `analyze` (static analysis of `project-view/`), `visu-sketch` (SVG lint of every sketch in `.visu/`), `build` (the compiler, through the daemon), and `test` (the `.test/` plans), with `--only a,b` to narrow the set.
+- The gate is strictly **read-only** — no `--fix`, nothing written to the project — which is what makes it safe to run against a live production project.
+- A stage that could not run is `skipped`, never `fail`: an agent with no CODESYS open is not told it broke the project. Skipped and errored stages set `complete: false` instead, and `--incomplete error` turns that into exit code 3 for CI. Exit codes: `0` pass, `1` real problems, `2` could not start, `3` incomplete.
+- `build` only runs when a 2 s `ping` probe (`--probe-timeout`) says the daemon is answering, so a dead daemon costs ~2 s instead of stalling the run. `test` is opt-in via `--with-test` because it reaches past the project — it connects to a PLC and starts an application.
+- A daemon refusal (no project open) is reported as `error`, distinct from a genuine compile failure (`fail`). Per-stage problem lists are capped at 20 with `problem_count`/`truncated` preserved, and the report ends with `next` — concrete commands for the detail behind whatever failed.
+
+---
+
 ### Version 3.1.5 (2026-09-12)
 
 **`cts visu bind` splits "draw" from "wire signals":**

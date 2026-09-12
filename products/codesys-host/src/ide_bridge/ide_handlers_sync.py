@@ -35,6 +35,68 @@ from ide_daemon_helpers import (
 from ide_st_text import split_st_text
 
 
+def _write_import_attestation(sync_folder, project, saved=False):
+    """Record the workspace state that the just-completed import applied.
+
+    This is deliberately a small daemon-owned sidecar rather than a claim
+    inferred from ``manifest.json``: a clean manifest only proves that an
+    export happened, not that the IDE accepted the corresponding import.
+    Failure to write the attestation never turns an otherwise successful
+    import into a failed import; ``cts verify`` will report the freshness as
+    unknown instead.
+    """
+    try:
+        from ide_handlers_build import _workspace_fingerprint
+
+        fingerprint, complete = _workspace_fingerprint(sync_folder)
+        if not complete:
+            return {"complete": False}
+        application = _active_application_name(project)
+        project_path = ""
+        try:
+            from ide_daemon_state import _project_file_path
+
+            project_path = str(_project_file_path(project) or "")
+        except Exception:
+            for attr in ("filename", "path", "FileName", "Path"):
+                try:
+                    value = getattr(project, attr)
+                    if callable(value):
+                        value = value()
+                    if value:
+                        project_path = str(value)
+                        break
+                except Exception:
+                    pass
+        payload = {
+            "schema_version": 1,
+            "workspace_fingerprint": fingerprint,
+            "application": application,
+            "project_path": project_path,
+            "daemon_pid": os.getpid(),
+            "saved": bool(saved),
+            "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        }
+        dump_dir = os.path.join(sync_folder, ".dump")
+        if not os.path.isdir(dump_dir):
+            os.makedirs(dump_dir)
+        path = os.path.join(dump_dir, "verify-import.json")
+        temporary = path + ".tmp"
+        with open(temporary, "w") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+        try:
+            os.replace(temporary, path)
+        except AttributeError:
+            # IronPython 2.7 has no os.replace.
+            if os.path.exists(path):
+                os.remove(path)
+            os.rename(temporary, path)
+        return {"complete": True, "path": path, "fingerprint": fingerprint}
+    except Exception as error:
+        _log("Could not write verify import attestation: {0}".format(error))
+        return {"complete": False, "error": str(error)}
+
+
 # How many snapshot-*.xml files to keep in .dump/. Only the newest is ever read
 # back (_cmd_sync_import sorts and takes [0]); the rest are kept as a short
 # manual undo trail. Without a bound they accumulate forever — export, compare
@@ -809,6 +871,21 @@ def _cmd_sync_import_text(params):
                 "cannot be applied automatically; use update-pou or edit "
                 "the object in the IDE."
             )
+
+        # Keep a durable, content-bound marker for the next verify/build.
+        # This does not import anything itself; it only attests that this
+        # daemon completed the import against the current disk workspace.
+        attestation = _write_import_attestation(sync_folder, project, saved=saved)
+        if attestation.get("complete"):
+            return_data["verify_import_attestation"] = {
+                "workspace_fingerprint": attestation.get("fingerprint"),
+                "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        else:
+            return_data["verify_import_attestation"] = {
+                "complete": False,
+                "reason": attestation.get("error") or "workspace fingerprint unavailable",
+            }
 
         _invalidate_device_cache()
 

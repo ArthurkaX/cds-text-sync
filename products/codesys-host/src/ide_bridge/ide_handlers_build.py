@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+import hashlib
 
 from ide_daemon_state import (
     _log,
@@ -27,6 +28,85 @@ from ide_st_objects import (
     has_text_document as _has_text_document,
     read_document as _read_document,
 )
+
+
+def _workspace_fingerprint(root):
+    """Compute the same content fingerprint as the CLI (IronPython-safe)."""
+    excluded = (".git", ".dump")
+    digest = hashlib.sha256()
+    try:
+        root = os.path.abspath(str(root))
+    except Exception:
+        return "", False
+    try:
+        files = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(name for name in dirnames if name not in excluded)
+            for name in sorted(filenames):
+                path = os.path.join(dirpath, name)
+                if os.path.islink(path) or not os.path.isfile(path):
+                    continue
+                files.append((os.path.relpath(path, root).replace(os.sep, "/"), path))
+        for rel, path in files:
+            digest.update(rel.encode("utf-8"))
+            digest.update(b"\0")
+            with open(path, "rb") as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+            digest.update(b"\0")
+    except (IOError, OSError):
+        return "", False
+    return digest.hexdigest(), True
+
+
+def _import_freshness(sync_folder, fingerprint, app_name, project_path):
+    """Classify the last daemon import relative to the current workspace."""
+    path = os.path.join(sync_folder, ".dump", "verify-import.json")
+    try:
+        with open(path, "r") as handle:
+            attestation = json.load(handle)
+    except Exception:
+        return "unknown", {}
+    if not isinstance(attestation, dict):
+        return "unknown", {}
+    imported = attestation.get("workspace_fingerprint")
+    if not isinstance(imported, str) or len(imported) != 64:
+        return "unknown", {}
+    if imported.lower() != fingerprint.lower():
+        return "stale", {"imported_fingerprint": imported}
+    # Identity fields are informative for now. A later protocol version can
+    # bind the selected application/project explicitly without changing this
+    # response shape.
+    details = {
+        "imported_fingerprint": imported,
+        "imported_at": attestation.get("imported_at", ""),
+    }
+    if not attestation.get("saved", False):
+        details["saved"] = False
+        if attestation.get("daemon_pid") != os.getpid():
+            return "unknown", details
+    else:
+        details["saved"] = True
+    if attestation.get("application"):
+        details["imported_application"] = attestation.get("application")
+        if app_name and app_name != "?" and str(attestation.get("application")) != str(app_name):
+            details["current_application"] = app_name
+            return "stale", details
+    if attestation.get("project_path"):
+        details["imported_project_path"] = attestation.get("project_path")
+        if project_path:
+            try:
+                old_path = os.path.normcase(os.path.normpath(os.path.abspath(str(attestation["project_path"]))))
+                new_path = os.path.normcase(os.path.normpath(os.path.abspath(str(project_path))))
+                if old_path != new_path:
+                    details["current_project_path"] = project_path
+                    return "stale", details
+            except Exception:
+                pass
+    return "verified", details
 
 
 def _cmd_export(params):
@@ -140,6 +220,26 @@ def _cmd_build(params):
         if app is None:
             return {"ok": False, "error": "No active application found to build."}
 
+        project_path = ""
+        try:
+            # Keep this import local: lightweight CPython protocol tests load
+            # this module with a minimal state stub, while the real daemon has
+            # the canonical project-path resolver available.
+            from ide_daemon_state import _project_file_path as _path_for_project
+
+            project_path = str(_path_for_project(project) or "")
+        except Exception:
+            for attr in ("filename", "path", "FileName", "Path"):
+                try:
+                    value = getattr(project, attr)
+                    if callable(value):
+                        value = value()
+                    if value:
+                        project_path = str(value)
+                        break
+                except Exception:
+                    pass
+
         app_name = "?"
         try:
             app_name = app.get_name()
@@ -168,6 +268,7 @@ def _cmd_build(params):
         messages = []
         error_count = 0
         warning_count = 0
+        diagnostics_complete = True
         try:
             msg_objects = system_obj.get_message_objects(BUILD_CATEGORY_GUID)
             for msg in msg_objects:
@@ -207,20 +308,51 @@ def _cmd_build(params):
                         }
                     )
                 except Exception as error:
+                    diagnostics_complete = False
                     _log("Could not decode one build message: {0}".format(error))
         except Exception as error:
+            diagnostics_complete = False
             _log("Could not collect build messages: {0}".format(error))
 
         result = {
             "ok": error_count == 0,
             "data": {
                 "application": app_name,
+                "project_path": project_path,
                 "errors": error_count,
                 "warnings": warning_count,
                 "elapsed_seconds": round(elapsed, 3),
                 "messages": messages,
+                "diagnostics_complete": diagnostics_complete,
             },
         }
+        try:
+            sync_folder, sync_error = _get_sync_folder()
+            # Fingerprinting is requested by ``cts verify`` explicitly.  A
+            # plain ``cts build`` should not pay an extra full-tree read.
+            if (
+                sync_folder
+                and isinstance(params, dict)
+                and params.get("workspace_fingerprint")
+            ):
+                result["data"]["sync_folder"] = sync_folder
+                fingerprint, complete = _workspace_fingerprint(sync_folder)
+                if complete:
+                    result["data"]["workspace_fingerprint"] = fingerprint
+                    result["data"]["workspace_fingerprint_complete"] = True
+                    freshness, freshness_details = _import_freshness(
+                        sync_folder, fingerprint, app_name, project_path
+                    )
+                    result["data"]["import_freshness"] = freshness
+                    if freshness_details:
+                        result["data"]["import_freshness_details"] = freshness_details
+                else:
+                    result["data"]["workspace_fingerprint_complete"] = False
+                    result["data"]["import_freshness"] = "unknown"
+            elif sync_error:
+                result["data"]["sync_folder_error"] = sync_error
+        except Exception as error:
+            result["data"]["sync_folder_error"] = str(error)
 
         # Write output file if requested
         output_path = params.get("output") if isinstance(params, dict) else None

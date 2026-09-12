@@ -89,6 +89,21 @@ indentation fixes where available.
 
 Details: [static analyzer](products/cds-static-analyzer/README.md).
 
+### One command for "is this shippable?"
+
+`cts verify` runs every applicable check — static analysis, SVG sketch lint,
+and (if CODESYS is open) the compiler — and returns a single verdict with a
+single exit code. It is read-only, so it is safe on a live production project.
+
+```powershell
+cts --pretty verify --sync-folder C:\path\to\sync-folder
+cts verify --with-test      # also run the .test/ plans on the PLC
+```
+
+A check that cannot run (no IDE open) is reported as `skipped` and marks the
+run incomplete — it never turns into a failure. Exit codes: `0` pass, `1` real
+problems, `2` could not start, `3` incomplete with `--incomplete error`.
+
 <details>
 <summary><strong>▶ Click to open: Quick ST formatting inside CODESYS</strong></summary>
 
@@ -157,6 +172,7 @@ cts compare                # inspect IDE vs disk
 cts import                 # project-view/ -> CODESYS
 cts build                  # build the active application
 cts analyze --workspace .  # offline check; daemon is not required
+cts verify                 # every applicable check, one verdict, one exit code
 ```
 
 <details>

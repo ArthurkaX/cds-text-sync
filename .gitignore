@@ -19,6 +19,7 @@ probe/
 .handoff/
 plan.md
 spec.md
+concept.md
 fix_specs.md
 
 # Logs and temp output
