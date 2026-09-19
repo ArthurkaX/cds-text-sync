@@ -320,7 +320,7 @@ def expand_leaves(path, typestr, registry,
     if entry["kind"] == "alias":
         return expand_leaves(path, entry["base"], registry, bound_resolver,
                              max_depth, max_leaves, _depth + 1, _budget)
-    if entry["kind"] in ("struct", "fb"):
+    if entry["kind"] in ("struct", "union", "fb"):
         out = []
         for field in entry["fields"]:
             sub = path + "." + field["name"]

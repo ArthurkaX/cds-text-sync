@@ -10,6 +10,8 @@ def register(subparsers):
     )
     parser.add_argument("--output", "--out", dest="output", default="", help="Documentation output directory")
     parser.add_argument("--daemon", action="store_true", help="Generate through the running CODESYS daemon")
+    parser.add_argument("--check", action="store_true", help="Check whether an existing bundle is fresh")
+    parser.add_argument("--validate", action="store_true", help="Validate an existing documentation bundle")
     parser.add_argument("--timeout", type=float, default=120, help="Daemon timeout in seconds (default: 120)")
 
 

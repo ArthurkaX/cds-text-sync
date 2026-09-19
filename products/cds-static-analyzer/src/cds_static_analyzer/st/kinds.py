@@ -221,9 +221,7 @@ def _classify_dut(decl):
         return UNKNOWN
     if parsed["kind"] == "enum":
         return ENUM
-    # variable_map maps UNION to "struct"; distinguish by keyword.
-    blanked = _blank_noise(decl or "")
-    if re.search(r"\bUNION\b", blanked, re.IGNORECASE):
+    if parsed["kind"] == "union":
         return UNION
     if parsed["kind"] == "struct":
         return STRUCT

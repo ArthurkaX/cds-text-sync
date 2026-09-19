@@ -143,6 +143,12 @@ class ExecutionGraph:
                 )
             )
 
+        def add_unresolved(name, match):
+            self.call_sites[caller].append(
+                (name, section.at(match.start()), match.group(0))
+            )
+            self.unresolved_calls[caller].add(name)
+
         local_types = {
             _key(member.get("name")): member.get("type", "").strip()
             for member in all_members(unit)
@@ -178,6 +184,32 @@ class ExecutionGraph:
             parts = name.split(".")
             if parts[-1].upper() in _NON_CALLS:
                 continue
+            if parts[0].upper() in {"THIS", "SUPER"} and len(parts) > 1:
+                # Preserve owner-method edges instead of silently dropping
+                # explicit THIS/SUPER dispatches.
+                method = parts[-1]
+                owner_name = unit.owner_name
+                target_owner = owner_name
+                if parts[0].upper() == "SUPER" and owner_name:
+                    owner_unit = next(
+                        (candidate for candidate in self.snapshot.units
+                         if _key(candidate.qualified_name) == _key(owner_name)),
+                        None,
+                    )
+                    extends = re.search(
+                        r"(?i)\bEXTENDS\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)",
+                        (owner_unit.declaration if owner_unit else "") or "",
+                    )
+                    if extends:
+                        target_owner = extends.group(1)
+                target = self._resolve_name(
+                    f"{target_owner}.{method}" if target_owner else method
+                )
+                if target is not None:
+                    add_call(target, match)
+                else:
+                    add_unresolved(name, match)
+                continue
             if parts[0].upper() in {"THIS", "SUPER"}:
                 continue
 
@@ -206,6 +238,10 @@ class ExecutionGraph:
                     continue
                 if is_known_function_block(type_name):
                     continue
+                # Keep external FB invocations visible to documentation.  A
+                # later LibDoc pass can resolve the declared type exactly.
+                add_unresolved(type_name, match)
+                continue
 
             if len(parts) > 1:
                 # Resolve ``instance.Method(...)`` where the instance can be
@@ -224,14 +260,43 @@ class ExecutionGraph:
                         continue
                     if is_known_function_block(type_name):
                         continue
+                    # Preserve the declared FB type in the unresolved name,
+                    # rather than losing ``instance.Method()`` at the graph
+                    # boundary.  This is resolvable against LibDoc symbols.
+                    add_unresolved(f"{type_name}.{method}", match)
+                    continue
 
             if is_known_function(name) or is_known_function_block(name):
                 continue
-            self.unresolved_calls[caller].add(name)
+            add_unresolved(name, match)
 
     def tasks_for(self, unit_name):
         """Return task names that can reach *unit_name*."""
         return frozenset(self._tasks_by_unit.get(_key(unit_name), ()))
+
+    def call_edges(self):
+        """Yield normalized ``(caller, callee, call_sites)`` records.
+
+        ``call_sites`` contains absolute source offsets only; callers that
+        render documentation can add line/column information from the owning
+        unit without copying implementation text into the graph.
+        """
+        for caller in sorted(self.calls):
+            for callee in sorted(self.calls[caller]):
+                sites = tuple(
+                    site[1] for site in self.call_sites.get(caller, ())
+                    if site[0] == callee
+                )
+                yield caller, callee, sites
+
+    def unresolved_call_sites(self):
+        """Yield normalized unresolved call names and source offsets."""
+        for caller in sorted(self.unresolved_calls):
+            sites = self.call_sites.get(caller, ())
+            for name in sorted(self.unresolved_calls[caller]):
+                yield caller, name, tuple(
+                    site[1] for site in sites if site[0] == name
+                )
 
     def reachable_from(self, task_name):
         """Return canonical unit names reachable from one task."""

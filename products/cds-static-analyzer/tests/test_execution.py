@@ -81,3 +81,53 @@ def test_execution_graph_resolves_qualified_gvl_fb_calls_and_methods():
     assert graph.tasks_for("FB_Logger") == {"Fast"}
     assert graph.tasks_for("FB_Logger.LogADD") == {"Fast"}
     assert graph.unresolved_calls == {}
+
+
+def test_execution_graph_resolves_this_method_call():
+    owner = _st(
+        "FB_Base.st",
+        "FUNCTION_BLOCK FB_Base\nEND_FUNCTION_BLOCK\n",
+    )
+    method = _st(
+        "FB_Base.Run.st",
+        "METHOD Run\nIMPLEMENTATION\nTHIS.Reset();\nEND_METHOD\n",
+    )
+    reset = _st(
+        "FB_Base.Reset.st",
+        "METHOD Reset\nIMPLEMENTATION\nEND_METHOD\n",
+    )
+    graph = execution.ExecutionGraph(ProjectSnapshot(".", [owner, method, reset]))
+
+    assert graph.unresolved_calls == {}
+    edges = list(graph.call_edges())
+    assert [(caller, callee) for caller, callee, _sites in edges] == [
+        ("fb_base.run", "fb_base.reset")
+    ]
+    assert edges[0][2]
+
+
+def test_execution_graph_resolves_super_method_call():
+    base = _st(
+        "FB_Base.st",
+        "FUNCTION_BLOCK FB_Base\nEND_FUNCTION_BLOCK\n",
+    )
+    base_method = _st(
+        "FB_Base.Reset.st",
+        "METHOD Reset\nIMPLEMENTATION\nEND_METHOD\n",
+    )
+    derived = _st(
+        "FB_Derived.st",
+        "FUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK\n",
+    )
+    method = _st(
+        "FB_Derived.Run.st",
+        "METHOD Run\nIMPLEMENTATION\nSUPER.Reset();\nEND_METHOD\n",
+    )
+    graph = execution.ExecutionGraph(
+        ProjectSnapshot(".", [base, base_method, derived, method])
+    )
+
+    assert graph.unresolved_calls == {}
+    assert [(caller, callee) for caller, callee, _sites in graph.call_edges()] == [
+        ("fb_derived.run", "fb_base.reset")
+    ]

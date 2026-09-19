@@ -268,10 +268,7 @@ def build_st_snapshot(project_view, progress=None):
 
         rules, issues = directive_info(text)
         file_directives[rel] = FileDirectives(rules, issues)
-        unit = _build_st_unit(rel, text)
-        if unit is None:
-            continue
-        units.append(unit)
+        units.extend(_build_st_units(rel, text))
 
     # Resolve owner ids in a post-pass (case-insensitive: IEC identifiers).
     by_qual = {}
@@ -338,3 +335,35 @@ def _build_st_unit(rel, text):
         source_spans=spans,
         owner_name=owner_name,
     )
+
+
+_TOP_LEVEL_POU_RE = re.compile(
+    r"^[ \t]*(?P<kind>FUNCTION_BLOCK|PROGRAM|FUNCTION)\s+"
+    r"(?P<name>[A-Za-z_]\w*)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _build_st_units(rel, text):
+    """Build one unit per top-level POU in a source projection.
+
+    Most exported files contain one object, but hand-authored or merged
+    projections can contain several POUs.  Keep the original source path for
+    all units while assigning each declaration its own logical identity.
+    """
+    normalized = (text or "").lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    matches = list(_TOP_LEVEL_POU_RE.finditer(blanked(normalized)))
+    if len(matches) <= 1:
+        unit = _build_st_unit(rel, normalized)
+        return [unit] if unit is not None else []
+    units = []
+    for index, match in enumerate(matches):
+        start = match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
+        unit = _build_st_unit(rel, normalized[start:end])
+        if unit is None:
+            continue
+        unit.qualified_name = match.group("name")
+        unit.id = unit_id(rel, unit.qualified_name)
+        units.append(unit)
+    return units

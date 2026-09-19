@@ -2,62 +2,33 @@
 
 from __future__ import annotations
 
-import re
 from cds_static_analyzer.capabilities import Capability, Scope
+from cds_static_analyzer.global_access import global_access_index
 from cds_static_analyzer.rules_api import RuleSpec, finding_in
-from cds_static_analyzer.st import kinds as K
-from cds_static_analyzer.st.body import body
-from cds_static_analyzer.st.decl import all_members
-
-_GLOBAL_ACCESS = re.compile(r"\b(?P<name>[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*)\b")
-
-
-def _global_members(ctx):
-    globals_by_name = {}
-    for unit in ctx.units:
-        if unit.kind not in (K.GVL, K.GVL_PERSISTENT):
-            continue
-        for member in all_members(unit):
-            name = member.get("name", "")
-            if name:
-                globals_by_name[f"{unit.qualified_name}.{name}".casefold()] = member
-    return globals_by_name
 
 
 def check(ctx):
     execution = ctx.capability(Capability.EXECUTION_GRAPH)
     ctx.capability(Capability.DECLARATIONS)
-    globals_by_name = _global_members(ctx)
-    if not globals_by_name:
-        return
-
     accesses = {}
+    index = global_access_index(ctx)
     for unit in ctx.units:
-        if unit.kind not in K.CALLABLE:
-            continue
         tasks = execution.tasks_for(unit.qualified_name)
         if not tasks:
             continue
-        section = body(unit)
-        if not section:
-            continue
-        for match in _GLOBAL_ACCESS.finditer(section.text):
-            name = re.sub(r"\s+", "", match.group("name")).casefold()
-            if name not in globals_by_name:
-                continue
-            absolute = section.at(match.start())
-            end = match.end()
-            is_write = bool(re.match(r"\s*:=", section.text[end:]))
+        for access in index.accesses_for(unit):
+            name = f"{access.global_unit.qualified_name}.{access.member['name']}"
+            key = name.casefold()
             for task in sorted(tasks):
-                accesses.setdefault(name, {"read": [], "write": []})[
-                    "write" if is_write else "read"
-                ].append((task, unit, absolute, match.group("name")))
+                accesses.setdefault(key, {"name": name, "read": [], "write": []})[
+                    "write" if access.write else "read"
+                ].append((task, unit, access.offset, name))
 
-    for name in sorted(accesses):
-        by_kind = accesses[name]
+    for key in sorted(accesses):
+        by_kind = accesses[key]
         writes = _by_task(by_kind["write"])
         reads = _by_task(by_kind["read"])
-        display = name
+        display = by_kind["name"]
 
         for first_task, second_task in _task_pairs(writes):
             occurrence = writes[second_task][0]
@@ -68,9 +39,6 @@ def check(ctx):
                 f"({first_task}, {second_task})",
             )
 
-        # When both tasks write the same variable, the write/write finding is
-        # the stronger and more useful diagnostic.  Do not add reciprocal
-        # read/write findings caused by a read-modify-write expression.
         if len(writes) > 1:
             continue
         for write_task in sorted(writes):

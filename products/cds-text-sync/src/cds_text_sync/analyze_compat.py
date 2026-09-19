@@ -111,7 +111,8 @@ def build_compat_snapshot(project_view):
             if lower.endswith(".st"):
                 rules, issues = project.directive_info(text)
                 file_directives[rel] = project.FileDirectives(rules, issues)
-                unit = project._build_st_unit(rel, text)
+                units.extend(project._build_st_units(rel, text))
+                unit = None
             else:
                 try:
                     unit = _build_xml_unit(rel, text)

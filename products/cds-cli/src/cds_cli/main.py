@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -254,9 +255,29 @@ def main():
             sys.exit(code)
 
     elif args.command == "docs":
-        from cds_text_sync.docgen import generate_docs
+        from cds_text_sync.docgen import (
+            _resolve_doc_paths, check_docs, generate_docs, validate_bundle,
+        )
 
         workspace = getattr(args, "workspace", "") or "."
+        if getattr(args, "validate", False):
+            output = getattr(args, "output", "") or None
+            if output is None:
+                _project_view, output_path = _resolve_doc_paths(workspace)
+                output = str(output_path)
+            diagnostics = validate_bundle(output)
+            result = {"ok": not any(item.get("severity") == "error" for item in diagnostics),
+                      "diagnostics": diagnostics}
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            if not result["ok"]:
+                sys.exit(1)
+            return
+        if getattr(args, "check", False):
+            result = check_docs(workspace, output=getattr(args, "output", "") or None)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            if result.get("exit_code"):
+                sys.exit(result["exit_code"])
+            return
         if getattr(args, "daemon", False):
             try:
                 resp = send_command_reverse("generate_docs", {}, timeout=args.timeout)

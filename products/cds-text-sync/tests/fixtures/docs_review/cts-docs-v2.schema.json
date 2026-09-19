@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cts-docs/v2 compatibility fixture",
+  "type": "object",
+  "required": ["source", "kind", "name", "path", "line", "interface"],
+  "properties": {
+    "source": {"enum": ["project", "library"]},
+    "kind": {"type": "string"},
+    "name": {"type": "string"},
+    "path": {"type": "string"},
+    "line": {"type": ["integer", "null"]},
+    "interface": {"type": "array"},
+    "description": {"type": "string"},
+    "library": {"type": ["string", "null"]},
+    "version": {"type": ["string", "null"]}
+  }
+}

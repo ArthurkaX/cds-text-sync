@@ -1,4 +1,4 @@
-"""Tests for the compact documentation generator (``cts-docs/v2``).
+"""Tests for the compact documentation generator (``cts-docs/v3``).
 
 The generator must never emit raw source text, must document only the
 libraries the project actually references, and must report an unresolved
@@ -6,6 +6,8 @@ reference instead of quietly substituting another version.
 """
 
 import json
+
+import pytest
 
 from cds_text_sync import docgen
 
@@ -149,13 +151,21 @@ def test_project_pous_carry_description_and_interface_without_source(tmp_path):
 
     assert result["ok"] is True
     assert result["output"] == str(output)
-    assert manifest["format"] == "cts-docs/v2"
+    assert manifest["format"] == "cts-docs/v3"
+    assert manifest["input_fingerprint"]
+    assert manifest["sources"] == "sources.jsonl"
+    assert manifest["diagnostics"] == "diagnostics.jsonl"
+    assert manifest["relations"] == "relations.jsonl"
     assert manifest["counts"]["project_pous"] == 1
 
     symbol = symbols[0]
     assert symbol["source"] == "project"
     assert (symbol["kind"], symbol["name"]) == ("FUNCTION_BLOCK", "FB_Sensor")
     assert symbol["path"] == "FB_Sensor.st"
+    assert symbol["id"].startswith("project::function_block::")
+    assert symbol["source_ref"]["id"].startswith("source:project:")
+    assert symbol["card"].startswith("project/")
+    assert symbol["behavior"]["status"] == "partial"
     assert "Standard sensor service block." in symbol["description"]
     assert "Debounces a raw discrete sensor signal" in symbol["description"]
     rows = {row["name"]: row for row in symbol["interface"]}
@@ -166,9 +176,22 @@ def test_project_pous_carry_description_and_interface_without_source(tmp_path):
 
     # The implementation body must not travel into any artifact.
     project_md = (output / "project.md").read_text(encoding="utf-8")
+    index_md = (output / "index.md").read_text(encoding="utf-8")
+    assert "[Project symbol index](project.md)" in index_md
+    assert (output / symbol["card"]).is_file()
+    card_text = (output / symbol["card"]).read_text(encoding="utf-8")
+    assert symbol["name"] in card_text
+    assert "[Back to index](../index.md)" in card_text
     assert "Q := TRUE;" not in project_md
     assert "END_VAR" not in project_md
     assert not (output / "bundle.md").exists()
+    assert "Q := TRUE;" not in (output / "symbols.jsonl").read_text(encoding="utf-8")
+    sources = [
+        json.loads(line)
+        for line in (output / "sources.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert sources[0]["path"] == "FB_Sensor.st"
+    assert len(sources[0]["sha256"]) == 64
 
 
 def test_methods_gvls_and_duts_are_documented(tmp_path):
@@ -251,6 +274,130 @@ def test_referenced_library_is_documented_with_rowspan_scopes(tmp_path):
     assert "system library" in library_md
 
 
+def test_project_call_resolves_to_exact_library_symbol(tmp_path):
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\nFB_Demo();\n", encoding="utf-8"
+    )
+    (project / "Library Manager.xml").write_text(
+        _library_manager_xml(
+            [{
+                "resolution": "Demo, 1.2.3.4 (Acme)",
+                "placeholder": "Demo",
+                "namespace": "DEMO",
+                "system": "True",
+            }]
+        ),
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "Acme", "Demo", "1.2.3.4")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, manifest, _symbols = _read_output(workspace)
+    relations = [
+        json.loads(line)
+        for line in (output / "relations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    calls = [relation for relation in relations if relation["kind"] == "calls"]
+    assert len(calls) == 1
+    assert calls[0]["from"].startswith("project::program::")
+    assert calls[0]["to"].startswith("library::fb::")
+    assert calls[0]["resolution"] == "exact"
+    assert manifest["counts"]["diagnostic_errors"] == 0
+
+
+def test_integration_project_task_exact_and_missing_libdoc(tmp_path):
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\nFB_Demo();\nEND_PROGRAM\n",
+        encoding="utf-8",
+    )
+    (project / "Task Configuration.xml").write_text(
+        "<Single><List Name=\"PouList\"><Single>"
+        "<Single Name=\"Name\">Main</Single>"
+        "</Single></List></Single>",
+        encoding="utf-8",
+    )
+    (project / "Library Manager.xml").write_text(
+        _library_manager_xml([
+            {
+                "resolution": "Demo, 1.2.3.4 (Acme)",
+                "placeholder": "Demo",
+                "namespace": "DEMO",
+                "system": "True",
+            },
+            {
+                "resolution": "Missing, 9.9.9.9 (Acme)",
+                "placeholder": "Missing",
+                "namespace": "MISSING",
+                "system": "True",
+            },
+        ]),
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "Acme", "Demo", "1.2.3.4")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, manifest, symbols = _read_output(workspace)
+    relations = [
+        json.loads(line)
+        for line in (output / "relations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    main = next(row for row in symbols if row["name"] == "Main")
+    assert manifest["counts"]["project_pous"] == 1
+    assert manifest["libraries_missing"][0]["name"] == "Missing"
+    assert any(
+        relation["kind"] == "reachable_from_task"
+        and relation["to"] == main["id"]
+        and relation["from"] == "external::task:Task Configuration"
+        for relation in relations
+    )
+    calls = [relation for relation in relations if relation["kind"] == "calls"]
+    assert calls[0]["resolution"] == "exact"
+    assert calls[0]["to"].startswith("library::fb::")
+
+
+def test_qualified_namespace_call_resolves_to_exact_library_symbol(tmp_path):
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\nDEMO.FB_Demo();\n", encoding="utf-8"
+    )
+    (project / "Library Manager.xml").write_text(
+        _library_manager_xml([{
+            "resolution": "Demo, 1.2.3.4 (Acme)",
+            "placeholder": "Demo",
+            "namespace": "DEMO",
+            "system": "True",
+        }]),
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "Acme", "Demo", "1.2.3.4")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, _manifest, _symbols = _read_output(workspace)
+    relations = [
+        json.loads(line)
+        for line in (output / "relations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    calls = [relation for relation in relations if relation["kind"] == "calls"]
+    assert len(calls) == 1
+    assert calls[0]["resolution"] == "exact"
+    assert calls[0]["confidence"] == "high"
+    assert calls[0]["to"].startswith("library::fb::")
+
+
 def test_unresolved_reference_is_reported_not_substituted(tmp_path):
     workspace = tmp_path / "sync"
     project = workspace / "project-view"
@@ -284,20 +431,25 @@ def test_unresolved_reference_is_reported_not_substituted(tmp_path):
             "version": "4.9.1.0",
             "vendor": "System",
             "placeholder": "System_VisuElems",
+            "reason": "documentation_package_absent",
         }
     ]
     assert symbols == []
-    assert not (output / "libraries").exists() or not list(
+    assert not list(
         (output / "libraries").glob("*.md")
-    )
+    ) or list((output / "libraries").glob("*.md")) == [
+        output / "libraries" / "not-referenced.md"
+    ]
 
     index = (output / "index.md").read_text(encoding="utf-8")
     assert "## Missing LibDoc" in index
     assert "VisuElems" in index
+    assert "libraries/not-referenced.md" in index
+    not_referenced = (output / "libraries" / "not-referenced.md").read_text(encoding="utf-8")
     # The installed-but-unreferenced library is named, never expanded.
     assert manifest["counts"]["libraries_not_referenced"] == 1
-    assert "Demo" in index.split("## Not referenced", 1)[1]
-    assert "FB_Demo" not in index
+    assert "Demo" in not_referenced
+    assert "FB_Demo" not in not_referenced
 
 
 def test_missing_default_library_path_is_recorded(tmp_path, monkeypatch):
@@ -332,3 +484,226 @@ def test_stale_bundle_is_removed_on_regeneration(tmp_path):
     docgen.generate_docs(project_view, library_path=libraries)
 
     assert not (output / "bundle.md").exists()
+
+
+def test_check_docs_distinguishes_fresh_and_stale_sources(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    source = project_view / "FB_Sensor.st"
+    source.write_text(FB_SENSOR_ST, encoding="utf-8")
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    fresh = docgen.check_docs(project_view)
+    assert fresh["state"] == "fresh"
+    assert fresh["exit_code"] == 0
+
+    source.write_text(FB_SENSOR_ST + "\n// changed\n", encoding="utf-8")
+    stale = docgen.check_docs(project_view)
+    assert stale["state"] == "stale"
+    assert stale["exit_code"] == 1
+
+
+def test_check_docs_detects_changed_library_doc(tmp_path):
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Library Manager.xml").write_text(
+        _library_manager_xml([{
+            "resolution": "Demo, 1.2.3.4 (Acme)",
+            "placeholder": "Demo",
+            "namespace": "DEMO",
+            "system": "True",
+        }]),
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    locale_dir = _make_libdoc(libraries, "Acme", "Demo", "1.2.3.4")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    assert docgen.check_docs(workspace)["state"] == "fresh"
+    (locale_dir / "fb_demo.html").write_text(
+        POU_PAGE_HTML.replace("Demo block", "Changed block"), encoding="utf-8"
+    )
+
+    assert docgen.check_docs(workspace)["state"] == "stale"
+
+
+def test_docgen_is_deterministic_except_generated_at(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    (project_view / "Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\n", encoding="utf-8"
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    output = tmp_path / ".cts-docs"
+    first = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in output.rglob("*") if path.is_file()
+    }
+    first_manifest = json.loads(first["manifest.json"])
+    first_manifest.pop("generated_at")
+    first["manifest.json"] = json.dumps(first_manifest, indent=2) + "\n"
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    second = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in output.rglob("*") if path.is_file()
+    }
+    second_manifest = json.loads(second["manifest.json"])
+    second_manifest.pop("generated_at")
+    second["manifest.json"] = json.dumps(second_manifest, indent=2) + "\n"
+
+    assert first == second
+
+
+def test_failed_generation_keeps_previous_bundle(tmp_path, monkeypatch):
+    output = tmp_path / ".cts-docs"
+    output.mkdir()
+    marker = output / "manifest.json"
+    marker.write_text('{"format": "old"}\n', encoding="utf-8")
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("synthetic generation failure")
+
+    monkeypatch.setattr(docgen, "_generate_docs", fail)
+    with pytest.raises(RuntimeError, match="synthetic generation failure"):
+        docgen.generate_docs(tmp_path, output=output)
+
+    assert json.loads(marker.read_text(encoding="utf-8"))["format"] == "old"
+
+
+def test_docgen_exports_project_call_relations_without_source_body(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    (project_view / "Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\nCallMe();\n", encoding="utf-8"
+    )
+    (project_view / "CallMe.st").write_text(
+        "FUNCTION CallMe : BOOL\nIMPLEMENTATION\nCallMe := TRUE;\n", encoding="utf-8"
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    output = tmp_path / ".cts-docs"
+    relations = [
+        json.loads(line)
+        for line in (output / "relations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    calls = [relation for relation in relations if relation["kind"] == "calls"]
+    assert len(calls) == 1
+    assert calls[0]["from"].startswith("project::program::")
+    assert calls[0]["to"].startswith("project::function::")
+    assert calls[0]["site"]["line"] == 3
+    assert "CallMe := TRUE;" not in (output / "symbols.jsonl").read_text(encoding="utf-8")
+
+
+def test_docgen_exports_global_read_write_relations(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    (project_view / "Globals.st").write_text(
+        "VAR_GLOBAL\nShared : INT;\nEND_VAR\n", encoding="utf-8"
+    )
+    (project_view / "Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\nGlobals.Shared := 1;\n"
+        "IF Globals.Shared > 0 THEN\nEND_IF;\n", encoding="utf-8"
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    output = tmp_path / ".cts-docs"
+    relations = [
+        json.loads(line)
+        for line in (output / "relations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    global_relations = [
+        relation for relation in relations
+        if relation["kind"] in ("reads_global", "writes_global")
+    ]
+
+    assert [relation["kind"] for relation in global_relations] == [
+        "reads_global", "writes_global"
+    ]
+    assert all(relation["to"] == "external::global:Globals.Shared" for relation in global_relations)
+    assert all(relation["site"]["source_id"].startswith("source:project:") for relation in global_relations)
+
+
+def test_docgen_jsonl_and_markdown_are_deterministic(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    # Create files in reverse logical order to exercise the snapshot sort.
+    (project_view / "Z_Main.st").write_text(
+        "PROGRAM Main\nIMPLEMENTATION\n", encoding="utf-8"
+    )
+    (project_view / "A_Helper.st").write_text(
+        "FUNCTION Helper : BOOL\nIMPLEMENTATION\nHelper := TRUE;\n", encoding="utf-8"
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    first = tmp_path / "docs-one"
+    second = tmp_path / "docs-two"
+    docgen.generate_docs(project_view, library_path=libraries, output=first)
+    docgen.generate_docs(project_view, library_path=libraries, output=second)
+
+    for name in (
+        "symbols.jsonl", "sources.jsonl", "relations.jsonl", "diagnostics.jsonl",
+        "project.md", "index.md",
+    ):
+        assert (first / name).read_bytes() == (second / name).read_bytes()
+
+    first_manifest = json.loads((first / "manifest.json").read_text(encoding="utf-8"))
+    second_manifest = json.loads((second / "manifest.json").read_text(encoding="utf-8"))
+    first_manifest.pop("generated_at")
+    second_manifest.pop("generated_at")
+    assert first_manifest == second_manifest
+
+
+def test_docgen_keeps_multiple_top_level_pous_in_one_source_file(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    (project_view / "Combined.st").write_text(
+        "PROGRAM First\nIMPLEMENTATION\nEND_PROGRAM\n\n"
+        "PROGRAM Second\nIMPLEMENTATION\nEND_PROGRAM\n",
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    output, manifest, symbols = _read_output(tmp_path)
+
+    project_rows = [row for row in symbols if row["source"] == "project"]
+    assert {row["name"] for row in project_rows} == {"First", "Second"}
+    assert manifest["counts"]["project_pous"] == 2
+    assert len((output / "project.md").read_text(encoding="utf-8").splitlines()) > 5
+
+
+def test_docgen_materializes_inherited_dut_members(tmp_path):
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    (project_view / "Base.st").write_text(
+        "TYPE Base : STRUCT\n    xBase : INT;\nEND_STRUCT END_TYPE\n",
+        encoding="utf-8",
+    )
+    (project_view / "Child.st").write_text(
+        "TYPE Child EXTENDS Base : STRUCT\n    xChild : BOOL;\nEND_STRUCT END_TYPE\n",
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(project_view, library_path=libraries)
+    _output, _manifest, symbols = _read_output(tmp_path)
+
+    child = next(row for row in symbols if row["name"] == "Child")
+    assert [member["name"] for member in child["own_members"]] == ["xChild"]
+    assert [member["name"] for member in child["inherited_members"]] == ["xBase"]
+    assert child["inherited_members"][0]["inherited_from"] == "Base"

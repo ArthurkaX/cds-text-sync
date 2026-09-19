@@ -35,3 +35,4 @@ _get_codesys_args.ps1
 # Stray / accidental files
 pf
 nul
+.codegraph/

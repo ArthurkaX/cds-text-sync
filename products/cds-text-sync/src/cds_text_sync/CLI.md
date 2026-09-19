@@ -703,7 +703,7 @@ cts docs --daemon --libraries "C:\ProgramData\CODESYS"
 ```
 
 The library path defaults to `C:\ProgramData\CODESYS`. Output is written to
-`.cts-docs/` in format `cts-docs/v2`:
+`.cts-docs/` in format `cts-docs/v3`:
 
 - `project.md` — one section per project POU: kind, name, source path, the
   doc comment, and an interface table (`Scope | Name | Type | Initial | Comment`).
@@ -718,6 +718,17 @@ The library path defaults to `C:\ProgramData\CODESYS`. Output is written to
   `{source, library, version, kind, name, path, line, description, interface}`.
 - `manifest.json` — source roots, symbol counts, `libraries_missing`, and any
   gaps encountered while reading the Library Manager.
+
+#### v3 migration note
+
+The current bundle is `cts-docs/v3`. The following v2-compatible fields remain
+temporarily in symbol rows for one migration release: `name`, `kind`, `path`,
+`line`, `interface`, `description`, `library`, and `version`. They are legacy
+projections of the canonical `DocSymbol` record, not a second source of truth.
+
+The next major schema may remove those flat fields. Consumers should migrate
+to `id`, `qualified_name`, `source_ref`, `declaration`, `parse`, `behavior`,
+and the separate `sources.jsonl`/`relations.jsonl` records before then.
 
 **No source text is emitted.** Earlier versions wrote a `bundle.md` containing
 the full text of every file; that file is gone and a stale copy is deleted on
