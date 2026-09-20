@@ -226,11 +226,6 @@ cts import
 
 Details: [HMI screens from SVG](docs/visu.md).
 
-The current agent interface is the shell CLI. If an MCP server would fit your
-workflow better, open an [issue](https://github.com/ArthurkaX/cds-text-sync/issues)
-and describe the tools your agent needs; that is a natural next adapter for the
-same daemon contract.
-
 ## Documentation
 
 - [Installation](docs/install.md)
