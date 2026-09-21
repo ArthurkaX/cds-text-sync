@@ -64,6 +64,12 @@ Connection state:
   They do not auto-connect to the PLC. If the daemon has not seen an online
   session yet, plc.known is false.
 
+Advanced headless CRC probe:
+  `cts plc-crc-headless` reads the deployed Application.crc through a temporary
+  CODESYS/Astra process, without Project_daemon.py or an open project. It is a
+  read-only diagnostic: it never downloads, updates, starts, or stops a PLC.
+  Run `cts plc-crc-headless --help` for batch, watch, IDE and credential usage.
+
 IDE-interactive PLC commands:
   cts connect   CODESYS may ask you to approve Login or connection details.
   cts download  CODESYS may ask you to confirm Download or Online Change.
@@ -244,7 +250,19 @@ Examples:
     # -- stateless headless PLC CRC ----------------------------------------
     p_headless_crc = subparsers.add_parser(
         "plc-crc-headless",
-        help="Read PLC Application.crc through a selected IDE without daemon/login",
+        help="Read PLC Application.crc via a temporary read-only IDE probe",
+        description=(
+            "Read PLC Application.crc through a temporary no-UI CODESYS/Astra "
+            "process. This command does not use Project_daemon.py or an open "
+            "project, and never downloads, updates, starts, or stops the PLC."
+        ),
+        epilog=(
+            "Credentialed single target: set CDS_CRC_PLC_USERNAME and "
+            "CDS_CRC_PLC_PASSWORD in the process environment; their values are "
+            "never put in JSON, command arguments, or output. For a batch, each "
+            "target may contain credentials.username_env and credentials.password_env."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_headless_crc.add_argument("--ip", default="", help="PLC IPv4 address (single target)")
     p_headless_crc.add_argument("--input", default="", help="JSON batch file containing targets")

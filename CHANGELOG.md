@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Unreleased
 
+**Headless PLC CRC probe (advanced):**
+
+- `cts plc-crc-headless` reads `PlcLogic/Application/Application.crc` through a temporary, selected CODESYS or Astra IDE process. It is independent of `Project_daemon.py`, creates a temporary probe project only, and uses the safe `Keep` login mode: it never downloads, updates, starts, or stops the PLC application.
+- One `--ip` target or a JSON `--input` batch is supported. The result includes the scanned device identity and application CRC; a failure for one PLC is retained as that target's result instead of replaying the whole batch in every discovered IDE.
+- Opt-in `--watch` keeps one no-UI IDE process alive and writes JSONL cycles at `--interval`; the session-bound control file stops only its own watch process and is cleaned up afterwards.
+- Password-protected PLCs can use `CDS_CRC_PLC_USERNAME` and `CDS_CRC_PLC_PASSWORD` for a single target, or per-target environment-variable names in batch JSON. Secrets are never copied into request/result JSON, command-line arguments, or logs; interactive credential fallback is disabled.
+
 **`cts verify` — one gate, one verdict:**
 
 - New command `cts verify [--sync-folder PATH]` runs every applicable check and reduces them to a single verdict with a single exit code, so an agent no longer has to know the names of four separate checks, run them in the right order and combine four outputs. Stages run cheapest-first: `analyze` (static analysis of `project-view/`), `visu-sketch` (SVG lint of every sketch in `.visu/`), `build` (the compiler, through the daemon), and `test` (the `.test/` plans), with `--only a,b` to narrow the set.

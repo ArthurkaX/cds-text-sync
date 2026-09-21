@@ -12,6 +12,23 @@ def test_top_level_help_marks_ide_interactive_commands():
     assert "the CLI waits and cannot answer them for you" in help_text
 
 
+def test_top_level_help_describes_advanced_headless_crc_probe():
+    help_text = build_parser().format_help()
+
+    assert "Advanced headless CRC probe:" in help_text
+    assert "cts plc-crc-headless --help" in help_text
+    assert "never downloads, updates, starts, or stops a PLC" in help_text
+
+
+def test_headless_crc_help_explains_read_only_and_credentials():
+    parser = build_parser()._subparsers._group_actions[0].choices["plc-crc-headless"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "never downloads, updates, starts, or stops the PLC" in help_text
+    assert "CDS_CRC_PLC_USERNAME" in help_text
+    assert "credentials.username_env" in help_text
+
+
 def test_connect_help_warns_about_modal_ide_questions():
     parser = build_parser()._subparsers._group_actions[0].choices["connect"]
     help_text = " ".join(parser.format_help().split())
