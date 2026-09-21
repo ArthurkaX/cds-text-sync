@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -36,7 +37,18 @@ def load_targets(ip="", gateway="Gateway-1", input_path=""):
         return result
     if not ip:
         raise ValueError("one of --ip or --input is required")
-    return [{"ip": ip, "gateway": gateway, "request_id": "1"}]
+    target = {"ip": ip, "gateway": gateway, "request_id": "1"}
+    # The values remain in the process environment.  The temporary request
+    # passed to the IDE contains only the names, never a username or password.
+    if (
+        os.environ.get("CDS_CRC_PLC_USERNAME") is not None
+        or os.environ.get("CDS_CRC_PLC_PASSWORD") is not None
+    ):
+        target["credentials"] = {
+            "username_env": "CDS_CRC_PLC_USERNAME",
+            "password_env": "CDS_CRC_PLC_PASSWORD",
+        }
+    return [target]
 
 
 def _script_path(host_root=""):
@@ -66,14 +78,19 @@ def discover_ides():
     for exe, profile in _KNOWN:
         if Path(exe).is_file():
             pairs.append((exe, profile))
-    # Best-effort discovery of installed IDEs; this is intentionally ephemeral.
-    for root in (Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
-                 Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))):
-        for pattern in ("Astra.IDE.exe", "CODESYS.exe"):
+    # Known and explicitly configured installations are already sufficient.
+    # Avoid recursively walking all of Program Files on every ordinary call.
+    if not pairs:
+        for root in (Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
+                     Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))):
             try:
-                for exe_path in root.glob("**/" + pattern):
-                    profile = "Astra.IDE_V1.7.2.1" if "astra" in str(exe_path).lower() else _profile_guess(exe_path)
-                    pairs.append((str(exe_path), profile))
+                for install in root.glob("CODESYS*"):
+                    exe_path = install / "CODESYS" / "Common" / "CODESYS.exe"
+                    if exe_path.is_file():
+                        pairs.append((str(exe_path), _profile_guess(exe_path)))
+                for exe_path in root.glob("AstraRegul/*/Astra.IDE/Common/Astra.IDE.exe"):
+                    if exe_path.is_file():
+                        pairs.append((str(exe_path), _profile_guess(exe_path)))
             except (OSError, ValueError):
                 pass
     seen = set()
@@ -91,11 +108,15 @@ def _profile_guess(exe_path):
     for parent in [Path(exe_path)] + list(Path(exe_path).parents):
         profiles = parent / "Profiles"
         if profiles.is_dir():
-            candidates = sorted(profiles.glob("*.profile.xml"))
+            candidates = list(profiles.glob("*.profile.xml"))
             if candidates:
                 suffix = ".profile.xml"
-                name = candidates[-1].name
-                return name[:-len(suffix)] if name.endswith(suffix) else candidates[-1].stem
+                def version_key(candidate):
+                    numbers = tuple(int(value) for value in re.findall(r"\d+", candidate.name))
+                    return numbers, candidate.name.lower()
+                candidate = max(candidates, key=version_key)
+                name = candidate.name
+                return name[:-len(suffix)] if name.endswith(suffix) else candidate.stem
     return ""
 
 
@@ -135,7 +156,10 @@ def _watch_paths(args):
         str(output) + ".control.json"
     )
     if control.exists():
-        raise ValueError("--watch-control must name a file that does not exist")
+        raise ValueError(
+            "--watch-control already exists; it may belong to a running watch "
+            "process. Stop that process or remove its stale control file."
+        )
     return output, control
 
 
@@ -182,26 +206,30 @@ def _start_watch(exe, profile, targets, output, control, args):
             "CDS_HEADLESS_CRC_WATCH_INTERVAL": str(args.interval),
             "CDS_HEADLESS_CRC_WATCH_SESSION": session_id,
         })
-        process = subprocess.Popen(_watch_args(exe, profile, getattr(args, "host_root", "")), env=environment)
-        deadline = time.monotonic() + args.startup_timeout
-        while time.monotonic() < deadline:
-            if _watch_started(output, session_id):
-                return process, session_id
-            if process.poll() is not None:
-                raise RuntimeError("IDE exited before the watch script became ready")
-            time.sleep(0.1)
-        process.terminate()
+        process = subprocess.Popen(
+            _watch_args(exe, profile, getattr(args, "host_root", "")),
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-        raise RuntimeError("IDE watch script did not become ready before --startup-timeout")
+            deadline = time.monotonic() + args.startup_timeout
+            while time.monotonic() < deadline:
+                if _watch_started(output, session_id):
+                    return process, session_id
+                if process.poll() is not None:
+                    raise RuntimeError("IDE exited before the watch script became ready")
+                time.sleep(0.1)
+            raise RuntimeError("IDE watch script did not become ready before --startup-timeout")
+        except BaseException:
+            _stop_watch(process, control, session_id)
+            raise
 
 
-def _stop_watch(process, control):
+def _stop_watch(process, control, session_id):
     """Ask for IDE-side cleanup first, with process termination as a fallback."""
     control.parent.mkdir(parents=True, exist_ok=True)
-    control.write_text(json.dumps({"action": "stop"}), encoding="utf-8")
+    control.write_text(json.dumps({"action": "stop", "session_id": session_id}), encoding="utf-8")
     try:
         return process.wait(timeout=15)
     except subprocess.TimeoutExpired:
@@ -211,6 +239,18 @@ def _stop_watch(process, control):
         except subprocess.TimeoutExpired:
             process.kill()
             return process.wait()
+    finally:
+        _remove_watch_control(control, session_id)
+
+
+def _remove_watch_control(control, session_id):
+    """Remove only this session's stop command, never a newer watch's one."""
+    try:
+        command = json.loads(control.read_text(encoding="utf-8"))
+        if not command.get("session_id") or command.get("session_id") == session_id:
+            control.unlink()
+    except (OSError, ValueError):
+        pass
 
 
 def run_headless_crc_watch(args):
@@ -228,7 +268,12 @@ def run_headless_crc_watch(args):
     for exe, profile in candidates:
         profile = profile or args.profile
         if not profile:
-            attempts.append({"exe": exe, "error": {"code": "profile_required", "message": "profile is required when --ide is explicit"}})
+            message = (
+                "profile is required when --ide is explicit"
+                if args.ide != "auto"
+                else "a discovered IDE has no profile; provide --profile"
+            )
+            attempts.append({"exe": exe, "error": {"code": "profile_required", "message": message}})
             continue
         try:
             process, session_id = _start_watch(exe, profile, targets, output, control, args)
@@ -250,7 +295,9 @@ def run_headless_crc_watch(args):
         try:
             returncode = process.wait()
         except KeyboardInterrupt:
-            returncode = _stop_watch(process, control)
+            returncode = _stop_watch(process, control, session_id)
+        finally:
+            _remove_watch_control(control, session_id)
         return {"ok": returncode == 0, "event": "watch_stopped", "session_id": session_id,
                 "process": {"returncode": returncode}}, 0 if returncode == 0 else 1
     return {"ok": False, "error": {"code": "all_ides_failed", "message": "no candidate IDE completed startup"}, "attempts": attempts}, 1
@@ -266,7 +313,12 @@ def run_headless_crc(args):
         if not profile:
             profile = args.profile
         if not profile:
-            attempts.append({"exe": exe, "error": {"code": "profile_required", "message": "profile is required when --ide is explicit"}})
+            message = (
+                "profile is required when --ide is explicit"
+                if args.ide != "auto"
+                else "a discovered IDE has no profile; provide --profile"
+            )
+            attempts.append({"exe": exe, "error": {"code": "profile_required", "message": message}})
             continue
         try:
             payload = _run(exe, profile, targets, args.timeout, getattr(args, "host_root", ""))
@@ -274,7 +326,13 @@ def run_headless_crc(args):
             attempts.append({"exe": exe, "profile": profile, "error": {"code": "ide_failed", "message": str(error)}})
             continue
         payload.setdefault("host", {"exe": exe, "profile": profile})
-        if payload.get("ok") or args.ide != "auto":
+        # A result for every requested target proves this IDE ran the script.
+        # Per-target transport errors must not cause an expensive replay of the
+        # whole batch under every other installed IDE.
+        if payload.get("ok") or args.ide != "auto" or (
+            isinstance(payload.get("results"), list)
+            and len(payload["results"]) == len(targets)
+        ):
             return payload, 0 if payload.get("ok") else 1
         attempts.append({"exe": exe, "profile": profile, "result": payload})
     return {"ok": False, "error": {"code": "all_ides_failed", "message": "no candidate IDE completed the operation"}, "attempts": attempts, "results": []}, 1

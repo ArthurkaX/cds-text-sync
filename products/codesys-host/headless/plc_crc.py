@@ -16,6 +16,11 @@ import tempfile
 import time
 import uuid
 
+try:
+    _STRING_TYPES = (basestring,)  # noqa: F821  (IronPython 2)
+except NameError:
+    _STRING_TYPES = (str,)
+
 
 def _argument(name, default=None):
     args = list(sys.argv[1:])
@@ -57,7 +62,6 @@ def _watch_emit(path, payload):
     with open(path, "a") as handle:
         handle.write(text + "\n")
         handle.flush()
-    print("CRC_WATCH " + text)
 
 
 def _watch_stop_requested(path):
@@ -65,7 +69,12 @@ def _watch_stop_requested(path):
         return False
     try:
         with open(path) as handle:
-            return json.load(handle).get("action") == "stop"
+            command = json.load(handle)
+            if command.get("action") != "stop":
+                return False
+            requested_session = command.get("session_id")
+            current_session = _watch_setting("CDS_HEADLESS_CRC_WATCH_SESSION", "")
+            return not requested_session or requested_session == current_session
     except Exception:
         # A client may be halfway through replacing the small control file.
         return False
@@ -82,7 +91,9 @@ def _gateway(script_online, name):
 
 def _stable_error_code(error, stage):
     text = str(error).lower()
-    if stage == "gateway" or "gateway" in text and "not found" in text:
+    if "gateway name is ambiguous" in text:
+        return "gateway_ambiguous"
+    if stage == "gateway" and "not found" in text:
         return "gateway_not_found"
     if stage == "validate":
         return "invalid_target"
@@ -187,7 +198,7 @@ def _read_crc(remote, local_path):
         )
         result["metadata_timestamp_unix"] = stamp
     if len(data) > 8:
-        name = data[8:].rstrip("\x00")
+        name = data[8:].rstrip(b"\x00")
         if name:
             result["application"] = name.decode("ascii", "replace")
     return result
@@ -203,10 +214,67 @@ def _targets():
         ip = _argument("--ip")
         if not ip:
             raise RuntimeError("Usage: --input targets.json or --ip <PLC IPv4>")
-        targets = [{"ip": ip, "gateway": _argument("--gateway", "Gateway-1"), "request_id": "1"}]
+        target = {"ip": ip, "gateway": _argument("--gateway", "Gateway-1"), "request_id": "1"}
+        # The single-target CLI path has no JSON object in which to name
+        # credentials.  Honor these conventional names without ever copying
+        # their values into the request or result.
+        if (
+            os.environ.get("CDS_CRC_PLC_USERNAME") is not None
+            or os.environ.get("CDS_CRC_PLC_PASSWORD") is not None
+        ):
+            target["credentials"] = {
+                "username_env": "CDS_CRC_PLC_USERNAME",
+                "password_env": "CDS_CRC_PLC_PASSWORD",
+            }
+        targets = [target]
     if not isinstance(targets, list) or not targets:
         raise ValueError("targets must be a non-empty array")
     return targets
+
+
+def _configure_credentials(target, device, se):
+    """Configure per-target credentials without putting secrets in JSON output.
+
+    A target may name inherited environment variables as follows::
+
+        {"credentials": {"username_env": "PLC_USER", "password_env": "PLC_PASSWORD"}}
+
+    The values themselves never enter the request, result, or error payload.
+    """
+    credentials = target.get("credentials")
+    if credentials is None:
+        return
+    if not isinstance(credentials, dict):
+        raise ValueError("credentials must be an object with username_env and password_env")
+    username_env = credentials.get("username_env")
+    password_env = credentials.get("password_env")
+    if not isinstance(username_env, _STRING_TYPES) or not username_env:
+        raise ValueError("credentials.username_env must name an environment variable")
+    if not isinstance(password_env, _STRING_TYPES) or not password_env:
+        raise ValueError("credentials.password_env must name an environment variable")
+    username = os.environ.get(username_env)
+    password = os.environ.get(password_env)
+    if username is None or password is None:
+        raise RuntimeError("credential environment variable is not set")
+    online = getattr(se, "online", None)
+    set_credentials = getattr(online, "set_specific_credentials", None)
+    if not callable(set_credentials):
+        raise RuntimeError("CODESYS profile does not support per-target credentials")
+    # Newer profiles re-export the enum from scriptengine; Astra 1.7 exposes
+    # it from scriptengine.online instead.  Both bindings describe the same
+    # ScriptOnline API.
+    credential_kind = getattr(se, "CredentialSourceKind", None)
+    if credential_kind is None:
+        credential_kind = getattr(online, "CredentialSourceKind", None)
+    no_fallback = getattr(credential_kind, "none", None)
+    if no_fallback is None:
+        # ScriptOnline defines CredentialSourceKind.none as enum value zero.
+        # Some Astra runtimes expose the property but not the enum wrapper.
+        no_fallback = 0
+    # Fail closed: a headless probe must never hang on an interactive password
+    # dialog or silently use credentials from a different project session.
+    online.auth_fallback_modes = no_fallback
+    set_credentials(device, username, password)
 
 
 def _check_targets(targets, se, IPAddress):
@@ -254,6 +322,7 @@ def _check_targets(targets, se, IPAddress):
                     raise RuntimeError("CODESYS did not create the temporary CRC probe device")
                 device = devices[0]
                 device.set_gateway_and_address(gateway, router_address)
+                _configure_credentials(target, device, se)
                 stage = "connect"
                 online_device = se.online.create_online_device(device)
                 online_device.connect()
