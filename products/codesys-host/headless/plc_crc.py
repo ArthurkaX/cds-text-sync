@@ -1,0 +1,280 @@
+# -*- coding: utf-8 -*-
+"""Read a CODESYS runtime Application CRC without opening a user project.
+
+Run with CODESYS.exe --runscript=... --noUI; request and result paths are
+provided through CDS_HEADLESS_CRC_INPUT/CDS_HEADLESS_CRC_OUTPUT.
+The script creates a disposable project solely because ScriptOnlineDevice is
+bound to a ScriptDeviceObject.  It never calls OnlineApplication.login(), so a
+project mismatch cannot trigger an online change or download.
+"""
+from __future__ import print_function
+
+import json
+import os
+import sys
+import tempfile
+import uuid
+
+
+def _argument(name, default=None):
+    args = list(sys.argv[1:])
+    for index, value in enumerate(args):
+        if value == name and index + 1 < len(args):
+            return args[index + 1]
+        prefix = name + "="
+        if value.startswith(prefix):
+            return value[len(prefix):]
+    return default
+
+
+# Environment transport avoids the nested quoting differences between the
+# vanilla CODESYS and Astra command-line parsers.  Explicit arguments remain
+# useful for manual IDE-side diagnostics.
+_OUTPUT_PATH = (
+    _argument("--output")
+    or os.environ.get("CDS_HEADLESS_CRC_OUTPUT")
+    or os.environ.get("CDS_CRC_PROBE_OUTPUT")
+)
+
+
+def _emit(payload):
+    text = json.dumps(payload, sort_keys=True)
+    print("CRC_RESULT " + text)
+    if _OUTPUT_PATH:
+        with open(_OUTPUT_PATH, "w") as handle:
+            handle.write(text + "\n")
+
+
+def _gateway(script_online, name):
+    matches = [item for item in script_online.gateways if str(item.name) == name]
+    if not matches:
+        raise RuntimeError("Gateway not found: " + name)
+    if len(matches) != 1:
+        raise RuntimeError("Gateway name is ambiguous: " + name)
+    return matches[0]
+
+
+def _stable_error_code(error, stage):
+    text = str(error).lower()
+    if stage == "gateway" or "gateway" in text and "not found" in text:
+        return "gateway_not_found"
+    if stage == "validate":
+        return "invalid_target"
+    if stage == "scan":
+        return "target_not_found" if "not found" in text else "scan_failed"
+    if stage == "device":
+        return "device_description_missing" if "device description" in text or "parameters wrong" in text else "connect_failed"
+    if stage == "connect":
+        return "connect_failed"
+    if stage == "crc":
+        return "crc_read_failed"
+    return "target_failed"
+
+
+def _scan_target(gateway, address):
+    # find_address_by_ip is targeted (unlike a broadcast scan) and returns the
+    # CODESYS router address required by the temporary project device.
+    scanned_address = gateway.find_address_by_ip(address, 11740)
+    cached = list(gateway.get_cached_network_scan_result())
+    for item in cached:
+        if str(item.address) == str(scanned_address):
+            return scanned_address, item
+    # Some gateway implementations do not populate the cache after a targeted
+    # lookup.  A scan is still read-only and gives us the target DeviceID.
+    scanned = list(gateway.perform_network_scan())
+    for item in scanned:
+        if str(item.address) == str(scanned_address):
+            return scanned_address, item
+    # A targeted TCP lookup and a broadcast scan may expose different router
+    # addresses for the same PLC.  With exactly one scan target, it is still
+    # unambiguous which DeviceID belongs to the address returned above.
+    if len(scanned) == 1:
+        return scanned_address, scanned[0]
+    descriptions = []
+    for item in cached + scanned:
+        try:
+            descriptions.append(
+                "address={0}; name={1}; type={2}".format(
+                    item.address, item.device_name, item.type_name
+                )
+            )
+        except Exception:
+            descriptions.append(str(item))
+    raise RuntimeError(
+        "Runtime address {0} was found, but no scan target matched it. "
+        "Scan entries: {1}".format(scanned_address, descriptions)
+    )
+
+
+def _byte_value(value):
+    """Return an octet under both IronPython 2 and CPython 3."""
+    return value if isinstance(value, int) else ord(value)
+
+
+def _device_id_text(value):
+    """Convert a scanned numeric CODESYS device ID to its repository form."""
+    text = str(value)
+    if not text.isdigit():
+        return text
+    number = int(text)
+    return "{0:04x} {1:04x}".format((number >> 16) & 0xFFFF, number & 0xFFFF)
+
+
+def _device_version_text(value):
+    """Convert a scanned packed version to CODESYS' dotted repository form."""
+    text = str(value)
+    if not text.isdigit():
+        return text
+    number = int(text)
+    return "{0}.{1}.{2}.{3}".format(
+        (number >> 24) & 0xFF,
+        (number >> 16) & 0xFF,
+        (number >> 8) & 0xFF,
+        number & 0xFF,
+    )
+
+
+def _read_crc(remote, local_path):
+    remote.upload_file("PlcLogic/Application/Application.crc", local_path, True)
+    with open(local_path, "rb") as handle:
+        data = handle.read()
+    if len(data) < 4:
+        raise RuntimeError("Application.crc is shorter than four bytes")
+    value = (
+        _byte_value(data[0])
+        | (_byte_value(data[1]) << 8)
+        | (_byte_value(data[2]) << 16)
+        | (_byte_value(data[3]) << 24)
+    )
+    result = {
+        "crc": "{0:08X}".format(value),
+        "crc_bytes": "".join("{0:02X}".format(_byte_value(byte)) for byte in data[:4]),
+        "crc_file_size": len(data),
+        "remote_file": "PlcLogic/Application/Application.crc",
+    }
+    if len(data) >= 8:
+        stamp = (
+            _byte_value(data[4])
+            | (_byte_value(data[5]) << 8)
+            | (_byte_value(data[6]) << 16)
+            | (_byte_value(data[7]) << 24)
+        )
+        result["metadata_timestamp_unix"] = stamp
+    if len(data) > 8:
+        name = data[8:].rstrip("\x00")
+        if name:
+            result["application"] = name.decode("ascii", "replace")
+    return result
+
+
+def main():
+    import scriptengine as se
+    from System.Net import IPAddress
+
+    input_path = _argument("--input") or os.environ.get("CDS_HEADLESS_CRC_INPUT")
+    if input_path:
+        with open(input_path) as stream:
+            request = json.load(stream)
+        targets = request.get("targets", request) if isinstance(request, dict) else request
+    else:
+        ip = _argument("--ip")
+        if not ip:
+            raise RuntimeError("Usage: --input targets.json or --ip <PLC IPv4>")
+        targets = [{"ip": ip, "gateway": _argument("--gateway", "Gateway-1"), "request_id": "1"}]
+    if not isinstance(targets, list) or not targets:
+        raise ValueError("targets must be a non-empty array")
+
+    results = []
+    for index, target in enumerate(targets):
+        is_mapping = isinstance(target, dict)
+        ip = target.get("ip") if is_mapping else None
+        gateway_name = target.get("gateway", "Gateway-1") if is_mapping else "Gateway-1"
+        request_id = target.get("request_id", str(index + 1)) if is_mapping else str(index + 1)
+        base = {"request_id": request_id, "target": {"ip": ip}}
+        stage = "validate"
+        try:
+            if not is_mapping or not ip:
+                raise ValueError("target must contain ip")
+            IPAddress.Parse(ip)
+            stage = "gateway"
+            gateway = _gateway(se.online, gateway_name)
+            stage = "scan"
+            router_address, scanned = _scan_target(gateway, IPAddress.Parse(ip))
+            target_id = scanned.device_id
+            base["target"].update({
+                "name": getattr(scanned, "device_name", ""),
+                "device_type": getattr(target_id, "type", ""),
+                "device_id": _device_id_text(target_id.id),
+                "device_description_version": _device_version_text(target_id.version),
+                "router_address": str(router_address),
+            })
+            unique = uuid.uuid4().hex
+            project_path = os.path.join(tempfile.gettempdir(), "cds-crc-probe-" + unique + ".project")
+            local_crc = os.path.join(tempfile.gettempdir(), "cds-crc-probe-" + unique + ".crc")
+            project = None
+            online_device = None
+            try:
+                stage = "device"
+                project = projects.create(project_path, primary=True)  # noqa: F821
+                device_id = DeviceID(  # noqa: F821
+                    target_id.type,
+                    _device_id_text(target_id.id),
+                    _device_version_text(target_id.version),
+                )
+                project.add("CRC probe", device_id)
+                devices = project.find("CRC probe")
+                if not devices:
+                    raise RuntimeError("CODESYS did not create the temporary CRC probe device")
+                device = devices[0]
+                device.set_gateway_and_address(gateway, router_address)
+                stage = "connect"
+                online_device = se.online.create_online_device(device)
+                online_device.connect()
+                stage = "crc"
+                base["application"] = _read_crc(online_device, local_crc)
+                base["ok"] = True
+            finally:
+                if online_device is not None:
+                    try:
+                        online_device.disconnect()
+                    except Exception:
+                        pass
+                    try:
+                        online_device.Dispose()
+                    except Exception:
+                        pass
+                if project is not None:
+                    try:
+                        project.close()
+                    except Exception:
+                        pass
+                for path in (local_crc, project_path):
+                    try:
+                        if os.path.exists(path):
+                            os.remove(path)
+                    except Exception:
+                        pass
+        except Exception as error:
+            base.update({"ok": False, "error": {"code": _stable_error_code(error, stage), "message": str(error)}})
+        results.append(base)
+    payload = {
+        "ok": all(item.get("ok") for item in results),
+        "results": results,
+        "summary": {
+            "total": len(results),
+            "succeeded": sum(1 for item in results if item.get("ok")),
+            "failed": sum(1 for item in results if not item.get("ok")),
+        },
+    }
+    _emit(payload)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        _emit({
+            "ok": False,
+            "error": {"code": "invalid_request", "message": str(error)},
+            "results": [],
+        })

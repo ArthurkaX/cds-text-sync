@@ -151,18 +151,26 @@ def _cmd_app_crc(params):
                 online_dev.upload_file(app_dir + "/" + crc_filename, tmp, True)
                 with open(tmp, "rb") as f:
                     data = f.read()
-                if len(data) >= 8:
-                    crc_bytes = data[:8]
+                if len(data) >= 4:
+                    # Application.crc begins with one uint32 little-endian CRC.
+                    # Bytes 4..7 are metadata (a runtime timestamp), not a
+                    # second half of the CRC.
+                    crc_bytes = data[:4]
                     # hex in IronPython 2.7 (no .hex())
                     result["crc_hex"] = "".join(
                         "{:02x}".format(ord(c)) for c in crc_bytes
                     )
-                    # Try to interpret as two uint32 little-endian
+                    # Decode just the first uint32 as the application CRC.
                     try:
                         import struct
 
-                        c1, c2 = struct.unpack("<II", data[:8])
-                        result["crc_value"] = "{:08X}{:08X}".format(c1, c2)
+                        result["crc_value"] = "{:08X}".format(
+                            struct.unpack("<I", data[:4])[0]
+                        )
+                        if len(data) >= 8:
+                            result["metadata_timestamp_unix"] = struct.unpack(
+                                "<I", data[4:8]
+                            )[0]
                     except Exception as error:
                         _log("Could not decode PLC CRC value: {0}".format(error))
                     if len(data) > 8:
@@ -418,8 +426,10 @@ def _cmd_compare_crc(params):
             online_dev.upload_file(app_dir + "/Application.crc", tmp_plc, True)
             with open(tmp_plc, "rb") as f:
                 plc_data = f.read()
-            if len(plc_data) >= 8:
-                plc_crc = "".join("{:02x}".format(ord(c)) for c in plc_data[:8])
+            if len(plc_data) >= 4:
+                # The first four bytes are the CRC; bytes 4..7 are timestamp
+                # metadata and must not influence a comparison.
+                plc_crc = "".join("{:02x}".format(ord(c)) for c in plc_data[:4])
                 result["plc_crc"] = plc_crc
                 result["plc_file_size"] = len(plc_data)
         except Exception as e:
@@ -469,14 +479,14 @@ def _cmd_compare_crc(params):
             try:
                 with open(local_path, "rb") as f:
                     local_data = f.read()
-                if len(local_data) >= 8:
-                    local_crc = "".join("{:02x}".format(ord(c)) for c in local_data[:8])
+                if len(local_data) >= 4:
+                    local_crc = "".join("{:02x}".format(ord(c)) for c in local_data[:4])
                     result["local_crc"] = local_crc
                     result["local_path"] = local_path
                     result["local_file_size"] = len(local_data)
                     # Compare
-                    if plc_data and len(plc_data) >= 8 and len(local_data) >= 8:
-                        match = plc_data[:8] == local_data[:8]
+                    if plc_data and len(plc_data) >= 4 and len(local_data) >= 4:
+                        match = plc_data[:4] == local_data[:4]
                         result["match"] = match
                         result["status"] = "MATCH" if match else "MISMATCH"
             except Exception as e:

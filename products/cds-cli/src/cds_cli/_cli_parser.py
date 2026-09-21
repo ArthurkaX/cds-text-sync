@@ -241,6 +241,19 @@ Examples:
         help="Build the project first, then compare CRCs",
     )
 
+    # -- stateless headless PLC CRC ----------------------------------------
+    p_headless_crc = subparsers.add_parser(
+        "plc-crc-headless",
+        help="Read PLC Application.crc through a selected IDE without daemon/login",
+    )
+    p_headless_crc.add_argument("--ip", default="", help="PLC IPv4 address (single target)")
+    p_headless_crc.add_argument("--input", default="", help="JSON batch file containing targets")
+    p_headless_crc.add_argument("--gateway", default="Gateway-1", help="Gateway name")
+    p_headless_crc.add_argument("--ide", default="auto", help="IDE executable path or auto")
+    p_headless_crc.add_argument("--profile", default="", help="CODESYS/Astra profile name")
+    p_headless_crc.add_argument("--timeout", type=float, default=300, help="IDE timeout in seconds")
+    p_headless_crc.add_argument("--host-root", default="", help="Installed codesys-host root containing headless/")
+
     # -- variables ----------------------------------------------------------
     p_read = add_daemon_parser(subparsers, "read", "Read one PLC variable/expression", None)
     p_read.add_argument("name", help="Variable/expression name")
