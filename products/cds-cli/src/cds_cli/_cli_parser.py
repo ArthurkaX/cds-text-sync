@@ -253,6 +253,33 @@ Examples:
     p_headless_crc.add_argument("--profile", default="", help="CODESYS/Astra profile name")
     p_headless_crc.add_argument("--timeout", type=float, default=300, help="IDE timeout in seconds")
     p_headless_crc.add_argument("--host-root", default="", help="Installed codesys-host root containing headless/")
+    p_headless_crc.add_argument(
+        "--watch",
+        action="store_true",
+        help="Keep one headless IDE alive and repeat the fixed target batch",
+    )
+    p_headless_crc.add_argument(
+        "--interval",
+        type=float,
+        default=60,
+        help="Seconds between watch cycles (default: 60; requires --watch)",
+    )
+    p_headless_crc.add_argument(
+        "--watch-output",
+        default="",
+        help="Append-only JSONL result path (required with --watch)",
+    )
+    p_headless_crc.add_argument(
+        "--watch-control",
+        default="",
+        help="New control-file path; write {\"action\": \"stop\"} to stop a watch",
+    )
+    p_headless_crc.add_argument(
+        "--startup-timeout",
+        type=float,
+        default=60,
+        help="Seconds to wait for the IDE watch script to announce readiness",
+    )
 
     # -- variables ----------------------------------------------------------
     p_read = add_daemon_parser(subparsers, "read", "Read one PLC variable/expression", None)

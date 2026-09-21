@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 
@@ -122,6 +124,136 @@ def _run(exe, profile, targets, timeout=None, host_root=""):
         payload.setdefault("host", {"exe": str(exe), "profile": profile})
         payload["process"] = {"returncode": completed.returncode}
         return payload
+
+
+def _watch_paths(args):
+    """Validate externally visible watch paths without touching normal mode."""
+    if not args.watch_output:
+        raise ValueError("--watch-output is required with --watch")
+    output = Path(args.watch_output).expanduser().resolve()
+    control = Path(args.watch_control).expanduser().resolve() if args.watch_control else Path(
+        str(output) + ".control.json"
+    )
+    if control.exists():
+        raise ValueError("--watch-control must name a file that does not exist")
+    return output, control
+
+
+def _watch_started(output, session_id):
+    """Return true after the IDE-side script has accepted this exact session."""
+    if not output.is_file():
+        return False
+    try:
+        with output.open(encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("event") == "started" and event.get("session_id") == session_id:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _watch_args(exe, profile, host_root=""):
+    return [
+        str(exe),
+        "--profile=" + profile,
+        "--runscript=" + str(_script_path(host_root)),
+        "--noUI",
+        "--textPrompts",
+    ]
+
+
+def _start_watch(exe, profile, targets, output, control, args):
+    """Start one IDE, then wait only until its script is demonstrably ready."""
+    session_id = uuid.uuid4().hex
+    with tempfile.TemporaryDirectory(prefix="cts-plc-crc-watch-") as folder:
+        request = Path(folder) / "targets.json"
+        request.write_text(json.dumps({"targets": targets}), encoding="utf-8")
+        environment = os.environ.copy()
+        environment.update({
+            "CDS_HEADLESS_CRC_INPUT": str(request),
+            "CDS_HEADLESS_CRC_WATCH": "1",
+            "CDS_HEADLESS_CRC_WATCH_OUTPUT": str(output),
+            "CDS_HEADLESS_CRC_WATCH_CONTROL": str(control),
+            "CDS_HEADLESS_CRC_WATCH_INTERVAL": str(args.interval),
+            "CDS_HEADLESS_CRC_WATCH_SESSION": session_id,
+        })
+        process = subprocess.Popen(_watch_args(exe, profile, getattr(args, "host_root", "")), env=environment)
+        deadline = time.monotonic() + args.startup_timeout
+        while time.monotonic() < deadline:
+            if _watch_started(output, session_id):
+                return process, session_id
+            if process.poll() is not None:
+                raise RuntimeError("IDE exited before the watch script became ready")
+            time.sleep(0.1)
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        raise RuntimeError("IDE watch script did not become ready before --startup-timeout")
+
+
+def _stop_watch(process, control):
+    """Ask for IDE-side cleanup first, with process termination as a fallback."""
+    control.parent.mkdir(parents=True, exist_ok=True)
+    control.write_text(json.dumps({"action": "stop"}), encoding="utf-8")
+    try:
+        return process.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            return process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return process.wait()
+
+
+def run_headless_crc_watch(args):
+    """Run the opt-in long-lived mode; the ordinary CRC path is untouched."""
+    if args.interval <= 0:
+        raise ValueError("--interval must be greater than zero")
+    if args.startup_timeout <= 0:
+        raise ValueError("--startup-timeout must be greater than zero")
+    targets = load_targets(args.ip, args.gateway, args.input)
+    output, control = _watch_paths(args)
+    candidates = [(args.ide, args.profile)] if args.ide != "auto" else discover_ides()
+    if not candidates:
+        return {"ok": False, "error": {"code": "ide_not_found", "message": "no CODESYS/Astra IDE found"}}, 2
+    attempts = []
+    for exe, profile in candidates:
+        profile = profile or args.profile
+        if not profile:
+            attempts.append({"exe": exe, "error": {"code": "profile_required", "message": "profile is required when --ide is explicit"}})
+            continue
+        try:
+            process, session_id = _start_watch(exe, profile, targets, output, control, args)
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+            attempts.append({"exe": exe, "profile": profile, "error": {"code": "ide_failed", "message": str(error)}})
+            if args.ide != "auto":
+                return {"ok": False, "error": attempts[-1]["error"], "attempts": attempts}, 1
+            continue
+        started = {
+            "ok": True,
+            "event": "watch_started",
+            "session_id": session_id,
+            "watch_output": str(output),
+            "watch_control": str(control),
+            "interval_seconds": args.interval,
+            "host": {"exe": str(exe), "profile": profile},
+        }
+        print(json.dumps(started, ensure_ascii=False, sort_keys=True), flush=True)
+        try:
+            returncode = process.wait()
+        except KeyboardInterrupt:
+            returncode = _stop_watch(process, control)
+        return {"ok": returncode == 0, "event": "watch_stopped", "session_id": session_id,
+                "process": {"returncode": returncode}}, 0 if returncode == 0 else 1
+    return {"ok": False, "error": {"code": "all_ides_failed", "message": "no candidate IDE completed startup"}, "attempts": attempts}, 1
 
 
 def run_headless_crc(args):

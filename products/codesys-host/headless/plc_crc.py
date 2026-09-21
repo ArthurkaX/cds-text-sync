@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import uuid
 
 
@@ -43,6 +44,31 @@ def _emit(payload):
     if _OUTPUT_PATH:
         with open(_OUTPUT_PATH, "w") as handle:
             handle.write(text + "\n")
+
+
+def _watch_setting(name, default=None):
+    return os.environ.get(name, default)
+
+
+def _watch_emit(path, payload):
+    """Append one complete event; JSONL permits consumers to tail safely."""
+    payload["session_id"] = _watch_setting("CDS_HEADLESS_CRC_WATCH_SESSION", "")
+    text = json.dumps(payload, sort_keys=True)
+    with open(path, "a") as handle:
+        handle.write(text + "\n")
+        handle.flush()
+    print("CRC_WATCH " + text)
+
+
+def _watch_stop_requested(path):
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path) as handle:
+            return json.load(handle).get("action") == "stop"
+    except Exception:
+        # A client may be halfway through replacing the small control file.
+        return False
 
 
 def _gateway(script_online, name):
@@ -167,10 +193,7 @@ def _read_crc(remote, local_path):
     return result
 
 
-def main():
-    import scriptengine as se
-    from System.Net import IPAddress
-
+def _targets():
     input_path = _argument("--input") or os.environ.get("CDS_HEADLESS_CRC_INPUT")
     if input_path:
         with open(input_path) as stream:
@@ -183,6 +206,10 @@ def main():
         targets = [{"ip": ip, "gateway": _argument("--gateway", "Gateway-1"), "request_id": "1"}]
     if not isinstance(targets, list) or not targets:
         raise ValueError("targets must be a non-empty array")
+    return targets
+
+
+def _check_targets(targets, se, IPAddress):
 
     results = []
     for index, target in enumerate(targets):
@@ -257,7 +284,7 @@ def main():
         except Exception as error:
             base.update({"ok": False, "error": {"code": _stable_error_code(error, stage), "message": str(error)}})
         results.append(base)
-    payload = {
+    return {
         "ok": all(item.get("ok") for item in results),
         "results": results,
         "summary": {
@@ -266,7 +293,63 @@ def main():
             "failed": sum(1 for item in results if not item.get("ok")),
         },
     }
-    _emit(payload)
+
+
+def _watch(targets, se, IPAddress):
+    """Keep the same IDE alive, but never retain an online PLC connection."""
+    output = _watch_setting("CDS_HEADLESS_CRC_WATCH_OUTPUT")
+    control = _watch_setting("CDS_HEADLESS_CRC_WATCH_CONTROL")
+    if not output:
+        raise RuntimeError("CDS_HEADLESS_CRC_WATCH_OUTPUT is required in watch mode")
+    try:
+        interval = float(_watch_setting("CDS_HEADLESS_CRC_WATCH_INTERVAL", "60"))
+    except ValueError:
+        raise RuntimeError("CDS_HEADLESS_CRC_WATCH_INTERVAL must be numeric")
+    if interval <= 0:
+        raise RuntimeError("CDS_HEADLESS_CRC_WATCH_INTERVAL must be greater than zero")
+
+    _watch_emit(output, {
+        "ok": True,
+        "event": "started",
+        "interval_seconds": interval,
+        "target_count": len(targets),
+        "timestamp_unix": time.time(),
+    })
+    cycle = 0
+    while not _watch_stop_requested(control):
+        cycle += 1
+        payload = _check_targets(targets, se, IPAddress)
+        payload.update({
+            "event": "cycle",
+            "cycle": cycle,
+            "interval_seconds": interval,
+            "timestamp_unix": time.time(),
+        })
+        _watch_emit(output, payload)
+        # Check once per second, so externally requested shutdown never waits a
+        # complete interval.  A CRC cycle itself is deliberately not interrupted.
+        remaining = interval
+        while remaining > 0 and not _watch_stop_requested(control):
+            sleep_for = min(1.0, remaining)
+            time.sleep(sleep_for)
+            remaining -= sleep_for
+    _watch_emit(output, {
+        "ok": True,
+        "event": "stopped",
+        "cycles": cycle,
+        "timestamp_unix": time.time(),
+    })
+
+
+def main():
+    import scriptengine as se
+    from System.Net import IPAddress
+
+    targets = _targets()
+    if _watch_setting("CDS_HEADLESS_CRC_WATCH") == "1":
+        _watch(targets, se, IPAddress)
+    else:
+        _emit(_check_targets(targets, se, IPAddress))
 
 
 if __name__ == "__main__":

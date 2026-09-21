@@ -1,4 +1,7 @@
 import json
+from types import SimpleNamespace
+
+import pytest
 
 from cds_cli import headless_crc
 
@@ -67,3 +70,66 @@ def test_single_run_passes_headless_arguments(monkeypatch, tmp_path):
     assert seen["env"]["CDS_HEADLESS_CRC_INPUT"].endswith("targets.json")
     assert seen["env"]["CDS_HEADLESS_CRC_OUTPUT"].endswith("result.json")
     assert payload["ok"] is False
+
+
+def _watch_args(tmp_path, **overrides):
+    values = {
+        "ip": "192.0.2.1",
+        "gateway": "Gateway-1",
+        "input": "",
+        "ide": "ide.exe",
+        "profile": "profile",
+        "host_root": "",
+        "interval": 10,
+        "startup_timeout": 1,
+        "watch_output": str(tmp_path / "cycles.jsonl"),
+        "watch_control": str(tmp_path / "stop.json"),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_watch_requires_dedicated_jsonl_output(tmp_path):
+    args = _watch_args(tmp_path, watch_output="")
+    with pytest.raises(ValueError, match="watch-output"):
+        headless_crc.run_headless_crc_watch(args)
+
+
+def test_watch_rejects_preexisting_control_file(tmp_path):
+    control = tmp_path / "stop.json"
+    control.write_text('{"action": "stop"}')
+    with pytest.raises(ValueError, match="does not exist"):
+        headless_crc._watch_paths(_watch_args(tmp_path))
+
+
+def test_watch_starts_one_ide_and_exposes_control_contract(monkeypatch, tmp_path, capsys):
+    seen = {}
+
+    class Process:
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    def fake_popen(args, **kwargs):
+        seen["args"] = args
+        seen["env"] = kwargs["env"]
+        output = tmp_path / "cycles.jsonl"
+        output.write_text(json.dumps({
+            "event": "started",
+            "session_id": kwargs["env"]["CDS_HEADLESS_CRC_WATCH_SESSION"],
+        }) + "\n")
+        return Process()
+
+    monkeypatch.setattr(headless_crc.subprocess, "Popen", fake_popen)
+    payload, code = headless_crc.run_headless_crc_watch(_watch_args(tmp_path))
+    started = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["event"] == "watch_stopped"
+    assert started["event"] == "watch_started"
+    assert started["watch_control"].endswith("stop.json")
+    assert seen["env"]["CDS_HEADLESS_CRC_WATCH"] == "1"
+    assert seen["env"]["CDS_HEADLESS_CRC_WATCH_INTERVAL"] == "10"
+    assert "--noUI" in seen["args"]
