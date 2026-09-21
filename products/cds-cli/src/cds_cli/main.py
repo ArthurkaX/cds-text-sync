@@ -240,6 +240,23 @@ def main():
         if code:
             sys.exit(code)
 
+    elif args.command == "plc-crc-headless":
+        from cds_cli.headless_crc import run_headless_crc, run_headless_crc_watch
+
+        try:
+            payload, code = (
+                run_headless_crc_watch(args) if args.watch else run_headless_crc(args)
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            payload, code = {
+                "ok": False,
+                "error": {"code": "invalid_request", "message": str(exc)},
+                "results": [],
+            }, 2
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        if code:
+            sys.exit(code)
+
     elif args.command == "ui":
         from cds_text_sync.ui import launch
 

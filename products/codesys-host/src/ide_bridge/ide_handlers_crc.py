@@ -27,6 +27,37 @@ from ide_daemon_helpers import (
 )
 
 
+def _byte_value(value):
+    """Return an octet under both IronPython 2 and CPython 3."""
+    return value if isinstance(value, int) else ord(value)
+
+
+def _canonical_crc_hex(value):
+    """Return the four-byte Application CRC representation used by this API."""
+    text = str(value or "").strip().lower()
+    if len(text) >= 8 and all(char in "0123456789abcdef" for char in text):
+        return text[:8]
+    return text
+
+
+def _normalize_app_history(history):
+    """Migrate legacy CRC+timestamp entries while preserving all other fields."""
+    changed = False
+    normalized = []
+    for entry in history if isinstance(history, list) else []:
+        if not isinstance(entry, dict):
+            normalized.append(entry)
+            continue
+        current = entry.get("crc_hex", "")
+        canonical = _canonical_crc_hex(current)
+        if canonical != current:
+            entry = dict(entry)
+            entry["crc_hex"] = canonical
+            changed = True
+        normalized.append(entry)
+    return normalized, changed
+
+
 def _cmd_app_crc(params):
     """Get CRC and metadata of the Application on PLC.
 
@@ -151,22 +182,30 @@ def _cmd_app_crc(params):
                 online_dev.upload_file(app_dir + "/" + crc_filename, tmp, True)
                 with open(tmp, "rb") as f:
                     data = f.read()
-                if len(data) >= 8:
-                    crc_bytes = data[:8]
+                if len(data) >= 4:
+                    # Application.crc begins with one uint32 little-endian CRC.
+                    # Bytes 4..7 are metadata (a runtime timestamp), not a
+                    # second half of the CRC.
+                    crc_bytes = data[:4]
                     # hex in IronPython 2.7 (no .hex())
                     result["crc_hex"] = "".join(
-                        "{:02x}".format(ord(c)) for c in crc_bytes
+                        "{:02x}".format(_byte_value(c)) for c in crc_bytes
                     )
-                    # Try to interpret as two uint32 little-endian
+                    # Decode just the first uint32 as the application CRC.
                     try:
                         import struct
 
-                        c1, c2 = struct.unpack("<II", data[:8])
-                        result["crc_value"] = "{:08X}{:08X}".format(c1, c2)
+                        result["crc_value"] = "{:08X}".format(
+                            struct.unpack("<I", data[:4])[0]
+                        )
+                        if len(data) >= 8:
+                            result["metadata_timestamp_unix"] = struct.unpack(
+                                "<I", data[4:8]
+                            )[0]
                     except Exception as error:
                         _log("Could not decode PLC CRC value: {0}".format(error))
                     if len(data) > 8:
-                        name_part = data[8:].rstrip("\x00")
+                        name_part = data[8:].rstrip(b"\x00")
                         if name_part:
                             try:
                                 result["app_name"] = str(name_part.decode("ascii"))
@@ -323,6 +362,7 @@ def _append_app_history(crc_data, app_name=""):
                 history = _json.load(f)
         except Exception:
             history = []
+        history, _ = _normalize_app_history(history)
         history.append(entry)
         history = history[-200:]  # max 200 entries
         history_dir = os.path.dirname(history_path)
@@ -373,6 +413,10 @@ def _cmd_app_history(params):
                 history = _json.load(f)
         except Exception:
             history = []
+        history, migrated = _normalize_app_history(history)
+        if migrated:
+            with open(history_path, "w") as f:
+                _json.dump(history, f, indent=2, ensure_ascii=False)
         return {
             "ok": True,
             "data": {
@@ -418,8 +462,10 @@ def _cmd_compare_crc(params):
             online_dev.upload_file(app_dir + "/Application.crc", tmp_plc, True)
             with open(tmp_plc, "rb") as f:
                 plc_data = f.read()
-            if len(plc_data) >= 8:
-                plc_crc = "".join("{:02x}".format(ord(c)) for c in plc_data[:8])
+            if len(plc_data) >= 4:
+                # The first four bytes are the CRC; bytes 4..7 are timestamp
+                # metadata and must not influence a comparison.
+                plc_crc = "".join("{:02x}".format(ord(c)) for c in plc_data[:4])
                 result["plc_crc"] = plc_crc
                 result["plc_file_size"] = len(plc_data)
         except Exception as e:
@@ -469,14 +515,14 @@ def _cmd_compare_crc(params):
             try:
                 with open(local_path, "rb") as f:
                     local_data = f.read()
-                if len(local_data) >= 8:
-                    local_crc = "".join("{:02x}".format(ord(c)) for c in local_data[:8])
+                if len(local_data) >= 4:
+                    local_crc = "".join("{:02x}".format(ord(c)) for c in local_data[:4])
                     result["local_crc"] = local_crc
                     result["local_path"] = local_path
                     result["local_file_size"] = len(local_data)
                     # Compare
-                    if plc_data and len(plc_data) >= 8 and len(local_data) >= 8:
-                        match = plc_data[:8] == local_data[:8]
+                    if plc_data and len(plc_data) >= 4 and len(local_data) >= 4:
+                        match = plc_data[:4] == local_data[:4]
                         result["match"] = match
                         result["status"] = "MATCH" if match else "MISMATCH"
             except Exception as e:

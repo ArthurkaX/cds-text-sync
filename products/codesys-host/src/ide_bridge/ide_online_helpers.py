@@ -419,61 +419,31 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
 
     reused_session = _online_app_is_live(online_app)
     
-    # CODESYS SP22 login() takes (OnlineChangeOption, password), but enum
-    # member names differ between versions. Pick a safe online-change option.
+    # ``login`` takes (OnlineChangeOption, delete_foreign_apps).  A CRC probe
+    # must never turn a project mismatch into an online change or a download.
+    # In particular, ``Never`` *forces* a full download and ``Try`` falls back
+    # to one.  ``Keep`` is the sole option documented to establish a login
+    # while keeping the PLC application unchanged.
     import scriptengine as se
     if not hasattr(online_app, 'login'):
         raise TypeError("Online application does not support login().")
 
     if not reused_session:
-        login_errors = []
-        option_candidates = []
-        if hasattr(se, 'OnlineChangeOption'):
-            enum_type = se.OnlineChangeOption
-            for name in (
-                'TryOnlineChange', 'Try', 'PerformOnlineChange',
-                'OnlineChange', 'Always', 'Never', 'NoOnlineChange'
-            ):
-                try:
-                    if hasattr(enum_type, name):
-                        option_candidates.append(getattr(enum_type, name))
-                except Exception:
-                    pass
-            try:
-                from System import Enum
-                values = list(Enum.GetValues(enum_type))
-                preferred = []
-                fallback = []
-                for value in values:
-                    name = str(Enum.GetName(enum_type, value))
-                    if 'try' in name.lower() or 'change' in name.lower():
-                        preferred.append(value)
-                    else:
-                        fallback.append(value)
-                option_candidates.extend(preferred + fallback)
-            except Exception:
-                pass
-
-        seen = set()
-        for option in option_candidates:
-            key = str(option)
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                online_app.login(option, "")
-                break
-            except Exception as e:
-                login_errors.append(str(e))
-        else:
-            for args in ((0, ""), (None, ""), tuple()):
-                try:
-                    online_app.login(*args)
-                    break
-                except Exception as e:
-                    login_errors.append(str(e))
-            else:
-                raise RuntimeError("login() failed: " + "; ".join(login_errors[-5:]))
+        try:
+            keep = se.OnlineChangeOption.Keep
+        except Exception:
+            raise RuntimeError(
+                "Safe PLC login is unavailable: this CODESYS ScriptEngine does "
+                "not expose OnlineChangeOption.Keep. Refusing options that may "
+                "perform an online change or full download."
+            )
+        try:
+            online_app.login(keep, False)
+        except Exception as e:
+            raise RuntimeError(
+                "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
+                "was requested: {0}".format(e)
+            )
     
     state = "connected"
     if hasattr(online_app, 'application_state'):
@@ -576,8 +546,8 @@ def download_impl(project, start=True):
     connect_to_device logs in with an online-change option and force_download
     disabled, so newly-added objects (new GVL/DUT/POU and their symbols) never
     reach the controller. This logs out, then logs in with the second login
-    argument (bForceDownload) set to True and a "no online change" option, which
-    stops the running app and downloads the freshly built code. Optionally
+    argument (delete_foreign_apps) set to False and a "no online change" option,
+    which stops the running app and downloads the freshly built code. Optionally
     starts the app again afterwards (a full download leaves it stopped).
 
     Returns a dict describing the result.
@@ -596,36 +566,23 @@ def download_impl(project, start=True):
     except Exception:
         pass
 
-    # Prefer options that do NOT online-change, so login does a real download.
-    options = []
-    if hasattr(se, 'OnlineChangeOption'):
-        et = se.OnlineChangeOption
-        for nm in ('Never', 'NoOnlineChange', 'ForceDownload', 'Force',
-                   'Try', 'TryOnlineChange'):
-            if hasattr(et, nm):
-                options.append((nm, getattr(et, nm)))
-
+    # ``Never`` is the only documented mode which forces a full download.
+    # Do not fall back to Try/Force: those modes may online-change instead.
+    try:
+        option = se.OnlineChangeOption.Never
+    except Exception:
+        raise RuntimeError(
+            "Full download is unavailable: this CODESYS ScriptEngine does not "
+            "expose OnlineChangeOption.Never."
+        )
+    try:
+        # The second argument is ``delete_foreign_apps``.  The full download
+        # comes from ``Never``; unrelated PLC applications must be retained.
+        online_app.login(option, False)
+    except Exception as error:
+        raise RuntimeError("Full download failed with OnlineChangeOption.Never: {0}".format(error))
+    used = "Never"
     errors = []
-    used = None
-    for nm, opt in options:
-        try:
-            # Second arg = bForceDownload -> True forces a full download.
-            online_app.login(opt, True)
-            used = nm
-            break
-        except Exception as e:
-            errors.append("{0}: {1}".format(nm, str(e)[:160]))
-    if used is None:
-        # Last resort: raw positional force-download attempts.
-        for args in ((0, True), (None, True)):
-            try:
-                online_app.login(*args)
-                used = "raw{0}".format(args)
-                break
-            except Exception as e:
-                errors.append("raw{0}: {1}".format(args, str(e)[:160]))
-    if used is None:
-        raise RuntimeError("Force download failed: " + "; ".join(errors[-4:]))
 
     started = False
     if start:
@@ -672,7 +629,7 @@ def _call_online_app(io_obj, names, *args):
 
 
 def _ensure_logged_in(online_app):
-    """Ensure the online application is logged in. Auto-login if needed."""
+    """Ensure a session exists without permitting an update or download."""
     # Check if already logged in via is_logged_in
     logged_in = False
     if hasattr(online_app, 'is_logged_in'):
@@ -693,56 +650,25 @@ def _ensure_logged_in(online_app):
     
     if logged_in:
         return
-    # Auto-login with best-effort OnlineChangeOption
-    if hasattr(online_app, 'login'):
-        import scriptengine as se
-        login_errors = []
-        option_candidates = []
-        if hasattr(se, 'OnlineChangeOption'):
-            enum_type = se.OnlineChangeOption
-            for name in (
-                'TryOnlineChange', 'Try', 'PerformOnlineChange',
-                'OnlineChange', 'Always', 'Never', 'NoOnlineChange'
-            ):
-                try:
-                    if hasattr(enum_type, name):
-                        option_candidates.append(getattr(enum_type, name))
-                except Exception:
-                    pass
-            try:
-                from System import Enum
-                values = list(Enum.GetValues(enum_type))
-                preferred = []
-                fallback = []
-                for value in values:
-                    name = str(Enum.GetName(enum_type, value))
-                    if 'try' in name.lower() or 'change' in name.lower():
-                        preferred.append(value)
-                    else:
-                        fallback.append(value)
-                option_candidates.extend(preferred + fallback)
-            except Exception:
-                pass
+    if not hasattr(online_app, 'login'):
+        raise TypeError("Online application does not support login().")
 
-        seen = set()
-        for option in option_candidates:
-            key = str(option)
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                online_app.login(option, "")
-                return
-            except Exception as e:
-                login_errors.append(str(e))
-        # Last resort: try raw args
-        for args in ((0, ""), (None, ""), tuple()):
-            try:
-                online_app.login(*args)
-                return
-            except Exception as e:
-                login_errors.append(str(e))
-        raise RuntimeError("Auto-login failed: " + "; ".join(login_errors[-5:]))
+    import scriptengine as se
+    try:
+        keep = se.OnlineChangeOption.Keep
+    except Exception:
+        raise RuntimeError(
+            "Safe PLC login is unavailable: this CODESYS ScriptEngine does "
+            "not expose OnlineChangeOption.Keep. Refusing options that may "
+            "perform an online change or full download."
+        )
+    try:
+        online_app.login(keep, False)
+    except Exception as error:
+        raise RuntimeError(
+            "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
+            "was requested: {0}".format(error)
+        )
 
 
 def read_variable_impl(project, variable_name):
