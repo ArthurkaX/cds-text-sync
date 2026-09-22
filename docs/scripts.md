@@ -1,7 +1,10 @@
 # Script Overview
 
-The CODESYS-side entry points, in the order you use them. All of them appear
-under **Tools > Scripting > Scripts > P** after [installation](install.md) —
+The CODESYS-side entry points, in the order you use them — note that the CODESYS
+menu itself lists them alphabetically, so the menu order is not this order. All
+of them appear under **Tools > Scripting > Scripts > P** after
+[installation](install.md), and the ones you repeat are worth putting on a
+toolbar button ([onboarding, step 3](onboarding.md#3-find-the-commands--the-short-way)) —
 and they are the only thing this tool puts in that menu. The recurring sync,
 daemon, and analysis actions also have `cts` equivalents for shell and CI use —
 see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).

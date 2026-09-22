@@ -166,6 +166,9 @@ the smoother path.
       width="100%"></p>
    </details>
 
+   The buttons are the short way in; the menu path above is the long way. Both
+   stay available.
+
 3. **Link a project to disk**: open the project in CODESYS, run
    `Project_directory.py` to set its sync folder, and then run
    `Project_export.py`. All supported `.st` and `.csv` text exports are enabled

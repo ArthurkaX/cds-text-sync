@@ -5,6 +5,9 @@ start. These pages are the detail.
 
 ## Setting up
 
+- **[Onboarding: your first hour](onboarding.md)** — the whole path once, in
+  order: install, where the commands live, a quick-access toolbar button, first
+  export, first import.
 - **[Installation](install.md)** — requirements, both install methods, installing
   the `cts` CLI, and upgrading from a previous version.
 - **[Alternative installations](alternative-installations.md)** — forks and

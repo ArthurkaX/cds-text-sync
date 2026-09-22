@@ -33,6 +33,11 @@ needed for advanced settings such as sync mode, layout, profile or projection
 selection. See the [installation guide](docs/install.md) if the scripts do not
 appear under **Tools > Scripting**.
 
+New here? **[Onboarding: your first hour](docs/onboarding.md)** walks the same
+path with the detail this list leaves out — where the commands live in the menu,
+how to put the ones you repeat on a **quick-access toolbar button**, and the one
+choice that is fixed once you export.
+
 ## 2. Git workflows
 
 Choose the workflow on an **empty sync folder before the first export**. The
