@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+- The release archive no longer carries the documentation's demo GIFs. `git archive` builds the release asset, so `img/` was shipping 8.3 MB into every user's program folder — 64% of a 12.8 MB install that nothing at runtime reads. An install is now 4.6 MB unpacked (1.4 MB downloaded). The GIFs stay in the repository, so the docs render unchanged on GitHub; a copy of `readMe.md` or `docs/onboarding.md` opened locally from the install folder shows broken image placeholders instead.
+
+---
+
 ### Version 3.2.0 (2026-09-22)
 
 **Headless PLC CRC probe (advanced):**
