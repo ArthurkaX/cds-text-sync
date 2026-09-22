@@ -1,2 +1,7 @@
 # Rule files are ordinary Python modules, loaded explicitly by the analyzer.
 *.py linguist-language=Python diff=python
+
+# Demo GIFs exist for the docs as GitHub renders them, but `git archive` builds
+# the release asset, so they were landing in every user's program folder: 8.3 MB
+# of a 12.8 MB install that nothing at runtime reads.
+img/** export-ignore
