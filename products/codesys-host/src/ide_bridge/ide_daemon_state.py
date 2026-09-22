@@ -23,7 +23,8 @@ from codesys_utils import project_file_path
 
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
-VERSION = "2.8.4"
+# Kept in step with cds_text_sync.__version__; the daemon no longer versions separately.
+VERSION = "3.2.0"
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
 CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)
