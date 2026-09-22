@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
+### Version 3.2.0 (2026-09-22)
 
 **Headless PLC CRC probe (advanced):**
 
