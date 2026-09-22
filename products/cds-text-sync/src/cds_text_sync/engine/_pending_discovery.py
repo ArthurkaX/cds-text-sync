@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Pending project-object discovery pipeline."""
 
-import codecs
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -9,6 +8,7 @@ import xml.etree.ElementTree as ET
 from _pending_files import iter_files
 from _project_model import ProjectNode
 from _project_profiles import kind_for_type_guid
+from _view_text import read_view_text
 from xml_helpers import (
     extract_cds_text_sync_type_guid,
     sha1_hex,
@@ -30,8 +30,7 @@ def discover_pending_st(reader, model, managed_paths, allow_sibling_xml=False):
             if os.path.exists(sidecar_xml_path) and not allow_sibling_xml:
                 continue
 
-            with codecs.open(full_path, "r", "utf-8") as f:
-                content = f.read()
+            content = read_view_text(full_path)
 
             type_guid = extract_cds_text_sync_type_guid(content)
             semantic_kind = None
@@ -128,8 +127,7 @@ def discover_pending_xml(reader, model, managed_paths):
             if os.path.exists(sidecar_st_path):
                 continue
 
-            with codecs.open(full_path, "r", "utf-8") as f:
-                content = f.read()
+            content = read_view_text(full_path)
 
             type_guid = None
             try:

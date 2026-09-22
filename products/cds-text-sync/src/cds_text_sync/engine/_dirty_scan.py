@@ -9,22 +9,29 @@ unmanaged projection files, which orphan removal deletes outright. This module
 finds both groups so callers can confirm, skip, or overwrite deliberately.
 
 Hashing must stay byte-identical to the read-side change detection in
-``folder_reader`` (``codecs.open(..., "utf-8")`` + ``sha1_hex``): a file is
-"dirty" here exactly when the reader would consider it changed.
+``folder_reader``: both go through ``_view_text.read_view_text`` + ``sha1_hex``,
+so a file is "dirty" here exactly when the reader would consider it changed.
 """
 
-import codecs
 import os
 
 from _project_layout import is_reserved_root_child
 from _view_paths import managed_relative_paths, normalize_fs_path
+from _view_text import ViewEncodingError, read_view_text
 from xml_helpers import normalize_guid, sha1_hex
+
+
+#: A file whose bytes are not UTF-8 at all. It has no comparable hash, but it
+#: must never be treated as clean: an export would then overwrite content we
+#: were unable to read, destroying whatever the editor saved.
+UNREADABLE = object()
 
 
 def _hash_file(full_path):
     try:
-        with codecs.open(full_path, "r", "utf-8") as f:
-            return sha1_hex(f.read())
+        return sha1_hex(read_view_text(full_path))
+    except ViewEncodingError:
+        return UNREADABLE
     except Exception:
         return None
 
@@ -37,8 +44,10 @@ def scan_dirty(manifest, views_path, enabled_extensions=None, selected_guids=Non
     """Return ``{"dirty": [...], "orphans": [...]}`` for an export preflight.
 
     ``dirty``: managed view files whose current hash differs from the manifest
-    (``hash`` for the entry xml, ``projection_hashes`` for projections). Missing
-    files are not dirty - the writer simply recreates them.
+    (``hash`` for the entry xml, ``projection_hashes`` for projections), plus
+    files that are not valid UTF-8 at all - those carry ``unreadable`` and a
+    null ``current_hash``. Missing files are not dirty - the writer simply
+    recreates them.
 
     ``orphans``: files with a projection extension inside the view root that no
     manifest entry owns; a full export's orphan removal would delete them.
@@ -82,16 +91,21 @@ def scan_dirty(manifest, views_path, enabled_extensions=None, selected_guids=Non
             if not os.path.isfile(full_path):
                 continue
             current_hash = _hash_file(full_path)
-            if current_hash is not None and current_hash != expected_hash:
-                dirty.append(
-                    {
-                        "guid": guid,
-                        "path": str(relative_path).replace("\\", "/"),
-                        "file_kind": file_kind,
-                        "expected_hash": expected_hash,
-                        "current_hash": current_hash,
-                    }
-                )
+            if current_hash is None:
+                continue
+            unreadable = current_hash is UNREADABLE
+            if not unreadable and current_hash == expected_hash:
+                continue
+            item = {
+                "guid": guid,
+                "path": str(relative_path).replace("\\", "/"),
+                "file_kind": file_kind,
+                "expected_hash": expected_hash,
+                "current_hash": None if unreadable else current_hash,
+            }
+            if unreadable:
+                item["unreadable"] = "not valid UTF-8"
+            dirty.append(item)
 
     if enabled_extensions and os.path.isdir(views_path):
         view_root = normalize_fs_path(views_path)

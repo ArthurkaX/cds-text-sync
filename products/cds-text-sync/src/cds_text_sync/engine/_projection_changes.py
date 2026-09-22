@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Detect locally changed projection files."""
 
-import codecs
 import os
 
+from _view_text import read_view_text
 from xml_helpers import sha1_hex
 
 
@@ -17,8 +17,7 @@ def detect(paths, root_path, expected_hashes=None, missing_hash_is_change=False)
         full_path = os.path.join(root_path, relative_path)
         if not os.path.exists(full_path):
             continue
-        with codecs.open(full_path, "r", "utf-8") as handle:
-            content = handle.read()
+        content = read_view_text(full_path)
         current_hash = sha1_hex(content)
         current_hashes[relative_path] = current_hash
         current_contents[relative_path] = content

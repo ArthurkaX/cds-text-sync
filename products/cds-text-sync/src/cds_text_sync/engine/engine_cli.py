@@ -24,6 +24,7 @@ from _project_profiles import (
     load_profile,
 )
 from _project_settings import load_project_settings, normalize_sync_mode
+from _view_text import ViewEncodingError
 from call_tree import run_call_tree as _run_call_tree
 from diff_engine import DiffEngine
 from folder_reader import FolderReader
@@ -158,6 +159,9 @@ def _load_models(args, context):
     folder_reader = FolderReader(project_layout.view_root, dump_path, profile=profile)
     try:
         folder_model = folder_reader.read()
+    except ViewEncodingError as error:
+        print("Cannot read view file:", error)
+        sys.exit(1)
     except ProjectionValidationError as error:
         print("Invalid projection edit:", error)
         sys.exit(1)

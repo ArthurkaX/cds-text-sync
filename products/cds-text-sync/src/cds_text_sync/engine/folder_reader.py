@@ -3,7 +3,6 @@
 folder_reader.py - Reads the Git-friendly folder structure into a ProjectModel.
 """
 
-import codecs
 import json
 import os
 import re
@@ -20,6 +19,7 @@ from _view_paths import (
     manifest_view_root,
     normalize_fs_path,
 )
+from _view_text import read_view_text
 from xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
     ST_IMPLEMENTATION_MARKER,
@@ -306,8 +306,7 @@ class FolderReader:
         if not blobs:
             return xml_text
 
-        with codecs.open(full_projection_path, "r", "utf-8") as f:
-            projection_text = f.read()
+        projection_text = read_view_text(full_projection_path)
         projection_text = strip_cds_text_sync_pragmas(projection_text)
         replace_text_blob_values(root, decode_st(projection_text, root))
         return entry_to_xml(root)
@@ -333,8 +332,7 @@ class FolderReader:
             full_projection_path = self._projection_full_path(projection_path)
             if not os.path.exists(full_projection_path):
                 continue
-            with codecs.open(full_projection_path, "r", "utf-8") as f:
-                csv_content = f.read()
+            csv_content = read_view_text(full_projection_path)
             try:
                 if decode_csv(csv_content, root, extractor):
                     changed = True
@@ -407,14 +405,12 @@ class FolderReader:
         node.metadata["view_path"] = view_path
         full_path = os.path.join(self.views_path, view_path)
         if os.path.exists(full_path):
-            with codecs.open(full_path, "r", "utf-8") as handle:
-                node.code = handle.read()
+            node.code = read_view_text(full_path)
 
     @staticmethod
     def _read_xml_file(path):
         """Read UTF-8 XML and return ``(text, sha1)``."""
-        with codecs.open(path, "r", "utf-8") as handle:
-            text = handle.read()
+        text = read_view_text(path)
         return text, sha1_hex(text)
 
     def read(self):
