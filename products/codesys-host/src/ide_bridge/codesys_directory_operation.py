@@ -15,7 +15,7 @@ from __future__ import print_function
 import os
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import log_info, resolve_projects, resolve_sync_folder
+from codesys_utils import log_info, project_file_path, resolve_projects, resolve_sync_folder
 
 
 def main(params=None, runtime=None):
@@ -55,6 +55,11 @@ def set_base_directory(runtime, projects_obj):
     except Exception as error:
         log_info("Could not read existing sync-folder property: " + str(error))
 
+    project_file = project_file_path(proj)
+    project_root = ""
+    if project_file and os.path.isabs(project_file):
+        project_root = os.path.dirname(project_file)
+
     # Offer choice: Browse or Manual Input
     from codesys_ui import show_directory_choice_dialog
     ans = show_directory_choice_dialog(
@@ -66,13 +71,24 @@ def set_base_directory(runtime, projects_obj):
         print("Operation cancelled by user.")
         return {"status": "cancelled"}
 
-    choice_idx = 0 if ans == "yes" else 1
-
     selected_path = None
 
-    if choice_idx == 0:  # Browse
+    if ans == "default":
+        if not project_file or not os.path.isabs(project_file):
+            message = "Cannot determine the saved project path for the default sync folder."
+            runtime.ui.error(message)
+            return {"status": "error", "error": message}
+        selected_path = os.path.join(os.path.dirname(project_file), "sync")
+        if not os.path.exists(selected_path):
+            try:
+                os.makedirs(selected_path)
+            except OSError as error:
+                message = "Failed to create the default sync folder: " + str(error)
+                runtime.ui.error(message)
+                return {"status": "error", "error": message}
+    elif ans == "yes":  # Browse
         selected_path = runtime.system.ui.browse_directory_dialog(
-            "Select Sync Directory for this Project", initial_dir)
+            "Select Sync Directory for this Project", project_root or initial_dir)
     else:  # Manual Input
         # Create a simple input dialog using Windows Forms
         try:

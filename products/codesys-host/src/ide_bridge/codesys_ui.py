@@ -68,7 +68,7 @@ class DirectoryChoiceForm(Form if Form is not None else object):
 
     def __init__(self, title, message):
         self.Text = title
-        self.Size = Size(450, 270)
+        self.Size = Size(450, 335)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -92,11 +92,23 @@ class DirectoryChoiceForm(Form if Form is not None else object):
         lbl_sub.ForeColor = Color.Gray
         self.Controls.Add(lbl_sub)
 
+        btn_default = Button()
+        btn_default.Text = "  Use default sync folder\n  (Project folder\\sync)"
+        btn_default.Font = Font("Segoe UI", 10)
+        btn_default.TextAlign = ContentAlignment.MiddleLeft
+        btn_default.Location = Point(25, 80)
+        btn_default.Size = Size(385, 55)
+        btn_default.BackColor = Color.White
+        btn_default.FlatStyle = FlatStyle.Flat
+        btn_default.FlatAppearance.BorderColor = Color.LightGray
+        btn_default.Click += self._on_default
+        self.Controls.Add(btn_default)
+
         btn_browse = Button()
         btn_browse.Text = "  Browse Folder...\n  (Select via file explorer)"
         btn_browse.Font = Font("Segoe UI", 10)
         btn_browse.TextAlign = ContentAlignment.MiddleLeft
-        btn_browse.Location = Point(25, 90)
+        btn_browse.Location = Point(25, 145)
         btn_browse.Size = Size(385, 55)
         btn_browse.BackColor = Color.White
         btn_browse.FlatStyle = FlatStyle.Flat
@@ -108,7 +120,7 @@ class DirectoryChoiceForm(Form if Form is not None else object):
         btn_manual.Text = "  Enter Manually...\n  (Use relative ./ paths or text input)"
         btn_manual.Font = Font("Segoe UI", 10)
         btn_manual.TextAlign = ContentAlignment.MiddleLeft
-        btn_manual.Location = Point(25, 155)
+        btn_manual.Location = Point(25, 210)
         btn_manual.Size = Size(385, 55)
         btn_manual.BackColor = Color.White
         btn_manual.FlatStyle = FlatStyle.Flat
@@ -118,6 +130,11 @@ class DirectoryChoiceForm(Form if Form is not None else object):
 
     def _on_browse(self, sender, event):
         self.choice = "yes"
+        self.DialogResult = DialogResult.OK
+        self.Close()
+
+    def _on_default(self, sender, event):
+        self.choice = "default"
         self.DialogResult = DialogResult.OK
         self.Close()
 
