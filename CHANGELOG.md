@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - `--fail-on danger|suspicious|style` sets the severity that fails the `analyze` stage. Static analysis is opinionated and not every project wants every opinion to block it, so a team with a looser style can dial the gate down per run (`--fail-on danger` gates on defects and lets style findings through as information) without editing the analyzer's own config. The effective threshold is echoed in `summary.fail_on`.
 - `TYPE X EXTENDS Y : STRUCT` is now parsed as the struct inheritance it is. Every declaration parser in the repository shares one implementation, so the missing `EXTENDS` clause made each inheriting struct look unparseable — on one real project that alone accounted for 366 spurious diagnostics.
 - `manifest.json` is read as UTF-8 instead of the platform default, so a project whose object names carry non-ASCII characters no longer fails to load on a Windows console codepage.
+- Every view-folder text read now goes through one `utf-8-sig` reader: a file re-saved with a BOM (e.g. by Notepad) no longer shows up as a phantom modification, and a file re-saved as ANSI/cp1251 is reported by name instead of crashing with a bare `UnicodeDecodeError`. `export` also no longer treats an unreadable file as clean — it is now reported dirty so it can't be silently overwritten.
 
 ---
 
