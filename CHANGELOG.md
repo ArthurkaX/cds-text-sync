@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Unreleased
 
+- Setting a project's sync folder is now one dialog with the answer already in it: a folder named after the project (`<project>-cts`) beside the `.project` file, stored as a relative path so a clone on another machine needs no reconfiguration. It replaces the two-step "browse or type" flow — the suggestion has to live in a text field, because a folder browser silently ignores a preselected folder that does not exist yet. Browsing to a folder inside the project is stored relative too; a path typed by hand is kept exactly as typed.
+- Commands no longer dead-end on an unconfigured project. Any of them that needs a sync folder and finds none offers the setup dialog and then carries on with the answer, so the alphabetical script menu can be entered anywhere rather than only at `Project_directory`. Lookups that must not interrupt — the daemon, and diff files written mid-compare — stay silent as before.
+- The first time a folder is configured, `Project_directory.py` continues into the options dialog. That is the only moment when the sync mode is still free: the manifest fixes it on first export. Cancelling there keeps the folder and the defaults.
 - The release archive no longer carries the documentation's demo GIFs. `git archive` builds the release asset, so `img/` was shipping 8.3 MB into every user's program folder — 64% of a 12.8 MB install that nothing at runtime reads. An install is now 4.6 MB unpacked (1.4 MB downloaded). The GIFs stay in the repository, so the docs render unchanged on GitHub; a copy of `readMe.md` or `docs/onboarding.md` opened locally from the install folder shows broken image placeholders instead.
 
 ---

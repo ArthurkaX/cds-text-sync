@@ -433,7 +433,7 @@ def run_bridge_operation(params, runtime, caller_globals, operation_name, invoke
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=caller_globals, params=params)
 
-    base_dir, error = load_base_dir()
+    base_dir, error = load_base_dir(runtime)
     if error:
         runtime.ui.warning(error)
         return {"status": "error", "error": error}

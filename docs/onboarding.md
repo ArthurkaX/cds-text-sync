@@ -37,8 +37,9 @@ menu. Two things are worth knowing before you look:
   `Project_directory` — which is the one you actually need first. Do not read the
   list top-down as a workflow.
 
-If you run something out of order, nothing breaks: the commands that need a sync
-folder stop with `Sync folder is not configured. Run Project_directory.py first.`
+Reading it out of order costs nothing anyway: a command that needs a sync folder
+and finds none offers the setup dialog on the spot and then carries on, so
+whichever command you reach first can configure the project.
 
 What each command does: [Script overview](scripts.md).
 
@@ -73,19 +74,25 @@ names.
 ## 4. Link the project to a folder on disk
 
 Run **`Project_directory.py`**. It asks for the sync root for *this* project and
-saves it in the project properties.
+saves it in the project properties. Any other command that needs a folder and
+finds none asks the same question, so you may have answered it already.
 
 ![Setup Project Directory](../img/setFolder.gif)
 
-Relative paths are worth using here: `./` puts the sync folder beside the
-`.project` file, `./src/` in a subfolder. They resolve per machine, so a
-teammate who clones the repo needs no reconfiguration.
+The suggested answer is a folder named after your project — `MyProject-cts` —
+beside the `.project` file, and pressing Enter takes it. The name is stored
+relative, so it resolves per machine and a teammate who clones the repository
+needs no reconfiguration. `.` uses the project directory itself; **Browse…**
+picks any folder, and one inside the project is stored relative too. Nothing is
+created on disk until the first command actually writes there.
 
 ## 5. Decide the sync mode — the one irreversible choice
 
-You can skip this step and get the default, but read it first, because the
-choice is **fixed for that sync folder** once you export. Changing your mind
-later means a new empty folder and a fresh export.
+`Project_directory.py` opens the options dialog straight after a folder is
+configured for the first time, so this choice is usually in front of you already.
+Read it before clicking through, because the choice is **fixed for that sync
+folder** once you export. Changing your mind later means a new empty folder and a
+fresh export. Cancelling the dialog keeps the folder and leaves the defaults.
 
 - **XML-first (the default, nothing to do)** — native XML in `project-view/` is
   the canonical format, with readable `.st`/`.csv` generated beside it. Choose

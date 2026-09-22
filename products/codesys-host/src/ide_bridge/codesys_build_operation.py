@@ -273,7 +273,7 @@ def main(params=None, runtime=None):
     params = params or {}
     runtime = resolve_runtime(runtime, caller_globals=globals(), params=params)
 
-    base_dir, error = load_base_dir()
+    base_dir, error = load_base_dir(runtime)
     if error:
         runtime.ui.warning(error)
         return {"status": "error", "error": error}

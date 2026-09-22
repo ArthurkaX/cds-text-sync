@@ -21,8 +21,9 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 For each project, the important path is:
 
-1. Open the project in CODESYS and run **`Project_directory.py`**. Choose the
-   sync folder for this project.
+1. Open the project in CODESYS and run **`Project_directory.py`**. Press Enter to
+   take the suggested `<project>-cts` folder beside the `.project` file, or pick
+   your own.
 2. Run **`Project_export.py`**. All supported `.st` and `.csv` text exports are
    enabled by default.
 3. Edit `project-view/` and commit the changes to Git.

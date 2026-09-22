@@ -15,18 +15,23 @@ see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md)
 
 ![Setup Project Directory](../img/setFolder.gif)
 
-- Offers two options:
-  - **Browse**: Select a folder using the file browser (traditional method).
-  - **Manual Input**: Enter a path manually, supporting both absolute and
-    relative paths.
+- One dialog with the path already filled in: a folder named after the project
+  (`MyProject-cts`) beside the `.project` file. Enter accepts it, the field is
+  editable, and **Browse…** opens the folder browser.
 - **Relative Path Support**:
-  - Use `./` to sync to the same directory as your project file.
-  - Use `./src/` or `./foldername/` to sync to a subfolder relative to your
-    project.
+  - The suggested name is relative, and so is anything you browse to inside the
+    project directory. A path you type is stored exactly as typed.
+  - Use `.` to sync to the same directory as your project file, or any
+    subfolder name relative to it.
   - **Perfect for team collaboration**: Relative paths work on any machine
     without reconfiguration, as they're resolved relative to the project file
     location.
   - The folder will be created automatically if it doesn't exist.
+- Any command that needs a sync folder and finds none offers this same dialog
+  and then continues, so it does not have to be run first.
+- On a folder that has no `cds-text-sync.json` yet, it continues into
+  `Project_options.py` — the only point where the sync mode is still free to
+  choose.
 - Saves the sync-root path in the CODESYS project properties used by the active
   scripts.
 - The selected sync root is then resolved into generated state such as `.dump/`

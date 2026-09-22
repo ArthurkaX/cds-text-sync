@@ -170,7 +170,9 @@ the smoother path.
    stay available.
 
 3. **Link a project to disk**: open the project in CODESYS, run
-   `Project_directory.py` to set its sync folder, and then run
+   `Project_directory.py` and take the suggested `<project>-cts` folder beside
+   the `.project` file (any other command offers the same dialog if you start
+   there instead), and then run
    `Project_export.py`. All supported `.st` and `.csv` text exports are enabled
    by default; use `Project_options.py` only for advanced changes. See
    [Script overview](scripts.md) and

@@ -54,10 +54,12 @@ inserted, removed, renamed, or duplicate rows fail explicitly.
 ## Recommended workflow with Git LFS
 
 1. **Configure**: Run `Project_directory.py` and point the project at the
-   intended sync folder. All supported `.st` and `.csv` text projections are
+   intended sync folder, or take the suggested `<project>-cts` beside the
+   `.project` file. All supported `.st` and `.csv` text projections are
    enabled by default.
-   - Run `Project_options.py` only to change the sync mode, layout, profile, or
-     text-export selection.
+   - The options dialog opens by itself the first time a folder is configured;
+     run `Project_options.py` again to change the layout, profile, or
+     text-export selection (the sync mode only before the first export).
    - Use the `.gitignore` option there to append the recommended generated-state
      ignore rules.
 2. **Extract**: Run `Project_export.py`.

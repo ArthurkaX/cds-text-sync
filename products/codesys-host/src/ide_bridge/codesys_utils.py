@@ -27,6 +27,73 @@ def project_file_path(project):
     return ""
 
 
+SYNC_FOLDER_SUFFIX = "-cts"
+_FORBIDDEN_NAME_CHARS = '<>:"/\\|?*'
+
+
+def sanitize_folder_name(value):
+    """Reduce a project name to one usable path segment.
+
+    Only what Windows forbids is dropped; non-ASCII names are kept as they are,
+    because the parent directory can be non-ASCII regardless and cleaning the
+    leaf buys nothing. Whitespace collapses to "-": the result is handed to
+    `cts --sync-folder` on a command line, where spaces would need quoting.
+    """
+    cleaned = []
+    for char in _path_text(value):
+        if char in _FORBIDDEN_NAME_CHARS or ord(char) < 32:
+            continue
+        cleaned.append("-" if char.isspace() else char)
+    name = "".join(cleaned)
+    while "--" in name:
+        name = name.replace("--", "-")
+    return name.strip(" .-")
+
+
+def suggest_sync_folder(project):
+    """Suggest a sync folder next to the .project file, as a relative name.
+
+    Relative on purpose: the stored property then survives a clone on another
+    machine, which is what the docs tell users to prefer. The project name is
+    part of it because one directory can hold several projects, and a shared
+    bare name would collide on a foreign manifest.
+
+    Returns "" when the project has never been saved and so has nothing to sit
+    beside; the caller decides what to do with that.
+    """
+    project_file = project_file_path(project)
+    if not project_file or not os.path.isabs(project_file):
+        return ""
+    stem = sanitize_folder_name(os.path.splitext(os.path.basename(project_file))[0])
+    if not stem:
+        return SYNC_FOLDER_SUFFIX.lstrip("-")
+    return stem + SYNC_FOLDER_SUFFIX
+
+
+def relativize_to_project(path, project):
+    """Rewrite a path inside the project directory as a project-relative one.
+
+    Applied to what the folder browser returns, never to what the user typed:
+    an absolute path entered by hand is taken literally.
+    """
+    if not path or not os.path.isabs(path):
+        return path
+    project_file = project_file_path(project)
+    if not project_file or not os.path.isabs(project_file):
+        return path
+    root = os.path.dirname(project_file)
+    if not root:
+        return path
+    try:
+        relative = os.path.relpath(path, root)
+    except ValueError:
+        # Different drives; os.path.relpath raises rather than returning "..".
+        return path
+    if relative.startswith(".."):
+        return path
+    return relative
+
+
 def _checked_path(value):
     value = _path_text(value).replace("/", os.sep).replace("\\", os.sep)
     if not value or "\x00" in value:
@@ -189,8 +256,55 @@ def init_logging(base_dir):
     return None
 
 
-def load_base_dir():
+_CONFIGURING_BASE_DIR = []
+
+
+def _may_prompt(runtime):
+    """Prompt only from an interactive command that asked to be allowed to.
+
+    Callers that pass no runtime stay silent, which is what a background or
+    mid-operation lookup needs: a modal dialog there would ambush the user.
+    """
+    if runtime is None or _CONFIGURING_BASE_DIR:
+        return False
+    try:
+        return not runtime.is_headless
+    except Exception:
+        return False
+
+
+def _configure_base_dir(runtime):
+    """Offer the sync-folder dialog in place of failing the command outright.
+
+    Returns the configured property value, or None if the user cancelled.
+    """
+    try:
+        from codesys_directory_operation import set_base_directory
+    except ImportError as error:
+        log_info("Cannot offer sync-folder setup: " + str(error))
+        return None
+
+    projects_obj = resolve_projects(
+        getattr(runtime, "projects", None), getattr(runtime, "caller_globals", None)
+    )
+    if projects_obj is None or not getattr(projects_obj, "primary", None):
+        return None
+
+    _CONFIGURING_BASE_DIR.append(True)
+    try:
+        result = set_base_directory(runtime, projects_obj)
+    finally:
+        _CONFIGURING_BASE_DIR.pop()
+
+    if not result or result.get("status") != "ok":
+        return None
+    return get_project_prop("cds-sync-folder")
+
+
+def load_base_dir(runtime=None):
     base_dir = get_project_prop("cds-sync-folder")
+    if not base_dir and _may_prompt(runtime):
+        base_dir = _configure_base_dir(runtime)
     if not base_dir:
         return None, "Project sync directory is not set. Run Project_directory.py first."
 

@@ -63,79 +63,143 @@ def ask_yes_no_cancel(title, message):
     return "cancel"
 
 
-class DirectoryChoiceForm(Form if Form is not None else object):
-    """Legacy-style choice dialog for setting the sync directory."""
+SYNC_FOLDER_PROMPT = (
+    "Sync folder for this project. Relative paths resolve from the saved\n"
+    "project file, so a teammate who clones the repository needs no change:\n"
+    "    myproject-cts    a folder beside the .project file (suggested)\n"
+    "    .                the project directory itself\n"
+    "    C:\\MySync        an absolute path, this machine only\n"
+    "The folder is created on first use if it does not exist yet."
+)
 
-    def __init__(self, title, message):
+
+class SyncFolderForm(Form if Form is not None else object):
+    """One dialog for the sync folder: a suggested path, editable, plus Browse.
+
+    Replaces the older two-step "pick a method, then browse or type" flow. The
+    suggestion has to live in the text box rather than in the folder browser:
+    FolderBrowserDialog silently ignores a preselected path that does not exist
+    yet, so a suggested-but-not-yet-created folder never reaches the user
+    there. Browsing stays one click away for the cases that need it.
+    """
+
+    def __init__(self, title, suggestion, browse=None):
         self.Text = title
-        self.Size = Size(450, 270)
+        self.Size = Size(560, 320)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
         self.MinimizeBox = False
         self.BackColor = Color.FromArgb(250, 250, 250)
-        self.choice = "cancel"
+        self.path = None
+        self._browse = browse
 
         lbl_msg = Label()
-        lbl_msg.Text = "Sync Directory Setup"
+        lbl_msg.Text = "Sync Folder Setup"
         lbl_msg.Font = Font("Segoe UI", 14, FontStyle.Bold)
-        lbl_msg.Location = Point(20, 20)
+        lbl_msg.Location = Point(20, 18)
         lbl_msg.AutoSize = True
         lbl_msg.ForeColor = Color.FromArgb(50, 50, 50)
         self.Controls.Add(lbl_msg)
 
         lbl_sub = Label()
-        lbl_sub.Text = "Choose how you would like to configure the primary sync folder."
+        lbl_sub.Text = SYNC_FOLDER_PROMPT
         lbl_sub.Font = Font("Segoe UI", 9)
-        lbl_sub.Location = Point(22, 50)
-        lbl_sub.AutoSize = True
+        lbl_sub.Location = Point(22, 52)
+        lbl_sub.Size = Size(510, 120)
         lbl_sub.ForeColor = Color.Gray
         self.Controls.Add(lbl_sub)
 
+        lbl_path = Label()
+        lbl_path.Text = "Folder:"
+        lbl_path.Font = Font("Segoe UI", 9)
+        lbl_path.Location = Point(22, 190)
+        lbl_path.AutoSize = True
+        self.Controls.Add(lbl_path)
+
+        self.txt_path = TextBox()
+        self.txt_path.Font = Font("Segoe UI", 10)
+        self.txt_path.Location = Point(80, 187)
+        self.txt_path.Size = Size(350, 24)
+        self.txt_path.Text = suggestion or ""
+        self.Controls.Add(self.txt_path)
+
         btn_browse = Button()
-        btn_browse.Text = "  Browse Folder...\n  (Select via file explorer)"
-        btn_browse.Font = Font("Segoe UI", 10)
-        btn_browse.TextAlign = ContentAlignment.MiddleLeft
-        btn_browse.Location = Point(25, 90)
-        btn_browse.Size = Size(385, 55)
+        btn_browse.Text = "Browse..."
+        btn_browse.Font = Font("Segoe UI", 9)
+        btn_browse.Location = Point(440, 186)
+        btn_browse.Size = Size(90, 26)
         btn_browse.BackColor = Color.White
         btn_browse.FlatStyle = FlatStyle.Flat
         btn_browse.FlatAppearance.BorderColor = Color.LightGray
+        btn_browse.Enabled = browse is not None
         btn_browse.Click += self._on_browse
         self.Controls.Add(btn_browse)
 
-        btn_manual = Button()
-        btn_manual.Text = "  Enter Manually...\n  (Use relative ./ paths or text input)"
-        btn_manual.Font = Font("Segoe UI", 10)
-        btn_manual.TextAlign = ContentAlignment.MiddleLeft
-        btn_manual.Location = Point(25, 155)
-        btn_manual.Size = Size(385, 55)
-        btn_manual.BackColor = Color.White
-        btn_manual.FlatStyle = FlatStyle.Flat
-        btn_manual.FlatAppearance.BorderColor = Color.LightGray
-        btn_manual.Click += self._on_manual
-        self.Controls.Add(btn_manual)
+        btn_ok = Button()
+        btn_ok.Text = "OK"
+        btn_ok.Font = Font("Segoe UI", 9)
+        btn_ok.Location = Point(350, 240)
+        btn_ok.Size = Size(85, 28)
+        btn_ok.Click += self._on_ok
+        self.Controls.Add(btn_ok)
+        self.AcceptButton = btn_ok
+
+        btn_cancel = Button()
+        btn_cancel.Text = "Cancel"
+        btn_cancel.Font = Font("Segoe UI", 9)
+        btn_cancel.Location = Point(445, 240)
+        btn_cancel.Size = Size(85, 28)
+        btn_cancel.DialogResult = DialogResult.Cancel
+        self.Controls.Add(btn_cancel)
+        self.CancelButton = btn_cancel
+
+        # The suggestion is the common answer: Enter accepts it, and a
+        # pre-selected value is replaced by typing rather than edited. Set the
+        # range directly - SelectAll() needs focus the form does not have yet.
+        self.ActiveControl = self.txt_path
+        self.txt_path.SelectionStart = 0
+        self.txt_path.SelectionLength = len(self.txt_path.Text)
 
     def _on_browse(self, sender, event):
-        self.choice = "yes"
+        if self._browse is None:
+            return
+        try:
+            picked = self._browse()
+        except Exception as error:
+            print("Error showing folder browser: " + str(error))
+            return
+        if picked:
+            self.txt_path.Text = picked
+
+    def _on_ok(self, sender, event):
+        text = (self.txt_path.Text or "").strip()
+        if not text:
+            return
+        self.path = text
         self.DialogResult = DialogResult.OK
         self.Close()
 
-    def _on_manual(self, sender, event):
-        self.choice = "no"
-        self.DialogResult = DialogResult.OK
-        self.Close()
 
+def show_sync_folder_dialog(title, suggestion, browse=None, query=None):
+    """Ask for the sync folder. Returns the entered path, or None to cancel.
 
-def show_directory_choice_dialog(title, message):
+    ``browse`` opens a folder browser and returns a path or None; ``query``
+    is the plain-text fallback for environments without Windows Forms.
+    """
     if Form is not None:
         try:
-            form = DirectoryChoiceForm(title, message)
+            form = SyncFolderForm(title, suggestion, browse)
             form.ShowDialog()
-            return form.choice
+            return form.path
         except Exception as e:
-            print("Error showing directory dialog: " + str(e))
-    return ask_yes_no_cancel(title, message)
+            print("Error showing sync folder dialog: " + str(e))
+    if query is not None:
+        try:
+            return query(SYNC_FOLDER_PROMPT, suggestion) or None
+        except Exception as e:
+            print("Error querying for the sync folder: " + str(e))
+    return None
 
 
 class OverwriteConfirmForm(Form if Form is not None else object):

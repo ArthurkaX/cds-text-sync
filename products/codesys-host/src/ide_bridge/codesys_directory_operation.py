@@ -15,7 +15,83 @@ from __future__ import print_function
 import os
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import log_info, resolve_projects, resolve_sync_folder
+from codesys_utils import (
+    log_info,
+    project_file_path,
+    relativize_to_project,
+    resolve_projects,
+    resolve_sync_folder,
+    suggest_sync_folder,
+)
+
+
+PROJECT_SETTINGS_FILENAME = "cds-text-sync.json"
+
+
+def _is_first_configuration(project, selected_path):
+    """True when the chosen folder has no project settings of its own yet.
+
+    Distinguishes onboarding from reconfiguration: a folder that already holds
+    cds-text-sync.json has been through the options dialog before.
+    """
+    try:
+        resolved = resolve_sync_folder(selected_path, project)
+    except ValueError:
+        return False
+    return not os.path.exists(os.path.join(resolved, PROJECT_SETTINGS_FILENAME))
+
+
+def _open_project_options(runtime):
+    """Continue into the options dialog once a folder is configured.
+
+    This is the only moment when the sync mode is still free to choose: the
+    manifest fixes it on first export and nothing afterwards can move it. It is
+    also where a fresh folder gets its .gitignore entries. Cancelling here
+    leaves the folder configured - the two steps are deliberately not tied.
+    """
+    try:
+        import codesys_options_operation
+        return codesys_options_operation.main({}, runtime)
+    except Exception as error:
+        log_info("Could not open project options: " + str(error))
+        return None
+
+
+def _browse_start_dir(project, configured):
+    """Where the folder browser opens: the current folder, else the project.
+
+    FolderBrowserDialog ignores a preselected path that does not exist, so an
+    unresolvable or not-yet-created folder falls back to the project directory
+    rather than dropping the user at the root of the machine.
+    """
+    if configured:
+        try:
+            resolved = resolve_sync_folder(configured, project)
+        except ValueError:
+            resolved = ""
+        if resolved and os.path.isdir(resolved):
+            return resolved
+    project_file = project_file_path(project)
+    if project_file and os.path.isabs(project_file):
+        return os.path.dirname(project_file)
+    return ""
+
+
+def _browse_for_folder(runtime, project, configured):
+    picked = runtime.system.ui.browse_directory_dialog(
+        "Select Sync Directory for this Project",
+        _browse_start_dir(project, configured),
+    )
+    # Browsing inside the project yields a portable relative path; a path the
+    # user types is left exactly as typed.
+    return relativize_to_project(picked, project) if picked else picked
+
+
+def _query_for_folder(runtime, message, default):
+    system_ui = getattr(getattr(runtime, "system", None), "ui", None)
+    if system_ui is None or not hasattr(system_ui, "query_string"):
+        return None
+    return system_ui.query_string(message, default)
 
 
 def main(params=None, runtime=None):
@@ -55,95 +131,18 @@ def set_base_directory(runtime, projects_obj):
     except Exception as error:
         log_info("Could not read existing sync-folder property: " + str(error))
 
-    # Offer choice: Browse or Manual Input
-    from codesys_ui import show_directory_choice_dialog
-    ans = show_directory_choice_dialog(
+    # A configured folder wins over the suggestion: this command is also how a
+    # project gets reconfigured, and the current value is the better starting
+    # point there.
+    suggestion = initial_dir or suggest_sync_folder(proj) or "."
+
+    from codesys_ui import show_sync_folder_dialog
+    selected_path = show_sync_folder_dialog(
         "Project Sync Configuration",
-        "Would you like to BROWSE for a folder or enter the path manually?"
+        suggestion,
+        browse=lambda: _browse_for_folder(runtime, proj, initial_dir),
+        query=lambda message, default: _query_for_folder(runtime, message, default),
     )
-
-    if ans == "cancel":
-        print("Operation cancelled by user.")
-        return {"status": "cancelled"}
-
-    choice_idx = 0 if ans == "yes" else 1
-
-    selected_path = None
-
-    if choice_idx == 0:  # Browse
-        selected_path = runtime.system.ui.browse_directory_dialog(
-            "Select Sync Directory for this Project", initial_dir)
-    else:  # Manual Input
-        # Create a simple input dialog using Windows Forms
-        try:
-            import clr
-            clr.AddReference("System.Windows.Forms")
-            clr.AddReference("System.Drawing")
-            from System.Windows.Forms import Form, Label, TextBox, Button, DialogResult, FormBorderStyle, FormStartPosition
-            from System.Drawing import Size, Point
-
-            # Create form
-            form = Form()
-            form.Text = "Enter Sync Directory Path"
-            form.Size = Size(500, 220)
-            form.FormBorderStyle = FormBorderStyle.FixedDialog
-            form.StartPosition = FormStartPosition.CenterScreen
-            form.MaximizeBox = False
-            form.MinimizeBox = False
-
-            # Instructions label
-            lbl_instructions = Label()
-            lbl_instructions.Text = "Examples:\n" + \
-                                   "  ./                          - Project directory\n" + \
-                                   "  ./folderName/      - 'folderName' folder in project directory\n" + \
-                                   "  C:\\MySync\\         - Absolute path\n\n" + \
-                                   "Relative paths (sync, ./sync, ../sync) use the saved project file location."
-            lbl_instructions.Location = Point(20, 15)
-            lbl_instructions.Size = Size(460, 100)
-            form.Controls.Add(lbl_instructions)
-
-            # Path label
-            lbl_path = Label()
-            lbl_path.Text = "Path:"
-            lbl_path.Location = Point(20, 125)
-            lbl_path.AutoSize = True
-            form.Controls.Add(lbl_path)
-
-            # Path textbox
-            txt_path = TextBox()
-            txt_path.Location = Point(70, 122)
-            txt_path.Size = Size(400, 20)
-            txt_path.Text = initial_dir if initial_dir else "./"
-            form.Controls.Add(txt_path)
-
-            # OK button
-            btn_ok = Button()
-            btn_ok.Text = "OK"
-            btn_ok.DialogResult = DialogResult.OK
-            btn_ok.Location = Point(300, 155)
-            btn_ok.Size = Size(80, 25)
-            form.Controls.Add(btn_ok)
-            form.AcceptButton = btn_ok
-
-            # Cancel button
-            btn_cancel = Button()
-            btn_cancel.Text = "Cancel"
-            btn_cancel.DialogResult = DialogResult.Cancel
-            btn_cancel.Location = Point(390, 155)
-            btn_cancel.Size = Size(80, 25)
-            form.Controls.Add(btn_cancel)
-            form.CancelButton = btn_cancel
-
-            # Show dialog
-            result = form.ShowDialog()
-            if result == DialogResult.OK:
-                selected_path = txt_path.Text.strip()
-            else:
-                selected_path = None
-
-        except Exception as e:
-            runtime.ui.error("Failed to create input dialog: " + str(e))
-            selected_path = None
 
     if not selected_path:
         print("Operation cancelled by user.")
@@ -159,6 +158,11 @@ def set_base_directory(runtime, projects_obj):
         runtime.ui.error(message)
         return {"status": "error", "error": message}
     is_relative = not os.path.isabs(selected_path)
+    # Deciding before the write keeps this a question about the folder the user
+    # picked, not about what the options dialog may create a moment later.
+    chain_options = not getattr(runtime, "is_headless", True) and _is_first_configuration(
+        proj, selected_path
+    )
 
     # Save strictly to project properties
     try:
@@ -174,10 +178,15 @@ def set_base_directory(runtime, projects_obj):
 
         if is_relative:
             print("Success: Project sync directory set to relative path: " + selected_path)
-            runtime.ui.info("Sync directory saved as relative path.\n\nThis path will be resolved relative to the project file location at runtime.\n\nPath: " + selected_path)
         else:
             print("Success: Project sync directory updated to: " + selected_path)
-            runtime.ui.info("Sync directory saved to Project Information > Properties.")
+        # The options dialog opens next in the onboarding case and is itself the
+        # confirmation; a popup in between would be a third window in a row.
+        if not chain_options:
+            if is_relative:
+                runtime.ui.info("Sync directory saved as relative path.\n\nThis path will be resolved relative to the project file location at runtime.\n\nPath: " + selected_path)
+            else:
+                runtime.ui.info("Sync directory saved to Project Information > Properties.")
     except Exception as e:
         message = "Could not save to project properties: " + str(e)
         runtime.ui.error(message)
@@ -231,4 +240,8 @@ def set_base_directory(runtime, projects_obj):
         except Exception as e:
             print("Warning: Failed to check metadata: " + str(e))
 
-    return {"status": "ok", "sync_folder": selected_path, "relative": is_relative}
+    result = {"status": "ok", "sync_folder": selected_path, "relative": is_relative}
+    if chain_options:
+        options = _open_project_options(runtime)
+        result["options"] = (options or {}).get("status") or "unavailable"
+    return result
