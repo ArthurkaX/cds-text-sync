@@ -9,6 +9,7 @@ project mismatch cannot trigger an online change or download.
 """
 from __future__ import print_function
 
+import base64
 import json
 import os
 import sys
@@ -143,11 +144,6 @@ def _scan_target(gateway, address):
     )
 
 
-def _byte_value(value):
-    """Return an octet under both IronPython 2 and CPython 3."""
-    return value if isinstance(value, int) else ord(value)
-
-
 def _device_id_text(value):
     """Convert a scanned numeric CODESYS device ID to its repository form."""
     text = str(value)
@@ -171,41 +167,28 @@ def _device_version_text(value):
     )
 
 
-def _read_crc(remote, local_path):
-    remote.upload_file("PlcLogic/Application/Application.crc", local_path, True)
+def _read_crc(remote, local_path, application_name="Application"):
+    if not isinstance(application_name, _STRING_TYPES) or not application_name:
+        raise ValueError("application must be a non-empty name")
+    if application_name in (".", "..") or "/" in application_name or "\\" in application_name:
+        raise ValueError("application must be a single application name")
+    remote_path = "PlcLogic/{0}/{0}.crc".format(application_name)
+    remote.upload_file(remote_path, local_path, True)
     with open(local_path, "rb") as handle:
         data = handle.read()
-    if len(data) < 4:
-        raise RuntimeError("Application.crc is shorter than four bytes")
-    value = (
-        _byte_value(data[0])
-        | (_byte_value(data[1]) << 8)
-        | (_byte_value(data[2]) << 16)
-        | (_byte_value(data[3]) << 24)
-    )
-    result = {
-        "crc": "{0:08X}".format(value),
-        "crc_bytes": "".join("{0:02X}".format(_byte_value(byte)) for byte in data[:4]),
+    encoded = base64.b64encode(data)
+    if not isinstance(encoded, str):
+        encoded = encoded.decode("ascii")
+    return {
+        "crc_file_base64": encoded,
         "crc_file_size": len(data),
-        "remote_file": "PlcLogic/Application/Application.crc",
+        "remote_file": remote_path,
     }
-    if len(data) >= 8:
-        stamp = (
-            _byte_value(data[4])
-            | (_byte_value(data[5]) << 8)
-            | (_byte_value(data[6]) << 16)
-            | (_byte_value(data[7]) << 24)
-        )
-        result["metadata_timestamp_unix"] = stamp
-    if len(data) > 8:
-        name = data[8:].rstrip(b"\x00")
-        if name:
-            result["application"] = name.decode("ascii", "replace")
-    return result
 
 
 def _targets():
     input_path = _argument("--input") or os.environ.get("CDS_HEADLESS_CRC_INPUT")
+    default_application = _argument("--application", "Application")
     if input_path:
         with open(input_path) as stream:
             request = json.load(stream)
@@ -214,7 +197,12 @@ def _targets():
         ip = _argument("--ip")
         if not ip:
             raise RuntimeError("Usage: --input targets.json or --ip <PLC IPv4>")
-        target = {"ip": ip, "gateway": _argument("--gateway", "Gateway-1"), "request_id": "1"}
+        target = {
+            "ip": ip,
+            "gateway": _argument("--gateway", "Gateway-1"),
+            "request_id": "1",
+            "application": default_application,
+        }
         # The single-target CLI path has no JSON object in which to name
         # credentials.  Honor these conventional names without ever copying
         # their values into the request or result.
@@ -229,6 +217,9 @@ def _targets():
         targets = [target]
     if not isinstance(targets, list) or not targets:
         raise ValueError("targets must be a non-empty array")
+    for target in targets:
+        if isinstance(target, dict):
+            target.setdefault("application", default_application)
     return targets
 
 
@@ -327,7 +318,11 @@ def _check_targets(targets, se, IPAddress):
                 online_device = se.online.create_online_device(device)
                 online_device.connect()
                 stage = "crc"
-                base["application"] = _read_crc(online_device, local_crc)
+                application_name = target.get("application", "Application")
+                base["application"] = application_name
+                base["crc_file"] = _read_crc(
+                    online_device, local_crc, application_name
+                )
                 base["ok"] = True
             finally:
                 if online_device is not None:

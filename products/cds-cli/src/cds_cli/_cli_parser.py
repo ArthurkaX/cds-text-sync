@@ -250,11 +250,12 @@ Examples:
     # -- stateless headless PLC CRC ----------------------------------------
     p_headless_crc = subparsers.add_parser(
         "plc-crc-headless",
-        help="Read PLC Application.crc via a temporary read-only IDE probe",
+        help="Read a PLC application's .crc file via a temporary read-only IDE probe",
         description=(
-            "Read PLC Application.crc through a temporary no-UI CODESYS/Astra "
-            "process. This command does not use Project_daemon.py or an open "
-            "project, and never downloads, updates, starts, or stops the PLC."
+            "Read a PLC application's .crc file through a temporary no-UI CODESYS/Astra "
+            "process and return the complete file as Base64 without parsing its bytes. "
+            "This command does not use Project_daemon.py or an open project, and "
+            "never downloads, updates, starts, or stops the PLC."
         ),
         epilog=(
             "Credentialed single target: set CDS_CRC_PLC_USERNAME and "
@@ -265,6 +266,11 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_headless_crc.add_argument("--ip", default="", help="PLC IPv4 address (single target)")
+    p_headless_crc.add_argument(
+        "--application",
+        default="Application",
+        help="Application name whose .crc file to read (default: Application)",
+    )
     p_headless_crc.add_argument("--input", default="", help="JSON batch file containing targets")
     p_headless_crc.add_argument("--gateway", default="Gateway-1", help="Gateway name")
     p_headless_crc.add_argument("--ide", default="auto", help="IDE executable path or auto")

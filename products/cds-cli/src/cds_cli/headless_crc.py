@@ -19,7 +19,7 @@ _KNOWN = (
 )
 
 
-def load_targets(ip="", gateway="Gateway-1", input_path=""):
+def load_targets(ip="", gateway="Gateway-1", input_path="", application="Application"):
     if input_path:
         with open(input_path, encoding="utf-8") as stream:
             payload = json.load(stream)
@@ -33,11 +33,17 @@ def load_targets(ip="", gateway="Gateway-1", input_path=""):
             item = dict(target) if isinstance(target, dict) else {"value": target}
             item.setdefault("gateway", gateway)
             item.setdefault("request_id", str(index + 1))
+            item.setdefault("application", application)
             result.append(item)
         return result
     if not ip:
         raise ValueError("one of --ip or --input is required")
-    target = {"ip": ip, "gateway": gateway, "request_id": "1"}
+    target = {
+        "ip": ip,
+        "gateway": gateway,
+        "request_id": "1",
+        "application": application,
+    }
     # The values remain in the process environment.  The temporary request
     # passed to the IDE contains only the names, never a username or password.
     if (
@@ -259,7 +265,9 @@ def run_headless_crc_watch(args):
         raise ValueError("--interval must be greater than zero")
     if args.startup_timeout <= 0:
         raise ValueError("--startup-timeout must be greater than zero")
-    targets = load_targets(args.ip, args.gateway, args.input)
+    targets = load_targets(
+        args.ip, args.gateway, args.input, getattr(args, "application", "Application")
+    )
     output, control = _watch_paths(args)
     candidates = [(args.ide, args.profile)] if args.ide != "auto" else discover_ides()
     if not candidates:
@@ -304,7 +312,9 @@ def run_headless_crc_watch(args):
 
 
 def run_headless_crc(args):
-    targets = load_targets(args.ip, args.gateway, args.input)
+    targets = load_targets(
+        args.ip, args.gateway, args.input, getattr(args, "application", "Application")
+    )
     candidates = [(args.ide, args.profile)] if args.ide != "auto" else discover_ides()
     if not candidates:
         return {"ok": False, "error": {"code": "ide_not_found", "message": "no CODESYS/Astra IDE found"}, "results": []}, 2

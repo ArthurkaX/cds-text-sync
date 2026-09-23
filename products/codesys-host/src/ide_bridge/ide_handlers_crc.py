@@ -9,6 +9,7 @@ All CODESYS API calls happen via sys._codesys_daemon_loop (set by capture_codesy
 
 from __future__ import print_function
 
+import base64
 import os
 import sys
 import tempfile
@@ -25,11 +26,6 @@ from ide_daemon_helpers import (
     _online_app_if_connected,
     _get_sync_folder,
 )
-
-
-def _byte_value(value):
-    """Return an octet under both IronPython 2 and CPython 3."""
-    return value if isinstance(value, int) else ord(value)
 
 
 def _canonical_crc_hex(value):
@@ -160,7 +156,7 @@ def _cmd_app_crc(params):
         except Exception as e:
             result["list_error"] = str(e)[:200]
 
-        # 2. Download and parse Application.crc
+        # 2. Download Application.crc as opaque bytes.
         if not hasattr(online_dev, "upload_file"):
             result["crc_note"] = "upload_file not available"
         else:
@@ -182,36 +178,12 @@ def _cmd_app_crc(params):
                 online_dev.upload_file(app_dir + "/" + crc_filename, tmp, True)
                 with open(tmp, "rb") as f:
                     data = f.read()
-                if len(data) >= 4:
-                    # Application.crc begins with one uint32 little-endian CRC.
-                    # Bytes 4..7 are metadata (a runtime timestamp), not a
-                    # second half of the CRC.
-                    crc_bytes = data[:4]
-                    # hex in IronPython 2.7 (no .hex())
-                    result["crc_hex"] = "".join(
-                        "{:02x}".format(_byte_value(c)) for c in crc_bytes
-                    )
-                    # Decode just the first uint32 as the application CRC.
-                    try:
-                        import struct
-
-                        result["crc_value"] = "{:08X}".format(
-                            struct.unpack("<I", data[:4])[0]
-                        )
-                        if len(data) >= 8:
-                            result["metadata_timestamp_unix"] = struct.unpack(
-                                "<I", data[4:8]
-                            )[0]
-                    except Exception as error:
-                        _log("Could not decode PLC CRC value: {0}".format(error))
-                    if len(data) > 8:
-                        name_part = data[8:].rstrip(b"\x00")
-                        if name_part:
-                            try:
-                                result["app_name"] = str(name_part.decode("ascii"))
-                            except Exception:
-                                result["app_name"] = name_part
+                encoded = base64.b64encode(data)
+                if not isinstance(encoded, str):
+                    encoded = encoded.decode("ascii")
+                result["crc_file_base64"] = encoded
                 result["crc_file_size"] = len(data)
+                result["remote_file"] = app_dir + "/" + crc_filename
             except Exception as e:
                 result["crc_error"] = str(e)[:200]
             finally:
@@ -354,7 +326,7 @@ def _append_app_history(crc_data, app_name=""):
 
         entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "crc_hex": crc_data,
+            "crc_file_base64": crc_data,
             "app_name": app_name,
         }
         try:
@@ -392,10 +364,10 @@ def _cmd_app_history(params):
         if not crc_result.get("ok"):
             return crc_result
         data = crc_result.get("data", {})
-        crc_hex = data.get("crc_hex", "")
+        crc_file_base64 = data.get("crc_file_base64", "")
         app_name = data.get("app_name", "")
-        if crc_hex:
-            _append_app_history(crc_hex, app_name)
+        if crc_file_base64:
+            _append_app_history(crc_file_base64, app_name)
 
     # Read and return history
     try:
