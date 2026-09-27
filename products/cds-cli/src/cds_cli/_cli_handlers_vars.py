@@ -19,6 +19,7 @@ from cds_cli._cli_io import (
     _print_error,
     send_command_reverse,
 )
+from cds_text_sync.engine.pipe_targets import TargetError
 
 
 # -- Shared helpers -----------------------------------------------------------
@@ -42,6 +43,8 @@ def _resolve_sync_folder(sync_folder, timeout=10, quiet=False):
             resp = send_command_reverse("status", {}, timeout=timeout)
             if resp.get("ok"):
                 base = resp.get("data", {}).get("sync_folder")
+        except TargetError:
+            raise
         except Exception as e:
             if not quiet:
                 _print_error("Could not get sync folder from daemon: {0}".format(e))

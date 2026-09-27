@@ -29,6 +29,7 @@ from cds_cli._cli_io import (
     _print_warn,
     send_command_reverse,
 )
+from cds_text_sync.engine.pipe_targets import TargetError
 
 PATCH_DIRNAME = "patch"
 PATCH_PREFIX = "patch_"
@@ -78,6 +79,8 @@ def _run_compare(timeout):
     """Ask the daemon for a fresh compare report."""
     try:
         response = send_command_reverse("sync_compare_text", {}, timeout=timeout)
+    except TargetError:
+        raise
     except Exception as error:
         _print_error("Compare failed: {0}".format(error))
         sys.exit(1)

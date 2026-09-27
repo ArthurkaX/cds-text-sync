@@ -98,6 +98,11 @@ Timeouts:
   blocks counted once by the daemon at startup; pass --timeout explicitly to
   override that calculation.
 
+Several IDEs:
+  When multiple CODESYS IDEs run at once, each daemon shows its instance ID
+  in the window header (e.g. ide-3684). Use Copy in the daemon window or pass:
+    cts --target ide-3684 --expect-project VKO status
+
 Examples:
   cts ping
   cts status
@@ -117,6 +122,16 @@ Examples:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "--target",
+        metavar="ID",
+        help="IDE instance, e.g. ide-3684 (see the daemon window). Env: CTS_TARGET",
+    )
+    parser.add_argument(
+        "--expect-project",
+        metavar="NAME|PATH",
+        help="Refuse to run if the IDE has another project open",
     )
     parser.add_argument(
         "--output",

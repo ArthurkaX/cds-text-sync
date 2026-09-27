@@ -26,7 +26,10 @@ _ENGINE_DIR = (
 )
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
-from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
+from cds_text_sync.engine.reverse_pipe_client import (
+    get_last_instance,
+    send_command_reverse,
+)
 
 # -- Config ------------------------------------------------------------------
 
@@ -140,7 +143,12 @@ def _empty_marker(value):
 
 def _format_output(data, fmt="json", title=None):
     """Format output as JSON (machine) or text (human)."""
+    last_inst = get_last_instance()
+
     if fmt != "text":
+        if isinstance(data, dict) and "instance" not in data and last_inst is not None:
+            data = dict(data)
+            data["instance"] = last_inst
         return json.dumps(data, indent=2, ensure_ascii=False)
 
     if data is None:
@@ -160,6 +168,16 @@ def _format_output(data, fmt="json", title=None):
         lines = lines[:MAX_TEXT_LINES]
     if renderer.elided:
         lines.append("… shortened for reading; use --output json for all of it")
+
+    if last_inst is not None:
+        inst_id = last_inst.get("id", "")
+        prj = last_inst.get("project")
+        prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
+        if prj_name:
+            lines.append(f"{inst_id} · {prj_name}")
+        else:
+            lines.append(f"{inst_id} · no project")
+
     return "\n".join(lines)
 
 
@@ -263,9 +281,20 @@ def _load_project_config():
 
 def _print_rp_error(resp, command):
     """Print reverse-pipe error details."""
+    inst = resp.get("instance") or get_last_instance()
+    inst_suffix = ""
+    if inst and isinstance(inst, dict):
+        inst_id = inst.get("id", "")
+        prj = inst.get("project")
+        prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
+        if prj_name:
+            inst_suffix = f" ({inst_id} · {prj_name})"
+        elif inst_id:
+            inst_suffix = f" ({inst_id} · no project)"
+
     err = resp.get("error")
     if err is not None and err != "":
-        _print_error(err)
+        _print_error(f"{err}{inst_suffix}")
     else:
         messages = resp.get("data", {}).get("messages")
         if isinstance(messages, list) and messages:
@@ -275,13 +304,13 @@ def _print_rp_error(resp, command):
                     code = m.get("code", "")
                     text = m.get("text", "")
                     obj = m.get("object", "")
-                    _print_error("[{0}] {1} (in {2})".format(code, text, obj))
+                    _print_error("[{0}] {1} (in {2}){3}".format(code, text, obj, inst_suffix))
             else:
                 _print_error(
-                    "{0} failed with {1} warnings".format(command, len(messages))
+                    "{0} failed with {1} warnings{2}".format(command, len(messages), inst_suffix)
                 )
         else:
-            _print_error("unknown error")
+            _print_error(f"unknown error{inst_suffix}")
     diag = resp.get("diagnostics")
     if diag:
         _print_info("Diagnostics: {0}".format(json.dumps(diag, ensure_ascii=False)))
@@ -414,9 +443,9 @@ def _project_command(method, params=None, timeout=30, use_reverse=True):
 
     if resp.get("ok"):
         data = resp.get("data", {})
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print(_format_output(data, fmt="json", title=method))
     else:
-        _print_error(resp.get("error", "unknown error"))
+        _print_rp_error(resp, method)
         sys.exit(1)
 
 

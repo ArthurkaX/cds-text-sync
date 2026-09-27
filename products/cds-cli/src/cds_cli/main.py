@@ -12,11 +12,22 @@ Usage:
   cds-text-sync raw <daemon-method> [--key value ...]
 """
 
-from __future__ import annotations
-
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
+
+from cds_text_sync.engine.pipe_targets import (
+    Hello,
+    TargetError,
+    format_ambiguous,
+    parse_target,
+)
+from cds_text_sync.engine.reverse_pipe_client import (
+    configure,
+    discover,
+)
 
 try:
     for stream in (sys.stdout, sys.stderr):
@@ -119,21 +130,83 @@ from cds_cli._cli_parser import build_parser  # noqa: E402
 _BATCH_SIZE = 500
 
 
+# -- Help Header & Target Discovery ------------------------------------------
+
+
+def _format_target_help_header(hello: Hello) -> str:
+    prj = hello.project
+    if prj and prj.get("name"):
+        details = []
+        if prj.get("path"):
+            details.append(prj["path"])
+        if prj.get("sync_folder"):
+            details.append(f"sync: {prj['sync_folder']}")
+        details_str = f" ({', '.join(details)})" if details else ""
+        header = f"Target: {hello.id}  project {prj['name']}{details_str}\nPass --target {hello.id} on every command."
+    else:
+        header = f"Target: {hello.id}  (no project open)\nPass --target {hello.id} on every command."
+    return header
+
+
+def _print_help_header(target: str | int | None = None) -> None:
+    discovered = discover(1.0)
+    target_pid = None
+    if target:
+        try:
+            target_pid = parse_target(target)
+        except ValueError:
+            target_pid = None
+    else:
+        env_target = os.environ.get("CTS_TARGET")
+        if env_target:
+            try:
+                target_pid = parse_target(env_target)
+            except ValueError:
+                target_pid = None
+
+    if target_pid is not None:
+        matching = [h for h in discovered if h.pid == target_pid]
+        if matching:
+            print(_format_target_help_header(matching[0]) + "\n")
+        else:
+            print(f"Note: target ide-{target_pid} not found among running IDEs.\n")
+    else:
+        if len(discovered) == 1:
+            print(_format_target_help_header(discovered[0]) + "\n")
+        elif len(discovered) > 1:
+            print(format_ambiguous(discovered) + "\n")
+        else:
+            print("Note: no IDE answered; help printed anyway.\n")
+
+
 # -- Entry point -------------------------------------------------------------
 
 
 def main():
     parser = build_parser()
 
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(0)
+    # Pre-parse for --help / -h / --target / --expect-project
+    help_parser = argparse.ArgumentParser(add_help=False)
+    help_parser.add_argument("--target", default=None)
+    help_parser.add_argument("--expect-project", default=None)
+    help_parser.add_argument("-h", "--help", action="store_true")
+    pre_args, _ = help_parser.parse_known_args()
 
-    if len(sys.argv) == 2 and ("--help" in sys.argv or "-h" in sys.argv):
+    if pre_args.help or len(sys.argv) == 1 or (len(sys.argv) == 2 and ("--help" in sys.argv or "-h" in sys.argv)):
+        _print_help_header(target=pre_args.target)
         parser.print_help()
         sys.exit(0)
 
     args = parser.parse_args()
+
+    if getattr(args, "target", None):
+        try:
+            parse_target(args.target)
+        except ValueError as exc:
+            _print_error(str(exc))
+            sys.exit(2)
+
+    configure(target=args.target, expect_project=args.expect_project)
 
     use_reverse = True
 
@@ -142,187 +215,192 @@ def main():
     if getattr(args, "pretty", False):
         output_fmt = "text"
 
-    if args.command == "engine":
-        if not args.engine_args:
-            _print_error(
-                "Specify an engine command: export, import, compare, validate, resources"
-            )
-            sys.exit(1)
-        cmd_direct(args.engine_args)
-        return
-
-    if dispatch_menu(args, output_fmt):
-        return
-
-    if dispatch_daemon(args, output_fmt):
-        return
-
-    if dispatch_patch(args, output_fmt):
-        return
-
-    if args.command in ("raw", "rp"):
-        cmd_rp_command(
-            args.cmd_args, timeout=getattr(args, "timeout", 15), output_fmt=output_fmt
-        )
-
-    elif args.command == "project":
-        dispatch_project(args, use_reverse=use_reverse)
-
-    elif args.command == "pou":
-        dispatch_pou(args, use_reverse=use_reverse)
-
-    elif args.command == "discover":
-        cmd_discover(use_reverse=use_reverse)
-
-    elif args.command == "read-vars":
-        cmd_read_vars(
-            names=args.names,
-            file_path=args.file,
-            timeout=args.timeout,
-            output_fmt=output_fmt,
-        )
-
-    elif args.command == "variable-map":
-        cmd_variable_map(
-            path_filter=args.path,
-            out=args.out,
-            sync_folder=args.sync_folder,
-            include_programs=not args.globals_only,
-            output_fmt=output_fmt,
-        )
-
-    elif args.command == "variable-snapshot":
-        cmd_variable_snapshot(
-            path_filter=args.path,
-            out=args.out,
-            sync_folder=args.sync_folder,
-            include_programs=not args.globals_only,
-            timeout=args.timeout,
-            output_fmt=output_fmt,
-        )
-
-    elif args.command == "variable-restore":
-        cmd_variable_restore(
-            input_path=args.input,
-            report=args.report,
-            path_filter=args.path,
-            do_apply=args.apply,
-            force=args.force,
-            sync_folder=args.sync_folder,
-            timeout=args.timeout,
-            output_fmt=output_fmt,
-        )
-
-    elif args.command == "visu":
-        try:
-            dispatch_visu(args)
-        except Exception as exc:
-            # Visu library commands expose failures as values; this is the
-            # process boundary where they become CLI diagnostics and status.
-            from cds_text_sync.visu.commands import VisuCommandError
-
-            if not isinstance(exc, VisuCommandError):
-                raise
-            _print_error(str(exc))
-            sys.exit(exc.exit_code)
-
-    elif args.command == "analyze":
-        from cds_static_analyzer import cli as analyze_cli
-
-        code = analyze_cli.dispatch_analyze(args)
-        if code:
-            sys.exit(code)
-
-    elif args.command == "verify":
-        from cds_cli.verify import run_verify
-
-        code = run_verify(args, output_fmt)
-        if code:
-            sys.exit(code)
-
-    elif args.command == "plc-crc-headless":
-        from cds_cli.headless_crc import run_headless_crc, run_headless_crc_watch
-
-        try:
-            payload, code = (
-                run_headless_crc_watch(args) if args.watch else run_headless_crc(args)
-            )
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            payload, code = {
-                "ok": False,
-                "error": {"code": "invalid_request", "message": str(exc)},
-                "results": [],
-            }, 2
-        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-        if code:
-            sys.exit(code)
-
-    elif args.command == "ui":
-        from cds_text_sync.ui import launch
-
-        code = launch(getattr(args, "workspace", ""))
-        if code:
-            sys.exit(code)
-
-    elif args.command == "fsm":
-        from cds_text_sync.fsm.cli import dispatch_fsm
-
-        code = dispatch_fsm(args)
-        if code:
-            sys.exit(code)
-
-    elif args.command == "docs":
-        from cds_text_sync.docgen import (
-            _resolve_doc_paths, check_docs, generate_docs, validate_bundle,
-        )
-
-        workspace = getattr(args, "workspace", "") or "."
-        if getattr(args, "validate", False):
-            output = getattr(args, "output", "") or None
-            if output is None:
-                _project_view, output_path = _resolve_doc_paths(workspace)
-                output = str(output_path)
-            diagnostics = validate_bundle(output)
-            result = {"ok": not any(item.get("severity") == "error" for item in diagnostics),
-                      "diagnostics": diagnostics}
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-            if not result["ok"]:
+    try:
+        if args.command == "engine":
+            if not args.engine_args:
+                _print_error(
+                    "Specify an engine command: export, import, compare, validate, resources"
+                )
                 sys.exit(1)
+            cmd_direct(args.engine_args)
             return
-        if getattr(args, "check", False):
-            result = check_docs(workspace, output=getattr(args, "output", "") or None)
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-            if result.get("exit_code"):
-                sys.exit(result["exit_code"])
+
+        if dispatch_menu(args, output_fmt):
             return
-        if getattr(args, "daemon", False):
+
+        if dispatch_daemon(args, output_fmt):
+            return
+
+        if dispatch_patch(args, output_fmt):
+            return
+
+        if args.command in ("raw", "rp"):
+            cmd_rp_command(
+                args.cmd_args, timeout=getattr(args, "timeout", 15), output_fmt=output_fmt
+            )
+
+        elif args.command == "project":
+            dispatch_project(args, use_reverse=use_reverse)
+
+        elif args.command == "pou":
+            dispatch_pou(args, use_reverse=use_reverse)
+
+        elif args.command == "discover":
+            cmd_discover(use_reverse=use_reverse)
+
+        elif args.command == "read-vars":
+            cmd_read_vars(
+                names=args.names,
+                file_path=args.file,
+                timeout=args.timeout,
+                output_fmt=output_fmt,
+            )
+
+        elif args.command == "variable-map":
+            cmd_variable_map(
+                path_filter=args.path,
+                out=args.out,
+                sync_folder=args.sync_folder,
+                include_programs=not args.globals_only,
+                output_fmt=output_fmt,
+            )
+
+        elif args.command == "variable-snapshot":
+            cmd_variable_snapshot(
+                path_filter=args.path,
+                out=args.out,
+                sync_folder=args.sync_folder,
+                include_programs=not args.globals_only,
+                timeout=args.timeout,
+                output_fmt=output_fmt,
+            )
+
+        elif args.command == "variable-restore":
+            cmd_variable_restore(
+                input_path=args.input,
+                report=args.report,
+                path_filter=args.path,
+                do_apply=args.apply,
+                force=args.force,
+                sync_folder=args.sync_folder,
+                timeout=args.timeout,
+                output_fmt=output_fmt,
+            )
+
+        elif args.command == "visu":
             try:
-                resp = send_command_reverse("generate_docs", {}, timeout=args.timeout)
-            except RuntimeError as e:
-                _print_error("Reverse pipe error: {0}".format(e))
-                sys.exit(1)
+                dispatch_visu(args)
+            except Exception as exc:
+                # Visu library commands expose failures as values; this is the
+                # process boundary where they become CLI diagnostics and status.
+                from cds_text_sync.visu.commands import VisuCommandError
 
-            if not resp.get("ok"):
-                _print_rp_error(resp, "generate_docs")
-                sys.exit(1)
-            workspace = resp.get("data", {}).get("sync_folder") or workspace
+                if not isinstance(exc, VisuCommandError):
+                    raise
+                _print_error(str(exc))
+                sys.exit(exc.exit_code)
 
-        result = generate_docs(
-            workspace,
-            library_path=getattr(args, "library_path", "") or None,
-            output=getattr(args, "output", "") or None,
-        )
-        print(result["output"])
+        elif args.command == "analyze":
+            from cds_static_analyzer import cli as analyze_cli
 
-    elif args.command == "visu-lint":
-        from visu_lint.cli import cmd_visu_lint
+            code = analyze_cli.dispatch_analyze(args)
+            if code:
+                sys.exit(code)
 
-        code = cmd_visu_lint(args)
-        if code:
-            sys.exit(code)
+        elif args.command == "verify":
+            from cds_cli.verify import run_verify
 
-    else:
-        parser.print_help()
+            code = run_verify(args, output_fmt)
+            if code:
+                sys.exit(code)
+
+        elif args.command == "plc-crc-headless":
+            from cds_cli.headless_crc import run_headless_crc, run_headless_crc_watch
+
+            try:
+                payload, code = (
+                    run_headless_crc_watch(args) if args.watch else run_headless_crc(args)
+                )
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                payload, code = {
+                    "ok": False,
+                    "error": {"code": "invalid_request", "message": str(exc)},
+                    "results": [],
+                }, 2
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            if code:
+                sys.exit(code)
+
+        elif args.command == "ui":
+            from cds_text_sync.ui import launch
+
+            code = launch(getattr(args, "workspace", ""))
+            if code:
+                sys.exit(code)
+
+        elif args.command == "fsm":
+            from cds_text_sync.fsm.cli import dispatch_fsm
+
+            code = dispatch_fsm(args)
+            if code:
+                sys.exit(code)
+
+        elif args.command == "docs":
+            from cds_text_sync.docgen import (
+                _resolve_doc_paths, check_docs, generate_docs, validate_bundle,
+            )
+
+            workspace = getattr(args, "workspace", "") or "."
+            if getattr(args, "validate", False):
+                output = getattr(args, "output", "") or None
+                if output is None:
+                    _project_view, output_path = _resolve_doc_paths(workspace)
+                    output = str(output_path)
+                diagnostics = validate_bundle(output)
+                result = {"ok": not any(item.get("severity") == "error" for item in diagnostics),
+                          "diagnostics": diagnostics}
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+                if not result["ok"]:
+                    sys.exit(1)
+                return
+            if getattr(args, "check", False):
+                result = check_docs(workspace, output=getattr(args, "output", "") or None)
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+                if result.get("exit_code"):
+                    sys.exit(result["exit_code"])
+                return
+            if getattr(args, "daemon", False):
+                try:
+                    resp = send_command_reverse("generate_docs", {}, timeout=args.timeout)
+                except RuntimeError as e:
+                    _print_error("Reverse pipe error: {0}".format(e))
+                    sys.exit(1)
+
+                if not resp.get("ok"):
+                    _print_rp_error(resp, "generate_docs")
+                    sys.exit(1)
+                workspace = resp.get("data", {}).get("sync_folder") or workspace
+
+            result = generate_docs(
+                workspace,
+                library_path=getattr(args, "library_path", "") or None,
+                output=getattr(args, "output", "") or None,
+            )
+            print(result["output"])
+
+        elif args.command == "visu-lint":
+            from visu_lint.cli import cmd_visu_lint
+
+            code = cmd_visu_lint(args)
+            if code:
+                sys.exit(code)
+
+        else:
+            parser.print_help()
+
+    except TargetError as exc:
+        sys.stderr.write(f"{exc}\n")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

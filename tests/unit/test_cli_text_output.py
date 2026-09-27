@@ -175,3 +175,36 @@ def test_json_mode_is_untouched():
 
 def test_none_renders_as_before():
     assert _format_output(None, "text") == "None"
+
+
+def test_format_output_attaches_last_instance_json(monkeypatch):
+    import cds_cli._cli_io as cli_io
+
+    monkeypatch.setattr(
+        cli_io,
+        "get_last_instance",
+        lambda: {"id": "ide-3684", "project": {"name": "VKO", "path": "S:\\VKO.project"}},
+    )
+    payload = {"status": "pong"}
+    rendered = _format_output(payload, "json")
+    parsed = json.loads(rendered)
+    assert parsed["status"] == "pong"
+    assert parsed["instance"] == {
+        "id": "ide-3684",
+        "project": {"name": "VKO", "path": "S:\\VKO.project"},
+    }
+
+
+def test_format_output_attaches_last_instance_text(monkeypatch):
+    import cds_cli._cli_io as cli_io
+
+    monkeypatch.setattr(
+        cli_io,
+        "get_last_instance",
+        lambda: {"id": "ide-3684", "project": {"name": "VKO", "path": "S:\\VKO.project"}},
+    )
+    payload = {"status": "pong"}
+    rendered = _format_output(payload, "text")
+    assert "status: pong" in rendered
+    assert "ide-3684 · VKO" in rendered
+
