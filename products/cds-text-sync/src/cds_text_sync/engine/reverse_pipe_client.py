@@ -75,6 +75,75 @@ CreateNamedPipeW.argtypes = [
 ]
 CreateNamedPipeW.restype = wintypes.HANDLE
 
+# ── Opt-in explicit pipe DACL ──────────────────────────────────────────────
+# A pipe created from an SSH key-auth session gets a default DACL that the
+# desktop IDE (same user, other logon session) cannot open. CTS_PIPE_USER_DACL=1
+# grants the current user and SYSTEM explicitly. Unset: default security, as
+# before.
+
+
+class SECURITY_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("nLength", wintypes.DWORD),
+        ("lpSecurityDescriptor", wintypes.LPVOID),
+        ("bInheritHandle", wintypes.BOOL),
+    ]
+
+
+_pipe_security: SECURITY_ATTRIBUTES | None = None
+
+
+def _current_user_sid() -> str:
+    advapi32 = ctypes.windll.advapi32
+    TOKEN_QUERY = 0x0008
+    TOKEN_USER = 1
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(
+        wintypes.HANDLE(-1), TOKEN_QUERY, ctypes.byref(token)  # current process
+    ):
+        raise ctypes.WinError()
+    try:
+        size = wintypes.DWORD()
+        advapi32.GetTokenInformation(token, TOKEN_USER, None, 0, ctypes.byref(size))
+        buf = ctypes.create_string_buffer(size.value)
+        if not advapi32.GetTokenInformation(
+            token, TOKEN_USER, buf, size, ctypes.byref(size)
+        ):
+            raise ctypes.WinError()
+        # TOKEN_USER starts with SID_AND_ATTRIBUTES, whose first field is PSID.
+        psid = ctypes.cast(buf, ctypes.POINTER(wintypes.LPVOID))[0]
+        text = wintypes.LPWSTR()
+        if not advapi32.ConvertSidToStringSidW(
+            wintypes.LPVOID(psid), ctypes.byref(text)
+        ):
+            raise ctypes.WinError()
+        try:
+            return text.value
+        finally:
+            kernel32.LocalFree(ctypes.cast(text, wintypes.LPVOID))
+    finally:
+        CloseHandle(token)
+
+
+def _pipe_security_attributes():
+    """SECURITY_ATTRIBUTES for CreateNamedPipeW, or None for default security."""
+    global _pipe_security
+    if os.environ.get("CTS_PIPE_USER_DACL", "") not in ("1", "true", "yes"):
+        return None
+    if _pipe_security is None:
+        sddl = "D:(A;;GA;;;{0})(A;;GA;;;SY)".format(_current_user_sid())
+        sd = wintypes.LPVOID()
+        if not ctypes.windll.advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl, 1, ctypes.byref(sd), None
+        ):
+            raise ctypes.WinError()
+        # Kept for the process lifetime; never freed.
+        _pipe_security = SECURITY_ATTRIBUTES(
+            ctypes.sizeof(SECURITY_ATTRIBUTES), sd, False
+        )
+    return ctypes.byref(_pipe_security)
+
+
 ConnectNamedPipe = kernel32.ConnectNamedPipe
 ConnectNamedPipe.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
 ConnectNamedPipe.restype = wintypes.BOOL
@@ -487,7 +556,7 @@ class ReversePipeClient:
                 65536,  # out buffer
                 65536,  # in buffer
                 0,  # default timeout
-                None,  # default security
+                _pipe_security_attributes(),  # None = default security
             )
             if pipe_handle > 0 and pipe_handle != INVALID_HANDLE_VALUE:
                 break
