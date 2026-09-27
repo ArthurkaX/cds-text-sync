@@ -5,3 +5,11 @@
 # the release asset, so they were landing in every user's program folder: 8.3 MB
 # of a 12.8 MB install that nothing at runtime reads.
 img/** export-ignore
+
+# The repo is edited on Linux and from Windows VMs over a shared folder; pin LF
+# so neither side's core.autocrlf rewrites every line. cmd.exe needs CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.gif binary
