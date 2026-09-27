@@ -3,34 +3,110 @@
 ide_daemon_ui.py — WinForms UI for the CODESYS reverse-pipe daemon.
 
 Shows inside CODESYS while Project_daemon.py runs.
-Has a command log listbox, log tools, Stop button, and Settings button
-that opens a security/config window.
+Has a target line with Copy button, command log listbox, log tools,
+Stop button, and Settings button that opens a security/config window.
 """
 
 from __future__ import print_function
+import os
 import sys
-import clr
 
-clr.AddReference("System.Windows.Forms")
-clr.AddReference("System.Drawing")
+try:
+    import clr
 
-from System.Windows.Forms import (
-    Form, Button, ListBox, DockStyle, Padding, FlatStyle,
-    Application, FormStartPosition, FormBorderStyle,
-    Label, TrackBar, CheckedListBox, Panel,
-    BorderStyle, MessageBox, MessageBoxButtons,
-    MessageBoxIcon, DialogResult, TabControl, TabPage,
-    AnchorStyles, Clipboard, ToolTip,
-)
-from System.Drawing import (
-    Point, Size, Font, FontStyle, Color, ContentAlignment
-)
+    clr.AddReference("System.Windows.Forms")
+    clr.AddReference("System.Drawing")
+
+    from System.Windows.Forms import (
+        Form, Button, ListBox, DockStyle, Padding, FlatStyle,
+        Application, FormStartPosition, FormBorderStyle,
+        Label, TrackBar, CheckedListBox, Panel, CheckBox,
+        BorderStyle, MessageBox, MessageBoxButtons,
+        MessageBoxIcon, DialogResult, TabControl, TabPage,
+        AnchorStyles, Clipboard, ToolTip,
+    )
+    from System.Drawing import (
+        Point, Size, Font, FontStyle, Color, ContentAlignment
+    )
+    if not isinstance(Form, type):
+        Form = object
+except Exception:
+    Form = object
+    Button = None
+    ListBox = None
+    DockStyle = None
+    Padding = None
+    FlatStyle = None
+    Application = None
+    FormStartPosition = None
+    FormBorderStyle = None
+    Label = None
+    TrackBar = None
+    CheckedListBox = None
+    Panel = None
+    CheckBox = None
+    BorderStyle = None
+    MessageBox = None
+    MessageBoxButtons = None
+    MessageBoxIcon = None
+    DialogResult = None
+    TabControl = None
+    TabPage = None
+    AnchorStyles = None
+    Clipboard = None
+    ToolTip = None
+    Point = None
+    Size = None
+    Font = None
+    FontStyle = None
+    Color = None
+    ContentAlignment = None
+
+
+# ── Target line / command helpers ──────────────────────────────────────────
+
+def format_instance_label(info):
+    """Format the UI target line label: 'IDE: ide-3684 · VKO' or 'IDE: ide-3684 · no project'."""
+    if not info:
+        return "IDE: ide-{0} · no project".format(os.getpid())
+    ide_id = info.get("id")
+    if not ide_id:
+        pid = info.get("pid")
+        ide_id = "ide-{0}".format(pid if pid is not None else os.getpid())
+    proj = info.get("project")
+    if proj and isinstance(proj, dict) and proj.get("name"):
+        return "IDE: {0} · {1}".format(ide_id, proj["name"])
+    return "IDE: {0} · no project".format(ide_id)
+
+
+def format_copy_command(info, copy_cmd="cts"):
+    """Format the command string to copy to clipboard.
+
+    - project open: '!cts --target ide-3684 --expect-project VKO --help'
+    - no project:   '!cts --target ide-3684 --help'
+    - copy_cmd: 'cts-win' or 'cts'.
+    """
+    cmd_name = copy_cmd if copy_cmd in ("cts", "cts-win") else "cts"
+    if not info:
+        ide_id = "ide-{0}".format(os.getpid())
+        return "!{0} --target {1} --help".format(cmd_name, ide_id)
+
+    ide_id = info.get("id")
+    if not ide_id:
+        pid = info.get("pid")
+        ide_id = "ide-{0}".format(pid if pid is not None else os.getpid())
+    proj = info.get("project")
+    if proj and isinstance(proj, dict) and proj.get("name"):
+        return "!{0} --target {1} --expect-project {2} --help".format(
+            cmd_name, ide_id, proj["name"]
+        )
+    return "!{0} --target {1} --help".format(cmd_name, ide_id)
 
 
 # ── Settings Form ──────────────────────────────────────────────────────────
 
 class SettingsForm(Form):
-    """Settings window for daemon config (poll frequency + permissions)."""
+    """Settings window for daemon config (poll frequency + permissions + copy command)."""
 
     def __init__(self):
         self.Text = "Daemon Settings"
@@ -53,7 +129,7 @@ class SettingsForm(Form):
             from ide_daemon_state import _load_daemon_config
             return _load_daemon_config()
         except Exception:
-            return {"poll_ms": 200, "deny": []}
+            return {"poll_ms": 200, "copy_command": "cts", "deny": []}
 
     def _save_config(self, config):
         """Save config to the daemon's storage."""
@@ -68,7 +144,7 @@ class SettingsForm(Form):
         self.tab_control = TabControl()
         self.tab_control.Dock = DockStyle.Fill
 
-        # Tab 1: Poll frequency
+        # Tab 1: Poll frequency & General
         tab_poll = TabPage()
         tab_poll.Text = "General"
         self._build_poll_tab(tab_poll)
@@ -160,11 +236,19 @@ class SettingsForm(Form):
         lbl_note.Font = Font("Segoe UI", 8, FontStyle.Italic)
         lbl_note.ForeColor = Color.Gray
 
+        self.chk_ssh = CheckBox()
+        self.chk_ssh.Text = "Copy command for SSH (cts-win)"
+        self.chk_ssh.Location = Point(12, 135)
+        self.chk_ssh.Size = Size(350, 24)
+        self.chk_ssh.Checked = self._config.get("copy_command") == "cts-win"
+        self.chk_ssh.CheckedChanged += self._on_ssh_changed
+
         tab.Controls.Add(lbl_poll)
         tab.Controls.Add(self.lbl_poll_val)
         tab.Controls.Add(self.track_poll)
         tab.Controls.Add(lbl_range)
         tab.Controls.Add(lbl_note)
+        tab.Controls.Add(self.chk_ssh)
 
     def _build_perm_tab(self, tab):
         tab.Padding = Padding(12, 12, 12, 12)
@@ -229,10 +313,14 @@ class SettingsForm(Form):
         self.lbl_poll_val.Text = str(val) + " ms"
         self._changed = True
 
+    def _on_ssh_changed(self, sender, args):
+        self._changed = True
+
     def _collect_config(self):
         """Read UI values into a config dict."""
         config = {
             "poll_ms": self.track_poll.Value,
+            "copy_command": "cts-win" if self.chk_ssh.Checked else "cts",
             "deny": [],
         }
         # Collect denied operations
@@ -286,7 +374,18 @@ class DaemonForm(Form):
         self.Top = 20
         self.ControlBox = True
         self._stopping = False
+        self._instance_info = None
         self.FormClosing += self._on_form_closing
+
+        try:
+            from ide_daemon_state import _instance_info
+            self._instance_info = _instance_info()
+        except Exception:
+            self._instance_info = None
+
+        # Top panel: target line with Copy button
+        self.top_panel = self._create_top_panel()
+        self.Controls.Add(self.top_panel)
 
         # Command log listbox
         self.log_list = ListBox()
@@ -348,19 +447,43 @@ class DaemonForm(Form):
         self._tooltips = ToolTip()
         self._tooltips.SetToolTip(self.copy_log_btn, "Copy full log")
         self._tooltips.SetToolTip(self.clear_log_btn, "Clear log")
+        self._tooltips.SetToolTip(self.copy_target_btn, "Copy CLI target command to clipboard")
 
         bottom_panel = self._create_bottom_panel()
         self.Controls.Add(bottom_panel)
 
+    def _create_top_panel(self):
+        panel = Panel()
+        panel.Dock = DockStyle.Top
+        panel.Height = 32
+        panel.Padding = Padding(6, 4, 6, 4)
+        panel.BorderStyle = BorderStyle.FixedSingle
+
+        self.copy_target_btn = Button()
+        self.copy_target_btn.Text = "Copy"
+        self.copy_target_btn.Width = 60
+        self.copy_target_btn.Dock = DockStyle.Right
+        self.copy_target_btn.FlatStyle = FlatStyle.System
+        self.copy_target_btn.Click += self._on_copy_target_click
+
+        self.target_label = Label()
+        self.target_label.Text = format_instance_label(self._instance_info)
+        self.target_label.Dock = DockStyle.Fill
+        self.target_label.TextAlign = ContentAlignment.MiddleLeft
+        self.target_label.Font = Font("Segoe UI", 9, FontStyle.Bold)
+
+        panel.Controls.Add(self.target_label)
+        panel.Controls.Add(self.copy_target_btn)
+        return panel
+
     def _place_log_tool_buttons(self):
-        top = 6
+        top = 38
         gap = 4
         right = 8
         self.clear_log_btn.Location = Point(self.ClientSize.Width - right - self.clear_log_btn.Width, top)
         self.copy_log_btn.Location = Point(self.clear_log_btn.Left - gap - self.copy_log_btn.Width, top)
 
     def _create_bottom_panel(self):
-        from System.Windows.Forms import Panel, Label, BorderStyle
         panel = Panel()
         panel.Dock = DockStyle.Bottom
         panel.Height = 36
@@ -381,6 +504,37 @@ class DaemonForm(Form):
         panel.Controls.Add(self.settings_btn)
         panel.Controls.Add(self.stop_btn)
         return panel
+
+    def set_instance(self, info):
+        """Update the displayed target line and cache the instance info."""
+        self._instance_info = info
+        try:
+            if hasattr(self, "target_label") and self.target_label is not None:
+                self.target_label.Text = format_instance_label(info)
+        except Exception:
+            pass
+
+    def _on_copy_target_click(self, sender, args):
+        """Copy the target CLI command to the clipboard."""
+        copy_cmd = "cts"
+        try:
+            from ide_daemon_state import _load_daemon_config
+            cfg = _load_daemon_config()
+            copy_cmd = cfg.get("copy_command", "cts")
+        except Exception:
+            pass
+
+        cmd = format_copy_command(self._instance_info, copy_cmd=copy_cmd)
+        try:
+            Clipboard.SetText(cmd)
+            self.log_command("Copied: {0}".format(cmd))
+        except Exception as e:
+            MessageBox.Show(
+                "Failed to copy to clipboard:\n" + str(e),
+                "Clipboard Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning,
+            )
 
     def log_command(self, method):
         """Add a line to the command log."""

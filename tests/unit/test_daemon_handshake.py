@@ -52,15 +52,23 @@ def _stub_module(name):
     return mod
 
 
+_saved_modules = {}
 for name in _STUB_NAMES:
-    if name not in sys.modules:
-        sys.modules[name] = _stub_module(name)
+    _saved_modules[name] = sys.modules.get(name)
+    sys.modules[name] = _stub_module(name)
 
 if str(_IDE_BRIDGE) not in sys.path:
     sys.path.insert(0, str(_IDE_BRIDGE))
 
 import ide_daemon_state as ds
 import ide_reverse_pipe_loop as rpl
+
+# Restore sys.modules so stubs don't pollute subsequent unit tests
+for name, orig in _saved_modules.items():
+    if orig is None:
+        sys.modules.pop(name, None)
+    else:
+        sys.modules[name] = orig
 
 
 class FakePipe:
