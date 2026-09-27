@@ -13,6 +13,18 @@ All notable changes to this project will be documented in this file.
 - Export no longer warns "Could not read existing manifest" on a Windows machine whose default encoding is cp1252 when object names contain Cyrillic or other non-ASCII text. The manifest is written as UTF-8, but one reader opened it with the platform default, failed to decode it, and export then carried on as if there were no previous manifest.
 - The release archive no longer carries the documentation's demo GIFs. `git archive` builds the release asset, so `img/` was shipping 8.3 MB into every user's program folder — 64% of a 12.8 MB install that nothing at runtime reads. An install is now 4.6 MB unpacked (1.4 MB downloaded). The GIFs stay in the repository, so the docs render unchanged on GitHub; a copy of `readMe.md` or `docs/onboarding.md` opened locally from the install folder shows broken image placeholders instead.
 
+### Version 3.3.0 (2026-09-27)
+
+**Multi-instance IDE support & Protocol v2:**
+
+- **Targeted routing (`--target ide-<pid>` / `CTS_TARGET`):** Work with several CODESYS IDE instances and projects simultaneously behind a single `cts` CLI client. When multiple IDEs are running, `cts` resolves and addresses commands directly to the targeted process.
+- **Protocol v2 handshake:** The reverse named pipe now uses a multi-instance handshake (`hello`, target selection, `release`). When no target is passed and multiple live daemons are discovered, `cts` refuses with an `ambiguous_target` error and prints ready-to-run `--target` commands.
+- **Target errors & project guards:** Clean error reporting for `ambiguous_target`, `unknown_target`, and `no_project`. The `--expect-project NAME|PATH` option guards write operations from modifying the wrong project if switched in the IDE.
+- **Instance metadata in results:** Every command output (JSON and text format) now carries the instance identity (`ide-<pid>`) and current active project name/path in metadata and footer lines.
+- **Help discovery header:** `cts --help` now probes for live daemon instances and displays target status and project info right in the help banner.
+- **Daemon UI target line & Copy button:** The daemon window displays a docked target panel (`IDE: ide-<pid> · <project>`) with a `Copy` button that generates `!cts --target ide-<pid> [--expect-project <name>] --help` for immediate pasting into agent sessions.
+- **SSH & remote execution (`tools/cts-win`):** Includes a `cts-win` wrapper script for calling `cts` inside a Windows VM over SSH, along with a Daemon Settings option to copy commands formatted for `cts-win`.
+
 ---
 
 ### Version 3.2.0 (2026-09-22)

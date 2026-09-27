@@ -24,7 +24,7 @@ from codesys_utils import project_file_path
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
 # Kept in step with cds_text_sync.__version__; the daemon no longer versions separately.
-VERSION = "3.2.0"
+VERSION = "3.3.0"
 PROTOCOL = 2
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts

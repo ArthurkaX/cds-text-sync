@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# tools/cts-win — SSH wrapper for running cts commands on a remote Windows host.
+#
+# Usage:
+#   export CTS_WIN_HOST=dev@192.168.122.21
+#   cts-win status
+#   cts-win --target ide-3684 --help
+#
+# Requirements on Windows host:
+#   1. Password logon (or SMB credentials available)
+#   2. setx CTS_PIPE_USER_DACL 1 (allows reverse pipe connection from desktop session)
+#   3. OpenSSH server configured (optional: ControlMaster in client ~/.ssh/config)
+
+set -euo pipefail
+
+if [ -z "${CTS_WIN_HOST:-}" ]; then
+    echo "ERROR: CTS_WIN_HOST environment variable is not set" >&2
+    echo "Example: export CTS_WIN_HOST=dev@192.168.122.21" >&2
+    exit 1
+fi
+
+remote_args=()
+for arg in "$@"; do
+    # Escape double quotes for remote Windows cmd.exe execution
+    escaped="${arg//\"/\\\"}"
+    remote_args+=("\"$escaped\"")
+done
+
+if [ "${#remote_args[@]}" -gt 0 ]; then
+    exec ssh -o LogLevel=ERROR "$CTS_WIN_HOST" cts --output json "${remote_args[@]}"
+else
+    exec ssh -o LogLevel=ERROR "$CTS_WIN_HOST" cts --output json
+fi
