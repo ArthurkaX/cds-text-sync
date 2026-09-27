@@ -19,6 +19,7 @@ import ctypes
 import json
 import os
 import struct
+import sys
 import time
 import threading
 from ctypes import wintypes
@@ -47,50 +48,128 @@ ERROR_OPERATION_ABORTED = 995
 
 # ── Win32 API ──────────────────────────────────────────────────────────────
 
-kernel32 = ctypes.windll.kernel32
-
-
 class OVERLAPPED(ctypes.Structure):
     _fields_ = [
         ("Internal", ctypes.c_size_t),
         ("InternalHigh", ctypes.c_size_t),
-        ("Offset", wintypes.DWORD),
-        ("OffsetHigh", wintypes.DWORD),
-        ("hEvent", wintypes.HANDLE),
+        ("Offset", getattr(wintypes, "DWORD", ctypes.c_uint32)),
+        ("OffsetHigh", getattr(wintypes, "DWORD", ctypes.c_uint32)),
+        ("hEvent", getattr(wintypes, "HANDLE", ctypes.c_void_p)),
     ]
 
 
 LPOVERLAPPED = ctypes.POINTER(OVERLAPPED)
 
-CreateNamedPipeW = kernel32.CreateNamedPipeW
-CreateNamedPipeW.argtypes = [
-    wintypes.LPCWSTR,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    wintypes.LPVOID,
-]
-CreateNamedPipeW.restype = wintypes.HANDLE
-
-# ── Opt-in explicit pipe DACL ──────────────────────────────────────────────
-# A pipe created from an SSH key-auth session gets a default DACL that the
-# desktop IDE (same user, other logon session) cannot open. CTS_PIPE_USER_DACL=1
-# grants the current user and SYSTEM explicitly. Unset: default security, as
-# before.
-
 
 class SECURITY_ATTRIBUTES(ctypes.Structure):
     _fields_ = [
-        ("nLength", wintypes.DWORD),
-        ("lpSecurityDescriptor", wintypes.LPVOID),
-        ("bInheritHandle", wintypes.BOOL),
+        ("nLength", getattr(wintypes, "DWORD", ctypes.c_uint32)),
+        ("lpSecurityDescriptor", getattr(wintypes, "LPVOID", ctypes.c_void_p)),
+        ("bInheritHandle", getattr(wintypes, "BOOL", ctypes.c_int)),
     ]
 
 
 _pipe_security: SECURITY_ATTRIBUTES | None = None
+
+if sys.platform == "win32" and hasattr(ctypes, "windll"):
+    kernel32 = ctypes.windll.kernel32
+
+    CreateNamedPipeW = kernel32.CreateNamedPipeW
+    CreateNamedPipeW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+    ]
+    CreateNamedPipeW.restype = wintypes.HANDLE
+
+    ConnectNamedPipe = kernel32.ConnectNamedPipe
+    ConnectNamedPipe.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
+    ConnectNamedPipe.restype = wintypes.BOOL
+
+    DisconnectNamedPipe = kernel32.DisconnectNamedPipe
+    DisconnectNamedPipe.argtypes = [wintypes.HANDLE]
+    DisconnectNamedPipe.restype = wintypes.BOOL
+
+    CloseHandle = kernel32.CloseHandle
+    CloseHandle.argtypes = [wintypes.HANDLE]
+    CloseHandle.restype = wintypes.BOOL
+
+    ReadFile = kernel32.ReadFile
+    ReadFile.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        LPOVERLAPPED,
+    ]
+    ReadFile.restype = wintypes.BOOL
+
+    WriteFile = kernel32.WriteFile
+    WriteFile.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        LPOVERLAPPED,
+    ]
+    WriteFile.restype = wintypes.BOOL
+
+    FlushFileBuffers = kernel32.FlushFileBuffers
+    FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    FlushFileBuffers.restype = wintypes.BOOL
+
+    GetLastError = kernel32.GetLastError
+    GetLastError.restype = wintypes.DWORD
+
+    CreateEventW = kernel32.CreateEventW
+    CreateEventW.argtypes = [
+        wintypes.LPVOID,
+        wintypes.BOOL,
+        wintypes.BOOL,
+        wintypes.LPCWSTR,
+    ]
+    CreateEventW.restype = wintypes.HANDLE
+
+    WaitForSingleObject = kernel32.WaitForSingleObject
+    WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    WaitForSingleObject.restype = wintypes.DWORD
+
+    GetOverlappedResult = kernel32.GetOverlappedResult
+    GetOverlappedResult.argtypes = [
+        wintypes.HANDLE,
+        LPOVERLAPPED,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.BOOL,
+    ]
+    GetOverlappedResult.restype = wintypes.BOOL
+
+    CancelIo = kernel32.CancelIo
+    CancelIo.argtypes = [wintypes.HANDLE]
+    CancelIo.restype = wintypes.BOOL
+
+    CancelIoEx = kernel32.CancelIoEx
+    CancelIoEx.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
+    CancelIoEx.restype = wintypes.BOOL
+else:
+    kernel32 = None
+    CreateNamedPipeW = None
+    ConnectNamedPipe = None
+    DisconnectNamedPipe = None
+    CloseHandle = None
+    ReadFile = None
+    WriteFile = None
+    FlushFileBuffers = None
+    GetLastError = None
+    CreateEventW = None
+    WaitForSingleObject = None
+    GetOverlappedResult = None
+    CancelIo = None
+    CancelIoEx = None
 
 
 def _current_user_sid() -> str:
@@ -142,76 +221,6 @@ def _pipe_security_attributes():
             ctypes.sizeof(SECURITY_ATTRIBUTES), sd, False
         )
     return ctypes.byref(_pipe_security)
-
-
-ConnectNamedPipe = kernel32.ConnectNamedPipe
-ConnectNamedPipe.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
-ConnectNamedPipe.restype = wintypes.BOOL
-
-DisconnectNamedPipe = kernel32.DisconnectNamedPipe
-DisconnectNamedPipe.argtypes = [wintypes.HANDLE]
-DisconnectNamedPipe.restype = wintypes.BOOL
-
-CloseHandle = kernel32.CloseHandle
-CloseHandle.argtypes = [wintypes.HANDLE]
-CloseHandle.restype = wintypes.BOOL
-
-ReadFile = kernel32.ReadFile
-ReadFile.argtypes = [
-    wintypes.HANDLE,
-    wintypes.LPVOID,
-    wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD),
-    LPOVERLAPPED,
-]
-ReadFile.restype = wintypes.BOOL
-
-WriteFile = kernel32.WriteFile
-WriteFile.argtypes = [
-    wintypes.HANDLE,
-    wintypes.LPVOID,
-    wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD),
-    LPOVERLAPPED,
-]
-WriteFile.restype = wintypes.BOOL
-
-FlushFileBuffers = kernel32.FlushFileBuffers
-FlushFileBuffers.argtypes = [wintypes.HANDLE]
-FlushFileBuffers.restype = wintypes.BOOL
-
-GetLastError = kernel32.GetLastError
-GetLastError.restype = wintypes.DWORD
-
-CreateEventW = kernel32.CreateEventW
-CreateEventW.argtypes = [
-    wintypes.LPVOID,
-    wintypes.BOOL,
-    wintypes.BOOL,
-    wintypes.LPCWSTR,
-]
-CreateEventW.restype = wintypes.HANDLE
-
-WaitForSingleObject = kernel32.WaitForSingleObject
-WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-WaitForSingleObject.restype = wintypes.DWORD
-
-GetOverlappedResult = kernel32.GetOverlappedResult
-GetOverlappedResult.argtypes = [
-    wintypes.HANDLE,
-    LPOVERLAPPED,
-    ctypes.POINTER(wintypes.DWORD),
-    wintypes.BOOL,
-]
-GetOverlappedResult.restype = wintypes.BOOL
-
-CancelIo = kernel32.CancelIo
-CancelIo.argtypes = [wintypes.HANDLE]
-CancelIo.restype = wintypes.BOOL
-
-CancelIoEx = kernel32.CancelIoEx
-CancelIoEx.argtypes = [wintypes.HANDLE, LPOVERLAPPED]
-CancelIoEx.restype = wintypes.BOOL
 
 
 # ── Pipe name ──────────────────────────────────────────────────────────────
