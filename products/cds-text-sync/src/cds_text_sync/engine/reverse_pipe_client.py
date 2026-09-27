@@ -21,9 +21,17 @@ import os
 import struct
 import sys
 import time
-import threading
 from ctypes import wintypes
 from typing import Any
+
+from cds_text_sync.engine.pipe_targets import (
+    LEGACY,
+    Hello,
+    TargetError,
+    decide,
+    match_project,
+    parse_target,
+)
 
 # ── Win32 constants ────────────────────────────────────────────────────────
 
@@ -419,6 +427,223 @@ def _read_msg(
     return json.loads(bytes(raw_msg).decode("utf-8"))
 
 
+# ── Target Resolution & Pipe Targets ───────────────────────────────────────
+
+# Cache for resolved target PID, last instance info, and process list
+_configured_target: str | int | None = None
+_configured_expect_project: str | None = None
+_resolved_pid: int | None = None
+_last_instance: dict[str, Any] | None = None
+_cached_codesys_pids: set[int] | None = None
+
+
+def configure(
+    target: str | int | None = None,
+    expect_project: str | None = None,
+) -> None:
+    """Configure reverse pipe target and expected project for this CLI process."""
+    global _configured_target, _configured_expect_project, _resolved_pid
+    if target is None:
+        target = os.environ.get("CTS_TARGET")
+    _configured_target = target
+    _configured_expect_project = expect_project
+    _resolved_pid = None
+
+
+def get_last_instance() -> dict[str, Any] | None:
+    """Return the last instance metadata seen by reverse pipe client."""
+    return _last_instance
+
+
+def _list_codesys_pids() -> set[int]:
+    """List running CODESYS.exe process IDs."""
+    global _cached_codesys_pids
+    if _cached_codesys_pids is not None:
+        return _cached_codesys_pids
+    pids: set[int] = set()
+    try:
+        import subprocess
+
+        user = os.environ.get("USERNAME")
+        cmd = ["tasklist", "/FI", "IMAGENAME eq CODESYS.exe", "/NH", "/FO", "CSV"]
+        if user:
+            cmd = [
+                "tasklist",
+                "/FI",
+                "IMAGENAME eq CODESYS.exe",
+                "/FI",
+                f"USERNAME eq {user}",
+                "/NH",
+                "/FO",
+                "CSV",
+            ]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        for line in (r.stdout or "").strip().splitlines():
+            fields = [f.strip('" ') for f in line.split('","')]
+            if len(fields) >= 2 and fields[1].isdigit():
+                pids.add(int(fields[1]))
+    except Exception:
+        pass
+    _cached_codesys_pids = pids
+    return pids
+
+
+class _PipeListener:
+    """Helper managing a single named pipe server instance and overlapped ConnectNamedPipe."""
+
+    def __init__(self, pipe_path: str):
+        self.pipe_path = pipe_path
+        self.handle = -1
+        self.event = None
+        self.overlapped: OVERLAPPED | None = None
+        self.connected_immediate = False
+        self._create_and_connect()
+
+    def _create_and_connect(self) -> None:
+        if CreateNamedPipeW is None:
+            return
+        for _ in range(3):
+            self.handle = CreateNamedPipeW(
+                self.pipe_path,
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                PIPE_UNLIMITED_INSTANCES,
+                65536,
+                65536,
+                0,
+                _pipe_security_attributes(),
+            )
+            if self.handle > 0 and self.handle != INVALID_HANDLE_VALUE:
+                break
+            time.sleep(0.05)
+        if self.handle <= 0 or self.handle == INVALID_HANDLE_VALUE:
+            err = GetLastError() if GetLastError else 0
+            raise RuntimeError(f"Cannot create pipe server at {self.pipe_path} (error {err})")
+
+        self.event = CreateEventW(None, True, False, None)
+        self.overlapped = OVERLAPPED()
+        self.overlapped.hEvent = self.event
+
+        res = ConnectNamedPipe(self.handle, ctypes.byref(self.overlapped))
+        err = GetLastError() if GetLastError else 0
+        if res:
+            self.connected_immediate = True
+        elif err == ERROR_PIPE_CONNECTED:
+            self.connected_immediate = True
+        elif err == ERROR_IO_PENDING:
+            self.connected_immediate = False
+        else:
+            self.close()
+            raise RuntimeError(f"ConnectNamedPipe failed (error {err})")
+
+    def wait(self, timeout_s: float) -> bool:
+        if self.connected_immediate:
+            return True
+        if not self.event or self.handle <= 0:
+            return False
+        timeout_ms = max(0, int(timeout_s * 1000))
+        wait_res = WaitForSingleObject(self.event, timeout_ms)
+        if wait_res == WAIT_OBJECT_0:
+            bytes_xferd = wintypes.DWORD(0)
+            ok = GetOverlappedResult(
+                self.handle,
+                ctypes.byref(self.overlapped),
+                ctypes.byref(bytes_xferd),
+                True,
+            )
+            err = GetLastError() if GetLastError else 0
+            if ok or err == ERROR_PIPE_CONNECTED:
+                return True
+            return False
+        return False
+
+    def close(self) -> None:
+        if self.handle > 0 and self.handle != INVALID_HANDLE_VALUE:
+            if CancelIo:
+                with contextlib.suppress(Exception):
+                    CancelIo(self.handle)
+            if DisconnectNamedPipe:
+                with contextlib.suppress(Exception):
+                    DisconnectNamedPipe(self.handle)
+            if CloseHandle:
+                with contextlib.suppress(Exception):
+                    CloseHandle(self.handle)
+            self.handle = -1
+        if self.event:
+            if CloseHandle:
+                with contextlib.suppress(Exception):
+                    CloseHandle(self.event)
+            self.event = None
+
+
+def _send_release_and_close(handle: int) -> None:
+    """Send R release message and close pipe handle."""
+    if handle <= 0 or handle == INVALID_HANDLE_VALUE:
+        return
+    try:
+        _write_msg(handle, {"release": True}, deadline=time.monotonic() + 0.5, cmd_name="release")
+    except Exception:
+        pass
+    finally:
+        if CancelIo:
+            with contextlib.suppress(Exception):
+                CancelIo(handle)
+        if DisconnectNamedPipe:
+            with contextlib.suppress(Exception):
+                DisconnectNamedPipe(handle)
+        if CloseHandle:
+            with contextlib.suppress(Exception):
+                CloseHandle(handle)
+
+
+def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
+    """Discover live CODESYS daemon instances within budget_s seconds.
+
+    Returns a list of Hello objects for all discovered daemons.
+    All connected daemons are cleanly released.
+    """
+    if sys.platform != "win32" or not hasattr(ctypes, "windll") or CreateNamedPipeW is None:
+        return []
+    pipe_path = reverse_pipe_name(user)
+    deadline = time.monotonic() + budget_s
+    hellos: dict[int, Hello] = {}
+    held_conns: list[int] = []
+    listener: _PipeListener | None = None
+    try:
+        listener = _PipeListener(pipe_path)
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if listener.wait(min(0.2, remaining)):
+                conn = listener.handle
+                listener = _PipeListener(pipe_path)
+                try:
+                    _write_msg(
+                        conn,
+                        {"method": "ping", "params": {"hello": 2}},
+                        deadline=time.monotonic() + 1.0,
+                        cmd_name="ping",
+                    )
+                    reply = _read_msg(conn, deadline=time.monotonic() + 1.0, cmd_name="ping")
+                    if isinstance(reply, dict) and "hello" in reply:
+                        h = Hello.from_dict(reply)
+                        hellos[h.pid] = h
+                        held_conns.append(conn)
+                    else:
+                        with contextlib.suppress(Exception):
+                            CloseHandle(conn)
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        CloseHandle(conn)
+    finally:
+        if listener:
+            listener.close()
+        for c in held_conns:
+            _send_release_and_close(c)
+    return list(hellos.values())
+
+
 # ── Reverse Pipe Client ────────────────────────────────────────────────────
 
 # Cache the last known IDE PID for smart timeout diagnostics
@@ -428,51 +653,26 @@ _last_ide_pid: int | None = None
 class ReversePipeClient:
     """CLI creates a pipe server, IDE connects as client.
 
-    Uses overlapped I/O for ConnectNamedPipe, ReadFile, and WriteFile
-    with a single end-to-end timeout budget.
+    Uses overlapped I/O with protocol v2 session support (hello, release, targeting).
     """
 
     def __init__(self, user: str | None = None, timeout: float = 30):
         self._pipe_path = reverse_pipe_name(user)
         self._timeout = timeout
 
-    # ── Smart Timeout Diagnostics ──────────────────────────────────────────
-
     @staticmethod
     def _find_ide_pid() -> int | None:
-        """Locate a running CODESYS process without a prior successful call.
-
-        ``_last_ide_pid`` is process-global, and every ``cts`` run is a fresh
-        process, so on the command that times out it is almost always None --
-        which used to send every first-command timeout down the "make sure the
-        daemon is running" path, including the case where it is running and
-        merely busy. Looking the process up by image name keeps the real
-        diagnosis (exited / not responding / busy) available from the start.
-        """
-        try:
-            import subprocess
-
-            r = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq CODESYS.exe", "/NH", "/FO", "CSV"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            for line in (r.stdout or "").strip().splitlines():
-                fields = [f.strip('" ') for f in line.split('","')]
-                if len(fields) >= 2 and fields[1].isdigit():
-                    return int(fields[1])
-        except Exception:
-            pass
+        """Locate a running CODESYS process."""
+        pids = _list_codesys_pids()
+        if pids:
+            return next(iter(pids))
         return None
 
     @staticmethod
-    def _diagnose_ide_timeout() -> str:
+    def _diagnose_ide_timeout(target_pid: int | None = None) -> str:
         """Check if the IDE process is still alive and responding."""
         global _last_ide_pid
-        pid = _last_ide_pid
-        if pid is None:
-            pid = ReversePipeClient._find_ide_pid()
+        pid = target_pid or _last_ide_pid or ReversePipeClient._find_ide_pid()
         if pid is None:
             return (
                 "No CODESYS process is running, so nothing could answer. Start "
@@ -545,112 +745,192 @@ class ReversePipeClient:
                 f"Project_daemon.py is running inside CODESYS."
             )
 
-    # Maximum retries for CreateNamedPipeW (to handle brief OS cleanup delay)
-    MAX_CREATE_RETRIES = 3
-    CREATE_RETRY_DELAY_MS = 50
-
     def send_command(self, method: str, params: dict | None = None) -> dict:
-        global _last_ide_pid
+        global _last_ide_pid, _resolved_pid, _last_instance
         params = params or {}
         deadline = time.monotonic() + self._timeout
 
-        # Create the named pipe server with overlapped flag and unlimited instances
-        pipe_handle = -1
-        for _ in range(self.MAX_CREATE_RETRIES):
-            pipe_handle = CreateNamedPipeW(
-                self._pipe_path,
-                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                PIPE_UNLIMITED_INSTANCES,  # max instances (allow multiple)
-                65536,  # out buffer
-                65536,  # in buffer
-                0,  # default timeout
-                _pipe_security_attributes(),  # None = default security
-            )
-            if pipe_handle > 0 and pipe_handle != INVALID_HANDLE_VALUE:
-                break
-            err = GetLastError()
-            time.sleep(self.CREATE_RETRY_DELAY_MS / 1000.0)
-        if pipe_handle <= 0 or pipe_handle == INVALID_HANDLE_VALUE:
-            err = GetLastError()
-            raise RuntimeError(
-                f"Cannot create pipe server at {self._pipe_path} (error {err})"
-            )
+        # Determine target PID
+        target_pid = None
+        if _resolved_pid is not None:
+            target_pid = _resolved_pid
+        elif _configured_target is not None:
+            target_pid = parse_target(_configured_target)
 
-        # Create event for overlapped ConnectNamedPipe
-        overlapped = OVERLAPPED()
-        event = CreateEventW(None, True, False, None)
-        overlapped.hEvent = event
+        codesys_pids = None if target_pid is not None else _list_codesys_pids()
+
+        discovery_ms = int(os.environ.get("CTS_DISCOVERY_MS", 400))
+        discovery_budget_s = discovery_ms / 1000.0
+        window_end: float | None = None
+
+        hellos: dict[int, Hello] = {}
+        held_conns: dict[int, int] = {}
+        legacy_pids: set[int] = set()
+
+        listener = _PipeListener(self._pipe_path)
 
         try:
-            # Start overlapped ConnectNamedPipe
-            result = ConnectNamedPipe(pipe_handle, ctypes.byref(overlapped))
-            err = GetLastError()
-
-            if not result:
-                if err == ERROR_PIPE_CONNECTED:
-                    # Already connected (rare race condition)
-                    pass
-                elif err == ERROR_IO_PENDING:
-                    # Waiting for connection — wait with remaining budget
-                    remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
-                    wait_result = WaitForSingleObject(event, remaining_ms)
-                    if wait_result != WAIT_OBJECT_0:
-                        hint = self._diagnose_ide_timeout()
-                        CancelIoEx(pipe_handle, ctypes.byref(overlapped))
-                        raise RuntimeError(
-                            f"Timeout ({self._timeout}s) waiting for IDE to connect to "
-                            f"{self._pipe_path}. The daemon never picked up this "
-                            f"request: it is either not running, or still running an "
-                            f"earlier command -- the command loop is single-threaded, "
-                            f"so one slow command makes every other one time out here. "
-                            f"{hint}"
-                        )
-                    # Verify connection result with GetOverlappedResult
-                    bytes_xferd = wintypes.DWORD(0)
-                    ok = GetOverlappedResult(
-                        pipe_handle,
-                        ctypes.byref(overlapped),
-                        ctypes.byref(bytes_xferd),
-                        True,
-                    )
-                    if not ok:
-                        err = GetLastError()
-                        CancelIoEx(pipe_handle, ctypes.byref(overlapped))
-                        raise RuntimeError(
-                            f"Overlapped ConnectNamedPipe failed (error {err})"
-                        )
+            while time.monotonic() < deadline:
+                current_time = time.monotonic()
+                if window_end is not None:
+                    wait_timeout = min(deadline - current_time, max(0.0, window_end - current_time))
                 else:
-                    CancelIoEx(pipe_handle, ctypes.byref(overlapped))
-                    raise RuntimeError(f"ConnectNamedPipe failed (error {err})")
+                    wait_timeout = deadline - current_time
 
-            # Connected! Write command and read response directly in calling thread
-            cmd = {"method": method, "params": params}
-            _write_msg(pipe_handle, cmd, deadline=deadline, cmd_name=method)
-            response = _read_msg(pipe_handle, deadline=deadline, cmd_name=method)
+                if wait_timeout < 0:
+                    wait_timeout = 0
 
-            # Cache PID from responses that include it
-            if isinstance(response, dict):
-                data = response.get("data", response)
-                if isinstance(data, dict):
-                    pid = data.get("pid")
-                    if pid is not None:
-                        _last_ide_pid = int(pid)
+                connected = listener.wait(wait_timeout)
+                if connected:
+                    conn = listener.handle
+                    listener = _PipeListener(self._pipe_path)
 
-            return response
+                    try:
+                        _write_msg(
+                            conn,
+                            {"method": "ping", "params": {"hello": 2}},
+                            deadline=time.monotonic() + 2.0,
+                            cmd_name="ping",
+                        )
+                        reply = _read_msg(conn, deadline=time.monotonic() + 2.0, cmd_name="ping")
+                    except Exception:
+                        with contextlib.suppress(Exception):
+                            CloseHandle(conn)
+                        conn = -1
+                        reply = None
+
+                    if conn > 0 and reply is not None:
+                        if isinstance(reply, dict) and "hello" in reply:
+                            h = Hello.from_dict(reply)
+                            if h.pid in held_conns:
+                                _send_release_and_close(held_conns.pop(h.pid))
+                            hellos[h.pid] = h
+                            held_conns[h.pid] = conn
+
+                            if target_pid is not None and h.pid != target_pid:
+                                _send_release_and_close(held_conns.pop(h.pid))
+
+                            if target_pid is None and window_end is None:
+                                window_end = time.monotonic() + discovery_budget_s
+                        elif isinstance(reply, dict):
+                            lp = reply.get("data", {}).get("pid") or reply.get("pid")
+                            if lp:
+                                legacy_pids.add(int(lp))
+                            with contextlib.suppress(Exception):
+                                CloseHandle(conn)
+                            if target_pid is None and window_end is None:
+                                window_end = time.monotonic() + discovery_budget_s
+
+                window_is_over = (
+                    window_end is not None and time.monotonic() >= window_end
+                ) or (time.monotonic() >= deadline)
+
+                decision = decide(
+                    hellos,
+                    legacy_pids=legacy_pids,
+                    target_pid=target_pid,
+                    codesys_pids=codesys_pids,
+                    window_over=window_is_over,
+                )
+
+                if decision.kind == "send":
+                    listener.close()
+                    if decision.target == LEGACY:
+                        for h_conn in list(held_conns.values()):
+                            _send_release_and_close(h_conn)
+                        held_conns.clear()
+
+                        legacy_listener = _PipeListener(self._pipe_path)
+                        try:
+                            ok = legacy_listener.wait(max(0.1, deadline - time.monotonic()))
+                            if not ok:
+                                hint = self._diagnose_ide_timeout(target_pid=target_pid)
+                                raise RuntimeError(f"Timeout waiting for legacy IDE to connect. {hint}")
+                            l_conn = legacy_listener.handle
+                            cmd = {"method": method, "params": params}
+                            _write_msg(l_conn, cmd, deadline=deadline, cmd_name=method)
+                            response = _read_msg(l_conn, deadline=deadline, cmd_name=method)
+                            if isinstance(response, dict):
+                                data = response.get("data", response)
+                                if isinstance(data, dict) and data.get("pid"):
+                                    _last_ide_pid = int(data["pid"])
+                            return response
+                        finally:
+                            legacy_listener.close()
+
+                    elif isinstance(decision.target, Hello):
+                        chosen = decision.target
+                        chosen_conn = held_conns.pop(chosen.pid)
+                        for h_conn in list(held_conns.values()):
+                            _send_release_and_close(h_conn)
+                        held_conns.clear()
+
+                        if _configured_expect_project:
+                            if not match_project(chosen.project, _configured_expect_project):
+                                curr_desc = (
+                                    chosen.project.get("name") if chosen.project else None
+                                ) or "no project"
+                                _send_release_and_close(chosen_conn)
+                                raise TargetError(
+                                    "project_mismatch",
+                                    (
+                                        f"error: project mismatch: expected '{_configured_expect_project}', "
+                                        f"but IDE {chosen.id} has '{curr_desc}' open."
+                                    ),
+                                    instances=[chosen],
+                                )
+
+                        _resolved_pid = chosen.pid
+                        _last_ide_pid = chosen.pid
+
+                        try:
+                            cmd = {"method": method, "params": params}
+                            _write_msg(chosen_conn, cmd, deadline=deadline, cmd_name=method)
+                            response = _read_msg(chosen_conn, deadline=deadline, cmd_name=method)
+
+                            if isinstance(response, dict) and "instance" in response:
+                                _last_instance = response["instance"]
+                            else:
+                                _last_instance = {"id": chosen.id, "project": chosen.project}
+
+                            return response
+                        finally:
+                            with contextlib.suppress(Exception):
+                                CloseHandle(chosen_conn)
+
+                elif decision.kind == "error":
+                    listener.close()
+                    for h_conn in list(held_conns.values()):
+                        _send_release_and_close(h_conn)
+                    held_conns.clear()
+                    raise decision.error
+
+            listener.close()
+            for h_conn in list(held_conns.values()):
+                _send_release_and_close(h_conn)
+            held_conns.clear()
+
+            if target_pid is not None:
+                final_dec = decide(hellos, legacy_pids, target_pid, codesys_pids, window_over=True)
+                if final_dec.kind == "error":
+                    raise final_dec.error
+
+            hint = self._diagnose_ide_timeout(target_pid=target_pid)
+            raise RuntimeError(
+                f"Timeout ({self._timeout}s) waiting for IDE to connect to "
+                f"{self._pipe_path}. The daemon never picked up this "
+                f"request: it is either not running, or still running an "
+                f"earlier command -- the command loop is single-threaded, "
+                f"so one slow command makes every other one time out here. "
+                f"{hint}"
+            )
 
         finally:
-            # Clean up idempotently
-            if pipe_handle > 0 and pipe_handle != INVALID_HANDLE_VALUE:
-                with contextlib.suppress(Exception):
-                    CancelIo(pipe_handle)
-                with contextlib.suppress(Exception):
-                    DisconnectNamedPipe(pipe_handle)
-                with contextlib.suppress(Exception):
-                    CloseHandle(pipe_handle)
-            if event:
-                with contextlib.suppress(Exception):
-                    CloseHandle(event)
+            if listener:
+                listener.close()
+            for h_conn in list(held_conns.values()):
+                _send_release_and_close(h_conn)
+            held_conns.clear()
 
 
 # ── Convenience ────────────────────────────────────────────────────────────
@@ -662,25 +942,7 @@ def send_command_reverse(
     user: str | None = None,
     timeout: float = 30,
 ) -> dict:
-    """Send a command using reverse-pipe protocol.
-
-    Creates the pipe server and waits for the IDE loop to connect.
-    """
+    """Send a command using reverse-pipe protocol."""
     client = ReversePipeClient(user=user, timeout=timeout)
     return client.send_command(method, params)
 
-
-# ── Demo ────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    print("Reverse Pipe Client Demo")
-    print("Creating pipe server at:", reverse_pipe_name())
-    print("Waiting for IDE to connect (30s timeout)...")
-
-    try:
-        resp = send_command_reverse("ping", timeout=30)
-        print("Response:", json.dumps(resp, indent=2, ensure_ascii=False))
-    except RuntimeError as e:
-        print(f"Error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")

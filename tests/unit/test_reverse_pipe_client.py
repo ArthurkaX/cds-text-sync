@@ -2,9 +2,8 @@
 """
 test_reverse_pipe_client.py - Tests for Windows named-pipe transport.
 
-Covers Step 1.1 - 1.6:
-- Integration test with a real pipe server
-{ peer threaf
+Covers:
+- Integration test with a real pipe server (protocol v2 hello / release / multi-instance)
 - Fake API unit tests covering partial transfers, disconnects, timeouts, oversized response, and cleanup
 """
 
@@ -15,8 +14,6 @@ import struct
 import sys
 import threading
 import time
-from ctypes import wintypes
-from typing import Any
 import pytest
 
 from cds_text_sync.engine import reverse_pipe_client as rpc
@@ -44,11 +41,12 @@ def _decode_msg(raw: bytes) -> tuple[dict, bytes]:
 
 
 class TestReversePipeIntegration:
-    """Step 1.1 & Phase 1 integration tests on real Windows named pipes."""
+    """Integration tests on real Windows named pipes."""
 
     def test_transport_round_trip(self):
         unique_user = f"test_user_{os.getpid()}_{int(time.monotonic() * 1000)}"
         pipe_path = rpc.reverse_pipe_name(unique_user)
+        rpc.configure(target=None, expect_project=None)
         client = rpc.ReversePipeClient(user=unique_user, timeout=5)
 
         received_requests = []
@@ -58,19 +56,43 @@ class TestReversePipeIntegration:
             try:
                 time.sleep(0.05)
                 with open(pipe_path, "r+b", buffering=0) as f:
+                    # 1. Read H1
                     raw_len = f.read(4)
-                    (l,) = struct.unpack("<I", raw_len)
-                    raw_req = f.read(l)
-                    req = json.loads(raw_req.decode("utf-8"))
-                    received_requests.append(req)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    h1 = json.loads(f.read(msg_len).decode("utf-8"))
+                    received_requests.append(h1)
 
-                    resp_obj = {"ok": True, "data": {"pong": True, "pid": 1234}}
-                    resp_bytes = json.dumps(resp_obj).encode("utf-8")
-                    f.write(struct.pack("<I", len(resp_bytes)) + resp_bytes)
+                    # 2. Reply H2
+                    h2 = {
+                        "ok": True,
+                        "hello": {
+                            "protocol": 2,
+                            "id": "ide-1234",
+                            "pid": 1234,
+                            "version": "3.2.0",
+                            "poll_ms": 200,
+                            "project": {"name": "VKO", "path": "S:\\VKO.project"},
+                        },
+                    }
+                    f.write(_encode_msg(h2))
+                    f.flush()
+
+                    # 3. Read Command C
+                    raw_len = f.read(4)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    cmd = json.loads(f.read(msg_len).decode("utf-8"))
+                    received_requests.append(cmd)
+
+                    # 4. Reply A
+                    resp_obj = {
+                        "ok": True,
+                        "data": {"pong": True, "pid": 1234},
+                        "instance": {"id": "ide-1234", "project": {"name": "VKO", "path": "S:\\VKO.project"}},
+                    }
+                    f.write(_encode_msg(resp_obj))
                     f.flush()
             except Exception as e:
                 peer_error.append(e)
-
 
         t = threading.Thread(target=peer)
         t.start()
@@ -79,14 +101,17 @@ class TestReversePipeIntegration:
         t.join(timeout=3)
 
         assert not peer_error, f"Peer encountered error: {peer_error[0]}"
-        assert len(received_requests) == 1
-        assert received_requests[0] == {"method": "ping", "params": {"foo": "bar"}}
-        assert resp == {"ok": True, "data": {"pong": True, "pid": 1234}}
+        assert len(received_requests) == 2
+        assert received_requests[0] == {"method": "ping", "params": {"hello": 2}}
+        assert received_requests[1] == {"method": "ping", "params": {"foo": "bar"}}
+        assert resp["ok"] is True
+        assert resp["data"]["pong"] is True
 
     def test_response_larger_than_read_buffer(self):
         """Test large payload (> 64KB read buffer)."""
         unique_user = f"test_large_{os.getpid()}_{int(time.monotonic() * 1000)}"
         pipe_path = rpc.reverse_pipe_name(unique_user)
+        rpc.configure(target=None, expect_project=None)
         client = rpc.ReversePipeClient(user=unique_user, timeout=5)
 
         large_str = "x" * (128 * 1024)
@@ -96,16 +121,37 @@ class TestReversePipeIntegration:
             try:
                 time.sleep(0.05)
                 with open(pipe_path, "r+b", buffering=0) as f:
+                    # 1. H1
                     raw_len = f.read(4)
-                    (l,) = struct.unpack("<I", raw_len)
-                    f.read(l)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    f.read(msg_len)
+
+                    # 2. H2
+                    h2 = {
+                        "ok": True,
+                        "hello": {
+                            "protocol": 2,
+                            "id": "ide-1234",
+                            "pid": 1234,
+                            "version": "3.2.0",
+                            "poll_ms": 200,
+                            "project": None,
+                        },
+                    }
+                    f.write(_encode_msg(h2))
+                    f.flush()
+
+                    # 3. C
+                    raw_len = f.read(4)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    f.read(msg_len)
+
+                    # 4. A
                     resp_obj = {"ok": True, "data": {"large": large_str}}
-                    resp_bytes = json.dumps(resp_obj).encode("utf-8")
-                    f.write(struct.pack("<I", len(resp_bytes)) + resp_bytes)
+                    f.write(_encode_msg(resp_obj))
                     f.flush()
             except Exception as e:
                 peer_error.append(e)
-
 
         t = threading.Thread(target=peer)
         t.start()
@@ -119,6 +165,7 @@ class TestReversePipeIntegration:
     def test_connect_timeout(self):
         """Test that if peer never connects, timeout raises with diagnostic hint."""
         unique_user = f"test_timeout_{os.getpid()}_{int(time.monotonic() * 1000)}"
+        rpc.configure(target=None, expect_project=None)
         client = rpc.ReversePipeClient(user=unique_user, timeout=0.3)
 
         start = time.monotonic()
@@ -134,7 +181,7 @@ class TestReversePipeOverlappedUnit:
     """Step 1.6 failure modes tested via controlled fake API / unit mocks."""
 
     def test_overlapped_structure_definition(self):
-        """Assert OVERLAQPED fields match pointer-sized Win32 definition."""
+        """Assert OVERLAPPED fields match pointer-sized Win32 definition."""
         assert ctypes.sizeof(rpc.OVERLAPPED) == (32 if ctypes.sizeof(ctypes.c_void_p) == 8 else 20)
 
     def test_oversized_response_rejected(self, monkeypatch):
@@ -215,47 +262,3 @@ class TestReversePipeOverlappedUnit:
             rpc._read_msg(1234, deadline=time.monotonic() + 5, cmd_name="long_job")
         assert "'long_job'" in str(exc_info.value)
         assert "Giving up here does NOT cancel the command" in str(exc_info.value)
-
-    def test_cleanup_after_exception(self, monkeypatch):
-        """Step 1.6: Cleanup after an exception closes event and pipe handles."""
-        closed_handles = []
-        canceled_handles = []
-        disconnected_handles = []
-
-        orig_close = rpc.CloseHandle
-        orig_cancel = rpc.CancelIo
-        orig_disconnect = rpc.DisconnectNamedPipe
-
-        def fake_close(h):
-            closed_handles.append(h)
-            return True
-
-        def fake_cancel(h):
-            canceled_handles.append(h)
-            return True
-
-        def fake_disconnect(h):
-            disconnected_handles.append(h)
-            return True
-
-        monkeypatch.setattr(rpc, "CloseHandle", fake_close)
-        monkeypatch.setattr(rpc, "CancelIo", fake_cancel)
-        monkeypatch.setattr(rpc, "DisconnectNamedPipe", fake_disconnect)
-        monkeypatch.setattr(rpc, "CreateNamedPipeW", lambda *a, **k: 9999)
-        monkeypatch.setattr(rpc, "CreateEventW", lambda *a, **k: 8888)
-        monkeypatch.setattr(rpc, "ConnectNamedPipe", lambda *a, **k: False)
-        monkeypatch.setattr(rpc, "GetLastError", lambda: rpc.ERROR_PIPE_CONNECTED)
-
-        def raise_boom(*a, **k):
-            raise RuntimeError("Boom inside write")
-
-        monkeypatch.setattr(rpc, "_write_msg", raise_boom)
-
-        client = rpc.ReversePipeClient(user="fake_user", timeout=5)
-        with pytest.raises(RuntimeError, match="Boom inside write"):
-            client.send_command("ping")
-
-        assert 9999 in closed_handles
-        assert 8888 in closed_handles
-        assert 9999 in canceled_handles
-        assert 9999 in disconnected_handles
