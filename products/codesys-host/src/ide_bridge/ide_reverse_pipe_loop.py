@@ -49,6 +49,7 @@ else:
 from ide_daemon_state import (
     PIPE_NAME,
     VERSION,
+    PROTOCOL,
     CONNECT_TIMEOUT_MS,
     _log,
     _read_json_from_pipe,
@@ -58,6 +59,8 @@ from ide_daemon_state import (
     _get_active_project,
     _get_status_info,
     _get_plc_status_snapshot,
+    _instance_info,
+    _hello_info,
 )
 
 from ide_daemon_helpers import (
@@ -332,6 +335,75 @@ def _dashboard_log_response(dash, method, response):
         pass
 
 
+def _serve_connection(pipe, dash=None):
+    """Serve a single connected pipe connection.
+
+    Handles protocol v2 handshake:
+      H1 (ping+hello) -> reply H2 (hello) -> C (command) or R (release)
+    Or legacy direct command execution.
+    Attaches 'instance' metadata to all command responses.
+
+    Returns True if daemon stop was requested, False otherwise.
+    """
+    first_msg = _read_json_from_pipe(pipe)
+    if first_msg is None:
+        return False
+
+    cmd_to_run = None
+
+    # Check for protocol v2 handshake: ping with params.hello
+    params = first_msg.get("params")
+    if first_msg.get("method") == "ping" and isinstance(params, dict) and "hello" in params:
+        # Send H2
+        h2 = {"ok": True, "hello": _hello_info()}
+        if not _write_json_to_pipe(pipe, h2):
+            return False
+
+        # Read next message (C command, R release, or EOF)
+        next_msg = _read_json_from_pipe(pipe)
+        if next_msg is None or next_msg.get("release"):
+            # Released or disconnected: return to poll loop silently
+            return False
+
+        cmd_to_run = next_msg
+    else:
+        # Legacy cts or direct command
+        cmd_to_run = first_msg
+
+    method = cmd_to_run.get("method", "")
+    params = cmd_to_run.get("params", {})
+
+    sys._codesys_daemon_loop["command_count"] = (
+        sys._codesys_daemon_loop.get("command_count", 0) + 1
+    )
+    sys._codesys_daemon_loop["last_command"] = method
+
+    # Log to UI
+    if dash is not None:
+        try:
+            dash.log_command(_dashboard_command_label(method, params))
+            dash.set_command_count(sys._codesys_daemon_loop["command_count"])
+        except Exception:
+            pass
+
+    # Execute command in main script context
+    response = handle_command(method, params)
+
+    # Attach instance info to response (computed after command execution)
+    if isinstance(response, dict):
+        response["instance"] = _instance_info()
+
+    if dash is not None:
+        _dashboard_log_response(dash, method, response)
+
+    # Write response back
+    ok = _write_json_to_pipe(pipe, response)
+    if not ok:
+        _log("Failed to write response for {0}".format(method))
+
+    return method == "stop"
+
+
 def run_loop():
     """Main polling loop. Runs inside CODESYS script context."""
     if clr is None:
@@ -353,8 +425,8 @@ def run_loop():
         _log("Could not adopt existing IDE online session: {0}".format(error))
 
     _log(
-        "cds-text-sync v{0} started  pipe={1}  pid={2}".format(
-            VERSION, PIPE_NAME, os.getpid()
+        "cds-text-sync v{0} started  pipe={1}  id=ide-{2}  protocol={3}".format(
+            VERSION, PIPE_NAME, os.getpid(), PROTOCOL
         )
     )
     _log("Waiting for CLI commands...  cds-text-sync --help")
@@ -392,12 +464,28 @@ def run_loop():
         except Exception:
             _dash = None
 
+    _last_instance = None
+    _last_instance_refresh = 0.0
+
     while sys._codesys_daemon_loop.get("running", False):
         pipe = None
         try:
             # Keep UI responsive
             if _dash is not None:
                 _ui.pump_events(_dash)
+
+            # Refresh target line at most once a second
+            now = time.time()
+            if _dash is not None and (now - _last_instance_refresh >= 1.0):
+                _last_instance_refresh = now
+                curr_inst = _instance_info()
+                if curr_inst != _last_instance:
+                    if hasattr(_dash, "set_instance"):
+                        try:
+                            _dash.set_instance(curr_inst)
+                        except Exception:
+                            pass
+                    _last_instance = curr_inst
 
             # Early exit if stop was requested via UI button
             if not sys._codesys_daemon_loop.get("running", False):
@@ -407,50 +495,15 @@ def run_loop():
             pipe = NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut)
             pipe.Connect(CONNECT_TIMEOUT_MS)
 
-            # Connected! Read the command
-            cmd = _read_json_from_pipe(pipe)
-            if cmd is None:
-                try:
-                    pipe.Close()
-                except Exception:
-                    pass
-                time.sleep(_get_poll_interval())
-                continue
-
-            method = cmd.get("method", "")
-            params = cmd.get("params", {})
-
-            sys._codesys_daemon_loop["command_count"] = (
-                sys._codesys_daemon_loop.get("command_count", 0) + 1
-            )
-            sys._codesys_daemon_loop["last_command"] = method
-
-            # Log to UI
-            if _dash is not None:
-                try:
-                    _dash.log_command(_dashboard_command_label(method, params))
-                    _dash.set_command_count(sys._codesys_daemon_loop["command_count"])
-                except Exception:
-                    pass
-
-            # Execute command in main script context
-            response = handle_command(method, params)
-
-            if _dash is not None:
-                _dashboard_log_response(_dash, method, response)
-
-            # Write response back
-            ok = _write_json_to_pipe(pipe, response)
-            if not ok:
-                _log("Failed to write response for {0}".format(method))
+            # Connected! Serve the connection
+            stop_requested = _serve_connection(pipe, _dash)
 
             try:
                 pipe.Close()
             except Exception:
                 pass
 
-            # If stop was requested, break out of the loop
-            if method == "stop":
+            if stop_requested:
                 break
 
         except Exception as e:

@@ -25,6 +25,7 @@ PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
 # Kept in step with cds_text_sync.__version__; the daemon no longer versions separately.
 VERSION = "3.2.0"
+PROTOCOL = 2
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
 CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)
@@ -60,6 +61,23 @@ MAX_MESSAGE_SIZE = 32 * 1024 * 1024
 def _read_json_from_pipe(pipe):
     """Read a length-prefixed JSON message from pipe (byte-mode)."""
     try:
+        if hasattr(pipe, "read_msg"):
+            return pipe.read_msg()
+        if hasattr(pipe, "read"):
+            import struct
+
+            raw_len = pipe.read(4)
+            if not raw_len or len(raw_len) < 4:
+                return None
+            msg_len = struct.unpack("<I", raw_len)[0]
+            if msg_len <= 0 or msg_len > MAX_MESSAGE_SIZE:
+                _log("Invalid message length: {0}".format(msg_len))
+                return None
+            body = pipe.read(msg_len)
+            if not body or len(body) < msg_len:
+                return None
+            return json.loads(body.decode("utf-8"))
+
         import System
 
         # Read 4-byte length header as one chunk
@@ -93,6 +111,18 @@ def _read_json_from_pipe(pipe):
 def _write_json_to_pipe(pipe, data):
     """Write a length-prefixed JSON message to pipe (byte-mode)."""
     try:
+        if hasattr(pipe, "write_msg"):
+            return pipe.write_msg(data)
+        if hasattr(pipe, "write"):
+            import struct
+
+            msg_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            pipe.write(struct.pack("<I", len(msg_bytes)))
+            pipe.write(msg_bytes)
+            if hasattr(pipe, "flush"):
+                pipe.flush()
+            return True
+
         import System
 
         msg_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -127,16 +157,101 @@ def _require_param(params, key, type_=str):
 
 
 def _get_active_project():
+    pid = os.getpid()
+    ide_id = "ide-{0}".format(pid)
+    no_proj_err = {
+        "ok": False,
+        "code": "no_project",
+        "error": (
+            "No project is open in this IDE ({0}). "
+            "Open one with: cts --target {0} project open --path <path>"
+        ).format(ide_id),
+    }
+    if not hasattr(sys, "_codesys_daemon_loop"):
+        return None, no_proj_err
     projects = sys._codesys_daemon_loop.get("projects")
     if projects is None:
-        return None, {"ok": False, "error": "projects not captured"}
+        return None, no_proj_err
     try:
-        project = projects.primary
+        project = getattr(projects, "primary", None)
         if project is None:
-            return None, {"ok": False, "error": "No active project"}
+            return None, no_proj_err
         return project, None
     except Exception as e:
         return None, {"ok": False, "error": "Project error: {0}".format(e)}
+
+
+def _project_sync_folder(prj):
+    """Extract configured cds-sync-folder property from a project object, or None."""
+    if prj is None:
+        return None
+    try:
+        proj_info = None
+        if hasattr(prj, "get_project_info"):
+            proj_info = prj.get_project_info()
+        elif hasattr(prj, "project_info"):
+            proj_info = prj.project_info
+        if proj_info is not None:
+            props = getattr(proj_info, "values", proj_info)
+            if hasattr(props, "__getitem__"):
+                sf = ""
+                if hasattr(props, "__contains__") and "cds-sync-folder" in props:
+                    sf = props["cds-sync-folder"]
+                elif hasattr(props, "get"):
+                    sf = props.get("cds-sync-folder", "")
+                if sf:
+                    return str(sf)
+    except Exception:
+        pass
+    return None
+
+
+def _instance_info():
+    """Return current instance descriptor: {"id": "ide-<pid>", "project": PROJECT | None}."""
+    pid = os.getpid()
+    instance_id = "ide-{0}".format(pid)
+    project_dict = None
+    try:
+        if hasattr(sys, "_codesys_daemon_loop"):
+            projects = sys._codesys_daemon_loop.get("projects")
+            if projects is not None:
+                prj = getattr(projects, "primary", None)
+                if prj is not None:
+                    path = _project_file_path(prj) or ""
+                    name = None
+                    if path:
+                        base = path.replace("\\", "/").split("/")[-1]
+                        name = os.path.splitext(base)[0]
+                    if not name:
+                        name = _obj_name(prj) or None
+                    sf = _project_sync_folder(prj)
+                    project_dict = {
+                        "name": name,
+                        "path": path,
+                        "sync_folder": sf,
+                    }
+    except Exception as e:
+        _log("Error retrieving instance info: {0}".format(e))
+        project_dict = None
+
+    return {
+        "id": instance_id,
+        "project": project_dict,
+    }
+
+
+def _hello_info():
+    """Return full HELLO descriptor for protocol v2 handshake."""
+    info = _instance_info()
+    config = _load_daemon_config()
+    return {
+        "protocol": PROTOCOL,
+        "id": info["id"],
+        "pid": os.getpid(),
+        "version": VERSION,
+        "poll_ms": int(config.get("poll_ms", 200)),
+        "project": info.get("project"),
+    }
 
 
 def _obj_name(obj):
@@ -361,26 +476,11 @@ def _get_status_info():
     try:
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is not None:
-            prj = projects.primary
+            prj = getattr(projects, "primary", None)
             if prj is not None:
-                proj_info = None
-                if hasattr(prj, "get_project_info"):
-                    proj_info = prj.get_project_info()
-                elif hasattr(prj, "project_info"):
-                    proj_info = prj.project_info
-                if proj_info is not None:
-                    props = getattr(proj_info, "values", proj_info)
-                    if hasattr(props, "__getitem__"):
-                        sf = ""
-                        if (
-                            hasattr(props, "__contains__")
-                            and "cds-sync-folder" in props
-                        ):
-                            sf = props["cds-sync-folder"]
-                        elif hasattr(props, "get"):
-                            sf = props.get("cds-sync-folder", "")
-                        if sf:
-                            result["sync_folder"] = str(sf)
+                sf = _project_sync_folder(prj)
+                if sf:
+                    result["sync_folder"] = str(sf)
                 # Project filename
                 project_file = _project_file_path(prj)
                 if project_file:
