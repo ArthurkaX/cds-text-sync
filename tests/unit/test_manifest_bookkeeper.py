@@ -35,3 +35,23 @@ def test_manifest_loader_reads_json(tmp_path):
     path.write_text(json.dumps({"entries": [{"guid": "1"}]}), encoding="utf-8")
 
     assert load(str(path)) == {"entries": [{"guid": "1"}]}
+
+
+def test_manifest_loader_reads_utf8_regardless_of_platform_encoding(tmp_path, monkeypatch):
+    """A Windows console defaults open() to cp1252, which cannot decode Cyrillic."""
+    import builtins
+
+    from cds_text_sync.engine import _manifest_bookkeeper
+
+    real_open = builtins.open
+
+    def cp1252_default_open(*args, **kwargs):
+        kwargs.setdefault("encoding", "cp1252")
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(_manifest_bookkeeper, "open", cp1252_default_open, raising=False)
+    path = tmp_path / "manifest.json"
+    manifest = {"entries": [{"xml_path": r"Визуализация\Экран.xml", "hash": "h"}]}
+    path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    assert load(str(path)) == manifest

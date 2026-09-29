@@ -5,9 +5,14 @@ import json
 
 
 def load(path):
-    """Load a manifest, returning ``None`` for a missing/invalid file."""
+    """Load a manifest, returning ``None`` for a missing/invalid file.
+
+    The writer stores UTF-8 with non-ASCII names kept as-is, so reading it
+    with the platform default (cp1252 on a Windows console) would fail on the
+    first Cyrillic name and make export forget the previous manifest.
+    """
     try:
-        with open(path, "r") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             return json.load(handle)
     except (IOError, OSError, ValueError):
         return None
