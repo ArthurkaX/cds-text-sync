@@ -28,6 +28,7 @@ def default_project_settings():
         "sync_mode": SYNC_MODE_XML_FIRST,
         "xml_in_view_kinds": ["visu"],
         "verbose_logging": False,
+        "advanced_debug": False,
         "show_completion_popup": True,
         "pre_import_backup_enabled": True,
         "backup_retention_count": 10,
@@ -141,6 +142,10 @@ def load_project_settings(project_root):
         data.get("verbose_logging"),
         settings["verbose_logging"],
     )
+    settings["advanced_debug"] = _safe_bool(
+        data.get("advanced_debug"),
+        settings["advanced_debug"],
+    )
     settings["show_completion_popup"] = _safe_bool(
         data.get("show_completion_popup"),
         settings["show_completion_popup"],
@@ -182,6 +187,10 @@ def save_project_settings(project_root, settings):
     current["verbose_logging"] = _safe_bool(
         data.get("verbose_logging"),
         current["verbose_logging"],
+    )
+    current["advanced_debug"] = _safe_bool(
+        data.get("advanced_debug"),
+        current["advanced_debug"],
     )
     current["show_completion_popup"] = _safe_bool(
         data.get("show_completion_popup"),

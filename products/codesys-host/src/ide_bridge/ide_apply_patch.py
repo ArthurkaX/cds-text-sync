@@ -857,7 +857,8 @@ def _apply_native_create(project, entry):
 
     # import_native silently no-ops on a payload it cannot place, so verify the
     # object actually appeared and fail loudly otherwise -- the message is
-    # surfaced via apply_patch -> log_error into sync_debug.log.
+    # surfaced via apply_patch -> log_error (into sync_debug.log too with the
+    # advanced debug option).
     created = _find_child_transparent(container, name)
     if created is None:
         clash = _find_named_object_anywhere(project, name)

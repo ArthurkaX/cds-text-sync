@@ -14,7 +14,7 @@ The tool organizes your repository into a clean structure:
 │   ├── compare_report.json  # Machine-readable compare report
 │   ├── build_<Application>.log # Build diagnostics for the selected/active app
 │   ├── build_report.json    # Machine-readable build diagnostics
-│   ├── sync_debug.log       # Verbose diagnostic log when file logging is enabled
+│   ├── sync_debug.log       # Verbose diagnostic log when file logging is enabled (+ IDE script messages with advanced debug)
 │   ├── xml/                 # Text-first mode only: tool-owned structural XML mirror
 │   └── manifest.json        # Exported object inventory and projection hashes
 ├── .backup/                 # Optional binary/safety backups

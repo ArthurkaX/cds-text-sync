@@ -78,13 +78,14 @@ def _ensure_gitignore_entries(project_root):
 def _compact_settings(settings):
     projections = settings.get("projections") or {}
     return (
-        "layout={0}, view_root={1}, profile={2}, sync_mode={3}, projections={4}, verbose_logging={5}, completion_popup={6}, pre_import_backup={7}, backup_retention={8}".format(
+        "layout={0}, view_root={1}, profile={2}, sync_mode={3}, projections={4}, verbose_logging={5}, advanced_debug={6}, completion_popup={7}, pre_import_backup={8}, backup_retention={9}".format(
             settings.get("layout"),
             settings.get("view_root") or "<default>",
             settings.get("profile"),
             settings.get("sync_mode"),
             len(projections),
             settings.get("verbose_logging"),
+            settings.get("advanced_debug"),
             settings.get("show_completion_popup"),
             settings.get("pre_import_backup_enabled"),
             settings.get("backup_retention_count"),
@@ -186,6 +187,7 @@ def main(params=None, runtime=None):
             "sync_mode",
             "xml_in_view_kinds",
             "verbose_logging",
+            "advanced_debug",
             "show_completion_popup",
             "ensure_gitignore",
             "pre_import_backup_enabled",
@@ -234,6 +236,9 @@ def main(params=None, runtime=None):
             changed = True
         if "verbose_logging" in params:
             settings["verbose_logging"] = params.get("verbose_logging")
+            changed = True
+        if "advanced_debug" in params:
+            settings["advanced_debug"] = params.get("advanced_debug")
             changed = True
         if "show_completion_popup" in params:
             settings["show_completion_popup"] = params.get("show_completion_popup")

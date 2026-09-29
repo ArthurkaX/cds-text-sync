@@ -357,7 +357,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
     def __init__(self, current_settings):
         self.Text = "cds-text-sync: Project Options"
-        self.Size = Size(580, 720)
+        self.Size = Size(580, 748)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -467,7 +467,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
     def _build_dialog_buttons(self):
         btn_ok = Button()
         btn_ok.Text = "Save"
-        btn_ok.Location = Point(344, 650)
+        btn_ok.Location = Point(344, 678)
         btn_ok.Size = Size(85, 28)
         btn_ok.Click += self._on_save
         self.Controls.Add(btn_ok)
@@ -475,7 +475,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
         btn_cancel = Button()
         btn_cancel.Text = "Cancel"
-        btn_cancel.Location = Point(436, 650)
+        btn_cancel.Location = Point(436, 678)
         btn_cancel.Size = Size(85, 28)
         btn_cancel.DialogResult = DialogResult.Cancel
         self.Controls.Add(btn_cancel)
@@ -630,16 +630,23 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.chk_verbose_logging.Checked = bool(current_settings.get("verbose_logging", False))
         self.Controls.Add(self.chk_verbose_logging)
 
+        self.chk_advanced_debug = CheckBox()
+        self.chk_advanced_debug.Text = "Advanced debug: also log IDE script messages"
+        self.chk_advanced_debug.Location = Point(150, 584)
+        self.chk_advanced_debug.Size = Size(330, 22)
+        self.chk_advanced_debug.Checked = bool(current_settings.get("advanced_debug", False))
+        self.Controls.Add(self.chk_advanced_debug)
+
         self.chk_completion_popup = CheckBox()
         self.chk_completion_popup.Text = "Show completion summary after import/export"
-        self.chk_completion_popup.Location = Point(150, 584)
+        self.chk_completion_popup.Location = Point(150, 612)
         self.chk_completion_popup.Size = Size(330, 22)
         self.chk_completion_popup.Checked = bool(current_settings.get("show_completion_popup", True))
         self.Controls.Add(self.chk_completion_popup)
 
         self.chk_gitignore = CheckBox()
         self.chk_gitignore.Text = "Add recommended .gitignore entries"
-        self.chk_gitignore.Location = Point(150, 612)
+        self.chk_gitignore.Location = Point(150, 640)
         self.chk_gitignore.Size = Size(310, 22)
         self.chk_gitignore.Checked = bool(current_settings.get("_ensure_gitignore", False))
         self.Controls.Add(self.chk_gitignore)
@@ -838,6 +845,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "sync_mode": sync_mode_value,
             "xml_in_view_kinds": self._selected_xml_in_view_kinds(),
             "verbose_logging": bool(self.chk_verbose_logging.Checked),
+            "advanced_debug": bool(self.chk_advanced_debug.Checked),
             "show_completion_popup": bool(self.chk_completion_popup.Checked),
             "pre_import_backup_enabled": bool(self.chk_pre_import_backup.Checked),
             "backup_retention_count": self._backup_retention_count(),

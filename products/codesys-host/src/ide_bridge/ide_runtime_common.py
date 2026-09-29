@@ -139,7 +139,10 @@ def _safe_project_settings(project_root):
 
 def project_logging_config(project_root, dump_root=None):
     settings = _safe_project_settings(project_root)
-    verbose_logging = bool(settings.get("verbose_logging", False))
+    # Advanced debug writes into the same sync_debug.log, so it implies it.
+    verbose_logging = bool(
+        settings.get("verbose_logging", False) or settings.get("advanced_debug", False)
+    )
     if dump_root is None and project_root:
         try:
             dump_root = dump_path(project_root)
@@ -179,6 +182,95 @@ def make_detailed_logger(log_path):
         _write_detailed_log(log_path, ["[{0}] {1}".format(_timestamp(), message)], "", "")
 
     return _log
+
+class _ScriptMessageTee(object):
+    """sys.stdout stand-in that also appends complete lines to a log file.
+
+    Everything the bridge reports during an action goes through print(), and
+    CODESYS shows it only in the Messages window, so a failure after the
+    engine step leaves nothing in sync_debug.log. The original stream always
+    gets the text first; a log write that fails is dropped, never raised.
+    """
+
+    def __init__(self, stream, log_path):
+        self._stream = stream
+        self._log_path = log_path
+        self._pending = ""
+
+    def write(self, text):
+        self._stream.write(text)
+        self._pending += text
+        if "\n" not in self._pending:
+            return
+        lines = self._pending.split("\n")
+        self._pending = lines.pop()
+        self._append(lines)
+
+    def flush(self):
+        flush = getattr(self._stream, "flush", None)
+        if flush is not None:
+            flush()
+
+    def close_pending(self):
+        if self._pending:
+            self._append([self._pending])
+            self._pending = ""
+
+    def _append(self, lines):
+        try:
+            _write_detailed_log(
+                self._log_path,
+                ["[{0}] [script] {1}".format(_timestamp(), line.rstrip("\r")) for line in lines],
+                "",
+                "",
+            )
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+class capture_script_messages(object):
+    """Copy script messages (print output) into log_path while active.
+
+    Also records the traceback of an exception that escapes the block, which
+    the callers otherwise reduce to a one-line message. A no-op without a
+    log_path, and when stdout is already being captured.
+    """
+
+    def __init__(self, log_path):
+        self._log_path = log_path
+        self._tee = None
+        self._previous = None
+
+    def __enter__(self):
+        if self._log_path and not isinstance(sys.stdout, _ScriptMessageTee):
+            self._previous = sys.stdout
+            self._tee = _ScriptMessageTee(sys.stdout, self._log_path)
+            sys.stdout = self._tee
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if self._tee is None:
+            return False
+        if sys.stdout is self._tee:
+            sys.stdout = self._previous
+        self._tee.close_pending()
+        if exc_type is not None:
+            import traceback
+            try:
+                text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+                _write_detailed_log(
+                    self._log_path,
+                    ["[{0}] [script] Unhandled exception:".format(_timestamp())],
+                    text,
+                    "",
+                )
+            except Exception:
+                pass
+        return False
+
 
 def _external_notice_lines(stdout_text, stderr_text):
     lines = []

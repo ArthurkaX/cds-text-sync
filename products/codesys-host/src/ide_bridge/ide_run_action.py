@@ -139,6 +139,20 @@ def _dirty_preflight(project_root, dump_root, views_path, selected_guids, warnin
     return _read_json_file(report_path)
 
 
+def _advanced_debug_log_path(project_root, dump_root, view_root, layout_mode):
+    """sync_debug.log path when the advanced debug option is on, else None."""
+    try:
+        if not load_project_settings(project_root).get("advanced_debug"):
+            return None
+        if dump_root is None:
+            dump_root = ide_runtime_common.layout(
+                project_root, view_root=view_root, layout_mode=layout_mode
+            ).dump_root
+        return os.path.join(dump_root, "sync_debug.log")
+    except Exception:
+        return None
+
+
 def run_action(
     action,
     system,
@@ -157,7 +171,42 @@ def run_action(
     1. Dump IDE.xml
     2. Invoke Python 3 engine_cli.py
     3. If action == 'import', apply IMPORT.xml
+
+    With the advanced debug option, everything the action prints is copied
+    into sync_debug.log as well as the Messages window.
     """
+    log_path = _advanced_debug_log_path(project_root, dump_root, view_root, layout_mode)
+    with ide_runtime_common.capture_script_messages(log_path):
+        return _run_action(
+            action,
+            system,
+            project,
+            project_root,
+            dump_root=dump_root,
+            view_root=view_root,
+            layout_mode=layout_mode,
+            selected_guids=selected_guids,
+            include_objects=include_objects,
+            overwrite_dirty=overwrite_dirty,
+            remove_orphans=remove_orphans,
+            confirm_overwrite_fn=confirm_overwrite_fn,
+        )
+
+
+def _run_action(
+    action,
+    system,
+    project,
+    project_root,
+    dump_root=None,
+    view_root=None,
+    layout_mode=None,
+    selected_guids=None,
+    include_objects=False,
+    overwrite_dirty=None,
+    remove_orphans=None,
+    confirm_overwrite_fn=None,
+):
     if action == "import" and ide_online_helpers.is_online_session_active():
         _show_warning(
             system,
