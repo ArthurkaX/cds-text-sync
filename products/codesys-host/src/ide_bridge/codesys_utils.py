@@ -316,7 +316,16 @@ def load_base_dir(runtime=None):
         return None, str(error)
 
     if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
+        # A path saved on another machine, e.g. under someone else's
+        # C:\Users\<name>, cannot be created here; say which one it is
+        # instead of dumping a makedirs traceback.
+        try:
+            os.makedirs(base_dir)
+        except Exception as error:
+            return None, (
+                "Sync folder {0} does not exist and cannot be created: {1}. "
+                "Run Project_directory.py to choose another folder."
+            ).format(base_dir, error)
     return base_dir, None
 
 

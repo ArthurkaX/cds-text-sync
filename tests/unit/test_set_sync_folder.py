@@ -472,3 +472,25 @@ def test_headless_setup_never_opens_the_options_dialog(monkeypatch, tmp_path):
 
     assert result["status"] == "ok"
     assert "options" not in result
+
+
+def test_uncreatable_folder_is_reported_with_its_path(monkeypatch, tmp_path):
+    """A folder saved on another machine must not crash with a traceback."""
+    import codesys_utils
+
+    project = _Project(str(tmp_path / "Demo.project"))
+    missing = str(tmp_path / "Users" / "someone-else" / "Demo-cts")
+    project.info.values["cds-sync-folder"] = missing
+    monkeypatch.setattr(codesys_utils, "resolve_projects", lambda *a, **k: _Projects(project))
+
+    def denied(path, *args, **kwargs):
+        raise OSError(13, "Access is denied", path)
+
+    monkeypatch.setattr(codesys_utils.os, "makedirs", denied)
+
+    base_dir, error = codesys_utils.load_base_dir(_menu_runtime([], headless=False))
+
+    assert base_dir is None
+    assert missing in error
+    assert "Access is denied" in error
+    assert "Project_directory" in error
