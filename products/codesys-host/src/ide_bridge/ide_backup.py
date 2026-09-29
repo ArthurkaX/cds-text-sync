@@ -9,7 +9,6 @@ import re
 import shutil
 import sys
 import time
-import xml.etree.ElementTree as ET
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 _ENGINE_DIR = os.path.normpath(
@@ -30,6 +29,7 @@ if os.path.isdir(_ENGINE_DIR) and _ENGINE_DIR not in sys.path:
     sys.path.insert(0, _ENGINE_DIR)
 
 from _project_settings import load_project_settings
+from ide_xml import parse_xml_file
 
 
 BACKUP_PATTERN = re.compile(r"^\d{8}_\d{6}_.*\.bak$")
@@ -56,7 +56,7 @@ def _unique_path(path):
 
 def patch_has_ide_changes(patch_path):
     try:
-        root = ET.parse(patch_path).getroot()
+        root = parse_xml_file(patch_path).getroot()
     except Exception:
         return False
 

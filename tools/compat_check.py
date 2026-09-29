@@ -37,6 +37,7 @@ DEFAULT_FILES = [
     "products/codesys-host/src/ide_bridge/ide_st_objects.py",
     "products/codesys-host/src/ide_bridge/ide_st_text.py",
     "products/codesys-host/src/ide_bridge/ide_handlers_sync.py",
+    "products/codesys-host/src/ide_bridge/ide_xml.py",
     "products/codesys-host/src/ide_bridge/codesys_runtime.py",
     "products/codesys-host/src/ide_bridge/codesys_utils.py",
     "products/codesys-host/src/ide_bridge/codesys_fmt_operation.py",

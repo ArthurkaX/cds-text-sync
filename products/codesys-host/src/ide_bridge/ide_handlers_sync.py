@@ -33,6 +33,7 @@ from ide_daemon_helpers import (
 )
 
 from ide_st_text import split_st_text
+from ide_xml import parse_xml_file
 
 
 def _write_import_attestation(sync_folder, project, saved=False):
@@ -349,9 +350,7 @@ def _cmd_sync_compare(params):
                 _log("Could not inspect project child during sync compare: {0}".format(error))
 
         # 2. Parse the XML and see what's different (basic check - just names)
-        import xml.etree.ElementTree as ET
-
-        tree = ET.parse(against)
+        tree = parse_xml_file(against)
         root = tree.getroot()
 
         xml_names = set()
@@ -585,7 +584,7 @@ def _cmd_sync_import_text(params):
             }
 
     try:
-        tree = ET.parse(patch_path)
+        tree = parse_xml_file(patch_path)
         root = tree.getroot()
 
         # Find and process CreateTextObjects
