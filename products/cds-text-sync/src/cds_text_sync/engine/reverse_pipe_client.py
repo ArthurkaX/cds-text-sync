@@ -212,10 +212,33 @@ def _current_user_sid() -> str:
         CloseHandle(token)
 
 
+def _user_dacl_enabled() -> bool:
+    return os.environ.get("CTS_PIPE_USER_DACL", "") in ("1", "true", "yes")
+
+
+def ssh_dacl_hint() -> str:
+    """Hint for an SSH session whose pipe the desktop IDE cannot open, or ''."""
+    if not os.environ.get("SSH_CONNECTION") or _user_dacl_enabled():
+        return ""
+    return (
+        "cts runs over SSH without CTS_PIPE_USER_DACL=1, so the desktop IDE "
+        "cannot open this pipe. Run `setx CTS_PIPE_USER_DACL 1` once on "
+        "this machine and reconnect."
+    )
+
+
+def _with_ssh_hint(err: TargetError, hellos: dict) -> TargetError:
+    """Append ssh_dacl_hint() to err when no IDE answered at all."""
+    hint = "" if hellos else ssh_dacl_hint()
+    if not hint:
+        return err
+    return TargetError(err.code, f"{err} {hint}", instances=err.instances)
+
+
 def _pipe_security_attributes():
     """SECURITY_ATTRIBUTES for CreateNamedPipeW, or None for default security."""
     global _pipe_security
-    if os.environ.get("CTS_PIPE_USER_DACL", "") not in ("1", "true", "yes"):
+    if not _user_dacl_enabled():
         return None
     if _pipe_security is None:
         sddl = "D:(A;;GA;;;{0})(A;;GA;;;SY)".format(_current_user_sid())
@@ -903,7 +926,7 @@ class ReversePipeClient:
                     for h_conn in list(held_conns.values()):
                         _send_release_and_close(h_conn)
                     held_conns.clear()
-                    raise decision.error
+                    raise _with_ssh_hint(decision.error, hellos)
 
             listener.close()
             for h_conn in list(held_conns.values()):
@@ -913,9 +936,9 @@ class ReversePipeClient:
             if target_pid is not None:
                 final_dec = decide(hellos, legacy_pids, target_pid, codesys_pids, window_over=True)
                 if final_dec.kind == "error":
-                    raise final_dec.error
+                    raise _with_ssh_hint(final_dec.error, hellos)
 
-            hint = self._diagnose_ide_timeout(target_pid=target_pid)
+            hint = ssh_dacl_hint() or self._diagnose_ide_timeout(target_pid=target_pid)
             raise RuntimeError(
                 f"Timeout ({self._timeout}s) waiting for IDE to connect to "
                 f"{self._pipe_path}. The daemon never picked up this "

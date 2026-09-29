@@ -27,6 +27,7 @@ from cds_text_sync.engine.pipe_targets import (
 from cds_text_sync.engine.reverse_pipe_client import (
     configure,
     discover,
+    ssh_dacl_hint,
 )
 
 try:
@@ -148,6 +149,11 @@ def _format_target_help_header(hello: Hello) -> str:
     return header
 
 
+def _ssh_hint_suffix(discovered) -> str:
+    hint = "" if discovered else ssh_dacl_hint()
+    return f"\n{hint}" if hint else ""
+
+
 def _print_help_header(target: str | int | None = None) -> None:
     discovered = discover(1.0)
     target_pid = None
@@ -169,14 +175,14 @@ def _print_help_header(target: str | int | None = None) -> None:
         if matching:
             print(_format_target_help_header(matching[0]) + "\n")
         else:
-            print(f"Note: target ide-{target_pid} not found among running IDEs.\n")
+            print(f"Note: target ide-{target_pid} not found among running IDEs.{_ssh_hint_suffix(discovered)}\n")
     else:
         if len(discovered) == 1:
             print(_format_target_help_header(discovered[0]) + "\n")
         elif len(discovered) > 1:
             print(format_ambiguous(discovered) + "\n")
         else:
-            print("Note: no IDE answered; help printed anyway.\n")
+            print(f"Note: no IDE answered; help printed anyway.{_ssh_hint_suffix(discovered)}\n")
 
 
 # -- Entry point -------------------------------------------------------------

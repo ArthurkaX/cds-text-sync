@@ -5,6 +5,7 @@ test_pipe_targets.py — Unit tests for target selection and hello handshake par
 
 import pytest
 
+from cds_text_sync.engine.reverse_pipe_client import ssh_dacl_hint
 from cds_text_sync.engine.pipe_targets import (
     LEGACY,
     Hello,
@@ -173,3 +174,19 @@ class TestFormatAmbiguous:
         assert "ide-5678                     # daemon not answering" in msg
         assert "ide-9999                     # old daemon, no id" in msg
 
+
+
+@pytest.mark.parametrize(
+    "ssh, dacl, expected",
+    [(None, None, False), ("1.2.3.4 5 6.7.8.9 22", None, True), ("1.2.3.4 5 6.7.8.9 22", "1", False)],
+)
+def test_ssh_dacl_hint(monkeypatch, ssh, dacl, expected):
+    for name, value in (("SSH_CONNECTION", ssh), ("CTS_PIPE_USER_DACL", dacl)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    hint = ssh_dacl_hint()
+    assert bool(hint) is expected
+    if expected:
+        assert "setx CTS_PIPE_USER_DACL 1" in hint
