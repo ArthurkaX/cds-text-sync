@@ -4,18 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
-
-- `cts build` now works on a library project. A `.library` has no application, so `build` used to stop with "No active application found to build". It now runs the library check (`check_all_pool_objects`) and reports errors and warnings in the usual build format. `cts build --install` does what the IDE button "Save project and install into library repository" does: after a clean check it saves the project, writes the compiled library and installs it, replacing an installed copy of the same version. Nothing is installed if the check reports errors.
-- Two `cts` processes started at the same moment against two IDEs no longer fail at random with "IDE instance ide-X not found". Both used to connect to different instances of the shared pipe server, so each daemon saw only one of the two IDEs; about one call in five failed. The discovery and target-selection phase is now serialized across processes by a per-user mutex. The mutex is released before the command itself is sent, so a long export on one IDE never delays calls to the other.
-- Setting a project's sync folder is now one dialog with the answer already in it: a folder named after the project (`<project>-cts`) beside the `.project` file, stored as a relative path so a clone on another machine needs no reconfiguration. It replaces the two-step "browse or type" flow — the suggestion has to live in a text field, because a folder browser silently ignores a preselected folder that does not exist yet. Browsing to a folder inside the project is stored relative too; a path typed by hand is kept exactly as typed.
-- Commands no longer dead-end on an unconfigured project. Any of them that needs a sync folder and finds none offers the setup dialog and then carries on with the answer, so the alphabetical script menu can be entered anywhere rather than only at `Project_directory`. Lookups that must not interrupt — the daemon, and diff files written mid-compare — stay silent as before.
-- The first time a folder is configured, `Project_directory.py` continues into the options dialog. That is the only moment when the sync mode is still free: the manifest fixes it on first export. Cancelling there keeps the folder and the defaults.
-- New project option **Advanced debug: also log IDE script messages**. With it on, everything an IDE action (import, export, compare) prints to the CODESYS Messages window is copied into `.dump/sync_debug.log` as `[script]` lines, together with the traceback of any unhandled exception. A failure after the engine step, such as a failed pre-import backup or patch apply, used to leave the log ending at "Applying changes from …" with the cause only in the Messages window. The option implies "Save detailed engine logs in .dump".
-- Export no longer warns "Could not read existing manifest" on a Windows machine whose default encoding is cp1252 when object names contain Cyrillic or other non-ASCII text. The manifest is written as UTF-8, but one reader opened it with the platform default, failed to decode it, and export then carried on as if there were no previous manifest.
-- The release archive no longer carries the documentation's demo GIFs. `git archive` builds the release asset, so `img/` was shipping 8.3 MB into every user's program folder — 64% of a 12.8 MB install that nothing at runtime reads. An install is now 4.6 MB unpacked (1.4 MB downloaded). The GIFs stay in the repository, so the docs render unchanged on GitHub; a copy of `readMe.md` or `docs/onboarding.md` opened locally from the install folder shows broken image placeholders instead.
-
-### Version 3.3.0 (2026-09-27)
+### Version 3.3.0 (unreleased)
 
 **Multi-instance IDE support & Protocol v2:**
 
@@ -26,6 +15,21 @@ All notable changes to this project will be documented in this file.
 - **Help discovery header:** `cts --help` now probes for live daemon instances and displays target status and project info right in the help banner.
 - **Daemon UI target line & Copy button:** The daemon window displays a docked target panel (`IDE: ide-<pid> · <project>`) with a `Copy` button that generates `!cts --target ide-<pid> [--expect-project <name>] --help` for immediate pasting into agent sessions.
 - **SSH & remote execution (`tools/cts-win`):** Includes a `cts-win` wrapper script for calling `cts` inside a Windows VM over SSH, along with a Daemon Settings option to copy commands formatted for `cts-win`.
+- **Concurrent calls:** two `cts` processes started at the same moment against two IDEs are safe. The discovery and target-selection phase is serialized across processes by a per-user mutex, which is released before the command itself is sent, so a long export on one IDE never delays calls to the other.
+
+**Library projects:**
+
+- **`cts build` on a `.library`:** a library has no application, so `build` used to stop with "No active application found to build". It now runs the library check (`check_all_pool_objects`) and reports errors and warnings in the usual build format.
+- **`cts build --install`:** does what the IDE button "Save project and install into library repository" does. After a clean check it saves the project, writes the compiled library and installs it into the System repository, replacing an installed copy of the same version. Nothing is installed if the check reports errors, and the CLI prints the reason when the installation itself fails.
+
+**Other changes:**
+
+- Setting a project's sync folder is now one dialog with the answer already in it: a folder named after the project (`<project>-cts`) beside the `.project` file, stored as a relative path so a clone on another machine needs no reconfiguration. It replaces the two-step "browse or type" flow — the suggestion has to live in a text field, because a folder browser silently ignores a preselected folder that does not exist yet. Browsing to a folder inside the project is stored relative too; a path typed by hand is kept exactly as typed.
+- Commands no longer dead-end on an unconfigured project. Any of them that needs a sync folder and finds none offers the setup dialog and then carries on with the answer, so the alphabetical script menu can be entered anywhere rather than only at `Project_directory`. Lookups that must not interrupt — the daemon, and diff files written mid-compare — stay silent as before.
+- The first time a folder is configured, `Project_directory.py` continues into the options dialog. That is the only moment when the sync mode is still free: the manifest fixes it on first export. Cancelling there keeps the folder and the defaults.
+- New project option **Advanced debug: also log IDE script messages**. With it on, everything an IDE action (import, export, compare) prints to the CODESYS Messages window is copied into `.dump/sync_debug.log` as `[script]` lines, together with the traceback of any unhandled exception. A failure after the engine step, such as a failed pre-import backup or patch apply, used to leave the log ending at "Applying changes from …" with the cause only in the Messages window. The option implies "Save detailed engine logs in .dump".
+- Export no longer warns "Could not read existing manifest" on a Windows machine whose default encoding is cp1252 when object names contain Cyrillic or other non-ASCII text. The manifest is written as UTF-8, but one reader opened it with the platform default, failed to decode it, and export then carried on as if there were no previous manifest.
+- The release archive no longer carries the documentation's demo GIFs. `git archive` builds the release asset, so `img/` was shipping 8.3 MB into every user's program folder — 64% of a 12.8 MB install that nothing at runtime reads. An install is now 4.6 MB unpacked (1.4 MB downloaded). The GIFs stay in the repository, so the docs render unchanged on GitHub; a copy of `readMe.md` or `docs/onboarding.md` opened locally from the install folder shows broken image placeholders instead.
 
 ---
 
