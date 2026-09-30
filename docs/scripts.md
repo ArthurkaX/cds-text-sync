@@ -251,5 +251,9 @@ safety rules unless a safe textual representation is available.
   (`snapshooter-map`). The CLI equivalents for capturing and applying live
   values are `cts variable-snapshot` and `cts variable-restore`.
 - **`Project_daemon.py`**: Starts the reverse-pipe daemon so the `cts` CLI can
-  drive the open IDE. See [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
+  drive the open IDE. Its window shows `IDE: ide-<pid> · <project>` with a **Copy**
+  button that puts `!cts --target ide-<pid> --expect-project <project> --help` on the
+  clipboard, so you can hand an agent the exact connection to this project in one
+  paste (see [Several IDEs at once](../readMe.md#several-ides-at-once-point-the-agent-at-one-project)).
+  See [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
 - Offline static call graph via `cts engine call-tree`. See `--help` for options.

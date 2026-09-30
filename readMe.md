@@ -189,6 +189,33 @@ cts verify                 # every applicable check, one verdict, one exit code
    width="100%"></p>
 </details>
 
+### Several IDEs at once: point the agent at one project
+
+Each running CODESYS IDE has its own daemon window. The top of that window
+shows a target line, `IDE: ide-<pid> · <project>`, with a **Copy** button.
+Copy puts a ready-made line on the clipboard:
+
+```
+!cts --target ide-6128 --expect-project example_lib --help
+```
+
+Paste it into the agent's chat and the agent learns in one step which IDE and
+which project it should work with. Every later command carries the same
+`--target` and `--expect-project`, so it cannot land in the wrong IDE, and it
+refuses to write if someone has switched the IDE to another project. The
+`--help` at the end prints the command list together with the state of that
+instance. This is what lets two agents work on two projects in parallel, for
+example an application and the library it uses. With more than one IDE open,
+`cts` without `--target` refuses and prints the available targets.
+
+If the agent runs outside the machine with CODESYS, for example over SSH into a
+Windows VM, tick **Copy command for SSH (cts-win)** in the daemon settings. The
+copied line then starts with `cts-win` (see [`tools/cts-win`](tools/cts-win)).
+
+A library project has no application to compile. `cts build` checks it, and
+`cts build --install` does what the IDE button "Save project and install into
+library repository" does, so an agent can develop a library end to end.
+
 The CLI also exposes project-tree operations, PLC interaction, tests and
 diagnostics. Read the [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md).
 
