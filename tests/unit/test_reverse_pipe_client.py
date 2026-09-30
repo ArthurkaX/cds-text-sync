@@ -43,7 +43,9 @@ def _decode_msg(raw: bytes) -> tuple[dict, bytes]:
 class TestReversePipeIntegration:
     """Integration tests on real Windows named pipes."""
 
-    def test_transport_round_trip(self):
+    def test_transport_round_trip(self, monkeypatch):
+        # A real CODESYS on this machine must not count as a second instance.
+        monkeypatch.setattr(rpc, "_list_codesys_pids", lambda: set())
         unique_user = f"test_user_{os.getpid()}_{int(time.monotonic() * 1000)}"
         pipe_path = rpc.reverse_pipe_name(unique_user)
         rpc.configure(target=None, expect_project=None)
@@ -107,8 +109,10 @@ class TestReversePipeIntegration:
         assert resp["ok"] is True
         assert resp["data"]["pong"] is True
 
-    def test_response_larger_than_read_buffer(self):
+    def test_response_larger_than_read_buffer(self, monkeypatch):
         """Test large payload (> 64KB read buffer)."""
+        # A real CODESYS on this machine must not count as a second instance.
+        monkeypatch.setattr(rpc, "_list_codesys_pids", lambda: set())
         unique_user = f"test_large_{os.getpid()}_{int(time.monotonic() * 1000)}"
         pipe_path = rpc.reverse_pipe_name(unique_user)
         rpc.configure(target=None, expect_project=None)
@@ -262,3 +266,335 @@ class TestReversePipeOverlappedUnit:
             rpc._read_msg(1234, deadline=time.monotonic() + 5, cmd_name="long_job")
         assert "'long_job'" in str(exc_info.value)
         assert "Giving up here does NOT cancel the command" in str(exc_info.value)
+
+
+class TestSessionLock:
+    """Tests for cross-process _SessionLock and targeted client routing."""
+
+    def test_session_lock_threads_same_process(self):
+        """(a) Two _SessionLock instances on the same pipe path in one process.
+
+        Second acquire(0.2) returns False while first holds, True after release.
+        (Win32 mutex is re-entrant within the SAME thread, so the second lock is tested from another thread).
+        """
+        unique_user = f"test_sl_threads_{os.getpid()}_{int(time.monotonic() * 1000)}"
+        pipe_path = rpc.reverse_pipe_name(unique_user)
+
+        lock1 = rpc._SessionLock(pipe_path)
+        lock2 = rpc._SessionLock(pipe_path)
+
+        try:
+            assert lock1.acquire(1.0) is True
+            assert lock1.held is True
+
+            res_while_held = []
+            t1 = threading.Thread(target=lambda: res_while_held.append(lock2.acquire(0.2)))
+            t1.start()
+            t1.join()
+            assert res_while_held == [False]
+            assert lock2.held is False
+
+            lock1.release()
+            assert lock1.held is False
+
+            res_after_rel = []
+            t2 = threading.Thread(target=lambda: res_after_rel.append(lock2.acquire(0.2)))
+            t2.start()
+            t2.join()
+            assert res_after_rel == [True]
+            assert lock2.held is True
+        finally:
+            lock1.close()
+            lock2.close()
+
+    def test_session_lock_mutual_exclusion_subprocesses(self):
+        """(b) Mutual exclusion across two real processes (subprocess) holding the lock."""
+        import subprocess
+
+        unique_user = f"test_sl_proc_{os.getpid()}_{int(time.monotonic() * 1000)}"
+        pipe_path = rpc.reverse_pipe_name(unique_user)
+
+        lock = rpc._SessionLock(pipe_path)
+        try:
+            assert lock.acquire(1.0) is True
+
+            code = (
+                "import sys; "
+                "from cds_text_sync.engine import reverse_pipe_client as rpc; "
+                f"l = rpc._SessionLock({repr(pipe_path)}); "
+                "sys.exit(0 if l.acquire(0.2) else 1)"
+            )
+            p1 = subprocess.run([sys.executable, "-c", code])
+            assert p1.returncode == 1, "Child process should fail to acquire held lock"
+
+            lock.release()
+
+            p2 = subprocess.run([sys.executable, "-c", code])
+            assert p2.returncode == 0, "Child process should acquire lock after release"
+        finally:
+            lock.close()
+
+    def test_session_lock_wait_abandoned(self):
+        """(c) WAIT_ABANDONED: a child process acquires and exits without release -> parent acquire succeeds."""
+        import subprocess
+
+        unique_user = f"test_sl_aband_{os.getpid()}_{int(time.monotonic() * 1000)}"
+        pipe_path = rpc.reverse_pipe_name(unique_user)
+
+        code = (
+            "import sys; "
+            "from cds_text_sync.engine import reverse_pipe_client as rpc; "
+            f"l = rpc._SessionLock({repr(pipe_path)}); "
+            "assert l.acquire(1.0); "
+            "sys.exit(42)"
+        )
+        p = subprocess.run([sys.executable, "-c", code])
+        assert p.returncode == 42
+
+        parent_lock = rpc._SessionLock(pipe_path)
+        try:
+            acq = parent_lock.acquire(1.0)
+            assert acq is True
+            assert parent_lock.held is True
+        finally:
+            parent_lock.close()
+
+    def test_lock_released_before_command_written(self):
+        """(d) Lock released before command is written in send_command.
+
+        Peer fake daemon checks after hello that another _SessionLock on the same
+        name can be acquired while the command is still pending.
+        """
+        unique_user = f"test_sl_rel_cmd_{os.getpid()}_{int(time.monotonic() * 1000)}"
+        pipe_path = rpc.reverse_pipe_name(unique_user)
+        rpc.configure(target=None, expect_project=None)
+        client = rpc.ReversePipeClient(user=unique_user, timeout=5)
+
+        peer_acquired_lock = []
+        peer_error = []
+
+        def peer():
+            try:
+                time.sleep(0.05)
+                with open(pipe_path, "r+b", buffering=0) as f:
+                    # 1. Read H1
+                    raw_len = f.read(4)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    f.read(msg_len)
+
+                    # 2. Reply H2
+                    h2 = {
+                        "ok": True,
+                        "hello": {
+                            "protocol": 2,
+                            "id": "ide-5555",
+                            "pid": 5555,
+                            "version": "3.2.0",
+                            "poll_ms": 200,
+                            "project": None,
+                        },
+                    }
+                    f.write(_encode_msg(h2))
+                    f.flush()
+
+                    # Peer tests acquiring another _SessionLock on the same pipe
+                    # (must succeed because target is chosen and client released lock before command)
+                    time.sleep(0.05)
+                    other_lock = rpc._SessionLock(pipe_path)
+                    try:
+                        acq = other_lock.acquire(0.5)
+                        peer_acquired_lock.append(acq)
+                    finally:
+                        other_lock.close()
+
+                    # 3. Read Command C
+                    raw_len = f.read(4)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    f.read(msg_len)
+
+                    # 4. Reply A
+                    resp_obj = {"ok": True, "data": {"pong": True}}
+                    f.write(_encode_msg(resp_obj))
+                    f.flush()
+            except Exception as e:
+                peer_error.append(e)
+
+        t = threading.Thread(target=peer)
+        t.start()
+
+        # Target ide-5555 explicitly so client selects it without ambiguity check
+        rpc.configure(target="ide-5555", expect_project=None)
+        resp = client.send_command("ping")
+        t.join(timeout=3)
+
+        assert not peer_error, f"Peer error: {peer_error[0]}"
+        assert peer_acquired_lock == [True], "Lock was not released before command was written"
+        assert resp["ok"] is True
+
+    def test_session_lock_noop_when_create_mutex_fails(self, monkeypatch):
+        """(e) No-op / no crash when CreateMutexW returns NULL (monkeypatch to return 0).
+
+        send_command still works unlocked.
+        """
+        unique_user = f"test_sl_nomutex_{os.getpid()}_{int(time.monotonic() * 1000)}"
+        pipe_path = rpc.reverse_pipe_name(unique_user)
+        client = rpc.ReversePipeClient(user=unique_user, timeout=5)
+
+        # Monkeypatch CreateMutexW to return 0 (NULL)
+        monkeypatch.setattr(rpc, "CreateMutexW", lambda sec, initial, name: 0)
+
+        # Test _SessionLock directly
+        lock = rpc._SessionLock(pipe_path)
+        assert lock._handle is None
+        assert lock.acquire(0.1) is False
+        lock.release()
+        lock.close()
+
+        # Test send_command with fake daemon
+        peer_error = []
+
+        def peer():
+            try:
+                time.sleep(0.05)
+                with open(pipe_path, "r+b", buffering=0) as f:
+                    # 1. H1
+                    raw_len = f.read(4)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    f.read(msg_len)
+
+                    # 2. H2
+                    h2 = {
+                        "ok": True,
+                        "hello": {
+                            "protocol": 2,
+                            "id": "ide-4444",
+                            "pid": 4444,
+                            "version": "3.2.0",
+                            "poll_ms": 200,
+                            "project": None,
+                        },
+                    }
+                    f.write(_encode_msg(h2))
+                    f.flush()
+
+                    # 3. C
+                    raw_len = f.read(4)
+                    (msg_len,) = struct.unpack("<I", raw_len)
+                    f.read(msg_len)
+
+                    # 4. A
+                    resp_obj = {"ok": True, "data": {"pong": True}}
+                    f.write(_encode_msg(resp_obj))
+                    f.flush()
+            except Exception as e:
+                peer_error.append(e)
+
+        t = threading.Thread(target=peer)
+        t.start()
+
+        rpc.configure(target="ide-4444", expect_project=None)
+        resp = client.send_command("ping")
+        t.join(timeout=3)
+
+        assert not peer_error, f"Peer error: {peer_error[0]}"
+        assert resp["ok"] is True
+
+    def test_two_concurrent_targeted_clients_and_daemons_20_iterations(self):
+        """(f) Two concurrent send_command clients and two fake daemons.
+
+        Repeated 20 times: with --target-style _resolved_pid each client must
+        reach ITS daemon without a miss.
+        """
+        for iteration in range(20):
+            unique_user = f"test_sl_20iter_{os.getpid()}_{iteration}_{int(time.monotonic() * 1000)}"
+            pipe_path = rpc.reverse_pipe_name(unique_user)
+
+            stop_daemons = threading.Event()
+            daemon_errors = []
+
+            def fake_daemon(daemon_pid: int):
+                while not stop_daemons.is_set():
+                    try:
+                        with open(pipe_path, "r+b", buffering=0) as f:
+                            # 1. Read H1
+                            raw_len = f.read(4)
+                            if not raw_len:
+                                continue
+                            (msg_len,) = struct.unpack("<I", raw_len)
+                            f.read(msg_len)
+
+                            # 2. Reply H2
+                            h2 = {
+                                "ok": True,
+                                "hello": {
+                                    "protocol": 2,
+                                    "id": f"ide-{daemon_pid}",
+                                    "pid": daemon_pid,
+                                    "version": "3.2.0",
+                                    "poll_ms": 50,
+                                    "project": {"name": f"PRJ_{daemon_pid}"},
+                                },
+                            }
+                            f.write(_encode_msg(h2))
+                            f.flush()
+
+                            # 3. Read Command C or Release
+                            raw_len = f.read(4)
+                            if not raw_len:
+                                continue
+                            (msg_len,) = struct.unpack("<I", raw_len)
+                            msg = json.loads(f.read(msg_len).decode("utf-8"))
+
+                            if msg.get("release"):
+                                continue
+
+                            # 4. Reply Answer
+                            resp = {
+                                "ok": True,
+                                "data": {"answered_by": daemon_pid},
+                                "instance": {"id": f"ide-{daemon_pid}"},
+                            }
+                            f.write(_encode_msg(resp))
+                            f.flush()
+                    except Exception:
+                        time.sleep(0.01)
+
+            t_d1 = threading.Thread(target=fake_daemon, args=(1111,))
+            t_d2 = threading.Thread(target=fake_daemon, args=(2222,))
+            t_d1.daemon = True
+            t_d2.daemon = True
+            t_d1.start()
+            t_d2.start()
+
+            results = {}
+            client_errors = []
+
+            def run_client(target_pid: int):
+                try:
+                    c = rpc.ReversePipeClient(user=unique_user, timeout=5)
+                    # Use _resolved_pid to target specifically without hitting global config race between threads
+                    old_res = rpc._resolved_pid
+                    rpc._resolved_pid = target_pid
+                    try:
+                        resp = c.send_command("ping")
+                        results[target_pid] = resp
+                    finally:
+                        rpc._resolved_pid = old_res
+                except Exception as e:
+                    client_errors.append((target_pid, e))
+
+            # Run both clients simultaneously
+            c1 = threading.Thread(target=run_client, args=(1111,))
+            c2 = threading.Thread(target=run_client, args=(2222,))
+            c1.start()
+            c2.start()
+            c1.join(timeout=5)
+            c2.join(timeout=5)
+
+            stop_daemons.set()
+
+            assert not client_errors, f"Iteration {iteration}: Client errors: {client_errors}"
+            assert 1111 in results and 2222 in results
+            assert results[1111]["data"]["answered_by"] == 1111
+            assert results[2222]["data"]["answered_by"] == 2222
+

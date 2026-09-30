@@ -18,6 +18,7 @@ import contextlib
 import ctypes
 import json
 import os
+import random
 import struct
 import sys
 import time
@@ -46,6 +47,7 @@ INVALID_HANDLE_VALUE = -1
 
 WAIT_OBJECT_0 = 0x00000000
 WAIT_TIMEOUT = 0x00000102
+WAIT_ABANDONED = 0x00000080
 
 ERROR_PIPE_CONNECTED = 535
 ERROR_FILE_NOT_FOUND = 2
@@ -156,6 +158,14 @@ if sys.platform == "win32" and hasattr(ctypes, "windll"):
     ]
     GetOverlappedResult.restype = wintypes.BOOL
 
+    CreateMutexW = kernel32.CreateMutexW
+    CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    CreateMutexW.restype = wintypes.HANDLE
+
+    ReleaseMutex = kernel32.ReleaseMutex
+    ReleaseMutex.argtypes = [wintypes.HANDLE]
+    ReleaseMutex.restype = wintypes.BOOL
+
     CancelIo = kernel32.CancelIo
     CancelIo.argtypes = [wintypes.HANDLE]
     CancelIo.restype = wintypes.BOOL
@@ -174,6 +184,8 @@ else:
     FlushFileBuffers = None
     GetLastError = None
     CreateEventW = None
+    CreateMutexW = None
+    ReleaseMutex = None
     WaitForSingleObject = None
     GetOverlappedResult = None
     CancelIo = None
@@ -599,6 +611,66 @@ class _PipeListener:
             self.event = None
 
 
+# Longest a targeted call keeps the session lock while it waits for a daemon
+# that is not answering (usually busy with a long command). Past that it lets
+# go and queues again, so a call aimed at a busy IDE never starves calls
+# aimed at the other one.
+_SESSION_LOCK_SLICE_S = 1.0
+_SESSION_LOCK_WAIT_S = 10.0
+
+
+class _SessionLock:
+    """Cross-process lock around the pipe-server phase of a CLI call.
+
+    The reverse pipe has one name per user, and every ``cts`` process serves it.
+    A daemon connects to whichever server accepts first, so two ``cts`` running
+    at once split the IDEs between them and each sees only one -- a targeted
+    call then reports ``unknown_target`` for an IDE that is up, and an untargeted
+    one silently talks to the only IDE it happened to see.
+
+    The lock covers only creating the server, the hello exchange and choosing
+    the target. It is released before the command itself is sent, so a long
+    ``export`` in one IDE does not hold up calls to the other.
+
+    ``Global\\`` because the pipe is machine-wide and an SSH logon and the
+    desktop session are different sessions. If the mutex cannot be created or
+    opened (e.g. it belongs to another account) the call proceeds unlocked,
+    as it did before the lock existed.
+    """
+
+    def __init__(self, pipe_path: str):
+        self._handle = None
+        self.held = False
+        if CreateMutexW is None:
+            return
+        name = "Global\\" + pipe_path.rsplit("\\", 1)[-1] + "-session"
+        with contextlib.suppress(Exception):
+            handle = CreateMutexW(None, False, name)
+            if handle and handle != INVALID_HANDLE_VALUE:
+                self._handle = handle
+
+    def acquire(self, timeout_s: float = _SESSION_LOCK_WAIT_S) -> bool:
+        if not self._handle or self.held:
+            return self.held
+        res = WaitForSingleObject(self._handle, max(0, int(timeout_s * 1000)))
+        # WAIT_ABANDONED: the previous owner died holding it; we own it now.
+        self.held = res in (WAIT_OBJECT_0, WAIT_ABANDONED)
+        return self.held
+
+    def release(self) -> None:
+        if self.held:
+            self.held = False
+            with contextlib.suppress(Exception):
+                ReleaseMutex(self._handle)
+
+    def close(self) -> None:
+        self.release()
+        if self._handle:
+            with contextlib.suppress(Exception):
+                CloseHandle(self._handle)
+            self._handle = None
+
+
 def _send_release_and_close(handle: int) -> None:
     """Send R release message and close pipe handle."""
     if handle <= 0 or handle == INVALID_HANDLE_VALUE:
@@ -632,7 +704,9 @@ def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
     hellos: dict[int, Hello] = {}
     held_conns: list[int] = []
     listener: _PipeListener | None = None
+    lock = _SessionLock(pipe_path)
     try:
+        lock.acquire()
         listener = _PipeListener(pipe_path)
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
@@ -662,8 +736,10 @@ def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
     finally:
         if listener:
             listener.close()
+        lock.release()
         for c in held_conns:
             _send_release_and_close(c)
+        lock.close()
     return list(hellos.values())
 
 
@@ -790,6 +866,9 @@ class ReversePipeClient:
         held_conns: dict[int, int] = {}
         legacy_pids: set[int] = set()
 
+        lock = _SessionLock(self._pipe_path)
+        lock.acquire()
+        lock_since = time.monotonic()
         listener = _PipeListener(self._pipe_path)
 
         try:
@@ -802,6 +881,10 @@ class ReversePipeClient:
 
                 if wait_timeout < 0:
                     wait_timeout = 0
+                if target_pid is not None and lock.held:
+                    wait_timeout = min(
+                        wait_timeout, max(0.0, lock_since + _SESSION_LOCK_SLICE_S - current_time)
+                    )
 
                 connected = listener.wait(wait_timeout)
                 if connected:
@@ -844,6 +927,23 @@ class ReversePipeClient:
                             if target_pid is None and window_end is None:
                                 window_end = time.monotonic() + discovery_budget_s
 
+                if (
+                    not connected
+                    and target_pid is not None
+                    and lock.held
+                    and time.monotonic() - lock_since >= _SESSION_LOCK_SLICE_S
+                ):
+                    # The target has not answered for a while: give other calls a
+                    # turn at the pipe. Nothing to lose -- in targeted mode a
+                    # daemon that is not the target is released on arrival, and
+                    # the target itself is used the moment it says hello.
+                    listener.close()
+                    lock.release()
+                    time.sleep(random.uniform(0.03, 0.1))
+                    lock.acquire()
+                    lock_since = time.monotonic()
+                    listener = _PipeListener(self._pipe_path)
+
                 window_is_over = (
                     window_end is not None and time.monotonic() >= window_end
                 ) or (time.monotonic() >= deadline)
@@ -858,6 +958,10 @@ class ReversePipeClient:
 
                 if decision.kind == "send":
                     listener.close()
+                    if decision.target != LEGACY:
+                        # Target chosen: the rest of the call runs over the held
+                        # connection, so the pipe is free for the next cts.
+                        lock.release()
                     if decision.target == LEGACY:
                         for h_conn in list(held_conns.values()):
                             _send_release_and_close(h_conn)
@@ -951,9 +1055,11 @@ class ReversePipeClient:
         finally:
             if listener:
                 listener.close()
+            lock.release()
             for h_conn in list(held_conns.values()):
                 _send_release_and_close(h_conn)
             held_conns.clear()
+            lock.close()
 
 
 # ── Convenience ────────────────────────────────────────────────────────────
