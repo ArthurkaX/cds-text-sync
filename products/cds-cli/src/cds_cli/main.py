@@ -198,8 +198,15 @@ def main():
     help_parser.add_argument("-h", "--help", action="store_true")
     pre_args, _ = help_parser.parse_known_args()
 
-    if pre_args.help or len(sys.argv) == 1 or (len(sys.argv) == 2 and ("--help" in sys.argv or "-h" in sys.argv)):
+    if pre_args.help or len(sys.argv) == 1:
         _print_help_header(target=pre_args.target)
+        command_names: set[str] = set()
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                command_names.update(action.choices)
+        if pre_args.help and any(tok in command_names for tok in sys.argv[1:]):
+            # `cts build --help`: let argparse print that command's own help.
+            parser.parse_args()
         parser.print_help()
         sys.exit(0)
 

@@ -98,10 +98,32 @@ Timeouts:
   blocks counted once by the daemon at startup; pass --timeout explicitly to
   override that calculation.
 
-Several IDEs:
-  When multiple CODESYS IDEs run at once, each daemon shows its instance ID
-  in the window header (e.g. ide-3684). Use Copy in the daemon window or pass:
-    cts --target ide-3684 --expect-project VKO status
+Several IDEs and projects:
+  Several CODESYS IDEs can run at once, for example an application and the
+  library it uses. Each daemon window shows `IDE: ide-<pid> · <project>` and a
+  Copy button that puts a ready line on the clipboard; the user pastes it to
+  you, e.g.:
+    !cts --target ide-3684 --expect-project VKO --help
+  Use the same --target (or env CTS_TARGET) and --expect-project on EVERY
+  command afterwards. --target picks the IDE; --expect-project makes cts refuse
+  if that IDE has another project open, so a write never lands in the wrong
+  project. Without --target and with more than one IDE, cts refuses
+  (ambiguous_target) and prints the available targets. Every result names the
+  instance and project it ran against -- check it. Calls to different IDEs can
+  run in parallel; calls to one IDE are queued by its single-threaded daemon.
+
+Library projects:
+  A .library project has no application, so it is not built the usual way.
+    cts build            check the library (errors and warnings, like a build)
+    cts build --install  after a clean check: save the project and install it
+                         into the System library repository (the IDE button
+                         "Save project and install into library repository").
+                         Nothing is installed if the check reports errors.
+  Library loop: cts export -> edit project-view/ -> cts import
+                -> cts build --install
+  cts build --install saves the project and overwrites the installed copy of
+  the same library version -- run it only when the user wants the library
+  published to the repository.
 
 Examples:
   cts ping
@@ -111,6 +133,8 @@ Examples:
   cts compare
   cts import --dry-run
   cts build
+  cts build --install                  # library project: check, save, install
+  cts --target ide-3684 --expect-project VKO status
   cts connect --ip 192.0.2.10
   cts plc-crc --build
   cts test --file arithmetic.json --timeout 120
@@ -208,6 +232,12 @@ Examples:
     p_build = subparsers.add_parser(
         "build",
         help="Compile the active application, or check a library project",
+        description=(
+            "Compile the active application. A library project has no "
+            "application: build then checks the library and reports errors "
+            "and warnings in the same format. Add --install to also save the "
+            "project and install it into the System library repository."
+        ),
     )
     p_build.add_argument(
         "--install",

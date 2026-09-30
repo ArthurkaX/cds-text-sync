@@ -50,7 +50,9 @@ def test_top_level_help_includes_target_and_expect_project():
     help_text = build_parser().format_help()
     assert "--target ID" in help_text
     assert "--expect-project NAME|PATH" in help_text
-    assert "Several IDEs:" in help_text
+    assert "Several IDEs and projects:" in help_text
+    assert "Copy button" in help_text
+    assert "ambiguous_target" in help_text
 
 
 def test_help_header_target_resolved(monkeypatch, capsys):
@@ -113,3 +115,33 @@ def test_help_header_none_answered(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Note: no IDE answered; help printed anyway." in out
 
+
+
+def test_top_level_help_describes_library_workflow():
+    help_text = build_parser().format_help()
+    assert "Library projects:" in help_text
+    assert "cts build --install" in help_text
+    assert "System library repository" in help_text
+    assert "Nothing is installed if the check reports errors" in help_text
+
+
+def test_build_help_shows_install_flag():
+    parser = build_parser()
+    sub = next(a for a in parser._actions if hasattr(a, "choices") and a.choices and "build" in a.choices)
+    text = sub.choices["build"].format_help()
+    assert "--install" in text
+    assert "library repository" in text
+
+
+def test_subcommand_help_is_not_replaced_by_top_level_help(monkeypatch, capsys):
+    import pytest
+    from cds_cli import main as cli_main
+
+    monkeypatch.setattr(cli_main, "_print_help_header", lambda target=None: None)
+    monkeypatch.setattr("sys.argv", ["cts", "--target", "ide-1", "build", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        cli_main.main()
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "--install" in out
+    assert "positional arguments:" not in out
