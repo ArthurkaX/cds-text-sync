@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Version 3.3.0 (unreleased)
+### Version 3.3.0 (2026-09-30)
 
 **Multi-instance IDE support & Protocol v2:**
 
