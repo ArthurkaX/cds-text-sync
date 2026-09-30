@@ -206,7 +206,17 @@ Examples:
 
     # -- build / PLC lifecycle ---------------------------------------------
     p_build = subparsers.add_parser(
-        "build", help="Compile the active CODESYS application"
+        "build",
+        help="Compile the active application, or check a library project",
+    )
+    p_build.add_argument(
+        "--install",
+        action="store_true",
+        help=(
+            "Library projects only: after a clean check, save the project and "
+            "install it into the library repository (the IDE button 'Save "
+            "project and install into library repository')."
+        ),
     )
     p_build.add_argument(
         "--timeout",

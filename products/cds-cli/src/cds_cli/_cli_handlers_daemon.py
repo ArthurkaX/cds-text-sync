@@ -104,6 +104,8 @@ def dispatch_daemon(args, output_fmt="json"):
                 params["save"] = True
             if getattr(args, "no_refresh", False):
                 params["refresh"] = False
+        if command == "build" and getattr(args, "install", False):
+            params["install"] = True
         if command == "download" and getattr(args, "start", None) is not None:
             params["start"] = args.start
         if command == "plc-crc" and getattr(args, "build", False):

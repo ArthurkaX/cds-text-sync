@@ -176,6 +176,170 @@ def _message_number(value):
         return 0
 
 
+def _collect_build_messages(system_obj, category_guid):
+    """Read the build-category messages into rows; returns (rows, errors, warnings, complete)."""
+    messages = []
+    error_count = 0
+    warning_count = 0
+    diagnostics_complete = True
+    try:
+        msg_objects = system_obj.get_message_objects(category_guid)
+        for msg in msg_objects:
+            try:
+                msg_text = str(getattr(msg, "text", ""))
+                if "Build started" in msg_text or "Compile complete" in msg_text:
+                    continue
+                severity = str(getattr(msg, "severity", ""))
+                if "Error" in severity:
+                    error_count += 1
+                if "Warning" in severity:
+                    warning_count += 1
+                obj_ref = None
+                obj_name = ""
+                try:
+                    obj_ref = getattr(msg, "object", None)
+                    if obj_ref:
+                        obj_name = str(obj_ref.get_name())
+                except Exception as error:
+                    _log("Could not resolve build message object name: {0}".format(error))
+                msg_id = ""
+                try:
+                    prefix = str(getattr(msg, "prefix", ""))
+                    number = _message_number(getattr(msg, "number", 0))
+                    if number > 0:
+                        msg_id = "{0}{1:04d}".format(prefix, number)
+                    else:
+                        msg_id = prefix
+                except Exception as error:
+                    _log("Could not resolve build message identifier: {0}".format(error))
+                messages.append(
+                    {
+                        "severity": severity,
+                        "code": msg_id,
+                        "text": msg_text,
+                        "object": obj_name,
+                    }
+                )
+            except Exception as error:
+                diagnostics_complete = False
+                _log("Could not decode one build message: {0}".format(error))
+    except Exception as error:
+        diagnostics_complete = False
+        _log("Could not collect build messages: {0}".format(error))
+    return messages, error_count, warning_count, diagnostics_complete
+
+
+def _truthy(value):
+    return str(value).strip().lower() in ("1", "true", "yes")
+
+
+def _project_file(project):
+    try:
+        from ide_daemon_state import _project_file_path
+
+        return str(_project_file_path(project) or "")
+    except Exception:
+        return ""
+
+
+def _is_library_project(project):
+    """A library project has no application; ``.library`` is its file type."""
+    return _project_file(project).lower().endswith(".library")
+
+
+def _library_manager():
+    """The scripting ``librarymanager`` global, or None when it is not exposed."""
+    try:
+        import scriptengine
+
+        manager = getattr(scriptengine, "librarymanager", None)
+        if manager is not None:
+            return manager
+    except Exception as error:
+        _log("scriptengine import failed: {0}".format(error))
+    try:
+        import __main__
+
+        return getattr(__main__, "librarymanager", None)
+    except Exception:
+        return None
+
+
+def _build_library(project, system_obj, params):
+    """Library counterpart of ``build``.
+
+    A library has no application to compile.  ``check_all_pool_objects`` is the
+    compile check.  With ``install`` set it then does what the IDE button
+    "Save project and install into library repository" does: save the project,
+    write the compiled library and install it, overwriting an installed copy of
+    the same version.
+    """
+    import os
+    import tempfile
+    import time
+
+    category_guid = "97F48D64-A2A3-4856-B640-75C046E37EA9"
+    try:
+        from System import Guid
+
+        category_guid = Guid(category_guid)
+    except Exception as error:
+        _log("Could not build message category Guid: {0}".format(error))
+    try:
+        system_obj.clear_messages(category_guid)
+    except Exception as error:
+        _log("Could not clear build messages: {0}".format(error))
+
+    project_path = _project_file(project)
+    name = os.path.splitext(os.path.basename(project_path))[0] or "library"
+    start = time.time()
+    check_ok = None
+    try:
+        check_ok = project.check_all_pool_objects()
+    except Exception as error:
+        return {"ok": False, "error": "Library check failed: {0}".format(error)}
+    messages, errors, warnings, complete = _collect_build_messages(
+        system_obj, category_guid
+    )
+    if check_ok is False and errors == 0:
+        errors = 1
+    data = {
+        "kind": "library",
+        "application": name,
+        "project_path": project_path,
+        "errors": errors,
+        "warnings": warnings,
+        "messages": messages,
+        "diagnostics_complete": complete,
+        "installed": False,
+    }
+    result = {"ok": errors == 0, "data": data}
+    if errors == 0 and isinstance(params, dict) and _truthy(params.get("install")):
+        manager = _library_manager()
+        if manager is None:
+            data["install_error"] = "librarymanager is not available in this IDE."
+            result["ok"] = False
+        else:
+            compiled = os.path.join(tempfile.gettempdir(), name + ".compiled-library")
+            try:
+                project.save()
+                project.save_as_compiled_library(compiled)
+                manager.install_library(compiled, True)
+                data["installed"] = True
+                data["compiled_library"] = compiled
+            except Exception as error:
+                data["install_error"] = str(error)
+                result["ok"] = False
+            finally:
+                try:
+                    if os.path.exists(compiled):
+                        os.remove(compiled)
+                except Exception as error:
+                    _log("Could not remove {0}: {1}".format(compiled, error))
+    data["elapsed_seconds"] = round(time.time() - start, 3)
+    return result
+
+
 def _cmd_build(params):
     """Build the active application using app.build().
 
@@ -218,6 +382,8 @@ def _cmd_build(params):
                     except Exception as error:
                         _log("Could not inspect project child application: {0}".format(error))
         if app is None:
+            if _is_library_project(project):
+                return _build_library(project, system_obj, params)
             return {"ok": False, "error": "No active application found to build."}
 
         project_path = ""
@@ -265,54 +431,9 @@ def _cmd_build(params):
         elapsed = time.time() - start
 
         # Collect messages
-        messages = []
-        error_count = 0
-        warning_count = 0
-        diagnostics_complete = True
-        try:
-            msg_objects = system_obj.get_message_objects(BUILD_CATEGORY_GUID)
-            for msg in msg_objects:
-                try:
-                    msg_text = str(getattr(msg, "text", ""))
-                    if "Build started" in msg_text or "Compile complete" in msg_text:
-                        continue
-                    severity = str(getattr(msg, "severity", ""))
-                    if "Error" in severity:
-                        error_count += 1
-                    if "Warning" in severity:
-                        warning_count += 1
-                    obj_ref = None
-                    obj_name = ""
-                    try:
-                        obj_ref = getattr(msg, "object", None)
-                        if obj_ref:
-                            obj_name = str(obj_ref.get_name())
-                    except Exception as error:
-                        _log("Could not resolve build message object name: {0}".format(error))
-                    msg_id = ""
-                    try:
-                        prefix = str(getattr(msg, "prefix", ""))
-                        number = _message_number(getattr(msg, "number", 0))
-                        if number > 0:
-                            msg_id = "{0}{1:04d}".format(prefix, number)
-                        else:
-                            msg_id = prefix
-                    except Exception as error:
-                        _log("Could not resolve build message identifier: {0}".format(error))
-                    messages.append(
-                        {
-                            "severity": severity,
-                            "code": msg_id,
-                            "text": msg_text,
-                            "object": obj_name,
-                        }
-                    )
-                except Exception as error:
-                    diagnostics_complete = False
-                    _log("Could not decode one build message: {0}".format(error))
-        except Exception as error:
-            diagnostics_complete = False
-            _log("Could not collect build messages: {0}".format(error))
+        messages, error_count, warning_count, diagnostics_complete = (
+            _collect_build_messages(system_obj, BUILD_CATEGORY_GUID)
+        )
 
         result = {
             "ok": error_count == 0,
