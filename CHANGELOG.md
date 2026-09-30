@@ -15,7 +15,6 @@ All notable changes to this project will be documented in this file.
 - **Help discovery header:** `cts --help` now probes for live daemon instances and displays target status and project info right in the help banner.
 - **Daemon UI target line & Copy button:** The daemon window displays a docked target panel (`IDE: ide-<pid> · <project>`) with a `Copy` button that generates `!cts --target ide-<pid> [--expect-project <name>] --help` for immediate pasting into agent sessions.
 - **SSH & remote execution (`tools/cts-win`):** Includes a `cts-win` wrapper script for calling `cts` inside a Windows VM over SSH, along with a Daemon Settings option to copy commands formatted for `cts-win`.
-- **Concurrent calls:** two `cts` processes started at the same moment against two IDEs are safe. The discovery and target-selection phase is serialized across processes by a per-user mutex, which is released before the command itself is sent, so a long export on one IDE never delays calls to the other.
 
 **Library projects:**
 
