@@ -52,12 +52,14 @@ class _Project:
 
 
 class _Manager:
+    repositories = ["LibRepository(User, C:\\u)", "LibRepository(System, C:\\s)"]
+
     def __init__(self):
         self.installed = []
 
-    def install_library(self, path, overwrite):
+    def install_library(self, path, repository, overwrite):
         assert os.path.exists(path)
-        self.installed.append((os.path.basename(path), overwrite))
+        self.installed.append((os.path.basename(path), repository, overwrite))
 
 
 def _setup(monkeypatch, manager=None):
@@ -92,7 +94,7 @@ def test_install_saves_compiles_installs_and_cleans_up(monkeypatch):
     assert result["ok"] is True
     assert result["data"]["installed"] is True
     assert project.calls == ["check", "save", "compile"]
-    assert manager.installed == [("example_lib.compiled-library", True)]
+    assert manager.installed == [("example_lib.compiled-library", _Manager.repositories[1], True)]
     assert not os.path.exists(result["data"]["compiled_library"])
 
 

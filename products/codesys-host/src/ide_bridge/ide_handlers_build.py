@@ -265,6 +265,15 @@ def _library_manager():
         return None
 
 
+def _target_repository(manager):
+    """The repository the IDE button installs into: ``System``, else the first."""
+    repositories = list(manager.repositories)
+    for repository in repositories:
+        if "System" in str(repository):
+            return repository
+    return repositories[0]
+
+
 def _build_library(project, system_obj, params):
     """Library counterpart of ``build``.
 
@@ -324,7 +333,7 @@ def _build_library(project, system_obj, params):
             try:
                 project.save()
                 project.save_as_compiled_library(compiled)
-                manager.install_library(compiled, True)
+                manager.install_library(compiled, _target_repository(manager), True)
                 data["installed"] = True
                 data["compiled_library"] = compiled
             except Exception as error:

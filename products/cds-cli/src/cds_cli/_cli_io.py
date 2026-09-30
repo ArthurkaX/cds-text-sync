@@ -293,8 +293,12 @@ def _print_rp_error(resp, command):
             inst_suffix = f" ({inst_id} · no project)"
 
     err = resp.get("error")
+    data = resp.get("data")
+    install_error = data.get("install_error") if isinstance(data, dict) else None
     if err is not None and err != "":
         _print_error(f"{err}{inst_suffix}")
+    elif install_error:
+        _print_error(f"library install failed: {install_error}{inst_suffix}")
     else:
         messages = resp.get("data", {}).get("messages")
         if isinstance(messages, list) and messages:
