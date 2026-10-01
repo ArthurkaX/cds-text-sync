@@ -609,6 +609,10 @@ def _cmd_sync_import_text(params):
                             content = _read_text_utf8(st_path)
                             decl, impl = _split_st_content(content)
 
+                        accessors = {}
+                        if st_path and kind.lower() == "property":
+                            accessors = _read_accessor_sidecars(st_path)
+
                         text_creates.append(
                             {
                                 "path": path,
@@ -619,6 +623,7 @@ def _cmd_sync_import_text(params):
                                 "declaration": decl,
                                 "implementation": impl,
                                 "source_path": st_path,
+                                "accessors": accessors,
                             }
                         )
 
@@ -1067,6 +1072,19 @@ def _strip_text_creates(root):
     return filtered
 
 
+def _read_accessor_sidecars(property_st_path):
+    """Read hand-made ``<Prop>.Get.st`` / ``<Prop>.Set.st`` next to a new property."""
+    stem = os.path.splitext(property_st_path)[0]
+    result = {}
+    for accessor_name in ("Get", "Set"):
+        path = "{0}.{1}.st".format(stem, accessor_name)
+        if not os.path.exists(path):
+            continue
+        decl, impl = split_st_text(_read_text_utf8(path))
+        result[accessor_name] = {"declaration": decl, "implementation": impl}
+    return result
+
+
 def _apply_text_create_entry(project, entry, created_by_name):
     """Create a single text object (POU, GVL, DUT) from a CreateTextObject entry."""
     import ide_apply_patch as _iap
@@ -1108,6 +1126,10 @@ def _apply_text_create_entry(project, entry, created_by_name):
         )
 
     _iap._apply_textual_patch(obj, entry)
+    for accessor_name, texts in (entry.get("accessors") or {}).items():
+        accessor = _iap._find_child_transparent(obj, accessor_name)
+        if accessor is not None:
+            _iap._apply_textual_patch(accessor, texts)
     created_by_name[_iap.object_name(obj).lower()] = obj
     # Say which of the two happened. "Created" over an object that already
     # existed hides the interesting case: a create that keeps repeating because

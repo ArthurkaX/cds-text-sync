@@ -32,3 +32,16 @@ def test_split_st_text_understands_section_marker():
 
     assert split_st_text("\n\n// === SECTION ===\n\nProp := fValue;\n") == ("", "Prop := fValue;")
     assert split_st_text("VAR x : INT; END_VAR\n\n// === SECTION ===\n\nx := 1;\n") == ("VAR x : INT; END_VAR", "x := 1;")
+
+
+def test_new_property_reads_accessor_sidecars(tmp_path):
+    bridge = os.path.join(os.path.dirname(__file__), "..", "..", "products", "codesys-host", "src", "ide_bridge")
+    sys.path.insert(0, bridge)
+    import ide_handlers_sync
+
+    (tmp_path / "Fb.Prop2.st").write_text("PROPERTY Prop2 : INT", encoding="utf-8")
+    (tmp_path / "Fb.Prop2.Get.st").write_text(
+        "\n\n// === SECTION ===\n\nProp2 := 42;\n", encoding="utf-8"
+    )
+    result = ide_handlers_sync._read_accessor_sidecars(str(tmp_path / "Fb.Prop2.st"))
+    assert result == {"Get": {"declaration": "", "implementation": "Prop2 := 42;"}}
