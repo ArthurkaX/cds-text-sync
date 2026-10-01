@@ -29,6 +29,9 @@ import re
 
 
 ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
+# Separator the projection writes between two text sections of one object
+# (property accessors: empty declaration, then the body).
+ST_SECTION_MARKER = "// === SECTION ==="
 
 _ACTION_HEADER_RE = re.compile(
     r"^\s*ACTION\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",
@@ -99,5 +102,9 @@ def split_st_text(content, strip_pou_end=False):
                     ].rstrip()
                     break
         return declaration, implementation
+
+    if ST_SECTION_MARKER in normalized:
+        parts = normalized.split(ST_SECTION_MARKER, 1)
+        return parts[0].strip(), parts[1].strip()
 
     return normalized.strip(), ""

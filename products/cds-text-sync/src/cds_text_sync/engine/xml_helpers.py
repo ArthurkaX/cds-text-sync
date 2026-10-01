@@ -319,6 +319,13 @@ def st_projection_content(entry_element):
                 + "\n\n"
                 + _normalize_trailing_newline(implementations[0])
             )
+    if len(declarations) == 1 and len(implementations) == 1 and len(sections) == 2:
+        # Accessors store Implementation before Interface in the archive; the
+        # projection always reads declaration first, like every other object.
+        implementation = implementations[0]
+        if implementation.strip():
+            implementation = _normalize_trailing_newline(implementation)
+        return join_text_blob_values([declarations[0], implementation])
     return join_text_blob_values([section["text"] for section in sections])
 
 
@@ -453,6 +460,13 @@ def split_st_projection_values(value, entry_element):
             else:
                 return split_text_projection(value, len(blobs))
         return values
+    roles = [section["role"] for section in sections]
+    if len(blobs) == 2 and sorted(roles) == ["declaration", "implementation"]:
+        # Projection order is declaration, implementation; the archive order
+        # may differ (accessors keep Implementation first).
+        declaration, implementation = split_text_projection(value, 2)
+        by_role = {"declaration": declaration, "implementation": implementation}
+        return [by_role[role] for role in roles]
     return split_text_projection(value, len(blobs))
 
 
