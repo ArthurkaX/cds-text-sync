@@ -1154,10 +1154,10 @@ def _find_frames_in_xml(xml_text, visu_name):
 
     from .xml_ns import find_named, strip_ns
 
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
+    # Let a parse error escape: the caller owns the file path, so it can name
+    # the unreadable file instead of reporting "no frame found" -- which would
+    # send the user looking for a frame that is actually there.
+    root = ET.fromstring(xml_text)
 
     results = []
     for el in root.iter():
@@ -1207,9 +1207,17 @@ def _find_frame_instance(project_view_dir, visu_name, screen=None, folder=None):
     candidates = []
 
     def _scan_xml(xml_path):
+        import xml.etree.ElementTree as ET
+
         with open(xml_path, "r", encoding="utf-8") as _fh:
             content = _fh.read()
-        found = _find_frames_in_xml(content, visu_name)
+        try:
+            found = _find_frames_in_xml(content, visu_name)
+        except ET.ParseError as error:
+            # A project-wide scan must stay resilient to one stray file, but a
+            # dropped file used to turn into a misleading "no frame found".
+            _warn("skipping {0}: not well-formed XML ({1})".format(xml_path, error))
+            return []
         for f in found:
             f["xml_path"] = xml_path
         return found

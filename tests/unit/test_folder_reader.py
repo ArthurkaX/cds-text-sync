@@ -236,17 +236,39 @@ class TestFolderReaderManifest:
 
 
 class TestFolderReaderExtractBoolProperty:
-    def test_malformed_xml_returns_none(self, tmp_path):
+    def test_malformed_xml_is_reported_not_read_as_absent(self, tmp_path):
+        """A broken view XML must not look like "ExcludeFromBuild is unset"."""
         views = str(tmp_path / "views")
         dump = str(tmp_path / ".dump")
         reader = FolderReader(views, dump)
-        assert reader._extract_bool_property("\x00not xml", "SomeProp") is None
+        with pytest.raises(RuntimeError) as excinfo:
+            reader._extract_bool_property("\x00not xml", "ExcludeFromBuild")
+        assert "ExcludeFromBuild" in str(excinfo.value)
 
     def test_empty_string_returns_none(self, tmp_path):
         views = str(tmp_path / "views")
         dump = str(tmp_path / ".dump")
         reader = FolderReader(views, dump)
         assert reader._extract_bool_property("", "SomeProp") is None
+
+
+class TestFolderReaderWhitelist:
+    def test_an_unreadable_node_is_reported(self, tmp_path, capsys):
+        """Skipping a broken node quietly could make the validator report
+        members a genuine IDE export uses as foreign, so say which node."""
+        from types import SimpleNamespace
+
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        reader = FolderReader(views, dump)
+        bad = SimpleNamespace(xml_text="\x00not xml", metadata={})
+        model = SimpleNamespace(nodes={"n": bad})
+
+        allowed, reference = reader._native_member_whitelist(model, "{ABC}")
+
+        assert allowed == set()
+        assert reference is None
+        assert "unreadable XML" in capsys.readouterr().err
 
 
 class TestFolderReaderRehydration:

@@ -178,3 +178,26 @@ def test_project_commands_still_report_a_missing_daemon(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         _cli_handlers_vars._resolve_project_view("")
     assert "Could not get sync folder from daemon" in capsys.readouterr().err
+
+
+def test_malformed_screen_xml_is_reported_not_read_as_no_frames(tmp_path, capsys):
+    """A screen XML that will not parse must not look like "no frame found".
+
+    ``capture_frame`` scans every XML under project-view. One stray file used
+    to abort nothing but also say nothing, and the user was told no frame
+    referenced the name -- sending them to look for a frame that is there.
+    """
+    (tmp_path / "broken.xml").write_text("<not-closed", encoding="utf-8")
+
+    found = visu_cmds._find_frame_instance(str(tmp_path), "MyFrame")
+
+    assert found is None
+    assert "not well-formed XML" in capsys.readouterr().err
+
+
+def test_find_frames_raises_on_malformed_xml():
+    """The low-level finder surfaces the parse error to whoever knows the path."""
+    import xml.etree.ElementTree as ET
+
+    with pytest.raises(ET.ParseError):
+        visu_cmds._find_frames_in_xml("<oops", "MyFrame")

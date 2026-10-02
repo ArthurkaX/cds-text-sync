@@ -27,21 +27,34 @@ MAX_TREE_DEPTH = 50  # safety guard against cycles
 # ── Project info helpers ───────────────────────────────────────────────────
 
 
-def _get_project_info_object(project):
+def _get_project_info_object(project, errors=None):
+    """Return the project's Project Information object, or None.
+
+    The lookups may simply be absent on a limited project (the Project
+    Information dialog is not always there) -- that is not an error. But a
+    lookup that raises for any other reason is recorded in *errors* instead of
+    being read as "this project has no properties".
+    """
     try:
         if hasattr(project, "get_project_info"):
             return project.get_project_info()
-    except Exception:
+    except AttributeError:
         pass
+    except Exception as error:
+        if errors is not None:
+            errors.append("get_project_info: {0}".format(error))
     try:
         if hasattr(project, "project_info"):
             return project.project_info
-    except Exception:
+    except AttributeError:
         pass
+    except Exception as error:
+        if errors is not None:
+            errors.append("project_info: {0}".format(error))
     return None
 
 
-def _read_project_info_attr(proj_info, names):
+def _read_project_info_attr(proj_info, names, errors=None):
     for name in names:
         try:
             if hasattr(proj_info, name):
@@ -50,12 +63,15 @@ def _read_project_info_attr(proj_info, names):
                     value = value()
                 if value is not None:
                     return _json_safe(value)
-        except Exception:
-            pass
+        except AttributeError:
+            continue
+        except Exception as error:
+            if errors is not None:
+                errors.append("{0}: {1}".format(name, error))
     return None
 
 
-def _project_info_summary(proj_info):
+def _project_info_summary(proj_info, errors=None):
     fields = [
         ("Company", ["Company", "company", "get_company"]),
         ("Title", ["Title", "title", "get_title"]),
@@ -77,20 +93,32 @@ def _project_info_summary(proj_info):
     ]
     summary = {}
     for key, names in fields:
-        value = _read_project_info_attr(proj_info, names)
+        value = _read_project_info_attr(proj_info, names, errors)
         if value is not None:
             summary[key] = value
     return summary
 
 
-def _mapping_to_dict(values):
+def _mapping_to_dict(values, errors=None):
+    """Convert a CODESYS mapping to a JSON-safe dict, best effort.
+
+    Several collection shapes occur across CODESYS versions, so the fallbacks
+    stay. But an entry that cannot be converted is recorded in *errors*
+    instead of being dropped in silence: a dropped ``cds-sync-folder`` reads
+    as "not configured" and sends the user chasing a settings problem that is
+    really a read failure.
+    """
     result = {}
     if values is None:
         return result
 
     try:
         for key, value in values.items():
-            result[_json_safe(key)] = _json_safe(value)
+            try:
+                result[_json_safe(key)] = _json_safe(value)
+            except Exception as error:
+                if errors is not None:
+                    errors.append("property {0!r}: {1}".format(key, error))
         return result
     except Exception:
         pass
@@ -110,8 +138,9 @@ def _mapping_to_dict(values):
             for key in keys:
                 try:
                     result[_json_safe(key)] = _json_safe(values[key])
-                except Exception:
-                    pass
+                except Exception as error:
+                    if errors is not None:
+                        errors.append("property {0!r}: {1}".format(key, error))
             return result
         except Exception:
             pass
@@ -125,21 +154,24 @@ def _mapping_to_dict(values):
                     result[_json_safe(item[0])] = _json_safe(item[1])
                 else:
                     result[_json_safe(item)] = _json_safe(values[item])
-            except Exception:
-                pass
+            except Exception as error:
+                if errors is not None:
+                    errors.append("property {0!r}: {1}".format(item, error))
     except Exception:
         pass
     return result
 
 
-def _project_info_properties(proj_info):
+def _project_info_properties(proj_info, errors=None):
     try:
         values = getattr(proj_info, "values", None)
-    except Exception:
+    except Exception as error:
+        if errors is not None:
+            errors.append("project_info.values: {0}".format(error))
         values = None
     if values is None:
         values = proj_info
-    return _mapping_to_dict(values)
+    return _mapping_to_dict(values, errors)
 
 
 # ── Device / object cache helpers ─────────────────────────────────────────

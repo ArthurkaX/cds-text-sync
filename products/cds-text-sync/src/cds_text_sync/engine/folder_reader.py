@@ -6,6 +6,7 @@ folder_reader.py - Reads the Git-friendly folder structure into a ProjectModel.
 import json
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 
 from _project_model import ProjectNode
@@ -151,8 +152,16 @@ class FolderReader:
             return None
         try:
             root = ET.fromstring(xml_text)
-        except Exception:
-            return None
+        except Exception as error:
+            # A malformed view XML must not read as "the flag is absent": for
+            # ExcludeFromBuild that would silently place an object into the
+            # build that its own source excluded. Abort the read so the corrupt
+            # file is named and fixed instead of misclassified.
+            raise RuntimeError(
+                "Cannot read {0} from malformed XML: {1}".format(
+                    property_name, error
+                )
+            )
         return extract_bool_property(root, property_name)
 
     def _projection_full_path(self, relative_path):
@@ -221,7 +230,16 @@ class FolderReader:
                 continue
             try:
                 root = ET.fromstring(xml_text)
-            except Exception:
+            except Exception as error:
+                # The whitelist is advisory, so an unreadable node is skipped
+                # rather than aborting the read -- but say so: silently
+                # dropping it can make the validator flag members that a
+                # genuine IDE export actually uses.
+                print(
+                    "[WARN] folder_reader: unreadable XML while learning the "
+                    "{0} member whitelist: {1}".format(type_guid, error),
+                    file=sys.stderr,
+                )
                 continue
             node_type = (root.attrib.get("Type") or "").strip().strip("{}").lower()
             if node_type != key:
