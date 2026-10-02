@@ -365,7 +365,7 @@ def main():
 
             workspace = getattr(args, "workspace", "") or "."
             if getattr(args, "validate", False):
-                output = getattr(args, "output", "") or None
+                output = getattr(args, "docs_output", "") or None
                 if output is None:
                     _project_view, output_path = _resolve_doc_paths(workspace)
                     output = str(output_path)
@@ -377,7 +377,7 @@ def main():
                     sys.exit(1)
                 return
             if getattr(args, "check", False):
-                result = check_docs(workspace, output=getattr(args, "output", "") or None)
+                result = check_docs(workspace, output=getattr(args, "docs_output", "") or None)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True))
                 if result.get("exit_code"):
                     sys.exit(result["exit_code"])
@@ -397,7 +397,7 @@ def main():
             result = generate_docs(
                 workspace,
                 library_path=getattr(args, "library_path", "") or None,
-                output=getattr(args, "output", "") or None,
+                output=getattr(args, "docs_output", "") or None,
             )
             print(result["output"])
 
