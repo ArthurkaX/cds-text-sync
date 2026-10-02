@@ -23,6 +23,11 @@ from ide_daemon_state import _json_safe, _build_path, _log, _obj_name, _project_
 _DEVICE_CACHE_TTL = 30  # seconds
 MAX_TREE_DEPTH = 50  # safety guard against cycles
 
+#: Sentinel for "getattr found no such attribute", distinct from a value of
+#: None.  ``getattr(obj, name, _MISSING)`` propagates any non-AttributeError
+#: on every interpreter, unlike hasattr.
+_MISSING = object()
+
 
 # ── Project info helpers ───────────────────────────────────────────────────
 
@@ -34,37 +39,69 @@ def _get_project_info_object(project, errors=None):
     Information dialog is not always there) -- that is not an error. But a
     lookup that raises for any other reason is recorded in *errors* instead of
     being read as "this project has no properties".
+
+    ``hasattr`` is deliberately not used: on Python 2 -- and so IronPython --
+    it returns False for *any* exception the attribute raises, so it turns a
+    refusing getter into "absent" and the error is never recorded.
+    ``getattr(obj, name, None)`` only suppresses AttributeError on either
+    interpreter, so anything else reaches the except clause below.
     """
     try:
-        if hasattr(project, "get_project_info"):
-            return project.get_project_info()
-    except AttributeError:
-        pass
+        getter = getattr(project, "get_project_info", None)
     except Exception as error:
         if errors is not None:
             errors.append("get_project_info: {0}".format(error))
+        getter = None
+    if getter is not None:
+        try:
+            info = getter()
+        except AttributeError:
+            info = None
+        except Exception as error:
+            if errors is not None:
+                errors.append("get_project_info: {0}".format(error))
+            info = None
+        if info is not None:
+            return info
     try:
-        if hasattr(project, "project_info"):
-            return project.project_info
-    except AttributeError:
-        pass
+        info = getattr(project, "project_info", None)
     except Exception as error:
         if errors is not None:
             errors.append("project_info: {0}".format(error))
-    return None
+        return None
+    return info
 
 
 def _read_project_info_attr(proj_info, names, errors=None):
+    """First readable value among *names*, or None.
+
+    A name that does not exist (AttributeError) is skipped; a name whose
+    getter refuses for any other reason is recorded in *errors*. ``hasattr``
+    cannot make that distinction on Python 2, which is why getattr is used
+    directly here.
+    """
     for name in names:
         try:
-            if hasattr(proj_info, name):
-                value = getattr(proj_info, name)
-                if callable(value):
-                    value = value()
-                if value is not None:
-                    return _json_safe(value)
+            value = getattr(proj_info, name, None)
+        except Exception as error:
+            if errors is not None:
+                errors.append("{0}: {1}".format(name, error))
+            continue
+        if value is None:
+            continue
+        try:
+            if callable(value):
+                value = value()
         except AttributeError:
             continue
+        except Exception as error:
+            if errors is not None:
+                errors.append("{0}: {1}".format(name, error))
+            continue
+        if value is None:
+            continue
+        try:
+            return _json_safe(value)
         except Exception as error:
             if errors is not None:
                 errors.append("{0}: {1}".format(name, error))
@@ -148,8 +185,14 @@ def _mapping_to_dict(values, errors=None):
     try:
         for item in values:
             try:
-                if hasattr(item, "Key") and hasattr(item, "Value"):
-                    result[_json_safe(item.Key)] = _json_safe(item.Value)
+                # KeyValuePair-like entries. getattr with a sentinel, not
+                # hasattr: on Python 2 hasattr would read a refusing Key/Value
+                # getter as "not a pair" and silently fall through to the wrong
+                # branch instead of recording the failure.
+                key_attr = getattr(item, "Key", _MISSING)
+                value_attr = getattr(item, "Value", _MISSING)
+                if key_attr is not _MISSING and value_attr is not _MISSING:
+                    result[_json_safe(key_attr)] = _json_safe(value_attr)
                 elif isinstance(item, (list, tuple)) and len(item) == 2:
                     result[_json_safe(item[0])] = _json_safe(item[1])
                 else:

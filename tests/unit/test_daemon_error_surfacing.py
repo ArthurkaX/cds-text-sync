@@ -176,3 +176,79 @@ def test_mapping_to_dict_names_an_entry_it_could_not_read():
 
     assert result == {}
     assert errors
+
+
+# ── T55: the guards must not depend on hasattr ─────────────────────────────
+
+
+def _python2_hasattr(monkeypatch):
+    """Mimic Python 2's ``hasattr``, which returns False for *any* exception.
+
+    CPython 3 propagates a non-AttributeError out of ``hasattr``; Python 2 --
+    and therefore IronPython -- swallows it and answers False. That is what
+    turned a refusing getter into "this attribute is absent" on the VM while
+    the same code recorded the error under the test interpreter.
+    """
+    import builtins
+
+    real_hasattr = builtins.hasattr
+
+    def py2_hasattr(obj, name):
+        try:
+            return real_hasattr(obj, name)
+        except Exception:
+            return False
+
+    monkeypatch.setattr(builtins, "hasattr", py2_hasattr)
+
+
+def test_get_project_info_object_records_a_property_that_raises_on_access(
+    monkeypatch,
+):
+    """The old hasattr guard would read this as "no Project Information"."""
+    _python2_hasattr(monkeypatch)
+
+    class _Project(object):
+        @property
+        def project_info(self):
+            raise RuntimeError("properties locked")
+
+    errors = []
+    assert helpers._get_project_info_object(_Project(), errors) is None
+    assert any("properties locked" in message for message in errors)
+
+
+def test_read_project_info_attr_records_a_property_that_raises_on_access(
+    monkeypatch,
+):
+    _python2_hasattr(monkeypatch)
+
+    class _Info(object):
+        Company = "Acme"
+
+        @property
+        def Title(self):
+            raise RuntimeError("locked")
+
+    errors = []
+    assert helpers._read_project_info_attr(_Info(), ["Title"], errors) is None
+    assert any("Title" in message and "locked" in message for message in errors)
+
+
+def test_mapping_to_dict_records_a_pair_whose_key_refuses():
+    class _Pair(object):
+        @property
+        def Key(self):
+            raise RuntimeError("no key")
+
+        Value = "x"
+
+    class _Values(object):
+        def __iter__(self):
+            return iter([_Pair()])
+
+    errors = []
+    result = helpers._mapping_to_dict(_Values(), errors)
+
+    assert result == {}
+    assert any("no key" in message for message in errors)
