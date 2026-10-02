@@ -11,6 +11,7 @@ test_paths = [
   "../../tests/unit/test_coerce_bool.py",
   "../../tests/unit/test_diff_engine.py",
   "../../tests/unit/test_dirty_scan.py",
+  "../../tests/unit/test_engine_single_import.py",
   "../../tests/unit/test_folder_reader.py",
   "../../tests/unit/test_folder_writer.py",
   "../../tests/unit/test_from_svg_e2e.py",
