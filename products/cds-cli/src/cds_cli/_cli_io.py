@@ -254,26 +254,54 @@ def _launch_codesys(
 
 
 def _load_project_config():
-    """Load cds-text-sync.json and resolved profile from cwd.
+    """Load cds-text-sync.json and the profile it selects.
 
-    Returns (config, profile) or ({}, None).
+    The CLI's one reader for that file. The settings come from the engine's
+    reader, so the file has one interpretation whether it is read here, by the
+    engine, or by the CODESYS host, and the search is that module's shared
+    walk-up rule, so ``cts`` run from a subdirectory finds the same file as
+    ``cts`` run from the sync root.
+
+    Returns ``(settings, profile)`` or ``(settings, None)``. A missing file is
+    normal: the defaults are the settings and the default profile is the
+    profile. A file that exists but cannot be read is reported and yields the
+    same minus the app defaults -- the command still runs, but the user is told
+    the profile was ignored instead of having it dropped behind their back.
     """
-    config = {}
-    profile = None
-    config_path = os.path.join(os.getcwd(), "cds-text-sync.json")
-    if not os.path.exists(config_path):
-        return config, profile
+    from _project_profiles import PROFILES_DIR, load_profile
+    from _project_settings import (
+        SETTINGS_INVALID,
+        find_settings_root,
+        read_project_settings,
+    )
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
+    try:
+        root = find_settings_root(os.getcwd()) or os.getcwd()
+    except OSError:
+        root = os.getcwd()
+    settings, status, error = read_project_settings(root, warn=False)
+    if status == SETTINGS_INVALID:
+        _print_error(
+            "{0}; the profile's app/app_dir defaults were not applied".format(error)
+        )
+        return settings, None
+    return settings, load_profile(settings.get("profile"), PROFILES_DIR)
 
-    profile_name = config.get("profile")
-    if profile_name:
-        from _project_profiles import PROFILES_DIR, load_profile
 
-        profile = load_profile(profile_name, PROFILES_DIR)
+def _apply_profile_defaults(params, profile):
+    """Fill in the profile's application defaults for params that omit them.
 
-    return config, profile
+    An explicit --app / --app-dir always wins: a profile supplies a default,
+    never an override. Both daemon entry points go through here so the rule
+    lives in one place.
+    """
+    if not profile:
+        return params
+    if "default_app_name" in profile and "app" not in params:
+        params["app"] = profile["default_app_name"]
+    if "plc_app_path" in profile and "app_dir" not in params:
+        params["app_dir"] = profile["plc_app_path"]
+    return params
 
 
 # -- Reverse-pipe output helpers ----------------------------------------------
@@ -372,11 +400,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
     # Apply profile defaults for app/app_dir
     try:
         _config, profile = _load_project_config()
-        if profile:
-            if "default_app_name" in profile and "app" not in params:
-                params["app"] = profile["default_app_name"]
-            if "plc_app_path" in profile and "app_dir" not in params:
-                params["app_dir"] = profile["plc_app_path"]
+        _apply_profile_defaults(params, profile)
     except Exception as e:
         _print_info("Warning: could not load profile: {0}".format(e))
     if "timeout" in params:
@@ -406,11 +430,7 @@ def cmd_daemon(
     params = params or {}
     try:
         _config, profile = _load_project_config()
-        if profile:
-            if "default_app_name" in profile and "app" not in params:
-                params["app"] = profile["default_app_name"]
-            if "plc_app_path" in profile and "app_dir" not in params:
-                params["app_dir"] = profile["plc_app_path"]
+        _apply_profile_defaults(params, profile)
     except Exception as e:
         _print_info("Warning: could not load profile: {0}".format(e))
 
