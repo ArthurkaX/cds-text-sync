@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Coercion of loosely-typed values, shared by the host bridge and the engine.
 
 The daemon receives parameters over JSON, the engine reads them back out of
@@ -9,6 +10,8 @@ meant different things depending on which code path read it.
 
 IronPython 2.7 compatible: no annotations, no f-strings, no pathlib.
 """
+
+from __future__ import print_function
 
 TRUE_VALUES = ("1", "true", "yes", "on")
 FALSE_VALUES = ("0", "false", "no", "off")

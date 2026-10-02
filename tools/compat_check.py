@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""IronPython 2.7 compatibility lint for modules Project_fmt imports.
+"""IronPython 2.7 compatibility lint for modules the CODESYS host imports.
 
-Project_fmt runs inside the CODESYS ScriptEngine, whose host is IronPython
-2.7.  The pure seams it imports (cts_shared.st.* and the ide_bridge modules)
-must therefore stay Python 2.7-compatible even though the unit tests run
-under CPython 3.  This tool statically checks the exact modules the FMT
-workflow imports for Python 3-only syntax and builtin calls.
+Project_fmt and the reverse-pipe daemon both run inside the CODESYS
+ScriptEngine, whose host is IronPython 2.7.  The pure seams they import
+(cts_shared.* and the ide_bridge modules) must therefore stay Python
+2.7-compatible even though the unit tests run under CPython 3.  This tool
+statically checks the exact modules the FMT workflow imports, plus the shared
+helpers the daemon imports on top of that, for Python 3-only syntax, builtin
+calls and source that IronPython 2.7 cannot even parse.
 
 Usage::
 
@@ -21,13 +23,18 @@ from __future__ import print_function
 
 import ast
 import os
+import re
 import sys
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The modules the FMT workflow imports at runtime, relative to ROOT.
+# The modules the FMT workflow imports at runtime, relative to ROOT, plus
+# every bridge module that imports cts_shared.  The daemon reaches those from
+# the loop, not from FMT, so they were the population the coerce.py encoding
+# defect hid in and the one the list has to keep covered.
 DEFAULT_FILES = [
+    "shared/src/cts_shared/coerce.py",
     "shared/src/cts_shared/st/blanking.py",
     "shared/src/cts_shared/st/formatting.py",
     "shared/src/cts_shared/st/projection.py",
@@ -38,12 +45,34 @@ DEFAULT_FILES = [
     "products/codesys-host/src/ide_bridge/ide_st_objects.py",
     "products/codesys-host/src/ide_bridge/ide_st_text.py",
     "products/codesys-host/src/ide_bridge/ide_handlers_sync.py",
+    "products/codesys-host/src/ide_bridge/ide_handlers_project.py",
+    "products/codesys-host/src/ide_bridge/ide_handlers_plc.py",
+    "products/codesys-host/src/ide_bridge/ide_handlers_crc.py",
+    "products/codesys-host/src/ide_bridge/ide_handlers_build.py",
     "products/codesys-host/src/ide_bridge/ide_xml.py",
     "products/codesys-host/src/ide_bridge/codesys_runtime.py",
     "products/codesys-host/src/ide_bridge/codesys_utils.py",
     "products/codesys-host/src/ide_bridge/codesys_fmt_operation.py",
     "products/codesys-host/src/ide_bridge/codesys_fmt_ui.py",
+    "products/codesys-host/src/ide_bridge/snapshot_compare.py",
+    "products/codesys-host/src/ide_bridge/project_snapshooter.py",
 ]
+
+# PEP 263 coding cookie, e.g. ``# -*- coding: utf-8 -*-``.
+_SOURCE_ENCODING_RE = re.compile(rb"coding[:=]\s*([-\w.]+)")
+
+
+def _declares_source_encoding(source):
+    """True when the file carries a PEP 263 coding cookie.
+
+    Only the first two lines are searched: that is where Python 2 looks for
+    it, and the cookie is ignored anywhere else.
+    """
+    for line in source.splitlines()[:2]:
+        if _SOURCE_ENCODING_RE.search(line):
+            return True
+    return False
+
 
 # Builtin calls whose keyword arguments are Python 3-only.  IronPython 2.7
 # raises TypeError for the keyword form.
@@ -67,6 +96,21 @@ def _findings(path):
         text = source.decode("latin-1")
     errors = []
     warnings = []
+
+    # PEP 263.  IronPython 2.7 reads source as ASCII unless the file declares
+    # an encoding, so a single non-ASCII character in a docstring is already a
+    # SyntaxError there -- the module never imports, and every caller that
+    # reaches it breaks.  CPython 3 reads the same file as UTF-8 and parses it
+    # happily, so the offline test suite cannot see this: only the declaration
+    # check catches it.
+    if not _declares_source_encoding(source):
+        try:
+            source.decode("ascii")
+        except UnicodeDecodeError as error:
+            errors.append(
+                "non-ASCII byte at offset {0} without a source-encoding "
+                "declaration next to the first two lines".format(error.start)
+            )
 
     # Python 3-only *node kinds* (detected by walking the AST; CPython 3.x
     # rejects ``feature_version=(2, 7)`` since 3.9, so syntax detection is
