@@ -29,6 +29,10 @@ from ide_st_objects import (
     read_document as _read_document,
 )
 
+# Imported for its side effect: puts shared/src on sys.path so this module can be
+# imported cold, without depending on some earlier bridge module having done it.
+import ide_runtime_common  # noqa: F401
+
 from cts_shared.coerce import as_bool
 
 

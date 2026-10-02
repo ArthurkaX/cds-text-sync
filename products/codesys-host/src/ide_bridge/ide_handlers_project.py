@@ -13,10 +13,14 @@ import sys
 import traceback
 
 from codesys_utils import resolve_sync_folder
+
+# Imported before cts_shared: it puts shared/src on sys.path, so this module can be
+# imported cold, without depending on some earlier bridge module having done it.
+import ide_runtime_common as _common  # noqa: F401 – imported for completeness; bodies may use _common
+
 from cts_shared.coerce import as_bool
 
 import ide_online_helpers as _helpers
-import ide_runtime_common as _common  # noqa: F401 – imported for completeness; bodies may use _common
 
 from ide_daemon_state import (
     _log,
