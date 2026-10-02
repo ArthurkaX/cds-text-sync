@@ -21,19 +21,23 @@ from _view_text import ViewEncodingError, read_view_text
 from xml_helpers import normalize_guid, sha1_hex
 
 
-#: A file whose bytes are not UTF-8 at all. It has no comparable hash, but it
-#: must never be treated as clean: an export would then overwrite content we
-#: were unable to read, destroying whatever the editor saved.
-UNREADABLE = object()
-
-
 def _hash_file(full_path):
+    """Return ``(hash, unreadable_reason)`` -- one of the two is always set.
+
+    A file whose bytes cannot be read has no hash to compare against the
+    manifest, and it must never be treated as clean: the export would then
+    overwrite content we were unable to read, destroying whatever the editor
+    saved. So every failure names the file unreadable, with the reason. The
+    encoding case is the common one and keeps its specific wording; anything
+    else (a locked or permission-denied file, a bug in the reader) is reported
+    as it is rather than quietly dropping the file from the dirty list.
+    """
     try:
-        return sha1_hex(read_view_text(full_path))
+        return sha1_hex(read_view_text(full_path)), None
     except ViewEncodingError:
-        return UNREADABLE
-    except Exception:
-        return None
+        return None, "not valid UTF-8"
+    except Exception as error:
+        return None, "could not be read: {0}".format(error)
 
 
 def _entry_xml_in_dump(entry):
@@ -45,9 +49,10 @@ def scan_dirty(manifest, views_path, enabled_extensions=None, selected_guids=Non
 
     ``dirty``: managed view files whose current hash differs from the manifest
     (``hash`` for the entry xml, ``projection_hashes`` for projections), plus
-    files that are not valid UTF-8 at all - those carry ``unreadable`` and a
-    null ``current_hash``. Missing files are not dirty - the writer simply
-    recreates them.
+    files that could not be read at all - those carry ``unreadable`` with the
+    reason and a null ``current_hash``. A file we cannot read counts as dirty
+    because the export would otherwise overwrite content we never saw. Missing
+    files are not dirty - the writer simply recreates them.
 
     ``orphans``: files with a projection extension inside the view root that no
     manifest entry owns; a full export's orphan removal would delete them.
@@ -90,21 +95,18 @@ def scan_dirty(manifest, views_path, enabled_extensions=None, selected_guids=Non
             full_path = os.path.join(views_path, relative_path)
             if not os.path.isfile(full_path):
                 continue
-            current_hash = _hash_file(full_path)
-            if current_hash is None:
-                continue
-            unreadable = current_hash is UNREADABLE
-            if not unreadable and current_hash == expected_hash:
+            current_hash, unreadable_reason = _hash_file(full_path)
+            if unreadable_reason is None and current_hash == expected_hash:
                 continue
             item = {
                 "guid": guid,
                 "path": str(relative_path).replace("\\", "/"),
                 "file_kind": file_kind,
                 "expected_hash": expected_hash,
-                "current_hash": None if unreadable else current_hash,
+                "current_hash": None if unreadable_reason else current_hash,
             }
-            if unreadable:
-                item["unreadable"] = "not valid UTF-8"
+            if unreadable_reason:
+                item["unreadable"] = unreadable_reason
             dirty.append(item)
 
     if enabled_extensions and os.path.isdir(views_path):

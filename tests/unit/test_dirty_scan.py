@@ -93,6 +93,33 @@ class TestScanDirty:
         report = scan_dirty(manifest, views)
         assert [item["path"] for item in report["dirty"]] == ["A.st"]
 
+    def test_a_file_that_cannot_be_read_counts_as_dirty(self, tmp_path, monkeypatch):
+        """Unknown is not clean: an unreadable file must not pass the preflight.
+
+        The scan cannot tell whether the file was edited, so it has to assume it
+        was -- treating the failure as "clean" would hand the export a file it
+        never saw and let it overwrite whatever is in there.
+        """
+        views = str(tmp_path / "views")
+        content = "<Single Name='Object'/>"
+        _write_file(views, "A.xml", content)
+        manifest = _manifest(
+            [{"guid": "g1", "xml_path": "A.xml", "hash": sha1_hex(content)}]
+        )
+
+        def _unreadable(path):
+            raise OSError(13, "Permission denied")
+
+        monkeypatch.setattr("cds_text_sync.engine._dirty_scan.read_view_text", _unreadable)
+
+        report = scan_dirty(manifest, views)
+
+        assert [item["path"] for item in report["dirty"]] == ["A.xml"]
+        item = report["dirty"][0]
+        assert item["current_hash"] is None
+        assert "Permission denied" in item["unreadable"]
+        assert dirty_view_paths(manifest, views) == {"A.xml"}
+
     def test_dump_rooted_xml_entries_are_skipped(self, tmp_path):
         views = str(tmp_path / "views")
         _write_file(views, "A.xml", "<Single Name='Edited'/>")

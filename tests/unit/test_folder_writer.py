@@ -358,6 +358,35 @@ class TestDirtyGuard:
         carried = list(entry["projection_hashes"].values())[0]
         assert carried == original_hash
 
+    def test_unreadable_projection_is_preserved_not_regenerated(
+        self, tmp_path, monkeypatch
+    ):
+        """The end of the chain: a scan that cannot read a file keeps it on disk.
+
+        This is the scenario the dirty guard exists for -- the export must not
+        drop a projection it was unable to read, whatever the reason it could
+        not read it.
+        """
+        import _dirty_scan
+
+        views, dump, model, profile, projections = self._first_export(tmp_path)
+        st_rel = os.path.join("Folder", "MyObj.st")
+        edited = _read_file(views, st_rel) + "\n// local edit"
+
+        def _unreadable(path):
+            raise OSError(13, "Permission denied")
+
+        # The engine imports its siblings as top-level modules, so the scanner
+        # folder_writer calls is the top-level one, not the package alias.
+        monkeypatch.setattr(_dirty_scan, "read_view_text", _unreadable)
+        _write_file(views, st_rel, edited)
+
+        FolderWriter(views, dump, profile=profile, projections=projections).write(
+            model
+        )
+
+        assert _read_file(views, st_rel) == edited
+
     def test_overwrite_dirty_regenerates_and_rehashes(self, tmp_path):
         views, dump, model, profile, projections = self._first_export(tmp_path)
         st_rel = os.path.join("Folder", "MyObj.st")
