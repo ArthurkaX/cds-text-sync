@@ -281,7 +281,13 @@ class FolderWriter:
                 if guid not in selected_guids:
                     continue
 
-            entry_xml_path = entry.get("xml_path") or entry.get("view_path")
+            # Both sides in the portable "/" form: _managed_relative_paths
+            # normalizes, so comparing against a raw manifest field would miss
+            # a backslash entry xml and resolve it against the view root
+            # instead of the .dump/xml mirror it lives in.
+            entry_xml_path = manifest_path(
+                entry.get("xml_path") or entry.get("view_path")
+            )
             xml_in_dump = (entry.get("xml_root") or "").lower() == "dump"
             for relative_path in self._managed_relative_paths(entry):
                 if str(relative_path).replace("\\", "/") in keep:

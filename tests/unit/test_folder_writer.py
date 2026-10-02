@@ -808,3 +808,50 @@ class TestPortableManifestPaths:
         assert join_view_path("/root", "Device\\Application\\PLC_PRG.xml") == (
             os.path.join("/root", "Device/Application/PLC_PRG.xml")
         )
+
+
+class TestLegacyBackslashDumpMirrorRemoval:
+    """A Windows-produced manifest (backslash paths) with xml_root="dump" must
+    still have its stale entry xml removed from the .dump/xml mirror.
+
+    The removal target is chosen by comparing the entry's xml path against the
+    normalized managed paths. Comparing a raw backslash field against the
+    normalized list made the equality fail, so the stale mirror xml survived
+    and a same-named file in the view root was deleted instead.
+    """
+
+    def test_stale_mirror_xml_is_removed_not_the_view_root_twin(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        mirror_dir = os.path.join(dump, "xml", "Device", "Application")
+        view_dir = os.path.join(views, "Device", "Application")
+        os.makedirs(mirror_dir)
+        os.makedirs(view_dir)
+        stale_mirror = os.path.join(mirror_dir, "PLC_PRG.xml")
+        view_twin = os.path.join(view_dir, "PLC_PRG.xml")
+        _atomic_write_text(stale_mirror, "<Root>stale</Root>", encoding="utf-8")
+        _atomic_write_text(view_twin, "<Root>keep me</Root>", encoding="utf-8")
+
+        manifest = {
+            "view_root": views,
+            "ns": "",
+            "entries": [
+                {
+                    "guid": "11111111-1111-1111-1111-111111111111",
+                    "name": "PLC_PRG",
+                    "type_guid": "6f9dac99-8de1-4efc-8465-68ac443b7d08",
+                    "parent_guid": None,
+                    # Legacy separator, as written by an older Windows export.
+                    "xml_path": "Device\\Application\\PLC_PRG.xml",
+                    "xml_root": "dump",
+                    "hash": "deadbeef",
+                }
+            ],
+        }
+
+        writer = FolderWriter(views, dump)
+        removed = writer._remove_previous_managed_files_from_root(manifest, views)
+
+        assert removed == 1
+        assert not os.path.exists(stale_mirror), "stale .dump/xml mirror file survived"
+        assert os.path.exists(view_twin), "same-named file in the view root was deleted"
