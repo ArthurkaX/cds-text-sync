@@ -15,6 +15,24 @@ def normalize_fs_path(path):
     return os.path.normcase(os.path.abspath(os.path.normpath(path or "")))
 
 
+def manifest_path(path):
+    """A project-relative path in the portable manifest form ("/" separators).
+
+    Manifests are written with "/" on every platform, so the same sync folder
+    can be exported on Windows and read back on Linux (or the other way round).
+    Storing ``os.path.join`` output verbatim made the separators host-specific:
+    a Windows-produced manifest carried backslashes, which on Linux are ordinary
+    filename characters, so every managed path failed to resolve. Applying this
+    to a path read from an older manifest normalizes that too.
+    """
+    return str(path if path is not None else "").replace("\\", "/")
+
+
+def join_view_path(root, relative_path):
+    """Join a view root with a manifest-relative path of either separator."""
+    return os.path.join(root, manifest_path(relative_path))
+
+
 def manifest_view_root(manifest, project_root):
     """Resolve the view root recorded in a manifest, relative to ``project_root``.
 
@@ -34,8 +52,9 @@ def manifest_view_root(manifest, project_root):
 def managed_relative_paths(entry):
     """Return every project-relative path a manifest entry owns on disk."""
     relative_paths = []
-    if entry.get("xml_path") or entry.get("view_path"):
-        relative_paths.append(entry.get("xml_path") or entry.get("view_path"))
+    view_path = entry.get("xml_path") or entry.get("view_path")
+    if view_path:
+        relative_paths.append(manifest_path(view_path))
     for projection_path in entry.get("projection_paths") or []:
-        relative_paths.append(projection_path)
+        relative_paths.append(manifest_path(projection_path))
     return relative_paths

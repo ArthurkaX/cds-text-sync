@@ -16,7 +16,9 @@ from _path_safety import replace_extension, safe_path_in_root
 from _projection_codec import decode_csv, decode_st
 from _projection_changes import detect as detect_projection_changes
 from _view_paths import (
+    join_view_path,
     managed_relative_paths,
+    manifest_path,
     manifest_view_root,
     normalize_fs_path,
 )
@@ -165,7 +167,7 @@ class FolderReader:
         return extract_bool_property(root, property_name)
 
     def _projection_full_path(self, relative_path):
-        return os.path.join(self.views_path, relative_path)
+        return join_view_path(self.views_path, relative_path)
 
     def _replace_extension(self, relative_path, extension):
         return replace_extension(relative_path, extension)
@@ -176,8 +178,8 @@ class FolderReader:
         if not xml_path:
             return None
         if (entry.get("xml_root") or "").lower() == "dump":
-            return os.path.join(self.dump_path, "xml", xml_path)
-        return os.path.join(self.views_path, xml_path)
+            return join_view_path(os.path.join(self.dump_path, "xml"), xml_path)
+        return join_view_path(self.views_path, xml_path)
 
     def _projection_change_info(
         self, projection_paths, projection_hashes, treat_missing_hash_as_changed=False
@@ -418,10 +420,10 @@ class FolderReader:
         view_path = entry.get("view_path")
         if not view_path:
             return
-        normalized_path = view_path.replace("\\", "/")
+        normalized_path = manifest_path(view_path)
         managed_paths.add(normalized_path)
         node.metadata["view_path"] = view_path
-        full_path = os.path.join(self.views_path, view_path)
+        full_path = join_view_path(self.views_path, view_path)
         if os.path.exists(full_path):
             node.code = read_view_text(full_path)
 

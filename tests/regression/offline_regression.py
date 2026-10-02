@@ -576,9 +576,11 @@ def _scenario_projection_config(work_dir):
         if "x := 1;" in handle.read():
             raise RegressionFailure("ST projection text was not externalized from XML")
     projection_manifest = _read_json(os.path.join(config_layout_root, ".dump", "manifest.json"))
-    if projection_manifest["entries"][0].get("projection_paths") != ["Device\\Application\\PLC_PRG.st"]:
+    # Manifest paths are stored with "/" on every platform so a Windows export
+    # still resolves when the folder is synced to Linux.
+    if projection_manifest["entries"][0].get("projection_paths") != ["Device/Application/PLC_PRG.st"]:
         raise RegressionFailure("enabled ST projection was not recorded in manifest")
-    if not projection_manifest["entries"][0].get("projection_hashes", {}).get("Device\\Application\\PLC_PRG.st"):
+    if not projection_manifest["entries"][0].get("projection_hashes", {}).get("Device/Application/PLC_PRG.st"):
         raise RegressionFailure("enabled ST projection hash was not recorded in manifest")
     orphan_projection_path = os.path.join(config_layout_root, "project-view", "Device", "Application", "Orphan.st")
     projection_readme_path = os.path.join(config_layout_root, "project-view", "Device", "Application", "README.md")
@@ -612,7 +614,7 @@ def _scenario_projection_config(work_dir):
         raise RegressionFailure("compare report did not include projection diff metadata")
     _assert_equal(
         projection_objects[0]["projection_diff"].get("path"),
-        "Device\\Application\\PLC_PRG.st",
+        "Device/Application/PLC_PRG.st",
         "projection diff path",
     )
 

@@ -16,7 +16,7 @@ so a file is "dirty" here exactly when the reader would consider it changed.
 import os
 
 from _project_layout import is_reserved_root_child
-from _view_paths import managed_relative_paths, normalize_fs_path
+from _view_paths import join_view_path, managed_relative_paths, normalize_fs_path
 from _view_text import ViewEncodingError, read_view_text
 from xml_helpers import normalize_guid, sha1_hex
 
@@ -92,7 +92,7 @@ def scan_dirty(manifest, views_path, enabled_extensions=None, selected_guids=Non
                 expected_hashes[projection_path] = (file_kind, expected_hash)
 
         for relative_path, (file_kind, expected_hash) in expected_hashes.items():
-            full_path = os.path.join(views_path, relative_path)
+            full_path = join_view_path(views_path, relative_path)
             if not os.path.isfile(full_path):
                 continue
             current_hash, unreadable_reason = _hash_file(full_path)

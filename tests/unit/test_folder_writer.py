@@ -774,3 +774,37 @@ class TestExportAtomicAndReliability:
 
         with open(st_file, "r", encoding="utf-8") as f:
             assert f.read() == dirty_content
+
+
+class TestPortableManifestPaths:
+    """The manifest records project-relative paths with "/" on every host.
+
+    ``os.path.join`` made the separators host-specific: a project synced from
+    Windows to Linux (or the other way) carried backslashes that Linux treats
+    as ordinary filename characters, so every managed path failed to resolve.
+    """
+
+    def test_manifest_paths_use_forward_slashes(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        model, profile, projections = _pou_model_and_profile()
+        FolderWriter(views, dump, profile=profile, projections=projections).write(model)
+
+        entry = _load_manifest(dump)["entries"][0]
+
+        assert entry["xml_path"] == "Folder/MyObj.xml"
+        assert entry["projection_paths"] == ["Folder/MyObj.st"]
+        assert list(entry["projection_hashes"]) == ["Folder/MyObj.st"]
+        assert "\\" not in entry["xml_path"]
+
+    def test_the_assembly_helpers_normalize_separators(self):
+        from cds_text_sync.engine._view_paths import join_view_path, manifest_path
+
+        assert manifest_path("Device\\Application\\PLC_PRG.xml") == (
+            "Device/Application/PLC_PRG.xml"
+        )
+        assert join_view_path("/root", "Device\\Application\\PLC_PRG.xml") == (
+            os.path.join("/root", "Device/Application/PLC_PRG.xml")
+        )

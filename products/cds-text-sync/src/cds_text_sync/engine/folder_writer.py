@@ -19,6 +19,7 @@ from _project_profiles import enabled_projection_options, kind_for_type_guid
 from _project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
 from _view_paths import (
     managed_relative_paths,
+    manifest_path,
     manifest_view_root,
     normalize_fs_path,
 )
@@ -455,9 +456,10 @@ class FolderWriter:
         return os.path.join(*(parent_parts[:-1] + [flat_name])) + extension
 
     def _xml_path_for_node(self, project_model, node):
-        return self._flat_nested_path(
+        path = self._flat_nested_path(
             project_model, node, ".xml"
         ) or node.get_view_path(project_model, extension=".xml")
+        return manifest_path(path) if path else path
 
     def _node_projection_options(self, node):
         kind = kind_for_type_guid(self.profile, node.type)
@@ -523,9 +525,10 @@ class FolderWriter:
                     )
                 )
                 continue
-            projection_path = self._flat_nested_path(
-                project_model, node, extension
-            ) or self._replace_extension(xml_path, extension)
+            projection_path = manifest_path(
+                self._flat_nested_path(project_model, node, extension)
+                or self._replace_extension(xml_path, extension)
+            )
             full_path = self._safe_view_path(projection_path)
             if not full_path:
                 _log(
