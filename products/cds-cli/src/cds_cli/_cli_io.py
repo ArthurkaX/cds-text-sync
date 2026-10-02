@@ -30,6 +30,7 @@ from cds_text_sync.engine.reverse_pipe_client import (
     get_last_instance,
     send_command_reverse,
 )
+from cts_shared import wire
 
 # -- Config ------------------------------------------------------------------
 
@@ -320,7 +321,10 @@ def _print_rp_error(resp, command):
         elif inst_id:
             inst_suffix = f" ({inst_id} · no project)"
 
-    err = resp.get("error")
+    # Empty default on purpose: no error text means "look at data instead"
+    # (library install failures and message lists arrive with ok False and no
+    # error), so this must not fall back to a generic "unknown error".
+    err = wire.response_error(resp, "")
     data = resp.get("data")
     install_error = data.get("install_error") if isinstance(data, dict) else None
     if err is not None and err != "":
@@ -412,7 +416,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         _print_error("Reverse pipe error: {0}".format(e))
         sys.exit(1)
 
-    if resp.get("ok"):
+    if wire.response_ok(resp):
         data = resp.get("data", {})
         print(_format_output(data, fmt=output_fmt, title=command))
     else:
@@ -440,7 +444,7 @@ def cmd_daemon(
         _print_error("Reverse pipe error: {0}".format(e))
         sys.exit(1)
 
-    if resp.get("ok"):
+    if wire.response_ok(resp):
         print(_format_output(resp.get("data", {}), fmt=output_fmt, title=method))
     else:
         _print_rp_error(resp, method)
@@ -465,7 +469,7 @@ def _project_command(method, params=None, timeout=30):
         _print_error("Command error: {0}".format(e))
         sys.exit(1)
 
-    if resp.get("ok"):
+    if wire.response_ok(resp):
         data = resp.get("data", {})
         print(_format_output(data, fmt="json", title=method))
     else:
@@ -484,8 +488,8 @@ def _batch(method, key, items, timeout):
     for i in range(0, len(items), _BATCH_SIZE):
         part = items[i : i + _BATCH_SIZE]
         resp = send_command_reverse(method, {key: part}, timeout=timeout)
-        if not resp.get("ok"):
-            raise RuntimeError(resp.get("error", method + " failed"))
+        if not wire.response_ok(resp):
+            raise RuntimeError(wire.response_error(resp, method + " failed"))
         for r in resp.get("data", {}).get("results", []):
             out[r["name"]] = r
     return out

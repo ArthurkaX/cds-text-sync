@@ -29,6 +29,7 @@ from cds_text_sync.engine.reverse_pipe_client import (
     discover,
     ssh_dacl_hint,
 )
+from cts_shared import wire
 
 try:
     for stream in (sys.stdout, sys.stderr):
@@ -343,7 +344,7 @@ def main():
                     _print_error("Reverse pipe error: {0}".format(e))
                     sys.exit(1)
 
-                if not resp.get("ok"):
+                if not wire.response_ok(resp):
                     _print_rp_error(resp, "generate_docs")
                     sys.exit(1)
                 workspace = resp.get("data", {}).get("sync_folder") or workspace

@@ -16,15 +16,14 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
-import json
 import os
 import random
-import struct
 import sys
 import time
 from ctypes import wintypes
 from typing import Any
 
+from cts_shared import wire
 from cts_shared.coerce import as_bool
 
 from cds_text_sync.engine.pipe_targets import (
@@ -388,9 +387,9 @@ def _overlapped_op(
 
 
 def _write_msg(handle: int, data: dict, deadline: float, cmd_name: str = "") -> None:
-    msg = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    header = struct.pack("<I", len(msg))
-    data_to_send = header + msg
+    # cts_shared.wire owns the framing, so this is byte-for-byte the same
+    # length-prefixed JSON the daemon reads.
+    data_to_send = wire.encode_message(data)
     total_len = len(data_to_send)
     offset = 0
 
@@ -412,7 +411,7 @@ def _write_msg(handle: int, data: dict, deadline: float, cmd_name: str = "") -> 
 
 # Default maximum single response size (bytes). Raised to 32 MiB to support
 # large application_tree / sync_export_text responses on big projects.
-DEFAULT_MAX_RESPONSE_SIZE = 32 * 1024 * 1024
+DEFAULT_MAX_RESPONSE_SIZE = wire.MAX_MESSAGE_SIZE
 
 
 def _read_msg(
@@ -423,8 +422,8 @@ def _read_msg(
 ) -> dict:
     # Read 4-byte length
     raw_len = bytearray()
-    while len(raw_len) < 4:
-        needed = 4 - len(raw_len)
+    while len(raw_len) < wire.HEADER_SIZE:
+        needed = wire.HEADER_SIZE - len(raw_len)
         buf = ctypes.create_string_buffer(needed)
         n = _overlapped_op(
             handle,
@@ -438,7 +437,10 @@ def _read_msg(
             raise RuntimeError("Pipe disconnected while reading header")
         raw_len.extend(buf.raw[:n])
 
-    (msg_len,) = struct.unpack("<I", bytes(raw_len[:4]))
+    try:
+        msg_len = wire.parse_header(bytes(raw_len[: wire.HEADER_SIZE]))
+    except wire.WireError as exc:
+        raise RuntimeError("Invalid response frame: {0}".format(exc))
     if msg_len == 0:
         return {}
     if msg_len > max_size:
@@ -461,7 +463,7 @@ def _read_msg(
             raise RuntimeError("Pipe disconnected while reading body")
         raw_msg.extend(buf.raw[:n])
 
-    return json.loads(bytes(raw_msg).decode("utf-8"))
+    return wire.decode_body(bytes(raw_msg))
 
 
 # ── Target Resolution & Pipe Targets ───────────────────────────────────────
@@ -742,7 +744,7 @@ def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
                 try:
                     _write_msg(
                         conn,
-                        {"method": "ping", "params": {"hello": 2}},
+                        wire.hello_request(),
                         deadline=time.monotonic() + 1.0,
                         cmd_name="ping",
                     )
@@ -772,6 +774,16 @@ def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
 # Cache the last known IDE PID for smart timeout diagnostics
 _last_ide_pid: int | None = None
 
+# Commands sent by this process, for the optional request id on each command.
+_request_counter = 0
+
+
+def _next_request_id() -> str:
+    """A fresh id for one command, matching what the daemon logs."""
+    global _request_counter
+    _request_counter += 1
+    return wire.new_request_id(os.getpid(), _request_counter, time.strftime("%H%M%S"))
+
 
 class ReversePipeClient:
     """CLI creates a pipe server, IDE connects as client.
@@ -782,6 +794,9 @@ class ReversePipeClient:
     def __init__(self, user: str | None = None, timeout: float = 30):
         self._pipe_path = reverse_pipe_name(user)
         self._timeout = timeout
+        # The id of the command currently in flight, so the timeout message can
+        # name the value the daemon logged next to it.
+        self._request_id: str | None = None
 
     @staticmethod
     def _find_ide_pid() -> int | None:
@@ -874,9 +889,35 @@ class ReversePipeClient:
                 f"Project_daemon.py is running inside CODESYS."
             )
 
+    def _exchange(self, conn: int, method: str, params: dict, deadline: float) -> dict:
+        """Send one command over *conn* and read its response.
+
+        On a timeout the original message is kept and extended with where the
+        outcome can still be found: a command that timed out may well have run
+        to completion, and its result is not gone just because this end stopped
+        listening.
+        """
+        cmd = {"method": method, "params": params}
+        if self._request_id:
+            cmd[wire.REQUEST_ID_KEY] = self._request_id
+        try:
+            _write_msg(conn, cmd, deadline=deadline, cmd_name=method)
+            return _read_msg(conn, deadline=deadline, cmd_name=method)
+        except RuntimeError as exc:
+            if "Timeout" not in str(exc):
+                raise
+            raise RuntimeError(
+                "{0}\nRequest id: {1}. If the daemon finished this command, "
+                "run `cts last-result` to read back its outcome, and search "
+                "the daemon log for that request id.".format(
+                    exc, self._request_id or "(none)"
+                )
+            )
+
     def send_command(self, method: str, params: dict | None = None) -> dict:
         global _last_ide_pid, _resolved_pid, _last_instance
         params = params or {}
+        self._request_id = _next_request_id()
         deadline = time.monotonic() + self._timeout
 
         # Determine target PID
@@ -924,7 +965,7 @@ class ReversePipeClient:
                     try:
                         _write_msg(
                             conn,
-                            {"method": "ping", "params": {"hello": 2}},
+                            wire.hello_request(),
                             deadline=time.monotonic() + 2.0,
                             cmd_name="ping",
                         )
@@ -1004,9 +1045,7 @@ class ReversePipeClient:
                                 hint = self._diagnose_ide_timeout(target_pid=target_pid)
                                 raise RuntimeError(f"Timeout waiting for legacy IDE to connect. {hint}")
                             l_conn = legacy_listener.handle
-                            cmd = {"method": method, "params": params}
-                            _write_msg(l_conn, cmd, deadline=deadline, cmd_name=method)
-                            response = _read_msg(l_conn, deadline=deadline, cmd_name=method)
+                            response = self._exchange(l_conn, method, params, deadline)
                             if isinstance(response, dict):
                                 data = response.get("data", response)
                                 if isinstance(data, dict) and data.get("pid"):
@@ -1041,9 +1080,9 @@ class ReversePipeClient:
                         _last_ide_pid = chosen.pid
 
                         try:
-                            cmd = {"method": method, "params": params}
-                            _write_msg(chosen_conn, cmd, deadline=deadline, cmd_name=method)
-                            response = _read_msg(chosen_conn, deadline=deadline, cmd_name=method)
+                            response = self._exchange(
+                                chosen_conn, method, params, deadline
+                            )
 
                             if isinstance(response, dict) and "instance" in response:
                                 _last_instance = response["instance"]

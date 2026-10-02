@@ -198,6 +198,7 @@ def test_cts_shared_importers_are_discovered():
     # still covers the modules that pull cts_shared in.
     assert _modules_importing_cts_shared() == [
         "codesys_fmt_operation",
+        "ide_daemon_state",
         "ide_handlers_build",
         "ide_handlers_crc",
         "ide_handlers_plc",

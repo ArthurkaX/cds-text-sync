@@ -52,6 +52,7 @@ from ide_daemon_state import (
     PROTOCOL,
     CONNECT_TIMEOUT_MS,
     _log,
+    wire,
     _read_json_from_pipe,
     _write_json_to_pipe,
     _load_daemon_config,
@@ -214,20 +215,19 @@ def _noarg(fn):
 
 def _handle_stop(params):
     sys._codesys_daemon_loop["running"] = False
-    return {"ok": True, "data": {"message": "Daemon stopping..."}}
+    return wire.ok_response({"message": "Daemon stopping..."})
 
 
 def _handle_ping(params):
-    return {
-        "ok": True,
-        "data": {
+    return wire.ok_response(
+        {
             "status": "pong",
             "mode": "reverse_pipe",
             "pid": os.getpid(),
             "plc": _get_plc_status_snapshot(),
             "timeout_profile": sys._codesys_daemon_loop.get("timeout_profile"),
-        },
-    }
+        }
+    )
 
 
 def _handle_status(params):
@@ -236,15 +236,17 @@ def _handle_status(params):
     result["mode"] = "reverse_pipe"
     result["plc"] = _get_plc_status_snapshot()
     result["timeout_profile"] = sys._codesys_daemon_loop.get("timeout_profile")
-    return {"ok": True, "data": result}
+    return wire.ok_response(result)
 
 
 def _handle_timeout_profile(params):
-    """Return startup-sized timeouts without probing the PLC session."""
-    return {
-        "ok": True,
-        "data": sys._codesys_daemon_loop.get("timeout_profile", {}),
-    }
+    """Return startup-sized timeouts without probing the PLC session.
+
+    Not folded into ``wire.ok_response``: that treats a None payload as "no
+    data key", while this must keep ``"data": null`` when the profile has not
+    been computed, so the response stays byte-identical to the old one.
+    """
+    return {"ok": True, "data": sys._codesys_daemon_loop.get("timeout_profile", {})}
 
 
 import command_registry as _registry
@@ -265,15 +267,15 @@ def handle_command(method, params):
     if method not in _NO_PERMISSION:
         allowed, reason = _check_permission(method)
         if not allowed:
-            return {"ok": False, "error": reason}
+            return wire.error_response(reason)
     handler = _DISPATCH.get(method)
     if handler is None:
-        return {"ok": False, "error": "Unknown method: {0}".format(method)}
+        return wire.error_response("Unknown method: {0}".format(method))
     try:
         return handler(params)
     except Exception as e:
         _log("Command error: {0}\n{1}".format(e, traceback.format_exc()))
-        return {"ok": False, "error": "{0}: {1}".format(type(e).__name__, e)}
+        return wire.error_response("{0}: {1}".format(type(e).__name__, e))
 
 
 
@@ -353,9 +355,9 @@ def _serve_connection(pipe, dash=None):
 
     # Check for protocol v2 handshake: ping with params.hello
     params = first_msg.get("params")
-    if first_msg.get("method") == "ping" and isinstance(params, dict) and "hello" in params:
+    if first_msg.get("method") == wire.HELLO_METHOD and wire.is_hello_message(first_msg):
         # Send H2
-        h2 = {"ok": True, "hello": _hello_info()}
+        h2 = wire.hello_reply(_hello_info())
         if not _write_json_to_pipe(pipe, h2):
             return False
 

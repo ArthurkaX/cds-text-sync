@@ -20,6 +20,7 @@ from cds_cli._cli_io import (
     send_command_reverse,
 )
 from cds_text_sync.engine.pipe_targets import TargetError
+from cts_shared import wire
 
 
 # -- Shared helpers -----------------------------------------------------------
@@ -41,7 +42,7 @@ def _resolve_sync_folder(sync_folder, timeout=10, quiet=False):
     if not base:
         try:
             resp = send_command_reverse("status", {}, timeout=timeout)
-            if resp.get("ok"):
+            if wire.response_ok(resp):
                 base = resp.get("data", {}).get("sync_folder")
         except TargetError:
             raise

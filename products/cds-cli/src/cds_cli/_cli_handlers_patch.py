@@ -30,6 +30,7 @@ from cds_cli._cli_io import (
     send_command_reverse,
 )
 from cds_text_sync.engine.pipe_targets import TargetError
+from cts_shared import wire
 
 PATCH_DIRNAME = "patch"
 PATCH_PREFIX = "patch_"
@@ -90,9 +91,9 @@ def _run_compare(timeout):
     except Exception as error:
         _print_error("Compare failed: {0}".format(error))
         sys.exit(1)
-    if not response.get("ok"):
+    if not wire.response_ok(response):
         _print_error(
-            "Compare failed: {0}".format(response.get("error") or "unknown error")
+            "Compare failed: {0}".format(wire.response_error(response))
         )
         sys.exit(1)
     return response.get("data") or {}

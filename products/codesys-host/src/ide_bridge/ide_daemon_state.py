@@ -19,13 +19,23 @@ import time
 
 from codesys_utils import project_file_path
 
+# Imported before cts_shared: it puts shared/src on sys.path, so this module can
+# be imported cold without depending on an earlier bridge module having done it.
+import ide_runtime_common as _common  # noqa: F401 - the import is the sys.path work
+
+from cts_shared import wire
+
 # ── Configuration ──────────────────────────────────────────────────────────
 
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
 # Kept in step with cds_text_sync.__version__; the daemon no longer versions separately.
 VERSION = "3.3.0"
-PROTOCOL = 2
+
+# The wire format -- framing, size cap, handshake shape -- lives in cts_shared.wire,
+# shared with the CLI. Re-exported here because the bridge's older callers import
+# it from this module.
+PROTOCOL = wire.PROTOCOL
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
 CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)
@@ -55,28 +65,29 @@ def _read_text_utf8(path):
 
 # ── Message I/O ────────────────────────────────────────────────────────────
 
-MAX_MESSAGE_SIZE = 32 * 1024 * 1024
+MAX_MESSAGE_SIZE = wire.MAX_MESSAGE_SIZE
 
 
 def _read_json_from_pipe(pipe):
-    """Read a length-prefixed JSON message from pipe (byte-mode)."""
+    """Read a length-prefixed JSON message from pipe (byte-mode).
+
+    The header parse and the body decode come from cts_shared.wire, so this
+    side accepts -- and refuses -- exactly the frames the CLI produces.
+    """
     try:
         if hasattr(pipe, "read_msg"):
             return pipe.read_msg()
         if hasattr(pipe, "read"):
-            import struct
-
-            raw_len = pipe.read(4)
-            if not raw_len or len(raw_len) < 4:
+            raw_len = pipe.read(wire.HEADER_SIZE)
+            if not raw_len or len(raw_len) < wire.HEADER_SIZE:
                 return None
-            msg_len = struct.unpack("<I", raw_len)[0]
-            if msg_len <= 0 or msg_len > MAX_MESSAGE_SIZE:
-                _log("Invalid message length: {0}".format(msg_len))
+            msg_len = wire.parse_header(raw_len)
+            if msg_len <= 0:
                 return None
             body = pipe.read(msg_len)
             if not body or len(body) < msg_len:
                 return None
-            return json.loads(body.decode("utf-8"))
+            return wire.decode_body(body)
 
         import System
 
@@ -88,8 +99,11 @@ def _read_json_from_pipe(pipe):
             if n == 0:
                 return None
             total += n
-        msg_len = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | (hdr[3] << 24)
-        if msg_len <= 0 or msg_len > MAX_MESSAGE_SIZE:
+        msg_len = wire.parse_header(bytes(bytearray(hdr)))
+        if msg_len <= 0:
+            # parse_header already logged nothing; a zero-length frame is a
+            # valid empty message on the CLI side, and here means a malformed
+            # header the loop should ignore.
             _log("Invalid message length: {0}".format(msg_len))
             return None
         # Read body in chunks
@@ -102,7 +116,10 @@ def _read_json_from_pipe(pipe):
             total += n
         # Convert .NET byte[] to Python str via bytearray
         raw_bytes = bytes(bytearray(buf))
-        return json.loads(raw_bytes.decode("utf-8"))
+        return wire.decode_body(raw_bytes)
+    except wire.WireError as e:
+        _log("Invalid message length: {0}".format(e))
+        return None
     except Exception as e:
         _log("Read error: {0}".format(e))
         return None
@@ -114,10 +131,8 @@ def _write_json_to_pipe(pipe, data):
         if hasattr(pipe, "write_msg"):
             return pipe.write_msg(data)
         if hasattr(pipe, "write"):
-            import struct
-
-            msg_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
-            pipe.write(struct.pack("<I", len(msg_bytes)))
+            msg_bytes = wire.encode_body(data)
+            pipe.write(wire.encode_header(len(msg_bytes)))
             pipe.write(msg_bytes)
             if hasattr(pipe, "flush"):
                 pipe.flush()
@@ -125,7 +140,7 @@ def _write_json_to_pipe(pipe, data):
 
         import System
 
-        msg_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        msg_bytes = wire.encode_body(data)
         n = len(msg_bytes)
         # Write header (4 bytes, little-endian) — 4 single-byte calls are fine
         pipe.WriteByte(n & 0xFF)
@@ -159,14 +174,13 @@ def _require_param(params, key, type_=str):
 def _get_active_project():
     pid = os.getpid()
     ide_id = "ide-{0}".format(pid)
-    no_proj_err = {
-        "ok": False,
-        "code": "no_project",
-        "error": (
+    no_proj_err = wire.error_response(
+        (
             "No project is open in this IDE ({0}). "
             "Open one with: cts --target {0} project open --path <path>"
         ).format(ide_id),
-    }
+        code="no_project",
+    )
     if not hasattr(sys, "_codesys_daemon_loop"):
         return None, no_proj_err
     projects = sys._codesys_daemon_loop.get("projects")
@@ -244,14 +258,13 @@ def _hello_info():
     """Return full HELLO descriptor for protocol v2 handshake."""
     info = _instance_info()
     config = _load_daemon_config()
-    return {
-        "protocol": PROTOCOL,
-        "id": info["id"],
-        "pid": os.getpid(),
-        "version": VERSION,
-        "poll_ms": int(config.get("poll_ms", 200)),
-        "project": info.get("project"),
-    }
+    return wire.build_hello(
+        info["id"],
+        os.getpid(),
+        VERSION,
+        int(config.get("poll_ms", 200)),
+        info.get("project"),
+    )
 
 
 def _obj_name(obj):
