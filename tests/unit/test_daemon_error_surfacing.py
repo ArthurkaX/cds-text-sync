@@ -31,6 +31,7 @@ if _IDE_BRIDGE not in sys.path:
 
 import ide_daemon_helpers as helpers
 import ide_handlers_project as handlers
+import ide_runtime_common as runtime_common
 
 
 def _install_loop(monkeypatch, project):
@@ -252,3 +253,89 @@ def test_mapping_to_dict_records_a_pair_whose_key_refuses():
 
     assert result == {}
     assert any("no key" in message for message in errors)
+
+
+# ── T47/T53: the object type is the ``type`` property ─────────────────────
+
+
+def test_object_type_reads_the_type_property():
+    class _Obj(object):
+        type = "FFBFA93A-B94D-45FC-A329-229860183B1D"
+
+    guid, error = runtime_common.object_type(_Obj())
+
+    assert guid == "ffbfa93a-b94d-45fc-a329-229860183b1d"
+    assert error is None
+
+
+def test_object_type_reports_a_refusing_type_property():
+    class _Obj(object):
+        @property
+        def type(self):
+            raise RuntimeError("type unavailable")
+
+    guid, error = runtime_common.object_type(_Obj())
+
+    assert guid is None
+    assert "type unavailable" in error
+
+
+def test_object_type_is_absent_not_an_error_for_the_project_root():
+    """ScriptProject has no ``type``; that is an absent property, not a
+    refusal, so no type_error may be invented for the tree root."""
+
+    class _Project(object):
+        pass
+
+    assert runtime_common.object_type(_Project()) == (None, None)
+
+
+def test_build_tree_carries_the_type_of_each_node():
+    class _Obj(object):
+        def __init__(self, name, type_guid):
+            self._name = name
+            self.type = type_guid
+
+        def get_name(self):
+            return self._name
+
+        def get_children(self):
+            return []
+
+    tree = helpers._build_tree(_Obj("ST_PROGRAMM", "6F9DAC99-8DE1-4EFC-8465-68AC443B7D08"))
+
+    assert tree["type"] == "6f9dac99-8de1-4efc-8465-68ac443b7d08"
+
+
+def test_read_object_reports_the_real_type_not_unknown(monkeypatch):
+    class _Obj(object):
+        type = "6f9dac99-8de1-4efc-8465-68ac443b7d08"
+
+    monkeypatch.setattr(handlers, "_get_active_project", lambda: (object(), None))
+    monkeypatch.setattr(handlers, "_find_object_by_selector", lambda project, params: _Obj())
+    monkeypatch.setattr(handlers, "_obj_name", lambda obj: "ST_PROGRAMM")
+    monkeypatch.setattr(handlers, "_build_path", lambda obj: "Device/App/ST_PROGRAMM")
+
+    result = handlers._cmd_read_object({"name": "ST_PROGRAMM"})
+
+    assert result["ok"] is True
+    assert result["data"]["type"] == "6f9dac99-8de1-4efc-8465-68ac443b7d08"
+    assert "type_error" not in result["data"]
+
+
+def test_read_object_names_a_refusing_type(monkeypatch):
+    class _Obj(object):
+        @property
+        def type(self):
+            raise RuntimeError("type unavailable")
+
+    monkeypatch.setattr(handlers, "_get_active_project", lambda: (object(), None))
+    monkeypatch.setattr(handlers, "_find_object_by_selector", lambda project, params: _Obj())
+    monkeypatch.setattr(handlers, "_obj_name", lambda obj: "Mystery")
+    monkeypatch.setattr(handlers, "_build_path", lambda obj: "Device/App/Mystery")
+
+    result = handlers._cmd_read_object({"name": "Mystery"})
+
+    assert result["ok"] is True
+    assert "type" not in result["data"]
+    assert "type unavailable" in result["data"]["type_error"]

@@ -13,7 +13,7 @@ import re
 import tempfile
 import xml.etree.ElementTree as ET
 
-from ide_runtime_common import normalize_guid, object_name
+from ide_runtime_common import normalize_guid, object_name, object_type
 from _locale_aliases import canonical_key
 from ide_xml import parse_xml_file
 
@@ -669,44 +669,22 @@ _PERSISTENT_GVL_TYPE_GUIDS = set(
 )
 
 
-def _object_type_guids(obj):
-    """Best-effort type GUID(s) of a live CODESYS object.
-
-    The scripting API does not report the type the same way for every object:
-    get_type() is what the rest of the bridge uses, but it raises for some
-    objects (read_object answered "Unknown" for a POU on the test VM), and some
-    versions expose ``type`` instead. Every candidate that can be read is
-    returned, normalized; an empty list means "type unknown", not "not
-    persistent".
-    """
-    values = []
-    for getter_name in ("get_type", "get_type_name"):
-        try:
-            value = getattr(obj, getter_name)()
-        except Exception:
-            continue
-        if value:
-            values.append(str(value))
-    try:
-        attr_value = getattr(obj, "type", None)
-    except Exception:
-        attr_value = None
-    if attr_value:
-        values.append(str(attr_value))
-    return [normalize_guid(value) for value in values]
-
-
 def _is_persistent_gvl_object(obj):
-    """Whether a live object is the application's Persistent Variables list."""
-    candidates = _object_type_guids(obj)
-    if candidates:
-        return any(
-            candidate in _PERSISTENT_GVL_TYPE_GUIDS
-            or candidate in _DEFAULT_PERSISTENT_GVL_NAMES
-            for candidate in candidates
-        )
-    # Type unreadable: fall back to the name CODESYS gives the object it creates
-    # for "Add Persistent Variables".
+    """Whether a live object is the application's Persistent Variables list.
+
+    The type GUID decides when it is readable: the persistent-list GUIDs are
+    the same ones ``_create_text_object`` passes to ``create_child``, so a
+    match is exact, not a guess. This used to also treat the object's *name*
+    as a type candidate, which made a POU or GVL called "PersistentVars" match.
+
+    Only when the type genuinely cannot be read does it fall back to the name
+    CODESYS gives the object it creates for "Add Persistent Variables" -- a
+    guess, and a defensive one at that (a project that already has a
+    persistent list would normally report its type).
+    """
+    type_guid, _type_error = object_type(obj)
+    if type_guid:
+        return type_guid in _PERSISTENT_GVL_TYPE_GUIDS
     try:
         return canonical_key(object_name(obj)) in _DEFAULT_PERSISTENT_GVL_NAMES
     except Exception:

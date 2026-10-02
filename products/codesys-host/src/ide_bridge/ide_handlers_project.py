@@ -353,16 +353,18 @@ def _cmd_read_object(params):
         if target is None:
             return {"ok": False, "error": "Object not found"}
 
-        try:
-            obj_type = str(target.get_type())
-        except Exception:
-            obj_type = "Unknown"
-
+        # The type is the ``type`` property (a System.Guid); get_type() does
+        # not exist on CODESYS 3.5 objects, which is why this used to answer
+        # "Unknown" for every object.
+        obj_type, type_error = _common.object_type(target)
         data = {
             "name": _obj_name(target),
             "path": _build_path(target),
-            "type": obj_type,
         }
+        if obj_type:
+            data["type"] = obj_type
+        elif type_error:
+            data["type_error"] = type_error
         guid = _common.object_guid(target)
         if guid:
             data["guid"] = guid

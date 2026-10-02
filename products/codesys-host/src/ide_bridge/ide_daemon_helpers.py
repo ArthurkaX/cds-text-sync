@@ -274,10 +274,16 @@ def _find_object_in_project(project, obj_name, app_name=None):
             if not found_in_app:
                 continue
 
-        try:
-            obj_type = str(child.get_type())
-        except Exception:
-            obj_type = "Unknown"
+        # The type GUID, or None when it cannot be read -- never "Unknown",
+        # which is a string a caller could mistake for a kind. The failure is
+        # logged so a lookup that found the object but not its type says so.
+        obj_type, type_error = _common.object_type(child)
+        if type_error:
+            _log(
+                "Object search: could not read the type of '{0}': {1}".format(
+                    cname, type_error
+                )
+            )
         return child, obj_type
 
     return None, None
@@ -450,6 +456,18 @@ def _build_tree(obj, depth=0, current_depth=0):
         guid = None
     if guid:
         node["guid"] = guid
+    # The node's type GUID (T53). A node whose type cannot be read says so
+    # rather than looking like an object of no particular kind.
+    obj_type, type_error = _common.object_type(obj)
+    if obj_type:
+        node["type"] = obj_type
+    elif type_error:
+        node["type_error"] = type_error
+        _log(
+            "Project tree: could not read the type of '{0}': {1}".format(
+                node["name"], type_error
+            )
+        )
     if current_depth > MAX_TREE_DEPTH:
         node["_truncated"] = True
         return node

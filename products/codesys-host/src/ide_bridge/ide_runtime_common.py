@@ -105,6 +105,39 @@ def object_guid(obj):
     return ""
 
 
+def object_type(obj):
+    """``(type_guid, error)`` for a CODESYS object.
+
+    CODESYS 3.5's ``ScriptObject`` has no ``get_type()`` or
+    ``get_type_name()`` -- both raise AttributeError (verified on 3.5.22.30) --
+    which is why ``read_object`` used to answer "Unknown" for every POU and
+    ``project_tree`` carried no type at all. The type is the ``type`` property,
+    a ``System.Guid``.
+
+    The GUID is returned normalized (lowercase, no braces); *error* is None on
+    success and a message when the type could not be read. Callers must not
+    hand out None as a type: name the failure (a ``type_error`` field, a log
+    line) instead of pretending the object has an unknown kind.
+
+    An AttributeError is the one silent case: it means "this kind of object has
+    no type property" (the project root, ScriptProject), not a refusal. A
+    property that exists but raises, or reports nothing, is the failure worth
+    reporting.
+    """
+    try:
+        value = getattr(obj, "type")
+    except AttributeError:
+        return None, None
+    except Exception as error:
+        return None, "could not read 'type': {0}".format(error)
+    if value is None:
+        return None, "object reported an empty type"
+    text = str(value).strip()
+    if not text:
+        return None, "object reported an empty type"
+    return normalize_guid(text), None
+
+
 def get_workspace_dir(script_file=None):
     # Prefer the repository root for the external engine. Fall back to the
     # host product root when this tree is deployed without the repository.

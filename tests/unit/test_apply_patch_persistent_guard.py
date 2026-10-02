@@ -38,7 +38,8 @@ except Exception as exc:  # pragma: no cover - environment dependent
 
 PERSISTENT_GUID = "{3183921b-cc91-4712-9781-c3b6555122b5}"
 OTHER_PERSISTENT_GUID = "{261bd6e6-249c-4232-bb6f-84c2fbeef430}"
-GVL_GUID = "{6f9dac99-8de1-4efc-8465-68ac443b7d08}"
+# A normal GVL's type GUID (verified on the test VM, 3.5.22.30).
+GVL_GUID = "{ffbfa93a-b94d-45fc-a329-229860183b1d}"
 
 
 class _FakeObject(object):
@@ -52,10 +53,13 @@ class _FakeObject(object):
     def get_name(self):
         return self.name
 
-    def get_type(self):
+    @property
+    def type(self):
+        """The real CODESYS API exposes the type as a ``type`` property
+        (a System.Guid); it has no ``get_type()``."""
         if self._type_guid is None:
-            # Some live objects raise here instead of reporting a type.
-            raise AttributeError("get_type")
+            # Some live objects expose no type at all.
+            raise AttributeError("type")
         return self._type_guid
 
     def _add(self, child):
@@ -116,6 +120,15 @@ def test_unreadable_type_falls_back_to_the_default_codesys_name():
 def test_a_plain_gvl_is_not_mistaken_for_a_persistent_list():
     plain = _FakeObject("GVL_Plain", type_guid=GVL_GUID)
     project, app, chain = _project_with_application([plain])
+
+    assert patch_module._find_existing_persistent_gvl(app, chain) is None
+
+
+def test_a_readable_type_wins_over_a_persistent_sounding_name():
+    """The old code mixed the object name into the type candidates, so a POU
+    or GVL literally called "PersistentVars" matched even with a known type."""
+    named = _FakeObject("PersistentVars", type_guid=GVL_GUID)
+    project, app, chain = _project_with_application([named])
 
     assert patch_module._find_existing_persistent_gvl(app, chain) is None
 
