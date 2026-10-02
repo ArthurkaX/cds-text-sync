@@ -507,16 +507,23 @@ def _get_sync_folder():
         prj = projects.primary
         if prj is None:
             return None, "No active project"
+        # getattr with a default, not hasattr: on Python 2 -- and so on
+        # IronPython -- hasattr answers False for *any* exception a property
+        # raises, so a Project Information that refuses to read would be
+        # reported as "Sync folder not configured" -- sending the user after a
+        # settings problem that is really a read failure. The outer except
+        # turns the refusal into (None, message) instead.
         proj_info = None
-        if hasattr(prj, "get_project_info"):
-            proj_info = prj.get_project_info()
-        elif hasattr(prj, "project_info"):
-            proj_info = prj.project_info
+        getter = getattr(prj, "get_project_info", None)
+        if callable(getter):
+            proj_info = getter()
+        if proj_info is None:
+            proj_info = getattr(prj, "project_info", None)
         if proj_info is None:
             return None, "Project info not available"
         props = getattr(proj_info, "values", proj_info)
         base_dir = ""
-        if hasattr(props, "__getitem__"):
+        if getattr(props, "__getitem__", None) is not None:
             try:
                 if "cds-sync-folder" in props:
                     base_dir = props["cds-sync-folder"]

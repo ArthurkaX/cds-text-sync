@@ -255,6 +255,27 @@ def test_mapping_to_dict_records_a_pair_whose_key_refuses():
     assert any("no key" in message for message in errors)
 
 
+def test_get_sync_folder_reports_a_refusing_project_info(monkeypatch):
+    """The same flaw, one function over: with the old hasattr guard a project
+    whose Project Information refuses to read was answered with "sync folder
+    not configured", pointing at settings instead of at the read failure."""
+    _python2_hasattr(monkeypatch)
+
+    class _Project(object):
+        @property
+        def project_info(self):
+            raise RuntimeError("properties locked")
+
+    projects = SimpleNamespace(primary=_Project())
+    monkeypatch.setattr(sys, "_codesys_daemon_loop", {"projects": projects}, raising=False)
+
+    path, error = helpers._get_sync_folder()
+
+    assert path is None
+    assert "properties locked" in error
+    assert "not configured" not in error
+
+
 # ── T47/T53: the object type is the ``type`` property ─────────────────────
 
 
