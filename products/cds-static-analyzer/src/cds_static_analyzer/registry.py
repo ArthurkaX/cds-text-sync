@@ -1,7 +1,7 @@
 """
 registry.py - Loading and validating the built-in rules.
 
-Rules live in ``cds_text_sync/analyze/rules/*.py`` — one self-contained
+Rules live in ``cds_static_analyzer/rules/*.py`` — one self-contained
 file per rule, holding its ``check`` and the ``RULE`` manifest that describes
 it. They are data-plus-``check`` units loaded explicitly by ``_load_module``,
 never discovered by package scanning.

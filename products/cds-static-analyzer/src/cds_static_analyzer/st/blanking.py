@@ -1,9 +1,11 @@
 """
 blanking.py - Comment/string blanking helpers for the analyzer.
 
-The shared implementation lives in :mod:`st_text.blanking` so the analyzer
-and the CPython engine use the same lexical behavior without depending on one
-another.
+The analyzer keeps its own copy instead of re-exporting
+:mod:`cts_shared.st.blanking`: it adds ``{...}`` pragma handling and
+``has_intentional_noop_comment``, which the shared module does not have.  The
+two implementations diverge, so neither can replace the other until they are
+reconciled.
 """
 
 from __future__ import annotations
