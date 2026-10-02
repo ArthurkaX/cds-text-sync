@@ -39,7 +39,31 @@ def _kind_for_node(profile, node):
     return None
 
 
+class EntryXmlError(ValueError):
+    """An object's XML could not be parsed, so the object cannot be compared."""
+
+    def __init__(self, node, error):
+        self.node = node
+        self.error = error
+        ValueError.__init__(
+            self,
+            "Cannot compare {0} ({1}): its XML could not be parsed ({2}). The "
+            "snapshot or the model is corrupt; re-export before diffing.".format(
+                getattr(node, "name", None) or "an unnamed object",
+                getattr(node, "guid", None) or "no guid",
+                error,
+            ),
+        )
+
+
 def _entry_element(node):
+    """The node's parsed XML, or None when the node carries none at all.
+
+    A node with XML that will not parse is a different thing from a node with
+    no XML: the first cannot be compared at all, and saying "no XML" would let
+    the caller fall back to another field and report a difference that is not
+    there. It raises instead, naming the object.
+    """
     if node is None:
         return None
     entry = getattr(node, "entry_element", None)
@@ -50,8 +74,8 @@ def _entry_element(node):
         return None
     try:
         return ET.fromstring(xml_text)
-    except Exception:
-        return None
+    except ET.ParseError as error:
+        raise EntryXmlError(node, error)
 
 
 def _same_projection_text(left, right):

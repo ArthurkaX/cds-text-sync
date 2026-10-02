@@ -26,7 +26,7 @@ from _project_profiles import (
 from _project_settings import load_project_settings, normalize_sync_mode
 from _view_text import ViewEncodingError
 from call_tree import run_call_tree as _run_call_tree
-from diff_engine import DiffEngine
+from diff_engine import DiffEngine, EntryXmlError
 from folder_reader import FolderReader
 from folder_writer import FolderWriter
 from report_writer import ReportWriter
@@ -181,7 +181,12 @@ def _load_diff(args, context):
     settings = _settings(args)
     profile = load_profile(settings.get("profile"))
     differ = DiffEngine(ide_model, folder_model, profile=profile)
-    return differ.compare(), ide_model, folder_model, dump_path
+    try:
+        diff_result = differ.compare()
+    except EntryXmlError as error:
+        print("Error:", error)
+        sys.exit(1)
+    return diff_result, ide_model, folder_model, dump_path
 
 
 def _node_log_path(node, model):
