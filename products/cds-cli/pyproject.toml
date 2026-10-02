@@ -28,6 +28,7 @@ where = ["src"]
 runtime = "cpython"
 test_paths = [
   "tests/test_*.py",
+  "../../tests/unit/test_cli_engine_child.py",
   "../../tests/unit/test_cli_handlers_daemon.py",
   "../../tests/unit/test_cli_handlers_patch.py",
   "../../tests/unit/test_cli_handlers_project.py",

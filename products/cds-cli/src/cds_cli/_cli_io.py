@@ -41,9 +41,9 @@ _SHARED_SRC = _SCRIPT_DIR / "shared" / "src"
 def _engine_subprocess_env():
     """Environment for the offline engine child.
 
-    PYTHONPATH pins the source checkout's packages first, so the child imports
-    the same tree the CLI is running from and a look-alike directory in the
-    working directory cannot shadow ``cds_text_sync``.
+    PYTHONPATH pins the source checkout's packages, so the child imports the
+    same tree the CLI is running from. (The working directory is kept off
+    sys.path by ``-P`` in cmd_direct, not by this.)
     """
     parts = [str(path) for path in (_PRODUCT_SRC, _SHARED_SRC) if path.is_dir()]
     existing = os.environ.get("PYTHONPATH")
@@ -541,7 +541,10 @@ def cmd_direct(args: list[str]) -> NoReturn:
         if arg.startswith("--timeout="):
             continue
         filtered.append(arg)
-    cmd = [sys.executable, "-m", _ENGINE_MODULE] + filtered
+    # -P: ``-m`` would otherwise put the working directory first on the
+    # child's sys.path, ahead of PYTHONPATH, and a ``cds_text_sync`` directory
+    # there would shadow the engine.
+    cmd = [sys.executable, "-P", "-m", _ENGINE_MODULE] + filtered
     _print_info("Running: {0}".format(" ".join(cmd)))
     proc = subprocess.Popen(cmd, env=_engine_subprocess_env())
     try:
