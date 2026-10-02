@@ -211,3 +211,62 @@ def test_plain_importlib_is_not_flagged(compat, tmp_path):
     errors = _errors(compat, tmp_path, "a.py", "import importlib\n")
 
     assert not errors
+
+
+# ---------------------------------------------------------------------------
+# Aliased imports are resolved (T56)
+# ---------------------------------------------------------------------------
+
+
+def test_a_from_import_of_a_py3_only_attribute_is_flagged(compat, tmp_path):
+    """``from subprocess import run`` raises ImportError on 2.7 by itself."""
+    errors = _errors(compat, tmp_path, "a.py", "from subprocess import run\n")
+
+    assert any("subprocess.run" in error for error in errors)
+
+
+def test_a_from_import_of_os_scandir_is_flagged(compat, tmp_path):
+    errors = _errors(compat, tmp_path, "a.py", "from os import scandir\n")
+
+    assert any("os.scandir" in error for error in errors)
+
+
+def test_an_aliased_module_call_is_flagged(compat, tmp_path):
+    errors = _errors(
+        compat, tmp_path, "a.py", "import subprocess as sp\nsp.run(['x'])\n"
+    )
+
+    assert any("subprocess.run" in error for error in errors)
+
+
+def test_an_aliased_from_import_call_is_flagged(compat, tmp_path):
+    errors = _errors(
+        compat,
+        tmp_path,
+        "a.py",
+        "from os import makedirs as mk\nmk('a', exist_ok=True)\n",
+    )
+
+    assert any("exist_ok" in error for error in errors)
+
+
+def test_a_py3_only_import_is_reported_once(compat, tmp_path):
+    """The from-import and its call must not both be flagged."""
+    errors = _errors(
+        compat, tmp_path, "a.py", "from subprocess import run\nrun(['x'])\n"
+    )
+
+    assert len([e for e in errors if "subprocess.run" in e]) == 1
+
+
+def test_an_aliased_guarded_import_is_not_flagged(compat, tmp_path):
+    text = "try:\n    import pathlib as pl\nexcept ImportError:\n    pl = None\n"
+
+    assert not _errors(compat, tmp_path, "a.py", text)
+
+
+def test_a_py3_safe_from_import_is_not_flagged(compat, tmp_path):
+    """``os.makedirs`` exists in 2.7; only its ``exist_ok`` keyword does not."""
+    errors = _errors(compat, tmp_path, "a.py", "from os import makedirs\n")
+
+    assert not errors

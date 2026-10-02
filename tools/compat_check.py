@@ -364,9 +364,72 @@ def _attribute_path(node):
     return None
 
 
+def _import_aliases(tree, guarded):
+    """Local names bound by imports, as (module aliases, from-import members).
+
+    ``import subprocess as sp`` binds ``sp`` to the module ``subprocess``;
+    ``from os import scandir as scan`` binds ``scan`` to the attribute path
+    ``os.scandir``.  Without this map those shapes sail past the denylists:
+    ``sp.run(...)`` is not the literal ``subprocess.run`` the lint looks for,
+    and ``run(...)`` after ``from subprocess import run`` is a bare Name, never
+    an attribute call.
+    """
+    modules = {}
+    members = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if id(node) in guarded:
+                continue
+            for alias in node.names:
+                if alias.asname:
+                    modules[alias.asname] = alias.name
+                else:
+                    # ``import a.b`` binds the top-level name ``a``, not ``a.b``.
+                    root = alias.name.split(".")[0]
+                    modules[root] = root
+        elif isinstance(node, ast.ImportFrom):
+            if id(node) in guarded or not node.module:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                members[alias.asname or alias.name] = node.module + "." + alias.name
+    return modules, members
+
+
+def _resolve_dotted(dotted, modules, members):
+    """Replace the leading name of *dotted* with what the imports bound it to."""
+    root, separator, rest = dotted.partition(".")
+    target = members.get(root)
+    if target is None:
+        target = modules.get(root, root)
+    return target + (separator + rest if separator else "")
+
+
+def _call_path(func, modules, members):
+    """The dotted callee path, import aliases resolved, or None.
+
+    A bare Name is only interesting when a from-import bound it
+    (``from os import scandir`` -> ``scandir`` -> ``os.scandir``); an ordinary
+    function call resolves to nothing and is skipped.
+    """
+    if isinstance(func, ast.Name):
+        return members.get(func.id)
+    if isinstance(func, ast.Attribute):
+        dotted = _attribute_path(func)
+        if dotted is None:
+            return None
+        return _resolve_dotted(dotted, modules, members)
+    return None
+
+
 def _import_findings(path, tree, errors):
     """Flag Python 3-only stdlib imports and calls the tree cannot run under 2.7."""
     guarded = _guarded_import_nodes(tree)
+    modules, members = _import_aliases(tree, guarded)
+    # Names already reported at their from-import (``from subprocess import
+    # run``), so the call that follows is not flagged a second time.
+    flagged_names = set()
     label = os.path.basename(path)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -390,10 +453,28 @@ def _import_findings(path, tree, errors):
                         label, node.lineno, denied
                     )
                 )
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            dotted = _attribute_path(node.func)
-            reason = PY3_ONLY_ATTRIBUTES.get(dotted) if dotted else None
-            method_reason = PY3_ONLY_METHODS.get(node.func.attr)
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                member_path = node.module + "." + alias.name
+                reason = PY3_ONLY_ATTRIBUTES.get(member_path)
+                if reason:
+                    # ``from os import scandir`` itself raises ImportError on
+                    # 2.7, whether or not the name is ever called.
+                    flagged_names.add(alias.asname or alias.name)
+                    errors.append(
+                        "{0}:{1}: imports Python 3-only {2} ({3})".format(
+                            label, node.lineno, member_path, reason
+                        )
+                    )
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in flagged_names:
+                continue
+            dotted = _call_path(node.func, modules, members)
+            if not dotted:
+                continue
+            reason = PY3_ONLY_ATTRIBUTES.get(dotted)
+            method_reason = PY3_ONLY_METHODS.get(dotted.rpartition(".")[2])
             if reason:
                 errors.append(
                     "{0}:{1}: {2}(...) is Python 3-only ({3})".format(
@@ -403,10 +484,10 @@ def _import_findings(path, tree, errors):
             elif method_reason:
                 errors.append(
                     "{0}:{1}: .{2}(...) is Python 3-only ({3})".format(
-                        label, node.lineno, node.func.attr, method_reason
+                        label, node.lineno, dotted.rpartition(".")[2], method_reason
                     )
                 )
-            keywords = PY3_ONLY_KEYWORDS.get(dotted) if dotted else None
+            keywords = PY3_ONLY_KEYWORDS.get(dotted)
             if keywords:
                 for keyword in node.keywords:
                     if keyword.arg in keywords:
