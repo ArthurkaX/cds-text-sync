@@ -20,6 +20,7 @@ a reader never sees a half-written file.
 
 from __future__ import print_function
 
+import io
 import json
 import os
 import time
@@ -55,8 +56,21 @@ def write_json_atomic(path, payload):
     if directory and not os.path.isdir(directory):
         os.makedirs(directory)
     temporary = path + ".tmp"
-    with open(temporary, "w") as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
+    # Serialize to one text value and write it through an explicit utf-8 stream,
+    # the way the rest of the bridge writes text (snapshot_store, ide_daemon_state).
+    # A plain open() plus json.dump(ensure_ascii=False) is broken under
+    # IronPython 2.7 for non-ASCII: the streaming path mixes str and unicode
+    # chunks, so a Cyrillic object name or error message in the result made the
+    # whole file fail to write -- and the one surviving record of an import the
+    # CLI never received was lost. json.dumps returns bytes when the output is
+    # all-ASCII and unicode otherwise, so decode the bytes before handing the
+    # value to the text stream.
+    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    if not isinstance(text, type(u"")):
+        text = text.decode("utf-8")
+    with io.open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.write(u"\n")
     try:
         os.replace(temporary, path)
     except AttributeError:
@@ -148,7 +162,8 @@ def _cmd_last_result(params=None):
             "path": path,
         }
     try:
-        with open(path, "r") as handle:
+        # utf-8-sig matches the writer and tolerates a BOM another tool left.
+        with io.open(path, "r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
     except Exception as exc:
         return {

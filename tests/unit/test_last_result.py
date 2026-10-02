@@ -173,6 +173,54 @@ def test_last_result_reports_an_unreadable_file(sync_folder):
     assert result["code"] == "unreadable"
 
 
+# ── Non-ASCII results survive the round trip (T52) ─────────────────────────
+
+
+def test_a_cyrillic_result_is_written_and_read_back(sync_folder):
+    """The writer must use an explicit utf-8 stream.
+
+    A plain ``open()`` plus ``json.dump(..., ensure_ascii=False)`` fails under
+    IronPython 2.7 for non-ASCII -- the streaming encoder mixes str and unicode
+    chunks. A Cyrillic object name or error message would then make the whole
+    file fail to write, losing the only record of an import the CLI never
+    received.
+    """
+    response = {
+        "ok": False,
+        "error": "Не удалось записать объект 'Счётчик'",
+        "data": {"created_text_objects": ["Счётчик", "План"]},
+    }
+
+    path = ide_last_result.record_last_result(
+        "sync_import_text", response, "77-cyr", True
+    )
+
+    assert path is not None
+    # Stored as real utf-8 bytes, not \uXXXX escapes.
+    raw = Path(path).read_bytes()
+    assert "Счётчик".encode("utf-8") in raw
+
+    payload = _read(path)
+    assert payload["error"] == "Не удалось записать объект 'Счётчик'"
+    assert payload["result"]["created_text_objects"] == ["Счётчик", "План"]
+
+
+def test_a_cyrillic_result_survives_the_daemon_read_path(sync_folder):
+    """``cts last-result`` (the daemon side) reads the same utf-8 stream."""
+    ide_last_result.record_last_result(
+        "sync_import_text",
+        {"ok": True, "data": {"updated_text_objects": ["Счётчик"]}},
+        "88-cyr",
+        True,
+    )
+
+    result = ide_last_result._cmd_last_result({})
+
+    assert result["ok"] is True
+    assert result["data"]["error"] == ""
+    assert result["data"]["result"]["updated_text_objects"] == ["Счётчик"]
+
+
 # ── The daemon loop records on a failed response write ─────────────────────
 
 _STUB_NAMES = [
