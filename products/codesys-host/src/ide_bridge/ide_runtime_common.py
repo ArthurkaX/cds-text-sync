@@ -4,6 +4,8 @@ ide_runtime_common.py - Common functions for the IDE bridge.
 Provides paths, logging, process execution and error handling.
 Must be compatible with IronPython 2.7.
 """
+from __future__ import print_function
+
 import os
 import sys
 import subprocess

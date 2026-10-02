@@ -360,7 +360,18 @@ def _findings(path):
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             pass  # attribute calls are 2.7-safe
 
-    if not has_print_future:
+    # Only a module that actually calls ``print`` needs the future import: it
+    # is what makes ``print("a", "b")`` a call under IronPython 2.7 instead of
+    # a statement printing a tuple.  A module that never prints is fine
+    # without it, and warning about those buried the real cases once the
+    # default set grew to the whole host tree.
+    uses_print = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "print"
+        for node in ast.walk(tree)
+    )
+    if uses_print and not has_print_future:
         warnings.append("no 'from __future__ import print_function' at module top")
     return errors, warnings
 
