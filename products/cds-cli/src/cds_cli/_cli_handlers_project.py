@@ -139,10 +139,12 @@ def cmd_discover():
 
 
 def cmd_compare(against=""):
-    """Compare live project against a snapshot."""
-    if not against:
-        _print_error("Specify --against <path> for compare")
-        return
+    """Compare live project against a snapshot.
+
+    Without --against the daemon compares against the newest snapshot in the
+    sync folder's .dump/, the same one `import` would take, and reports a clear
+    error if none exists.
+    """
     # `compare` is a deprecated alias for the online CRC read; the snapshot
     # comparison that reads --against is `sync_compare`.
     _project_command("sync_compare", {"against": against}, timeout=120)
