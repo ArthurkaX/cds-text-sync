@@ -25,6 +25,8 @@ import time
 from ctypes import wintypes
 from typing import Any
 
+from cts_shared.coerce import as_bool
+
 from cds_text_sync.engine.pipe_targets import (
     LEGACY,
     Hello,
@@ -225,7 +227,7 @@ def _current_user_sid() -> str:
 
 
 def _user_dacl_enabled() -> bool:
-    return os.environ.get("CTS_PIPE_USER_DACL", "") in ("1", "true", "yes")
+    return as_bool(os.environ.get("CTS_PIPE_USER_DACL", ""))
 
 
 def ssh_dacl_hint() -> str:

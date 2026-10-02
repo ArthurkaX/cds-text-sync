@@ -22,6 +22,7 @@ import ide_export_snapshot
 import ide_online_helpers as _helpers
 import ide_runtime_common
 from codesys_utils import resolve_sync_folder
+from cts_shared.coerce import as_bool
 
 
 class SnapshotOnlineError(RuntimeError):
@@ -229,9 +230,10 @@ def _text(value):
 
 
 def _as_bool(value):
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("1", "true", "yes", "ok")
+    # This used to accept "ok" where snapshot_compare accepted "on"; no
+    # producer ever wrote "ok", so the same snapshot field meant two
+    # different things depending on which module read it.
+    return as_bool(value)
 
 
 def _get_active_project(project=None):

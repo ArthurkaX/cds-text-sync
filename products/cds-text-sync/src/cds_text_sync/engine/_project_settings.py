@@ -10,6 +10,7 @@ import json
 import os
 
 from _project_layout import LAYOUT_PROJECT_VIEW, normalize_layout_mode
+from cts_shared.coerce import as_bool
 
 
 SETTINGS_FILENAME = "cds-text-sync.json"
@@ -44,16 +45,7 @@ def _safe_dict(value):
 
 
 def _safe_bool(value, default=False):
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    text = str(value).strip().lower()
-    if text in ("1", "true", "yes", "on"):
-        return True
-    if text in ("0", "false", "no", "off"):
-        return False
-    return default
+    return as_bool(value, default)
 
 
 def _safe_positive_int(value, default):

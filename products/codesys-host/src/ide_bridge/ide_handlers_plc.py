@@ -22,6 +22,8 @@ from ide_daemon_helpers import (
     _online_app_if_connected,
 )
 
+from cts_shared.coerce import as_bool
+
 
 def _cmd_read_log(params):
     """Read system/PLC log messages."""
@@ -36,7 +38,7 @@ def _cmd_read_log(params):
         except (ValueError, TypeError):
             last_n = None
 
-        do_clear = str(params.get("clear", "")).lower() in ("1", "true", "yes")
+        do_clear = as_bool(params.get("clear", ""))
 
         messages = []
         if hasattr(system, "get_messages"):
@@ -423,7 +425,7 @@ def _cmd_plc_download(params):
                 prefix="plc_", suffix=os.path.splitext(src)[1] or ".bin"
             )
 
-        overwrite = str(params.get("overwrite", "1")).lower() in ("1", "true", "yes")
+        overwrite = as_bool(params.get("overwrite", "1"))
 
         # Ensure dest directory exists
         dest_dir = os.path.dirname(dest)
@@ -485,7 +487,7 @@ def _cmd_plc_upload(params):
         if not dest:
             dest = os.path.basename(src)
 
-        overwrite = str(params.get("overwrite", "1")).lower() in ("1", "true", "yes")
+        overwrite = as_bool(params.get("overwrite", "1"))
 
         if hasattr(online_dev, "download_file"):
             online_dev.download_file(src, dest, overwrite)

@@ -8,6 +8,7 @@ test_paths = [
   "../../tests/unit/test_action_round_trip.py",
   "../../tests/unit/test_call_tree.py",
   "../../tests/unit/test_changeset.py",
+  "../../tests/unit/test_coerce_bool.py",
   "../../tests/unit/test_diff_engine.py",
   "../../tests/unit/test_dirty_scan.py",
   "../../tests/unit/test_folder_reader.py",

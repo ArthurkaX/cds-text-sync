@@ -29,6 +29,8 @@ from ide_st_objects import (
     read_document as _read_document,
 )
 
+from cts_shared.coerce import as_bool
+
 
 def _workspace_fingerprint(root):
     """Compute the same content fingerprint as the CLI (IronPython-safe)."""
@@ -230,7 +232,7 @@ def _collect_build_messages(system_obj, category_guid):
 
 
 def _truthy(value):
-    return str(value).strip().lower() in ("1", "true", "yes")
+    return as_bool(value)
 
 
 def _project_file(project):
@@ -515,7 +517,7 @@ def _cmd_export_csv(params):
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
 
     try:
-        read_values = str(params.get("values", "")).lower() in ("1", "true", "yes")
+        read_values = as_bool(params.get("values", ""))
         pattern = params.get("pattern", "").lower()
         output_path = params.get("output", "")
 
@@ -731,9 +733,9 @@ def _cmd_application_tree(params):
         return {"ok": False, "error": "Not connected. Call connect_to_device first."}
 
     try:
-        read_values = str(params.get("values", "")).lower() in ("1", "true", "yes")
+        read_values = as_bool(params.get("values", ""))
         pattern = params.get("pattern", "").lower()
-        is_flat = str(params.get("flat", "")).lower() in ("1", "true", "yes")
+        is_flat = as_bool(params.get("flat", ""))
         output_path = params.get("output", "")
         max_depth = 10
         try:

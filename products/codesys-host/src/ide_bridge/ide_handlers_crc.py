@@ -28,6 +28,8 @@ from ide_daemon_helpers import (
     _get_sync_folder,
 )
 
+from cts_shared.coerce import as_bool
+
 
 def _canonical_crc_hex(value):
     """Return the four-byte Application CRC representation used by this API."""
@@ -356,7 +358,7 @@ def _cmd_app_history(params):
     --read: just read history without adding new entry
     """
     just_read = (
-        str(params.get("read", "")).lower() in ("1", "true", "yes") if params else False
+        as_bool(params.get("read", "")) if params else False
     )
 
     if not just_read:

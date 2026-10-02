@@ -13,6 +13,7 @@ import sys
 import traceback
 
 from codesys_utils import resolve_sync_folder
+from cts_shared.coerce import as_bool
 
 import ide_online_helpers as _helpers
 import ide_runtime_common as _common  # noqa: F401 – imported for completeness; bodies may use _common
@@ -127,7 +128,7 @@ def _cmd_set_sync_folder(params):
 
         saved = False
         save_error = ""
-        if params.get("save") in (True, 1, "1", "true", "True", "yes", "on"):
+        if as_bool(params.get("save")):
             try:
                 project.save()
                 saved = True
@@ -877,7 +878,7 @@ def _cmd_set_simulation_mode(params):
         enable_raw = (params or {}).get("enable", "on")
         enable = _bool_or_none(enable_raw)
         if enable is None:
-            enable = str(enable_raw).strip().lower() in ("on", "true", "1", "yes")
+            enable = as_bool(enable_raw)
         result = _helpers.set_simulation_mode_impl(project, enable)
         return {"ok": True, "data": result}
     except Exception as e:
