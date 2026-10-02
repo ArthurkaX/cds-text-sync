@@ -430,7 +430,7 @@ def cmd_daemon(
 # -- Legacy project command low-level -----------------------------------------
 
 
-def _project_command(method, params=None, timeout=30, use_reverse=True):
+def _project_command(method, params=None, timeout=30):
     """Send a project command to the reverse-pipe daemon and print result.
 
     Exits non-zero on any failure so callers (and CI) get a truthful exit code,

@@ -221,8 +221,6 @@ def main():
 
     configure(target=args.target, expect_project=args.expect_project)
 
-    use_reverse = True
-
     # Determine output format
     output_fmt = getattr(args, "output", "json")
     if getattr(args, "pretty", False):
@@ -253,13 +251,13 @@ def main():
             )
 
         elif args.command == "project":
-            dispatch_project(args, use_reverse=use_reverse)
+            dispatch_project(args)
 
         elif args.command == "pou":
-            dispatch_pou(args, use_reverse=use_reverse)
+            dispatch_pou(args)
 
         elif args.command == "discover":
-            cmd_discover(use_reverse=use_reverse)
+            cmd_discover()
 
         elif args.command == "read-vars":
             cmd_read_vars(

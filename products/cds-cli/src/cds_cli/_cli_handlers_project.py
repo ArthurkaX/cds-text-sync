@@ -16,15 +16,15 @@ from cds_cli._cli_io import _print_error, _print_warn, _project_command
 # -- Project commands ---------------------------------------------------------
 
 
-def cmd_project_info(use_reverse=False):
-    _project_command("project_info", use_reverse=use_reverse)
+def cmd_project_info():
+    _project_command("project_info")
 
 
-def cmd_project_tree(depth=0, use_reverse=False):
-    _project_command("project_tree", {"depth": depth}, use_reverse=use_reverse)
+def cmd_project_tree(depth=0):
+    _project_command("project_tree", {"depth": depth})
 
 
-def cmd_project_read(path="", name="", guid="", use_reverse=False):
+def cmd_project_read(path="", name="", guid=""):
     params = {}
     if path:
         params["path"] = path
@@ -32,18 +32,16 @@ def cmd_project_read(path="", name="", guid="", use_reverse=False):
         params["name"] = name
     if guid:
         params["guid"] = guid
-    _project_command("read_object", params, use_reverse=use_reverse)
+    _project_command("read_object", params)
 
 
-def cmd_project_open(path="", use_reverse=False):
+def cmd_project_open(path=""):
     """Open a project in CODESYS."""
     # Loading a project from disk can take a while on large projects.
-    _project_command(
-        "project_open", {"path": path}, timeout=180, use_reverse=use_reverse
-    )
+    _project_command("project_open", {"path": path}, timeout=180)
 
 
-def cmd_project_close(use_reverse=False):
+def cmd_project_close():
     """Close the current project in CODESYS.
 
     Closing a large or online project can exceed the default 30s timeout,
@@ -51,117 +49,109 @@ def cmd_project_close(use_reverse=False):
     (disconnect / save prompt) may still block the daemon and requires
     manual dismissal.
     """
-    _project_command("project_close", timeout=60, use_reverse=use_reverse)
+    _project_command("project_close", timeout=60)
 
 
-def cmd_project_list(use_reverse=False):
+def cmd_project_list():
     """List all open projects in CODESYS."""
-    _project_command("project_list", use_reverse=use_reverse)
+    _project_command("project_list")
 
 
-def cmd_project_snapshot(path="", use_reverse=False):
+def cmd_project_snapshot(path=""):
     """Export project snapshot (full XML) via daemon."""
-    _project_command(
-        "export", {"output": path} if path else {}, use_reverse=use_reverse
-    )
+    _project_command("export", {"output": path} if path else {})
 
 
-def cmd_project_build(use_reverse=False):
+def cmd_project_build():
     """Build (compile) the project via daemon."""
-    _project_command("build", use_reverse=use_reverse)
+    _project_command("build")
 
 
-def cmd_project_list_devices(use_reverse=False):
+def cmd_project_list_devices():
     """List devices in the project via daemon."""
-    _project_command("list_devices", use_reverse=use_reverse)
+    _project_command("list_devices")
 
 
 # -- Device / PLC commands ----------------------------------------------------
 
 
-def cmd_device_status(device="", use_reverse=False):
+def cmd_device_status(device=""):
     """Check online/connection status of devices."""
     params = {}
     if device:
         params["device"] = device
-    _project_command("device_status", params, use_reverse=use_reverse)
+    _project_command("device_status", params)
 
 
-def cmd_connect(ip="", gateway="Gateway-1", use_reverse=False):
+def cmd_connect(ip="", gateway="Gateway-1"):
     """Connect to a real PLC device."""
     params = {"ipAddress": ip, "gatewayName": gateway}
-    _project_command("connect_to_device", params, use_reverse=use_reverse)
+    _project_command("connect_to_device", params)
 
 
-def cmd_disconnect(use_reverse=False):
+def cmd_disconnect():
     """Disconnect from PLC device."""
-    _project_command("disconnect_from_device", use_reverse=use_reverse)
+    _project_command("disconnect_from_device")
 
 
-def cmd_read_var(name, use_reverse=False):
+def cmd_read_var(name):
     """Read a PLC variable."""
-    _project_command("read_variable", {"name": name}, use_reverse=use_reverse)
+    _project_command("read_variable", {"name": name})
 
 
-def cmd_write_var(name, value, use_reverse=False):
+def cmd_write_var(name, value):
     """Write a value to a PLC variable."""
-    _project_command(
-        "write_variable", {"name": name, "value": value}, use_reverse=use_reverse
-    )
+    _project_command("write_variable", {"name": name, "value": value})
 
 
-def cmd_simulate(enable="on", use_reverse=False):
+def cmd_simulate(enable="on"):
     """Enable/disable simulation mode."""
     # Toggling simulation scans the device tree and saves the project.
     _project_command(
         "set_simulation_mode",
         {"enable": enable},
         timeout=120,
-        use_reverse=use_reverse,
     )
 
 
-def cmd_set_credentials(username, password="", use_reverse=False):
+def cmd_set_credentials(username, password=""):
     """Set PLC login credentials."""
     _project_command(
         "set_credentials",
         {"username": username, "password": password},
-        use_reverse=use_reverse,
     )
 
 
-def cmd_application_state(use_reverse=False):
+def cmd_application_state():
     """Get application online state."""
-    _project_command("application_state", use_reverse=use_reverse)
+    _project_command("application_state")
 
 
-def cmd_diagnose_online(use_reverse=False):
+def cmd_diagnose_online():
     """Diagnose online connection."""
-    _project_command("diagnose_online", use_reverse=use_reverse)
+    _project_command("diagnose_online")
 
 
-def cmd_discover(use_reverse=False):
+def cmd_discover():
     """Discover CODESYS installations and open projects via daemon."""
     # Full object-tree + profile-coverage diagnostic is slow on large projects.
-    _project_command("discover", timeout=180, use_reverse=use_reverse)
+    _project_command("discover", timeout=180)
 
 
-def cmd_compare(against="", use_reverse=False):
+def cmd_compare(against=""):
     """Compare live project against a snapshot."""
     if not against:
         _print_error("Specify --against <path> for compare")
         return
     # `compare` is a deprecated alias for the online CRC read; the snapshot
     # comparison that reads --against is `sync_compare`.
-    _project_command(
-        "sync_compare", {"against": against}, timeout=120, use_reverse=use_reverse
-    )
+    _project_command("sync_compare", {"against": against}, timeout=120)
 
 
 # -- POU deletion -------------------------------------------------------------
 
 
-def cmd_pou_delete(name="", app="", use_reverse=False):
+def cmd_pou_delete(name="", app=""):
     """Delete a POU from the project."""
     if not name:
         _print_error("POU name is required")
@@ -169,7 +159,7 @@ def cmd_pou_delete(name="", app="", use_reverse=False):
     params = {"name": name}
     if app:
         params["app"] = app
-    _project_command("delete_pou", params, use_reverse=use_reverse)
+    _project_command("delete_pou", params)
 
 
 # -- Subcommand dispatch ------------------------------------------------------
@@ -199,58 +189,54 @@ def _warn_deprecated(invocation, replacement):
     )
 
 
-def dispatch_project(args, use_reverse=True):
+def dispatch_project(args):
     """Route a parsed `project` subcommand to its cmd_* handler."""
     action = args.project_action
     replacement = _DEPRECATED_PROJECT_ACTIONS.get(action)
     if replacement:
         _warn_deprecated("cts project {0}".format(action), replacement)
     if action == "info":
-        cmd_project_info(use_reverse=use_reverse)
+        cmd_project_info()
     elif action == "tree":
-        cmd_project_tree(depth=args.depth, use_reverse=use_reverse)
+        cmd_project_tree(depth=args.depth)
     elif action == "read":
-        cmd_project_read(
-            path=args.path, name=args.name, guid=args.guid, use_reverse=use_reverse
-        )
+        cmd_project_read(path=args.path, name=args.name, guid=args.guid)
     elif action == "open":
-        cmd_project_open(path=args.path, use_reverse=use_reverse)
+        cmd_project_open(path=args.path)
     elif action == "close":
-        cmd_project_close(use_reverse=use_reverse)
+        cmd_project_close()
     elif action == "list":
-        cmd_project_list(use_reverse=use_reverse)
+        cmd_project_list()
     elif action == "snapshot":
-        cmd_project_snapshot(path=args.path, use_reverse=use_reverse)
+        cmd_project_snapshot(path=args.path)
     elif action == "build":
-        cmd_project_build(use_reverse=use_reverse)
+        cmd_project_build()
     elif action == "list-devices":
-        cmd_project_list_devices(use_reverse=use_reverse)
+        cmd_project_list_devices()
     elif action == "compare":
-        cmd_compare(against=args.against, use_reverse=use_reverse)
+        cmd_compare(against=args.against)
     elif action == "device-status":
-        cmd_device_status(device=args.device, use_reverse=use_reverse)
+        cmd_device_status(device=args.device)
     elif action == "connect":
-        cmd_connect(ip=args.ip, gateway=args.gateway, use_reverse=use_reverse)
+        cmd_connect(ip=args.ip, gateway=args.gateway)
     elif action == "disconnect":
-        cmd_disconnect(use_reverse=use_reverse)
+        cmd_disconnect()
     elif action == "read-var":
-        cmd_read_var(name=args.name, use_reverse=use_reverse)
+        cmd_read_var(name=args.name)
     elif action == "write-var":
-        cmd_write_var(name=args.name, value=args.value, use_reverse=use_reverse)
+        cmd_write_var(name=args.name, value=args.value)
     elif action == "simulate":
-        cmd_simulate(enable=args.enable, use_reverse=use_reverse)
+        cmd_simulate(enable=args.enable)
     elif action == "set-credentials":
-        cmd_set_credentials(
-            username=args.username, password=args.password, use_reverse=use_reverse
-        )
+        cmd_set_credentials(username=args.username, password=args.password)
     elif action == "application-state":
-        cmd_application_state(use_reverse=use_reverse)
+        cmd_application_state()
     elif action == "diagnose-online":
-        cmd_diagnose_online(use_reverse=use_reverse)
+        cmd_diagnose_online()
 
 
-def dispatch_pou(args, use_reverse=True):
+def dispatch_pou(args):
     """Route a parsed `pou` subcommand to its cmd_* handler."""
     if args.pou_action == "delete":
         _warn_deprecated("cts pou delete", "cts delete-pou")
-        cmd_pou_delete(name=args.name, app=args.app, use_reverse=use_reverse)
+        cmd_pou_delete(name=args.name, app=args.app)
