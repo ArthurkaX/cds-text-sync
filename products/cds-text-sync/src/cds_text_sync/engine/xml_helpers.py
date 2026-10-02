@@ -11,21 +11,17 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
-TEXT_PROJECTION_SEPARATOR = "\n\n// === SECTION ===\n\n"
-ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
-IMPORT_SAFE_CSV_EXTRACTORS = set(["textlist_csv", "alarm_items_csv"])
-ACTION_HEADER_RE = re.compile(
-    r"^\s*ACTION\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",
-    re.IGNORECASE,
+from cts_shared.st.projection import (
+    IMPLEMENTATION_MARKER as ST_IMPLEMENTATION_MARKER,
+    POU_END_KEYWORDS,
+    SECTION_SEPARATOR as TEXT_PROJECTION_SEPARATOR,  # noqa: F401 - re-exported
+    find_implementation_split,
+    join_sections,
+    split_action_body,
+    split_sections,
 )
 
-POU_END_KEYWORDS = {
-    "PROGRAM": "END_PROGRAM",
-    "FUNCTION_BLOCK": "END_FUNCTION_BLOCK",
-    "FUNCTION": "END_FUNCTION",
-    "METHOD": "END_METHOD",
-    "PROPERTY": "END_PROPERTY",
-}
+IMPORT_SAFE_CSV_EXTRACTORS = set(["textlist_csv", "alarm_items_csv"])
 
 CDS_TEXT_SYNC_PRAGMA_RE = re.compile(
     r"\(\*\s*cds-text-sync\s*:\s*TypeGuid\s*=\s*\"\{?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\}?\"\s*\*\)",
@@ -265,12 +261,6 @@ def _entry_object_name(entry_element):
     return (name_element.text or "").strip() or None
 
 
-def _action_header_name(line):
-    """Return the name from an ``ACTION <name>`` header line, or None."""
-    match = ACTION_HEADER_RE.match(line or "")
-    return match.group(1) if match else None
-
-
 def st_projection_content(entry_element):
     sections = _text_blob_sections(entry_element)
     if not sections:
@@ -330,26 +320,13 @@ def st_projection_content(entry_element):
 
 
 def join_text_blob_values(values):
-    values = list(values or [])
-    if not values:
-        return None
-    if len(values) == 1:
-        return values[0]
-    return TEXT_PROJECTION_SEPARATOR.join(values)
+    """Join projected text sections with the section separator."""
+    return join_sections(values)
 
 
 def split_text_projection(value, expected_count):
-    expected_count = int(expected_count or 0)
-    if expected_count <= 0:
-        return []
-    parts = (value or "").split(TEXT_PROJECTION_SEPARATOR)
-    if len(parts) < expected_count:
-        parts.extend([""] * (expected_count - len(parts)))
-    if len(parts) > expected_count:
-        parts = parts[: expected_count - 1] + [
-            TEXT_PROJECTION_SEPARATOR.join(parts[expected_count - 1 :])
-        ]
-    return parts
+    """Split a projected value back into ``expected_count`` sections."""
+    return split_sections(value, expected_count)
 
 
 def _split_full_pou_projection(value):
@@ -397,36 +374,17 @@ def split_action_projection(value):
     optional ``END_ACTION`` terminator is dropped: CODESYS stores the bare body
     and re-adds the keywords itself.
     """
-    normalized = (value or "").replace("\r\n", "\n").replace("\r", "\n")
-    lines = normalized.split("\n")
-    index = 0
-    while index < len(lines) and not lines[index].strip():
-        index += 1
-    if index >= len(lines) or not _action_header_name(lines[index]):
-        return None
-
-    body = lines[index + 1 :]
-    while body and not body[0].strip():
-        body.pop(0)
-    if body and body[0].strip() == ST_IMPLEMENTATION_MARKER:
-        body.pop(0)
-        while body and not body[0].strip():
-            body.pop(0)
-    while body and not body[-1].strip():
-        body.pop()
-    if body and body[-1].strip().upper() == "END_ACTION":
-        body.pop()
-        while body and not body[-1].strip():
-            body.pop()
-    return "\n".join(body) + ("\n" if body else "")
+    return split_action_body(value, trailing_newline=True)
 
 
 def _split_marked_projection(value):
-    marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
-    normalized = (value or "").replace("\r\n", "\n")
-    if marker not in normalized:
+    # bare_fallback=False: this splitter only recognises the marker on its own
+    # line.  A marker at the very start or end is handled by
+    # _split_full_pou_projection / split_text_projection instead.
+    parts = find_implementation_split(value, bare_fallback=False)
+    if parts is None:
         return None
-    declaration, implementation = normalized.split(marker, 1)
+    declaration, implementation = parts
     implementation = implementation.lstrip("\n")
     return (
         declaration.rstrip() + "\n",

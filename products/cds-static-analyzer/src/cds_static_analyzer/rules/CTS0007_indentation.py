@@ -7,6 +7,7 @@ from cds_static_analyzer.rules_api import RuleSpec, finding_in
 from cds_static_analyzer.st.body import body
 from cts_shared.st.blanking import blank_noise, trim_strings
 from cts_shared.st.formatting import scan_indentation
+from cts_shared.st.projection import IMPLEMENTATION_KEYWORD, IMPLEMENTATION_MARKER
 
 
 def _scan(raw_lines, clean_lines):
@@ -48,7 +49,7 @@ def _implementation_start(raw_lines):
     """Return the first implementation line in a complete POU document."""
     for index, line in enumerate(raw_lines):
         stripped = line.rstrip("\r")
-        if stripped in ("IMPLEMENTATION", "// --- implementation ---") and index != 0:
+        if stripped in (IMPLEMENTATION_KEYWORD, IMPLEMENTATION_MARKER) and index != 0:
             start = index + 1
             while start < len(raw_lines) and raw_lines[start].rstrip("\r") == "":
                 start += 1

@@ -38,6 +38,7 @@ test_paths = [
   "../../tests/unit/test_reverse_pipe_client.py",
   "../../tests/unit/test_screen_xml.py",
   "../../tests/unit/test_setup_dryrun_guard.py",
+  "../../tests/unit/test_st_projection_format.py",
   "../../tests/unit/test_ui.py",
   "../../tests/unit/test_version_consistency.py",
   "../../tests/unit/test_view_text_encoding.py",

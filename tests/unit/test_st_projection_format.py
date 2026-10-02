@@ -146,20 +146,16 @@ def test_daemon_splitter_strips_both_halves(text):
     assert implementation == (expected[1] or "").strip()
 
 
-def test_bare_marker_search_diverges_on_an_inline_marker():
-    """Characterisation of a second divergence.
+def test_the_marker_only_counts_on_its_own_line():
+    """The daemon used to split on the bare substring, the engine on the line.
 
-    The engine splitters look for the marker as a whole line
-    (``"\\n" + marker + "\\n"``) and only fall back to the bare substring for a
-    marker at either end.  The daemon splitter looks for the bare substring
-    straight away, so an inline occurrence -- the marker text inside a comment
-    or a string literal -- splits it early.  Real projected files always carry
-    the marker on its own line, so the unification on the line-first ladder
-    changes nothing in practice and closes the pathological case.
+    They disagreed when the marker text appeared inline -- inside a string
+    literal or a comment -- and the daemon split early.  Both go through the
+    line-first ladder now, so the inline occurrence no longer splits.
     """
     text = MARKED_INPUTS["marker_inside_a_string"]
-    assert ide_st_text.split_st_text(text)[0] == "x := '"
     assert variable_map.split_decl_impl(text)[0] == "x := '" + MARKER + "';"
+    assert ide_st_text.split_st_text(text)[0] == "x := '" + MARKER + "';"
 
 
 def test_daemon_splitter_understands_the_section_separator():
@@ -315,21 +311,28 @@ def test_accessor_st_file_splits_like_the_daemon_reads_it():
     assert ide_st_text.split_st_text(text) == ("", "Prop := 42;")
 
 
+def test_hand_written_accessor_st_matches_the_projected_form():
+    hand_written = "\n\n" + SECTION + "\n\nProp := fValue;\n"
+    projected = st_projection_content(
+        _entry(("Interface", ""), ("Implementation", "Prop := fValue;\n"))
+    )
+    assert hand_written == projected
+    assert ide_st_text.split_st_text(hand_written) == ("", "Prop := fValue;")
+
+
 # ---------------------------------------------------------------------------
 # Known divergence: bare CR
 # ---------------------------------------------------------------------------
 
 
-def test_bare_cr_is_a_known_divergence():
-    """Characterisation of a divergence the unification removes.
-
-    ``xml_helpers`` only ever replaced CRLF, so a file with bare CR is
-    normalised by every other site but not by it.  Behaviour for bare-CR files
-    is unspecified in the wild (they do not come out of CODESYS), so the
-    refactor unifies on the full normalisation and this test flips.
+def test_bare_cr_is_normalised_everywhere():
+    """``xml_helpers`` used to replace CRLF only; every other site replaced
+    bare CR too.  It shares ``normalize_newlines`` now, so a bare-CR file is
+    read the same way on both sides.  (CODESYS does not emit bare CR, so the
+    old behaviour was never exercised in the wild.)
     """
-    text = "DECL\r" + MARKER + "\rBODY"
-    assert variable_map.split_decl_impl(text) == ("DECL", "BODY")
     from xml_helpers import _split_marked_projection
 
-    assert _split_marked_projection(text) is None
+    text = "DECL\r" + MARKER + "\rBODY"
+    assert variable_map.split_decl_impl(text) == ("DECL", "BODY")
+    assert _split_marked_projection(text) == ("DECL\n", "BODY\n")

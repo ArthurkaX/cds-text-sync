@@ -30,6 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_FILES = [
     "shared/src/cts_shared/st/blanking.py",
     "shared/src/cts_shared/st/formatting.py",
+    "shared/src/cts_shared/st/projection.py",
     "products/codesys-host/src/ide_bridge/fmt_session.py",
     "products/codesys-host/src/ide_bridge/fmt_diff.py",
     "products/codesys-host/src/ide_bridge/fmt_apply.py",

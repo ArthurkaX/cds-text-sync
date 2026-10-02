@@ -202,6 +202,7 @@ def test_cts_shared_importers_are_discovered():
         "ide_handlers_crc",
         "ide_handlers_plc",
         "ide_handlers_project",
+        "ide_st_text",
         "project_snapshooter",
         "snapshot_compare",
     ]

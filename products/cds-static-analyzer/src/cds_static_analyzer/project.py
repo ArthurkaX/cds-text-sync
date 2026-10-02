@@ -27,10 +27,9 @@ from cds_static_analyzer.file_directives import directive_info
 from cds_static_analyzer.model import Diagnostic, Location, line_col_of
 from cds_static_analyzer.st import kinds as K
 from cts_shared.st.blanking import blanked
+from cts_shared.st.projection import IMPLEMENTATION_KEYWORD, IMPLEMENTATION_MARKER
 
-# The two implementation markers the engine family understands.
-_IMPLEMENTATION_KEYWORD = "IMPLEMENTATION"
-_COMMENT_MARKER = "// --- implementation ---"
+
 
 class SourceSpan:
     """A byte range in the unit's own text, with computed line/column.
@@ -135,10 +134,14 @@ def _split_st_with_offsets(text):
     """
     normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
 
+    # The keyword is matched on blanked text so a mention inside a comment or a
+    # string literal does not count; the marker only ever appears in a comment.
+    keyword_re = r"^[ \t]*" + IMPLEMENTATION_KEYWORD + r"[ \t]*(?:\n|$)"
+    marker_re = r"^[ \t]*" + re.escape(IMPLEMENTATION_MARKER) + r"[ \t]*(?:\n|$)"
     blank = blanked(normalized)
-    m = re.search(r"^[ \t]*IMPLEMENTATION[ \t]*(?:\n|$)", blank, re.IGNORECASE | re.MULTILINE)
+    m = re.search(keyword_re, blank, re.IGNORECASE | re.MULTILINE)
     if not m:
-        m = re.search(r"^[ \t]*// --- implementation ---[ \t]*(?:\n|$)", normalized, re.IGNORECASE | re.MULTILINE)
+        m = re.search(marker_re, normalized, re.IGNORECASE | re.MULTILINE)
 
     if m:
         match_start, match_end = m.span()

@@ -20,16 +20,19 @@ from _view_paths import (
     normalize_fs_path,
 )
 from _view_text import read_view_text
+from cts_shared.st.projection import (
+    find_implementation_split,
+    normalize_newlines,
+    split_action_body,
+)
 from xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
-    ST_IMPLEMENTATION_MARKER,
     ProjectionValidationError,
     entry_to_xml,
     extract_bool_property,
     extract_cds_text_sync_type_guid,
     replace_text_blob_values,
     sha1_hex,
-    split_action_projection,
     strip_cds_text_sync_pragmas,
     text_blob_elements,
 )
@@ -80,21 +83,18 @@ def _detect_st_kind(content):
 
 
 def _split_st_create_content(content):
-    normalized = (content or "").replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalize_newlines(content)
     # An ACTION carries no declaration: everything after the synthesised
     # ``ACTION <name>`` header is implementation. Checked before the marker so
     # the header itself never ends up in the declaration of a new object.
-    action_body = split_action_projection(normalized)
+    action_body = split_action_body(normalized)
     if action_body is not None:
         return "", action_body.strip()
-    marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
-    if marker in normalized:
-        declaration, implementation = normalized.split(marker, 1)
-        return declaration.strip(), implementation.strip()
-    if ST_IMPLEMENTATION_MARKER in normalized:
-        declaration, implementation = normalized.split(ST_IMPLEMENTATION_MARKER, 1)
-        return declaration.strip(), implementation.strip()
-    return normalized.strip(), None
+    parts = find_implementation_split(normalized)
+    if parts is None:
+        return normalized.strip(), None
+    declaration, implementation = parts
+    return declaration.strip(), implementation.strip()
 
 
 class FolderReader:
