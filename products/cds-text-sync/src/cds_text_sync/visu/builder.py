@@ -790,6 +790,11 @@ def find_sibling_object(folder, exclude=None):
     the FOLDER's placement, not a child's: its ParentGuid is empty and its Path
     stops at the parent level, so copying from it would mis-place a new child).
     Only a real sibling OBJECT (root Type {6198ad31...}) is a valid placement source.
+
+    An XML file that will not parse raises instead of being skipped: the callers
+    turn a None into "this folder holds no object to copy placement from", and
+    a folder whose only object is broken is not that -- sending the user to pick
+    another folder would hide the file they actually have to fix.
     """
     if not os.path.isdir(folder):
         return None
@@ -803,8 +808,12 @@ def find_sibling_object(folder, exclude=None):
         full = os.path.join(folder, name)
         try:
             tree = ET.parse(full)
-        except Exception:
-            continue
+        except ET.ParseError as error:
+            raise _screen_xml.ScreenError(
+                "Cannot read {0}: it is not valid XML ({1}). Fix or remove "
+                "it -- placement comes from a sibling object and a broken file "
+                "cannot be ruled out as one.".format(full, error)
+            )
         root = tree.getroot()
         root_type = (root.attrib.get("Type") or "").strip()
         if root_type != _ROOT_TYPE:

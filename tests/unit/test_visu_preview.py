@@ -248,6 +248,25 @@ def test_every_catalog_type_renders_without_raising(type_name):
     _root(markup)  # raises if the branch emitted malformed markup
 
 
+def test_a_type_without_a_catalog_warns_once_and_still_renders(capsys, monkeypatch):
+    """Fallback colours are a guess; the compile step will refuse the same type.
+
+    Silently, the preview promises a colour the compile cannot deliver, so the
+    guess is announced -- once per type, not once per element.
+    """
+    monkeypatch.setattr(preview, "_catalog_warnings", set(), raising=False)
+    spec = {"type": "no-such-type", "params": {"x": 0, "y": 0, "width": 10, "height": 10}}
+
+    markup = preview.render(
+        {"canvas": {"width": 800, "height": 480}, "elements": [spec, spec, spec]}
+    )
+
+    _root(markup)
+    warnings = capsys.readouterr().err
+    assert warnings.count("default colours") == 1
+    assert "no-such-type" in warnings
+
+
 # ---------------------------------------------------------------------------
 # Rasterisation
 # ---------------------------------------------------------------------------

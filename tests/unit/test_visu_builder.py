@@ -635,6 +635,18 @@ class TestSibling:
         tree.write(path, encoding="utf-8", xml_declaration=True)
         assert builder.find_sibling_object(str(tmp_path)) is None
 
+    def test_a_broken_object_file_is_an_error_not_a_missing_sibling(self, tmp_path):
+        """Skipping it would report "this folder holds no object" and hide it."""
+        from cds_text_sync.visu.screen_xml import ScreenError
+
+        with open(os.path.join(str(tmp_path), "broken.xml"), "w") as handle:
+            handle.write("<Single Name='Object'>")
+
+        with pytest.raises(ScreenError) as raised:
+            builder.find_sibling_object(str(tmp_path))
+
+        assert "broken.xml" in str(raised.value)
+
     def test_creates_screen_to_file(self, tmp_path, rectangle_catalog, placement):
         """End-to-end: create a screen file, then add a rectangle to it via the
         commands layer (simulated)."""

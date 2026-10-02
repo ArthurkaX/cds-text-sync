@@ -166,9 +166,10 @@ class TestReadIntMember:
         val = screen_xml.read_int_member(screen_xml_text, "NonExistent")
         assert val == 0
 
-    def test_read_from_garbage(self):
-        val = screen_xml.read_int_member("<invalid", "SizeX")
-        assert val == 0
+    def test_read_from_garbage_raises_instead_of_reporting_zero(self):
+        """0 here is a counter base, not a default: it would collide."""
+        with pytest.raises(screen_xml.ScreenError):
+            screen_xml.read_int_member("<invalid", "SizeX")
 
 
 # ===================================================================

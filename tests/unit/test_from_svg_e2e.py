@@ -200,3 +200,37 @@ def test_replace_recompiles_a_screen_and_keeps_its_identity(tmp_path):
     assert commands._read_screen_guid(path) == first_guid
     assert first_guid
 
+
+
+def test_replace_refuses_a_screen_file_it_cannot_read(tmp_path):
+    """A corrupt screen must not be silently re-identified as a new object.
+
+    --replace keeps the existing Guid so CODESYS updates the object it already
+    has. With the Guid unreadable, the only honest answers are "stop" or
+    "create a second object"; the second is what the old None fallback did.
+    """
+    pv = str(tmp_path)
+    _make_screen(pv, "Sibling")
+    svg_path = _write_svg(pv)
+    path = os.path.join(pv, "Made.xml")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("<Single Name='Object'>")
+
+    with pytest.raises(commands.VisuCommandError) as raised:
+        commands.from_svg(
+            pv, svg_path, "", "", None, "", True, "Made", replace=True
+        )
+
+    assert "could not be read" in str(raised.value) or "Cannot read" in str(raised.value)
+
+
+def test_create_screen_reports_a_broken_sibling_as_a_command_error(tmp_path):
+    """The folder's real problem, in the shape the CLI prints."""
+    pv = str(tmp_path)
+    with open(os.path.join(pv, "broken.xml"), "w", encoding="utf-8") as handle:
+        handle.write("<Single Name='Object'>")
+
+    with pytest.raises(commands.VisuCommandError) as raised:
+        commands.create_screen(pv, "New", "", 800, 480, False)
+
+    assert "broken.xml" in str(raised.value)
