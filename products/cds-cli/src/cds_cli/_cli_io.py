@@ -34,6 +34,25 @@ from cts_shared import wire
 
 ENGINE_CLI = _ENGINE_DIR / "engine_cli.py"
 _ENGINE_MODULE = "cds_text_sync.engine.engine_cli"
+_PRODUCT_SRC = _SCRIPT_DIR / "products" / "cds-text-sync" / "src"
+_SHARED_SRC = _SCRIPT_DIR / "shared" / "src"
+
+
+def _engine_subprocess_env():
+    """Environment for the offline engine child.
+
+    PYTHONPATH pins the source checkout's packages first, so the child imports
+    the same tree the CLI is running from and a look-alike directory in the
+    working directory cannot shadow ``cds_text_sync``.
+    """
+    parts = [str(path) for path in (_PRODUCT_SRC, _SHARED_SRC) if path.is_dir()]
+    existing = os.environ.get("PYTHONPATH")
+    if existing:
+        parts.append(existing)
+    env = dict(os.environ)
+    if parts:
+        env["PYTHONPATH"] = os.pathsep.join(parts)
+    return env
 _REPO_ROOT = _SCRIPT_DIR
 _HOST_DAEMON = _REPO_ROOT / "products" / "codesys-host" / "Project_daemon.py"
 _LEGACY_DAEMON = _REPO_ROOT / "Project_daemon.py"
@@ -524,7 +543,7 @@ def cmd_direct(args: list[str]) -> NoReturn:
         filtered.append(arg)
     cmd = [sys.executable, "-m", _ENGINE_MODULE] + filtered
     _print_info("Running: {0}".format(" ".join(cmd)))
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, env=_engine_subprocess_env())
     try:
         proc.wait()
     except KeyboardInterrupt:
