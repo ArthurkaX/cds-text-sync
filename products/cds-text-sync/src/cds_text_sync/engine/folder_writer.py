@@ -24,10 +24,12 @@ from ._view_paths import (
     normalize_fs_path,
 )
 from .xml_helpers import (
+    WRITE_VOLATILE_XML_NAMES,
     ensure_dir,
     entry_to_xml,
     externalized_text_xml,
     normalize_guid,
+    normalized_xml_text,
     sha1_hex,
 )
 
@@ -67,6 +69,50 @@ def _atomic_write_text(dest_path, content, encoding="utf-8", newline=""):
             except OSError:
                 pass
         raise
+
+
+def _preserve_equivalent_text(previous_text, xml_text):
+    """Return the previous text when the new text differs by no real content.
+
+    CODESYS stamps IDE-generated state into every export: object Timestamps,
+    the per-session ``VisuStyleDefaultImages_<guid>`` temp path, and the entry
+    order of .NET dictionaries. All three are provably not content -- a diff of
+    two exports of an unchanged project differs in nothing else -- yet writing
+    the new text every time produces a byte diff on every export: git noise,
+    and a view that reads as locally modified forever.
+
+    Keeping the previous bytes has a second, deliberate effect: the values left
+    on disk are the real ones from the export that first wrote them.
+    ``_patch_builder`` feeds a modified object's view XML straight to the
+    project, so a view whose volatile fields had been replaced by placeholders
+    would import those placeholders.
+
+    Returns None when there is no previous text or it differs for real; the
+    caller then writes the new text as usual.
+    """
+    if previous_text is None:
+        return None
+    if previous_text == xml_text:
+        return previous_text
+    if normalized_xml_text(
+        previous_text, ignore_names=WRITE_VOLATILE_XML_NAMES
+    ) == normalized_xml_text(xml_text, ignore_names=WRITE_VOLATILE_XML_NAMES):
+        return previous_text
+    return None
+
+
+def _read_text_or_none(full_path):
+    """Best-effort read of a view file the export is about to regenerate.
+
+    Undecodable bytes and missing files both yield None: a file this export
+    could not read is not one to restore, and it is about to be rewritten
+    anyway.
+    """
+    try:
+        with open(full_path, "r", encoding="utf-8-sig", newline="") as handle:
+            return handle.read()
+    except (IOError, OSError, UnicodeDecodeError):
+        return None
 
 
 def _normalize_fs_path(path):
@@ -157,6 +203,10 @@ class FolderWriter:
         self._dirty_paths = set()
         self._previous_hash_by_path = {}
         self._skipped_dirty = []
+        # Entry xml removed by the regenerate pass, kept in memory so a node
+        # whose export differs only by volatile IDE state is restored verbatim
+        # instead of rewritten with fresh noise.
+        self._removed_text_by_path = {}
 
     def _safe_path_in_root(self, relative_path, root_path):
         if relative_path:
@@ -266,6 +316,11 @@ class FolderWriter:
     def _managed_relative_paths(self, entry):
         return managed_relative_paths(entry)
 
+    def _remember_removed_text(self, relative_path, full_path):
+        text = _read_text_or_none(full_path)
+        if text is not None:
+            self._removed_text_by_path[str(relative_path).replace("\\", "/")] = text
+
     def _remove_previous_managed_files_from_root(
         self, manifest, root_path, selected_guids=None, keep_paths=None
     ):
@@ -303,6 +358,8 @@ class FolderWriter:
                     continue
                 seen.add(full_path)
                 if os.path.isfile(full_path):
+                    if relative_path == entry_xml_path:
+                        self._remember_removed_text(relative_path, full_path)
                     try:
                         os.remove(full_path)
                         removed += 1
@@ -746,12 +803,24 @@ class FolderWriter:
         else:
             ensure_dir(os.path.dirname(full_path))
             self._canonicalize_existing_path(full_path)
-            _atomic_write_text(full_path, xml_text, encoding="utf-8")
+            preserved = _preserve_equivalent_text(
+                self._removed_text_by_path.get(rel_key), xml_text
+            )
             emitted_paths.add(full_path)
-            if projection_paths and self._has_st_projection(projection_options):
-                _log("XML externalized for projection: {0}".format(xml_path))
             metadata["xml_path"] = xml_path
-            metadata["hash"] = sha1_hex(xml_text)
+            if preserved is not None:
+                # Equal once volatile IDE state (timestamps, per-session temp
+                # paths, dictionary order) is set aside: put back the bytes the
+                # regenerate pass just removed so repeated exports stay
+                # byte-identical. The manifest must record the on-disk hash or
+                # the file would read as locally modified.
+                _atomic_write_text(full_path, preserved, encoding="utf-8")
+                metadata["hash"] = sha1_hex(preserved)
+            else:
+                _atomic_write_text(full_path, xml_text, encoding="utf-8")
+                if projection_paths and self._has_st_projection(projection_options):
+                    _log("XML externalized for projection: {0}".format(xml_path))
+                metadata["hash"] = sha1_hex(xml_text)
 
         if in_dump_mirror:
             metadata["xml_root"] = "dump"

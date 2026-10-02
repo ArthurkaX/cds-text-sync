@@ -376,8 +376,8 @@ class TestDirtyGuard:
         def _unreadable(path):
             raise OSError(13, "Permission denied")
 
-        # The engine imports its siblings as top-level modules, so the scanner
-        # folder_writer calls is the top-level one, not the package alias.
+        # Both modules resolve to the same package module, so patching the
+        # scanner's reader reaches the one folder_writer's scan uses.
         monkeypatch.setattr(_dirty_scan, "read_view_text", _unreadable)
         _write_file(views, st_rel, edited)
 
@@ -445,6 +445,74 @@ class TestDirtyGuard:
             model
         )
         assert _read_file(views, st_rel) == generated
+
+
+# ===================================================================
+# Volatile-state rewriting
+# ===================================================================
+
+_SESSION_A = "64aa25a5-e185-4da4-875d-fd0323b331c1"
+_SESSION_B = "41a6bf6f-6d26-4618-a1bd-75394cf29d97"
+
+
+def _style_model(timestamp, session, data="same"):
+    """A node carrying the two fields CODESYS regenerates every session."""
+    import xml.etree.ElementTree as ET
+
+    node = ProjectNode("g1", "__VisualizationStyle")
+    node.display_path = ["App"]
+    root_elem = ET.Element("Single", {"Name": "Object"})
+    meta = ET.SubElement(root_elem, "Single", {"Name": "MetaObject"})
+    ET.SubElement(
+        meta, "Single", {"Name": "Timestamp", "Type": "long"}
+    ).text = timestamp
+    ET.SubElement(root_elem, "Single", {"Name": "FileID"}).text = (
+        "5ce3da45|C:\\ProgramData\\CODESYS\\Temporary Files\\"
+        "VisuStyleDefaultImages_{0}\\Checkbox.bmp".format(session)
+    )
+    ET.SubElement(root_elem, "Single", {"Name": "Data"}).text = data
+    node.entry_element = root_elem
+    model = ProjectModel()
+    model.add_node(node)
+    return model
+
+
+class TestVolatileRewriteGuard:
+    """A new session's timestamps and temp paths must not churn a clean view."""
+
+    def _xml_path(self):
+        return os.path.join("App", "__VisualizationStyle.xml")
+
+    def test_volatile_only_change_keeps_the_existing_bytes(self, tmp_path):
+        import hashlib
+
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        FolderWriter(views, dump).write(_style_model("100", _SESSION_A))
+        first = _read_file(views, self._xml_path())
+
+        # Same object, next CODESYS session: new timestamp, new temp-folder guid.
+        FolderWriter(views, dump).write(_style_model("200", _SESSION_B))
+
+        assert _read_file(views, self._xml_path()) == first
+        entry = _load_manifest(dump)["entries"][0]
+        # The manifest must record the bytes that are on disk, or the file the
+        # export just decided to keep would read as locally modified.
+        assert entry["hash"] == hashlib.sha1(first.encode("utf-8")).hexdigest()
+
+    def test_a_real_change_is_still_written(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        FolderWriter(views, dump).write(_style_model("100", _SESSION_A))
+
+        FolderWriter(views, dump).write(
+            _style_model("100", _SESSION_A, data="edited")
+        )
+
+        written = _read_file(views, self._xml_path())
+        assert "<Single Name=\"Data\">edited</Single>" in written
 
 
 # ===================================================================
