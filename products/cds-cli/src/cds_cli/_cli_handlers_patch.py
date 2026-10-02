@@ -19,7 +19,7 @@ import os
 import shutil
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from cds_cli._cli_handlers_vars import _resolve_sync_folder
 from cds_cli._cli_io import (
@@ -43,18 +43,24 @@ def resolve_patch_path(relative_str: str, root_dir: str | Path) -> Path:
     Rejects empty paths, paths without filename, absolute drive paths, UNC
     paths, rooted paths, and directory traversal outside root_dir. Resolves
     existing symlinks and junctions.
+
+    The paths come from the IDE's compare report, so they are Windows-shaped
+    even when this CLI runs on a POSIX host.  Classify them with Windows rules
+    and treat both separators as separators: otherwise ``C:\\escaped.st``
+    looks like a file whose name merely contains a colon and backslash, and
+    the guard silently stops guarding.
     """
     if not relative_str or not str(relative_str).strip():
         raise ValueError("Patch path cannot be empty")
-    s = str(relative_str).replace("/", os.sep)
-    # Reject absolute drive, UNC, or root-prefixed paths before Path normalization
-    p = Path(s)
-    if p.is_absolute() or p.drive or s.startswith(("\\\\", os.sep, "/")):
+    raw = str(relative_str)
+    windows = PureWindowsPath(raw)
+    if windows.is_absolute() or windows.drive or raw.startswith(("\\", "/")):
         raise ValueError(f"Unsafe absolute, rooted, or UNC patch path: {relative_str}")
+    parts = [part for part in raw.replace("\\", "/").split("/") if part not in ("", ".")]
 
     root_resolved = Path(root_dir).resolve()
     # Resolve against explicit root
-    target = (root_resolved / p).resolve()
+    target = root_resolved.joinpath(*parts).resolve()
     if not target.is_relative_to(root_resolved) or target == root_resolved:
         raise ValueError(f"Patch path escapes allowed root: {relative_str}")
     if not target.name or target.name in (".", ".."):
