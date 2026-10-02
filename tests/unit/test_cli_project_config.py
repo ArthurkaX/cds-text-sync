@@ -10,10 +10,12 @@ sync root, and a file that cannot be read is reported rather than swallowed.
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
 
+from cds_text_sync.engine import _project_profiles
 from cds_text_sync.engine._project_settings import (
     SETTINGS_INVALID,
     SETTINGS_MISSING,
@@ -38,7 +40,27 @@ def _write_raw(root, text):
 
 
 @pytest.fixture
-def sync_root(tmp_path):
+def profiles_dir(tmp_path, monkeypatch):
+    """A profiles dir owned by the test.
+
+    The repo's ``profiles/astra.json`` is a local, git-ignored file, so the
+    tests write the profile they name instead of relying on it being there.
+    """
+    directory = tmp_path / "profiles"
+    directory.mkdir()
+    shutil.copy(os.path.join(_project_profiles.PROFILES_DIR, "default.json"), directory)
+    (directory / "astra.json").write_text(
+        json.dumps(
+            {"name": "astra", "extends": "default", "default_app_name": "Application"}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(_project_profiles, "PROFILES_DIR", str(directory))
+    return directory
+
+
+@pytest.fixture
+def sync_root(tmp_path, profiles_dir):
     """A sync folder whose settings name a profile that carries app defaults."""
     root = tmp_path / "sync"
     root.mkdir()
