@@ -514,6 +514,22 @@ class TestVolatileRewriteGuard:
         written = _read_file(views, self._xml_path())
         assert "<Single Name=\"Data\">edited</Single>" in written
 
+    def test_a_whitespace_only_edit_is_still_written(self, tmp_path):
+        # The diff engine's normalization strips whitespace; the writer must
+        # not borrow it, or re-indented code would keep its old bytes on disk
+        # and the next import would revert the edit.
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        FolderWriter(views, dump).write(_style_model("100", _SESSION_A, data="x"))
+
+        FolderWriter(views, dump).write(
+            _style_model("200", _SESSION_B, data="    x")
+        )
+
+        written = _read_file(views, self._xml_path())
+        assert "<Single Name=\"Data\">    x</Single>" in written
+
 
 # ===================================================================
 # Sync-mode init lock

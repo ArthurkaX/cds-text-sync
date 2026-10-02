@@ -24,13 +24,12 @@ from ._view_paths import (
     normalize_fs_path,
 )
 from .xml_helpers import (
-    WRITE_VOLATILE_XML_NAMES,
     ensure_dir,
     entry_to_xml,
     externalized_text_xml,
     normalize_guid,
-    normalized_xml_text,
     sha1_hex,
+    write_equivalent_xml_text,
 )
 
 
@@ -74,12 +73,13 @@ def _atomic_write_text(dest_path, content, encoding="utf-8", newline=""):
 def _preserve_equivalent_text(previous_text, xml_text):
     """Return the previous text when the new text differs by no real content.
 
-    CODESYS stamps IDE-generated state into every export: object Timestamps,
-    the per-session ``VisuStyleDefaultImages_<guid>`` temp path, and the entry
-    order of .NET dictionaries. All three are provably not content -- a diff of
-    two exports of an unchanged project differs in nothing else -- yet writing
-    the new text every time produces a byte diff on every export: git noise,
-    and a view that reads as locally modified forever.
+    CODESYS stamps IDE-generated state into every export: object Timestamps
+    and the per-session ``VisuStyleDefaultImages_<guid>`` temp path. Neither is
+    content -- two exports of an unchanged project across a session restart
+    differ in nothing else -- yet writing the new text every time produces a
+    byte diff on every export: git noise, and a view that reads as locally
+    modified forever. Everything else, whitespace included, still counts (see
+    write_equivalent_xml_text).
 
     Keeping the previous bytes has a second, deliberate effect: the values left
     on disk are the real ones from the export that first wrote them.
@@ -94,9 +94,7 @@ def _preserve_equivalent_text(previous_text, xml_text):
         return None
     if previous_text == xml_text:
         return previous_text
-    if normalized_xml_text(
-        previous_text, ignore_names=WRITE_VOLATILE_XML_NAMES
-    ) == normalized_xml_text(xml_text, ignore_names=WRITE_VOLATILE_XML_NAMES):
+    if write_equivalent_xml_text(previous_text) == write_equivalent_xml_text(xml_text):
         return previous_text
     return None
 
@@ -810,7 +808,7 @@ class FolderWriter:
             metadata["xml_path"] = xml_path
             if preserved is not None:
                 # Equal once volatile IDE state (timestamps, per-session temp
-                # paths, dictionary order) is set aside: put back the bytes the
+                # paths) is set aside: put back the bytes the
                 # regenerate pass just removed so repeated exports stay
                 # byte-identical. The manifest must record the on-disk hash or
                 # the file would read as locally modified.

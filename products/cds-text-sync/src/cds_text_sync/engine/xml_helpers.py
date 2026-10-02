@@ -68,13 +68,13 @@ VOLATILE_XML_NAMES = set(
 )
 
 # Element names a fresh CODESYS session is free to rewrite on an otherwise
-# unchanged object. The writer uses this to decide whether a view file must be
-# rewritten at all; it is deliberately a subset of VOLATILE_XML_NAMES, which is
-# the diff engine's wider "this difference does not matter" set. The difference
-# is on purpose: the diff engine forgets UniqueIdGenerator and
-# GeneratedLMMDescriptions because it never needs to import them, but the
-# offline visu builder reads those same ids back out of the view files, so a
-# change there must still rewrite the file.
+# unchanged object. The writer uses this (through write_equivalent_xml_text) to
+# decide whether a view file must be rewritten at all; it is deliberately a
+# subset of VOLATILE_XML_NAMES, which is the diff engine's wider "this
+# difference does not matter" set. The difference is on purpose: the diff
+# engine forgets UniqueIdGenerator and GeneratedLMMDescriptions because it
+# never needs to import them, but the offline visu builder reads those same ids
+# back out of the view files, so a change there must still rewrite the file.
 WRITE_VOLATILE_XML_NAMES = set(["Timestamp"])
 
 # Element names ignored only when a library-resolution drift has already been
@@ -981,16 +981,12 @@ def normalize_xml_element(element, ignore_names=None):
             element.append(entry)
 
 
-def normalized_xml_text(value, extra_ignore_names=None, ignore_names=None):
+def normalized_xml_text(value, extra_ignore_names=None):
     """Serialize ``value`` with volatile content stripped, for comparison only.
 
     ``extra_ignore_names`` widens VOLATILE_XML_NAMES for a single call without
     mutating module state -- the diff engine uses it to look past
     library-derived subtrees once a resolution drift has been proven.
-    ``ignore_names`` replaces the default set instead of widening it; the
-    writer uses it with WRITE_VOLATILE_XML_NAMES, which is narrower because a
-    field the diff engine may forget is not automatically one the rest of the
-    tool can.
 
     Unparseable input is returned verbatim: normalization then silently does
     nothing, so a caller that mangles the XML before handing it over will see
@@ -1000,10 +996,44 @@ def normalized_xml_text(value, extra_ignore_names=None, ignore_names=None):
         root = ET.fromstring(value)
     except Exception:
         return value
-    ignore_names = set(VOLATILE_XML_NAMES if ignore_names is None else ignore_names)
+    ignore_names = VOLATILE_XML_NAMES
     if extra_ignore_names:
-        ignore_names |= set(extra_ignore_names)
+        ignore_names = VOLATILE_XML_NAMES | set(extra_ignore_names)
     normalize_xml_element(root, ignore_names)
+    data = ET.tostring(root, encoding="utf-8")
+    if isinstance(data, bytes):
+        data = data.decode("utf-8")
+    return data
+
+
+def _mask_write_volatile(element):
+    element.text = normalize_xml_value(element.text)
+    element.tail = normalize_xml_value(element.tail)
+    for child in list(element):
+        if child.attrib.get("Name") in WRITE_VOLATILE_XML_NAMES:
+            element.remove(child)
+        else:
+            _mask_write_volatile(child)
+
+
+def write_equivalent_xml_text(value):
+    """Serialize ``value`` with only session-volatile IDE state masked.
+
+    The writer's question is narrower than the diff engine's: not "does this
+    difference matter" but "may the previous bytes stand in for the new ones".
+    So unlike normalized_xml_text this keeps whitespace, text-line Ids,
+    trailing blank lines and Dictionary order -- an export that differs in
+    any of those carries a real edit (re-indented code, for one) and must be
+    written. Only WRITE_VOLATILE_XML_NAMES elements are dropped and only
+    VOLATILE_XML_VALUE_PATTERNS substrings masked.
+
+    Unparseable input is returned verbatim, so it compares as raw text.
+    """
+    try:
+        root = ET.fromstring(value)
+    except Exception:
+        return value
+    _mask_write_volatile(root)
     data = ET.tostring(root, encoding="utf-8")
     if isinstance(data, bytes):
         data = data.decode("utf-8")
