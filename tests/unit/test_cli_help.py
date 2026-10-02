@@ -199,3 +199,19 @@ def test_subcommand_help_is_not_replaced_by_top_level_help(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "--install" in out
     assert "positional arguments:" not in out
+
+
+def test_main_module_does_not_re_export_handler_helpers():
+    """main() imports its helpers to call them, not to publish them [CLI4].
+
+    The module used to list ~35 private names in __all__ under "kept
+    accessible"; no consumer imported any of them from here, so the list is
+    gone and the names come from the modules that define them.
+    """
+    from cds_cli import main as cli_main
+
+    assert cli_main.__all__ == ["main", "build_parser"]
+    assert not hasattr(cli_main, "_project_command")
+    assert not hasattr(cli_main, "DAEMON_SCRIPT")
+    # Still a module global: test_cli_handlers_daemon patches it by name here.
+    assert callable(cli_main.send_command_reverse)

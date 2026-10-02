@@ -49,44 +49,15 @@ _ENGINE_DIR = (
 )
 if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
-# -- Re-exports from submodules (used by main() and kept accessible) ----------
+# -- Public surface -----------------------------------------------------------
 
+# main() pulls the handlers and helpers in from their own modules below; the
+# names are module globals because main() calls them, not a re-export API.
+# This list is the module's public surface: the entry point and the parser
+# builder (tests import the rest from the module that defines them).
 __all__ = [
-    # from cds_cli._cli_io
-    "_print_error",
-    "_print_info",
-    "_print_ok",
-    "_format_output",
-    "_print_rp_error",
-    "_parse_key_value_args",
-    "_load_project_config",
-    "_find_codesys",
-    "_launch_codesys",
-    "_project_command",
-    "cmd_rp_command",
-    "cmd_daemon",
-    "cmd_direct",
-    "send_command_reverse",
-    "ENGINE_CLI",
-    "DAEMON_SCRIPT",
-    "_CODESYS_CANDIDATES",
-    # from cds_cli._cli_parser
+    "main",
     "build_parser",
-    # from cds_cli._cli_handlers_*
-    "cmd_discover",
-    "dispatch_project",
-    "dispatch_pou",
-    "dispatch_daemon",
-    "dispatch_menu",
-    "dispatch_patch",
-    "_resolve_project_view",
-    "_build_map_rows",
-    "_write_csv",
-    "cmd_read_vars",
-    "cmd_variable_map",
-    "cmd_variable_snapshot",
-    "cmd_variable_restore",
-    "dispatch_visu",
 ]
 
 from cds_cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
@@ -98,9 +69,6 @@ from cds_cli._cli_handlers_project import (  # noqa: E402
     dispatch_project,
 )
 from cds_cli._cli_handlers_vars import (  # noqa: E402
-    _build_map_rows,
-    _resolve_project_view,
-    _write_csv,
     cmd_read_vars,
     cmd_variable_map,
     cmd_variable_restore,
@@ -108,20 +76,8 @@ from cds_cli._cli_handlers_vars import (  # noqa: E402
 )
 from cds_cli._cli_handlers_visu import dispatch_visu  # noqa: E402
 from cds_cli._cli_io import (  # noqa: E402
-    _CODESYS_CANDIDATES,
-    DAEMON_SCRIPT,
-    ENGINE_CLI,
-    _find_codesys,
-    _format_output,
-    _launch_codesys,
-    _load_project_config,
-    _parse_key_value_args,
     _print_error,
-    _print_info,
-    _print_ok,
     _print_rp_error,
-    _project_command,
-    cmd_daemon,
     cmd_direct,
     cmd_rp_command,
     send_command_reverse,
