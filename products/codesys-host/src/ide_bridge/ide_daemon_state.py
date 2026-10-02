@@ -346,6 +346,10 @@ def _clear_path_cache():
 
 # ── Daemon config (security + poll) ───────────────────────────────────────
 
+_CONFIG_MISSING = "missing"
+_CONFIG_OK = "ok"
+_CONFIG_INVALID = "invalid"
+
 _DEFAULT_CONFIG = {
     "poll_ms": 200,
     "copy_command": "cts",
@@ -360,52 +364,83 @@ _DEFAULT_CONFIG = {
 }
 
 
-def _load_daemon_config():
-    """Load daemon config from project property 'cds-daemon-config'.
+def _read_daemon_config():
+    """Read 'cds-daemon-config' and say whether the stored value was usable.
+
+    Returns ``(config, status)`` where status is one of:
+
+    ``_CONFIG_MISSING``  nothing stored (no project/property, or an empty
+                         value): the defaults are the config, not an error.
+    ``_CONFIG_OK``       the stored JSON parsed and was merged over defaults.
+    ``_CONFIG_INVALID``  something is stored but could not be read or parsed.
+                         The merged defaults are NOT the user's config -- they
+                         do not carry the user's deny list -- so callers that
+                         enforce permissions must fail closed.
 
     Returns a dict with poll_ms and deny list.
-    Merges with defaults so missing keys are filled in.
     """
+    # Copy the deny list too: callers (and the Settings window) mutate it, and
+    # a shared list would leak edits into the module-level default.
     config = dict(_DEFAULT_CONFIG)
+    config["deny"] = list(_DEFAULT_CONFIG.get("deny", []))
     try:
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is None:
-            return config
+            return config, _CONFIG_MISSING
         prj = projects.primary
         if prj is None:
-            return config
+            return config, _CONFIG_MISSING
         proj_info = None
         if hasattr(prj, "get_project_info"):
             proj_info = prj.get_project_info()
         elif hasattr(prj, "project_info"):
             proj_info = prj.project_info
         if proj_info is None:
-            return config
+            return config, _CONFIG_MISSING
         props = getattr(proj_info, "values", proj_info)
-        if hasattr(props, "__getitem__"):
-            raw = ""
+        if not hasattr(props, "__getitem__"):
+            return config, _CONFIG_MISSING
+        raw = ""
+        try:
+            if "cds-daemon-config" in props:
+                raw = str(props["cds-daemon-config"])
+        except Exception:
             try:
-                if "cds-daemon-config" in props:
-                    raw = str(props["cds-daemon-config"])
-            except Exception:
-                try:
-                    raw = str(props.get("cds-daemon-config", ""))
-                except Exception:
-                    pass
-            if raw:
-                import json as _json
+                raw = str(props.get("cds-daemon-config", ""))
+            except Exception as exc:
+                _log("daemon config unreadable: {0}".format(exc))
+                return config, _CONFIG_INVALID
+        if not raw:
+            return config, _CONFIG_MISSING
+        try:
+            loaded = json.loads(raw)
+        except Exception as exc:
+            _log(
+                "daemon config is not valid JSON ({0}); permissions fail "
+                "closed until it is fixed".format(exc)
+            )
+            return config, _CONFIG_INVALID
+        if not isinstance(loaded, dict):
+            _log(
+                "daemon config is not a JSON object; permissions fail closed "
+                "until it is fixed"
+            )
+            return config, _CONFIG_INVALID
+        # Merge: user values override defaults
+        for k, v in loaded.items():
+            config[k] = v
+        return config, _CONFIG_OK
+    except Exception as exc:
+        _log(
+            "daemon config read failed: {0}; permissions fail closed until it "
+            "can be read".format(exc)
+        )
+        return config, _CONFIG_INVALID
 
-                try:
-                    loaded = _json.loads(raw)
-                    if isinstance(loaded, dict):
-                        # Merge: user values override defaults
-                        for k, v in loaded.items():
-                            config[k] = v
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    return config
+
+def _load_daemon_config():
+    """Load daemon config for display (poll interval, permissions listing)."""
+    return _read_daemon_config()[0]
 
 
 def _save_daemon_config(config):
@@ -413,16 +448,20 @@ def _save_daemon_config(config):
 
     Args:
         config: dict with poll_ms, deny keys
-    """
-    import json as _json
 
-    raw = _json.dumps(config, ensure_ascii=False)
+    Returns True on success.  On failure returns False and logs why: the
+    caller (the Settings window) shows the failure, and a silently lost
+    deny-list edit is exactly the outcome to avoid.
+    """
+    raw = json.dumps(config, ensure_ascii=False)
     try:
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is None:
+            _log("cannot save daemon config: no project open")
             return False
         prj = projects.primary
         if prj is None:
+            _log("cannot save daemon config: no primary project")
             return False
         proj_info = None
         if hasattr(prj, "get_project_info"):
@@ -430,13 +469,16 @@ def _save_daemon_config(config):
         elif hasattr(prj, "project_info"):
             proj_info = prj.project_info
         if proj_info is None:
+            _log("cannot save daemon config: project info unavailable")
             return False
         props = getattr(proj_info, "values", proj_info)
-        if hasattr(props, "__setitem__"):
-            props["cds-daemon-config"] = raw
-            return True
-        return False
-    except Exception:
+        if not hasattr(props, "__setitem__"):
+            _log("cannot save daemon config: project properties are read-only")
+            return False
+        props["cds-daemon-config"] = raw
+        return True
+    except Exception as exc:
+        _log("cannot save daemon config: {0}".format(exc))
         return False
 
 
@@ -445,8 +487,17 @@ def _check_permission(method):
 
     Returns:
         (allowed, reason) tuple. allowed=True means OK.
+
+    Fails closed: if a stored config exists but cannot be read, the user's
+    deny list is unknown, so no permission-gated command is allowed.
     """
-    config = _load_daemon_config()
+    config, status = _read_daemon_config()
+    if status == _CONFIG_INVALID:
+        return (
+            False,
+            "Daemon config is unreadable; refusing permission-gated commands "
+            "until it is fixed (see the daemon log)",
+        )
     deny_list = config.get("deny", [])
     if method in deny_list:
         return False, "Forbidden by daemon settings (deny list includes '{0}')".format(

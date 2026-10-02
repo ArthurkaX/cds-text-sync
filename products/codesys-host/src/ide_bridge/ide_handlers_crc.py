@@ -16,10 +16,11 @@ import tempfile
 import time
 
 from ide_daemon_state import (
+    _CONFIG_INVALID,
     _log,
     _get_active_project,
-    _load_daemon_config,
     _project_file_path,
+    _read_daemon_config,
 )
 
 from ide_daemon_helpers import (
@@ -509,5 +510,13 @@ def _cmd_compare_crc(params):
 
 def _cmd_permissions():
     """Return current daemon security settings."""
-    config = _load_daemon_config()
-    return {"ok": True, "data": config}
+    config, status = _read_daemon_config()
+    data = dict(config)
+    if status == _CONFIG_INVALID:
+        # The deny list shown is the built-in default, not the user's; say so
+        # rather than letting the listing imply everything is permitted.
+        data["config_error"] = (
+            "stored daemon config is unreadable; permission-gated commands "
+            "are refused until it is fixed"
+        )
+    return {"ok": True, "data": data}
