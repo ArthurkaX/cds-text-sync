@@ -237,3 +237,41 @@ def test_no_permission_entries_are_real_methods(daemon):
         "_NO_PERMISSION lists names absent from _DISPATCH: " + ", ".join(unknown)
     )
 
+
+class _FixturePipe:
+    """The minimal read/write surface _serve_connection needs (see
+    ide_daemon_state._read_json_from_pipe, which honours read_msg/write_msg)."""
+
+    def __init__(self, message):
+        self._message = message
+
+    def read_msg(self):
+        message, self._message = self._message, None
+        return message
+
+    def write_msg(self, data):
+        return True
+
+
+def test_only_the_daemon_stop_ends_the_loop(daemon, monkeypatch):
+    """`stop` and `stop_daemon` shut the daemon down; `stop_plc` must not.
+
+    The wire's `stop` used to be ambiguous with the user-facing `cts stop`
+    (stop_plc). The loop's shutdown check resolves through the alias table, so
+    an older CLI's `stop` still stops the daemon and `cts stop` still only
+    stops the PLC.
+    """
+    monkeypatch.setattr(daemon, "handle_command", lambda *a, **k: {"ok": True, "data": {}})
+    monkeypatch.setattr(daemon, "_instance_info", lambda: {"id": "ide-1", "project": None})
+    monkeypatch.setattr(daemon, "record_last_result", lambda *a, **k: None)
+    # The loader tears the loop state down after import; _serve_connection
+    # counts commands in it.
+    monkeypatch.setattr(sys, "_codesys_daemon_loop", {"running": True}, raising=False)
+
+    def stops(method):
+        return daemon._serve_connection(_FixturePipe({"method": method, "params": {}}), dash=None)
+
+    assert stops("stop_daemon") is True
+    assert stops("stop") is True
+    assert stops("stop_plc") is False
+
