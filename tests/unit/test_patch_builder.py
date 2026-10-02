@@ -349,6 +349,177 @@ class TestPatchBuilderTextFirst:
         assert "CreateTextObject" not in patch_text
 
 
+PERSISTENT_GVL_TYPE_GUID = "{3183921b-cc91-4712-9781-c3b6555122b5}"
+ST_APPLICATION_PATH = ["PLC", "PLC Logic", "ST_Application"]
+
+
+def _persistent_gvl_ide_node(
+    guid="ide-persistent-1",
+    name="_06_VM_PERSISTENT",
+    display_path=None,
+    node_type=PERSISTENT_GVL_TYPE_GUID,
+):
+    node = _make_node(guid, name=name, node_type=node_type)
+    node.display_path = list(display_path or ST_APPLICATION_PATH)
+    return node
+
+
+def _pending_persistent_gvl_node(
+    guid,
+    name="_07_VM_PERSISTENT2",
+    display_path=None,
+    node_type="persistent_gvl",
+    **meta
+):
+    """A .st dropped into project-view/ with the line pragma
+    ``//% cds-text-sync.kind: persistent_gvl``: the kind is known, but there is
+    no TypeGuid, so node.type is the semantic kind, not a GUID."""
+    node = _make_node(
+        guid,
+        name=name,
+        node_type=node_type,
+        pending_create=True,
+        create_kind="persistent_gvl",
+        create_path="PLC/PLC Logic/ST_Application/{0}.st".format(name),
+        create_name=name,
+        create_declaration="VAR_GLOBAL PERSISTENT\n  x : INT;\nEND_VAR",
+        **meta
+    )
+    node.display_path = list(display_path or ST_APPLICATION_PATH)
+    return node
+
+
+class TestPersistentGvlGuard:
+    """CODESYS accepts only one Persistent Variables object per application."""
+
+    def test_second_persistent_gvl_from_kind_pragma_is_refused(self):
+        """The .st declares its kind with a line pragma (no TypeGuid), so the
+        guard must not skip the check just because node.type is not a GUID."""
+        ide_model = model_with(_persistent_gvl_ide_node())
+        folder_node = _pending_persistent_gvl_node("create:abc")
+        folder_model = model_with(folder_node)
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:abc"], "deleted": []},
+            ide_model,
+            folder_model,
+        )
+
+        with pytest.raises(UnsupportedPatchError) as raised:
+            _build_patch(builder)
+
+        message = str(raised.value)
+        assert "_07_VM_PERSISTENT2" in message
+        assert "_06_VM_PERSISTENT" in message
+
+    def test_second_persistent_gvl_with_explicit_type_guid_is_refused(self):
+        ide_model = model_with(_persistent_gvl_ide_node())
+        folder_node = _pending_persistent_gvl_node(
+            "create:abc", create_type_guid=PERSISTENT_GVL_TYPE_GUID
+        )
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:abc"], "deleted": []},
+            ide_model,
+            model_with(folder_node),
+        )
+
+        with pytest.raises(UnsupportedPatchError) as raised:
+            _build_patch(builder)
+
+        assert "_06_VM_PERSISTENT" in str(raised.value)
+
+    def test_two_persistent_gvl_creates_in_one_patch_are_refused(self):
+        """Neither exists in the IDE yet, so the live lookup finds nothing --
+        the second create in the same patch must still be refused."""
+        first = _pending_persistent_gvl_node("create:one", name="_06_VM_PERSISTENT")
+        second = _pending_persistent_gvl_node("create:two", name="_07_VM_PERSISTENT2")
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:one", "create:two"], "deleted": []},
+            model_with(),
+            model_with(first, second),
+        )
+
+        with pytest.raises(UnsupportedPatchError) as raised:
+            _build_patch(builder)
+
+        message = str(raised.value)
+        assert "_06_VM_PERSISTENT" in message
+        assert "_07_VM_PERSISTENT2" in message
+
+    def test_single_persistent_gvl_create_is_allowed(self):
+        folder_node = _pending_persistent_gvl_node("create:abc")
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:abc"], "deleted": []},
+            model_with(),
+            model_with(folder_node),
+        )
+
+        emitted, patch_text = _build_patch(builder)
+
+        assert emitted is True
+        creates = ET.fromstring(patch_text).findall(".//CreateTextObject")
+        assert len(creates) == 1
+        assert creates[0].get("Kind") == "persistent_gvl"
+
+    def test_persistent_gvl_in_a_different_application_is_allowed(self):
+        ide_model = model_with(
+            _persistent_gvl_ide_node(display_path=["PLC", "PLC Logic", "App_A_Application"])
+        )
+        folder_node = _pending_persistent_gvl_node(
+            "create:abc",
+            display_path=["PLC", "PLC Logic", "App_B_Application"],
+        )
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:abc"], "deleted": []},
+            ide_model,
+            model_with(folder_node),
+        )
+
+        emitted, patch_text = _build_patch(builder)
+
+        assert emitted is True
+        assert ET.fromstring(patch_text).findall(".//CreateTextObject")
+
+    def test_plain_gvl_create_beside_a_persistent_one_is_allowed(self):
+        ide_model = model_with(_persistent_gvl_ide_node())
+        folder_node = _make_node(
+            "create:abc",
+            name="GVL_Plain",
+            node_type="gvl",
+            pending_create=True,
+            create_kind="gvl",
+            create_path="PLC/PLC Logic/ST_Application/GVL_Plain.st",
+            create_name="GVL_Plain",
+            create_declaration="VAR_GLOBAL\n  y : INT;\nEND_VAR",
+        )
+        folder_node.display_path = list(ST_APPLICATION_PATH)
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:abc"], "deleted": []},
+            ide_model,
+            model_with(folder_node),
+        )
+
+        emitted, _patch_text = _build_patch(builder)
+
+        assert emitted is True
+
+    def test_explicit_non_persistent_type_guid_is_not_refused(self):
+        """An entry that declares a concrete, non-persistent TypeGuid is not a
+        persistent object however its Kind reads: do not refuse it."""
+        ide_model = model_with(_persistent_gvl_ide_node())
+        folder_node = _pending_persistent_gvl_node(
+            "create:abc", create_type_guid="{6f9dac99-8de1-4efc-8465-68ac443b7d08}"
+        )
+        builder = PatchBuilder(
+            {"modified": [], "added": ["create:abc"], "deleted": []},
+            ide_model,
+            model_with(folder_node),
+        )
+
+        emitted, _patch_text = _build_patch(builder)
+
+        assert emitted is True
+
+
 class TestStOverlayFailures:
     """An .st edit that cannot be applied must not be replaced by the stale side."""
 

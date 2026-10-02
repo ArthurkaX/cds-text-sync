@@ -4,6 +4,7 @@ _patch_builder.py - Generates an IMPORT.xml patch based on diff results.
 """
 
 import os
+import re
 import xml.etree.ElementTree as ET
 
 from xml_helpers import (
@@ -26,6 +27,10 @@ PERSISTENT_GVL_TYPE_GUIDS = set(
         "261bd6e6-249c-4232-bb6f-84c2fbeef430",
         "3183921b-cc91-4712-9781-c3b6555122b5",
     ]
+)
+# normalize_guid() output shape (braces stripped, lowercased).
+_TYPE_GUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
 
 
@@ -222,14 +227,8 @@ class PatchBuilder:
                 return tuple(value.lower() for value in parts[: index + 1])
         return tuple(value.lower() for value in parts)
 
-    def _existing_persistent_gvl_in_scope(self, type_guid, display_path):
-        normalized_type_guid = normalize_guid(type_guid)
-        if (
-            normalized_type_guid
-            and normalized_type_guid not in PERSISTENT_GVL_TYPE_GUIDS
-        ):
-            return None
-        scope = self._application_scope(display_path)
+    def _existing_persistent_gvl_in_scope(self, scope):
+        """The Persistent Variables object the live IDE already has in *scope*."""
         for node in self.ide_model.nodes.values():
             if normalize_guid(node.type) not in PERSISTENT_GVL_TYPE_GUIDS:
                 continue
@@ -237,7 +236,22 @@ class PatchBuilder:
                 return node
         return None
 
-    def _validate_text_create(self, guid):
+    @staticmethod
+    def _create_label(node, guid):
+        name = node.metadata.get("create_name") or node.name or guid
+        path = node.metadata.get("create_path") or node.metadata.get("view_path") or ""
+        return "'{0}' ({1})".format(name, path) if path else "'{0}'".format(name)
+
+    def _validate_text_create(self, guid, persistent_scopes=None):
+        """Refuse a create CODESYS cannot accept: a second Persistent Variables
+        object in an application.
+
+        The kind is the authority here, not the type guid: an .st that declares
+        its kind with the line pragma ``//% cds-text-sync.kind: persistent_gvl``
+        carries no TypeGuid, so node.type is the semantic kind rather than a
+        GUID. Skipping the check in that case let the create reach CODESYS,
+        which answered with a modal dialog that froze the daemon.
+        """
         folder_node = self.folder_model.get_node(guid)
         if folder_node is None:
             return
@@ -246,28 +260,50 @@ class PatchBuilder:
         ).lower()
         if kind != "persistent_gvl":
             return
-        existing = self._existing_persistent_gvl_in_scope(
-            folder_node.metadata.get("create_type_guid") or folder_node.type,
-            folder_node.display_path,
+        declared_type_guid = normalize_guid(
+            folder_node.metadata.get("create_type_guid")
         )
-        if existing is None:
+        if (
+            _TYPE_GUID_RE.match(declared_type_guid)
+            and declared_type_guid not in PERSISTENT_GVL_TYPE_GUIDS
+        ):
+            # An explicit, concrete, non-persistent TypeGuid decides what gets
+            # created -- the kind pragma does not override it.
             return
 
-        create_path = (
-            folder_node.metadata.get("create_path")
-            or folder_node.metadata.get("view_path")
-            or ""
-        )
-        existing_path_parts = [part for part in (existing.display_path or []) if part]
-        existing_path_parts.append(existing.output_name or existing.name or "")
-        existing_path = "/".join(existing_path_parts)
-        raise UnsupportedPatchError(
-            "Cannot create persistent variable list '{0}' at {1}: a persistent variable list already exists in the same application scope ({2}). CODESYS accepts only one Persistent Variables object per application; edit the existing object instead of creating a second one.".format(
-                folder_node.metadata.get("create_name") or folder_node.name or guid,
-                create_path,
-                existing_path,
+        scope = self._application_scope(folder_node.display_path)
+        existing = self._existing_persistent_gvl_in_scope(scope)
+        if existing is not None:
+            existing_path_parts = [
+                part for part in (existing.display_path or []) if part
+            ]
+            existing_path_parts.append(existing.output_name or existing.name or "")
+            raise UnsupportedPatchError(
+                "Cannot create persistent variable list '{0}' at {1}: a persistent variable list already exists in the same application scope ({2}). CODESYS accepts only one Persistent Variables object per application; edit the existing object instead of creating a second one.".format(
+                    folder_node.metadata.get("create_name")
+                    or folder_node.name
+                    or guid,
+                    folder_node.metadata.get("create_path")
+                    or folder_node.metadata.get("view_path")
+                    or "",
+                    "/".join(existing_path_parts),
+                )
             )
-        )
+        if persistent_scopes is None:
+            return
+        previous_guid = persistent_scopes.get(scope)
+        if previous_guid is not None:
+            previous_node = self.folder_model.get_node(previous_guid)
+            raise UnsupportedPatchError(
+                "Cannot create two persistent variable lists in the same application scope ({0}): {1} and {2}. CODESYS accepts only one Persistent Variables object per application; keep one of them, or give each application its own.".format(
+                    "/".join(scope),
+                    self._create_label(previous_node, previous_guid)
+                    if previous_node is not None
+                    else "'{0}'".format(previous_guid),
+                    self._create_label(folder_node, guid),
+                )
+            )
+        persistent_scopes[scope] = guid
 
     def _append_text_create(self, parent, guid):
         folder_node = self.folder_model.get_node(guid)
@@ -433,8 +469,9 @@ class PatchBuilder:
             print("Empty patch generated at", output_path)
             return False
 
+        persistent_scopes = {}
         for guid in text_create_guids:
-            self._validate_text_create(guid)
+            self._validate_text_create(guid, persistent_scopes)
 
         print(
             "Building patch for {0} objects...".format(
