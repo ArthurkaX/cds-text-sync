@@ -165,6 +165,24 @@ class TestBrokenFile:
         assert settings == default_project_settings()
         assert "Warning:" in capsys.readouterr().out
 
+    def test_an_unusable_layout_is_silenced_too(self, sync_root, capsys):
+        """warn=False means no warning at all, not just no warning for JSON."""
+        _write_settings(sync_root, {"layout": "not-a-layout"})
+
+        settings, status, _error = read_project_settings(str(sync_root), warn=False)
+
+        assert status == SETTINGS_OK
+        assert settings["layout"] == "project-view"
+        assert capsys.readouterr().out == ""
+
+    def test_an_unusable_layout_still_warns_when_asked(self, sync_root, capsys):
+        _write_settings(sync_root, {"layout": "not-a-layout"})
+
+        settings = load_project_settings(str(sync_root))
+
+        assert settings["layout"] == "project-view"
+        assert "Warning:" in capsys.readouterr().out
+
     def test_non_object_json_no_longer_raises(self, sync_root, monkeypatch, capsys):
         _write_raw(sync_root, "[1, 2]")
         monkeypatch.chdir(sync_root)

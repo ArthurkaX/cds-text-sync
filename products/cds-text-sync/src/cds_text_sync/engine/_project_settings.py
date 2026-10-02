@@ -173,7 +173,8 @@ def read_project_settings(project_root, warn=True):
     try:
         settings["layout"] = normalize_layout_mode(data.get("layout", settings["layout"]))
     except Exception as error:
-        print("Warning: Ignoring invalid layout in project settings {0}: {1}".format(path, error))
+        if warn:
+            print("Warning: Ignoring invalid layout in project settings {0}: {1}".format(path, error))
 
     settings["view_root"] = _normalize_view_root(project_root, data.get("view_root"))
     if data.get("profile"):
