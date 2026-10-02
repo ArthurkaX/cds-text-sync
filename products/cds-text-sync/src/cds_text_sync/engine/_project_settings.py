@@ -15,6 +15,13 @@ from cts_shared.coerce import as_bool
 
 SETTINGS_FILENAME = "cds-text-sync.json"
 
+# Outcome of reading the settings file. Both a missing file and an unreadable
+# one yield the defaults, so a caller that must not act on a guess has to be
+# able to tell them apart: only the second is a problem worth reporting.
+SETTINGS_MISSING = "missing"
+SETTINGS_OK = "ok"
+SETTINGS_INVALID = "invalid"
+
 SYNC_MODE_XML_FIRST = "xml_first"
 SYNC_MODE_TEXT_FIRST = "text_first"
 
@@ -38,6 +45,34 @@ def default_project_settings():
 
 def settings_path(project_root):
     return os.path.join(project_root, SETTINGS_FILENAME)
+
+
+def find_settings_root(start_dir=None):
+    """Return the nearest directory at or above *start_dir* holding the file.
+
+    This is the one file-search rule for every reader. The settings file lives
+    at the root of the sync folder, and a caller that only knows where it is
+    standing finds it by walking up: a command run from a subdirectory reads
+    the same file as one run from the root, and one run outside any sync folder
+    reads nothing rather than a stranger's file further up.
+
+    Only the search uses this. ``load_project_settings`` keeps taking the root
+    it is handed, because the engine is told which project it is working on and
+    must not silently drift to a different one.
+
+    Returns an absolute path, or None when no ancestor holds the file.
+    """
+    try:
+        current = os.path.abspath(start_dir or os.getcwd())
+    except OSError:
+        return None
+    while True:
+        if os.path.exists(os.path.join(current, SETTINGS_FILENAME)):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
 
 
 def _safe_dict(value):
@@ -96,22 +131,44 @@ def _safe_kind_list(value, default):
     return result
 
 
-def load_project_settings(project_root):
+def read_project_settings(project_root, warn=True):
+    """Read the settings file and say whether what was stored was usable.
+
+    Returns ``(settings, status, error)`` where status is one of
+    ``SETTINGS_MISSING`` (no file: the defaults, not an error),
+    ``SETTINGS_OK`` (parsed and merged over the defaults) or
+    ``SETTINGS_INVALID`` (present but unreadable or not a JSON object). The
+    settings returned for an invalid file are the defaults and do not carry
+    the file's values, so a caller whose behaviour depends on what the file
+    said must check the status instead of trusting the dict. ``error`` is the
+    human-readable reason, empty unless the status is invalid.
+
+    ``warn`` prints the problem to stdout, which is what the engine and the
+    CODESYS host want; the CLI passes False and reports it itself, so the same
+    defect is not announced twice in two different shapes.
+    """
     settings = default_project_settings()
     path = settings_path(project_root)
     if not os.path.exists(path):
-        return settings
+        return settings, SETTINGS_MISSING, ""
 
     try:
         with open(path, "r") as handle:
             data = json.load(handle)
     except Exception as error:
-        print("Warning: Could not read project settings {0}: {1}".format(path, error))
-        return settings
+        message = "Could not read project settings {0}: {1}".format(path, error)
+        if warn:
+            print("Warning: " + message)
+        return settings, SETTINGS_INVALID, message
 
     if not isinstance(data, dict):
-        print("Warning: Ignoring project settings because root JSON value is not an object:", path)
-        return settings
+        message = (
+            "Ignoring project settings because root JSON value is not an "
+            "object: {0}".format(path)
+        )
+        if warn:
+            print("Warning: " + message)
+        return settings, SETTINGS_INVALID, message
 
     try:
         settings["layout"] = normalize_layout_mode(data.get("layout", settings["layout"]))
@@ -150,7 +207,17 @@ def load_project_settings(project_root):
         data.get("backup_retention_count"),
         settings["backup_retention_count"],
     )
-    return settings
+    return settings, SETTINGS_OK, ""
+
+
+def load_project_settings(project_root):
+    """Load project settings, warning about a file that cannot be used.
+
+    The tolerant spelling for callers that only want the values: a missing or
+    broken file yields the defaults. Use ``read_project_settings`` when the
+    caller has to know that the file was broken.
+    """
+    return read_project_settings(project_root)[0]
 
 
 def save_project_settings(project_root, settings):
