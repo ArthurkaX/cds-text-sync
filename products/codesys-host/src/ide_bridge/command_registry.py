@@ -26,23 +26,6 @@ def canonical_name(name):
     return ALIASES.get(name, name)
 
 
-DISPATCH_NAMES = frozenset([
-    "project_tree", "read_object", "connect_to_device", "download",
-    "read_variable", "write_variable", "read_variables", "write_variables",
-    "export", "build", "device_status", "test_online", "sync_export",
-    "sync_import", "sync_compare", "sync_export_text", "sync_import_text",
-    "sync_compare_text", "generate_docs", "update_pou", "delete_pou", "cicd", "read_log",
-    "reset_plc", "source_download", "probe", "application_tree", "plc_files",
-    "plc_log", "plc_download", "plc_upload", "export_csv", "export_st",
-    "app_crc", "app_history", "plc_crc", "compare", "stop", "ping", "status", "timeout_profile",
-    "project_info", "application_state", "disconnect_from_device", "explore",
-    "set_sync_folder",
-    "sync", "help", "start_plc", "stop_plc", "create_boot_app", "app_info",
-    "permissions", "project_open", "project_close", "project_list",
-    "list_devices", "set_simulation_mode", "set_credentials", "diagnose_online",
-    "discover",
-])
-
 DISPATCH_SPECS = {
     "project_tree": ("direct", "_cmd_project_tree"),
     "read_object": ("direct", "_cmd_read_object"),
@@ -111,6 +94,11 @@ DISPATCH_SPECS = {
     "diagnose_online": ("noarg", "_cmd_diagnose_online"),
     "discover": ("direct", "_cmd_discover"),
 }
+
+# Derived, never listed separately: a command is dispatchable exactly when the
+# daemon has a spec for it. The flat set is what the bridge and its tests check
+# the daemon's dispatch table against.
+DISPATCH_NAMES = frozenset(DISPATCH_SPECS)
 
 HELP_TEXT = {
 "ping": "Check daemon liveness and cached PLC state",
