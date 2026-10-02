@@ -45,6 +45,25 @@ def test_cli_static_analyzer_pin_matches_the_analyzer_version():
     assert f'"cds-static-analyzer=={analyzer}"' in pyproject
 
 
+def test_product_console_scripts_match_the_root_wheel():
+    """The root compatibility wheel and the split manifests ship the same commands."""
+    import tomllib
+
+    def _scripts(path):
+        data = tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
+        return data.get("project", {}).get("scripts", {})
+
+    root_scripts = _scripts("pyproject.toml")
+    assert root_scripts["cts"] == "cds_cli.main:main"
+    for manifest in (
+        "products/cds-cli/pyproject.toml",
+        "products/cds-static-analyzer/pyproject.toml",
+        "products/visu-lint/pyproject.toml",
+    ):
+        for name, target in _scripts(manifest).items():
+            assert root_scripts.get(name) == target, f"{name} differs in {manifest}"
+
+
 def test_changelog_top_release_is_current_version():
     release = _find("cds_text_sync/__init__.py", "__version__")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
