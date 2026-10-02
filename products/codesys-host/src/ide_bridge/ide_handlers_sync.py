@@ -32,6 +32,7 @@ from ide_daemon_helpers import (
     _invalidate_device_cache,
 )
 
+from ide_snapshot_objects import snapshot_objects
 from ide_st_text import split_st_text
 from ide_xml import parse_xml_file
 
@@ -131,6 +132,35 @@ def _cmd_generate_docs(params=None):
 def _is_snapshot_name(name):
     """Match the file set that _cmd_sync_import selects from."""
     return name.startswith("snapshot-") and name.endswith(".xml")
+
+
+# CODESYS project-tree nodes of this type are a task's "call" entries (the
+# POUs it invokes), not objects the native export writes, so compare skips them.
+_TASK_CALL_TYPE_GUID = "413e2a7d-adb1-4d2c-be29-6ae6e4fab820"
+
+
+def _compare_object_key(guid, name, path=None):
+    """Stable identity for sync_compare: GUID, else path, else name.
+
+    Name alone is not enough -- two different objects under different devices
+    routinely share one -- so it is the last resort, not the key.
+    """
+    if guid:
+        return "guid:{0}".format(guid)
+    if path:
+        return "path:{0}".format("\\".join(path).lower())
+    return "name:{0}".format((name or "").lower())
+
+
+def _compare_object_label(record):
+    """A human-readable identity for a compared object."""
+    path = record.get("path") or []
+    parts = list(path)
+    if record.get("name"):
+        parts.append(record["name"])
+    if parts:
+        return "\\".join(parts)
+    return record.get("guid") or "?"
 
 
 def _prune_snapshots(dump_dir, keep=SNAPSHOT_RETENTION_COUNT):
@@ -336,44 +366,108 @@ def _cmd_sync_compare(params):
         return {"ok": False, "error": "Snapshot not found: {0}".format(against)}
 
     try:
-        # Compare by checking if import would cause changes:
-        # 1. Get current project tree (list of tuples of object info)
-        current_children = list(project.get_children(recursive=True))
-        current_info = {}
-        for child in current_children:
-            try:
-                name = str(getattr(child, "name", ""))
-                typ = str(getattr(child, "type", ""))
-                guid = str(getattr(child, "guid", ""))
-                current_info[name] = {"name": name, "type": typ, "guid": guid}
-            except Exception as error:
-                _log("Could not inspect project child during sync compare: {0}".format(error))
+        snapshot_list, entry_lists = snapshot_objects(against)
+        if not entry_lists:
+            # No EntryList means the file is not a native export; treating that
+            # as "the snapshot has no objects" would report the whole project
+            # as project-only, which reads like a real diff.
+            return {
+                "ok": False,
+                "error": "Not a CODESYS native snapshot (no object EntryList): {0}".format(
+                    against
+                ),
+            }
 
-        # 2. Parse the XML and see what's different (basic check - just names)
-        tree = parse_xml_file(against)
-        root = tree.getroot()
+        # The live project side. Objects are identified by GUID; only when that
+        # is missing does the fallback identity kick in, because name alone
+        # collides and would under-report differences.
+        #
+        # Task-call references (the POUs a task configuration invokes) are
+        # nodes in the project tree but not objects CODESYS exports, so they
+        # have no snapshot counterpart. Comparing them would report every task
+        # as project-only after a clean export, so they are skipped and counted
+        # separately.
+        project_by_key = {}
+        skipped_task_refs = 0
+        for child in project.get_children(recursive=True):
+            guid = _common.object_guid(child)
+            name = _common.object_name(child)
+            type_guid, type_error = _common.object_type(child)
+            if type_error:
+                _log(
+                    "Could not read the type of '{0}' during sync compare: {1}".format(
+                        name, type_error
+                    )
+                )
+            if type_guid == _TASK_CALL_TYPE_GUID:
+                skipped_task_refs += 1
+                continue
+            record = {
+                "guid": guid,
+                "name": name,
+                "type_guid": type_guid or "",
+                "path": [],
+            }
+            project_by_key[_compare_object_key(guid, name)] = record
 
-        xml_names = set()
-        for elem in root.iter():
-            name = elem.get("name", elem.get("Name", ""))
-            if name:
-                xml_names.add(name)
+        # The snapshot side. Native exports list each object once per
+        # StructuredView, so the first entry for an identity wins.
+        snapshot_by_key = {}
+        for obj in snapshot_list:
+            key = _compare_object_key(obj["guid"], obj["name"], obj["path"])
+            snapshot_by_key.setdefault(key, obj)
 
-        current_names = set(current_info.keys())
+        # GUID first. A CODESYS object can appear in the live tree under an
+        # alias GUID that the export does not use (e.g. the project-level
+        # __VisualizationStyle), so anything left over is matched by
+        # (type, name), the same identity the engine's snapshot reader uses to
+        # fold StructuredView aliases.
+        common = 0
+        unmatched_project = []
+        matched_snapshot = set()
+        for key, record in project_by_key.items():
+            if key in snapshot_by_key:
+                matched_snapshot.add(key)
+                common += 1
+            else:
+                unmatched_project.append((key, record))
 
-        only_in_xml = xml_names - current_names
-        only_in_project = current_names - xml_names
+        snapshot_by_identity = {}
+        for key, record in snapshot_by_key.items():
+            identity = (record.get("type_guid", ""), (record.get("name") or "").lower())
+            snapshot_by_identity.setdefault(identity, []).append(key)
 
-        # Build diff report
+        still_project_only = []
+        for key, record in unmatched_project:
+            identity = (record.get("type_guid", ""), (record.get("name") or "").lower())
+            while snapshot_by_identity.get(identity):
+                candidate = snapshot_by_identity[identity].pop(0)
+                if candidate not in matched_snapshot:
+                    matched_snapshot.add(candidate)
+                    common += 1
+                    break
+            else:
+                still_project_only.append(record)
+
+        only_in_snapshot = [
+            record for key, record in snapshot_by_key.items() if key not in matched_snapshot
+        ]
+
         diff = {
             "snapshot": against,
             "snapshot_size": os.path.getsize(against),
-            "project_objects": len(current_children),
-            "snapshot_objects": len(xml_names),
-            "in_snapshot_only": sorted(only_in_xml)[:100],
-            "in_project_only": sorted(only_in_project)[:100],
-            "common_count": len(xml_names & current_names),
+            "project_objects": len(project_by_key),
+            "snapshot_objects": len(snapshot_by_key),
+            "in_snapshot_only": sorted(
+                _compare_object_label(record) for record in only_in_snapshot
+            )[:100],
+            "in_project_only": sorted(
+                _compare_object_label(record) for record in still_project_only
+            )[:100],
+            "common_count": common,
         }
+        if skipped_task_refs:
+            diff["task_reference_nodes_skipped"] = skipped_task_refs
 
         return {"ok": True, "data": diff}
     except Exception as e:
