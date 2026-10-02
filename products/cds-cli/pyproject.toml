@@ -33,6 +33,7 @@ test_paths = [
   "../../tests/unit/test_cli_handlers_project.py",
   "../../tests/unit/test_cli_handlers_visu.py",
   "../../tests/unit/test_cli_help.py",
+  "../../tests/unit/test_cli_project_config.py",
   "../../tests/unit/test_cli_text_output.py",
   "../../tests/unit/test_engine_cli_helpers.py",
   "../../tests/unit/test_no_shadowed_import_use.py",
