@@ -26,6 +26,7 @@ class ApplyPatchResult(object):
         self.native_guids = []
         self.textual_guids = []
         self.created_paths = []
+        self.reused_paths = []
         self.failed_guids = []
         self.failures = []
 
@@ -49,6 +50,17 @@ class ApplyPatchResult(object):
         if path and path not in self.created_paths:
             self.created_paths.append(path)
 
+    def add_reused(self, path):
+        """A create entry satisfied by an object that was already there.
+
+        Kept apart from add_created: a patch that only ever finds its objects
+        already present changed nothing, and saying it created them hides the
+        case where the disk baseline never caught up with the IDE.
+        """
+        path = str(path or "")
+        if path and path not in self.reused_paths:
+            self.reused_paths.append(path)
+
     def fail(self, error, guid=None):
         self.success = False
         self.error = str(error)
@@ -69,6 +81,8 @@ class ApplyPatchResult(object):
             parts.append("applied={0}".format(len(self.applied_guids)))
         if self.created_paths:
             parts.append("created={0}".format(len(self.created_paths)))
+        if self.reused_paths:
+            parts.append("reused={0}".format(len(self.reused_paths)))
         if self.failed_guids:
             parts.append("failed_guids={0}".format(",".join(self.failed_guids)))
         if self.error:
@@ -842,7 +856,8 @@ def _apply_text_create(project, entry, created_by_name):
         container = parent
 
     existing = _find_child_transparent(container, entry.get("name"))
-    if existing is not None:
+    reused = existing is not None
+    if reused:
         obj = existing
     else:
         obj = _create_text_object(
@@ -857,15 +872,25 @@ def _apply_text_create(project, entry, created_by_name):
 
     _apply_textual_patch(obj, entry)
     created_by_name[object_name(obj).lower()] = obj
-    print("Created textual object from: " + str(entry.get("path")))
-    return True
+    # Say which of the two happened; a create entry satisfied by an object that
+    # was already there is not a creation (same wording as
+    # ide_handlers_sync._apply_text_create_entry, so the two paths report alike).
+    print(
+        "{0} textual object from: {1}".format(
+            "Updated existing" if reused else "Created", entry.get("path")
+        )
+    )
+    return reused
 
 
 def _apply_text_creates(project, text_creates, created_by_name, result):
     for entry in text_creates:
         try:
-            _apply_text_create(project, entry, created_by_name)
-            result.add_created(entry.get("path"))
+            reused = _apply_text_create(project, entry, created_by_name)
+            if reused:
+                result.add_reused(entry.get("path"))
+            else:
+                result.add_created(entry.get("path"))
         except Exception as error:
             print(
                 "Error creating textual object {0}: {1}".format(
