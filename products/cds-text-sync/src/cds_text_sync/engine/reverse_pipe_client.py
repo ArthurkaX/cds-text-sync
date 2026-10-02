@@ -472,6 +472,7 @@ _configured_expect_project: str | None = None
 _resolved_pid: int | None = None
 _last_instance: dict[str, Any] | None = None
 _cached_codesys_pids: set[int] | None = None
+_codesys_pids_listed = False
 
 
 def configure(
@@ -492,11 +493,23 @@ def get_last_instance() -> dict[str, Any] | None:
     return _last_instance
 
 
-def _list_codesys_pids() -> set[int]:
-    """List running CODESYS.exe process IDs."""
-    global _cached_codesys_pids
-    if _cached_codesys_pids is not None:
+def _list_codesys_pids() -> set[int] | None:
+    """Running CODESYS.exe process IDs, or None when the list could not be taken.
+
+    None is not the same as an empty set: the empty set means tasklist ran and
+    found no IDE, while None means we do not know -- tasklist is missing or
+    refused (a non-Windows host driving a remote IDE has no tasklist at all).
+    Only the diagnostic distinguishes the two; the target decision cannot, and
+    must go on working exactly as before in that case.
+
+    The outcome is cached either way. A CLI invocation lives for one command,
+    so the process list cannot meaningfully change under it, and a failing
+    tasklist would otherwise be retried on every discovery loop.
+    """
+    global _cached_codesys_pids, _codesys_pids_listed
+    if _codesys_pids_listed:
         return _cached_codesys_pids
+    _codesys_pids_listed = True
     pids: set[int] = set()
     try:
         import subprocess
@@ -520,7 +533,7 @@ def _list_codesys_pids() -> set[int]:
             if len(fields) >= 2 and fields[1].isdigit():
                 pids.add(int(fields[1]))
     except Exception:
-        pass
+        return None
     _cached_codesys_pids = pids
     return pids
 
@@ -674,7 +687,16 @@ class _SessionLock:
 
 
 def _send_release_and_close(handle: int) -> None:
-    """Send R release message and close pipe handle."""
+    """Send R release message and close pipe handle.
+
+    The release is a courtesy, not the signal: the daemon also returns to its
+    poll loop when the connection simply drops (ide_reverse_pipe_loop.py, the
+    ``next_msg is None`` branch), and the close below always happens. So a
+    failed release is swallowed on purpose -- this runs while unwinding, often
+    from a ``finally`` of a loop holding several connections, and letting it
+    raise would abort the cleanup of the handles after this one, which is the
+    part that actually matters.
+    """
     if handle <= 0 or handle == INVALID_HANDLE_VALUE:
         return
     try:
@@ -775,6 +797,12 @@ class ReversePipeClient:
         global _last_ide_pid
         pid = target_pid or _last_ide_pid or ReversePipeClient._find_ide_pid()
         if pid is None:
+            if _list_codesys_pids() is None:
+                return (
+                    "Could not list CODESYS processes (tasklist failed), so it "
+                    "is unknown whether the IDE is running. Check that the IDE "
+                    "is up and Project_daemon.py is running inside it."
+                )
             return (
                 "No CODESYS process is running, so nothing could answer. Start "
                 "CODESYS and run Project_daemon.py inside it."
