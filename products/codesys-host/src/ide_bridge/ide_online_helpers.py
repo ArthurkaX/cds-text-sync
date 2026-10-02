@@ -1034,11 +1034,18 @@ def get_application_state_impl(project):
         dict with application state info
     """
     import scriptengine as se
+    device_error = ""
     try:
         online_app = None
         target_app = None
-        
-        # Try device-based approach first
+        device = None
+
+        # Try device-based approach first. It is a preferred route, not the
+        # only one -- the direct application below is the fallback -- so a
+        # failure here must not abort the command. It must not vanish either:
+        # `diagnose-online` exists to say what is wrong, and a fallback that
+        # works because the device route was skipped looks the same as one that
+        # works after it failed.
         try:
             device = _find_main_device(project)
             if device is not None:
@@ -1056,41 +1063,62 @@ def get_application_state_impl(project):
                                         break
                                 except Exception:
                                     pass
-        except Exception:
-            pass
-        
+        except Exception as error:
+            device_error = str(error)
+
         # Fallback: direct application
         if online_app is None:
             if target_app is None:
                 target_app = get_active_application(project)
             if target_app is None:
-                return {"state": "unknown", "note": "No active application"}
-            
+                info = {"state": "unknown", "note": "No active application"}
+                if device_error:
+                    info["device_attempt_error"] = device_error
+                return info
+
             online_app = se.online.create_online_application(target_app)
             if online_app is None:
-                return {"state": "disconnected"}
-        
+                info = {"state": "disconnected"}
+                if device_error:
+                    info["device_attempt_error"] = device_error
+                return info
+
         if target_app is None:
             target_app = device if device else project
-        
+
         info = {
             "application": getattr(target_app, 'get_name', lambda: "Unknown")(),
         }
-        
+        if device_error:
+            info["device_attempt_error"] = device_error
+
         for attr in [
             'application_state', 'is_connected', 'is_running',
             'is_online', 'login_state', 'connection_state'
         ]:
-            if hasattr(online_app, attr):
-                try:
-                    val = getattr(online_app, attr)
-                    if callable(val):
-                        info[attr] = str(val())
-                    else:
-                        info[attr] = str(val)
-                except Exception:
-                    pass
-        
+            # AttributeError is the only answer that means "this wrapper has no
+            # such property". Anything else means the property is there and the
+            # CODESYS call refused -- which must be reported, never dropped: a
+            # missing is_running would otherwise read as "not running". (This is
+            # also why hasattr/getattr is not used: hasattr only swallows
+            # AttributeError, so an unreadable property would escape the loop.)
+            try:
+                val = getattr(online_app, attr)
+            except AttributeError:
+                continue
+            except Exception as error:
+                info[attr + "_error"] = str(error)
+                continue
+            try:
+                if callable(val):
+                    val = val()
+                info[attr] = str(val)
+            except Exception as error:
+                info[attr + "_error"] = str(error)
+
         return info
     except Exception as e:
-        return {"state": "error", "error": str(e)}
+        info = {"state": "error", "error": str(e)}
+        if device_error:
+            info["device_attempt_error"] = device_error
+        return info
