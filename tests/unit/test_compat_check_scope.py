@@ -155,3 +155,59 @@ def test_the_discovered_set_lints_clean(compat):
     paths = [os.path.join(compat.ROOT, rel) for rel in compat.DEFAULT_FILES]
 
     assert compat.lint(paths) == 0
+
+
+# ---------------------------------------------------------------------------
+# Python 3-only stdlib: imports and calls
+# ---------------------------------------------------------------------------
+
+_GUARDED_FILE = """\
+try:
+    import pathlib
+except ImportError:
+    pathlib = None
+"""
+
+
+def _errors(compat, tmp_path, name, text):
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    errors, _warnings = compat._findings(str(path))
+    return errors
+
+
+def test_a_py3_only_import_is_flagged(compat, tmp_path):
+    errors = _errors(compat, tmp_path, "a.py", "import pathlib\n")
+
+    assert any("pathlib" in error for error in errors)
+
+
+def test_a_py3_only_from_import_is_flagged(compat, tmp_path):
+    errors = _errors(compat, tmp_path, "a.py", "from concurrent.futures import ThreadPoolExecutor\n")
+
+    assert any("concurrent" in error for error in errors)
+
+
+def test_a_py3_only_attribute_is_flagged(compat, tmp_path):
+    errors = _errors(compat, tmp_path, "a.py", "import subprocess\nsubprocess.run(['x'])\n")
+
+    assert any("subprocess.run" in error for error in errors)
+
+
+def test_a_py3_only_keyword_is_flagged(compat, tmp_path):
+    errors = _errors(compat, tmp_path, "a.py", "import os\nos.makedirs('a', exist_ok=True)\n")
+
+    assert any("exist_ok" in error for error in errors)
+
+
+def test_a_guarded_import_is_not_flagged(compat, tmp_path):
+    errors = _errors(compat, tmp_path, "a.py", _GUARDED_FILE)
+
+    assert not errors
+
+
+def test_plain_importlib_is_not_flagged(compat, tmp_path):
+    """``importlib`` exists in 2.7; only ``importlib.resources`` does not."""
+    errors = _errors(compat, tmp_path, "a.py", "import importlib\n")
+
+    assert not errors

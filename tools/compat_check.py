@@ -267,6 +267,155 @@ _KEYWORD_ONLY_BUILTINS = {
     "super": (),
 }
 
+# Stdlib modules absent from the Python 2.7 standard library that IronPython
+# 2.7 mirrors.  An *unguarded* import of any of these raises ImportError when
+# the module loads on the VM, killing the host command that reaches it.  The
+# match is by dotted prefix, so listing "concurrent" also flags
+# "concurrent.futures" and listing "importlib.resources" does not flag plain
+# "importlib" (which 2.7 does have).  Backports (enum34, typing) exist but are
+# not part of the interpreter, so they must not be assumed on a bare VM.
+PY3_ONLY_MODULES = frozenset([
+    "pathlib",
+    "dataclasses",
+    "typing",
+    "enum",
+    "asyncio",
+    "concurrent",  # the whole package arrived in 3.2
+    "contextvars",
+    "secrets",
+    "statistics",
+    "importlib.resources",
+])
+
+# Py3-only attributes of modules that *do* exist in 2.7, keyed by dotted
+# attribute path.  Every entry is verified missing from the Python 2.7 stdlib.
+PY3_ONLY_ATTRIBUTES = {
+    "subprocess.run": "Python 3.5+; use subprocess.call/check_output on 2.7",
+    "os.scandir": "Python 3.5+; use os.listdir on 2.7",
+    "shutil.which": "Python 3.3+; not in the 2.7 stdlib",
+}
+
+# Method names that only exist in Python 3, by bare name.  ``str.format_map``
+# is the only one worth naming: a method of this name is not defined anywhere
+# in the checked tree, so flagging the call has no false-positive surface.
+PY3_ONLY_METHODS = {
+    "format_map": "str.format_map is Python 3.2+",
+}
+
+# Calls whose keyword argument did not exist in 2.7: the interpreter accepts
+# the name as a keyword and raises TypeError, so the file imports but the call
+# fails at runtime.  Keyed by dotted attribute path.
+PY3_ONLY_KEYWORDS = {
+    "os.makedirs": ("exist_ok",),
+}
+
+
+def _catches_import_error(handlers):
+    """True when an except clause would swallow an ImportError."""
+    for handler in handlers:
+        if handler.type is None:  # bare ``except:``
+            return True
+        names = []
+        if isinstance(handler.type, ast.Name):
+            names = [handler.type.id]
+        elif isinstance(handler.type, ast.Tuple):
+            names = [e.id for e in handler.type.elts if isinstance(e, ast.Name)]
+        if any(name in ("ImportError", "Exception", "BaseException") for name in names):
+            return True
+    return False
+
+
+def _guarded_import_nodes(tree):
+    """id()s of import nodes inside a ``try`` guarded against ImportError.
+
+    The host uses this shape deliberately: ``try: import clr / except
+    ImportError: clr = None`` keeps a module importable under CPython for the
+    unit tests while it uses the .NET API on the VM.  Such an import cannot
+    break the VM, so it is not linted.
+    """
+    guarded = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try) or not _catches_import_error(node.handlers):
+            continue
+        for statement in node.body:
+            for inner in ast.walk(statement):
+                if isinstance(inner, (ast.Import, ast.ImportFrom)):
+                    guarded.add(id(inner))
+    return guarded
+
+
+def _py3_only_module(name):
+    """The denylist entry *name* falls under, or None."""
+    for denied in PY3_ONLY_MODULES:
+        if name == denied or name.startswith(denied + "."):
+            return denied
+    return None
+
+
+def _attribute_path(node):
+    """``subprocess.run`` for a call like ``subprocess.run(...)``, else None."""
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        return ".".join(reversed(parts))
+    return None
+
+
+def _import_findings(path, tree, errors):
+    """Flag Python 3-only stdlib imports and calls the tree cannot run under 2.7."""
+    guarded = _guarded_import_nodes(tree)
+    label = os.path.basename(path)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if id(node) in guarded:
+                continue
+            for alias in node.names:
+                denied = _py3_only_module(alias.name)
+                if denied:
+                    errors.append(
+                        "{0}:{1}: imports Python 3-only module '{2}'".format(
+                            label, node.lineno, denied
+                        )
+                    )
+        elif isinstance(node, ast.ImportFrom):
+            if id(node) in guarded or not node.module:
+                continue
+            denied = _py3_only_module(node.module)
+            if denied:
+                errors.append(
+                    "{0}:{1}: imports Python 3-only module '{2}'".format(
+                        label, node.lineno, denied
+                    )
+                )
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            dotted = _attribute_path(node.func)
+            reason = PY3_ONLY_ATTRIBUTES.get(dotted) if dotted else None
+            method_reason = PY3_ONLY_METHODS.get(node.func.attr)
+            if reason:
+                errors.append(
+                    "{0}:{1}: {2}(...) is Python 3-only ({3})".format(
+                        label, node.lineno, dotted, reason
+                    )
+                )
+            elif method_reason:
+                errors.append(
+                    "{0}:{1}: .{2}(...) is Python 3-only ({3})".format(
+                        label, node.lineno, node.func.attr, method_reason
+                    )
+                )
+            keywords = PY3_ONLY_KEYWORDS.get(dotted) if dotted else None
+            if keywords:
+                for keyword in node.keywords:
+                    if keyword.arg in keywords:
+                        errors.append(
+                            "{0}:{1}: {2}(... {3}=...) is Python 3-only".format(
+                                label, node.lineno, dotted, keyword.arg
+                            )
+                        )
+
 
 def _findings(path):
     """Return (errors, warnings) for one module."""
@@ -341,6 +490,9 @@ def _findings(path):
 
     for finding in sorted(py3_syntax_seen):
         errors.append("py3-only syntax: " + finding)
+
+    # Imports and calls that parse fine but cannot run on IronPython 2.7.
+    _import_findings(path, tree, errors)
 
     has_print_future = "from __future__ import print_function" in text
 
