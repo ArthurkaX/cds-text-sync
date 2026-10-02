@@ -423,7 +423,10 @@ def _serve_connection(pipe, dash=None):
     # result of the last import can always be looked up afterwards.
     record_last_result(method, response, request_id, write_failed=not ok)
 
-    return method == "stop"
+    # Canonical name: the protocol's legacy "stop" alias must still stop the
+    # daemon, while `cts stop` (stop_plc) must not. handle_command has already
+    # resolved the alias for dispatch; this repeats it for the shutdown test.
+    return _registry.canonical_name(method) == "stop_daemon"
 
 
 def run_loop():

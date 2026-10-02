@@ -29,7 +29,10 @@ from cds_cli._cli_io import (
 )
 from cts_shared import wire
 
-# command name -> daemon method for the thin passthrough family
+# command name -> daemon method for the thin passthrough family. This is a CLI
+# namespace, not the protocol's alias table (that one is command_registry
+# ALIASES in the host): names here are what `cts <cmd>` accepts. "stop" is the
+# PLC runtime stop, stop_plc; the daemon's own shutdown method is stop_daemon.
 _DAEMON_METHODS = {
     "ping": "ping",
     "status": "status",
