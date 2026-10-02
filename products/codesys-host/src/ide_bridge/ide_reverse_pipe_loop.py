@@ -67,6 +67,7 @@ from ide_daemon_state import (
 from ide_daemon_helpers import (
     _get_sync_folder,
 )
+from ide_last_result import _cmd_last_result, record_last_result
 from ide_timeout_profile import count_st_blocks, make_timeout_profile
 from ide_online_helpers import adopt_existing_online_session
 
@@ -260,9 +261,10 @@ for _command_name, (_mode, _handler_name) in _registry.DISPATCH_SPECS.items():
     _DISPATCH[_command_name] = _noarg(_handler) if _mode == "noarg" else _handler
 
 
-def handle_command(method, params):
+def handle_command(method, params, request_id=None):
     """Dispatch a command. All CODESYS API calls happen here, in the main loop."""
-    _log("Command: {0}".format(method))
+    suffix = " [{0}]".format(request_id) if request_id else ""
+    _log("Command: {0}{1}".format(method, suffix))
     method = _ALIASES.get(method, method)
     if method not in _NO_PERMISSION:
         allowed, reason = _check_permission(method)
@@ -374,6 +376,10 @@ def _serve_connection(pipe, dash=None):
 
     method = cmd_to_run.get("method", "")
     params = cmd_to_run.get("params", {})
+    # Optional: an older CLI sends none, and then nothing changes for it. When
+    # it is present it is echoed back and logged, so a command the CLI gave up
+    # on can be matched to what the daemon actually did.
+    request_id = cmd_to_run.get(wire.REQUEST_ID_KEY)
 
     sys._codesys_daemon_loop["command_count"] = (
         sys._codesys_daemon_loop.get("command_count", 0) + 1
@@ -389,11 +395,13 @@ def _serve_connection(pipe, dash=None):
             pass
 
     # Execute command in main script context
-    response = handle_command(method, params)
+    response = handle_command(method, params, request_id=request_id)
 
     # Attach instance info to response (computed after command execution)
     if isinstance(response, dict):
         response["instance"] = _instance_info()
+        if request_id:
+            response[wire.REQUEST_ID_KEY] = request_id
 
     if dash is not None:
         _dashboard_log_response(dash, method, response)
@@ -401,7 +409,19 @@ def _serve_connection(pipe, dash=None):
     # Write response back
     ok = _write_json_to_pipe(pipe, response)
     if not ok:
-        _log("Failed to write response for {0}".format(method))
+        # Name the request id so the CLI's timeout message and this line can be
+        # matched to each other.
+        _log(
+            "Failed to write response for {0}{1}".format(
+                method, " [{0}]".format(request_id) if request_id else ""
+            )
+        )
+
+    # Record the outcome. On a failed write -- the CLI gave up on a long command
+    # and closed its end -- this file is the only place the result still exists;
+    # for the sync commands it is recorded even when the write worked, so the
+    # result of the last import can always be looked up afterwards.
+    record_last_result(method, response, request_id, write_failed=not ok)
 
     return method == "stop"
 

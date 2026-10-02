@@ -18,6 +18,7 @@ NO_PERMISSION = frozenset([
     "ping", "status", "timeout_profile", "help", "stop", "permissions", "sync",
     "project_info", "project_tree", "read_object", "explore",
     "project_list", "list_devices", "diagnose_online", "discover",
+    "last_result",
 ])
 
 
@@ -50,6 +51,9 @@ DISPATCH_SPECS = {
     "delete_pou": ("direct", "_cmd_delete_pou"),
     "cicd": ("direct", "_cmd_cicd"),
     "read_log": ("direct", "_cmd_read_log"),
+    # T50: read back the outcome of the last sync command, for when the CLI
+    # timed out and never saw the response.
+    "last_result": ("direct", "_cmd_last_result"),
     "reset_plc": ("direct", "_cmd_reset_plc"),
     "source_download": ("direct", "_cmd_source_download"),
     "probe": ("direct", "_cmd_probe_oa"),
@@ -121,6 +125,7 @@ HELP_TEXT = {
 "explore": "Explore available APIs",
 "help": "Show this help",
 "read_log": "Read system/PLC log messages [--last N] [--clear]",
+"last_result": "Read back the outcome of the last sync command (use after a CLI timeout)",
 "start_plc": "Start the PLC application",
 "stop_plc": "Stop the PLC application",
 "reset_plc": "Reset PLC [--kind warm|cold|origin]",

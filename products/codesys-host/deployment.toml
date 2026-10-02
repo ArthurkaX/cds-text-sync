@@ -7,6 +7,7 @@ test_paths = [
   "../../tests/unit/test_apply_patch_persistent_guard.py",
   "../../tests/unit/test_apply_patch_text_create_reporting.py",
   "../../tests/unit/test_shared_wire_protocol.py",
+  "../../tests/unit/test_last_result.py",
   "../../tests/unit/test_accessor_projection.py",
   "../../tests/unit/test_bridge_import_order.py",
   "../../tests/unit/test_build_library.py",
