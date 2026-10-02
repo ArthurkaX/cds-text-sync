@@ -648,6 +648,79 @@ def _create_child_with_guid(target, name, guid_candidates, errors=None):
     return None
 
 
+_DEFAULT_PERSISTENT_GVL_NAMES = set(["persistentvars", "persistentvariables"])
+# normalize_guid() strips the braces KIND_TYPE_GUIDS stores them with.
+_PERSISTENT_GVL_TYPE_GUIDS = set(
+    normalize_guid(guid) for guid in KIND_TYPE_GUIDS["persistent_gvl"]
+)
+
+
+def _object_type_guids(obj):
+    """Best-effort type GUID(s) of a live CODESYS object.
+
+    The scripting API does not report the type the same way for every object:
+    get_type() is what the rest of the bridge uses, but it raises for some
+    objects (read_object answered "Unknown" for a POU on the test VM), and some
+    versions expose ``type`` instead. Every candidate that can be read is
+    returned, normalized; an empty list means "type unknown", not "not
+    persistent".
+    """
+    values = []
+    for getter_name in ("get_type", "get_type_name"):
+        try:
+            value = getattr(obj, getter_name)()
+        except Exception:
+            continue
+        if value:
+            values.append(str(value))
+    try:
+        attr_value = getattr(obj, "type", None)
+    except Exception:
+        attr_value = None
+    if attr_value:
+        values.append(str(attr_value))
+    return [normalize_guid(value) for value in values]
+
+
+def _is_persistent_gvl_object(obj):
+    """Whether a live object is the application's Persistent Variables list."""
+    candidates = _object_type_guids(obj)
+    if candidates:
+        return any(
+            candidate in _PERSISTENT_GVL_TYPE_GUIDS
+            or candidate in _DEFAULT_PERSISTENT_GVL_NAMES
+            for candidate in candidates
+        )
+    # Type unreadable: fall back to the name CODESYS gives the object it creates
+    # for "Add Persistent Variables".
+    try:
+        return canonical_key(object_name(obj)) in _DEFAULT_PERSISTENT_GVL_NAMES
+    except Exception:
+        return False
+
+
+def _find_existing_persistent_gvl(container, container_chain=None):
+    """The application's Persistent Variables object, if the live project
+    reports one.
+
+    CODESYS accepts exactly one per application, and creating a second one is
+    what raised the modal "objects already existing" dialog that froze the
+    daemon (T46). Checking here turns that into a plain, named failure. Only the
+    resolved container and its ancestors are inspected -- never a sibling
+    application.
+    """
+    for target in _create_container_candidates(container, container_chain):
+        for child in _children_of(target):
+            if _is_persistent_gvl_object(child):
+                return child
+        for child in _children_of(target):
+            if canonical_key(object_name(child)) in _TRANSPARENT_CONTAINERS:
+                for grandchild in _children_of(child):
+                    if _is_persistent_gvl_object(grandchild):
+                        return grandchild
+    return None
+
+
 def _create_text_object(container, entry, container_chain=None):
     kind = str(entry.get("kind") or "").lower()
     name = entry.get("name") or ""
@@ -667,6 +740,27 @@ def _create_text_object(container, entry, container_chain=None):
         # CODESYS Scripting API has no create_persistent / create_task_local_gvl method.
         # Use create_child(name, type_guid) with the appropriate type GUID,
         # walking up the parent chain to find a container that supports create_child.
+
+        if kind == "persistent_gvl":
+            # Defence in depth (T46): an engine-side guard refuses this patch
+            # before it is applied, but when one slips through (an older engine,
+            # a hand-written IMPORT.xml) CODESYS answers the create with a modal
+            # "objects already existing" dialog -- and a modal blocks the
+            # single-threaded daemon, so every later command times out.
+            existing_persistent = _find_existing_persistent_gvl(
+                container, container_chain
+            )
+            if existing_persistent is not None:
+                raise Exception(
+                    "Cannot create persistent variable list '{0}' at {1}: the "
+                    "application already has one ({2}). CODESYS accepts only "
+                    "one Persistent Variables object per application; edit the "
+                    "existing object instead of creating a second one.".format(
+                        name,
+                        entry.get("path"),
+                        _object_location(existing_persistent),
+                    )
+                )
 
         # Build candidate list: explicit TypeGuid first, then profile/create_type_guids,
         # then built-in fallbacks.
