@@ -297,20 +297,60 @@ def _write_patch_without_text_creates(source_root):
 
 
 def _build_guid_map(project):
+    """Map guid -> object for every object in the project.
+
+    Returns ``(guid_map, unreadable)``. *unreadable* names the objects whose
+    guid could not be read (and, when the whole walk failed, the reason): such
+    an object is absent from the map, which makes it indistinguishable from an
+    object the patch does not know about. The caller has to know the map is
+    incomplete before it reads anything into a miss -- a patch guid that is
+    missing locally would otherwise be dropped, or created a second time.
+    """
     guid_map = {}
+    unreadable = []
     try:
         objects = project.get_children(recursive=True)
-    except Exception:
-        return guid_map
+    except Exception as error:
+        return guid_map, ["could not walk the project tree: {0}".format(error)]
 
     for obj in objects:
         try:
             guid = normalize_guid(obj.guid)
-            if guid:
-                guid_map[guid] = obj
+        except Exception as error:
+            unreadable.append(
+                "{0}: {1}".format(_best_effort_name(obj), error)
+            )
+            continue
+        if guid:
+            guid_map[guid] = obj
+    return guid_map, unreadable
+
+
+def _best_effort_name(obj):
+    """A readable label for an object we already know we cannot fully inspect."""
+    try:
+        return object_name(obj)
+    except Exception:
+        try:
+            return str(obj)
         except Exception:
-            pass
-    return guid_map
+            return "<unknown object>"
+
+
+def _incomplete_guid_map_error(unreadable_guids, unmatched_guids):
+    """Message for a patch that cannot be matched against a partly-read project."""
+    return (
+        "The guids of {0} project object(s) could not be read ({1}), so the "
+        "project could not be identified completely; {2} object(s) in the patch "
+        "({3}) were not matched here. Refusing to apply: an object that is "
+        "present but unrecognised would either have its edits dropped or be "
+        "created a second time.".format(
+            len(unreadable_guids),
+            unreadable_guids[0],
+            len(unmatched_guids),
+            ", ".join([str(guid) for guid in unmatched_guids[:3]]),
+        )
+    )
 
 
 def _children_of(obj):
@@ -578,23 +618,33 @@ def _to_system_guid(guid_string):
         return guid_string
 
 
-def _create_child_with_guid(target, name, guid_candidates):
+def _create_child_with_guid(target, name, guid_candidates, errors=None):
     """Try create_child(name, type_guid) with each GUID candidate.
 
     The CODESYS IronPython API requires System.Guid for the type_guid
     parameter.  This helper attempts the call with each GUID (converting
     to System.Guid when necessary) and returns the first successful result.
+
+    Trying several candidates is expected -- the right type guid varies by
+    project profile -- so a candidate that fails stays silent. It must not stay
+    *unrecorded*, though: a None return with no reason upstream turns a real
+    CODESYS refusal into "unsupported kind". Pass a list as *errors* to collect
+    one "guid -> reason" line per failed attempt for the caller's message.
     """
     if not isinstance(guid_candidates, (list, tuple)):
         guid_candidates = [guid_candidates]
     for guid_string in guid_candidates:
         guid_value = _to_system_guid(guid_string)
+        note = None
         try:
             obj = target.create_child(name, guid_value)
             if obj is not None:
                 return obj
-        except Exception:
-            pass
+            note = "create_child returned None"
+        except Exception as error:
+            note = str(error)
+        if errors is not None:
+            errors.append("{0}: {1}".format(guid_string, note))
     return None
 
 
@@ -603,6 +653,7 @@ def _create_text_object(container, entry, container_chain=None):
     name = entry.get("name") or ""
     declaration = entry.get("declaration")
     type_guid = entry.get("type_guid") or ""
+    create_errors = []
 
     if kind == "pou":
         obj = _create_pou(container, name, declaration)
@@ -629,7 +680,7 @@ def _create_text_object(container, entry, container_chain=None):
         for target in _create_container_candidates(
             container, container_chain, "create_child"
         ):
-            obj = _create_child_with_guid(target, name, candidates)
+            obj = _create_child_with_guid(target, name, candidates, create_errors)
             if obj is not None:
                 return obj
 
@@ -648,8 +699,13 @@ def _create_text_object(container, entry, container_chain=None):
                         obj = method(name)
                         if obj is not None:
                             return obj
-                    except Exception:
-                        pass
+                        create_errors.append(
+                            "{0}: returned None".format(method_name)
+                        )
+                    except Exception as error:
+                        create_errors.append(
+                            "{0}: {1}".format(method_name, error)
+                        )
 
     if kind == "dut":
         target = _find_create_container(container, "create_dut")
@@ -661,7 +717,14 @@ def _create_text_object(container, entry, container_chain=None):
         return container.create_action(name)
     if kind == "property" and hasattr(container, "create_property"):
         return container.create_property(name)
-    raise Exception("Unsupported text object creation kind or API: {0}".format(kind))
+    details = ""
+    if create_errors:
+        # The kind may well be supported -- every API call for it failed. Say so,
+        # rather than the misleading "unsupported kind" that hides the reason.
+        details = " (creation attempts failed: {0})".format("; ".join(create_errors))
+    raise Exception(
+        "Unsupported text object creation kind or API: {0}{1}".format(kind, details)
+    )
 
 
 def _apply_text_create(project, entry, created_by_name):
@@ -1033,8 +1096,16 @@ def apply_patch(system, project, patch_path):
         patch_build_attrs = patch_data["build_attrs"]
         text_creates = patch_data["text_creates"]
         native_creates = patch_data["native_creates"]
-        guid_map = _build_guid_map(project)
+        guid_map, unreadable_guids = _build_guid_map(project)
         existing_objects = [guid_map[guid] for guid in patch_guids if guid in guid_map]
+        unmatched_guids = [guid for guid in patch_guids if guid not in guid_map]
+        if unreadable_guids and unmatched_guids:
+            # A miss in an incomplete map means nothing: the object may be one
+            # we could not identify. Applying anyway would skip its edit or
+            # create a duplicate, so refuse instead of guessing.
+            return result.fail(
+                _incomplete_guid_map_error(unreadable_guids, unmatched_guids)
+            )
         created_by_name = {}
 
         if existing_objects:
