@@ -192,3 +192,47 @@ def test_failure_outranks_a_skipped_projection():
         skipped_projection_objects=[{"name": "GVL_HMI"}],
     )
     assert "failed to be created" in blockers
+
+
+# ── a refused import must say why ──────────────────────────────────────────
+
+
+def test_engine_failure_error_carries_the_engine_reason():
+    """The CLI shows the handler's error, not the daemon's stdout."""
+    error = sync._engine_failure_error(
+        [
+            "Error: cannot build the import patch: Cannot create persistent "
+            "variable list '_07_VM_PERSISTENT2' ..."
+        ]
+    )
+
+    assert "_07_VM_PERSISTENT2" in error
+    assert "nothing was applied" in error
+
+
+def test_engine_failure_error_says_so_when_nothing_was_reported():
+    error = sync._engine_failure_error([])
+
+    assert "no reason was reported" in error
+
+
+def test_run_external_engine_hands_its_notices_to_the_caller(monkeypatch):
+    """The engine's own "Error:" lines are what the caller has to report."""
+    import ide_runtime_common
+
+    class _Process(object):
+        returncode = 1
+
+        def communicate(self):
+            return (b"Error: cannot build the import patch: boom\n", b"")
+
+    monkeypatch.setattr(
+        ide_runtime_common.subprocess, "Popen", lambda *args, **kwargs: _Process()
+    )
+    monkeypatch.setattr(ide_runtime_common, "log_error", lambda *args, **kwargs: None)
+    notices = []
+
+    success = ide_runtime_common.run_external_engine(["import"], notices=notices)
+
+    assert success is False
+    assert notices == ["Error: cannot build the import patch: boom"]

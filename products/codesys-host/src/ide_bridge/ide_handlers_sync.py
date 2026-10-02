@@ -499,6 +499,22 @@ def _refresh_blockers(mutated, failed_text, failed_native, skipped_projection_ob
     return ""
 
 
+def _engine_failure_error(notices):
+    """The error to report when the external engine refused to build the patch.
+
+    The engine's own output goes to the daemon's stdout, which the CLI never
+    sees, so the reason has to travel inside this error -- otherwise a refused
+    import looks like a bare "the engine failed" and the reason is only in the
+    log.
+    """
+    reason = "\n".join(notices or [])
+    if not reason:
+        reason = "no reason was reported; see the engine log for details"
+    return (
+        "external engine import failed -- nothing was applied to the project: {0}"
+    ).format(reason)
+
+
 def _cmd_sync_import_text(params):
     import xml.etree.ElementTree as ET
 
@@ -535,15 +551,10 @@ def _cmd_sync_import_text(params):
         "--patch",
         patch_path,
     ]
-    success = _common.run_external_engine(args)
+    engine_notices = []
+    success = _common.run_external_engine(args, notices=engine_notices)
     if not success:
-        return {
-            "ok": False,
-            "error": (
-                "external engine import failed -- nothing was applied to the "
-                "project; see the engine error above"
-            ),
-        }
+        return {"ok": False, "error": _engine_failure_error(engine_notices)}
 
     if not os.path.exists(patch_path):
         return {"ok": False, "error": "IMPORT.xml was not generated"}

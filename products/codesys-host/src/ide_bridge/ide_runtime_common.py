@@ -288,7 +288,7 @@ def _external_notice_lines(stdout_text, stderr_text):
             lines.append(line)
     return lines
 
-def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None):
+def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None, notices=None):
     root_dir = get_workspace_dir(script_file)
     # Try new path first (cds_text_sync/engine/), fall back to old path
     engine_cli = os.path.join(
@@ -344,6 +344,11 @@ def run_external_engine(command_args, script_file=None, project_root=None, dump_
             )
 
         warning_lines = _external_notice_lines(out_text, err_text)
+        if notices is not None:
+            # Let the caller put the engine's own reason into the error it
+            # returns: the daemon's stdout is not shown to the CLI, so a
+            # handler that only reports "the engine failed" hides it.
+            notices.extend(warning_lines)
         if warning_lines:
             warning_text = "\n".join(warning_lines)
             if warning_fn:
