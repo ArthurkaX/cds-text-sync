@@ -75,6 +75,44 @@ def test_compare_forwards_against(calls):
     assert calls["cmd_compare"] == {"against": "HEAD", "use_reverse": True}
 
 
+def test_compare_sends_sync_compare_to_the_daemon(monkeypatch):
+    """`compare` is the CRC alias; the snapshot compare is `sync_compare`."""
+    from cds_cli import _cli_io
+
+    seen = {}
+
+    def _fake_send(method, params, timeout=30):
+        seen["method"] = method
+        seen["params"] = params
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(_cli_io, "send_command_reverse", _fake_send)
+    h.cmd_compare(against="C:/snap/latest.xml", use_reverse=True)
+    assert seen["method"] == "sync_compare"
+    assert seen["params"] == {"against": "C:/snap/latest.xml"}
+
+
+def test_sync_compare_reaches_the_handler_that_reads_against():
+    """Guard the CLI-side method against a host-side re-route [A1]."""
+    from pathlib import Path
+
+    bridge = (
+        Path(__file__).resolve().parents[2]
+        / "products"
+        / "codesys-host"
+        / "src"
+        / "ide_bridge"
+    )
+    if str(bridge) not in sys.path:
+        sys.path.insert(0, str(bridge))
+    import command_registry
+
+    assert command_registry.DISPATCH_SPECS["sync_compare"] == (
+        "direct",
+        "_cmd_sync_compare",
+    )
+
+
 def test_unknown_action_is_noop(calls):
     h.dispatch_project(_args(project_action="does-not-exist"), use_reverse=True)
     assert calls == {}

@@ -151,8 +151,10 @@ def cmd_compare(against="", use_reverse=False):
     if not against:
         _print_error("Specify --against <path> for compare")
         return
+    # `compare` is a deprecated alias for the online CRC read; the snapshot
+    # comparison that reads --against is `sync_compare`.
     _project_command(
-        "compare", {"against": against}, timeout=120, use_reverse=use_reverse
+        "sync_compare", {"against": against}, timeout=120, use_reverse=use_reverse
     )
 
 
