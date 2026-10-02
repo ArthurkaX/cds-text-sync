@@ -16,6 +16,7 @@ test_paths = [
   "../../tests/unit/test_daemon_deferred_imports.py",
   "../../tests/unit/test_daemon_handshake.py",
   "../../tests/unit/test_daemon_name_resolution.py",
+  "../../tests/unit/test_daemon_partial_reads.py",
   "../../tests/unit/test_daemon_ui.py",
   "../../tests/unit/test_discover_report.py",
   "../../tests/unit/test_find_child_transparent_locale.py",

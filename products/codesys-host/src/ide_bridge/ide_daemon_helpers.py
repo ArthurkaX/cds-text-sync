@@ -219,18 +219,37 @@ def _active_application_name(project):
 
 
 def _read_text_member(obj, attr_name):
+    """Read one text-document member of *obj*.
+
+    None means the object carries no such member: either the attribute is
+    absent, or the getter raises -- CODESYS object types without a section
+    (GVL/DUT have no textual_implementation) raise instead of returning None,
+    which is the same "no such section" answer ``ide_st_objects.read_document``
+    reads it as.
+
+    A member that exists but whose text cannot be read is a different thing.
+    Returning None there would report a real object as having an empty body and
+    ``read_object`` would quietly drop the section, so it raises instead: the
+    daemon answers ``ok: false`` with the reason and the CLI prints it.
+    """
     try:
         member = getattr(obj, attr_name, None)
-        if member is None:
-            return None
+    except Exception:
+        # The getter itself raises for object types that have no such section.
+        return None
+    if member is None:
+        return None
+    try:
         if hasattr(member, "text"):
             text = member.text
             if callable(text):
                 text = text()
             return _json_safe(text)
         return _json_safe(str(member))
-    except Exception:
-        return None
+    except Exception as error:
+        raise RuntimeError(
+            "Could not read {0} of '{1}': {2}".format(attr_name, _obj_name(obj), error)
+        )
 
 
 def _normalize_object_path(path):
@@ -334,25 +353,48 @@ def _online_app_if_connected(project):
 
 
 def _build_tree(obj, depth=0, current_depth=0):
-    if current_depth > MAX_TREE_DEPTH:
-        return {"name": _obj_name(obj), "_truncated": True}
+    """Build the ``project_tree`` display tree for *obj*.
+
+    The tree is a report, so a node that cannot be walked must not vanish: an
+    unreadable node carries ``_error`` and stays in its parent's ``children``,
+    and the siblings already collected are kept. The old shape wrapped the whole
+    child loop in one ``try/except: pass``, so a single failing child (or a
+    parent whose ``get_children`` raised) discarded every child collected so far
+    and the node was handed out looking like a leaf -- a truncated subtree
+    presented as a complete one.
+    """
     node = {"name": _obj_name(obj)}
-    guid = _common.object_guid(obj)
+    try:
+        guid = _common.object_guid(obj)
+    except Exception as error:
+        _log(
+            "Project tree: could not read the guid of '{0}': {1}".format(
+                node["name"], error
+            )
+        )
+        guid = None
     if guid:
         node["guid"] = guid
+    if current_depth > MAX_TREE_DEPTH:
+        node["_truncated"] = True
+        return node
     if depth > 0 and current_depth >= depth:
         return node
+    child_list = []
     try:
-        children = obj.get_children()
-        child_list = []
-        for child in children:
+        for child in obj.get_children():
             child_list.append(
                 _build_tree(child, depth=depth, current_depth=current_depth + 1)
             )
-        if child_list:
-            node["children"] = child_list
-    except Exception:
-        pass
+    except Exception as error:
+        _log(
+            "Project tree: could not list the children of '{0}': {1}".format(
+                node["name"], error
+            )
+        )
+        node["_error"] = "could not list children: {0}".format(error)
+    if child_list:
+        node["children"] = child_list
     return node
 
 
