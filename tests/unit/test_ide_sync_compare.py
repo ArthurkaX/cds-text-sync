@@ -334,6 +334,51 @@ def test_alias_guid_falls_back_to_type_and_name(sync_handlers, tmp_path):
     assert data["in_snapshot_only"] == []
 
 
+def test_second_projection_of_one_object_is_not_project_only(sync_handlers, tmp_path):
+    """The project-level __VisualizationStyle has no snapshot twin of its own.
+
+    CODESYS shows the style twice -- once inside the application, once at
+    project level under a different GUID -- while the export writes only the
+    application's copy. The application's GUID matches, so no spare snapshot
+    entry is left for the project-level node; it must still not be reported as
+    an object the export is missing.
+    """
+    path = _write_snapshot(
+        tmp_path,
+        "snapshot-20260101_000000.xml",
+        [
+            {
+                "name": "__VisualizationStyle",
+                "guid": _GUID_A,
+                "type_guid": "8e687a04-7ca7-42d3-be06-fcbda676c5ef",
+            }
+        ],
+    )
+    _use_project(
+        sync_handlers,
+        [
+            _FakeObject(
+                "__VisualizationStyle",
+                _GUID_A,
+                type_guid="8e687a04-7ca7-42d3-be06-fcbda676c5ef",
+            ),
+            _FakeObject(
+                "__VisualizationStyle",
+                _GUID_B,
+                type_guid="8e687a04-7ca7-42d3-be06-fcbda676c5ef",
+            ),
+        ],
+    )
+
+    result = sync_handlers._cmd_sync_compare({"against": str(path)})
+
+    data = result["data"]
+    assert data["common_count"] == 1
+    assert data["in_project_only"] == []
+    assert data["in_snapshot_only"] == []
+    assert data["project_alias_nodes"] == ["__VisualizationStyle"]
+
+
 def test_a_non_snapshot_file_is_rejected(sync_handlers, tmp_path):
     plain = tmp_path / "not-a-snapshot.xml"
     plain.write_text("<Project><Thing Name=\"MAIN\"/></Project>", encoding="utf-8")

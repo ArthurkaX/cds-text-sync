@@ -417,11 +417,9 @@ def _cmd_sync_compare(params):
             key = _compare_object_key(obj["guid"], obj["name"], obj["path"])
             snapshot_by_key.setdefault(key, obj)
 
-        # GUID first. A CODESYS object can appear in the live tree under an
-        # alias GUID that the export does not use (e.g. the project-level
-        # __VisualizationStyle), so anything left over is matched by
-        # (type, name), the same identity the engine's snapshot reader uses to
-        # fold StructuredView aliases.
+        # GUID first. Only a genuinely GUID-less snapshot entry is then matched
+        # by (type, name) -- the identity the engine's snapshot reader also uses
+        # -- because name alone collides and would under-report differences.
         common = 0
         unmatched_project = []
         matched_snapshot = set()
@@ -438,6 +436,7 @@ def _cmd_sync_compare(params):
             snapshot_by_identity.setdefault(identity, []).append(key)
 
         still_project_only = []
+        aliased_project = []
         for key, record in unmatched_project:
             identity = (record.get("type_guid", ""), (record.get("name") or "").lower())
             while snapshot_by_identity.get(identity):
@@ -447,7 +446,17 @@ def _cmd_sync_compare(params):
                     common += 1
                     break
             else:
-                still_project_only.append(record)
+                # No snapshot entry left to claim. When the identity is still
+                # present on the snapshot side, this live node is a second
+                # projection of an object already accounted for: CODESYS
+                # exposes the project-level __VisualizationStyle under its own
+                # GUID while the export writes only the application's copy.
+                # Counting it as project-only would report a clean export as
+                # missing something, so it is named separately instead.
+                if identity in snapshot_by_identity:
+                    aliased_project.append(record)
+                else:
+                    still_project_only.append(record)
 
         only_in_snapshot = [
             record for key, record in snapshot_by_key.items() if key not in matched_snapshot
@@ -468,6 +477,10 @@ def _cmd_sync_compare(params):
         }
         if skipped_task_refs:
             diff["task_reference_nodes_skipped"] = skipped_task_refs
+        if aliased_project:
+            diff["project_alias_nodes"] = sorted(
+                _compare_object_label(record) for record in aliased_project
+            )[:100]
 
         return {"ok": True, "data": diff}
     except Exception as e:
