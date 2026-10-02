@@ -87,6 +87,23 @@ def test_compare_sends_sync_compare_to_the_daemon(monkeypatch):
     assert seen["params"] == {"against": "C:/snap/latest.xml"}
 
 
+def test_compare_without_against_asks_for_the_latest_snapshot(monkeypatch):
+    """`--against` is optional: the daemon falls back to the newest in .dump/."""
+    from cds_cli import _cli_io
+
+    seen = {}
+
+    def _fake_send(method, params, timeout=30):
+        seen["method"] = method
+        seen["params"] = params
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(_cli_io, "send_command_reverse", _fake_send)
+    h.cmd_compare()
+    assert seen["method"] == "sync_compare"
+    assert seen["params"] == {"against": ""}
+
+
 def test_sync_compare_reaches_the_handler_that_reads_against():
     """Guard the CLI-side method against a host-side re-route [A1]."""
     from pathlib import Path

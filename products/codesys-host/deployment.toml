@@ -28,6 +28,7 @@ test_paths = [
   "../../tests/unit/test_find_child_transparent_locale.py",
   "../../tests/unit/test_fmt_stabilization.py",
   "../../tests/unit/test_ide_sync_apply.py",
+  "../../tests/unit/test_ide_sync_compare.py",
   "../../tests/unit/test_ide_sync_import_refresh.py",
   "../../tests/unit/test_ide_xml.py",
   "../../tests/unit/test_object_selector_precedence.py",
