@@ -34,6 +34,7 @@ test_paths = [
   "../../tests/unit/test_snapshot_reader.py",
   "../../tests/unit/test_snapshot_reader_locale.py",
   "../../tests/unit/test_command_registry.py",
+  "../../tests/unit/test_compat_check_scope.py",
   "../../tests/unit/test_snapshot_store.py",
   "../../tests/unit/test_snapshot_retention.py",
   "../../tests/unit/test_script_message_capture.py",
