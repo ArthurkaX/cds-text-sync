@@ -14,7 +14,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 from ide_runtime_common import normalize_guid, object_name, object_type
-from _locale_aliases import canonical_key
+from cds_text_sync.engine._locale_aliases import canonical_key
 from ide_xml import parse_xml_file
 
 

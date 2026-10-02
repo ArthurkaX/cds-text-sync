@@ -7,7 +7,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
-from xml_helpers import (
+from .xml_helpers import (
     entry_to_xml,
     normalize_guid,
     replace_text_blob_values,

@@ -9,21 +9,21 @@ import os
 import tempfile
 import time
 
-from _dirty_scan import dirty_view_paths
-from _manifest_bookkeeper import entries as manifest_entries
-from _manifest_bookkeeper import hash_by_path, load as load_manifest
-from _path_safety import replace_extension, safe_path_in_root
-from _projection_codec import encode as encode_projection
-from _project_layout import is_reserved_root_child
-from _project_profiles import enabled_projection_options, kind_for_type_guid
-from _project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
-from _view_paths import (
+from ._dirty_scan import dirty_view_paths
+from ._manifest_bookkeeper import entries as manifest_entries
+from ._manifest_bookkeeper import hash_by_path, load as load_manifest
+from ._path_safety import replace_extension, safe_path_in_root
+from ._projection_codec import encode as encode_projection
+from ._project_layout import is_reserved_root_child
+from ._project_profiles import enabled_projection_options, kind_for_type_guid
+from ._project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
+from ._view_paths import (
     managed_relative_paths,
     manifest_path,
     manifest_view_root,
     normalize_fs_path,
 )
-from xml_helpers import (
+from .xml_helpers import (
     ensure_dir,
     entry_to_xml,
     externalized_text_xml,

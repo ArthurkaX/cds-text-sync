@@ -9,31 +9,31 @@ import os
 import sys
 import time
 
-from _dirty_scan import scan_dirty
-from _library_resolution import describe_drift
-from _patch_builder import PatchBuilder, UnsupportedPatchError
-from _project_layout import (
+from ._dirty_scan import scan_dirty
+from ._library_resolution import describe_drift
+from ._patch_builder import PatchBuilder, UnsupportedPatchError
+from ._project_layout import (
     LAYOUT_LEGACY_DUMP_VIEWS,
     LAYOUT_PROJECT_VIEW,
     LAYOUT_ROOT_VIEW,
     resolve_layout,
 )
-from _project_profiles import (
+from ._project_profiles import (
     effective_projection_selection,
     enabled_projection_options,
     load_profile,
 )
-from _project_settings import load_project_settings, normalize_sync_mode
-from _view_text import ViewEncodingError
-from call_tree import run_call_tree as _run_call_tree
-from diff_engine import DiffEngine, EntryXmlError
-from folder_reader import FolderReader
-from folder_writer import FolderWriter
-from report_writer import ReportWriter
-from resources_report import build_resources_report
-from snapshooter_map import write_snapshooter_map
-from snapshot_reader import SnapshotReader
-from xml_helpers import ProjectionValidationError, normalize_guid
+from ._project_settings import load_project_settings, normalize_sync_mode
+from ._view_text import ViewEncodingError
+from .call_tree import run_call_tree as _run_call_tree
+from .diff_engine import DiffEngine, EntryXmlError
+from .folder_reader import FolderReader
+from .folder_writer import FolderWriter
+from .report_writer import ReportWriter
+from .resources_report import build_resources_report
+from .snapshooter_map import write_snapshooter_map
+from .snapshot_reader import SnapshotReader
+from .xml_helpers import ProjectionValidationError, normalize_guid
 
 # Diff-result keys that hold diagnostics rather than object guids. They must
 # survive guid filtering and never count as a difference.

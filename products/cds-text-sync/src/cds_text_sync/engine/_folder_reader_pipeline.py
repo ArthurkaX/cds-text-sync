@@ -3,7 +3,7 @@
 
 import os
 
-from _project_model import ProjectModel
+from ._project_model import ProjectModel
 
 
 def read(reader):

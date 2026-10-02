@@ -3,7 +3,7 @@
 
 import os
 
-from _view_paths import normalize_fs_path
+from ._view_paths import normalize_fs_path
 
 
 def safe_path_in_root(relative_path, root_path, is_reserved=None, reject_hidden=False):

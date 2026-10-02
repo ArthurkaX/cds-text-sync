@@ -24,8 +24,6 @@ _ENGINE_DIR = (
     / "cds_text_sync"
     / "engine"
 )
-if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_ENGINE_DIR))
 from cds_text_sync.engine.reverse_pipe_client import (
     get_last_instance,
     send_command_reverse,
@@ -35,6 +33,7 @@ from cts_shared import wire
 # -- Config ------------------------------------------------------------------
 
 ENGINE_CLI = _ENGINE_DIR / "engine_cli.py"
+_ENGINE_MODULE = "cds_text_sync.engine.engine_cli"
 _REPO_ROOT = _SCRIPT_DIR
 _HOST_DAEMON = _REPO_ROOT / "products" / "codesys-host" / "Project_daemon.py"
 _LEGACY_DAEMON = _REPO_ROOT / "Project_daemon.py"
@@ -269,8 +268,8 @@ def _load_project_config():
     same minus the app defaults -- the command still runs, but the user is told
     the profile was ignored instead of having it dropped behind their back.
     """
-    from _project_profiles import PROFILES_DIR, load_profile
-    from _project_settings import (
+    from cds_text_sync.engine._project_profiles import PROFILES_DIR, load_profile
+    from cds_text_sync.engine._project_settings import (
         SETTINGS_INVALID,
         find_settings_root,
         read_project_settings,
@@ -499,7 +498,13 @@ def _batch(method, key, items, timeout):
 
 
 def cmd_direct(args: list[str]) -> NoReturn:
-    """Run engine_cli directly (blocking, no daemon)."""
+    """Run engine_cli directly (blocking, no daemon).
+
+    Launched as ``python -m cds_text_sync.engine.engine_cli`` rather than by
+    file path: as a script the module's relative imports would fail, and a
+    ``sys.path`` shim to work around that would load every engine module a
+    second time under its flat name.
+    """
     if not ENGINE_CLI.exists():
         _print_error("engine_cli.py not found: {0}".format(ENGINE_CLI))
         sys.exit(1)
@@ -517,7 +522,7 @@ def cmd_direct(args: list[str]) -> NoReturn:
         if arg.startswith("--timeout="):
             continue
         filtered.append(arg)
-    cmd = [sys.executable, str(ENGINE_CLI)] + filtered
+    cmd = [sys.executable, "-m", _ENGINE_MODULE] + filtered
     _print_info("Running: {0}".format(" ".join(cmd)))
     proc = subprocess.Popen(cmd)
     try:

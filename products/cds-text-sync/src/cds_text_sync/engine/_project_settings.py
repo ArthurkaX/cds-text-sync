@@ -9,7 +9,7 @@ from __future__ import print_function
 import json
 import os
 
-from _project_layout import LAYOUT_PROJECT_VIEW, normalize_layout_mode
+from ._project_layout import LAYOUT_PROJECT_VIEW, normalize_layout_mode
 from cts_shared.coerce import as_bool
 
 

@@ -5,9 +5,9 @@ diff_engine.py - Compares an IDE snapshot model with a Folder model.
 
 import xml.etree.ElementTree as ET
 
-from _library_resolution import resolution_drift, resolution_from_model
-from _project_profiles import kind_for_type_guid
-from xml_helpers import (
+from ._library_resolution import resolution_drift, resolution_from_model
+from ._project_profiles import kind_for_type_guid
+from .xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
     LIBRARY_DERIVED_XML_NAMES,
     csv_projection_content,

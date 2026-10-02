@@ -206,16 +206,6 @@ class TuiNode(object):
         return gvl, prg
 
 
-def _ensure_engine_path():
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo = os.path.dirname(os.path.dirname(here))
-    engine = os.path.join(
-        repo, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-    )
-    if os.path.isdir(engine) and engine not in sys.path:
-        sys.path.insert(0, engine)
-
-
 def _now_text():
     return time.strftime("%Y-%m-%dT%H:%M")
 

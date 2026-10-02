@@ -279,7 +279,7 @@ class TestDiffEngineExportOnly:
 
 class TestDiffEngineTextFirst:
     def _ide_node_and_st(self, declaration, implementation):
-        from xml_helpers import st_projection_content
+        from cds_text_sync.engine.xml_helpers import st_projection_content
 
         xml_text = _pou_xml(declaration, implementation)
         ide_node = _make_node("g1", xml_text=xml_text)

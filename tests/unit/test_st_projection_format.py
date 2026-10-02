@@ -30,17 +30,17 @@ _BRIDGE = os.path.join(_ROOT, "products", "codesys-host", "src", "ide_bridge")
 if _BRIDGE not in sys.path:
     sys.path.insert(0, _BRIDGE)
 
-from xml_helpers import (  # noqa: E402
+from cds_text_sync.engine.xml_helpers import (  # noqa: E402
     TEXT_PROJECTION_SEPARATOR,
     join_text_blob_values,
     split_st_projection_values,
     split_text_projection,
     st_projection_content,
 )
-from xml_helpers import split_action_projection  # noqa: E402
-import variable_map  # noqa: E402
-import call_tree  # noqa: E402
-import folder_reader  # noqa: E402
+from cds_text_sync.engine.xml_helpers import split_action_projection  # noqa: E402
+from cds_text_sync.engine import variable_map  # noqa: E402
+from cds_text_sync.engine import call_tree  # noqa: E402
+from cds_text_sync.engine import folder_reader  # noqa: E402
 import ide_st_text  # noqa: E402
 
 
@@ -331,7 +331,7 @@ def test_bare_cr_is_normalised_everywhere():
     read the same way on both sides.  (CODESYS does not emit bare CR, so the
     old behaviour was never exercised in the wild.)
     """
-    from xml_helpers import _split_marked_projection
+    from cds_text_sync.engine.xml_helpers import _split_marked_projection
 
     text = "DECL\r" + MARKER + "\rBODY"
     assert variable_map.split_decl_impl(text) == ("DECL", "BODY")

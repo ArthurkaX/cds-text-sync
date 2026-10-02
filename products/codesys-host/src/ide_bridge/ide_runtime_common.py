@@ -18,8 +18,10 @@ import codecs
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Try new path first (cds_text_sync/engine/), fall back to old (src/external_engine/)
-_ENGINE_DIR = os.path.normpath(os.path.join(
+# The sync product is imported as the ``cds_text_sync`` package, so the
+# sys.path entry is its *src* directory, not the engine subdirectory: every
+# engine module then loads once, under its package name.
+_PRODUCT_SRC_DIR = os.path.normpath(os.path.join(
     _BRIDGE_DIR,
     "..",
     "..",
@@ -28,15 +30,9 @@ _ENGINE_DIR = os.path.normpath(os.path.join(
     "products",
     "cds-text-sync",
     "src",
-    "cds_text_sync",
-    "engine",
 ))
-if not os.path.isdir(_ENGINE_DIR):
-    _ENGINE_DIR = os.path.normpath(os.path.join(
-        _BRIDGE_DIR, "..", "..", "src", "external_engine"
-    ))
-if _ENGINE_DIR not in sys.path:
-    sys.path.insert(0, _ENGINE_DIR)
+if os.path.isdir(_PRODUCT_SRC_DIR) and _PRODUCT_SRC_DIR not in sys.path:
+    sys.path.insert(0, _PRODUCT_SRC_DIR)
 
 _SHARED_DIR = os.path.normpath(os.path.join(
     _BRIDGE_DIR, "..", "..", "..", "..", "shared", "src"
@@ -44,8 +40,8 @@ _SHARED_DIR = os.path.normpath(os.path.join(
 if os.path.isdir(_SHARED_DIR) and _SHARED_DIR not in sys.path:
     sys.path.insert(0, _SHARED_DIR)
 
-from _project_layout import resolve_layout
-from _project_settings import load_project_settings
+from cds_text_sync.engine._project_layout import resolve_layout
+from cds_text_sync.engine._project_settings import load_project_settings
 
 
 def normalize_guid(value):
@@ -158,6 +154,25 @@ def get_workspace_dir(script_file=None):
             break
         current = parent
     return fallback or os.path.dirname(os.path.abspath(__file__))
+
+
+def _engine_subprocess_env(root_dir):
+    """Environment for the ``python -m cds_text_sync.engine.engine_cli`` child.
+
+    PYTHONPATH pins the sync and shared products so the child imports the same
+    tree the host is running from, whatever interpreter ``python`` happens to
+    be and whatever the working directory contains.
+    """
+    parts = [
+        os.path.join(root_dir, "products", "cds-text-sync", "src"),
+        os.path.join(root_dir, "shared", "src"),
+    ]
+    existing = os.environ.get("PYTHONPATH")
+    if existing:
+        parts.append(existing)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(parts)
+    return env
 
 
 def _timestamp():
@@ -323,23 +338,15 @@ def _external_notice_lines(stdout_text, stderr_text):
 
 def run_external_engine(command_args, script_file=None, project_root=None, dump_root=None, warning_fn=None, notices=None):
     root_dir = get_workspace_dir(script_file)
-    # Try new path first (cds_text_sync/engine/), fall back to old path
-    engine_cli = os.path.join(
-        root_dir,
-        "products",
-        "cds-text-sync",
-        "src",
-        "cds_text_sync",
-        "engine",
-        "engine_cli.py",
-    )
-    if not os.path.exists(engine_cli):
-        engine_cli = os.path.join(root_dir, "src", "external_engine", "engine_cli.py")
-    if not os.path.exists(engine_cli):
-        log_error("External engine CLI not found (tried cds_text_sync/ and src/ paths): " + str(engine_cli))
+    # Run the engine as a package module, not by file path: path execution
+    # makes the module's relative imports fail, and a sys.path shim for them
+    # would load every engine module twice under two names.
+    product_src = os.path.join(root_dir, "products", "cds-text-sync", "src")
+    if not os.path.isdir(os.path.join(product_src, "cds_text_sync")):
+        log_error("Sync product source not found: " + str(product_src))
         return False
-        
-    cmd = ["python", engine_cli] + command_args
+
+    cmd = ["python", "-m", "cds_text_sync.engine.engine_cli"] + command_args
     _, log_path = project_logging_config(project_root, dump_root)
     command_name = command_args[0] if command_args else "unknown"
     try:
@@ -357,7 +364,10 @@ def run_external_engine(command_args, script_file=None, project_root=None, dump_
         # Prevent the black console window from flashing on Windows
         kwargs = {
             "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE
+            "stderr": subprocess.PIPE,
+            # The package must resolve even when the interpreter's own install
+            # is not the repo (cwd alone decides it otherwise).
+            "env": _engine_subprocess_env(root_dir),
         }
         if os.name == 'nt':
             kwargs["creationflags"] = 0x08000000 # CREATE_NO_WINDOW

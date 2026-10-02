@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Projection encode/decode boundary shared by folder orchestration."""
 
-from xml_helpers import (
+from .xml_helpers import (
     apply_alarm_items_csv,
     apply_textlist_csv,
     csv_projection_content,

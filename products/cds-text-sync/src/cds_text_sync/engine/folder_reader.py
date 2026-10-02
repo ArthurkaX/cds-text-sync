@@ -9,26 +9,26 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-from _project_model import ProjectNode
-from _project_profiles import kind_for_type_guid
-from _manifest_bookkeeper import entries as manifest_entries
-from _path_safety import replace_extension, safe_path_in_root
-from _projection_codec import decode_csv, decode_st
-from _projection_changes import detect as detect_projection_changes
-from _view_paths import (
+from ._project_model import ProjectNode
+from ._project_profiles import kind_for_type_guid
+from ._manifest_bookkeeper import entries as manifest_entries
+from ._path_safety import replace_extension, safe_path_in_root
+from ._projection_codec import decode_csv, decode_st
+from ._projection_changes import detect as detect_projection_changes
+from ._view_paths import (
     join_view_path,
     managed_relative_paths,
     manifest_path,
     manifest_view_root,
     normalize_fs_path,
 )
-from _view_text import read_view_text
+from ._view_text import read_view_text
 from cts_shared.st.projection import (
     find_implementation_split,
     normalize_newlines,
     split_action_body,
 )
-from xml_helpers import (
+from .xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
     ProjectionValidationError,
     entry_to_xml,
@@ -195,11 +195,11 @@ class FolderReader:
         return os.path.relpath(full_path, self.views_path).replace(os.sep, "/")
 
     def _discover_pending_st_creates(self, model, managed_paths, allow_sibling_xml=False):
-        from _pending_discovery import discover_pending_st
+        from ._pending_discovery import discover_pending_st
         return discover_pending_st(self, model, managed_paths, allow_sibling_xml)
 
     def _discover_pending_xml_creates(self, model, managed_paths):
-        from _pending_discovery import discover_pending_xml
+        from ._pending_discovery import discover_pending_xml
         return discover_pending_xml(self, model, managed_paths)
 
     def _xml_top_level_member_names(self, elem_root):
@@ -434,5 +434,5 @@ class FolderReader:
         return text, sha1_hex(text)
 
     def read(self):
-        from _folder_reader_pipeline import read as read_pipeline
+        from ._folder_reader_pipeline import read as read_pipeline
         return read_pipeline(self)

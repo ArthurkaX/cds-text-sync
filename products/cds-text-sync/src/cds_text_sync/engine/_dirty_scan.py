@@ -15,10 +15,10 @@ so a file is "dirty" here exactly when the reader would consider it changed.
 
 import os
 
-from _project_layout import is_reserved_root_child
-from _view_paths import join_view_path, managed_relative_paths, normalize_fs_path
-from _view_text import ViewEncodingError, read_view_text
-from xml_helpers import normalize_guid, sha1_hex
+from ._project_layout import is_reserved_root_child
+from ._view_paths import join_view_path, managed_relative_paths, normalize_fs_path
+from ._view_text import ViewEncodingError, read_view_text
+from .xml_helpers import normalize_guid, sha1_hex
 
 
 def _hash_file(full_path):

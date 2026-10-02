@@ -3,9 +3,9 @@
 
 import os
 
-from _view_paths import join_view_path
-from _view_text import read_view_text
-from xml_helpers import sha1_hex
+from ._view_paths import join_view_path
+from ._view_text import read_view_text
+from .xml_helpers import sha1_hex
 
 
 def detect(paths, root_path, expected_hashes=None, missing_hash_is_change=False):

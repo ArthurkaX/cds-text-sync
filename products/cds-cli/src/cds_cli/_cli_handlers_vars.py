@@ -74,7 +74,7 @@ def _resolve_project_view(sync_folder, timeout=10, quiet=False):
 
 
 def _build_map_rows(path_filter, sync_folder, include_programs):
-    import variable_map as vm
+    from cds_text_sync.engine import variable_map as vm
 
     pv, base = _resolve_project_view(sync_folder)
     rows, stats = vm.build_map_from_dir(pv, include_programs=include_programs)
@@ -170,7 +170,7 @@ def cmd_variable_snapshot(
     output_fmt="json",
 ):
     """Snapshot current online values for mapped leaves (CSV)."""
-    import snapshot_engine as se
+    from cds_text_sync.engine import snapshot_engine as se
 
     rows, stats, base, vm = _build_map_rows(path_filter, sync_folder, include_programs)
     def read_fn(exprs):
@@ -206,7 +206,7 @@ def cmd_variable_restore(
     output_fmt="json",
 ):
     """Restore PLC values from a snapshot CSV. Dry-run unless --apply."""
-    import snapshot_engine as se
+    from cds_text_sync.engine import snapshot_engine as se
 
     if not input_path:
         _print_error("Specify --input <snapshot.csv>")
@@ -215,7 +215,7 @@ def cmd_variable_restore(
         _print_error("Snapshot not found: {0}".format(input_path))
         sys.exit(1)
 
-    import variable_map as vm
+    from cds_text_sync.engine import variable_map as vm
 
     with open(input_path, "r", newline="", encoding="utf-8") as f:
         snap_rows = list(_csv.DictReader(f))

@@ -178,11 +178,11 @@ def cmd_patch_save(
     output_fmt="json",
 ):
     """Run a compare and write the changed text files as a copy-over patch."""
-    from _changeset import select_changeset
-    from _manifest_bookkeeper import load as load_manifest
-    from _project_layout import resolve_layout
-    from _project_profiles import load_profile
-    from _project_settings import load_project_settings
+    from cds_text_sync.engine._changeset import select_changeset
+    from cds_text_sync.engine._manifest_bookkeeper import load as load_manifest
+    from cds_text_sync.engine._project_layout import resolve_layout
+    from cds_text_sync.engine._project_profiles import load_profile
+    from cds_text_sync.engine._project_settings import load_project_settings
 
     sync_root = _resolve_sync_folder(sync_folder, timeout=timeout)
     settings = load_project_settings(sync_root)

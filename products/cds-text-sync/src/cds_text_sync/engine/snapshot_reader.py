@@ -5,9 +5,9 @@ snapshot_reader.py - Reads and normalizes the native IDE.xml snapshot.
 import xml.etree.ElementTree as ET
 import ntpath
 
-from _locale_aliases import canonical_display
-from _project_model import ProjectModel, ProjectNode
-from xml_helpers import (
+from ._locale_aliases import canonical_display
+from ._project_model import ProjectModel, ProjectNode
+from .xml_helpers import (
     entry_to_xml,
     extract_bool_property,
     get_namespace,

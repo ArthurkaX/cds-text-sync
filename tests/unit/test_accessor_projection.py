@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "cds_text_sync", "engine"))
 
-from xml_helpers import split_st_projection_values, st_projection_content
+from cds_text_sync.engine.xml_helpers import split_st_projection_values, st_projection_content
 
 ACCESSOR = """<Single Name="Object"><Single Name="Implementation"><Single Name="TextDocument"><Single Name="TextBlobForSerialisation" Type="string">{impl}</Single></Single></Single><Single Name="Interface"><Single Name="TextDocument"><Single Name="TextBlobForSerialisation" Type="string">{decl}</Single></Single></Single></Single>"""
 

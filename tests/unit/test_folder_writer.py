@@ -367,7 +367,7 @@ class TestDirtyGuard:
         drop a projection it was unable to read, whatever the reason it could
         not read it.
         """
-        import _dirty_scan
+        from cds_text_sync.engine import _dirty_scan
 
         views, dump, model, profile, projections = self._first_export(tmp_path)
         st_rel = os.path.join("Folder", "MyObj.st")
@@ -482,7 +482,7 @@ class TestSyncModeLock:
 
 class TestTextFirstExport:
     def _write_text_first(self, tmp_path, xml_in_view_kinds=None, projections=None):
-        from _project_profiles import effective_projection_selection
+        from cds_text_sync.engine._project_profiles import effective_projection_selection
 
         views = str(tmp_path / "views")
         dump = str(tmp_path / ".dump")

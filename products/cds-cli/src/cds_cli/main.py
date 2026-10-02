@@ -16,7 +16,6 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 
 from cds_text_sync.engine.pipe_targets import (
     Hello,
@@ -39,17 +38,6 @@ try:
 except Exception:
     pass
 
-_SCRIPT_DIR = Path(__file__).resolve().parents[4]
-_ENGINE_DIR = (
-    _SCRIPT_DIR
-    / "products"
-    / "cds-text-sync"
-    / "src"
-    / "cds_text_sync"
-    / "engine"
-)
-if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_ENGINE_DIR))
 # -- Public surface -----------------------------------------------------------
 
 # main() pulls the handlers and helpers in from their own modules below; the

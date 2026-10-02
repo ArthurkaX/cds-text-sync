@@ -89,7 +89,7 @@ class TestBlankComments:
     """Tests for _blank_comments (comment stripping)."""
 
     def test_line_comment(self):
-        from call_tree import _blank_comments
+        from cds_text_sync.engine.call_tree import _blank_comments
 
         result = _blank_comments("x := 1; // this is a comment\ny := 2;")
         assert "//" not in result
@@ -97,7 +97,7 @@ class TestBlankComments:
         assert "y := 2;" in result
 
     def test_block_comment(self):
-        from call_tree import _blank_comments
+        from cds_text_sync.engine.call_tree import _blank_comments
 
         result = _blank_comments("x := (* block *) 1;")
         assert "(*" not in result
@@ -106,7 +106,7 @@ class TestBlankComments:
         assert "1;" in result
 
     def test_pragma(self):
-        from call_tree import _blank_comments
+        from cds_text_sync.engine.call_tree import _blank_comments
 
         result = _blank_comments('x := {some pragma "text"}1;')
         assert "{" not in result
@@ -115,7 +115,7 @@ class TestBlankComments:
         assert "1;" in result
 
     def test_string_literals_preserved(self):
-        from call_tree import _blank_comments
+        from cds_text_sync.engine.call_tree import _blank_comments
 
         result = _blank_comments("s := 'hello // not a comment';")
         assert "'hello // not a comment'" in result
@@ -126,7 +126,7 @@ class TestLoadSystemCatalog:
 
     def test_load_default(self):
         """Can load the shipped sys_funcs.json."""
-        from call_tree import load_system_catalog
+        from cds_text_sync.engine.call_tree import load_system_catalog
 
         catalog = load_system_catalog()
         assert "ABS" in catalog["functions"]
@@ -135,7 +135,7 @@ class TestLoadSystemCatalog:
 
     def test_load_from_custom_path(self):
         """Load from a custom JSON file."""
-        from call_tree import load_system_catalog
+        from cds_text_sync.engine.call_tree import load_system_catalog
 
         data = {
             "functions": ["CUSTOM_FUNC"],
@@ -159,7 +159,7 @@ class TestCollectLocalSymbols:
     """Tests for _collect_local_symbols."""
 
     def test_var_block(self):
-        from call_tree import _collect_local_symbols
+        from cds_text_sync.engine.call_tree import _collect_local_symbols
 
         decl = """PROGRAM MAIN
 VAR
@@ -174,7 +174,7 @@ END_VAR
         assert symbols["x"] == "INT"
 
     def test_var_input_block(self):
-        from call_tree import _collect_local_symbols
+        from cds_text_sync.engine.call_tree import _collect_local_symbols
 
         decl = """FUNCTION F_Calc : INT
 VAR_INPUT
@@ -187,12 +187,12 @@ END_VAR
         assert symbols["b"] == "INT"
 
     def test_empty_decl(self):
-        from call_tree import _collect_local_symbols
+        from cds_text_sync.engine.call_tree import _collect_local_symbols
 
         assert _collect_local_symbols("") == {}
 
     def test_no_var_blocks(self):
-        from call_tree import _collect_local_symbols
+        from cds_text_sync.engine.call_tree import _collect_local_symbols
 
         assert _collect_local_symbols("PROGRAM MAIN\nx := 1;") == {}
 
@@ -206,7 +206,7 @@ class TestExtractFunctionCalls:
     """Tests for _extract_function_calls."""
 
     def test_simple_function_call(self):
-        from call_tree import _clean_for_calls, _extract_function_calls
+        from cds_text_sync.engine.call_tree import _clean_for_calls, _extract_function_calls
 
         impl = "result := F_Calculate(a := 10, b := 20);"
         clean = _clean_for_calls(impl)
@@ -216,7 +216,7 @@ class TestExtractFunctionCalls:
         assert calls[0]["kind"] == "function_call"
 
     def test_keyword_not_extracted(self):
-        from call_tree import _clean_for_calls, _extract_function_calls
+        from cds_text_sync.engine.call_tree import _clean_for_calls, _extract_function_calls
 
         impl = """IF x > 0 THEN
     y := 1;
@@ -226,7 +226,7 @@ END_IF"""
         assert len(calls) == 0
 
     def test_multiple_calls(self):
-        from call_tree import _clean_for_calls, _extract_function_calls
+        from cds_text_sync.engine.call_tree import _clean_for_calls, _extract_function_calls
 
         impl = "a := ABS(x); b := SQRT(y);"
         clean = _clean_for_calls(impl)
@@ -236,7 +236,7 @@ END_IF"""
         assert names == {"ABS", "SQRT"}
 
     def test_call_in_expression(self):
-        from call_tree import _clean_for_calls, _extract_function_calls
+        from cds_text_sync.engine.call_tree import _clean_for_calls, _extract_function_calls
 
         impl = "x := MAX(a, b) + MIN(c, d);"
         clean = _clean_for_calls(impl)
@@ -250,7 +250,7 @@ class TestExtractMethodCalls:
     """Tests for _extract_method_calls."""
 
     def test_fb_method_call(self):
-        from call_tree import _clean_for_calls, _extract_method_calls
+        from cds_text_sync.engine.call_tree import _clean_for_calls, _extract_method_calls
 
         impl = "conveyor.Run(speed := 10);"
         clean = _clean_for_calls(impl)
@@ -261,7 +261,7 @@ class TestExtractMethodCalls:
         assert calls[0]["kind"] == "method_call"
 
     def test_this_method_call(self):
-        from call_tree import _clean_for_calls, _extract_method_calls
+        from cds_text_sync.engine.call_tree import _clean_for_calls, _extract_method_calls
 
         impl = "THIS.DoWork(x := 1);"
         clean = _clean_for_calls(impl)
@@ -280,7 +280,7 @@ class TestResolveCalls:
     """Tests for _resolve_calls."""
 
     def test_resolve_internal_function_call(self, project_symbols, system_catalog):
-        from call_tree import _resolve_calls
+        from cds_text_sync.engine.call_tree import _resolve_calls
 
         calls = [
             {"kind": "function_call", "callee_raw": "F_Calculate", "line": 5},
@@ -294,7 +294,7 @@ class TestResolveCalls:
         assert resolved[0]["callee_kind"] == "function"
 
     def test_resolve_system_call(self, project_symbols, system_catalog):
-        from call_tree import _resolve_calls
+        from cds_text_sync.engine.call_tree import _resolve_calls
 
         calls = [
             {"kind": "function_call", "callee_raw": "ABS", "line": 10},
@@ -308,7 +308,7 @@ class TestResolveCalls:
         assert resolved[0]["callee_kind"] == "system_function"
 
     def test_resolve_system_fb_call(self, project_symbols, system_catalog):
-        from call_tree import _resolve_calls
+        from cds_text_sync.engine.call_tree import _resolve_calls
 
         calls = [
             {"kind": "function_call", "callee_raw": "TON", "line": 15},
@@ -322,7 +322,7 @@ class TestResolveCalls:
         assert resolved[0]["callee_kind"] == "system_function_block"
 
     def test_resolve_method_call(self, project_symbols, system_catalog):
-        from call_tree import _resolve_calls
+        from cds_text_sync.engine.call_tree import _resolve_calls
 
         calls = [
             {
@@ -344,7 +344,7 @@ class TestResolveCalls:
         assert resolved[0]["instance_type"] == "FB_Conveyor"
 
     def test_resolve_unresolved(self, project_symbols, system_catalog):
-        from call_tree import _resolve_calls
+        from cds_text_sync.engine.call_tree import _resolve_calls
 
         calls = [
             {"kind": "function_call", "callee_raw": "UnknownFunc", "line": 25},
@@ -367,7 +367,7 @@ class TestBuildCallTree:
 
     def test_empty_directory(self):
         """An empty directory produces a valid empty report."""
-        from call_tree import build_call_tree
+        from cds_text_sync.engine.call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             result = build_call_tree(tmpdir)
@@ -377,7 +377,7 @@ class TestBuildCallTree:
 
     def test_single_program_with_function_calls(self, system_catalog):
         """A single .st file with a PROGRAM calling a function."""
-        from call_tree import build_call_tree
+        from cds_text_sync.engine.call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a function file
@@ -416,7 +416,7 @@ class TestBuildCallTree:
 
     def test_method_call_via_instance(self, system_catalog):
         """An FB .st file with a method call via instance variable."""
-        from call_tree import build_call_tree
+        from cds_text_sync.engine.call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create the FB file
@@ -447,7 +447,7 @@ class TestBuildCallTree:
 
     def test_system_calls(self, system_catalog):
         """System functions like ABS, SQRT are properly tagged."""
-        from call_tree import build_call_tree
+        from cds_text_sync.engine.call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             main_st = _st_text(
@@ -467,7 +467,7 @@ class TestBuildCallTree:
 
     def test_unresolved_call(self, system_catalog):
         """An unknown function reference is tagged as unresolved."""
-        from call_tree import build_call_tree
+        from cds_text_sync.engine.call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             main_st = _st_text(
@@ -485,7 +485,7 @@ class TestBuildCallTree:
 
     def test_chained_nested_expressions(self, system_catalog):
         """Calls inside nested expressions are detected."""
-        from call_tree import build_call_tree
+        from cds_text_sync.engine.call_tree import build_call_tree
 
         with tempfile.TemporaryDirectory() as tmpdir:
             main_st = _st_text(
@@ -508,7 +508,7 @@ class TestWriteCallTree:
     """Tests for write_call_tree."""
 
     def test_writes_valid_json(self):
-        from call_tree import write_call_tree
+        from cds_text_sync.engine.call_tree import write_call_tree
 
         data = {
             "meta": {"source_count": 0, "generated": "now"},
@@ -533,7 +533,7 @@ class TestProcessStFile:
 
     def test_no_implementation_returns_empty(self):
         """A .st file with no implementation section returns no calls."""
-        from call_tree import _process_st_file
+        from cds_text_sync.engine.call_tree import _process_st_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             st_path = os.path.join(tmpdir, "empty.st")
@@ -547,7 +547,7 @@ class TestProcessStFile:
 
     def test_file_with_only_declaration(self):
         """A .st file with only a declaration (no IMPLEMENTATION) returns no calls."""
-        from call_tree import _process_st_file
+        from cds_text_sync.engine.call_tree import _process_st_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             st_path = os.path.join(tmpdir, "dut.st")
@@ -564,7 +564,7 @@ class TestCollectProjectSymbolsFromStFiles:
     """Tests for _collect_project_symbols_from_st_files."""
 
     def test_detects_pou(self):
-        from call_tree import _collect_project_symbols_from_st_files
+        from cds_text_sync.engine.call_tree import _collect_project_symbols_from_st_files
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "MAIN.st"), "w") as f:
@@ -575,7 +575,7 @@ class TestCollectProjectSymbolsFromStFiles:
             assert symbols["MAIN"]["kind"] == "program"
 
     def test_detects_function(self):
-        from call_tree import _collect_project_symbols_from_st_files
+        from cds_text_sync.engine.call_tree import _collect_project_symbols_from_st_files
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "F_Calculate.st"), "w") as f:
@@ -586,7 +586,7 @@ class TestCollectProjectSymbolsFromStFiles:
             assert symbols["F_Calculate"]["kind"] == "function"
 
     def test_detects_function_block(self):
-        from call_tree import _collect_project_symbols_from_st_files
+        from cds_text_sync.engine.call_tree import _collect_project_symbols_from_st_files
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "FB_Conveyor.st"), "w") as f:

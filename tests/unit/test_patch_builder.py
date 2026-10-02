@@ -278,7 +278,7 @@ class TestPatchBuilderTextFirst:
     def test_st_authoritative_overlays_ide_baseline_not_mirror_xml(self):
         """The patch must carry the .st text on the fresh IDE structure; the
         (possibly stale) rehydrated mirror xml must never win."""
-        from xml_helpers import st_projection_content
+        from cds_text_sync.engine.xml_helpers import st_projection_content
 
         ide_xml = _pou_xml("PROGRAM P\nVAR\nEND_VAR", "x := 1;")
         disk_st = st_projection_content(ET.fromstring(ide_xml)).replace(

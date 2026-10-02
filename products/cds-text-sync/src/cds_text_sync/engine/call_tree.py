@@ -15,7 +15,7 @@ import os
 import re
 import time
 
-from variable_map import (
+from .variable_map import (
     _blank_noise,
     detect_owner_kind,
     iter_st_files,
@@ -813,7 +813,7 @@ def build_call_tree(
     project_symbols: dict[str, dict] = {}
 
     if snapshot_path:
-        from snapshot_reader import SnapshotReader  # local import avoids a cycle
+        from .snapshot_reader import SnapshotReader  # local import avoids a cycle
 
         reader = SnapshotReader(
             snapshot_path,

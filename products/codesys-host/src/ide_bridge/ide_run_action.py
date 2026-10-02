@@ -12,7 +12,7 @@ import ide_export_snapshot
 import ide_apply_patch
 import ide_backup
 import ide_online_helpers
-from _project_settings import load_project_settings
+from cds_text_sync.engine._project_settings import load_project_settings
 
 def _selected_guid_args(selected_guids):
     guids = []

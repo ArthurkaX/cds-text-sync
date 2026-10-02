@@ -23,32 +23,26 @@ import os
 import sys
 
 
-def _engine_dir():
-    """Locate cds_text_sync/engine relative to this file (src/ide_bridge/)."""
+def _product_src_dir():
+    """Locate the sync product's ``src`` dir, which holds the ``cds_text_sync``
+    package imported here."""
     current = os.path.dirname(os.path.abspath(__file__))
     while True:
-        engine = os.path.join(
-            current, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-        )
-        if os.path.isdir(engine):
-            return engine
-        legacy = os.path.join(current, "src", "external_engine")
-        if os.path.isdir(legacy):
-            return legacy
+        product = os.path.join(current, "products", "cds-text-sync", "src")
+        if os.path.isdir(product):
+            return product
         parent = os.path.dirname(current)
         if not parent or parent == current:
             break
         current = parent
-    return os.path.join(
-        current, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-    )
+    return os.path.join(current, "products", "cds-text-sync", "src")
 
 
-def _ensure_engine_path():
-    engine = _engine_dir()
-    if engine not in sys.path:
-        sys.path.insert(0, engine)
-    return engine
+def _ensure_product_path():
+    product = _product_src_dir()
+    if product not in sys.path:
+        sys.path.insert(0, product)
+    return product
 
 
 def _safe_str(value):
@@ -170,13 +164,13 @@ def build_discovery_report(project, base_dir, codesys_version=""):
     cannot be enumerated. Callers wrap this in their own transport
     (forward-mode file output, or the daemon's {"ok": ...} envelope).
     """
-    _ensure_engine_path()
-    from _project_profiles import (
+    _ensure_product_path()
+    from cds_text_sync.engine._project_profiles import (
         kind_for_type_guid,
         load_profile,
         projection_options,
     )
-    from _project_settings import load_project_settings
+    from cds_text_sync.engine._project_settings import load_project_settings
 
     settings = load_project_settings(base_dir)
     profile = load_profile(settings.get("profile"))
