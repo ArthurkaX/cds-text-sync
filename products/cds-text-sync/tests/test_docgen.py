@@ -707,3 +707,28 @@ def test_docgen_materializes_inherited_dut_members(tmp_path):
     assert [member["name"] for member in child["own_members"]] == ["xChild"]
     assert [member["name"] for member in child["inherited_members"]] == ["xBase"]
     assert child["inherited_members"][0]["inherited_from"] == "Base"
+
+
+def test_project_cards_are_written_once(tmp_path, monkeypatch):
+    """Project cards used to be written twice, ~100 lines apart [CLT1].
+
+    The second pass re-rendered every project card with the same text and the
+    same back link, so nothing but the extra write distinguished it.
+    """
+    project_view = tmp_path / "project-view"
+    project_view.mkdir()
+    (project_view / "FB_Sensor.st").write_text(FB_SENSOR_ST, encoding="utf-8")
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    rendered = []
+    original = docgen._symbol_card
+
+    def counting(symbol, back_link="../index.md"):
+        rendered.append(symbol.get("name"))
+        return original(symbol, back_link)
+
+    monkeypatch.setattr(docgen, "_symbol_card", counting)
+    docgen.generate_docs(project_view, library_path=libraries)
+
+    assert rendered == ["FB_Sensor"]

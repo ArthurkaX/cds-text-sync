@@ -905,17 +905,6 @@ def _generate_docs(workspace, library_path=None, output=None):
             symbol_id=caller_id,
         ))
 
-    # The cards were initially emitted before relations were known.  Rewrite
-    # project cards now that their navigation metadata is complete.
-    (output_root / "project").mkdir(parents=True, exist_ok=True)
-    for symbol in project_symbols:
-        card = symbol.get("card")
-        if card:
-            (output_root / card).write_text(
-                "\n".join(_symbol_card(symbol, "../index.md")) + "\n",
-                encoding="utf-8",
-            )
-
     libdoc_root = None
     if (library_root / "LibDoc").is_dir():
         libdoc_root = library_root / "LibDoc"
