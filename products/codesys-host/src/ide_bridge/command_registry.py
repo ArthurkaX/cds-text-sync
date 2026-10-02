@@ -34,12 +34,29 @@ ALIASES = {
     "stop": "stop_daemon",
 }
 
-# Commands that skip the daemon deny list.
+# ── Permission exemption ───────────────────────────────────────────────────
+# Rule: a command may skip the deny list only when it is strictly read-only --
+# it does not modify the project, the PLC, the sync folder's tracked content,
+# any file outside .dump/, or daemon state that changes what a later command
+# does. Caching a session handle it already had, or writing only inside .dump/,
+# is not a modification (this is how diagnose_online and explore already
+# behave). Everything that writes, that changes the PLC session, or that
+# produces tracked output (snapshots, project-view, exports, build artifacts,
+# documentation files) stays gated so a deny list can still block it.
+# The exact set is pinned by tests/unit/test_command_registry.py.
 NO_PERMISSION = frozenset([
+    # daemon lifecycle and introspection
     "ping", "status", "timeout_profile", "help", "stop_daemon", "permissions",
-    "sync", "project_info", "project_tree", "read_object", "explore",
-    "project_list", "list_devices", "diagnose_online", "discover",
-    "last_result",
+    # project and object inspection
+    "project_info", "project_tree", "read_object", "project_list",
+    "list_devices", "explore", "probe", "discover", "diagnose_online",
+    # PLC reads (an existing session only; no login, download or update)
+    "read_variable", "read_variables", "application_state", "device_status",
+    "test_online",
+    # PLC file inspection and CRC reads
+    "app_crc", "app_info", "app_history", "plc_crc",
+    # sync state read-back
+    "sync", "last_result", "generate_docs",
 ])
 
 
