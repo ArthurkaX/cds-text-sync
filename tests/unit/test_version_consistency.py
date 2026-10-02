@@ -34,6 +34,17 @@ def test_cli_pins_match_release_version():
     assert f'"visu-lint=={release}"' in pyproject
 
 
+def test_cli_static_analyzer_pin_matches_the_analyzer_version():
+    """The analyzer is versioned independently, so pin its actual version."""
+    analyzer = _find(
+        "products/cds-static-analyzer/src/cds_static_analyzer/__init__.py",
+        "__version__",
+    )
+    assert _find("products/cds-static-analyzer/pyproject.toml", "version") == analyzer
+    pyproject = (ROOT / "products/cds-cli/pyproject.toml").read_text(encoding="utf-8")
+    assert f'"cds-static-analyzer=={analyzer}"' in pyproject
+
+
 def test_changelog_top_release_is_current_version():
     release = _find("cds_text_sync/__init__.py", "__version__")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
