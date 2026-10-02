@@ -10,7 +10,9 @@ import os
 import tempfile
 import xml.etree.ElementTree as ET
 
-from cds_text_sync.engine._patch_builder import PatchBuilder
+import pytest
+
+from cds_text_sync.engine._patch_builder import PatchBuilder, UnsupportedPatchError
 from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
 
 
@@ -345,3 +347,34 @@ class TestPatchBuilderTextFirst:
         emitted, patch_text = _build_patch(builder)
         assert emitted is False
         assert "CreateTextObject" not in patch_text
+
+
+class TestStOverlayFailures:
+    """An .st edit that cannot be applied must not be replaced by the stale side."""
+
+    def _builder(self, ide_xml, st_text):
+        guid = "st-only-001"
+        ide_node = _make_node(
+            guid, name="MyPrg", xml_text=ide_xml, structured_view_guid="sv-1"
+        )
+        folder_node = _make_node(
+            guid,
+            name="MyPrg",
+            xml_text="<Single Name='Object'><Single Name='StaleMirror'/></Single>",
+            st_only=True,
+            projection_contents={"MyPrg.st": st_text},
+        )
+        return guid, PatchBuilder(
+            {"modified": [guid], "added": [], "deleted": []},
+            model_with(ide_node),
+            model_with(folder_node),
+        )
+
+    def test_unparseable_ide_baseline_raises_instead_of_falling_back(self):
+        guid, builder = self._builder("<Single Name='Object'>", "PROGRAM MyPrg\nEND_PROGRAM")
+
+        with pytest.raises(UnsupportedPatchError) as raised:
+            builder.build_patch(tempfile.mktemp(suffix=".xml"))
+
+        assert guid in str(raised.value)
+        assert "could not be parsed" in str(raised.value)

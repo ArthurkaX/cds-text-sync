@@ -82,25 +82,42 @@ class PatchBuilder:
 
     def _overlay_st_on_ide_baseline(self, guid, st_text):
         """Rebuild a patch entry from the IDE baseline structure with the
-        on-disk .st text blobs overlaid. Returns an Element, or None when the
-        overlay is not possible (no baseline, no text blobs, parse failure)."""
+        on-disk .st text blobs overlaid.
+
+        Returns an Element, or None when the overlay does not apply at all (no
+        IDE baseline XML to overlay onto, or no text blobs to fill). A failure
+        while overlaying is not "does not apply" and is not swallowed: the
+        caller would fall through to the stale side of the entry and import
+        that instead, dropping the very .st edit this path exists to carry.
+        """
         ide_node = self.ide_model.get_node(guid)
         ide_xml = getattr(ide_node, "xml_text", None) if ide_node else None
         if st_text is None or not ide_xml:
             return None
         try:
             root = ET.fromstring(ide_xml)
-            if not text_blob_elements(root):
-                return None
+        except ET.ParseError as error:
+            raise UnsupportedPatchError(
+                "Cannot import {0}: the IDE baseline XML could not be parsed "
+                "({1}).".format(guid, error)
+            )
+        if not text_blob_elements(root):
+            return None
+        try:
             replace_text_blob_values(
                 root,
                 split_st_projection_values(
                     strip_cds_text_sync_pragmas(st_text), root
                 ),
             )
-            return ET.fromstring(entry_to_xml(root))
-        except Exception:
-            return None
+        except Exception as error:
+            raise UnsupportedPatchError(
+                "Cannot import {0}: the .st projection could not be applied "
+                "to the IDE baseline ({1}: {2}).".format(
+                    guid, type(error).__name__, error
+                )
+            )
+        return ET.fromstring(entry_to_xml(root))
 
     def _patch_entry(self, guid):
         ide_node = self.ide_model.get_node(guid)
