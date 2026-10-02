@@ -62,8 +62,13 @@ class _Manager:
         self.installed.append((os.path.basename(path), repository, overwrite))
 
 
+# _build_library derives the compiled-library name with os.path.basename, so
+# the fixture path has to use the separator of the host running the test.
+LIBRARY_PROJECT = os.path.join("libs", "example_lib.library")
+
+
 def _setup(monkeypatch, manager=None):
-    monkeypatch.setattr(build, "_project_file", lambda project: r"X:\lib\example_lib.library")
+    monkeypatch.setattr(build, "_project_file", lambda project: LIBRARY_PROJECT)
     monkeypatch.setattr(build, "_library_manager", lambda: manager)
 
 
