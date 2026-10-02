@@ -537,7 +537,13 @@ def _cmd_sync_import_text(params):
     ]
     success = _common.run_external_engine(args)
     if not success:
-        return {"ok": False, "error": "external engine import failed"}
+        return {
+            "ok": False,
+            "error": (
+                "external engine import failed -- nothing was applied to the "
+                "project; see the engine error above"
+            ),
+        }
 
     if not os.path.exists(patch_path):
         return {"ok": False, "error": "IMPORT.xml was not generated"}

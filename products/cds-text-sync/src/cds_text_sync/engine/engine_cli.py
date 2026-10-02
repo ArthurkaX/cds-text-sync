@@ -419,7 +419,10 @@ def run_import(args):
     try:
         patcher.build_patch(args.patch)
     except UnsupportedPatchError as error:
-        print("Failed to build import patch:", error)
+        # "Error:" is what the host's run_external_engine forwards to the user
+        # as a notice; the wording alone would leave them with a bare "external
+        # engine import failed".
+        print("Error: cannot build the import patch: {0}".format(error))
         sys.exit(1)
 
 
