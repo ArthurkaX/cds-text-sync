@@ -105,14 +105,28 @@ def _get_root_dir(script_file=None):
 def _ensure_sys_path(root_dir):
     ide_bridge_dir = os.path.join(root_dir, "src", "ide_bridge")
     product_src_dir = _find_product_src_dir(root_dir)
+    # The engine imports the shared package, so any operation that reaches it
+    # needs shared/src too -- not only the ones that happen to run after
+    # something else (ide_runtime_common) has put it there.
+    shared_src_dir = _shared_src_dir(product_src_dir)
     # Inserted at 0 in turn, so this tuple is walked back-to-front: the
-    # resulting order is ide_bridge, product src, root. The bridge must
-    # outrank the root because modules are imported by name now, and the root
-    # holds Project_snapshooter.py next to the bridge's project_snapshooter.py
-    # -- names that collide on a case-insensitive filesystem.
-    for path in (root_dir, product_src_dir, ide_bridge_dir):
+    # resulting order is ide_bridge, product src, shared src, root. The bridge
+    # must outrank the root because modules are imported by name now, and the
+    # root holds Project_snapshooter.py next to the bridge's
+    # project_snapshooter.py -- names that collide on a case-insensitive
+    # filesystem.
+    for path in (root_dir, shared_src_dir, product_src_dir, ide_bridge_dir):
         if path and path not in sys.path:
             sys.path.insert(0, path)
+
+
+def _shared_src_dir(product_src_dir):
+    """``shared/src`` of the checkout that holds *product_src_dir*, or None."""
+    checkout = os.path.dirname(os.path.dirname(os.path.dirname(product_src_dir)))
+    candidate = os.path.join(checkout, "shared", "src")
+    if os.path.isdir(candidate):
+        return candidate
+    return None
 
 
 def _find_product_src_dir(root_dir):
