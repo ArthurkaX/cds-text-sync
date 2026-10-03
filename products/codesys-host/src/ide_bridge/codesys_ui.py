@@ -1287,8 +1287,16 @@ class ProjectOptionsForm(Form if Form is not None else object):
         group's bottom padding; ``right`` pins the control to the right edge
         with its current width, which is how the "(locked)" markers sit beside
         the controls they belong to.
+
+        The width comes from the group's display rectangle, not its client
+        size: a GroupBox paints its frame in the outer pixels of its own size,
+        and this host counts those pixels in ClientSize, so a row sized to
+        ClientSize covers the frame with its own background -- the right border
+        then shows only as dashes in the gaps between rows. The display
+        rectangle is the area inside the frame, so rows laid out against its
+        width stop short and leave the border whole.
         """
-        inner_width = int(group.ClientSize.Width)
+        inner_width = int(group.DisplayRectangle.Width)
         inner_height = int(group.ClientSize.Height)
         bottom = inner_height - self.GROUP_BOTTOM_PAD
         for control, x, y, mode, reserve in rows:
