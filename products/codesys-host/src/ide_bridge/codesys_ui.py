@@ -514,11 +514,16 @@ class ProjectOptionsForm(Form if Form is not None else object):
             items.append(value)
         combo.SelectedIndex = items.index(value)
 
-    def _build_view_lists(self, parent, y, current_settings, projections, kinds):
+    def _build_view_lists(self, parent, y, current_settings, projections, kinds,
+                          strict=False):
         """Build the tab's pair of derived-view lists and return their state.
 
         The two panels share a spot: only the one matching the tab's sync mode
         is shown, the other keeps its checkboxes (and their values) hidden.
+        ``strict`` seeds a projection box from the given value alone (the
+        General tab, where a built-in default must not look like a choice);
+        otherwise the profile's own default applies, as the project tab has
+        always done.
         """
         state = {}
         state["label"] = self._make_label("Derived views", 16, y, 120, 20)
@@ -548,9 +553,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
                 )
                 checkbox.Location = Point(8, offset)
                 checkbox.Size = Size(390, 22)
-                checkbox.Checked = self._projection_enabled(
-                    {"projections": projections}, projection
-                )
+                if strict:
+                    checkbox.Checked = settings_layers_model.projection_enabled(
+                        projections, projection
+                    )
+                else:
+                    checkbox.Checked = self._projection_enabled(
+                        {"projections": projections}, projection
+                    )
                 checkbox.Tag = projection
                 projection_panel.Controls.Add(checkbox)
                 state["projection_controls"].append(checkbox)
@@ -609,8 +619,8 @@ class ProjectOptionsForm(Form if Form is not None else object):
         if isinstance(projections, dict):
             for checkbox in state["projection_controls"]:
                 if checkbox.Tag:
-                    checkbox.Checked = self._projection_enabled(
-                        {"projections": projections}, checkbox.Tag
+                    checkbox.Checked = settings_layers_model.projection_enabled(
+                        projections, checkbox.Tag
                     )
         kinds = values.get("xml_in_view_kinds")
         if isinstance(kinds, (list, tuple)):
@@ -618,22 +628,36 @@ class ProjectOptionsForm(Form if Form is not None else object):
             for checkbox in state["xml_controls"]:
                 checkbox.Checked = str(checkbox.Tag).strip().lower() in wanted
 
+    def _projection_id(self, projection):
+        return projection.get("id") or projection.get("kind")
+
+    def _projection_entry(self, projection):
+        return {
+            "enabled": True,
+            "kind": projection.get("kind"),
+            "format": projection.get("format"),
+            "import_safe": bool(projection.get("import_safe", False)),
+        }
+
     def _selected_projections(self, controls):
         selected = {}
         for checkbox in controls:
             if not checkbox.Checked or not checkbox.Tag:
                 continue
-            projection = checkbox.Tag
-            projection_id = projection.get("id") or projection.get("kind")
+            projection_id = self._projection_id(checkbox.Tag)
             if not projection_id:
                 continue
-            selected[projection_id] = {
-                "enabled": True,
-                "kind": projection.get("kind"),
-                "format": projection.get("format"),
-                "import_safe": bool(projection.get("import_safe", False)),
-            }
+            selected[projection_id] = self._projection_entry(checkbox.Tag)
         return selected
+
+    def _checked_projection_ids(self, controls):
+        checked = []
+        for checkbox in controls:
+            if checkbox.Checked and checkbox.Tag:
+                projection_id = self._projection_id(checkbox.Tag)
+                if projection_id and projection_id not in checked:
+                    checked.append(projection_id)
+        return checked
 
     def _selected_kinds(self, controls):
         selected = []
@@ -833,11 +857,16 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
         self._general_lists = self._build_view_lists(
             page, 258, current_settings,
-            values.get("projections"), values.get("xml_in_view_kinds"))
+            values.get("projections"), values.get("xml_in_view_kinds"), strict=True)
 
         page.Controls.Add(self._make_heading("Behavior", 16, 402))
         self._build_behavior_controls(page, 428, self._general_behavior, True)
         self._apply_behavior_values(self._general_behavior, values)
+
+        # What the tab opened with: the effective values and the control state
+        # they produced. Only a control that differs from this is an edit.
+        self._general_originals = values
+        self._general_initials = self._read_general_controls()
 
         btn_reset = Button()
         btn_reset.Text = "Reset to built-in"
@@ -1038,15 +1067,11 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
     # -- saving -----------------------------------------------------------
 
-    def _collect_general_raw(self):
+    def _read_general_scalars(self):
         return {
             "layout": self._selected_layout(self.cmb_general_layout),
             "profile": self._selected_profile(self.cmb_general_profile),
             "sync_mode": "text_first" if self._general_text_first() else "xml_first",
-            "projections": self._selected_projections(
-                self._general_lists["projection_controls"]),
-            "xml_in_view_kinds": self._selected_kinds(
-                self._general_lists["xml_controls"]),
             "pre_import_backup_enabled": self._read_behavior(
                 self._general_behavior, "pre_import_backup_enabled"),
             "backup_retention_count": self._read_behavior(
@@ -1058,6 +1083,30 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "show_completion_popup": self._read_behavior(
                 self._general_behavior, "show_completion_popup"),
         }
+
+    def _read_general_controls(self):
+        """The General tab's whole control state, in the shape the model wants."""
+        state = self._read_general_scalars()
+        state["kinds_checked"] = self._selected_kinds(
+            self._general_lists["xml_controls"])
+        state["projections_checked"] = self._checked_projection_ids(
+            self._general_lists["projection_controls"])
+        return state
+
+    def _general_values_to_store(self):
+        """Assemble the General values to write from the controls.
+
+        The model keeps everything the user did not touch at the effective
+        value the tab opened with, so pressing Save on an untouched tab
+        rewrites the same sparse file (a first save writes just the version).
+        """
+        return settings_layers_model.general_values_to_store(
+            self._general_originals,
+            self._general_initials,
+            self._read_general_controls(),
+            self._base_settings.get("_available_projections") or [],
+            self._selected_projections(self._general_lists["projection_controls"]),
+        )
 
     def _on_reset_general(self, sender, event):
         """Fill the General controls from the built-in defaults; nothing is saved."""
@@ -1088,7 +1137,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         # General first: the project file must inherit whatever it just wrote,
         # and a failure here has to stop the project write.
         written, error = settings_layers_model.save_user_defaults(
-            self._collect_general_raw())
+            self._general_values_to_store())
         if error:
             self._show_error("Cannot save your defaults", error)
             return

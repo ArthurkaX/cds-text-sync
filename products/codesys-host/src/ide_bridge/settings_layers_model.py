@@ -142,6 +142,152 @@ def general_state(path=None):
     return path, rows, status, error
 
 
+def projection_enabled(projections, projection):
+    """Whether *projection* is on in a projections dict, with no default.
+
+    The General tab starts each box from the user layer alone -- a projection
+    the code enables by default stays unchecked until the user asks for it --
+    so an untouched save cannot turn that default into an override. (The
+    project tab keeps the older rule, which does honour ``default_enabled``,
+    because the project file has always been written from the offered options.)
+    """
+    current = projections or {}
+    projection_id = projection.get("id")
+    kind = projection.get("kind")
+    if projection_id is not None and projection_id in current:
+        value = current.get(projection_id)
+        if isinstance(value, dict):
+            return bool(value.get("enabled", True))
+        return bool(value)
+    if kind is not None and kind in current:
+        return True
+    return False
+
+
+def general_kind_initial(original, available):
+    """Which of *available* the General tab shows checked for xml_in_view_kinds.
+
+    Strictly the effective General value: a kind the profile offers but the
+    user layer does not list is shown unchecked, so leaving it alone writes
+    nothing.
+    """
+    listed = set(str(item).strip().lower() for item in (original or []))
+    checked = []
+    for kind in (available or []):
+        name = str(kind).strip().lower()
+        if name in listed and name not in checked:
+            checked.append(name)
+    return checked
+
+
+def general_projection_initial(original, options):
+    """The projection ids the General tab shows checked."""
+    checked = []
+    for projection in (options or []):
+        projection_id = projection.get("id") or projection.get("kind")
+        if projection_id and projection_enabled(original, projection):
+            checked.append(projection_id)
+    return checked
+
+
+def merge_general_values(originals, initials, current):
+    """The General values to store: *originals* plus only the controls edited.
+
+    A control whose value still equals the value it was shown with is
+    untouched, so the effective value is kept as-is. Those effective values are
+    exactly what a sparse write round-trips, so an untouched tab leaves the
+    per-user file unchanged.
+    """
+    result = dict(originals or {})
+    for name, value in (current or {}).items():
+        if initials.get(name) != value:
+            result[name] = value
+    return result
+
+
+def merge_general_kinds(original, turned_on, turned_off):
+    """xml_in_view_kinds after the General checkboxes were toggled.
+
+    *turned_on* and *turned_off* hold only the options the current profile
+    offers and the user actually moved. Every other item of *original* is kept
+    -- including one the profile does not offer -- so an empty toggle set
+    returns *original* unchanged.
+    """
+    dropped = set(turned_off or [])
+    result = [item for item in (original or []) if item not in dropped]
+    for item in (turned_on or []):
+        if item not in result:
+            result.append(item)
+    return result
+
+
+def merge_general_projections(original, turned_on, turned_off):
+    """projections after the General checkboxes were toggled.
+
+    *turned_on* maps a projection key to the entry to store, *turned_off* names
+    keys to drop, and every key not named keeps its effective value exactly --
+    including a projection the current profile does not offer, and a stored
+    ``true`` that must not be rewritten as an object. An empty toggle set
+    therefore returns *original* unchanged.
+    """
+    result = dict(original or {})
+    for key in (turned_off or []):
+        result.pop(key, None)
+    for key, entry in (turned_on or {}).items():
+        result[key] = entry
+    return result
+
+
+def general_values_to_store(originals, initials, current, options,
+                            projection_entries):
+    """Assemble the General values to write from the tab's control state.
+
+    *originals* is the effective General value the tab opened with, *initials*
+    the control state it was built with, *current* the same shape read back at
+    save: the scalar controls plus ``kinds_checked`` and ``projections_checked``
+    (the offered options whose boxes are on). *options* are the project profile's
+    projection descriptors and *projection_entries* maps every currently checked
+    projection id to the entry to store.
+
+    Only the controls that differ from *initials* are applied, and a list key
+    keeps everything the profile cannot offer, so an untouched tab returns
+    *originals* unchanged -- and since those values are what a sparse write
+    round-trips, saving them leaves the per-user file as it was.
+    """
+    values = merge_general_values(originals, initials, current)
+
+    initial_kinds = list(initials.get("kinds_checked") or [])
+    current_kinds = list(current.get("kinds_checked") or [])
+    initial_kind_set = set(initial_kinds)
+    current_kind_set = set(current_kinds)
+    values["xml_in_view_kinds"] = merge_general_kinds(
+        originals.get("xml_in_view_kinds"),
+        [kind for kind in current_kinds if kind not in initial_kind_set],
+        [kind for kind in initial_kinds if kind not in current_kind_set],
+    )
+
+    initial_projections = set(initials.get("projections_checked") or [])
+    current_projections = set(current.get("projections_checked") or [])
+    stored_projections = originals.get("projections") or {}
+    turned_on = {}
+    for projection_id, entry in (projection_entries or {}).items():
+        if projection_id not in initial_projections:
+            turned_on[projection_id] = entry
+    turned_off = []
+    for projection in (options or []):
+        projection_id = projection.get("id") or projection.get("kind")
+        if not projection_id:
+            continue
+        if projection_id in current_projections or projection_id not in initial_projections:
+            continue
+        for key in (projection.get("id"), projection.get("kind")):
+            if key and key in stored_projections and key not in turned_off:
+                turned_off.append(key)
+    values["projections"] = merge_general_projections(
+        stored_projections, turned_on, turned_off)
+    return values
+
+
 def _parse_projections(value):
     if isinstance(value, dict):
         return value

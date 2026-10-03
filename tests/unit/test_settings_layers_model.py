@@ -255,6 +255,189 @@ class TestGeneralState:
             assert value == defaults[name]
 
 
+class TestGeneralEdits:
+    """Save on an untouched General tab must not change the per-user file.
+
+    The tab is built from the current project's profile options, which need not
+    cover what the user layer holds; only a box the user actually moved may
+    change the stored value.
+    """
+
+    PROJECTIONS = [
+        {"id": "st_views", "kind": "st_views", "label": "ST views", "format": "st"},
+        {"id": "visu_views", "kind": "visu", "label": "Visu", "format": "xml"},
+    ]
+
+    def _state(self, originals, options, kinds):
+        """The control state the form starts with, from the effective values."""
+        state = dict((name, originals.get(name)) for name in (
+            "layout", "profile", "sync_mode", "pre_import_backup_enabled",
+            "backup_retention_count", "verbose_logging", "advanced_debug",
+            "show_completion_popup",
+        ))
+        state["kinds_checked"] = model.general_kind_initial(
+            originals.get("xml_in_view_kinds"), kinds)
+        state["projections_checked"] = model.general_projection_initial(
+            originals.get("projections"), options)
+        return state
+
+    def _entries(self, originals, options):
+        """What the form would store for each projection box that is on."""
+        entries = {}
+        for projection in options:
+            projection_id = projection.get("id") or projection.get("kind")
+            if model.projection_enabled(originals.get("projections"), projection):
+                entries[projection_id] = {
+                    "enabled": True,
+                    "kind": projection.get("kind"),
+                    "format": projection.get("format"),
+                    "import_safe": False,
+                }
+        return entries
+
+    def test_untouched_tab_rewrites_the_same_file(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user(
+            {"advanced_debug": True, "xml_in_view_kinds": ["visu", "custom"]}, str(path)
+        )
+        before = path.read_bytes()
+
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        initials = self._state(originals, self.PROJECTIONS, ["visu"])
+        values = model.general_values_to_store(
+            originals, initials, self._state(originals, self.PROJECTIONS, ["visu"]),
+            self.PROJECTIONS, self._entries(originals, self.PROJECTIONS),
+        )
+        written, error = model.save_user_defaults(values, str(path))
+
+        assert error == ""
+        assert path.read_bytes() == before
+        assert written["advanced_debug"] is True
+        assert written["xml_in_view_kinds"] == ["visu", "custom"]
+
+    def test_a_profile_without_the_default_kind_writes_nothing(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user({}, str(path))
+        before = path.read_bytes()
+
+        # The profile offers no view kinds at all, so the tab has no boxes;
+        # the effective ["visu"] must not be turned into [] by a save.
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        assert originals["xml_in_view_kinds"] == ["visu"]
+        initials = self._state(originals, [], [])
+        assert initials["kinds_checked"] == []
+        values = model.general_values_to_store(
+            originals, initials, self._state(originals, [], []), [], {})
+
+        assert values["xml_in_view_kinds"] == ["visu"]
+        written, error = model.save_user_defaults(values, str(path))
+        assert error == ""
+        assert path.read_bytes() == before
+        assert "xml_in_view_kinds" not in written
+
+    def test_a_default_enabled_projection_is_not_an_override(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user({}, str(path))
+        before = path.read_bytes()
+        options = [
+            {"id": "st_views", "kind": "st_views", "label": "ST views",
+             "default_enabled": True},
+        ]
+
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        initials = self._state(originals, options, [])
+        # The box starts unchecked because the user layer says nothing.
+        assert initials["projections_checked"] == []
+        values = model.general_values_to_store(
+            originals, initials, self._state(originals, options, []), options,
+            self._entries(originals, options),
+        )
+
+        assert values["projections"] == {}
+        written, error = model.save_user_defaults(values, str(path))
+        assert error == ""
+        assert path.read_bytes() == before
+        assert "projections" not in written
+
+    def test_toggling_one_kind_changes_only_that_kind(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user({"xml_in_view_kinds": ["visu"]}, str(path))
+
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        options = ["visu", "text"]
+        initials = self._state(originals, self.PROJECTIONS, options)
+
+        current = self._state(originals, self.PROJECTIONS, options)
+        current["kinds_checked"] = ["text"]  # visu unchecked, text checked
+        values = model.general_values_to_store(
+            originals, initials, current, self.PROJECTIONS,
+            self._entries(originals, self.PROJECTIONS),
+        )
+
+        assert values["xml_in_view_kinds"] == ["text"]
+        written, error = model.save_user_defaults(values, str(path))
+        assert error == ""
+        assert written["xml_in_view_kinds"] == ["text"]
+
+    def test_an_unoffered_kind_survives_a_toggle(self):
+        values = model.merge_general_kinds(["custom", "visu"], ["text"], ["visu"])
+        assert values == ["custom", "text"]
+
+        # Nothing toggled: the original list, order included, comes back.
+        assert model.merge_general_kinds(["custom", "visu"], [], []) == ["custom", "visu"]
+
+    def test_an_unoffered_projection_survives(self):
+        original = {"legacy": True, "st_views": {"enabled": True}}
+        merged = model.merge_general_projections(original, {}, [])
+        assert merged == original
+
+        merged = model.merge_general_projections(
+            original, {"visu_views": {"enabled": True}}, [])
+        assert merged["legacy"] is True
+        assert merged["visu_views"] == {"enabled": True}
+
+    def test_merge_general_values_applies_only_edits(self):
+        originals = {"layout": "project-view", "advanced_debug": True}
+        initials = {"layout": "project-view", "advanced_debug": True}
+
+        untouched = model.merge_general_values(
+            originals, initials, {"layout": "project-view", "advanced_debug": True})
+        assert untouched == originals
+
+        edited = model.merge_general_values(
+            originals, initials, {"layout": "root-view", "advanced_debug": True})
+        assert edited["layout"] == "root-view"
+        assert edited["advanced_debug"] is True
+
+    def test_projection_enabled_has_no_default_fallback(self):
+        default_on = {"id": "st_views", "kind": "st_views", "default_enabled": True}
+        assert model.projection_enabled({}, default_on) is False
+        assert model.projection_enabled({"st_views": {}}, default_on) is True
+        assert model.projection_enabled({"st_views": False}, default_on) is False
+        # A value keyed by kind still counts.
+        assert model.projection_enabled({"st_views": True}, default_on) is True
+        assert model.projection_enabled({"visu": True}, default_on) is False
+
+    def test_general_projection_initial_is_strict(self):
+        options = [
+            {"id": "st_views", "kind": "st_views", "default_enabled": True},
+            {"id": "visu_views", "kind": "visu"},
+        ]
+        assert model.general_projection_initial({}, options) == []
+        assert model.general_projection_initial({"visu_views": {}}, options) == [
+            "visu_views"
+        ]
+
+    def test_general_kind_initial_is_strict(self):
+        assert model.general_kind_initial(["visu"], []) == []
+        assert model.general_kind_initial(["visu"], ["text", "visu"]) == ["visu"]
+        assert model.general_kind_initial(None, ["visu"]) == []
+
+
 class TestUserValuesToOverrides:
     def test_kinds_accept_a_comma_separated_string(self):
         overrides, error = model.user_values_to_overrides(
