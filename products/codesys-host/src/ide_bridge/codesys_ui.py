@@ -19,7 +19,8 @@ try:
         MessageBox, MessageBoxButtons, MessageBoxIcon, DialogResult,
         Form, Label, Button, CheckBox, RadioButton, Panel, ToolTip,
         FormBorderStyle, FormStartPosition, FlatStyle, ComboBox, TextBox,
-        ComboBoxStyle, TabControl, TabPage, Control, Keys, ScrollBars
+        ComboBoxStyle, TabControl, TabPage, Control, Keys, ScrollBars,
+        GroupBox, CheckedListBox, BorderStyle, AutoScaleMode, AnchorStyles
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, ContentAlignment
 except Exception:
@@ -42,6 +43,11 @@ except Exception:
     Control = None
     Keys = None
     ScrollBars = None
+    GroupBox = None
+    CheckedListBox = None
+    BorderStyle = None
+    AutoScaleMode = None
+    AnchorStyles = None
     FormBorderStyle = None
     FormStartPosition = None
     FlatStyle = None
@@ -366,6 +372,12 @@ class ProjectOptionsForm(Form if Form is not None else object):
     project" (pinned in the project file). Saving writes the per-user file
     first, and only when that succeeds hands the project assembly back to the
     caller, which writes the project file.
+
+    Both tabs share one compact layout: a title line with the scope ("all
+    projects on this computer" / this project's name), the file path as a small
+    grey line, then a Format and a Behavior group side by side with the dialog
+    buttons below them. Longer explanations live in tooltips, so the dialog
+    stays short enough for a 1366x768 screen.
     """
 
     LAYOUTS = [
@@ -373,14 +385,44 @@ class ProjectOptionsForm(Form if Form is not None else object):
         ("root-view", "Root of project"),
     ]
 
-    # name -> checkbox/textbox for the five behavior keys, in the engine's order.
+    # Design geometry. The client area is what the rows below are tuned for;
+    # the frame and caption come on top of it, so the minimum size is read back
+    # from Size once the client size has been applied.
+    CLIENT_WIDTH = 640
+    CLIENT_HEIGHT = 470
+    MARGIN = 12
+    BUTTON_WIDTH = 85
+    BUTTON_HEIGHT = 28
+    PAGE_MARGIN = 10
+    GROUP_GAP = 10
+    GROUP_PAD = 10
+    GROUP_TOP = 74
+    GROUP_BOTTOM_PAD = 10
+    RIGHT_GROUP_WIDTH = 244
+    LIST_GAP = 17
+
+    DERIVED_HINT = (
+        "Enabled .st views own the text on disk; their XML is rehydrated "
+        "internally.")
+    KINDS_HINT = (
+        "These kinds keep their native .xml in the view; every other kind's "
+        "XML moves to the .dump/xml mirror.")
+    LOCKED_LAYOUT_HINT = (
+        "View storage is locked after the first export. To choose another "
+        "folder, start over with a clean sync directory.")
+    LOCKED_MODE_HINT = (
+        "Mode is fixed at initialization. To switch between XML-first and "
+        "text-first, initialize a new empty sync folder.")
+
     def __init__(self, current_settings):
-        self.Text = "cds-text-sync: Project Options"
-        self.Size = Size(680, 880)
-        self.FormBorderStyle = FormBorderStyle.FixedDialog
+        self.Text = "cds-text-sync: Options"
+        self.ClientSize = Size(self.CLIENT_WIDTH, self.CLIENT_HEIGHT)
+        self.MinimumSize = self.Size
+        self.FormBorderStyle = FormBorderStyle.Sizable
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
-        self.MinimizeBox = False
+        self.MinimizeBox = True
+        self.AutoScaleMode = AutoScaleMode.Font
         self.BackColor = Color.FromArgb(250, 250, 250)
         self.result_settings = None
         self.result_pinned = None
@@ -388,6 +430,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
         self._base_settings = dict(current_settings)
         self._general_state = settings_layers_model.general_state()
+        self._tip = ToolTip()
         self.view_root_locked = bool(current_settings.get("_view_root_locked"))
         self.sync_mode_locked = bool(current_settings.get("_sync_mode_locked"))
         self.initial_layout = current_settings.get("layout") or "project-view"
@@ -408,18 +451,23 @@ class ProjectOptionsForm(Form if Form is not None else object):
             )
         self._mode = settings_layers_model.behavior_mode(current_settings, sources)
 
-        # Per-tab control registries, keyed by setting name, plus the state of
-        # each tab's pair of derived-view lists.
+        # Per-tab control registries, keyed by setting name, the state of each
+        # tab's pair of derived-view lists, and the layout rows per page.
         self._general_behavior = {}
         self._project_behavior = {}
         self._general_lists = None
         self._project_lists = None
-
-        self._build_header()
+        self._page_specs = {}
+        self._laying_out = False
 
         self.tabs = TabControl()
-        self.tabs.Location = Point(20, 74)
-        self.tabs.Size = Size(640, 700)
+        self.tabs.Location = Point(self.MARGIN, self.MARGIN)
+        self.tabs.Size = Size(
+            self.CLIENT_WIDTH - self.MARGIN * 2,
+            self.CLIENT_HEIGHT - self.MARGIN * 2 - self.BUTTON_HEIGHT - 6)
+        self.tabs.Anchor = (
+            AnchorStyles.Top | AnchorStyles.Left
+            | AnchorStyles.Right | AnchorStyles.Bottom)
         self.tab_general = TabPage()
         self.tab_general.Text = "General"
         self.tab_general.BackColor = Color.FromArgb(250, 250, 250)
@@ -435,11 +483,21 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self._build_dialog_buttons()
 
         self.tabs.SelectedIndex = 1
+        self.tabs.SelectedIndexChanged += self._on_tab_changed
+        self._sync_bottom_row()
         self._refresh_project_behavior_state()
         self._refresh_view_root_state()
         self._refresh_view_root_summary()
         self._refresh_view_lists(self._project_lists, self._project_text_first())
         self._refresh_view_lists(self._general_lists, self._general_text_first())
+
+        # A tab page's client size is only real once it has been laid out, so
+        # place the groups here and again whenever a page changes size.
+        self.Resize += self._on_resize
+        self.tabs.Resize += self._on_resize
+        self.tab_general.Resize += self._on_resize
+        self.tab_project.Resize += self._on_resize
+        self._layout_all()
 
     # -- small builders ---------------------------------------------------
 
@@ -459,8 +517,37 @@ class ProjectOptionsForm(Form if Form is not None else object):
             label.ForeColor = Color.FromArgb(160, 40, 40)
         return label
 
-    def _make_heading(self, text, x, y, width=360):
-        return self._make_label(text, x, y, width, 20, size=9, bold=True)
+    def _make_group(self, title, x, y):
+        group = GroupBox()
+        group.Text = title
+        group.Location = Point(x, y)
+        group.Size = Size(300, 200)
+        group.BackColor = Color.FromArgb(250, 250, 250)
+        return group
+
+    def _make_check_list(self, x, y, width, height, labels):
+        """A scrolling list of checkboxes for the derived-view options.
+
+        A CheckedListBox scrolls on its own, so a profile with more options
+        than fit stays fully reachable. ``IntegralHeight`` is off because the
+        height comes from the layout, not from whole rows.
+        """
+        box = CheckedListBox()
+        box.Location = Point(x, y)
+        box.Size = Size(width, height)
+        box.CheckOnClick = True
+        box.IntegralHeight = False
+        box.BorderStyle = BorderStyle.FixedSingle
+        box.BackColor = Color.White
+        for label in labels:
+            box.Items.Add(label)
+        return box
+
+    def _set_tip(self, control, text):
+        """Attach *text* as the control's tooltip, if tooltips are available."""
+        if self._tip is None or control is None:
+            return
+        self._tip.SetToolTip(control, text)
 
     def _make_layout_combo(self, value, enabled=True):
         combo = ComboBox()
@@ -514,119 +601,113 @@ class ProjectOptionsForm(Form if Form is not None else object):
             items.append(value)
         combo.SelectedIndex = items.index(value)
 
-    def _build_view_lists(self, parent, y, current_settings, projections, kinds,
-                          strict=False):
+    # -- derived-view lists -----------------------------------------------
+
+    def _projection_text(self, projection):
+        return (projection.get("label") or projection.get("id")
+                or projection.get("kind") or "projection")
+
+    def _build_view_lists(self, parent, x, y, width, height, current_settings,
+                          projections, kinds, strict=False):
         """Build the tab's pair of derived-view lists and return their state.
 
-        The two panels share a spot: only the one matching the tab's sync mode
-        is shown, the other keeps its checkboxes (and their values) hidden.
+        The two lists share a spot: only the one matching the tab's sync mode
+        is shown, the other keeps its checked items (and their values) hidden.
         ``strict`` seeds a projection box from the given value alone (the
         General tab, where a built-in default must not look like a choice);
-        otherwise the profile's own default applies, as the project tab has
-        always done.
+        otherwise the profile's own ``default_enabled`` applies, as the project
+        tab has always done.
         """
+        list_y = y + self.LIST_GAP
         state = {}
-        state["label"] = self._make_label("Derived views", 16, y, 120, 20)
+        state["label"] = self._make_label("Derived views", x, y, width, 15)
         parent.Controls.Add(state["label"])
+        state["list_y"] = list_y
+        state["list_height"] = height
 
-        projection_panel = Panel()
-        projection_panel.Location = Point(140, y - 4)
-        projection_panel.Size = Size(420, 118)
-        projection_panel.BackColor = Color.White
-        parent.Controls.Add(projection_panel)
-        state["projection_panel"] = projection_panel
-        state["projection_controls"] = []
-        options = current_settings.get("_available_projections") or []
-        if not options:
-            projection_panel.Controls.Add(self._make_label(
-                "No optional projections in selected profile.",
-                8, 8, 380, 20, size=8, grey=True))
+        options = list(current_settings.get("_available_projections") or [])
+        state["projection_options"] = options
+        state["projection_box"] = self._make_check_list(
+            x, list_y, width, height,
+            [self._projection_text(projection) for projection in options])
+        parent.Controls.Add(state["projection_box"])
+        if strict:
+            # No ``default_enabled`` fallback: a projection the code enables by
+            # default must not look like a choice the user made.
+            for position, projection in enumerate(options):
+                state["projection_box"].SetItemChecked(
+                    position,
+                    settings_layers_model.projection_enabled(projections, projection))
         else:
-            offset = 6
-            for projection in options:
-                checkbox = CheckBox()
-                checkbox.Text = (
-                    projection.get("label")
-                    or projection.get("id")
-                    or projection.get("kind")
-                    or "projection"
-                )
-                checkbox.Location = Point(8, offset)
-                checkbox.Size = Size(390, 22)
-                if strict:
-                    checkbox.Checked = settings_layers_model.projection_enabled(
-                        projections, projection
-                    )
-                else:
-                    checkbox.Checked = self._projection_enabled(
-                        {"projections": projections}, projection
-                    )
-                checkbox.Tag = projection
-                projection_panel.Controls.Add(checkbox)
-                state["projection_controls"].append(checkbox)
-                offset += 24
+            current = {"projections": projections}
+            for position, projection in enumerate(options):
+                state["projection_box"].SetItemChecked(
+                    position, self._projection_enabled(current, projection))
+        self._set_tip(state["projection_box"], self.DERIVED_HINT)
 
-        xml_panel = Panel()
-        xml_panel.Location = Point(140, y - 4)
-        xml_panel.Size = Size(420, 118)
-        xml_panel.AutoScroll = True
-        xml_panel.BackColor = Color.White
-        parent.Controls.Add(xml_panel)
-        state["xml_panel"] = xml_panel
-        state["xml_controls"] = []
+        kind_options = [
+            str(kind) for kind in
+            (current_settings.get("_available_xml_in_view_kinds") or [])
+        ]
+        state["xml_options"] = kind_options
+        state["xml_box"] = self._make_check_list(x, list_y, width, height, kind_options)
+        parent.Controls.Add(state["xml_box"])
         selected = [str(kind).strip().lower() for kind in (kinds or [])]
-        kind_options = current_settings.get("_available_xml_in_view_kinds") or []
-        if not kind_options:
-            xml_panel.Controls.Add(self._make_label(
-                "No XML-only kinds in selected profile.",
-                8, 8, 380, 20, size=8, grey=True))
-        else:
-            offset = 6
-            for kind in kind_options:
-                checkbox = CheckBox()
-                checkbox.Text = kind
-                checkbox.Location = Point(8, offset)
-                checkbox.Size = Size(390, 22)
-                checkbox.Checked = str(kind).strip().lower() in selected
-                checkbox.Tag = kind
-                xml_panel.Controls.Add(checkbox)
-                state["xml_controls"].append(checkbox)
-                offset += 24
+        for position, kind in enumerate(kind_options):
+            state["xml_box"].SetItemChecked(
+                position, str(kind).strip().lower() in selected)
+        self._set_tip(state["xml_box"], self.KINDS_HINT)
 
-        state["hint"] = self._make_label("", 140, y + 118, 420, 20, size=8, grey=True)
-        parent.Controls.Add(state["hint"])
+        state["projection_empty"] = self._make_label(
+            "No optional projections in this profile.",
+            x + 6, list_y + 4, width - 12, 16, size=8, grey=True)
+        parent.Controls.Add(state["projection_empty"])
+        state["xml_empty"] = self._make_label(
+            "No XML-only kinds in this profile.",
+            x + 6, list_y + 4, width - 12, 16, size=8, grey=True)
+        parent.Controls.Add(state["xml_empty"])
         return state
 
     def _refresh_view_lists(self, state, text_first):
+        """Show the list that matches the tab's sync mode.
+
+        XML-first mode shows the derived-view projections; text-first mode
+        shows which kinds keep their native XML in view. The hidden list keeps
+        its checked items, so switching modes back and forth loses nothing.
+        """
         if not state:
             return
-        state["projection_panel"].Visible = not text_first
-        state["xml_panel"].Visible = text_first
+        text_first = bool(text_first)
+        has_projections = bool(state["projection_options"])
+        has_kinds = bool(state["xml_options"])
+        state["projection_box"].Visible = (not text_first) and has_projections
+        state["projection_empty"].Visible = (not text_first) and not has_projections
+        state["xml_box"].Visible = text_first and has_kinds
+        state["xml_empty"].Visible = text_first and not has_kinds
         if text_first:
             state["label"].Text = "Keep XML in view"
-            state["hint"].Text = (
-                "These kinds keep their native .xml in the view; every other "
-                "kind's XML moves to the .dump/xml mirror."
-            )
+            self._set_tip(state["label"], self.KINDS_HINT)
         else:
             state["label"].Text = "Derived views"
-            state["hint"].Text = (
-                "Enabled .st views own text on disk; XML is rehydrated internally."
-            )
+            self._set_tip(state["label"], self.DERIVED_HINT)
 
     def _apply_view_values(self, state, values):
+        if not state:
+            return
         projections = values.get("projections")
         if isinstance(projections, dict):
-            for checkbox in state["projection_controls"]:
-                if checkbox.Tag:
-                    checkbox.Checked = settings_layers_model.projection_enabled(
-                        projections, checkbox.Tag
-                    )
+            box = state["projection_box"]
+            for position, projection in enumerate(state["projection_options"]):
+                box.SetItemChecked(
+                    position,
+                    settings_layers_model.projection_enabled(projections, projection))
         kinds = values.get("xml_in_view_kinds")
         if isinstance(kinds, (list, tuple)):
             wanted = [str(kind).strip().lower() for kind in kinds]
-            for checkbox in state["xml_controls"]:
-                checkbox.Checked = str(checkbox.Tag).strip().lower() in wanted
+            box = state["xml_box"]
+            for position in range(box.Items.Count):
+                box.SetItemChecked(
+                    position, str(box.Items[position]).strip().lower() in wanted)
 
     def _projection_id(self, projection):
         return projection.get("id") or projection.get("kind")
@@ -639,34 +720,45 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "import_safe": bool(projection.get("import_safe", False)),
         }
 
-    def _selected_projections(self, controls):
+    def _selected_projections(self, state):
+        """The checked projections as the ``{id: entry}`` mapping to store."""
+        if not state:
+            return {}
         selected = {}
-        for checkbox in controls:
-            if not checkbox.Checked or not checkbox.Tag:
+        box = state["projection_box"]
+        for position, projection in enumerate(state["projection_options"]):
+            if not box.GetItemChecked(position):
                 continue
-            projection_id = self._projection_id(checkbox.Tag)
-            if not projection_id:
-                continue
-            selected[projection_id] = self._projection_entry(checkbox.Tag)
+            projection_id = self._projection_id(projection)
+            if projection_id:
+                selected[projection_id] = self._projection_entry(projection)
         return selected
 
-    def _checked_projection_ids(self, controls):
+    def _checked_projection_ids(self, state):
+        if not state:
+            return []
         checked = []
-        for checkbox in controls:
-            if checkbox.Checked and checkbox.Tag:
-                projection_id = self._projection_id(checkbox.Tag)
-                if projection_id and projection_id not in checked:
-                    checked.append(projection_id)
+        box = state["projection_box"]
+        for position, projection in enumerate(state["projection_options"]):
+            if not box.GetItemChecked(position):
+                continue
+            projection_id = self._projection_id(projection)
+            if projection_id and projection_id not in checked:
+                checked.append(projection_id)
         return checked
 
-    def _selected_kinds(self, controls):
+    def _selected_kinds(self, state):
+        if not state:
+            return []
         selected = []
-        for checkbox in controls:
-            if checkbox.Checked and checkbox.Tag:
-                selected.append(str(checkbox.Tag).strip().lower())
+        box = state["xml_box"]
+        for position in range(box.Items.Count):
+            if box.GetItemChecked(position):
+                selected.append(str(box.Items[position]).strip().lower())
         return selected
 
     def _projection_enabled(self, current_settings, projection):
+        """The project tab's older rule, which honours ``default_enabled``."""
         current = current_settings.get("projections") or {}
         projection_id = projection.get("id")
         kind = projection.get("kind")
@@ -682,35 +774,45 @@ class ProjectOptionsForm(Form if Form is not None else object):
     # -- behavior controls ------------------------------------------------
 
     def _build_behavior_controls(self, parent, y, controls, mirror):
-        """Build the five behavior controls into *parent* at *y*.
+        """Build the five behavior controls into *parent*, starting at *y*.
 
-        ``mirror`` wires the General tab's controls, so an edit there updates
-        the greyed Project controls live while the radio says "Same as General".
+        The labels are short because the rows are stacked; the longer
+        explanation is a tooltip. ``mirror`` wires the General tab's controls,
+        so an edit there updates the greyed Project controls live while the
+        radio says "Same as General".
         """
         backup = CheckBox()
         backup.Text = "Backup before import"
-        backup.Location = Point(140, y)
-        backup.Size = Size(300, 22)
+        backup.Location = Point(self.GROUP_PAD, y)
+        backup.Size = Size(200, 20)
+        self._set_tip(
+            backup, "Keep a copy of the views before an import overwrites them.")
         parent.Controls.Add(backup)
         controls["pre_import_backup_enabled"] = backup
 
-        parent.Controls.Add(self._make_label("Max backups", 140, y + 28, 110, 20))
+        parent.Controls.Add(self._make_label(
+            "Max backups", self.GROUP_PAD, y + 27, 95, 15))
         retention = TextBox()
-        retention.Location = Point(254, y + 25)
+        retention.Location = Point(108, y + 24)
         retention.Size = Size(50, 22)
+        self._set_tip(retention, "How many backup copies to keep before import.")
         parent.Controls.Add(retention)
         controls["backup_retention_count"] = retention
 
         entries = [
-            ("verbose_logging", "Save detailed engine logs in .dump", y + 54),
-            ("advanced_debug", "Advanced debug: also log IDE script messages", y + 80),
-            ("show_completion_popup", "Show completion summary after import/export", y + 106),
+            ("verbose_logging", "Detailed engine logs",
+             "Save detailed engine logs in .dump", y + 52),
+            ("advanced_debug", "Advanced debug",
+             "Also log IDE script messages", y + 76),
+            ("show_completion_popup", "Completion summary",
+             "Show completion summary after import/export", y + 100),
         ]
-        for name, text, top in entries:
+        for name, text, tip, top in entries:
             checkbox = CheckBox()
             checkbox.Text = text
-            checkbox.Location = Point(140, top)
-            checkbox.Size = Size(430, 22)
+            checkbox.Location = Point(self.GROUP_PAD, top)
+            checkbox.Size = Size(200, 20)
+            self._set_tip(checkbox, tip)
             parent.Controls.Add(checkbox)
             controls[name] = checkbox
 
@@ -719,8 +821,19 @@ class ProjectOptionsForm(Form if Form is not None else object):
                 "pre_import_backup_enabled")
             retention.TextChanged += self._make_general_behavior_handler(
                 "backup_retention_count")
-            for name, _text, _top in entries:
+            for name, _text, _tip, _top in entries:
                 controls[name].CheckedChanged += self._make_general_behavior_handler(name)
+
+    def _behavior_rows(self, controls, y):
+        """The layout rows for one behavior block, starting at *y*."""
+        rows = [
+            (controls["pre_import_backup_enabled"], self.GROUP_PAD, y, "stretch", 0),
+            (controls["backup_retention_count"], 108, y + 24, "stretch", 118),
+            (controls["verbose_logging"], self.GROUP_PAD, y + 52, "stretch", 0),
+            (controls["advanced_debug"], self.GROUP_PAD, y + 76, "stretch", 0),
+            (controls["show_completion_popup"], self.GROUP_PAD, y + 100, "stretch", 0),
+        ]
+        return rows
 
     def _make_general_behavior_handler(self, name):
         def _handler(sender, event):
@@ -794,73 +907,60 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
     # -- tabs -------------------------------------------------------------
 
-    def _build_header(self):
-        title = Label()
-        title.Text = "Sync Options"
-        title.Font = Font("Segoe UI", 14, FontStyle.Bold)
-        title.Location = Point(20, 16)
-        title.Size = Size(500, 28)
-        self.Controls.Add(title)
-
-        subtitle = Label()
-        subtitle.Text = (
-            "General applies to every project on this computer; Project is saved "
-            "to this project's cds-text-sync.json."
-        )
-        subtitle.Font = Font("Segoe UI", 9)
-        subtitle.ForeColor = Color.FromArgb(90, 90, 90)
-        subtitle.Location = Point(22, 46)
-        subtitle.Size = Size(620, 22)
-        self.Controls.Add(subtitle)
-
     def _build_general_tab(self, current_settings):
         page = self.tab_general
         path, rows, status, error = self._general_state
         values = dict((row["name"], row["value"]) for row in rows)
 
         page.Controls.Add(self._make_label(
-            "All projects on this computer", 16, 12, 520, 26, size=12, bold=True))
-        page.Controls.Add(self._make_label(path, 18, 40, 590, 18, size=8, grey=True))
+            "All projects on this computer", 10, 8, 420, 22, size=12, bold=True))
+        page.Controls.Add(self._make_label(path, 12, 32, 570, 16, size=8, grey=True))
         if status == "invalid" and error:
-            page.Controls.Add(self._make_label(
+            problem = self._make_label(
                 "Defaults file could not be read: " + error,
-                18, 58, 590, 34, size=8, red=True))
+                12, 50, 570, 16, size=8, red=True)
+            problem.AutoEllipsis = True
+            self._set_tip(problem, error)
+            page.Controls.Add(problem)
 
-        page.Controls.Add(self._make_heading("New projects start with", 16, 94))
+        left = self._make_group("New projects start with", self.PAGE_MARGIN, self.GROUP_TOP)
+        right = self._make_group("Behavior", 0, self.GROUP_TOP)
+        page.Controls.Add(left)
+        page.Controls.Add(right)
 
-        page.Controls.Add(self._make_label("View storage", 16, 122, 120, 20))
+        left.Controls.Add(self._make_label("View storage", self.GROUP_PAD, 18, 200, 15))
         self.cmb_general_layout = self._make_layout_combo(values.get("layout"))
-        self.cmb_general_layout.Location = Point(140, 119)
-        page.Controls.Add(self.cmb_general_layout)
-        page.Controls.Add(self._make_label(
-            "Choose where generated views live by default for new projects.",
-            140, 145, 430, 18, size=8, grey=True))
+        self.cmb_general_layout.Location = Point(self.GROUP_PAD, 35)
+        self._set_tip(
+            self.cmb_general_layout,
+            "Choose where generated views live by default for new projects.")
+        left.Controls.Add(self.cmb_general_layout)
 
-        page.Controls.Add(self._make_label("Profile", 16, 172, 120, 20))
+        left.Controls.Add(self._make_label("Profile", self.GROUP_PAD, 67, 200, 15))
         self.cmb_general_profile = self._make_profile_combo(
             values.get("profile") or "default")
-        self.cmb_general_profile.Location = Point(140, 169)
-        page.Controls.Add(self.cmb_general_profile)
+        self.cmb_general_profile.Location = Point(self.GROUP_PAD, 84)
+        self._set_tip(
+            self.cmb_general_profile, "The profile new projects start with.")
+        left.Controls.Add(self.cmb_general_profile)
 
-        page.Controls.Add(self._make_label("Sync mode", 16, 204, 120, 20))
         self.chk_general_text_first = CheckBox()
-        self.chk_general_text_first.Text = (
-            "Text-first mode (.st files are the source of truth)")
-        self.chk_general_text_first.Location = Point(140, 200)
-        self.chk_general_text_first.Size = Size(430, 22)
+        self.chk_general_text_first.Text = "Text-first mode"
+        self.chk_general_text_first.Location = Point(self.GROUP_PAD, 110)
+        self.chk_general_text_first.Size = Size(200, 20)
         self.chk_general_text_first.Checked = values.get("sync_mode") == "text_first"
         self.chk_general_text_first.CheckedChanged += self._on_general_text_first_changed
-        page.Controls.Add(self.chk_general_text_first)
-        page.Controls.Add(self._make_label(
-            "Text-first hides native XML in .dump/xml and ST files drive import.",
-            140, 224, 440, 18, size=8, grey=True))
+        self._set_tip(
+            self.chk_general_text_first,
+            "Text-first hides native XML in .dump/xml and the .st files drive "
+            "import.")
+        left.Controls.Add(self.chk_general_text_first)
 
         self._general_lists = self._build_view_lists(
-            page, 258, current_settings,
+            left, self.GROUP_PAD, 136, 200, 100, current_settings,
             values.get("projections"), values.get("xml_in_view_kinds"), strict=True)
 
-        page.Controls.Add(self._make_heading("Behavior", 16, 402))
-        self._build_behavior_controls(page, 428, self._general_behavior, True)
+        self._build_behavior_controls(right, 18, self._general_behavior, True)
         self._apply_behavior_values(self._general_behavior, values)
 
         # What the tab opened with: the effective values and the control state
@@ -868,12 +968,24 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self._general_originals = values
         self._general_initials = self._read_general_controls()
 
-        btn_reset = Button()
-        btn_reset.Text = "Reset to built-in"
-        btn_reset.Location = Point(16, 568)
-        btn_reset.Size = Size(150, 28)
-        btn_reset.Click += self._on_reset_general
-        page.Controls.Add(btn_reset)
+        list_y = self._general_lists["list_y"]
+        self._page_specs[page] = {
+            "left": left,
+            "right": right,
+            "left_rows": [
+                (self.cmb_general_layout, self.GROUP_PAD, 35, "stretch", 0),
+                (self.cmb_general_profile, self.GROUP_PAD, 84, "stretch", 0),
+                (self.chk_general_text_first, self.GROUP_PAD, 110, "stretch", 0),
+                (self._general_lists["projection_box"], self.GROUP_PAD, list_y,
+                 "fill", 0),
+                (self._general_lists["xml_box"], self.GROUP_PAD, list_y, "fill", 0),
+                (self._general_lists["projection_empty"], self.GROUP_PAD + 6,
+                 list_y + 4, "stretch", 12),
+                (self._general_lists["xml_empty"], self.GROUP_PAD + 6,
+                 list_y + 4, "stretch", 12),
+            ],
+            "right_rows": self._behavior_rows(self._general_behavior, 18),
+        }
 
     def _build_project_tab(self, current_settings):
         page = self.tab_project
@@ -881,128 +993,299 @@ class ProjectOptionsForm(Form if Form is not None else object):
         project_path = current_settings.get("_settings_path") or "cds-text-sync.json"
 
         page.Controls.Add(self._make_label(
-            "This project: " + str(project_name), 16, 12, 520, 26,
-            size=12, bold=True))
+            str(project_name), 10, 8, 420, 22, size=12, bold=True))
         page.Controls.Add(self._make_label(
-            project_path + "  (in git)", 18, 40, 590, 18, size=8, grey=True))
+            project_path + "  (in git)", 12, 32, 570, 16, size=8, grey=True))
 
-        page.Controls.Add(self._make_heading("Format", 16, 72))
+        left = self._make_group("Format", self.PAGE_MARGIN, self.GROUP_TOP)
+        right = self._make_group("Behavior", 0, self.GROUP_TOP)
+        page.Controls.Add(left)
+        page.Controls.Add(right)
 
-        page.Controls.Add(self._make_label("View storage", 16, 100, 120, 20))
+        left.Controls.Add(self._make_label("View storage", self.GROUP_PAD, 18, 200, 15))
         self.cmb_layout = self._make_layout_combo(
             current_settings.get("layout"), enabled=not self.view_root_locked)
-        self.cmb_layout.Location = Point(140, 97)
+        self.cmb_layout.Location = Point(self.GROUP_PAD, 35)
         self.cmb_layout.SelectedIndexChanged += self._on_layout_changed
-        page.Controls.Add(self.cmb_layout)
         if self.view_root_locked:
-            layout_help = "Folder choice is locked after first export."
+            self._set_tip(self.cmb_layout, self.LOCKED_LAYOUT_HINT)
         else:
-            layout_help = "Choose where generated views live by default."
-        page.Controls.Add(self._make_label(
-            layout_help, 140, 123, 430, 18, size=8, grey=True))
+            self._set_tip(
+                self.cmb_layout, "Choose where generated views live by default.")
+        left.Controls.Add(self.cmb_layout)
+
+        self.lbl_layout_lock = self._make_label(
+            "(locked)", 0, 37, 56, 18, size=8, grey=True)
+        self.lbl_layout_lock.Visible = self.view_root_locked
+        self._set_tip(self.lbl_layout_lock, self.LOCKED_LAYOUT_HINT)
+        left.Controls.Add(self.lbl_layout_lock)
 
         self.chk_custom_view_root = CheckBox()
-        self.chk_custom_view_root.Text = "Use custom view root"
-        self.chk_custom_view_root.Location = Point(140, 148)
-        self.chk_custom_view_root.Size = Size(200, 22)
+        self.chk_custom_view_root.Text = "Custom root"
+        self.chk_custom_view_root.Location = Point(self.GROUP_PAD, 61)
+        self.chk_custom_view_root.Size = Size(130, 20)
         self.chk_custom_view_root.Checked = bool(current_settings.get("view_root"))
         self.chk_custom_view_root.CheckedChanged += self._on_custom_view_root_changed
         self.chk_custom_view_root.Enabled = not self.view_root_locked
-        page.Controls.Add(self.chk_custom_view_root)
+        left.Controls.Add(self.chk_custom_view_root)
 
         self.txt_view_root = TextBox()
-        self.txt_view_root.Location = Point(348, 149)
-        self.txt_view_root.Size = Size(220, 22)
+        self.txt_view_root.Location = Point(146, 62)
+        self.txt_view_root.Size = Size(160, 22)
         self.txt_view_root.Text = current_settings.get("view_root") or ""
         self.txt_view_root.Enabled = (
             bool(current_settings.get("view_root")) and not self.view_root_locked
         )
         self.txt_view_root.TextChanged += self._on_view_root_changed
-        page.Controls.Add(self.txt_view_root)
+        left.Controls.Add(self.txt_view_root)
 
-        self.lbl_view_root_mode = self._make_label(
-            "", 140, 174, 430, 34, size=8, grey=True)
-        page.Controls.Add(self.lbl_view_root_mode)
-
-        page.Controls.Add(self._make_label("Profile", 16, 218, 120, 20))
+        left.Controls.Add(self._make_label("Profile", self.GROUP_PAD, 90, 200, 15))
         self.cmb_profile = self._make_profile_combo(
             current_settings.get("profile") or "default")
-        self.cmb_profile.Location = Point(140, 215)
-        page.Controls.Add(self.cmb_profile)
+        self.cmb_profile.Location = Point(self.GROUP_PAD, 107)
+        self._set_tip(self.cmb_profile, "The profile this project is synced with.")
+        left.Controls.Add(self.cmb_profile)
 
-        page.Controls.Add(self._make_label("Sync mode", 16, 248, 120, 20))
         self.chk_text_first = CheckBox()
-        self.chk_text_first.Text = "Text-first mode (.st files are the source of truth)"
-        self.chk_text_first.Location = Point(140, 244)
-        self.chk_text_first.Size = Size(430, 22)
+        self.chk_text_first.Text = "Text-first mode"
+        self.chk_text_first.Location = Point(self.GROUP_PAD, 133)
+        self.chk_text_first.Size = Size(200, 20)
         self.chk_text_first.Checked = self.initial_sync_mode == "text_first"
         self.chk_text_first.Enabled = not self.sync_mode_locked
         self.chk_text_first.CheckedChanged += self._on_text_first_changed
-        page.Controls.Add(self.chk_text_first)
         if self.sync_mode_locked:
-            sync_help = (
-                "Mode is fixed at initialization. To switch, initialize a new "
-                "empty sync folder."
-            )
+            self._set_tip(self.chk_text_first, self.LOCKED_MODE_HINT)
         else:
-            sync_help = (
-                "Choose before the first export. Text-first hides native XML in "
-                ".dump/xml and ST files drive import."
-            )
-        page.Controls.Add(self._make_label(
-            sync_help, 140, 268, 440, 30, size=8, grey=True))
+            self._set_tip(
+                self.chk_text_first,
+                "Text-first hides native XML in .dump/xml and the .st files "
+                "drive import.")
+        left.Controls.Add(self.chk_text_first)
+
+        self.lbl_sync_mode_lock = self._make_label(
+            "(locked)", 0, 135, 56, 18, size=8, grey=True)
+        self.lbl_sync_mode_lock.Visible = self.sync_mode_locked
+        self._set_tip(self.lbl_sync_mode_lock, self.LOCKED_MODE_HINT)
+        left.Controls.Add(self.lbl_sync_mode_lock)
 
         self._project_lists = self._build_view_lists(
-            page, 308, current_settings,
+            left, self.GROUP_PAD, 159, 200, 100, current_settings,
             current_settings.get("projections"),
             current_settings.get("xml_in_view_kinds"))
 
-        page.Controls.Add(self._make_heading("Behavior", 16, 452))
-
         self.rb_same = RadioButton()
         self.rb_same.Text = "Same as General"
-        self.rb_same.Location = Point(140, 478)
-        self.rb_same.Size = Size(180, 22)
+        self.rb_same.Location = Point(self.GROUP_PAD, 18)
+        self.rb_same.Size = Size(200, 20)
         self.rb_same.Checked = self._mode == settings_layers_model.BEHAVIOR_MODE_SAME
         self.rb_same.CheckedChanged += self._on_behavior_mode_changed
-        page.Controls.Add(self.rb_same)
+        self._set_tip(
+            self.rb_same,
+            "Use the values from the General tab; this project stores none of "
+            "them.")
+        right.Controls.Add(self.rb_same)
 
         self.rb_own = RadioButton()
         self.rb_own.Text = "Own for this project"
-        self.rb_own.Location = Point(330, 478)
-        self.rb_own.Size = Size(200, 22)
+        self.rb_own.Location = Point(self.GROUP_PAD, 40)
+        self.rb_own.Size = Size(200, 20)
         self.rb_own.Checked = self._mode == settings_layers_model.BEHAVIOR_MODE_OWN
         self.rb_own.CheckedChanged += self._on_behavior_mode_changed
-        page.Controls.Add(self.rb_own)
+        self._set_tip(
+            self.rb_own,
+            "Store all five values in this project's cds-text-sync.json.")
+        right.Controls.Add(self.rb_own)
 
-        self._build_behavior_controls(page, 506, self._project_behavior, False)
+        self.sep_behavior = Panel()
+        self.sep_behavior.Location = Point(self.GROUP_PAD, 68)
+        self.sep_behavior.Size = Size(200, 1)
+        self.sep_behavior.BackColor = Color.FromArgb(200, 200, 200)
+        right.Controls.Add(self.sep_behavior)
+
+        self._build_behavior_controls(right, 78, self._project_behavior, False)
         for name in settings_layers_model.behavior_names():
             self._write_behavior(
                 self._project_behavior, name, current_settings.get(name))
 
-        self.chk_gitignore = CheckBox()
-        self.chk_gitignore.Text = "Add recommended .gitignore entries"
-        self.chk_gitignore.Location = Point(140, 642)
-        self.chk_gitignore.Size = Size(430, 22)
-        self.chk_gitignore.Checked = bool(current_settings.get("_ensure_gitignore", False))
-        page.Controls.Add(self.chk_gitignore)
+        list_y = self._project_lists["list_y"]
+        self._page_specs[page] = {
+            "left": left,
+            "right": right,
+            "left_rows": [
+                (self.cmb_layout, self.GROUP_PAD, 35, "stretch", 66),
+                (self.lbl_layout_lock, 0, 37, "right", 0),
+                (self.txt_view_root, 146, 62, "stretch", 0),
+                (self.cmb_profile, self.GROUP_PAD, 107, "stretch", 0),
+                (self.chk_text_first, self.GROUP_PAD, 133, "stretch", 0),
+                (self.lbl_sync_mode_lock, 0, 135, "right", 0),
+                (self._project_lists["projection_box"], self.GROUP_PAD, list_y,
+                 "fill", 0),
+                (self._project_lists["xml_box"], self.GROUP_PAD, list_y, "fill", 0),
+                (self._project_lists["projection_empty"], self.GROUP_PAD + 6,
+                 list_y + 4, "stretch", 12),
+                (self._project_lists["xml_empty"], self.GROUP_PAD + 6,
+                 list_y + 4, "stretch", 12),
+            ],
+            "right_rows": [
+                (self.rb_same, self.GROUP_PAD, 18, "stretch", 0),
+                (self.rb_own, self.GROUP_PAD, 40, "stretch", 0),
+                (self.sep_behavior, self.GROUP_PAD, 68, "stretch", 0),
+            ] + self._behavior_rows(self._project_behavior, 78),
+        }
 
     def _build_dialog_buttons(self):
+        row = self.CLIENT_HEIGHT - self.MARGIN - self.BUTTON_HEIGHT
+
+        self.chk_gitignore = CheckBox()
+        self.chk_gitignore.Text = "Add recommended .gitignore entries"
+        self.chk_gitignore.Location = Point(self.MARGIN, row + 3)
+        self.chk_gitignore.Size = Size(320, 22)
+        self.chk_gitignore.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+        self.chk_gitignore.Checked = bool(
+            self._base_settings.get("_ensure_gitignore", False))
+        self._set_tip(
+            self.chk_gitignore,
+            "Write the recommended .dump and derived-view entries into this "
+            "project's .gitignore.")
+        self.Controls.Add(self.chk_gitignore)
+
+        self.btn_reset = Button()
+        self.btn_reset.Text = "Reset to built-in"
+        self.btn_reset.Location = Point(self.MARGIN, row)
+        self.btn_reset.Size = Size(140, self.BUTTON_HEIGHT)
+        self.btn_reset.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+        self.btn_reset.Click += self._on_reset_general
+        self._set_tip(
+            self.btn_reset,
+            "Fill the General controls with the built-in defaults. Nothing is "
+            "saved until you press Save.")
+        self.Controls.Add(self.btn_reset)
+
+        cancel_left = self.CLIENT_WIDTH - self.MARGIN - self.BUTTON_WIDTH
+        btn_cancel = Button()
+        btn_cancel.Text = "Cancel"
+        btn_cancel.Location = Point(cancel_left, row)
+        btn_cancel.Size = Size(self.BUTTON_WIDTH, self.BUTTON_HEIGHT)
+        btn_cancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
+        btn_cancel.DialogResult = DialogResult.Cancel
+        self.Controls.Add(btn_cancel)
+        self.CancelButton = btn_cancel
+
         btn_ok = Button()
         btn_ok.Text = "Save"
-        btn_ok.Location = Point(444, 790)
-        btn_ok.Size = Size(85, 28)
+        btn_ok.Location = Point(cancel_left - self.BUTTON_WIDTH - 8, row)
+        btn_ok.Size = Size(self.BUTTON_WIDTH, self.BUTTON_HEIGHT)
+        btn_ok.Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         btn_ok.Click += self._on_save
         self.Controls.Add(btn_ok)
         self.AcceptButton = btn_ok
 
-        btn_cancel = Button()
-        btn_cancel.Text = "Cancel"
-        btn_cancel.Location = Point(536, 790)
-        btn_cancel.Size = Size(85, 28)
-        btn_cancel.DialogResult = DialogResult.Cancel
-        self.Controls.Add(btn_cancel)
-        self.CancelButton = btn_cancel
+    def _sync_bottom_row(self):
+        """Show the bottom-row control that belongs to the selected tab."""
+        on_project = self.tabs.SelectedIndex == 1
+        self.chk_gitignore.Visible = on_project
+        self.btn_reset.Visible = not on_project
+
+    def _on_tab_changed(self, sender, event):
+        self._sync_bottom_row()
+        if self.tabs.SelectedIndex == 1:
+            self._layout_page(self.tab_project)
+        else:
+            self._layout_page(self.tab_general)
+
+    # -- layout -----------------------------------------------------------
+
+    def _on_resize(self, sender, event):
+        """Re-run the page layout. A resize reaches this from the form, the
+        tab control and each page; the first one makes the pages take their new
+        size, the rest then see it."""
+        if self._laying_out:
+            return
+        self._laying_out = True
+        try:
+            self.tabs.PerformLayout()
+            self._layout_all()
+        finally:
+            self._laying_out = False
+
+    def _layout_all(self):
+        self._layout_page(getattr(self, "tab_general", None))
+        self._layout_page(getattr(self, "tab_project", None))
+
+    def _layout_page(self, page):
+        """Size the tab's two groups and the controls that follow them.
+
+        The column widths are computed rather than anchored, so widening the
+        dialog gives the extra room to the format group and its derived-view
+        list instead of leaving a gap in the middle. Called once at
+        construction and again on every resize, because a tab page's client
+        size is only real after it has been laid out at least once.
+        """
+        if page is None:
+            return
+        spec = self._page_specs.get(page)
+        if spec is None:
+            return
+        width = int(page.ClientSize.Width)
+        height = int(page.ClientSize.Height)
+        if width < 120 or height < 120:
+            # A tab page keeps its default size until the control is laid out,
+            # which happens when the dialog is shown. Fall back to the tab
+            # control's own page area so the first pass is already right.
+            rect = self.tabs.DisplayRectangle
+            if int(rect.Width) > 120 and int(rect.Height) > 120:
+                width = int(rect.Width)
+                height = int(rect.Height)
+        right_width = self.RIGHT_GROUP_WIDTH
+        left_width = width - self.PAGE_MARGIN * 2 - self.GROUP_GAP - right_width
+        if left_width < 200:
+            # Too narrow for the fixed split: keep the behavior block usable
+            # and let the format group take what is left.
+            right_width = max(150, width - self.PAGE_MARGIN * 2 - self.GROUP_GAP - 200)
+            left_width = width - self.PAGE_MARGIN * 2 - self.GROUP_GAP - right_width
+        group_height = height - self.GROUP_TOP - self.PAGE_MARGIN
+        if group_height < 80:
+            group_height = 80
+
+        left = spec["left"]
+        left.Location = Point(self.PAGE_MARGIN, self.GROUP_TOP)
+        left.Size = Size(left_width, group_height)
+        right = spec["right"]
+        right.Location = Point(
+            self.PAGE_MARGIN + left_width + self.GROUP_GAP, self.GROUP_TOP)
+        right.Size = Size(right_width, group_height)
+
+        self._layout_rows(left, spec["left_rows"])
+        self._layout_rows(right, spec["right_rows"])
+
+    def _layout_rows(self, group, rows):
+        """Place one group's rows: stretch them across, or fill to the bottom.
+
+        Each row is ``(control, x, y, mode, reserve)``. ``stretch`` keeps the
+        height and takes the width; ``fill`` also takes the height down to the
+        group's bottom padding; ``right`` pins the control to the right edge
+        with its current width, which is how the "(locked)" markers sit beside
+        the controls they belong to.
+        """
+        inner_width = int(group.ClientSize.Width)
+        inner_height = int(group.ClientSize.Height)
+        bottom = inner_height - self.GROUP_BOTTOM_PAD
+        for control, x, y, mode, reserve in rows:
+            if mode == "right":
+                control.Location = Point(
+                    inner_width - control.Size.Width - self.GROUP_PAD, y)
+                continue
+            width = inner_width - x - reserve
+            if width < 20:
+                width = 20
+            if mode == "fill":
+                height = bottom - y
+                if height < 20:
+                    height = 20
+                control.Size = Size(width, height)
+            else:
+                control.Size = Size(width, control.Size.Height)
+            control.Location = Point(x, y)
 
     # -- view root and sync mode -----------------------------------------
 
@@ -1013,33 +1296,36 @@ class ProjectOptionsForm(Form if Form is not None else object):
             )
 
     def _refresh_view_root_summary(self):
-        if self.lbl_view_root_mode is None:
+        """Keep the view-root tooltips in step with the current choice.
+
+        The active path used to be a grey line under the field; it is a tooltip
+        now, so the dialog stays two rows shorter.
+        """
+        if self.txt_view_root is None or self.chk_custom_view_root is None:
             return
         if self.view_root_locked:
             locked_value = self.initial_view_root
             if locked_value:
-                self.lbl_view_root_mode.Text = (
-                    "Locked path: custom view root = {0}".format(locked_value))
+                text = "Locked path: custom view root = {0}".format(locked_value)
             elif self.initial_layout == "root-view":
-                self.lbl_view_root_mode.Text = "Locked path: sync root"
+                text = "Locked path: sync root"
             else:
-                self.lbl_view_root_mode.Text = "Locked path: project-view/"
+                text = "Locked path: project-view/"
+            self._set_tip(self.txt_view_root, text)
+            self._set_tip(self.chk_custom_view_root, self.LOCKED_LAYOUT_HINT)
             return
         layout_value = self._selected_layout(self.cmb_layout)
-        if layout_value == "project-view":
-            default_text = "Default: project-view/"
-        else:
-            default_text = "Default: sync root"
-
         custom_path = self.txt_view_root.Text.strip()
         if self.chk_custom_view_root.Checked and custom_path:
-            self.lbl_view_root_mode.Text = (
-                "Active path: custom view root = {0}".format(custom_path))
+            text = "Active path: custom view root = {0}".format(custom_path)
         elif self.chk_custom_view_root.Checked:
-            self.lbl_view_root_mode.Text = (
-                "Custom view root is enabled, but the path is empty.")
+            text = "Custom view root is enabled, but the path is empty."
+        elif layout_value == "project-view":
+            text = "Views are written to project-view/ inside the sync folder."
         else:
-            self.lbl_view_root_mode.Text = default_text
+            text = "Views are written to the sync folder root."
+        self._set_tip(self.txt_view_root, text)
+        self._set_tip(self.chk_custom_view_root, text)
 
     def _on_layout_changed(self, sender, event):
         self._refresh_view_root_summary()
@@ -1087,10 +1373,9 @@ class ProjectOptionsForm(Form if Form is not None else object):
     def _read_general_controls(self):
         """The General tab's whole control state, in the shape the model wants."""
         state = self._read_general_scalars()
-        state["kinds_checked"] = self._selected_kinds(
-            self._general_lists["xml_controls"])
+        state["kinds_checked"] = self._selected_kinds(self._general_lists)
         state["projections_checked"] = self._checked_projection_ids(
-            self._general_lists["projection_controls"])
+            self._general_lists)
         return state
 
     def _general_values_to_store(self):
@@ -1105,7 +1390,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
             self._general_initials,
             self._read_general_controls(),
             self._base_settings.get("_available_projections") or [],
-            self._selected_projections(self._general_lists["projection_controls"]),
+            self._selected_projections(self._general_lists),
         )
 
     def _on_reset_general(self, sender, event):
@@ -1161,11 +1446,9 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "layout": layout_value,
             "view_root": view_root_value,
             "profile": self._selected_profile(self.cmb_profile),
-            "projections": self._selected_projections(
-                self._project_lists["projection_controls"]),
+            "projections": self._selected_projections(self._project_lists),
             "sync_mode": sync_mode_value,
-            "xml_in_view_kinds": self._selected_kinds(
-                self._project_lists["xml_controls"]),
+            "xml_in_view_kinds": self._selected_kinds(self._project_lists),
         }
         behavior_values = {}
         for name in settings_layers_model.behavior_names():
