@@ -4,6 +4,16 @@ _project_settings.py - Project settings loader and writer.
 
 The settings file is intentionally tracked and non-dot-prefixed so it can live
 next to root-view project files without being treated as generated state.
+
+Values are layered, from weakest to strongest:
+
+    code defaults -> per-user overrides (``defaults.json``) -> project file
+
+BEHAVIOR keys inherit: an effective value is the project's own when the file
+pins it, otherwise the user's override, otherwise the code default. FORMAT
+keys describe what gets written to disk, so they are only ever inherited into
+a project that has no settings file yet (that is the file it would be seeded
+with); once the file exists its own value or the code default wins.
 """
 from __future__ import print_function
 import json
@@ -14,6 +24,11 @@ from cts_shared.coerce import as_bool
 
 
 SETTINGS_FILENAME = "cds-text-sync.json"
+
+# Current on-disk shape. Version 2 pins a behavior key whenever it is present;
+# version 1 (or no version) is migrated on read: a behavior value equal to the
+# code default counts as "not pinned" so it starts inheriting the user layer.
+SETTINGS_VERSION = 2
 
 # Outcome of reading the settings file. Both a missing file and an unreadable
 # one yield the defaults, so a caller that must not act on a guess has to be
@@ -28,7 +43,7 @@ SYNC_MODE_TEXT_FIRST = "text_first"
 
 def default_project_settings():
     return {
-        "version": 1,
+        "version": SETTINGS_VERSION,
         "layout": LAYOUT_PROJECT_VIEW,
         "view_root": None,
         "profile": "default",
@@ -131,26 +146,138 @@ def _safe_kind_list(value, default):
     return result
 
 
-def read_project_settings(project_root, warn=True):
-    """Read the settings file and say whether what was stored was usable.
+def _user_defaults_module():
+    """Import ``_user_defaults`` lazily.
 
-    Returns ``(settings, status, error)`` where status is one of
-    ``SETTINGS_MISSING`` (no file: the defaults, not an error),
-    ``SETTINGS_OK`` (parsed and merged over the defaults) or
-    ``SETTINGS_INVALID`` (present but unreadable or not a JSON object). The
-    settings returned for an invalid file are the defaults and do not carry
-    the file's values, so a caller whose behaviour depends on what the file
-    said must check the status instead of trusting the dict. ``error`` is the
-    human-readable reason, empty unless the status is invalid.
+    The two modules cross-reference each other (the user layer validates with
+    this module's normalize helpers), so this side imports at call time to keep
+    the package importable in either order.
+    """
+    from . import _user_defaults
+    return _user_defaults
 
-    ``warn`` prints the problem to stdout, which is what the engine and the
-    CODESYS host want; the CLI passes False and reports it itself, so the same
-    defect is not announced twice in two different shapes.
+
+def _load_user_overrides(user_defaults_path, warn):
+    """Read the per-user overrides, creating the file on first access.
+
+    Never raises and never affects a project read's status: an unusable or
+    unwritable defaults file only warns and yields no overrides, so the code
+    defaults still stand.
+    """
+    module = _user_defaults_module()
+    if user_defaults_path is None:
+        user_defaults_path = module.defaults_path()
+    try:
+        module.ensure_user_defaults(user_defaults_path)
+        return module.read_user_defaults(user_defaults_path, warn=warn)[0]
+    except Exception as error:
+        if warn:
+            print("Warning: Ignoring user defaults: {0}".format(error))
+        return {}
+
+
+def _project_file_values(project_root, data, warn, path):
+    """Normalize the project file into ``{key: value}`` for keys it sets.
+
+    Only keys the file actually carries appear, so the caller can tell a
+    pinned value from an inherited one. Values are coerced exactly as the old
+    flat reader did, including the "ignore an invalid layout" warning.
+    """
+    module = _user_defaults_module()
+    values = {}
+    if "layout" in data:
+        try:
+            values["layout"] = normalize_layout_mode(data.get("layout"))
+        except Exception as error:
+            if warn:
+                print("Warning: Ignoring invalid layout in project settings {0}: {1}".format(path, error))
+    view_root = _normalize_view_root(project_root, data.get("view_root"))
+    if view_root is not None:
+        values["view_root"] = view_root
+    if data.get("profile"):
+        values["profile"] = str(data.get("profile"))
+    if isinstance(data.get("projections"), dict):
+        values["projections"] = _safe_dict(data.get("projections"))
+    if data.get("sync_mode") is not None:
+        values["sync_mode"] = _safe_sync_mode(data.get("sync_mode"))
+    if isinstance(data.get("xml_in_view_kinds"), (list, tuple)):
+        values["xml_in_view_kinds"] = _safe_kind_list(
+            data.get("xml_in_view_kinds"),
+            default_project_settings()["xml_in_view_kinds"],
+        )
+    for name in module.BEHAVIOR_KEYS:
+        if name in data:
+            ok, value = module._validate(name, data[name])
+            if ok:
+                values[name] = value
+    return values
+
+
+def _merge_layers(settings, sources, values, version, overrides, module):
+    """Apply the project file on top of the code defaults and user overrides.
+
+    FORMAT keys from the file win outright; BEHAVIOR keys win only when the
+    file pins them (present under version 2, or different from the code
+    default under the legacy version 1), otherwise the user override and then
+    the code default take over. ``view_root`` is project-only.
+    """
+    defaults = default_project_settings()
+    pinned_file = version == SETTINGS_VERSION
+    for name in module.USER_DEFAULT_KEYS:
+        present = name in values
+        if name in module.PROJECT_ONLY_KEYS:
+            if present:
+                settings[name] = values[name]
+                sources[name] = "project"
+            continue
+        if name in module.BEHAVIOR_KEYS:
+            pinned = present and (pinned_file or values[name] != defaults[name])
+            if pinned:
+                settings[name] = values[name]
+                sources[name] = "project"
+            elif name in overrides:
+                settings[name] = overrides[name]
+                sources[name] = "user"
+            continue
+        if present:
+            settings[name] = values[name]
+            sources[name] = "project"
+
+
+def read_project_settings_layers(project_root, warn=True, user_defaults_path=None):
+    """Read project settings and report where each value came from.
+
+    Returns ``(settings, sources, status, error)``. ``sources`` maps every
+    settings key to ``"code"``, ``"user"`` or ``"project"``, which is what
+    ``cts config show`` and the options UI need to explain an inherited value.
+
+    The status vocabulary is ``read_project_settings``': ``SETTINGS_MISSING``
+    (no project file: format keys are seeded from the user overrides, which is
+    what a first save would write), ``SETTINGS_OK`` or ``SETTINGS_INVALID``
+    (present but unreadable or not a JSON object, in which case the returned
+    settings are the code defaults alone).
+
+    Reading may create the empty per-user file (its "generated on first
+    access" contract), but a broken or unwritable one only warns and falls
+    back to the code defaults; it never changes the project's own status.
     """
     settings = default_project_settings()
+    sources = {}
+    for name in settings:
+        sources[name] = "code"
+
+    module = _user_defaults_module()
+    overrides = _load_user_overrides(user_defaults_path, warn)
+
     path = settings_path(project_root)
     if not os.path.exists(path):
-        return settings, SETTINGS_MISSING, ""
+        for name in module.USER_DEFAULT_KEYS:
+            if name in module.PROJECT_ONLY_KEYS:
+                continue
+            if name in overrides:
+                settings[name] = overrides[name]
+                sources[name] = "user"
+        return settings, sources, SETTINGS_MISSING, ""
 
     try:
         with open(path, "r") as handle:
@@ -159,7 +286,7 @@ def read_project_settings(project_root, warn=True):
         message = "Could not read project settings {0}: {1}".format(path, error)
         if warn:
             print("Warning: " + message)
-        return settings, SETTINGS_INVALID, message
+        return settings, sources, SETTINGS_INVALID, message
 
     if not isinstance(data, dict):
         message = (
@@ -168,62 +295,64 @@ def read_project_settings(project_root, warn=True):
         )
         if warn:
             print("Warning: " + message)
-        return settings, SETTINGS_INVALID, message
+        return settings, sources, SETTINGS_INVALID, message
 
-    try:
-        settings["layout"] = normalize_layout_mode(data.get("layout", settings["layout"]))
-    except Exception as error:
-        if warn:
-            print("Warning: Ignoring invalid layout in project settings {0}: {1}".format(path, error))
-
-    settings["view_root"] = _normalize_view_root(project_root, data.get("view_root"))
-    if data.get("profile"):
-        settings["profile"] = str(data.get("profile"))
-    settings["projections"] = _safe_dict(data.get("projections"))
-    settings["sync_mode"] = _safe_sync_mode(
-        data.get("sync_mode"),
-        settings["sync_mode"],
-    )
-    settings["xml_in_view_kinds"] = _safe_kind_list(
-        data.get("xml_in_view_kinds"),
-        settings["xml_in_view_kinds"],
-    )
-    settings["verbose_logging"] = _safe_bool(
-        data.get("verbose_logging"),
-        settings["verbose_logging"],
-    )
-    settings["advanced_debug"] = _safe_bool(
-        data.get("advanced_debug"),
-        settings["advanced_debug"],
-    )
-    settings["show_completion_popup"] = _safe_bool(
-        data.get("show_completion_popup"),
-        settings["show_completion_popup"],
-    )
-    settings["pre_import_backup_enabled"] = _safe_bool(
-        data.get("pre_import_backup_enabled"),
-        settings["pre_import_backup_enabled"],
-    )
-    settings["backup_retention_count"] = _safe_positive_int(
-        data.get("backup_retention_count"),
-        settings["backup_retention_count"],
-    )
-    return settings, SETTINGS_OK, ""
+    values = _project_file_values(project_root, data, warn, path)
+    _merge_layers(settings, sources, values, data.get("version"), overrides, module)
+    return settings, sources, SETTINGS_OK, ""
 
 
-def load_project_settings(project_root):
+def read_project_settings(project_root, warn=True, user_defaults_path=None):
+    """Read the layered settings and say whether the project file was usable.
+
+    Returns ``(settings, status, error)`` exactly as before; see
+    ``read_project_settings_layers`` for the provenance of each value.
+    """
+    settings, _sources, status, error = read_project_settings_layers(
+        project_root, warn=warn, user_defaults_path=user_defaults_path
+    )
+    return settings, status, error
+
+
+def load_project_settings(project_root, user_defaults_path=None):
     """Load project settings, warning about a file that cannot be used.
 
     The tolerant spelling for callers that only want the values: a missing or
     broken file yields the defaults. Use ``read_project_settings`` when the
     caller has to know that the file was broken.
     """
-    return read_project_settings(project_root)[0]
+    return read_project_settings(project_root, user_defaults_path=user_defaults_path)[0]
 
 
-def save_project_settings(project_root, settings):
+def _inherited_behavior_value(name, overrides, defaults):
+    """The value a behavior key gets when the project file does not pin it."""
+    if name in overrides:
+        return overrides[name]
+    return defaults[name]
+
+
+def save_project_settings(project_root, settings, pinned=None):
+    """Write the project file, keeping the user layer out of the way.
+
+    Format keys are always written explicitly. A behavior key is written only
+    when it is named in ``pinned`` or its value differs from what it would
+    otherwise inherit (the per-user override, else the code default) - so a
+    legacy caller that passes no ``pinned`` keeps only real differences and
+    keeps inheriting. A value equal to the inherited one therefore cannot be
+    pinned without ``pinned``; the options UI will pass it when it needs to.
+
+    Returns the full effective settings dict, as before, even though the file
+    may omit inherited behavior keys.
+    """
     current = default_project_settings()
     data = _safe_dict(settings)
+    module = _user_defaults_module()
+    defaults = default_project_settings()
+    try:
+        overrides = module.read_user_defaults(None, warn=False)[0]
+    except Exception:
+        overrides = {}
+    pinned_names = set(pinned or ())
 
     try:
         current["layout"] = normalize_layout_mode(data.get("layout", current["layout"]))
@@ -265,8 +394,22 @@ def save_project_settings(project_root, settings):
         current["backup_retention_count"],
     )
 
+    written = {
+        "version": SETTINGS_VERSION,
+        "layout": current["layout"],
+        "view_root": current["view_root"],
+        "profile": current["profile"],
+        "projections": current["projections"],
+        "sync_mode": current["sync_mode"],
+        "xml_in_view_kinds": current["xml_in_view_kinds"],
+    }
+    for name in module.BEHAVIOR_KEYS:
+        inherited = _inherited_behavior_value(name, overrides, defaults)
+        if name in pinned_names or current[name] != inherited:
+            written[name] = current[name]
+
     path = settings_path(project_root)
     with open(path, "w") as handle:
-        json.dump(current, handle, indent=2, sort_keys=True)
+        json.dump(written, handle, indent=2, sort_keys=True)
         handle.write("\n")
     return current

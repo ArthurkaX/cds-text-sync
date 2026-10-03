@@ -40,6 +40,7 @@ test_paths = [
   "../../tests/unit/test_reverse_pipe_pid_listing.py",
   "../../tests/unit/test_screen_xml.py",
   "../../tests/unit/test_setup_dryrun_guard.py",
+  "../../tests/unit/test_settings_layers.py",
   "../../tests/unit/test_st_projection_format.py",
   "../../tests/unit/test_ui.py",
   "../../tests/unit/test_user_defaults.py",
