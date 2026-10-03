@@ -124,21 +124,31 @@ The normal first export does not require this dialog: the default profile
 already enables every supported `.st` and `.csv` text projection. Use it after
 selecting the sync root only when you need to change advanced project options.
 
+The dialog has two tabs, each laid out as a format column and a behavior column.
+**General** edits the per-user `defaults.json`: the values a new project starts
+from, plus the behavior values the other projects inherit. It offers **Reset to
+built-in**, which empties that file on the next save. **Project** edits this
+project's committed `cds-text-sync.json`.
+
 - **Sync Mode**: Choose XML-first (default) or text-first. This is a one-time
   choice on an empty folder — see [Sync modes](sync-modes.md).
 - **View Storage**: Choose default `project-view/`, root-view, or an explicit
   custom view root.
 - **View Root Lock**: Choose the view storage before the first export. After
   `.dump/manifest.json` has been created, `Project_options.py` locks the layout
-  and custom view root controls. To use a different export folder, start again
-  with a clean sync directory.
+  and custom view root controls; hover a locked one to see why. To use a
+  different export folder, start again with a clean sync directory.
 - **Profile**: Select the active CODESYS profile for object type handling.
 - **Projections**: All supported readable `.st` and `.csv` files start enabled
   in the default profile. The dialog can disable individual projections or
-  restore them for a custom profile.
-- **Safety Backup**: Enable or disable timestamped binary backup before import
-  and set how many generated backups to keep.
-- **Completion Summary**: Show or hide the final import/export success popup.
+  restore them for a custom profile. In text-first mode the same list becomes
+  **Keep XML in view** and chooses which kinds keep native `.xml` in Git.
+- **Behavior**: Enable or disable timestamped binary backup before import, set
+  how many generated backups to keep, and turn detailed engine logs, advanced
+  debug, and the final import/export success popup on or off. On the **Project**
+  tab this block is either **Same as General** (greyed, following the General
+  values) or **Own for this project**, which pins the five values in
+  `cds-text-sync.json`.
 - **Git Ignore Helper**: Append recommended generated-state ignore rules without
   rewriting existing user rules.
 
