@@ -498,6 +498,23 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.tab_general.Resize += self._on_resize
         self.tab_project.Resize += self._on_resize
         self._layout_all()
+        self._use_gdi_text()
+
+    def _use_gdi_text(self):
+        """Draw the dialog's text with GDI instead of GDI+.
+
+        The host turns compatible text rendering on, which sends control text
+        through ``Graphics.DrawString``; that renderer loses the period of
+        "...\\defaults.json" at 8pt, so the General tab showed the file as
+        "defaultsjson". GDI is also the renderer the layout measures with.
+        """
+        pending = [self]
+        while pending:
+            control = pending.pop()
+            if getattr(control, "UseCompatibleTextRendering", None) is not None:
+                control.UseCompatibleTextRendering = False
+            for child in control.Controls:
+                pending.append(child)
 
     # -- small builders ---------------------------------------------------
 
@@ -608,15 +625,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
                 or projection.get("kind") or "projection")
 
     def _build_view_lists(self, parent, x, y, width, height, current_settings,
-                          projections, kinds, strict=False):
+                          projections, kinds):
         """Build the tab's pair of derived-view lists and return their state.
 
         The two lists share a spot: only the one matching the tab's sync mode
         is shown, the other keeps its checked items (and their values) hidden.
-        ``strict`` seeds a projection box from the given value alone (the
-        General tab, where a built-in default must not look like a choice);
-        otherwise the profile's own ``default_enabled`` applies, as the project
-        tab has always done.
+        A projection box is seeded from the engine's rule for this layer, so
+        the profile's ``default_enabled`` shows as the checked state a new
+        project would get.
         """
         list_y = y + self.LIST_GAP
         state = {}
@@ -631,18 +647,12 @@ class ProjectOptionsForm(Form if Form is not None else object):
             x, list_y, width, height,
             [self._projection_text(projection) for projection in options])
         parent.Controls.Add(state["projection_box"])
-        if strict:
-            # No ``default_enabled`` fallback: a projection the code enables by
-            # default must not look like a choice the user made.
-            for position, projection in enumerate(options):
-                state["projection_box"].SetItemChecked(
-                    position,
-                    settings_layers_model.projection_enabled(projections, projection))
-        else:
-            current = {"projections": projections}
-            for position, projection in enumerate(options):
-                state["projection_box"].SetItemChecked(
-                    position, self._projection_enabled(current, projection))
+        # Every box starts at the engine's effective answer for this layer, so
+        # what the tab shows is what a new project gets.
+        for position, projection in enumerate(options):
+            state["projection_box"].SetItemChecked(
+                position,
+                settings_layers_model.projection_enabled(projections, projection))
         self._set_tip(state["projection_box"], self.DERIVED_HINT)
 
         kind_options = [
@@ -712,13 +722,31 @@ class ProjectOptionsForm(Form if Form is not None else object):
     def _projection_id(self, projection):
         return projection.get("id") or projection.get("kind")
 
-    def _projection_entry(self, projection):
+    def _projection_entry(self, projection, enabled=True):
         return {
-            "enabled": True,
+            "enabled": enabled,
             "kind": projection.get("kind"),
             "format": projection.get("format"),
             "import_safe": bool(projection.get("import_safe", False)),
         }
+
+    def _all_projection_entries(self, state):
+        """Every offered projection as ``{id: entry}``, whatever its box says.
+
+        The General tab needs the entry of a projection the user just unchecked
+        too: the model writes ``enabled: false`` for one the profile turns on by
+        default, so the box cannot silently fall back to that default.
+        """
+        if not state:
+            return {}
+        entries = {}
+        box = state["projection_box"]
+        for position, projection in enumerate(state["projection_options"]):
+            projection_id = self._projection_id(projection)
+            if projection_id:
+                entries[projection_id] = self._projection_entry(
+                    projection, bool(box.GetItemChecked(position)))
+        return entries
 
     def _selected_projections(self, state):
         """The checked projections as the ``{id: entry}`` mapping to store."""
@@ -756,20 +784,6 @@ class ProjectOptionsForm(Form if Form is not None else object):
             if box.GetItemChecked(position):
                 selected.append(str(box.Items[position]).strip().lower())
         return selected
-
-    def _projection_enabled(self, current_settings, projection):
-        """The project tab's older rule, which honours ``default_enabled``."""
-        current = current_settings.get("projections") or {}
-        projection_id = projection.get("id")
-        kind = projection.get("kind")
-        if projection_id in current:
-            value = current.get(projection_id)
-            if isinstance(value, dict):
-                return bool(value.get("enabled", True))
-            return bool(value)
-        if kind in current:
-            return True
-        return bool(projection.get("default_enabled", False))
 
     # -- behavior controls ------------------------------------------------
 
@@ -958,7 +972,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
 
         self._general_lists = self._build_view_lists(
             left, self.GROUP_PAD, 136, 200, 100, current_settings,
-            values.get("projections"), values.get("xml_in_view_kinds"), strict=True)
+            values.get("projections"), values.get("xml_in_view_kinds"))
 
         self._build_behavior_controls(right, 18, self._general_behavior, True)
         self._apply_behavior_values(self._general_behavior, values)
@@ -1236,6 +1250,13 @@ class ProjectOptionsForm(Form if Form is not None else object):
             if int(rect.Width) > 120 and int(rect.Height) > 120:
                 width = int(rect.Width)
                 height = int(rect.Height)
+        else:
+            # Never lay out against more than the tab control actually shows:
+            # a stale page size would push the right group under the frame and
+            # clip its border.
+            rect = self.tabs.DisplayRectangle
+            width = min(width, int(rect.Width))
+            height = min(height, int(rect.Height))
         right_width = self.RIGHT_GROUP_WIDTH
         left_width = width - self.PAGE_MARGIN * 2 - self.GROUP_GAP - right_width
         if left_width < 200:
@@ -1390,7 +1411,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
             self._general_initials,
             self._read_general_controls(),
             self._base_settings.get("_available_projections") or [],
-            self._selected_projections(self._general_lists),
+            self._all_projection_entries(self._general_lists),
         )
 
     def _on_reset_general(self, sender, event):
