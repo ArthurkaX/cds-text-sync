@@ -440,6 +440,9 @@ class ProjectOptionsForm(Form if Form is not None else object):
         "text-first, initialize a new empty sync folder.")
     SAME_AS_GENERAL_HINT = (
         "Follows the General tab. Choose 'Own for this project' to edit.")
+    GENERAL_VIEW_ROOT_HINT = (
+        "Relative to each project's sync folder. It only seeds new projects; "
+        "existing projects keep their own setting.")
 
     def __init__(self, current_settings):
         self.Text = "cds-text-sync: Options"
@@ -521,6 +524,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self._refresh_project_behavior_state()
         self._refresh_view_root_state()
         self._refresh_view_root_summary()
+        self._refresh_general_view_root_state()
         self._refresh_view_lists(self._project_lists, self._project_text_first())
         self._refresh_view_lists(self._general_lists, self._general_text_first())
 
@@ -1058,17 +1062,34 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "Choose where generated views live by default for new projects.")
         left.Controls.Add(self.cmb_general_layout)
 
-        left.Controls.Add(self._make_label("Profile", self.GROUP_PAD, 67, 200, 15))
+        self.chk_general_view_root = CheckBox()
+        self.chk_general_view_root.Text = "Custom root"
+        self.chk_general_view_root.Location = Point(self.GROUP_PAD, 61)
+        self.chk_general_view_root.Size = Size(130, 20)
+        self.chk_general_view_root.Checked = bool(values.get("view_root"))
+        self.chk_general_view_root.CheckedChanged += self._on_general_view_root_changed
+        self._set_tip(self.chk_general_view_root, self.GENERAL_VIEW_ROOT_HINT)
+        left.Controls.Add(self.chk_general_view_root)
+
+        self.txt_general_view_root = TextBox()
+        self.txt_general_view_root.Location = Point(146, 62)
+        self.txt_general_view_root.Size = Size(160, 22)
+        self.txt_general_view_root.Text = values.get("view_root") or ""
+        self.txt_general_view_root.Enabled = bool(values.get("view_root"))
+        self._set_tip(self.txt_general_view_root, self.GENERAL_VIEW_ROOT_HINT)
+        left.Controls.Add(self.txt_general_view_root)
+
+        left.Controls.Add(self._make_label("Profile", self.GROUP_PAD, 90, 200, 15))
         self.cmb_general_profile = self._make_profile_combo(
             values.get("profile") or "default")
-        self.cmb_general_profile.Location = Point(self.GROUP_PAD, 84)
+        self.cmb_general_profile.Location = Point(self.GROUP_PAD, 107)
         self._set_tip(
             self.cmb_general_profile, "The profile new projects start with.")
         left.Controls.Add(self.cmb_general_profile)
 
         self.chk_general_text_first = CheckBox()
         self.chk_general_text_first.Text = "Text-first mode"
-        self.chk_general_text_first.Location = Point(self.GROUP_PAD, 110)
+        self.chk_general_text_first.Location = Point(self.GROUP_PAD, 133)
         self.chk_general_text_first.Size = Size(200, 20)
         self.chk_general_text_first.Checked = values.get("sync_mode") == "text_first"
         self.chk_general_text_first.CheckedChanged += self._on_general_text_first_changed
@@ -1079,7 +1100,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         left.Controls.Add(self.chk_general_text_first)
 
         self._general_lists = self._build_view_lists(
-            left, self.GROUP_PAD, 136, 200, 100, current_settings,
+            left, self.GROUP_PAD, 159, 200, 100, current_settings,
             values.get("projections"), values.get("xml_in_view_kinds"))
 
         self._build_behavior_controls(right, 18, self._general_behavior, True)
@@ -1096,8 +1117,9 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "right": right,
             "left_rows": [
                 (self.cmb_general_layout, self.GROUP_PAD, 35, "stretch", 0),
-                (self.cmb_general_profile, self.GROUP_PAD, 84, "stretch", 0),
-                (self.chk_general_text_first, self.GROUP_PAD, 110, "stretch", 0),
+                (self.txt_general_view_root, 146, 62, "stretch", 0),
+                (self.cmb_general_profile, self.GROUP_PAD, 107, "stretch", 0),
+                (self.chk_general_text_first, self.GROUP_PAD, 133, "stretch", 0),
                 (self._general_lists["projection_box"], self.GROUP_PAD, list_y,
                  "fill", 0),
                 (self._general_lists["xml_box"], self.GROUP_PAD, list_y, "fill", 0),
@@ -1490,6 +1512,21 @@ class ProjectOptionsForm(Form if Form is not None else object):
     def _on_general_text_first_changed(self, sender, event):
         self._refresh_view_lists(self._general_lists, self._general_text_first())
 
+    def _on_general_view_root_changed(self, sender, event):
+        self._refresh_general_view_root_state()
+
+    def _refresh_general_view_root_state(self):
+        """The path box follows the checkbox, as on the Project tab."""
+        if self.txt_general_view_root is None or self.chk_general_view_root is None:
+            return
+        self.txt_general_view_root.Enabled = bool(self.chk_general_view_root.Checked)
+
+    def _read_general_view_root(self):
+        """The General tab's custom root: relative text, or None when off."""
+        if not self.chk_general_view_root.Checked:
+            return None
+        return self.txt_general_view_root.Text.strip() or None
+
     def _on_text_first_changed(self, sender, event):
         self._refresh_view_lists(self._project_lists, self._project_text_first())
 
@@ -1498,6 +1535,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
     def _read_general_scalars(self):
         return {
             "layout": self._selected_layout(self.cmb_general_layout),
+            "view_root": self._read_general_view_root(),
             "profile": self._selected_profile(self.cmb_general_profile),
             "sync_mode": "text_first" if self._general_text_first() else "xml_first",
             "pre_import_backup_enabled": self._read_behavior(
@@ -1546,6 +1584,8 @@ class ProjectOptionsForm(Form if Form is not None else object):
                 if layout_id == layout:
                     self.cmb_general_layout.SelectedIndex = position
                     break
+        self.chk_general_view_root.Checked = bool(values.get("view_root"))
+        self.txt_general_view_root.Text = values.get("view_root") or ""
         profile = values.get("profile")
         if profile:
             self._select_combo_value(self.cmb_general_profile, profile)

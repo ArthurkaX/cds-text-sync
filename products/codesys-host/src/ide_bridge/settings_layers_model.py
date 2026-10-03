@@ -33,6 +33,13 @@ import json
 BEHAVIOR_MODE_SAME = "same"
 BEHAVIOR_MODE_OWN = "own"
 
+# The user layer's view_root must be relative, so a value the tab cannot store
+# gets a message naming the rule instead of the generic "invalid value" line.
+VIEW_ROOT_ERROR = (
+    "Custom root must be a relative path inside the project's sync folder "
+    "(no absolute paths or '..')."
+)
+
 
 def _project_settings():
     from cds_text_sync.engine import _project_settings
@@ -117,8 +124,7 @@ def general_state(path=None):
     Returns ``(path, rows, status, error)``. Each row is
     ``{name, class, value, overridden}`` for one key the user layer may hold:
     the format keys that seed new projects and the behavior keys projects
-    inherit. ``view_root`` is not listed because it names a directory inside one
-    project. The file is created on first access; a file that cannot be read
+    inherit. The file is created on first access; a file that cannot be read
     yields the code defaults as rows plus the error, so the tab can show it and
     still let a save overwrite it.
     """
@@ -130,8 +136,6 @@ def general_state(path=None):
     defaults = _project_settings().default_project_settings()
     rows = []
     for name in module.FORMAT_KEYS + module.BEHAVIOR_KEYS:
-        if name in module.PROJECT_ONLY_KEYS:
-            continue
         if name in overrides:
             value = overrides[name]
         else:
@@ -337,7 +341,7 @@ def user_values_to_overrides(raw):
     overrides = {}
     raw = raw or {}
     for name in module.FORMAT_KEYS + module.BEHAVIOR_KEYS:
-        if name in module.PROJECT_ONLY_KEYS or name not in raw:
+        if name not in raw:
             continue
         value = raw[name]
         if name == "projections":
@@ -352,6 +356,8 @@ def user_values_to_overrides(raw):
             value = value.strip()
         ok, normalized = module._validate(name, value)
         if not ok:
+            if name == "view_root":
+                return None, VIEW_ROOT_ERROR
             return None, "invalid value for " + name
         overrides[name] = normalized
     return overrides, ""
@@ -381,7 +387,5 @@ def reset_user_rows():
     defaults = _project_settings().default_project_settings()
     values = {}
     for name in module.FORMAT_KEYS + module.BEHAVIOR_KEYS:
-        if name in module.PROJECT_ONLY_KEYS:
-            continue
         values[name] = defaults.get(name)
     return values

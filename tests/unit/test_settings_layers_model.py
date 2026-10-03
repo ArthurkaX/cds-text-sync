@@ -213,12 +213,11 @@ class TestGeneralState:
         assert status == _project_settings.SETTINGS_OK
         assert error == ""
         names = [row["name"] for row in rows]
-        assert "view_root" not in names
-        assert set(names) == set(_user_defaults.USER_DEFAULT_KEYS) - set(
-            _user_defaults.PROJECT_ONLY_KEYS
-        )
+        assert set(names) == set(_user_defaults.USER_DEFAULT_KEYS)
         by_name = dict((row["name"], row) for row in rows)
         defaults = _project_settings.default_project_settings()
+        assert by_name["view_root"]["value"] is None
+        assert by_name["view_root"]["class"] == "format"
         assert by_name["sync_mode"]["value"] == defaults["sync_mode"]
         assert by_name["sync_mode"]["class"] == "format"
         assert by_name["advanced_debug"]["class"] == "behavior"
@@ -250,7 +249,7 @@ class TestGeneralState:
         values = model.reset_user_rows()
         defaults = _project_settings.default_project_settings()
 
-        assert "view_root" not in values
+        assert values["view_root"] is None
         for name, value in values.items():
             assert value == defaults[name]
 
@@ -318,6 +317,34 @@ class TestGeneralEdits:
         assert path.read_bytes() == before
         assert written["advanced_debug"] is True
         assert written["xml_in_view_kinds"] == ["visu", "custom"]
+
+    def test_view_root_round_trips_and_turning_it_off_clears_it(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user({"view_root": "views"}, str(path))
+
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        assert originals["view_root"] == "views"
+        before = path.read_bytes()
+
+        # Untouched: the same value comes back and the file does not change.
+        values = model.general_values_to_store(
+            originals, dict(originals), dict(originals), [], {}
+        )
+        written, error = model.save_user_defaults(values, str(path))
+        assert error == ""
+        assert written["view_root"] == "views"
+        assert path.read_bytes() == before
+
+        # Switching it off stores no root at all, so the override is dropped.
+        cleared = dict(originals)
+        cleared["view_root"] = None
+        values = model.general_values_to_store(
+            originals, dict(originals), cleared, [], {}
+        )
+        written, error = model.save_user_defaults(values, str(path))
+        assert error == ""
+        assert "view_root" not in written
 
     def test_a_profile_without_the_default_kind_writes_nothing(self, tmp_path):
         path = tmp_path / "config" / "defaults.json"
@@ -553,13 +580,28 @@ class TestUserValuesToOverrides:
         assert overrides is None
         assert "projections" in error
 
-    def test_view_root_in_the_raw_values_is_ignored(self):
+    def test_a_relative_view_root_is_kept(self):
         overrides, error = model.user_values_to_overrides(
-            {"view_root": "/elsewhere", "verbose_logging": True}
+            {"view_root": "views", "verbose_logging": True}
         )
         assert error == ""
-        assert "view_root" not in overrides
+        assert overrides["view_root"] == "views"
         assert overrides["verbose_logging"] is True
+
+    def test_none_view_root_is_kept_as_no_custom_root(self):
+        overrides, error = model.user_values_to_overrides({"view_root": None})
+        assert error == ""
+        assert overrides["view_root"] is None
+
+    def test_an_absolute_view_root_names_the_rule(self):
+        overrides, error = model.user_values_to_overrides({"view_root": "/elsewhere"})
+        assert overrides is None
+        assert "relative" in error
+
+    def test_a_parent_segment_view_root_names_the_rule(self):
+        overrides, error = model.user_values_to_overrides({"view_root": "../up"})
+        assert overrides is None
+        assert "relative" in error
 
 
 class TestSaveUserDefaults:
