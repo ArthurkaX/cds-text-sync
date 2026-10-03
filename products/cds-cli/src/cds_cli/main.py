@@ -49,6 +49,7 @@ __all__ = [
     "build_parser",
 ]
 
+from cds_cli._cli_handlers_config import dispatch_config  # noqa: E402
 from cds_cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
 from cds_cli._cli_handlers_menu import dispatch_menu  # noqa: E402
 from cds_cli._cli_handlers_patch import dispatch_patch  # noqa: E402
@@ -188,6 +189,9 @@ def main():
             return
 
         if dispatch_patch(args, output_fmt):
+            return
+
+        if dispatch_config(args, output_fmt):
             return
 
         if args.command in ("raw", "rp"):

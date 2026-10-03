@@ -13,6 +13,7 @@ from pathlib import Path
 from cds_text_sync import __version__
 from cds_cli.parsers._common import add_daemon_parser
 from cds_cli.parsers.analyze import register as register_analyze
+from cds_cli.parsers.config import register as register_config
 from cds_cli.parsers.fsm import register as register_fsm
 from cds_cli.parsers.docs import register as register_docs
 from cds_cli.parsers.utility import register as register_utility
@@ -502,6 +503,9 @@ Examples:
 
     # -- verify subcommand (one gate over every applicable check) ----------
     register_verify(subparsers)
+
+    # -- config subcommand (offline settings layers) ------------------------
+    register_config(subparsers)
 
     subparsers._choices_actions = [
         action

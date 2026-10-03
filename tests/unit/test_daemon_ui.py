@@ -57,7 +57,7 @@ def test_format_copy_command_with_project():
             "sync_folder": r"S:\_Active\VKO-Beumer",
         },
     }
-    cmd = format_copy_command(info, copy_cmd="cts")
+    cmd = format_copy_command(info)
     assert cmd == "!cts --target ide-3684 --expect-project VKO --help"
 
 
@@ -67,29 +67,10 @@ def test_format_copy_command_no_project():
         "pid": 3684,
         "project": None,
     }
-    cmd = format_copy_command(info, copy_cmd="cts")
+    cmd = format_copy_command(info)
     assert cmd == "!cts --target ide-3684 --help"
 
 
-def test_format_copy_command_ssh():
-    info = {
-        "id": "ide-5120",
-        "pid": 5120,
-        "project": {
-            "name": "Motion",
-            "path": r"S:\Projects\Motion\Motion.project",
-            "sync_folder": r"S:\_Active\Motion",
-        },
-    }
-    cmd = format_copy_command(info, copy_cmd="cts-win")
-    assert cmd == "!cts-win --target ide-5120 --expect-project Motion --help"
-
-
-def test_format_copy_command_ssh_no_project():
-    info = {
-        "id": "ide-5120",
-        "pid": 5120,
-        "project": None,
-    }
-    cmd = format_copy_command(info, copy_cmd="cts-win")
-    assert cmd == "!cts-win --target ide-5120 --help"
+def test_format_copy_command_without_info_uses_this_pid():
+    cmd = format_copy_command(None)
+    assert cmd == f"!cts --target ide-{os.getpid()} --help"

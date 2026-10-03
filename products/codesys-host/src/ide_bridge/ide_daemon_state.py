@@ -365,7 +365,6 @@ _CONFIG_INVALID = "invalid"
 
 _DEFAULT_CONFIG = {
     "poll_ms": 200,
-    "copy_command": "cts",
     "deny": [  # blocked by default (uncheck in Settings window to allow)
         "reset_plc",
         "reset_plc --kind origin",

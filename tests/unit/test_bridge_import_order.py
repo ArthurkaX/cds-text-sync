@@ -87,6 +87,22 @@ def test_runtime_ensure_sys_path_puts_bridge_ahead_of_root(monkeypatch):
     assert bridge_at < root_at
 
 
+def test_runtime_ensure_sys_path_adds_shared_src(monkeypatch):
+    """Every operation reaches the engine, and the engine imports cts_shared.
+
+    Project_options failed with "No module named cts_shared.coerce" in a fresh
+    CODESYS session, because only ide_runtime_common put shared/src on the
+    path and nothing had imported it yet.
+    """
+    runtime = _load_by_path(
+        "_codesys_runtime_under_test", _IDE_BRIDGE / "codesys_runtime.py"
+    )
+    monkeypatch.setattr(sys, "path", [])
+    runtime._ensure_sys_path(str(_HOST_ROOT))
+
+    assert _index_of(sys.path, _PROJECT_ROOT / "shared" / "src") is not None
+
+
 def test_no_bridge_module_collides_with_a_root_script():
     """Names that differ only by case are a trap on Windows.
 

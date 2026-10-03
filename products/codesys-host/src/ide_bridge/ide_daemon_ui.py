@@ -79,17 +79,18 @@ def format_instance_label(info):
     return "IDE: {0} · no project".format(ide_id)
 
 
-def format_copy_command(info, copy_cmd="cts"):
+def format_copy_command(info):
     """Format the command string to copy to clipboard.
 
     - project open: '!cts --target ide-3684 --expect-project VKO --help'
     - no project:   '!cts --target ide-3684 --help'
-    - copy_cmd: 'cts-win' or 'cts'.
+
+    Always a plain ``cts`` command: over SSH the caller substitutes the wrapper
+    (``tools/cts-win``) rather than the daemon knowing about the transport.
     """
-    cmd_name = copy_cmd if copy_cmd in ("cts", "cts-win") else "cts"
     if not info:
         ide_id = "ide-{0}".format(os.getpid())
-        return "!{0} --target {1} --help".format(cmd_name, ide_id)
+        return "!cts --target {0} --help".format(ide_id)
 
     ide_id = info.get("id")
     if not ide_id:
@@ -97,16 +98,16 @@ def format_copy_command(info, copy_cmd="cts"):
         ide_id = "ide-{0}".format(pid if pid is not None else os.getpid())
     proj = info.get("project")
     if proj and isinstance(proj, dict) and proj.get("name"):
-        return "!{0} --target {1} --expect-project {2} --help".format(
-            cmd_name, ide_id, proj["name"]
+        return "!cts --target {0} --expect-project {1} --help".format(
+            ide_id, proj["name"]
         )
-    return "!{0} --target {1} --help".format(cmd_name, ide_id)
+    return "!cts --target {0} --help".format(ide_id)
 
 
 # ── Settings Form ──────────────────────────────────────────────────────────
 
 class SettingsForm(Form):
-    """Settings window for daemon config (poll frequency + permissions + copy command)."""
+    """Settings window for daemon config (poll frequency + permissions)."""
 
     def __init__(self):
         self.Text = "Daemon Settings"
@@ -123,6 +124,17 @@ class SettingsForm(Form):
         self._changed = False
 
         self._build_ui()
+        self._use_gdi_text()
+
+    def _use_gdi_text(self):
+        """Draw the text with GDI: the host's GDI+ rendering clips small labels."""
+        pending = [self]
+        while pending:
+            control = pending.pop()
+            if getattr(control, "UseCompatibleTextRendering", None) is not None:
+                control.UseCompatibleTextRendering = False
+            for child in control.Controls:
+                pending.append(child)
 
     def _load_config(self):
         """Load config from the daemon's storage.
@@ -146,7 +158,7 @@ class SettingsForm(Form):
                 config["deny"] = list(_DEFAULT_CONFIG.get("deny", []))
                 return config
             except Exception:
-                return {"poll_ms": 200, "copy_command": "cts", "deny": []}
+                return {"poll_ms": 200, "deny": []}
 
     def _save_config(self, config):
         """Save config to the daemon's storage."""
@@ -239,12 +251,22 @@ class SettingsForm(Form):
         self.track_poll.Size = Size(420, 40)
         self.track_poll.ValueChanged += self._on_poll_changed
 
-        lbl_range = Label()
-        lbl_range.Text = "10 ms (fast)                                         10000 ms (slow)"
-        lbl_range.Location = Point(12, 80)
-        lbl_range.Size = Size(420, 16)
-        lbl_range.Font = Font("Segoe UI", 7.5, FontStyle.Regular)
-        lbl_range.ForeColor = Color.Gray
+        # Two labels pinned to the slider's ends: one label padded with spaces
+        # drifted with the font and its descenders were cut at 16 px.
+        lbl_fast = Label()
+        lbl_fast.Text = "10 ms (fast)"
+        lbl_fast.Location = Point(12, 80)
+        lbl_fast.Size = Size(160, 20)
+        lbl_fast.Font = Font("Segoe UI", 8, FontStyle.Regular)
+        lbl_fast.ForeColor = Color.Gray
+
+        lbl_slow = Label()
+        lbl_slow.Text = "10000 ms (slow)"
+        lbl_slow.Location = Point(272, 80)
+        lbl_slow.Size = Size(160, 20)
+        lbl_slow.Font = Font("Segoe UI", 8, FontStyle.Regular)
+        lbl_slow.ForeColor = Color.Gray
+        lbl_slow.TextAlign = ContentAlignment.TopRight
 
         lbl_note = Label()
         lbl_note.Text = "Lower = more responsive, higher = less CPU usage."
@@ -253,27 +275,22 @@ class SettingsForm(Form):
         lbl_note.Font = Font("Segoe UI", 8, FontStyle.Italic)
         lbl_note.ForeColor = Color.Gray
 
-        self.chk_ssh = CheckBox()
-        self.chk_ssh.Text = "Copy command for SSH (cts-win)"
-        self.chk_ssh.Location = Point(12, 135)
-        self.chk_ssh.Size = Size(350, 24)
-        self.chk_ssh.Checked = self._config.get("copy_command") == "cts-win"
-        self.chk_ssh.CheckedChanged += self._on_ssh_changed
-
         tab.Controls.Add(lbl_poll)
         tab.Controls.Add(self.lbl_poll_val)
         tab.Controls.Add(self.track_poll)
-        tab.Controls.Add(lbl_range)
+        tab.Controls.Add(lbl_fast)
+        tab.Controls.Add(lbl_slow)
         tab.Controls.Add(lbl_note)
-        tab.Controls.Add(self.chk_ssh)
 
     def _build_perm_tab(self, tab):
         tab.Padding = Padding(12, 12, 12, 12)
 
         lbl_info = Label()
-        lbl_info.Text = "Check operations to DENY (block):"
+        # One line above the list: a note under it fell below the page, which
+        # the 12-row list fills.
+        lbl_info.Text = "Checked = blocked (the CLI gets 'Forbidden'). Unchecked = allowed."
         lbl_info.Location = Point(12, 12)
-        lbl_info.Size = Size(400, 20)
+        lbl_info.Size = Size(420, 20)
 
         self.perm_list = CheckedListBox()
         self.perm_list.Location = Point(12, 36)
@@ -306,16 +323,8 @@ class SettingsForm(Form):
         # Store keys for later retrieval
         self._perm_keys = [k for k, _ in all_ops]
 
-        lbl_note = Label()
-        lbl_note.Text = "Unchecked = allowed. Checked = blocked (CLI gets 'Forbidden' error)."
-        lbl_note.Location = Point(12, 324)
-        lbl_note.Size = Size(420, 20)
-        lbl_note.Font = Font("Segoe UI", 8, FontStyle.Italic)
-        lbl_note.ForeColor = Color.Gray
-
         tab.Controls.Add(lbl_info)
         tab.Controls.Add(self.perm_list)
-        tab.Controls.Add(lbl_note)
 
     def _on_poll_changed(self, sender, args):
         val = self.track_poll.Value
@@ -330,14 +339,10 @@ class SettingsForm(Form):
         self.lbl_poll_val.Text = str(val) + " ms"
         self._changed = True
 
-    def _on_ssh_changed(self, sender, args):
-        self._changed = True
-
     def _collect_config(self):
         """Read UI values into a config dict."""
         config = {
             "poll_ms": self.track_poll.Value,
-            "copy_command": "cts-win" if self.chk_ssh.Checked else "cts",
             "deny": [],
         }
         # Collect denied operations
@@ -544,15 +549,7 @@ class DaemonForm(Form):
 
     def _on_copy_target_click(self, sender, args):
         """Copy the target CLI command to the clipboard."""
-        copy_cmd = "cts"
-        try:
-            from ide_daemon_state import _load_daemon_config
-            cfg = _load_daemon_config()
-            copy_cmd = cfg.get("copy_command", "cts")
-        except Exception:
-            pass
-
-        cmd = format_copy_command(self._instance_info, copy_cmd=copy_cmd)
+        cmd = format_copy_command(self._instance_info)
         try:
             Clipboard.SetText(cmd)
             self.log_command("Copied: {0}".format(cmd))

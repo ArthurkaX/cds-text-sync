@@ -103,3 +103,33 @@ class TestSaveRoundTrip:
         with open(settings_path(project_root), "r") as handle:
             raw = json.load(handle)
         assert raw["sync_mode"] == SYNC_MODE_XML_FIRST
+
+
+class TestViewRootStorage:
+    def _saved_root(self, project_root):
+        with open(settings_path(project_root)) as handle:
+            return json.load(handle)["view_root"]
+
+    def test_root_inside_the_sync_folder_is_stored_relative(self, tmp_path):
+        root = str(tmp_path)
+        settings = save_project_settings(root, {"view_root": str(tmp_path / "views" / "st")})
+        assert self._saved_root(root) == "views/st"
+        assert settings["view_root"] == str(tmp_path / "views" / "st")
+
+    def test_relative_root_survives_a_load_and_save(self, tmp_path):
+        root = str(tmp_path)
+        _write_settings(root, {"view_root": "views"})
+        save_project_settings(root, load_project_settings(root))
+        assert self._saved_root(root) == "views"
+
+    def test_root_outside_the_sync_folder_stays_absolute(self, tmp_path):
+        root = str(tmp_path / "proj")
+        (tmp_path / "proj").mkdir()
+        outside = str(tmp_path / "elsewhere")
+        save_project_settings(root, {"view_root": outside})
+        assert self._saved_root(root) == outside
+
+    def test_no_custom_root_is_stored_as_null(self, tmp_path):
+        root = str(tmp_path)
+        save_project_settings(root, {})
+        assert self._saved_root(root) is None
