@@ -23,7 +23,7 @@ adjust how object types are handled in your project without changing code:
 1. Copy `template.json` to a new file (e.g., `my_custom.json`)
 2. Edit the `name`, `label`, `description`, and `guid_aliases` fields
 3. Optionally add `context_rules`, `sync_profile_overrides`, or `sync_direction_overrides`
-4. Save it in this folder with a `.json` extension
+5. Select the profile in `Project_options.py` (Profile field on the Project tab, or on the General tab for new projects)
 5. Select the profile in the Parameters dialog
 
 The profile appears automatically — no code changes needed.
