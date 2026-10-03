@@ -123,6 +123,17 @@ class SettingsForm(Form):
         self._changed = False
 
         self._build_ui()
+        self._use_gdi_text()
+
+    def _use_gdi_text(self):
+        """Draw the text with GDI: the host's GDI+ rendering clips small labels."""
+        pending = [self]
+        while pending:
+            control = pending.pop()
+            if getattr(control, "UseCompatibleTextRendering", None) is not None:
+                control.UseCompatibleTextRendering = False
+            for child in control.Controls:
+                pending.append(child)
 
     def _load_config(self):
         """Load config from the daemon's storage.
@@ -239,12 +250,22 @@ class SettingsForm(Form):
         self.track_poll.Size = Size(420, 40)
         self.track_poll.ValueChanged += self._on_poll_changed
 
-        lbl_range = Label()
-        lbl_range.Text = "10 ms (fast)                                         10000 ms (slow)"
-        lbl_range.Location = Point(12, 80)
-        lbl_range.Size = Size(420, 16)
-        lbl_range.Font = Font("Segoe UI", 7.5, FontStyle.Regular)
-        lbl_range.ForeColor = Color.Gray
+        # Two labels pinned to the slider's ends: one label padded with spaces
+        # drifted with the font and its descenders were cut at 16 px.
+        lbl_fast = Label()
+        lbl_fast.Text = "10 ms (fast)"
+        lbl_fast.Location = Point(12, 80)
+        lbl_fast.Size = Size(160, 20)
+        lbl_fast.Font = Font("Segoe UI", 8, FontStyle.Regular)
+        lbl_fast.ForeColor = Color.Gray
+
+        lbl_slow = Label()
+        lbl_slow.Text = "10000 ms (slow)"
+        lbl_slow.Location = Point(272, 80)
+        lbl_slow.Size = Size(160, 20)
+        lbl_slow.Font = Font("Segoe UI", 8, FontStyle.Regular)
+        lbl_slow.ForeColor = Color.Gray
+        lbl_slow.TextAlign = ContentAlignment.TopRight
 
         lbl_note = Label()
         lbl_note.Text = "Lower = more responsive, higher = less CPU usage."
@@ -254,18 +275,32 @@ class SettingsForm(Form):
         lbl_note.ForeColor = Color.Gray
 
         self.chk_ssh = CheckBox()
-        self.chk_ssh.Text = "Copy command for SSH (cts-win)"
+        self.chk_ssh.Text = "Copy button gives a cts-win command (SSH)"
         self.chk_ssh.Location = Point(12, 135)
-        self.chk_ssh.Size = Size(350, 24)
+        self.chk_ssh.Size = Size(420, 24)
         self.chk_ssh.Checked = self._config.get("copy_command") == "cts-win"
         self.chk_ssh.CheckedChanged += self._on_ssh_changed
+
+        lbl_ssh = Label()
+        lbl_ssh.Text = (
+            "The daemon window's Copy button puts a ready command for this IDE "
+            "on the clipboard. Tick this when you drive the IDE from another "
+            "machine through the cts-win SSH wrapper; leave it off to get a "
+            "plain cts command for this PC."
+        )
+        lbl_ssh.Location = Point(30, 160)
+        lbl_ssh.Size = Size(402, 64)
+        lbl_ssh.Font = Font("Segoe UI", 8, FontStyle.Regular)
+        lbl_ssh.ForeColor = Color.Gray
 
         tab.Controls.Add(lbl_poll)
         tab.Controls.Add(self.lbl_poll_val)
         tab.Controls.Add(self.track_poll)
-        tab.Controls.Add(lbl_range)
+        tab.Controls.Add(lbl_fast)
+        tab.Controls.Add(lbl_slow)
         tab.Controls.Add(lbl_note)
         tab.Controls.Add(self.chk_ssh)
+        tab.Controls.Add(lbl_ssh)
 
     def _build_perm_tab(self, tab):
         tab.Padding = Padding(12, 12, 12, 12)
