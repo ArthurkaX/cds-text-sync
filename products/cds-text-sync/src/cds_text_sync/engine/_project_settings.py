@@ -119,6 +119,26 @@ def _normalize_view_root(project_root, value):
     return os.path.abspath(os.path.normpath(os.path.join(project_root, view_root)))
 
 
+def _stored_view_root(project_root, value):
+    """The form of ``view_root`` written to the project file.
+
+    The file is tracked in git, so a root inside the sync folder is stored
+    relative to it (forward slashes); only a root outside it stays absolute.
+    """
+    if not value:
+        return None
+    full = _normalize_view_root(project_root, value)
+    base = os.path.abspath(os.path.normpath(project_root))
+    try:
+        relative = os.path.relpath(full, base)
+    except ValueError:
+        # Another drive on Windows.
+        return full
+    if relative == os.pardir or relative.startswith(os.pardir + os.sep):
+        return full
+    return relative.replace(os.sep, "/")
+
+
 def _safe_sync_mode(value, default=SYNC_MODE_XML_FIRST):
     if value is None:
         return default
@@ -398,7 +418,7 @@ def save_project_settings(project_root, settings, pinned=None):
     written = {
         "version": SETTINGS_VERSION,
         "layout": current["layout"],
-        "view_root": current["view_root"],
+        "view_root": _stored_view_root(project_root, current["view_root"]),
         "profile": current["profile"],
         "projections": current["projections"],
         "sync_mode": current["sync_mode"],
