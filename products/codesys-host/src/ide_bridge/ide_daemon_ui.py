@@ -79,17 +79,18 @@ def format_instance_label(info):
     return "IDE: {0} · no project".format(ide_id)
 
 
-def format_copy_command(info, copy_cmd="cts"):
+def format_copy_command(info):
     """Format the command string to copy to clipboard.
 
     - project open: '!cts --target ide-3684 --expect-project VKO --help'
     - no project:   '!cts --target ide-3684 --help'
-    - copy_cmd: 'cts-win' or 'cts'.
+
+    Always a plain ``cts`` command: over SSH the caller substitutes the wrapper
+    (``tools/cts-win``) rather than the daemon knowing about the transport.
     """
-    cmd_name = copy_cmd if copy_cmd in ("cts", "cts-win") else "cts"
     if not info:
         ide_id = "ide-{0}".format(os.getpid())
-        return "!{0} --target {1} --help".format(cmd_name, ide_id)
+        return "!cts --target {0} --help".format(ide_id)
 
     ide_id = info.get("id")
     if not ide_id:
@@ -97,16 +98,16 @@ def format_copy_command(info, copy_cmd="cts"):
         ide_id = "ide-{0}".format(pid if pid is not None else os.getpid())
     proj = info.get("project")
     if proj and isinstance(proj, dict) and proj.get("name"):
-        return "!{0} --target {1} --expect-project {2} --help".format(
-            cmd_name, ide_id, proj["name"]
+        return "!cts --target {0} --expect-project {1} --help".format(
+            ide_id, proj["name"]
         )
-    return "!{0} --target {1} --help".format(cmd_name, ide_id)
+    return "!cts --target {0} --help".format(ide_id)
 
 
 # ── Settings Form ──────────────────────────────────────────────────────────
 
 class SettingsForm(Form):
-    """Settings window for daemon config (poll frequency + permissions + copy command)."""
+    """Settings window for daemon config (poll frequency + permissions)."""
 
     def __init__(self):
         self.Text = "Daemon Settings"
@@ -157,7 +158,7 @@ class SettingsForm(Form):
                 config["deny"] = list(_DEFAULT_CONFIG.get("deny", []))
                 return config
             except Exception:
-                return {"poll_ms": 200, "copy_command": "cts", "deny": []}
+                return {"poll_ms": 200, "deny": []}
 
     def _save_config(self, config):
         """Save config to the daemon's storage."""
@@ -274,33 +275,12 @@ class SettingsForm(Form):
         lbl_note.Font = Font("Segoe UI", 8, FontStyle.Italic)
         lbl_note.ForeColor = Color.Gray
 
-        self.chk_ssh = CheckBox()
-        self.chk_ssh.Text = "Copy button gives a cts-win command (SSH)"
-        self.chk_ssh.Location = Point(12, 135)
-        self.chk_ssh.Size = Size(420, 24)
-        self.chk_ssh.Checked = self._config.get("copy_command") == "cts-win"
-        self.chk_ssh.CheckedChanged += self._on_ssh_changed
-
-        lbl_ssh = Label()
-        lbl_ssh.Text = (
-            "The daemon window's Copy button puts a ready command for this IDE "
-            "on the clipboard. Tick this when you drive the IDE from another "
-            "machine through the cts-win SSH wrapper; leave it off to get a "
-            "plain cts command for this PC."
-        )
-        lbl_ssh.Location = Point(30, 160)
-        lbl_ssh.Size = Size(402, 64)
-        lbl_ssh.Font = Font("Segoe UI", 8, FontStyle.Regular)
-        lbl_ssh.ForeColor = Color.Gray
-
         tab.Controls.Add(lbl_poll)
         tab.Controls.Add(self.lbl_poll_val)
         tab.Controls.Add(self.track_poll)
         tab.Controls.Add(lbl_fast)
         tab.Controls.Add(lbl_slow)
         tab.Controls.Add(lbl_note)
-        tab.Controls.Add(self.chk_ssh)
-        tab.Controls.Add(lbl_ssh)
 
     def _build_perm_tab(self, tab):
         tab.Padding = Padding(12, 12, 12, 12)
@@ -365,14 +345,10 @@ class SettingsForm(Form):
         self.lbl_poll_val.Text = str(val) + " ms"
         self._changed = True
 
-    def _on_ssh_changed(self, sender, args):
-        self._changed = True
-
     def _collect_config(self):
         """Read UI values into a config dict."""
         config = {
             "poll_ms": self.track_poll.Value,
-            "copy_command": "cts-win" if self.chk_ssh.Checked else "cts",
             "deny": [],
         }
         # Collect denied operations
@@ -579,15 +555,7 @@ class DaemonForm(Form):
 
     def _on_copy_target_click(self, sender, args):
         """Copy the target CLI command to the clipboard."""
-        copy_cmd = "cts"
-        try:
-            from ide_daemon_state import _load_daemon_config
-            cfg = _load_daemon_config()
-            copy_cmd = cfg.get("copy_command", "cts")
-        except Exception:
-            pass
-
-        cmd = format_copy_command(self._instance_info, copy_cmd=copy_cmd)
+        cmd = format_copy_command(self._instance_info)
         try:
             Clipboard.SetText(cmd)
             self.log_command("Copied: {0}".format(cmd))

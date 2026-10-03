@@ -211,9 +211,7 @@ instance. This is what lets two agents work on two projects in parallel, for
 example an application and the library it uses. With more than one IDE open,
 `cts` without `--target` refuses and prints the available targets.
 
-If the agent runs outside the machine with CODESYS, for example over SSH into a
-Windows VM, tick **Copy command for SSH (cts-win)** in the daemon settings. The
-copied line then starts with `cts-win` (see [`tools/cts-win`](tools/cts-win)).
+Over SSH, replace `cts` with `cts-win` (see [`tools/cts-win`](tools/cts-win)).
 
 A library project has no application to compile. `cts build` checks it, and
 `cts build --install` does what the IDE button "Save project and install into
