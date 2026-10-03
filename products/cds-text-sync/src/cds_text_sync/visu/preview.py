@@ -116,6 +116,22 @@ def _num(params, key, default=0):
 # ---------------------------------------------------------------------------
 
 
+#: Element types whose catalog could not be loaded, so the preview can say so
+#: once per type instead of once per element on a screen full of them.
+_catalog_warnings = set()
+
+
+def _warn_missing_catalog(type_name, error):
+    if type_name in _catalog_warnings:
+        return
+    _catalog_warnings.add(type_name)
+    print(
+        "[WARN] preview draws '{0}' with default colours: its catalog could "
+        "not be loaded ({1})".format(type_name, error),
+        file=sys.stderr,
+    )
+
+
 def _resolved_colors(spec, theme_colors, scheme="light"):
     """Ask the compiler for this element's (fill, frame, font) colours.
 
@@ -127,12 +143,18 @@ def _resolved_colors(spec, theme_colors, scheme="light"):
     question the compile step will: in ``dark`` the native controls resolve to a
     literal here too, instead of the preview arriving at the same colour by a
     different route and only appearing to agree.
+
+    A catalog that will not load leaves the preview rendering with fallback
+    colours rather than no preview at all -- but silently, that reads as "this
+    is what the screen will look like" when the compile step is about to fail
+    on the same element. It warns instead.
     """
     type_name = spec.get("type")
     params = spec.get("params", {})
     try:
         cat = _catalog.load_catalog(type_name)
-    except Exception:
+    except (_catalog.CatalogError, ValueError, OSError) as error:
+        _warn_missing_catalog(type_name, error)
         cat = {"type": type_name, "themeable_colors": {}}
     fill_uint, frame_uint, font_uint = _builder._resolve_golden_colors(
         cat, params, theme_colors, scheme

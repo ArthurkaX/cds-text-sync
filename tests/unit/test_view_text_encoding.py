@@ -21,10 +21,10 @@ import pytest
 # Flat imports, as the engine imports itself: reaching _view_text through the
 # package path would bind a second copy of ViewEncodingError, and the class the
 # reader raises would not be the class pytest.raises is watching for.
-from _dirty_scan import dirty_view_paths, scan_dirty
-from _view_text import ViewEncodingError, read_view_text
-from folder_reader import FolderReader
-from xml_helpers import sha1_hex
+from cds_text_sync.engine._dirty_scan import dirty_view_paths, scan_dirty
+from cds_text_sync.engine._view_text import ViewEncodingError, read_view_text
+from cds_text_sync.engine.folder_reader import FolderReader
+from cds_text_sync.engine.xml_helpers import sha1_hex
 
 CYRILLIC_ST = u"FUNCTION_BLOCK FB_Клапан\n" \
               u"(* Открытие *)\n"

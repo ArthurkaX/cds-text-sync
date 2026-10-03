@@ -79,11 +79,19 @@ def read_owning_guid(xml_text):
 
 
 def read_int_member(xml_text, name):
-    """Return the integer value of a named ``<Single Name=name>`` member."""
+    """Return the integer value of a named ``<Single Name=name>`` member.
+
+    A member that is absent, or whose text is not a number, reads as 0 -- that
+    is what "read an int member" means for a screen that simply does not carry
+    it. XML that will not parse is a different thing and raises, as it does in
+    ``read_screen_size`` and ``read_owning_guid`` next door: 0 there is not a
+    default but a fabricated counter base, and callers build the next element's
+    ``GenElemInst_<n>`` identifier out of it.
+    """
     try:
         root = ET.fromstring(xml_text)
-    except Exception:
-        return 0
+    except ET.ParseError as exc:
+        raise ScreenError("Could not parse screen XML: {0}".format(exc))
     for el in root.iter():
         if strip_ns(el.tag) == "Single" and el.attrib.get("Name") == name:
             try:

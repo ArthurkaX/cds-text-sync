@@ -11,8 +11,8 @@ from __future__ import print_function
 import json
 import os
 
-import variable_map
-from snapshot_reader import SnapshotReader
+from . import variable_map
+from .snapshot_reader import SnapshotReader
 
 
 def _node_decl(node):

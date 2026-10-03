@@ -16,16 +16,23 @@ import tempfile
 import time
 
 from ide_daemon_state import (
+    _CONFIG_INVALID,
     _log,
     _get_active_project,
-    _load_daemon_config,
     _project_file_path,
+    _read_daemon_config,
 )
 
 from ide_daemon_helpers import (
     _online_app_if_connected,
     _get_sync_folder,
 )
+
+# Imported for its side effect: puts shared/src on sys.path so this module can be
+# imported cold, without depending on some earlier bridge module having done it.
+import ide_runtime_common  # noqa: F401
+
+from cts_shared.coerce import as_bool
 
 
 def _canonical_crc_hex(value):
@@ -355,7 +362,7 @@ def _cmd_app_history(params):
     --read: just read history without adding new entry
     """
     just_read = (
-        str(params.get("read", "")).lower() in ("1", "true", "yes") if params else False
+        as_bool(params.get("read", "")) if params else False
     )
 
     if not just_read:
@@ -509,5 +516,13 @@ def _cmd_compare_crc(params):
 
 def _cmd_permissions():
     """Return current daemon security settings."""
-    config = _load_daemon_config()
-    return {"ok": True, "data": config}
+    config, status = _read_daemon_config()
+    data = dict(config)
+    if status == _CONFIG_INVALID:
+        # The deny list shown is the built-in default, not the user's; say so
+        # rather than letting the listing imply everything is permitted.
+        data["config_error"] = (
+            "stored daemon config is unreadable; permission-gated commands "
+            "are refused until it is fixed"
+        )
+    return {"ok": True, "data": data}

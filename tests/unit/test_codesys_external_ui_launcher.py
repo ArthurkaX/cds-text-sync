@@ -57,8 +57,18 @@ class _Info:
         self.values = values
 
 
+# The launcher runs inside CODESYS on Windows, and a relative cds-sync-folder
+# is anchored to the saved project file there.  Build the fixture in the host's
+# own dialect so the resolution logic is exercised wherever the suite runs.
+PROJECT_PATH = (
+    r"C:\Projects\Demo\Demo.project" if os.name == "nt" else "/projects/Demo/Demo.project"
+)
+RELATIVE_SYNC = r".\sync" if os.name == "nt" else "./sync"
+WORKSPACE = os.path.normpath(os.path.join(os.path.dirname(PROJECT_PATH), "sync"))
+
+
 class _Project:
-    path = r"C:\Projects\Demo\Demo.project"
+    path = PROJECT_PATH
 
     def __init__(self, sync_folder):
         self._info = _Info({"cds-sync-folder": sync_folder})
@@ -123,10 +133,10 @@ def _ready_stream(launcher):
 def test_project_sync_folder_resolves_relative_property():
     launcher = _load_shared()
 
-    path, error = launcher.project_sync_folder(_Project(r".\sync"))
+    path, error = launcher.project_sync_folder(_Project(RELATIVE_SYNC))
 
     assert error is None
-    assert path == os.path.normpath(r"C:\Projects\Demo\sync")
+    assert path == WORKSPACE
 
 
 def test_project_sync_folder_reports_when_unconfigured():
@@ -161,9 +171,9 @@ def test_start_ui_readiness_line_returns_started(monkeypatch):
         launcher, "_start_drain", lambda stream: captured.update(drained=stream)
     )
 
-    result = launcher.start_ui(runtime, _Project(r".\sync"), ["ui"], "the analyzer UI")
+    result = launcher.start_ui(runtime, _Project(RELATIVE_SYNC), ["ui"], "the analyzer UI")
 
-    workspace = os.path.normpath(r"C:\Projects\Demo\sync")
+    workspace = WORKSPACE
     assert result["status"] == "started"
     assert result["pid"] == 123
     assert result["sync_folder"] == workspace
@@ -190,9 +200,9 @@ def test_start_ui_builds_fsm_ui_command(monkeypatch):
     )
     monkeypatch.setattr(launcher, "_start_drain", lambda stream: None)
 
-    result = launcher.start_ui(runtime, _Project(r".\sync"), ["fsm", "ui"], "the FSM map")
+    result = launcher.start_ui(runtime, _Project(RELATIVE_SYNC), ["fsm", "ui"], "the FSM map")
 
-    workspace = os.path.normpath(r"C:\Projects\Demo\sync")
+    workspace = WORKSPACE
     assert result["status"] == "started"
     assert captured["command"][:5] == ["python", "-m", "cds_cli.main", "fsm", "ui"]
     assert captured["command"][-2:] == ["--workspace", workspace]
@@ -213,9 +223,9 @@ def test_start_ui_sets_initial_workspace_environment(monkeypatch):
     )
     monkeypatch.setattr(launcher, "_start_drain", lambda stream: None)
 
-    result = launcher.start_ui(runtime, _Project(r".\sync"), ["ui"], "the analyzer UI")
+    result = launcher.start_ui(runtime, _Project(RELATIVE_SYNC), ["ui"], "the analyzer UI")
 
-    workspace = os.path.normpath(r"C:\Projects\Demo\sync")
+    workspace = WORKSPACE
     assert result["status"] == "started"
     assert captured["kwargs"]["env"]["CTS_INITIAL_WORKSPACE"] == workspace
 
@@ -238,7 +248,7 @@ def test_start_ui_reports_immediate_exit_with_code_and_hint(monkeypatch):
         lambda command, **kwargs: captured.update(command=command) or process,
     )
 
-    result = launcher.start_ui(runtime, _Project(r".\sync"), ["ui"], "the analyzer UI")
+    result = launcher.start_ui(runtime, _Project(RELATIVE_SYNC), ["ui"], "the analyzer UI")
 
     assert result["status"] == "error"
     assert "code 7" in result["error"]
@@ -263,7 +273,7 @@ def test_start_ui_reports_timeout_when_no_line_and_no_exit(monkeypatch):
     )
 
     result = launcher.start_ui(
-        runtime, _Project(r".\sync"), ["ui"], "the analyzer UI", timeout_seconds=0.05
+        runtime, _Project(RELATIVE_SYNC), ["ui"], "the analyzer UI", timeout_seconds=0.05
     )
 
     assert result["status"] == "error"
@@ -301,7 +311,7 @@ def test_stdout_is_drained_after_a_successful_handshake(monkeypatch):
         launcher, "_start_drain", lambda target: drained.update(stream=target)
     )
 
-    result = launcher.start_ui(runtime, _Project(r".\sync"), ["ui"], "the analyzer UI")
+    result = launcher.start_ui(runtime, _Project(RELATIVE_SYNC), ["ui"], "the analyzer UI")
 
     assert result["status"] == "started"
     assert drained["stream"] is stream
@@ -333,7 +343,7 @@ def test_start_drain_uses_a_daemon_thread_and_reads_to_eof():
 
 def test_fsm_launcher_main_delegates_to_shared_start_ui(monkeypatch):
     launcher = _load_fsm_launcher()
-    project = _Project(r".\sync")
+    project = _Project(RELATIVE_SYNC)
 
     class _Projects:
         primary = project

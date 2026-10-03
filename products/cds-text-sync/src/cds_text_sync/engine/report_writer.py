@@ -6,7 +6,7 @@ import json
 import os
 import time
 
-from xml_helpers import csv_projection_content, st_projection_content
+from .xml_helpers import csv_projection_content, st_projection_content
 
 MAX_INLINE_CONTENT_CHARS = 300000
 

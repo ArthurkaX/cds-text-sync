@@ -474,6 +474,49 @@ def main():
         if os.path.exists(patch_path_nested):
             os.remove(patch_path_nested)
 
+    # --- Test a second persistent GVL is refused, not handed to CODESYS ---
+    # CODESYS accepts one Persistent Variables object per application. Letting
+    # the create through made CODESYS raise a modal "objects already existing"
+    # dialog, which froze the single-threaded daemon (T46).
+    patch_path_dup = _write_patch(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        "<Project>"
+        "<CreateTextObjects>"
+        '<CreateTextObject Path="Device/Application/SecondPersistent.st" Name="SecondPersistent" Kind="persistent_gvl">'
+        "<Declaration>VAR_GLOBAL PERSISTENT\n    dup : BOOL;\nEND_VAR</Declaration>"
+        "</CreateTextObject>"
+        "</CreateTextObjects>"
+        "</Project>"
+    )
+    try:
+        project_dup = FakeProject()
+        device_dup = project_dup._add_child(FakeObject(project_dup, "Device", project_dup))
+        app_dup = device_dup._add_child(FakeObject(project_dup, "Application", device_dup))
+        existing_persistent = app_dup._add_child(
+            FakeObject(project_dup, "FirstPersistent", app_dup)
+        )
+        # The live object reports its type; that is how the guard recognises it.
+        existing_persistent.type = "{3183921b-cc91-4712-9781-c3b6555122b5}"
+
+        result_dup = apply_patch(None, project_dup, patch_path_dup)
+        if result_dup:
+            raise RegressionFailure(
+                "apply_patch created a second persistent GVL instead of refusing it"
+            )
+        _assert(
+            "FirstPersistent" in str(result_dup.error)
+            and "SecondPersistent" in str(result_dup.error),
+            "Refusal must name both the existing and the requested persistent list, "
+            "got: {0}".format(result_dup.error),
+        )
+        _assert(
+            not any(e.startswith("create_child:Application:SecondPersistent") for e in project_dup.events),
+            "CODESYS create_child must not be called for the refused persistent GVL",
+        )
+    finally:
+        if os.path.exists(patch_path_dup):
+            os.remove(patch_path_dup)
+
     # --- Test CreateNativeObject import ---
     native_xml_payload = (
         '<?xml version="1.0" encoding="utf-8"?>'

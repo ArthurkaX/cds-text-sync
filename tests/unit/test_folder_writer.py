@@ -358,6 +358,35 @@ class TestDirtyGuard:
         carried = list(entry["projection_hashes"].values())[0]
         assert carried == original_hash
 
+    def test_unreadable_projection_is_preserved_not_regenerated(
+        self, tmp_path, monkeypatch
+    ):
+        """The end of the chain: a scan that cannot read a file keeps it on disk.
+
+        This is the scenario the dirty guard exists for -- the export must not
+        drop a projection it was unable to read, whatever the reason it could
+        not read it.
+        """
+        from cds_text_sync.engine import _dirty_scan
+
+        views, dump, model, profile, projections = self._first_export(tmp_path)
+        st_rel = os.path.join("Folder", "MyObj.st")
+        edited = _read_file(views, st_rel) + "\n// local edit"
+
+        def _unreadable(path):
+            raise OSError(13, "Permission denied")
+
+        # Both modules resolve to the same package module, so patching the
+        # scanner's reader reaches the one folder_writer's scan uses.
+        monkeypatch.setattr(_dirty_scan, "read_view_text", _unreadable)
+        _write_file(views, st_rel, edited)
+
+        FolderWriter(views, dump, profile=profile, projections=projections).write(
+            model
+        )
+
+        assert _read_file(views, st_rel) == edited
+
     def test_overwrite_dirty_regenerates_and_rehashes(self, tmp_path):
         views, dump, model, profile, projections = self._first_export(tmp_path)
         st_rel = os.path.join("Folder", "MyObj.st")
@@ -419,6 +448,90 @@ class TestDirtyGuard:
 
 
 # ===================================================================
+# Volatile-state rewriting
+# ===================================================================
+
+_SESSION_A = "64aa25a5-e185-4da4-875d-fd0323b331c1"
+_SESSION_B = "41a6bf6f-6d26-4618-a1bd-75394cf29d97"
+
+
+def _style_model(timestamp, session, data="same"):
+    """A node carrying the two fields CODESYS regenerates every session."""
+    import xml.etree.ElementTree as ET
+
+    node = ProjectNode("g1", "__VisualizationStyle")
+    node.display_path = ["App"]
+    root_elem = ET.Element("Single", {"Name": "Object"})
+    meta = ET.SubElement(root_elem, "Single", {"Name": "MetaObject"})
+    ET.SubElement(
+        meta, "Single", {"Name": "Timestamp", "Type": "long"}
+    ).text = timestamp
+    ET.SubElement(root_elem, "Single", {"Name": "FileID"}).text = (
+        "5ce3da45|C:\\ProgramData\\CODESYS\\Temporary Files\\"
+        "VisuStyleDefaultImages_{0}\\Checkbox.bmp".format(session)
+    )
+    ET.SubElement(root_elem, "Single", {"Name": "Data"}).text = data
+    node.entry_element = root_elem
+    model = ProjectModel()
+    model.add_node(node)
+    return model
+
+
+class TestVolatileRewriteGuard:
+    """A new session's timestamps and temp paths must not churn a clean view."""
+
+    def _xml_path(self):
+        return os.path.join("App", "__VisualizationStyle.xml")
+
+    def test_volatile_only_change_keeps_the_existing_bytes(self, tmp_path):
+        import hashlib
+
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        FolderWriter(views, dump).write(_style_model("100", _SESSION_A))
+        first = _read_file(views, self._xml_path())
+
+        # Same object, next CODESYS session: new timestamp, new temp-folder guid.
+        FolderWriter(views, dump).write(_style_model("200", _SESSION_B))
+
+        assert _read_file(views, self._xml_path()) == first
+        entry = _load_manifest(dump)["entries"][0]
+        # The manifest must record the bytes that are on disk, or the file the
+        # export just decided to keep would read as locally modified.
+        assert entry["hash"] == hashlib.sha1(first.encode("utf-8")).hexdigest()
+
+    def test_a_real_change_is_still_written(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        FolderWriter(views, dump).write(_style_model("100", _SESSION_A))
+
+        FolderWriter(views, dump).write(
+            _style_model("100", _SESSION_A, data="edited")
+        )
+
+        written = _read_file(views, self._xml_path())
+        assert "<Single Name=\"Data\">edited</Single>" in written
+
+    def test_a_whitespace_only_edit_is_still_written(self, tmp_path):
+        # The diff engine's normalization strips whitespace; the writer must
+        # not borrow it, or re-indented code would keep its old bytes on disk
+        # and the next import would revert the edit.
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        FolderWriter(views, dump).write(_style_model("100", _SESSION_A, data="x"))
+
+        FolderWriter(views, dump).write(
+            _style_model("200", _SESSION_B, data="    x")
+        )
+
+        written = _read_file(views, self._xml_path())
+        assert "<Single Name=\"Data\">    x</Single>" in written
+
+
+# ===================================================================
 # Sync-mode init lock
 # ===================================================================
 
@@ -453,7 +566,7 @@ class TestSyncModeLock:
 
 class TestTextFirstExport:
     def _write_text_first(self, tmp_path, xml_in_view_kinds=None, projections=None):
-        from _project_profiles import effective_projection_selection
+        from cds_text_sync.engine._project_profiles import effective_projection_selection
 
         views = str(tmp_path / "views")
         dump = str(tmp_path / ".dump")
@@ -745,3 +858,84 @@ class TestExportAtomicAndReliability:
 
         with open(st_file, "r", encoding="utf-8") as f:
             assert f.read() == dirty_content
+
+
+class TestPortableManifestPaths:
+    """The manifest records project-relative paths with "/" on every host.
+
+    ``os.path.join`` made the separators host-specific: a project synced from
+    Windows to Linux (or the other way) carried backslashes that Linux treats
+    as ordinary filename characters, so every managed path failed to resolve.
+    """
+
+    def test_manifest_paths_use_forward_slashes(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        model, profile, projections = _pou_model_and_profile()
+        FolderWriter(views, dump, profile=profile, projections=projections).write(model)
+
+        entry = _load_manifest(dump)["entries"][0]
+
+        assert entry["xml_path"] == "Folder/MyObj.xml"
+        assert entry["projection_paths"] == ["Folder/MyObj.st"]
+        assert list(entry["projection_hashes"]) == ["Folder/MyObj.st"]
+        assert "\\" not in entry["xml_path"]
+
+    def test_the_assembly_helpers_normalize_separators(self):
+        from cds_text_sync.engine._view_paths import join_view_path, manifest_path
+
+        assert manifest_path("Device\\Application\\PLC_PRG.xml") == (
+            "Device/Application/PLC_PRG.xml"
+        )
+        assert join_view_path("/root", "Device\\Application\\PLC_PRG.xml") == (
+            os.path.join("/root", "Device/Application/PLC_PRG.xml")
+        )
+
+
+class TestLegacyBackslashDumpMirrorRemoval:
+    """A Windows-produced manifest (backslash paths) with xml_root="dump" must
+    still have its stale entry xml removed from the .dump/xml mirror.
+
+    The removal target is chosen by comparing the entry's xml path against the
+    normalized managed paths. Comparing a raw backslash field against the
+    normalized list made the equality fail, so the stale mirror xml survived
+    and a same-named file in the view root was deleted instead.
+    """
+
+    def test_stale_mirror_xml_is_removed_not_the_view_root_twin(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        mirror_dir = os.path.join(dump, "xml", "Device", "Application")
+        view_dir = os.path.join(views, "Device", "Application")
+        os.makedirs(mirror_dir)
+        os.makedirs(view_dir)
+        stale_mirror = os.path.join(mirror_dir, "PLC_PRG.xml")
+        view_twin = os.path.join(view_dir, "PLC_PRG.xml")
+        _atomic_write_text(stale_mirror, "<Root>stale</Root>", encoding="utf-8")
+        _atomic_write_text(view_twin, "<Root>keep me</Root>", encoding="utf-8")
+
+        manifest = {
+            "view_root": views,
+            "ns": "",
+            "entries": [
+                {
+                    "guid": "11111111-1111-1111-1111-111111111111",
+                    "name": "PLC_PRG",
+                    "type_guid": "6f9dac99-8de1-4efc-8465-68ac443b7d08",
+                    "parent_guid": None,
+                    # Legacy separator, as written by an older Windows export.
+                    "xml_path": "Device\\Application\\PLC_PRG.xml",
+                    "xml_root": "dump",
+                    "hash": "deadbeef",
+                }
+            ],
+        }
+
+        writer = FolderWriter(views, dump)
+        removed = writer._remove_previous_managed_files_from_root(manifest, views)
+
+        assert removed == 1
+        assert not os.path.exists(stale_mirror), "stale .dump/xml mirror file survived"
+        assert os.path.exists(view_twin), "same-named file in the view root was deleted"

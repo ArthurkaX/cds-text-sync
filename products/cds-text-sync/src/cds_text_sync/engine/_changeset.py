@@ -20,8 +20,8 @@ compare report, the manifest, the project settings and the profile.
 
 import os
 
-from _project_profiles import kind_for_type_guid
-from _view_paths import managed_relative_paths
+from ._project_profiles import kind_for_type_guid
+from ._view_paths import managed_relative_paths
 
 #: Projection formats a human edits directly. Projections are always
 #: view-rooted (``folder_writer._write_projection_files``), so no extra

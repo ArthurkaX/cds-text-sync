@@ -2,6 +2,10 @@
 """Local Structured Text formatting for the CODESYS ``Project_fmt`` command."""
 from __future__ import print_function
 
+# Imported for its side effect: puts shared/src on sys.path so this module can be
+# imported cold, without depending on some earlier bridge module having done it.
+import ide_runtime_common  # noqa: F401
+
 from codesys_runtime import resolve_runtime
 from codesys_utils import resolve_projects, safe_str
 from ide_handlers_sync import _replace_text_document

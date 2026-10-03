@@ -16,7 +16,6 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 
 from cds_text_sync.engine.pipe_targets import (
     Hello,
@@ -29,6 +28,7 @@ from cds_text_sync.engine.reverse_pipe_client import (
     discover,
     ssh_dacl_hint,
 )
+from cts_shared import wire
 
 try:
     for stream in (sys.stdout, sys.stderr):
@@ -38,55 +38,15 @@ try:
 except Exception:
     pass
 
-_SCRIPT_DIR = Path(__file__).resolve().parents[4]
-_ENGINE_DIR = (
-    _SCRIPT_DIR
-    / "products"
-    / "cds-text-sync"
-    / "src"
-    / "cds_text_sync"
-    / "engine"
-)
-if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_ENGINE_DIR))
-# -- Re-exports from submodules (used by main() and kept accessible) ----------
+# -- Public surface -----------------------------------------------------------
 
+# main() pulls the handlers and helpers in from their own modules below; the
+# names are module globals because main() calls them, not a re-export API.
+# This list is the module's public surface: the entry point and the parser
+# builder (tests import the rest from the module that defines them).
 __all__ = [
-    # from cds_cli._cli_io
-    "_print_error",
-    "_print_info",
-    "_print_ok",
-    "_format_output",
-    "_print_rp_error",
-    "_parse_key_value_args",
-    "_load_project_config",
-    "_find_codesys",
-    "_launch_codesys",
-    "_project_command",
-    "cmd_rp_command",
-    "cmd_daemon",
-    "cmd_direct",
-    "send_command_reverse",
-    "ENGINE_CLI",
-    "DAEMON_SCRIPT",
-    "_CODESYS_CANDIDATES",
-    # from cds_cli._cli_parser
+    "main",
     "build_parser",
-    # from cds_cli._cli_handlers_*
-    "cmd_discover",
-    "dispatch_project",
-    "dispatch_pou",
-    "dispatch_daemon",
-    "dispatch_menu",
-    "dispatch_patch",
-    "_resolve_project_view",
-    "_build_map_rows",
-    "_write_csv",
-    "cmd_read_vars",
-    "cmd_variable_map",
-    "cmd_variable_snapshot",
-    "cmd_variable_restore",
-    "dispatch_visu",
 ]
 
 from cds_cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
@@ -98,9 +58,6 @@ from cds_cli._cli_handlers_project import (  # noqa: E402
     dispatch_project,
 )
 from cds_cli._cli_handlers_vars import (  # noqa: E402
-    _build_map_rows,
-    _resolve_project_view,
-    _write_csv,
     cmd_read_vars,
     cmd_variable_map,
     cmd_variable_restore,
@@ -108,20 +65,8 @@ from cds_cli._cli_handlers_vars import (  # noqa: E402
 )
 from cds_cli._cli_handlers_visu import dispatch_visu  # noqa: E402
 from cds_cli._cli_io import (  # noqa: E402
-    _CODESYS_CANDIDATES,
-    DAEMON_SCRIPT,
-    ENGINE_CLI,
-    _find_codesys,
-    _format_output,
-    _launch_codesys,
-    _load_project_config,
-    _parse_key_value_args,
     _print_error,
-    _print_info,
-    _print_ok,
     _print_rp_error,
-    _project_command,
-    cmd_daemon,
     cmd_direct,
     cmd_rp_command,
     send_command_reverse,
@@ -221,8 +166,6 @@ def main():
 
     configure(target=args.target, expect_project=args.expect_project)
 
-    use_reverse = True
-
     # Determine output format
     output_fmt = getattr(args, "output", "json")
     if getattr(args, "pretty", False):
@@ -253,13 +196,13 @@ def main():
             )
 
         elif args.command == "project":
-            dispatch_project(args, use_reverse=use_reverse)
+            dispatch_project(args)
 
         elif args.command == "pou":
-            dispatch_pou(args, use_reverse=use_reverse)
+            dispatch_pou(args)
 
         elif args.command == "discover":
-            cmd_discover(use_reverse=use_reverse)
+            cmd_discover()
 
         elif args.command == "read-vars":
             cmd_read_vars(
@@ -365,7 +308,7 @@ def main():
 
             workspace = getattr(args, "workspace", "") or "."
             if getattr(args, "validate", False):
-                output = getattr(args, "output", "") or None
+                output = getattr(args, "docs_output", "") or None
                 if output is None:
                     _project_view, output_path = _resolve_doc_paths(workspace)
                     output = str(output_path)
@@ -377,7 +320,7 @@ def main():
                     sys.exit(1)
                 return
             if getattr(args, "check", False):
-                result = check_docs(workspace, output=getattr(args, "output", "") or None)
+                result = check_docs(workspace, output=getattr(args, "docs_output", "") or None)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True))
                 if result.get("exit_code"):
                     sys.exit(result["exit_code"])
@@ -389,7 +332,7 @@ def main():
                     _print_error("Reverse pipe error: {0}".format(e))
                     sys.exit(1)
 
-                if not resp.get("ok"):
+                if not wire.response_ok(resp):
                     _print_rp_error(resp, "generate_docs")
                     sys.exit(1)
                 workspace = resp.get("data", {}).get("sync_folder") or workspace
@@ -397,7 +340,7 @@ def main():
             result = generate_docs(
                 workspace,
                 library_path=getattr(args, "library_path", "") or None,
-                output=getattr(args, "output", "") or None,
+                output=getattr(args, "docs_output", "") or None,
             )
             print(result["output"])
 

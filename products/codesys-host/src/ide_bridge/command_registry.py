@@ -1,23 +1,62 @@
 # -*- coding: utf-8 -*-
 
-"""Plain command metadata shared by the IronPython bridge and tooling.
+"""The single source of truth for daemon commands.
+
+Everything that describes a daemon method -- its handler, its help line, the
+short names that resolve to it, and whether the daemon deny list may block it --
+lives in this one module. The reverse-pipe loop builds its dispatch table from
+DISPATCH_SPECS and takes its alias table from ALIASES; it must not re-list any
+of it. The daemon's own help command serves HELP_TEXT verbatim.
 
 Keep this module data-only: it must load in IronPython 2.7 and CPython without
 pulling in CODESYS or CLI modules.
 """
 
+# ── Aliases ────────────────────────────────────────────────────────────────
+# The one alias table. `canonical_name` is the only resolver; the loop's
+# _ALIASES is this dict, not a copy.
 ALIASES = {
     "connect": "connect_to_device",
     "disconnect": "disconnect_from_device",
     "app": "application_state",
     "proj": "project_info",
     "tree": "project_tree",
+    # Legacy protocol spellings, kept so an older CLI against a newer daemon
+    # behaves exactly as it used to.
+    #
+    # `compare` is the PLC CRC comparison (plc_crc), not the `cts compare`
+    # command: that one is sync_compare_text, and the old name made the daemon
+    # log read as a folder comparison that mysteriously built the project.
+    # `stop` stops the daemon, not the PLC: `cts stop` is the user-facing PLC
+    # stop (daemon method stop_plc), so the daemon-lifecycle method is named
+    # stop_daemon and this alias only keeps older CLIs working.
+    "compare": "plc_crc",
+    "stop": "stop_daemon",
 }
 
+# ── Permission exemption ───────────────────────────────────────────────────
+# Rule: a command may skip the deny list only when it is strictly read-only --
+# it does not modify the project, the PLC, the sync folder's tracked content,
+# any file outside .dump/, or daemon state that changes what a later command
+# does. Caching a session handle it already had, or writing only inside .dump/,
+# is not a modification (this is how diagnose_online and explore already
+# behave). Everything that writes, that changes the PLC session, or that
+# produces tracked output (snapshots, project-view, exports, build artifacts,
+# documentation files) stays gated so a deny list can still block it.
+# The exact set is pinned by tests/unit/test_command_registry.py.
 NO_PERMISSION = frozenset([
-    "ping", "status", "timeout_profile", "help", "stop", "permissions", "sync",
-    "project_info", "project_tree", "read_object", "explore",
-    "project_list", "list_devices", "diagnose_online", "discover",
+    # daemon lifecycle and introspection
+    "ping", "status", "timeout_profile", "help", "stop_daemon", "permissions",
+    # project and object inspection
+    "project_info", "project_tree", "read_object", "project_list",
+    "list_devices", "explore", "probe", "discover", "diagnose_online",
+    # PLC reads (an existing session only; no login, download or update)
+    "read_variable", "read_variables", "application_state", "device_status",
+    "test_online",
+    # PLC file inspection and CRC reads
+    "app_crc", "app_info", "app_history", "plc_crc",
+    # sync state read-back
+    "sync", "last_result", "generate_docs",
 ])
 
 
@@ -25,23 +64,6 @@ def canonical_name(name):
     """Return the canonical command name for an alias or the input itself."""
     return ALIASES.get(name, name)
 
-
-DISPATCH_NAMES = frozenset([
-    "project_tree", "read_object", "connect_to_device", "download",
-    "read_variable", "write_variable", "read_variables", "write_variables",
-    "export", "build", "device_status", "test_online", "sync_export",
-    "sync_import", "sync_compare", "sync_export_text", "sync_import_text",
-    "sync_compare_text", "generate_docs", "update_pou", "delete_pou", "cicd", "read_log",
-    "reset_plc", "source_download", "probe", "application_tree", "plc_files",
-    "plc_log", "plc_download", "plc_upload", "export_csv", "export_st",
-    "app_crc", "app_history", "plc_crc", "compare", "stop", "ping", "status", "timeout_profile",
-    "project_info", "application_state", "disconnect_from_device", "explore",
-    "set_sync_folder",
-    "sync", "help", "start_plc", "stop_plc", "create_boot_app", "app_info",
-    "permissions", "project_open", "project_close", "project_list",
-    "list_devices", "set_simulation_mode", "set_credentials", "diagnose_online",
-    "discover",
-])
 
 DISPATCH_SPECS = {
     "project_tree": ("direct", "_cmd_project_tree"),
@@ -67,6 +89,9 @@ DISPATCH_SPECS = {
     "delete_pou": ("direct", "_cmd_delete_pou"),
     "cicd": ("direct", "_cmd_cicd"),
     "read_log": ("direct", "_cmd_read_log"),
+    # T50: read back the outcome of the last sync command, for when the CLI
+    # timed out and never saw the response.
+    "last_result": ("direct", "_cmd_last_result"),
     "reset_plc": ("direct", "_cmd_reset_plc"),
     "source_download": ("direct", "_cmd_source_download"),
     "probe": ("direct", "_cmd_probe_oa"),
@@ -80,13 +105,9 @@ DISPATCH_SPECS = {
     "app_crc": ("direct", "_cmd_app_crc"),
     "app_history": ("direct", "_cmd_app_history"),
     "plc_crc": ("direct", "_cmd_compare_crc"),
-    # Legacy name. It says "compare" in the daemon log while doing something
-    # entirely unlike `cts compare` (that one is sync_compare_text), so the log
-    # read as a folder comparison mysteriously building the project -- the
-    # build being CODESYS generating code inside the login attempt. Kept so an
-    # older CLI against a newer daemon still works.
-    "compare": ("direct", "_cmd_compare_crc"),
-    "stop": ("direct", "_handle_stop"),
+    # `compare` (-> plc_crc) and `stop` (-> stop_daemon) are legacy aliases,
+    # not commands: see ALIASES above.
+    "stop_daemon": ("direct", "_handle_stop"),
     "ping": ("direct", "_handle_ping"),
     "status": ("direct", "_handle_status"),
     "timeout_profile": ("direct", "_handle_timeout_profile"),
@@ -112,11 +133,37 @@ DISPATCH_SPECS = {
     "discover": ("direct", "_cmd_discover"),
 }
 
+# Derived, never listed separately: a command is dispatchable exactly when the
+# daemon has a spec for it. The flat set is what the bridge and its tests check
+# the daemon's dispatch table against.
+DISPATCH_NAMES = frozenset(DISPATCH_SPECS)
+
+# One entry per dispatchable command: HELP_TEXT keys are exactly
+# DISPATCH_NAMES, and tests/unit/test_command_registry.py holds that equality.
+# Aliases are not listed here -- `cts raw help` reports commands, and ALIASES
+# is where the short names live.
 HELP_TEXT = {
 "ping": "Check daemon liveness and cached PLC state",
 "status": "Get daemon, project, sync-folder, and cached PLC state",
-"stop": "Stop the daemon",
+"timeout_profile": "Get the daemon's startup per-command timeout profile (read-only)",
+"stop_daemon": "Stop the daemon",
 "application_state": "Get PLC application state (run/stop)",
+"device_status": "Get device status",
+"test_online": "Test online connection helpers",
+"app_crc": "Get Application CRC and metadata from PLC",
+"app_info": "Get detailed info about application on PLC",
+"app_history": "Log CRC to .dump/app_history.json [--read to just view history]",
+"plc_crc": "Compare IDE project CRC with PLC Application.crc",
+"probe": "Probe OnlineApplication for variable/symbol APIs",
+"generate_docs": "Resolve the sync folder for local documentation generation (cts docs runs the generator)",
+"project_open": "Open a project [--path PATH]",
+"project_close": "Close the current project",
+"project_list": "List projects open in the IDE",
+"list_devices": "List the project's devices",
+"set_simulation_mode": "Enable or disable simulation mode [--enable on|off]",
+"set_credentials": "Set PLC login credentials --username U [--password P]",
+"diagnose_online": "Diagnose the online connection and cached PLC state",
+"discover": "Discover installations and report project/profile coverage [--path DIR]",
 "project_info": "Get project information",
 "set_sync_folder": "Set project sync folder [--path PATH] [--save]; omit path to use the saved project directory",
 "project_tree": "Get project object tree [--depth N]",
@@ -126,13 +173,12 @@ HELP_TEXT = {
 "download": "Force a FULL download of the active app to the PLC (login with force-download; needed after adding new GVL/DUT/POU). [--start 0|1, default 1]",
 "read_variable": "Read a PLC variable --name VAR",
 "write_variable": "Write a PLC variable --name VAR --value VAL",
-"device_status": "Get device status",
 "export": "Export project snapshot [--output PATH]",
 "build": "Build the active application [--output PATH]",
-"test_online": "Test online connection helpers",
 "explore": "Explore available APIs",
 "help": "Show this help",
 "read_log": "Read system/PLC log messages [--last N] [--clear]",
+"last_result": "Read back the outcome of the last sync command (use after a CLI timeout)",
 "start_plc": "Start the PLC application",
 "stop_plc": "Stop the PLC application",
 "reset_plc": "Reset PLC [--kind warm|cold|origin]",
@@ -140,7 +186,6 @@ HELP_TEXT = {
 "source_download": "Download source from PLC [--output DIR]",
 "update_pou": "Edge case: update ONE object's text from .st [--name NAME] [--app APP] --st_path PATH. Prefer sync_import_text for the normal disk->IDE flow",
 "delete_pou": "Delete POU/Function/FunctionBlock [--name NAME] [--app APP]",
-"probe": "Probe OnlineApplication for variable/symbol APIs",
 "read_variables": 'Batch-read expressions {"names": [...]} -> per-item value/read_ok/read_error',
 "write_variables": 'Batch-write {"items": [{name,value}]} -> per-item written/write_error',
 "application_tree": "Walk the application OBJECT tree [--depth N] [--values] [--pattern FILTER] [--flat] [--output PATH]",
@@ -149,8 +194,6 @@ HELP_TEXT = {
 "plc_upload": "Upload file to PLC --src PATH --dest PLC_PATH [--overwrite 0|1]",
 "export_csv": "Export PLC variable tree as CSV [--output PATH] [--values]",
 "export_st": "Export project POU source code as .st files [--output DIR]",
-"app_crc": "Get Application CRC and metadata from PLC",
-"app_history": "Log CRC to .dump/app_history.json [--read to just view history]",
 "sync": "Show sync folder info and .dump state",
 "sync_export": "Export Native XML snapshot to .dump/ [--output PATH]",
 "sync_import": "Low-level: import a raw .dump/ XML snapshot back into project [--input PATH]. For text edits use sync_import_text instead",
@@ -158,11 +201,7 @@ HELP_TEXT = {
 "sync_export_text": "IDE->disk: export Native XML and refresh project-view/ text files (local edits are kept by default)",
 "sync_import_text": "disk->IDE (preferred): build IMPORT.xml from project-view/ and apply to project. Disk wins on conflicts; requires offline (disconnect first)",
 "sync_compare_text": "Compare project against project-view/ (diff report)",
-"generate_docs": "Resolve the sync folder for local documentation generation (cts docs runs the generator)",
 "cicd": "Run CI/CD test plan --file path [--timeout N]",
 "permissions": "Show daemon security config (read-only)",
 "plc_log": "Read PLC log [--file codesyscontrol.log] [--tail N] [--output DIR]",
-"app_info": "Get detailed info about application on PLC",
-"plc_crc": "Compare IDE project CRC with PLC Application.crc",
-"compare": "Deprecated alias for plc_crc",
 }

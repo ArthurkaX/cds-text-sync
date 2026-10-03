@@ -12,6 +12,8 @@ compiled-screen checks; both were left out of the skeleton on purpose.
 import os
 import time
 
+from cts_shared import wire
+
 from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
 
 from cds_cli.verify.model import (
@@ -83,10 +85,10 @@ class VerifyContext:
         if self._daemon_alive is None:
             try:
                 resp = send_command_reverse("ping", {}, timeout=self.probe_timeout)
-                self._daemon_alive = bool(resp.get("ok"))
+                self._daemon_alive = wire.response_ok(resp)
                 if not self._daemon_alive:
-                    self._daemon_reason = str(
-                        resp.get("error") or "daemon answered but not ok"
+                    self._daemon_reason = wire.response_error(
+                        resp, "daemon answered but not ok"
                     )
             except Exception as exc:
                 # Every transport failure in reverse_pipe_client is a plain
@@ -302,12 +304,13 @@ def stage_build(ctx):
         return StageResult.errored("build", "daemon returned a non-object response")
 
     data = resp.get("data")
-    if not resp.get("ok") and not isinstance(data, dict):
-        # No payload means the daemon refused before compiling -- no project
-        # open, no application. Nothing was verified.
+    # A refusal can arrive with ok False and a real payload: the build report
+    # itself carries compiler errors. Only a refusal with no payload is the
+    # daemon saying it never got to compile anything.
+    if not wire.response_ok(resp) and not isinstance(data, dict):
         return StageResult.errored(
             "build",
-            str(resp.get("error") or "build refused"),
+            wire.response_error(resp, "build refused"),
             reason_code="daemon_refused",
         )
     if not isinstance(data, dict):
@@ -451,7 +454,7 @@ def stage_build(ctx):
     if errors == 0 and problems:
         errors = len(problems)
         summary["errors"] = errors
-    if not resp.get("ok") and errors == 0 and not problems:
+    if not wire.response_ok(resp) and errors == 0 and not problems:
         return StageResult.errored(
             "build",
             "daemon returned ok=false without compiler diagnostics",
@@ -466,7 +469,7 @@ def stage_build(ctx):
 
     # A compiler error is a confirmed project failure. Missing diagnostics are
     # reported as incomplete even when the daemon's top-level flag says ok.
-    build_failed = errors > 0 or bool(problems) or not resp.get("ok")
+    build_failed = errors > 0 or bool(problems) or not wire.response_ok(resp)
     status = STATUS_FAIL if build_failed else STATUS_PASS
     if not diagnostics_complete and not build_failed:
         status = STATUS_ERROR
@@ -562,10 +565,10 @@ def stage_test(ctx):
         return StageResult.errored("test", "daemon returned a non-object response")
 
     data = resp.get("data")
-    if not resp.get("ok") and not isinstance(data, dict):
+    if not wire.response_ok(resp) and not isinstance(data, dict):
         return StageResult.errored(
             "test",
-            str(resp.get("error") or "test run refused"),
+            wire.response_error(resp, "test run refused"),
             reason_code="daemon_refused",
         )
     if not isinstance(data, dict):

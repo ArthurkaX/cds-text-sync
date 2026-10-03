@@ -46,8 +46,11 @@ except ImportError:
         sys.path.insert(0, _SHARED_SRC)
     from cts_shared.st import declarations as _shared_declarations
 
-
-ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
+from cts_shared.st.projection import (
+    IMPLEMENTATION_MARKER as ST_IMPLEMENTATION_MARKER,  # noqa: F401 - re-exported
+    find_implementation_split,
+    normalize_newlines,
+)
 
 # Base IEC scalar types (without optional STRING/WSTRING length).
 SCALAR_TYPES = set([
@@ -129,15 +132,11 @@ def split_decl_impl(text):
 
     implementation is None when the marker is absent.
     """
-    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-    marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
-    if marker in normalized:
-        decl, impl = normalized.split(marker, 1)
-        return decl, impl
-    if ST_IMPLEMENTATION_MARKER in normalized:
-        decl, impl = normalized.split(ST_IMPLEMENTATION_MARKER, 1)
-        return decl, impl
-    return normalized, None
+    normalized = normalize_newlines(text)
+    parts = find_implementation_split(normalized)
+    if parts is None:
+        return normalized, None
+    return parts
 
 
 def detect_owner_kind(decl):

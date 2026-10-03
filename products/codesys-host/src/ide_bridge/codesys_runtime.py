@@ -104,37 +104,29 @@ def _get_root_dir(script_file=None):
 
 def _ensure_sys_path(root_dir):
     ide_bridge_dir = os.path.join(root_dir, "src", "ide_bridge")
-    engine_dir = _find_engine_dir(root_dir)
-    old_engine_dir = os.path.join(root_dir, "src", "external_engine")
+    product_src_dir = _find_product_src_dir(root_dir)
     # Inserted at 0 in turn, so this tuple is walked back-to-front: the
-    # resulting order is ide_bridge, engine, old_engine, root. The bridge must
+    # resulting order is ide_bridge, product src, root. The bridge must
     # outrank the root because modules are imported by name now, and the root
     # holds Project_snapshooter.py next to the bridge's project_snapshooter.py
     # -- names that collide on a case-insensitive filesystem.
-    for path in (root_dir, old_engine_dir, engine_dir, ide_bridge_dir):
+    for path in (root_dir, product_src_dir, ide_bridge_dir):
         if path and path not in sys.path:
             sys.path.insert(0, path)
 
 
-def _find_engine_dir(root_dir):
-    """Find the CPython engine from a host product checkout or installation."""
+def _find_product_src_dir(root_dir):
+    """Find the sync product's ``src`` dir from a host checkout or install."""
     current = os.path.abspath(root_dir)
     while True:
-        candidate = os.path.join(
-            current, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-        )
+        candidate = os.path.join(current, "products", "cds-text-sync", "src")
         if os.path.isdir(candidate):
             return candidate
-        legacy = os.path.join(current, "src", "external_engine")
-        if os.path.isdir(legacy):
-            return legacy
         parent = os.path.dirname(current)
         if not parent or parent == current:
             break
         current = parent
-    return os.path.join(
-        root_dir, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-    )
+    return os.path.join(root_dir, "products", "cds-text-sync", "src")
 
 
 def _module_file_exists(root_dir, name):

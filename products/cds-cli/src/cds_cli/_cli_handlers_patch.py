@@ -19,7 +19,7 @@ import os
 import shutil
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from cds_cli._cli_handlers_vars import _resolve_sync_folder
 from cds_cli._cli_io import (
@@ -30,6 +30,7 @@ from cds_cli._cli_io import (
     send_command_reverse,
 )
 from cds_text_sync.engine.pipe_targets import TargetError
+from cts_shared import wire
 
 PATCH_DIRNAME = "patch"
 PATCH_PREFIX = "patch_"
@@ -43,18 +44,24 @@ def resolve_patch_path(relative_str: str, root_dir: str | Path) -> Path:
     Rejects empty paths, paths without filename, absolute drive paths, UNC
     paths, rooted paths, and directory traversal outside root_dir. Resolves
     existing symlinks and junctions.
+
+    The paths come from the IDE's compare report, so they are Windows-shaped
+    even when this CLI runs on a POSIX host.  Classify them with Windows rules
+    and treat both separators as separators: otherwise ``C:\\escaped.st``
+    looks like a file whose name merely contains a colon and backslash, and
+    the guard silently stops guarding.
     """
     if not relative_str or not str(relative_str).strip():
         raise ValueError("Patch path cannot be empty")
-    s = str(relative_str).replace("/", os.sep)
-    # Reject absolute drive, UNC, or root-prefixed paths before Path normalization
-    p = Path(s)
-    if p.is_absolute() or p.drive or s.startswith(("\\\\", os.sep, "/")):
+    raw = str(relative_str)
+    windows = PureWindowsPath(raw)
+    if windows.is_absolute() or windows.drive or raw.startswith(("\\", "/")):
         raise ValueError(f"Unsafe absolute, rooted, or UNC patch path: {relative_str}")
+    parts = [part for part in raw.replace("\\", "/").split("/") if part not in ("", ".")]
 
     root_resolved = Path(root_dir).resolve()
     # Resolve against explicit root
-    target = (root_resolved / p).resolve()
+    target = root_resolved.joinpath(*parts).resolve()
     if not target.is_relative_to(root_resolved) or target == root_resolved:
         raise ValueError(f"Patch path escapes allowed root: {relative_str}")
     if not target.name or target.name in (".", ".."):
@@ -84,9 +91,9 @@ def _run_compare(timeout):
     except Exception as error:
         _print_error("Compare failed: {0}".format(error))
         sys.exit(1)
-    if not response.get("ok"):
+    if not wire.response_ok(response):
         _print_error(
-            "Compare failed: {0}".format(response.get("error") or "unknown error")
+            "Compare failed: {0}".format(wire.response_error(response))
         )
         sys.exit(1)
     return response.get("data") or {}
@@ -171,11 +178,11 @@ def cmd_patch_save(
     output_fmt="json",
 ):
     """Run a compare and write the changed text files as a copy-over patch."""
-    from _changeset import select_changeset
-    from _manifest_bookkeeper import load as load_manifest
-    from _project_layout import resolve_layout
-    from _project_profiles import load_profile
-    from _project_settings import load_project_settings
+    from cds_text_sync.engine._changeset import select_changeset
+    from cds_text_sync.engine._manifest_bookkeeper import load as load_manifest
+    from cds_text_sync.engine._project_layout import resolve_layout
+    from cds_text_sync.engine._project_profiles import load_profile
+    from cds_text_sync.engine._project_settings import load_project_settings
 
     sync_root = _resolve_sync_folder(sync_folder, timeout=timeout)
     settings = load_project_settings(sync_root)

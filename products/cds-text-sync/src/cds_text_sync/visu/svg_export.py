@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import math
 import re
+import sys
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 
@@ -421,12 +422,38 @@ def _text_geometry(element, y, h, font_size):
     return anchor, str(int(y_val + fs))
 
 
+def _stroke_width_attr(border_width):
+    """Return an SVG ``stroke-width`` value, or ``None`` when there is none.
+
+    CODESYS stores the width as a string. A non-positive width means "no
+    border" and is omitted. A value that is not a number at all used to be
+    dropped in silence, which turned a malformed border into a borderless
+    shape with no trace; report it instead so the screen's source can be
+    fixed.
+    """
+    if border_width is None:
+        return None
+    text = str(border_width).strip()
+    if not text:
+        return None
+    try:
+        value = int(text)
+    except (ValueError, TypeError):
+        print(
+            "[WARN] svg_export: ignoring non-numeric border width {0!r}".format(
+                border_width
+            ),
+            file=sys.stderr,
+        )
+        return None
+    return str(value) if value > 0 else None
+
+
 def _render_rect(x, y, w, h, element, rx=None, gradient_ref=None):
     """Render a ``<rect>`` from a simple shape element."""
     fill = _resolve_color_value(_member_value(element, _MID_FILL))
     stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
     _sw = _member_value(element, _MID_BORDER_WIDTH)
-    sw = _sw if isinstance(_sw, str) else None
 
     attrs = {
         "x": str(x),
@@ -446,13 +473,9 @@ def _render_rect(x, y, w, h, element, rx=None, gradient_ref=None):
         attrs["fill"] = fill
     if stroke:
         attrs["stroke"] = stroke
-    if sw:
-        try:
-            sw_val = int(sw)
-            if sw_val > 0:
-                attrs["stroke-width"] = str(sw_val)
-        except (ValueError, TypeError):
-            pass
+    stroke_width = _stroke_width_attr(_sw)
+    if stroke_width is not None:
+        attrs["stroke-width"] = stroke_width
     return _svg_tag("rect", attrs)
 
 
@@ -461,7 +484,6 @@ def _render_circle(cx, cy, r, element, gradient_ref=None):
     fill = _resolve_color_value(_member_value(element, _MID_FILL))
     stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
     _sw = _member_value(element, _MID_BORDER_WIDTH)
-    sw = _sw if isinstance(_sw, str) else None
 
     attrs = {"cx": str(cx), "cy": str(cy), "r": str(r)}
     if gradient_ref:
@@ -472,13 +494,9 @@ def _render_circle(cx, cy, r, element, gradient_ref=None):
         attrs["fill"] = fill
     if stroke:
         attrs["stroke"] = stroke
-    if sw:
-        try:
-            sw_val = int(sw)
-            if sw_val > 0:
-                attrs["stroke-width"] = str(sw_val)
-        except (ValueError, TypeError):
-            pass
+    stroke_width = _stroke_width_attr(_sw)
+    if stroke_width is not None:
+        attrs["stroke-width"] = stroke_width
     return _svg_tag("circle", attrs)
 
 
@@ -496,7 +514,6 @@ def _render_line(element):
     y1 = _y1 if isinstance(_y1, str) else None
     x2 = _x2 if isinstance(_x2, str) else None
     y2 = _y2 if isinstance(_y2, str) else None
-    sw = _sw if isinstance(_sw, str) else None
 
     attrs = {}
     if x1 is not None:
@@ -509,13 +526,9 @@ def _render_line(element):
         attrs["y2"] = y2
     if stroke:
         attrs["stroke"] = stroke
-    if sw:
-        try:
-            sw_val = int(sw)
-            if sw_val > 0:
-                attrs["stroke-width"] = str(sw_val)
-        except (ValueError, TypeError):
-            pass
+    stroke_width = _stroke_width_attr(_sw)
+    if stroke_width is not None:
+        attrs["stroke-width"] = stroke_width
     return _svg_tag("line", attrs)
 
 

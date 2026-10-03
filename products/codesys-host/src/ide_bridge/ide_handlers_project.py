@@ -14,8 +14,13 @@ import traceback
 
 from codesys_utils import resolve_sync_folder
 
-import ide_online_helpers as _helpers
+# Imported before cts_shared: it puts shared/src on sys.path, so this module can be
+# imported cold, without depending on some earlier bridge module having done it.
 import ide_runtime_common as _common  # noqa: F401 – imported for completeness; bodies may use _common
+
+from cts_shared.coerce import as_bool
+
+import ide_online_helpers as _helpers
 
 from ide_daemon_state import (
     _log,
@@ -64,15 +69,25 @@ def _cmd_project_info():
             info["object_count"] = -1
         # Read Project Information dialog data: Summary tab + Properties tab.
         try:
-            proj_info = _get_project_info_object(project)
+            project_info_errors = []
+            proj_info = _get_project_info_object(project, project_info_errors)
             if proj_info is not None:
-                summary = _project_info_summary(proj_info)
-                properties = _project_info_properties(proj_info)
+                summary = _project_info_summary(proj_info, project_info_errors)
+                properties = _project_info_properties(proj_info, project_info_errors)
                 info["summary"] = summary
                 info["properties"] = properties
                 sf = properties.get("cds-sync-folder", "")
                 if sf:
                     info["sync_folder"] = str(sf)
+            if project_info_errors:
+                # The summary/properties above may be partial. Say so in the
+                # result instead of presenting a short dict as the whole truth.
+                info["project_info_errors"] = project_info_errors
+                _log(
+                    "Partial project information: {0}".format(
+                        "; ".join(project_info_errors)
+                    )
+                )
         except Exception as error:
             _log("Could not read project information properties: {0}".format(error))
         return {"ok": True, "data": info}
@@ -127,7 +142,7 @@ def _cmd_set_sync_folder(params):
 
         saved = False
         save_error = ""
-        if params.get("save") in (True, 1, "1", "true", "True", "yes", "on"):
+        if as_bool(params.get("save")):
             try:
                 project.save()
                 saved = True
@@ -189,15 +204,25 @@ def _cmd_application_state():
         sys._codesys_daemon_loop["online_target_app"] = app
         info = {}
         for attr in ["application_state", "is_connected", "is_running", "is_online"]:
-            if hasattr(oa, attr):
-                try:
-                    val = getattr(oa, attr)
-                    if callable(val):
-                        info[attr] = str(val())
-                    else:
-                        info[attr] = str(val)
-                except Exception:
-                    pass
+            # Only AttributeError means "this wrapper has no such property".
+            # Anything else means the property is there and the CODESYS call
+            # refused -- which must be reported, never dropped: a missing
+            # is_running would otherwise read as "not running". (hasattr is not
+            # used for exactly this reason: it swallows only AttributeError, so
+            # an unreadable property would escape the guard.)
+            try:
+                val = getattr(oa, attr)
+            except AttributeError:
+                continue
+            except Exception as error:
+                info[attr + "_error"] = str(error)
+                continue
+            try:
+                if callable(val):
+                    val = val()
+                info[attr] = str(val)
+            except Exception as error:
+                info[attr + "_error"] = str(error)
         return {"ok": True, "data": info}
     except Exception as e:
         _log("app_state ERROR: {0}".format(e))
@@ -328,16 +353,18 @@ def _cmd_read_object(params):
         if target is None:
             return {"ok": False, "error": "Object not found"}
 
-        try:
-            obj_type = str(target.get_type())
-        except Exception:
-            obj_type = "Unknown"
-
+        # The type is the ``type`` property (a System.Guid); get_type() does
+        # not exist on CODESYS 3.5 objects, which is why this used to answer
+        # "Unknown" for every object.
+        obj_type, type_error = _common.object_type(target)
         data = {
             "name": _obj_name(target),
             "path": _build_path(target),
-            "type": obj_type,
         }
+        if obj_type:
+            data["type"] = obj_type
+        elif type_error:
+            data["type_error"] = type_error
         guid = _common.object_guid(target)
         if guid:
             data["guid"] = guid
@@ -687,12 +714,19 @@ def _cmd_probe_oa(params):
 def _sync_folder_for_project(project):
     """Resolve the project's sync root, or return "" if unavailable."""
     try:
-        proj_info = _get_project_info_object(project)
+        errors = []
+        proj_info = _get_project_info_object(project, errors)
         if proj_info is not None:
-            props = _project_info_properties(proj_info)
+            props = _project_info_properties(proj_info, errors)
             sf = props.get("cds-sync-folder", "")
             if sf:
                 return resolve_sync_folder(sf, project)
+        if errors:
+            _log(
+                "Could not fully read the project sync-folder property: {0}".format(
+                    "; ".join(errors)
+                )
+            )
     except Exception as error:
         _log("Could not read project sync-folder property: {0}".format(error))
     return ""
@@ -877,7 +911,7 @@ def _cmd_set_simulation_mode(params):
         enable_raw = (params or {}).get("enable", "on")
         enable = _bool_or_none(enable_raw)
         if enable is None:
-            enable = str(enable_raw).strip().lower() in ("on", "true", "1", "yes")
+            enable = as_bool(enable_raw)
         result = _helpers.set_simulation_mode_impl(project, enable)
         return {"ok": True, "data": result}
     except Exception as e:

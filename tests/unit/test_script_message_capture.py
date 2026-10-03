@@ -30,7 +30,7 @@ if BRIDGE_DIR not in sys.path:
     sys.path.insert(0, BRIDGE_DIR)
 
 import ide_runtime_common  # noqa: E402
-from _project_settings import load_project_settings, save_project_settings  # noqa: E402
+from cds_text_sync.engine._project_settings import load_project_settings, save_project_settings  # noqa: E402
 
 
 def _read(path):

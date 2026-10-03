@@ -9,25 +9,27 @@ import os
 import tempfile
 import time
 
-from _dirty_scan import dirty_view_paths
-from _manifest_bookkeeper import entries as manifest_entries
-from _manifest_bookkeeper import hash_by_path, load as load_manifest
-from _path_safety import replace_extension, safe_path_in_root
-from _projection_codec import encode as encode_projection
-from _project_layout import is_reserved_root_child
-from _project_profiles import enabled_projection_options, kind_for_type_guid
-from _project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
-from _view_paths import (
+from ._dirty_scan import dirty_view_paths
+from ._manifest_bookkeeper import entries as manifest_entries
+from ._manifest_bookkeeper import hash_by_path, load as load_manifest
+from ._path_safety import replace_extension, safe_path_in_root
+from ._projection_codec import encode as encode_projection
+from ._project_layout import is_reserved_root_child
+from ._project_profiles import enabled_projection_options, kind_for_type_guid
+from ._project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
+from ._view_paths import (
     managed_relative_paths,
+    manifest_path,
     manifest_view_root,
     normalize_fs_path,
 )
-from xml_helpers import (
+from .xml_helpers import (
     ensure_dir,
     entry_to_xml,
     externalized_text_xml,
     normalize_guid,
     sha1_hex,
+    write_equivalent_xml_text,
 )
 
 
@@ -66,6 +68,49 @@ def _atomic_write_text(dest_path, content, encoding="utf-8", newline=""):
             except OSError:
                 pass
         raise
+
+
+def _preserve_equivalent_text(previous_text, xml_text):
+    """Return the previous text when the new text differs by no real content.
+
+    CODESYS stamps IDE-generated state into every export: object Timestamps
+    and the per-session ``VisuStyleDefaultImages_<guid>`` temp path. Neither is
+    content -- two exports of an unchanged project across a session restart
+    differ in nothing else -- yet writing the new text every time produces a
+    byte diff on every export: git noise, and a view that reads as locally
+    modified forever. Everything else, whitespace included, still counts (see
+    write_equivalent_xml_text).
+
+    Keeping the previous bytes has a second, deliberate effect: the values left
+    on disk are the real ones from the export that first wrote them.
+    ``_patch_builder`` feeds a modified object's view XML straight to the
+    project, so a view whose volatile fields had been replaced by placeholders
+    would import those placeholders.
+
+    Returns None when there is no previous text or it differs for real; the
+    caller then writes the new text as usual.
+    """
+    if previous_text is None:
+        return None
+    if previous_text == xml_text:
+        return previous_text
+    if write_equivalent_xml_text(previous_text) == write_equivalent_xml_text(xml_text):
+        return previous_text
+    return None
+
+
+def _read_text_or_none(full_path):
+    """Best-effort read of a view file the export is about to regenerate.
+
+    Undecodable bytes and missing files both yield None: a file this export
+    could not read is not one to restore, and it is about to be rewritten
+    anyway.
+    """
+    try:
+        with open(full_path, "r", encoding="utf-8-sig", newline="") as handle:
+            return handle.read()
+    except (IOError, OSError, UnicodeDecodeError):
+        return None
 
 
 def _normalize_fs_path(path):
@@ -156,6 +201,10 @@ class FolderWriter:
         self._dirty_paths = set()
         self._previous_hash_by_path = {}
         self._skipped_dirty = []
+        # Entry xml removed by the regenerate pass, kept in memory so a node
+        # whose export differs only by volatile IDE state is restored verbatim
+        # instead of rewritten with fresh noise.
+        self._removed_text_by_path = {}
 
     def _safe_path_in_root(self, relative_path, root_path):
         if relative_path:
@@ -265,6 +314,11 @@ class FolderWriter:
     def _managed_relative_paths(self, entry):
         return managed_relative_paths(entry)
 
+    def _remember_removed_text(self, relative_path, full_path):
+        text = _read_text_or_none(full_path)
+        if text is not None:
+            self._removed_text_by_path[str(relative_path).replace("\\", "/")] = text
+
     def _remove_previous_managed_files_from_root(
         self, manifest, root_path, selected_guids=None, keep_paths=None
     ):
@@ -280,7 +334,13 @@ class FolderWriter:
                 if guid not in selected_guids:
                     continue
 
-            entry_xml_path = entry.get("xml_path") or entry.get("view_path")
+            # Both sides in the portable "/" form: _managed_relative_paths
+            # normalizes, so comparing against a raw manifest field would miss
+            # a backslash entry xml and resolve it against the view root
+            # instead of the .dump/xml mirror it lives in.
+            entry_xml_path = manifest_path(
+                entry.get("xml_path") or entry.get("view_path")
+            )
             xml_in_dump = (entry.get("xml_root") or "").lower() == "dump"
             for relative_path in self._managed_relative_paths(entry):
                 if str(relative_path).replace("\\", "/") in keep:
@@ -296,6 +356,8 @@ class FolderWriter:
                     continue
                 seen.add(full_path)
                 if os.path.isfile(full_path):
+                    if relative_path == entry_xml_path:
+                        self._remember_removed_text(relative_path, full_path)
                     try:
                         os.remove(full_path)
                         removed += 1
@@ -455,9 +517,10 @@ class FolderWriter:
         return os.path.join(*(parent_parts[:-1] + [flat_name])) + extension
 
     def _xml_path_for_node(self, project_model, node):
-        return self._flat_nested_path(
+        path = self._flat_nested_path(
             project_model, node, ".xml"
         ) or node.get_view_path(project_model, extension=".xml")
+        return manifest_path(path) if path else path
 
     def _node_projection_options(self, node):
         kind = kind_for_type_guid(self.profile, node.type)
@@ -523,9 +586,10 @@ class FolderWriter:
                     )
                 )
                 continue
-            projection_path = self._flat_nested_path(
-                project_model, node, extension
-            ) or self._replace_extension(xml_path, extension)
+            projection_path = manifest_path(
+                self._flat_nested_path(project_model, node, extension)
+                or self._replace_extension(xml_path, extension)
+            )
             full_path = self._safe_view_path(projection_path)
             if not full_path:
                 _log(
@@ -737,12 +801,24 @@ class FolderWriter:
         else:
             ensure_dir(os.path.dirname(full_path))
             self._canonicalize_existing_path(full_path)
-            _atomic_write_text(full_path, xml_text, encoding="utf-8")
+            preserved = _preserve_equivalent_text(
+                self._removed_text_by_path.get(rel_key), xml_text
+            )
             emitted_paths.add(full_path)
-            if projection_paths and self._has_st_projection(projection_options):
-                _log("XML externalized for projection: {0}".format(xml_path))
             metadata["xml_path"] = xml_path
-            metadata["hash"] = sha1_hex(xml_text)
+            if preserved is not None:
+                # Equal once volatile IDE state (timestamps, per-session temp
+                # paths) is set aside: put back the bytes the
+                # regenerate pass just removed so repeated exports stay
+                # byte-identical. The manifest must record the on-disk hash or
+                # the file would read as locally modified.
+                _atomic_write_text(full_path, preserved, encoding="utf-8")
+                metadata["hash"] = sha1_hex(preserved)
+            else:
+                _atomic_write_text(full_path, xml_text, encoding="utf-8")
+                if projection_paths and self._has_st_projection(projection_options):
+                    _log("XML externalized for projection: {0}".format(xml_path))
+                metadata["hash"] = sha1_hex(xml_text)
 
         if in_dump_mirror:
             metadata["xml_root"] = "dump"

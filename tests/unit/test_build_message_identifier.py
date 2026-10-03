@@ -14,6 +14,13 @@ BRIDGE_DIR = (
     / "ide_bridge"
 )
 
+# ide_handlers_build imports its sibling bridge modules (ide_st_objects, ...)
+# at module level, so loading it from a file path needs the bridge directory
+# importable.  Relying on another test module having added it made collection
+# order decide whether this module could even be imported.
+if str(BRIDGE_DIR) not in sys.path:
+    sys.path.insert(0, str(BRIDGE_DIR))
+
 
 def _load_handlers_build():
     saved = {}

@@ -15,6 +15,7 @@ import sys
 
 from . import builder, svg_export, svg_import, themes
 from . import catalog as _catalog
+from .screen_xml import ScreenError
 
 
 class VisuCommandError(Exception):
@@ -99,6 +100,19 @@ def _resolve_screen_path(project_view_dir, screen, folder):
 # ---------------------------------------------------------------------------
 
 
+def _find_sibling_or_fail(target_dir):
+    """The placement source for a new screen, as a CLI-facing failure.
+
+    A folder that cannot be searched is a user-facing error, not an internal
+    one: the builder raises ScreenError for a file it cannot read, and this
+    boundary turns it into the message the CLI prints.
+    """
+    try:
+        return builder.find_sibling_object(target_dir)
+    except ScreenError as error:
+        raise VisuCommandError(str(error))
+
+
 def create_screen(project_view_dir, name, folder, width, height, start_visu):
     target_dir = _folder_to_dir(project_view_dir, folder)
     if not os.path.isdir(target_dir):
@@ -107,7 +121,7 @@ def create_screen(project_view_dir, name, folder, width, height, start_visu):
             "Point --folder at an existing project-view folder.".format(target_dir)
         )
 
-    sibling = builder.find_sibling_object(target_dir)
+    sibling = _find_sibling_or_fail(target_dir)
     if sibling is None:
         raise VisuCommandError(
             "Folder '{0}' contains no existing object to copy placement from.\n"
@@ -858,15 +872,25 @@ def bind_element(
 
 
 def _read_screen_guid(xml_path):
-    """Return the object Guid a screen file already carries, or ``None``."""
+    """Return the object Guid a screen file already carries, or ``None``.
+
+    None means the file is readable and carries no Guid. A file that cannot be
+    read is an error rather than a None: the caller only asks while replacing a
+    screen, and "no Guid" there means "write a fresh identity", which would
+    turn a recompile of an existing screen into a second object in CODESYS.
+    """
     import xml.etree.ElementTree as ET
 
     from .xml_ns import find_named
 
     try:
         root = ET.parse(xml_path).getroot()
-    except Exception:
-        return None
+    except (ET.ParseError, OSError) as error:
+        raise VisuCommandError(
+            "Cannot read screen XML at {0}: {1}. A screen that is being "
+            "replaced has to keep its Guid, so it cannot be rebuilt in "
+            "place from a file that will not parse.".format(xml_path, error)
+        )
     meta = find_named(root, "Single", "MetaObject")
     if meta is None:
         return None
@@ -895,7 +919,7 @@ def _create_screen_for_svg(
         _err("--screen-name is required when --create-screen is used")
         raise VisuCommandError("--screen-name is required when --create-screen is used")
     target_dir = _folder_to_dir(project_view_dir, folder)
-    sibling = _builder.find_sibling_object(target_dir)
+    sibling = _find_sibling_or_fail(target_dir)
     if sibling is None:
         _err("Folder contains no existing object to copy placement from.")
         raise VisuCommandError("Folder contains no existing object to copy from.")
@@ -1130,10 +1154,10 @@ def _find_frames_in_xml(xml_text, visu_name):
 
     from .xml_ns import find_named, strip_ns
 
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
+    # Let a parse error escape: the caller owns the file path, so it can name
+    # the unreadable file instead of reporting "no frame found" -- which would
+    # send the user looking for a frame that is actually there.
+    root = ET.fromstring(xml_text)
 
     results = []
     for el in root.iter():
@@ -1183,9 +1207,17 @@ def _find_frame_instance(project_view_dir, visu_name, screen=None, folder=None):
     candidates = []
 
     def _scan_xml(xml_path):
+        import xml.etree.ElementTree as ET
+
         with open(xml_path, "r", encoding="utf-8") as _fh:
             content = _fh.read()
-        found = _find_frames_in_xml(content, visu_name)
+        try:
+            found = _find_frames_in_xml(content, visu_name)
+        except ET.ParseError as error:
+            # A project-wide scan must stay resilient to one stray file, but a
+            # dropped file used to turn into a misleading "no frame found".
+            _warn("skipping {0}: not well-formed XML ({1})".format(xml_path, error))
+            return []
         for f in found:
             f["xml_path"] = xml_path
         return found

@@ -185,12 +185,14 @@ def test_restore_dry_run_is_allowed_online(monkeypatch):
     assert report["would_write"] == 1
 
 
-def test_default_preset_path_uses_sync_folder(monkeypatch):
-    monkeypatch.setattr(ps, "_read_project_property", lambda _project, key: r"C:\Sync" if key == "cds-sync-folder" else "")
+def test_default_preset_path_uses_sync_folder(monkeypatch, tmp_path):
+    # An absolute sync folder, because a relative one is anchored to the saved
+    # project file since c9916ef and DummyProject has no project file.
+    monkeypatch.setattr(ps, "_read_project_property", lambda _project, key: str(tmp_path) if key == "cds-sync-folder" else "")
 
     path = ps._default_preset_path(DummyProject(), "speed tuning")
 
-    assert path == r"C:\Sync\.dump\snapshots\speed-tuning.json"
+    assert path == os.path.join(str(tmp_path), ".dump", "snapshots", "speed-tuning.json")
 
 
 def test_ensure_default_snapshot_dir_creates_directory(monkeypatch, tmp_path):
@@ -267,12 +269,12 @@ def test_snapshot_default_label_adds_timestamp(monkeypatch):
     assert label == "GVL_Routing.partCount_2026-06-09_153012"
 
 
-def test_resolve_relative_preset_path_uses_sync_folder(monkeypatch):
-    monkeypatch.setattr(ps, "_read_project_property", lambda _project, key: r"C:\Sync" if key == "cds-sync-folder" else "")
+def test_resolve_relative_preset_path_uses_sync_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(ps, "_read_project_property", lambda _project, key: str(tmp_path) if key == "cds-sync-folder" else "")
 
     path = ps._resolve_preset_path(DummyProject(), "presets/my.json", "ignored")
 
-    assert path == r"C:\Sync\presets/my.json"
+    assert path == os.path.join(str(tmp_path), "presets/my.json")
 
 
 def test_tui_tree_renders_requested_frame():

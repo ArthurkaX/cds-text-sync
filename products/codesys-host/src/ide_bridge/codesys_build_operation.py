@@ -69,8 +69,11 @@ def _project_name(project):
 def _load_profile(base_dir):
     ensure_engine_path()
     try:
-        from _project_profiles import kind_for_type_guid, load_profile
-        from _project_settings import load_project_settings
+        from cds_text_sync.engine._project_profiles import (
+            kind_for_type_guid,
+            load_profile,
+        )
+        from cds_text_sync.engine._project_settings import load_project_settings
         settings = load_project_settings(base_dir)
         profile = load_profile(settings.get("profile"))
         return settings, profile, kind_for_type_guid

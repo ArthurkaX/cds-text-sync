@@ -15,12 +15,18 @@ import os
 import re
 import time
 
-from variable_map import (
+from .variable_map import (
     _blank_noise,
     detect_owner_kind,
     iter_st_files,
     parse_var_blocks,
     pou_name,
+)
+
+from cts_shared.st.projection import (
+    IMPLEMENTATION_MARKER as ST_IMPLEMENTATION_MARKER,  # noqa: F401 - re-exported
+    find_implementation_split,
+    normalize_newlines,
 )
 
 _blank_comments = _blank_noise
@@ -58,9 +64,6 @@ def _trim_string_literals(text: str) -> str:
 # Constants
 # ---------------------------------------------------------------------------
 
-ST_IMPLEMENTATION_MARKER = "// --- implementation ---"
-_CODESYS_IMPLEMENTATION_KEYWORD = "IMPLEMENTATION"
-
 # Regex to find the opening of a top-level implementation section after the
 # declaration block.  This mirrors what split_decl_impl() does but we need
 # to work with the raw ST text ourselves.
@@ -95,21 +98,10 @@ def _split_decl_impl(text):
 
     Returns (decl, None) when no implementation marker is found.
     """
-    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-    # Try CODESYS IMPLEMENTATION keyword first (most common for offline files).
-    kw_marker = "\n" + _CODESYS_IMPLEMENTATION_KEYWORD + "\n"
-    if kw_marker in normalized:
-        decl, impl = normalized.split(kw_marker, 1)
-        return decl, impl
-    # Fallback: daemon comment marker.
-    comment_marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
-    if comment_marker in normalized:
-        decl, impl = normalized.split(comment_marker, 1)
-        return decl, impl
-    if ST_IMPLEMENTATION_MARKER in normalized:
-        decl, impl = normalized.split(ST_IMPLEMENTATION_MARKER, 1)
-        return decl, impl
-    return normalized, None
+    parts = find_implementation_split(text, accept_keyword=True)
+    if parts is None:
+        return normalize_newlines(text), None
+    return parts
 
 
 # ---------------------------------------------------------------------------
@@ -821,7 +813,7 @@ def build_call_tree(
     project_symbols: dict[str, dict] = {}
 
     if snapshot_path:
-        from snapshot_reader import SnapshotReader  # local import avoids a cycle
+        from .snapshot_reader import SnapshotReader  # local import avoids a cycle
 
         reader = SnapshotReader(
             snapshot_path,

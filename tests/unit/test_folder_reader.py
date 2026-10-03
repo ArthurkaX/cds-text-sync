@@ -236,17 +236,39 @@ class TestFolderReaderManifest:
 
 
 class TestFolderReaderExtractBoolProperty:
-    def test_malformed_xml_returns_none(self, tmp_path):
+    def test_malformed_xml_is_reported_not_read_as_absent(self, tmp_path):
+        """A broken view XML must not look like "ExcludeFromBuild is unset"."""
         views = str(tmp_path / "views")
         dump = str(tmp_path / ".dump")
         reader = FolderReader(views, dump)
-        assert reader._extract_bool_property("\x00not xml", "SomeProp") is None
+        with pytest.raises(RuntimeError) as excinfo:
+            reader._extract_bool_property("\x00not xml", "ExcludeFromBuild")
+        assert "ExcludeFromBuild" in str(excinfo.value)
 
     def test_empty_string_returns_none(self, tmp_path):
         views = str(tmp_path / "views")
         dump = str(tmp_path / ".dump")
         reader = FolderReader(views, dump)
         assert reader._extract_bool_property("", "SomeProp") is None
+
+
+class TestFolderReaderWhitelist:
+    def test_an_unreadable_node_is_reported(self, tmp_path, capsys):
+        """Skipping a broken node quietly could make the validator report
+        members a genuine IDE export uses as foreign, so say which node."""
+        from types import SimpleNamespace
+
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        reader = FolderReader(views, dump)
+        bad = SimpleNamespace(xml_text="\x00not xml", metadata={})
+        model = SimpleNamespace(nodes={"n": bad})
+
+        allowed, reference = reader._native_member_whitelist(model, "{ABC}")
+
+        assert allowed == set()
+        assert reference is None
+        assert "unreadable XML" in capsys.readouterr().err
 
 
 class TestFolderReaderRehydration:
@@ -680,3 +702,65 @@ class TestTextFirstReader:
         assert node is not None
         assert node.metadata.get("xml_changed") is False
         assert node.metadata.get("import_inert") is True
+
+
+class TestLegacyWindowsManifest:
+    """A manifest written by an older Windows export stores "\\" separators.
+
+    On Linux a backslash is an ordinary filename character, so joining the view
+    root with such a path addressed a file that does not exist. The reader
+    normalizes the separator when it resolves a path, so the same sync folder
+    keeps working after being synced across platforms.
+    """
+
+    def _reader(self, tmp_path, entry):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(views, exist_ok=True)
+        os.makedirs(dump, exist_ok=True)
+        _write_manifest(dump, {
+            "view_root": views,
+            "ns": "",
+            "entries": [entry],
+        })
+        return FolderReader(views, dump), views
+
+    def test_backslash_xml_path_still_resolves(self, tmp_path):
+        xml_content = "<Root><Single Name='Data'>hello</Single></Root>"
+        reader, views = self._reader(tmp_path, {
+            "guid": "g1",
+            "name": "Obj",
+            "type_guid": "",
+            "parent_guid": None,
+            "xml_path": "Folder\\Obj.xml",
+            "hash": sha1_hex(xml_content),
+        })
+        _write_file(views, "Folder/Obj.xml", xml_content)
+
+        node = reader.read().get_node("g1")
+
+        assert node.xml_text is not None
+        assert "hello" in node.xml_text
+        assert node.metadata.get("xml_changed") is False
+
+    def test_backslash_projection_path_still_resolves(self, tmp_path):
+        content = "PROGRAM MyObj\nEND_PROGRAM"
+        reader, views = self._reader(tmp_path, {
+            "guid": "g1",
+            "name": "Obj",
+            "type_guid": "",
+            "parent_guid": None,
+            "xml_path": "Folder\\Obj.xml",
+            "hash": sha1_hex("<Root/>"),
+            "projection_paths": ["Folder\\Obj.st"],
+            "projection_hashes": {"Folder\\Obj.st": sha1_hex(content)},
+        })
+        _write_file(views, "Folder/Obj.xml", "<Root/>")
+        _write_file(views, "Folder/Obj.st", content)
+
+        node = reader.read().get_node("g1")
+
+        assert node.metadata.get("projection_hashes", {}).get("Folder\\Obj.st") == (
+            sha1_hex(content)
+        )
+        assert "projection_changed_paths" not in node.metadata

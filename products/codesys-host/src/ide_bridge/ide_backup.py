@@ -11,7 +11,7 @@ import sys
 import time
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
-_ENGINE_DIR = os.path.normpath(
+_PRODUCT_SRC_DIR = os.path.normpath(
     os.path.join(
         _BRIDGE_DIR,
         "..",
@@ -21,14 +21,12 @@ _ENGINE_DIR = os.path.normpath(
         "products",
         "cds-text-sync",
         "src",
-        "cds_text_sync",
-        "engine",
     )
 )
-if os.path.isdir(_ENGINE_DIR) and _ENGINE_DIR not in sys.path:
-    sys.path.insert(0, _ENGINE_DIR)
+if os.path.isdir(_PRODUCT_SRC_DIR) and _PRODUCT_SRC_DIR not in sys.path:
+    sys.path.insert(0, _PRODUCT_SRC_DIR)
 
-from _project_settings import load_project_settings
+from cds_text_sync.engine._project_settings import load_project_settings
 from ide_xml import parse_xml_file
 
 

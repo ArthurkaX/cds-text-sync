@@ -171,19 +171,17 @@ def _utility_root():
 
 
 def ensure_engine_path():
-    """Put the offline engine dir (cds_text_sync/engine) on sys.path and return it.
+    """Put the sync product's ``src`` dir on sys.path and return it.
 
-    Falls back to the historical src/external_engine location when the primary
-    directory is absent.
+    The engine modules are imported as ``cds_text_sync.engine.*``, so the
+    package root is the useful entry, not the engine subdirectory.
     """
-    engine_dir = os.path.join(
-        _utility_root(), "products", "cds-text-sync", "src", "cds_text_sync", "engine"
+    product_src = os.path.join(
+        _utility_root(), "products", "cds-text-sync", "src"
     )
-    if not os.path.isdir(engine_dir):
-        engine_dir = os.path.join(_utility_root(), "src", "external_engine")
-    if engine_dir not in sys.path:
-        sys.path.insert(0, engine_dir)
-    return engine_dir
+    if os.path.isdir(product_src) and product_src not in sys.path:
+        sys.path.insert(0, product_src)
+    return product_src
 
 
 def resolve_system(caller_globals=None):

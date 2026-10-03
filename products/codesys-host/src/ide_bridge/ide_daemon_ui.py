@@ -118,18 +118,35 @@ class SettingsForm(Form):
         self.MaximizeBox = False
         self.MinimizeBox = False
 
+        self._load_error = None
         self._config = self._load_config()
         self._changed = False
 
         self._build_ui()
 
     def _load_config(self):
-        """Load config from the daemon's storage."""
+        """Load config from the daemon's storage.
+
+        A failed load must not look like "the user denies nothing": that
+        reading, saved back on the next Apply, would silently re-enable every
+        denied command. Flag the failure and refuse to save instead.
+        """
         try:
             from ide_daemon_state import _load_daemon_config
-            return _load_daemon_config()
-        except Exception:
-            return {"poll_ms": 200, "copy_command": "cts", "deny": []}
+
+            config = _load_daemon_config()
+            self._load_error = None
+            return config
+        except Exception as exc:
+            self._load_error = str(exc)
+            try:
+                from ide_daemon_state import _DEFAULT_CONFIG
+
+                config = dict(_DEFAULT_CONFIG)
+                config["deny"] = list(_DEFAULT_CONFIG.get("deny", []))
+                return config
+            except Exception:
+                return {"poll_ms": 200, "copy_command": "cts", "deny": []}
 
     def _save_config(self, config):
         """Save config to the daemon's storage."""
@@ -334,6 +351,17 @@ class SettingsForm(Form):
         return config
 
     def _on_apply(self, sender=None, args=None):
+        if self._load_error:
+            MessageBox.Show(
+                "Settings were not loaded ({0}), so saving would overwrite "
+                "them with defaults.\nRestart the daemon and try again.".format(
+                    self._load_error
+                ),
+                "Cannot Save Settings",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning,
+            )
+            return
         config = self._collect_config()
         ok = self._save_config(config)
         if ok:

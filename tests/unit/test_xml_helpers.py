@@ -145,7 +145,7 @@ class TestSplitTextProjection:
         assert result[2] == ""
 
     def test_merges_extra_sections_into_final(self):
-        from xml_helpers import TEXT_PROJECTION_SEPARATOR
+        from cds_text_sync.engine.xml_helpers import TEXT_PROJECTION_SEPARATOR
 
         content = TEXT_PROJECTION_SEPARATOR.join(["a", "b", "c"])
         result = split_text_projection(content, 2)
@@ -154,7 +154,7 @@ class TestSplitTextProjection:
         assert TEXT_PROJECTION_SEPARATOR in result[1]
 
     def test_exact_count(self):
-        from xml_helpers import TEXT_PROJECTION_SEPARATOR
+        from cds_text_sync.engine.xml_helpers import TEXT_PROJECTION_SEPARATOR
 
         content = TEXT_PROJECTION_SEPARATOR.join(["a", "b"])
         result = split_text_projection(content, 2)
@@ -325,7 +325,7 @@ class TestSplitStProjectionValues:
 class TestExtractBoolPropertyMalformedXml:
     def test_malformed_xml_returns_none(self):
         """Malformed XML in extract_bool_property should return None."""
-        from xml_helpers import extract_bool_property as _ebp
+        from cds_text_sync.engine.xml_helpers import extract_bool_property as _ebp
 
         assert _ebp(None, "SomeProp") is None
 

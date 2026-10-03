@@ -11,6 +11,12 @@ that actually runs this code inside CODESYS -- is not covered by that
 guarantee. So do not rely on the case check: keep ``src/ide_bridge`` ahead of
 the root.
 
+**``shared/src`` bootstrap.** A bridge module that imports ``cts_shared`` must
+put ``shared/src`` on sys.path itself, before that import. It used to happen
+indirectly -- whichever earlier module pulled in ``ide_runtime_common`` -- which
+made a cold import depend on import order. The subprocess test at the bottom
+loads each such module alone, with only the bridge directory on sys.path.
+
 **Failure reporting.** The loaders return None for a module that is absent,
 because callers probe for optional modules. They must *not* return None for a
 module that exists and fails to import: that turns "broken" into "missing" and
@@ -20,6 +26,7 @@ the caller degrades silently instead of surfacing the real error.
 import importlib.util
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -152,3 +159,69 @@ def test_runtime_loader_reraises_when_the_module_exists_but_is_broken(fake_body)
     assert runtime.load_hidden_module("codesys_absent", script_file=anchor) is None
     with pytest.raises(ImportError):
         runtime.load_hidden_module("codesys_broken", script_file=anchor)
+
+
+# ---------------------------------------------------------------------------
+# A module that uses cts_shared must be importable on its own
+# ---------------------------------------------------------------------------
+
+
+def _modules_importing_cts_shared():
+    return sorted(
+        path.stem
+        for path in _IDE_BRIDGE.glob("*.py")
+        if "cts_shared" in path.read_text(encoding="utf-8")
+    )
+
+
+_COLD_IMPORT_SCRIPT = """\
+import importlib
+import os
+import sys
+
+bridge = sys.argv[1]
+# The interpreter starts without shared/src anywhere on sys.path; a module that
+# reaches cts_shared must establish that path itself.
+shared = os.path.normpath(os.path.join("shared", "src"))
+assert not any(
+    p and os.path.normpath(p).endswith(shared) for p in sys.path
+), sys.path
+
+sys.path.insert(0, bridge)
+for name in sys.argv[2:]:
+    importlib.import_module(name)
+"""
+
+
+def test_cts_shared_importers_are_discovered():
+    # A guard on the guard: the cold-import test is only meaningful while it
+    # still covers the modules that pull cts_shared in.
+    assert _modules_importing_cts_shared() == [
+        "codesys_fmt_operation",
+        "ide_daemon_state",
+        "ide_handlers_build",
+        "ide_handlers_crc",
+        "ide_handlers_plc",
+        "ide_handlers_project",
+        "ide_st_text",
+        "project_snapshooter",
+        "snapshot_compare",
+    ]
+
+
+@pytest.mark.parametrize("module", _modules_importing_cts_shared())
+def test_cts_shared_importer_imports_cold(module):
+    # One interpreter per module: importing them together would let the first
+    # module's sys.path bootstrap cover the rest, which is the exact coupling
+    # this test exists to rule out.
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", _COLD_IMPORT_SCRIPT, str(_IDE_BRIDGE), module],
+        capture_output=True,
+        text=True,
+        cwd=str(_PROJECT_ROOT),
+    )
+    assert result.returncode == 0, (
+        "%s imports cts_shared but is not importable on its own:\n" % module
+        + result.stdout
+        + result.stderr
+    )

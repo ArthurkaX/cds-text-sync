@@ -23,39 +23,92 @@ from ide_daemon_state import _json_safe, _build_path, _log, _obj_name, _project_
 _DEVICE_CACHE_TTL = 30  # seconds
 MAX_TREE_DEPTH = 50  # safety guard against cycles
 
+#: Sentinel for "getattr found no such attribute", distinct from a value of
+#: None.  ``getattr(obj, name, _MISSING)`` propagates any non-AttributeError
+#: on every interpreter, unlike hasattr.
+_MISSING = object()
+
 
 # ── Project info helpers ───────────────────────────────────────────────────
 
 
-def _get_project_info_object(project):
+def _get_project_info_object(project, errors=None):
+    """Return the project's Project Information object, or None.
+
+    The lookups may simply be absent on a limited project (the Project
+    Information dialog is not always there) -- that is not an error. But a
+    lookup that raises for any other reason is recorded in *errors* instead of
+    being read as "this project has no properties".
+
+    ``hasattr`` is deliberately not used: on Python 2 -- and so IronPython --
+    it returns False for *any* exception the attribute raises, so it turns a
+    refusing getter into "absent" and the error is never recorded.
+    ``getattr(obj, name, None)`` only suppresses AttributeError on either
+    interpreter, so anything else reaches the except clause below.
+    """
     try:
-        if hasattr(project, "get_project_info"):
-            return project.get_project_info()
-    except Exception:
-        pass
+        getter = getattr(project, "get_project_info", None)
+    except Exception as error:
+        if errors is not None:
+            errors.append("get_project_info: {0}".format(error))
+        getter = None
+    if getter is not None:
+        try:
+            info = getter()
+        except AttributeError:
+            info = None
+        except Exception as error:
+            if errors is not None:
+                errors.append("get_project_info: {0}".format(error))
+            info = None
+        if info is not None:
+            return info
     try:
-        if hasattr(project, "project_info"):
-            return project.project_info
-    except Exception:
-        pass
-    return None
+        info = getattr(project, "project_info", None)
+    except Exception as error:
+        if errors is not None:
+            errors.append("project_info: {0}".format(error))
+        return None
+    return info
 
 
-def _read_project_info_attr(proj_info, names):
+def _read_project_info_attr(proj_info, names, errors=None):
+    """First readable value among *names*, or None.
+
+    A name that does not exist (AttributeError) is skipped; a name whose
+    getter refuses for any other reason is recorded in *errors*. ``hasattr``
+    cannot make that distinction on Python 2, which is why getattr is used
+    directly here.
+    """
     for name in names:
         try:
-            if hasattr(proj_info, name):
-                value = getattr(proj_info, name)
-                if callable(value):
-                    value = value()
-                if value is not None:
-                    return _json_safe(value)
-        except Exception:
-            pass
+            value = getattr(proj_info, name, None)
+        except Exception as error:
+            if errors is not None:
+                errors.append("{0}: {1}".format(name, error))
+            continue
+        if value is None:
+            continue
+        try:
+            if callable(value):
+                value = value()
+        except AttributeError:
+            continue
+        except Exception as error:
+            if errors is not None:
+                errors.append("{0}: {1}".format(name, error))
+            continue
+        if value is None:
+            continue
+        try:
+            return _json_safe(value)
+        except Exception as error:
+            if errors is not None:
+                errors.append("{0}: {1}".format(name, error))
     return None
 
 
-def _project_info_summary(proj_info):
+def _project_info_summary(proj_info, errors=None):
     fields = [
         ("Company", ["Company", "company", "get_company"]),
         ("Title", ["Title", "title", "get_title"]),
@@ -77,20 +130,32 @@ def _project_info_summary(proj_info):
     ]
     summary = {}
     for key, names in fields:
-        value = _read_project_info_attr(proj_info, names)
+        value = _read_project_info_attr(proj_info, names, errors)
         if value is not None:
             summary[key] = value
     return summary
 
 
-def _mapping_to_dict(values):
+def _mapping_to_dict(values, errors=None):
+    """Convert a CODESYS mapping to a JSON-safe dict, best effort.
+
+    Several collection shapes occur across CODESYS versions, so the fallbacks
+    stay. But an entry that cannot be converted is recorded in *errors*
+    instead of being dropped in silence: a dropped ``cds-sync-folder`` reads
+    as "not configured" and sends the user chasing a settings problem that is
+    really a read failure.
+    """
     result = {}
     if values is None:
         return result
 
     try:
         for key, value in values.items():
-            result[_json_safe(key)] = _json_safe(value)
+            try:
+                result[_json_safe(key)] = _json_safe(value)
+            except Exception as error:
+                if errors is not None:
+                    errors.append("property {0!r}: {1}".format(key, error))
         return result
     except Exception:
         pass
@@ -110,8 +175,9 @@ def _mapping_to_dict(values):
             for key in keys:
                 try:
                     result[_json_safe(key)] = _json_safe(values[key])
-                except Exception:
-                    pass
+                except Exception as error:
+                    if errors is not None:
+                        errors.append("property {0!r}: {1}".format(key, error))
             return result
         except Exception:
             pass
@@ -119,27 +185,36 @@ def _mapping_to_dict(values):
     try:
         for item in values:
             try:
-                if hasattr(item, "Key") and hasattr(item, "Value"):
-                    result[_json_safe(item.Key)] = _json_safe(item.Value)
+                # KeyValuePair-like entries. getattr with a sentinel, not
+                # hasattr: on Python 2 hasattr would read a refusing Key/Value
+                # getter as "not a pair" and silently fall through to the wrong
+                # branch instead of recording the failure.
+                key_attr = getattr(item, "Key", _MISSING)
+                value_attr = getattr(item, "Value", _MISSING)
+                if key_attr is not _MISSING and value_attr is not _MISSING:
+                    result[_json_safe(key_attr)] = _json_safe(value_attr)
                 elif isinstance(item, (list, tuple)) and len(item) == 2:
                     result[_json_safe(item[0])] = _json_safe(item[1])
                 else:
                     result[_json_safe(item)] = _json_safe(values[item])
-            except Exception:
-                pass
+            except Exception as error:
+                if errors is not None:
+                    errors.append("property {0!r}: {1}".format(item, error))
     except Exception:
         pass
     return result
 
 
-def _project_info_properties(proj_info):
+def _project_info_properties(proj_info, errors=None):
     try:
         values = getattr(proj_info, "values", None)
-    except Exception:
+    except Exception as error:
+        if errors is not None:
+            errors.append("project_info.values: {0}".format(error))
         values = None
     if values is None:
         values = proj_info
-    return _mapping_to_dict(values)
+    return _mapping_to_dict(values, errors)
 
 
 # ── Device / object cache helpers ─────────────────────────────────────────
@@ -199,10 +274,16 @@ def _find_object_in_project(project, obj_name, app_name=None):
             if not found_in_app:
                 continue
 
-        try:
-            obj_type = str(child.get_type())
-        except Exception:
-            obj_type = "Unknown"
+        # The type GUID, or None when it cannot be read -- never "Unknown",
+        # which is a string a caller could mistake for a kind. The failure is
+        # logged so a lookup that found the object but not its type says so.
+        obj_type, type_error = _common.object_type(child)
+        if type_error:
+            _log(
+                "Object search: could not read the type of '{0}': {1}".format(
+                    cname, type_error
+                )
+            )
         return child, obj_type
 
     return None, None
@@ -219,18 +300,37 @@ def _active_application_name(project):
 
 
 def _read_text_member(obj, attr_name):
+    """Read one text-document member of *obj*.
+
+    None means the object carries no such member: either the attribute is
+    absent, or the getter raises -- CODESYS object types without a section
+    (GVL/DUT have no textual_implementation) raise instead of returning None,
+    which is the same "no such section" answer ``ide_st_objects.read_document``
+    reads it as.
+
+    A member that exists but whose text cannot be read is a different thing.
+    Returning None there would report a real object as having an empty body and
+    ``read_object`` would quietly drop the section, so it raises instead: the
+    daemon answers ``ok: false`` with the reason and the CLI prints it.
+    """
     try:
         member = getattr(obj, attr_name, None)
-        if member is None:
-            return None
+    except Exception:
+        # The getter itself raises for object types that have no such section.
+        return None
+    if member is None:
+        return None
+    try:
         if hasattr(member, "text"):
             text = member.text
             if callable(text):
                 text = text()
             return _json_safe(text)
         return _json_safe(str(member))
-    except Exception:
-        return None
+    except Exception as error:
+        raise RuntimeError(
+            "Could not read {0} of '{1}': {2}".format(attr_name, _obj_name(obj), error)
+        )
 
 
 def _normalize_object_path(path):
@@ -334,25 +434,60 @@ def _online_app_if_connected(project):
 
 
 def _build_tree(obj, depth=0, current_depth=0):
-    if current_depth > MAX_TREE_DEPTH:
-        return {"name": _obj_name(obj), "_truncated": True}
+    """Build the ``project_tree`` display tree for *obj*.
+
+    The tree is a report, so a node that cannot be walked must not vanish: an
+    unreadable node carries ``_error`` and stays in its parent's ``children``,
+    and the siblings already collected are kept. The old shape wrapped the whole
+    child loop in one ``try/except: pass``, so a single failing child (or a
+    parent whose ``get_children`` raised) discarded every child collected so far
+    and the node was handed out looking like a leaf -- a truncated subtree
+    presented as a complete one.
+    """
     node = {"name": _obj_name(obj)}
-    guid = _common.object_guid(obj)
+    try:
+        guid = _common.object_guid(obj)
+    except Exception as error:
+        _log(
+            "Project tree: could not read the guid of '{0}': {1}".format(
+                node["name"], error
+            )
+        )
+        guid = None
     if guid:
         node["guid"] = guid
+    # The node's type GUID (T53). A node whose type cannot be read says so
+    # rather than looking like an object of no particular kind.
+    obj_type, type_error = _common.object_type(obj)
+    if obj_type:
+        node["type"] = obj_type
+    elif type_error:
+        node["type_error"] = type_error
+        _log(
+            "Project tree: could not read the type of '{0}': {1}".format(
+                node["name"], type_error
+            )
+        )
+    if current_depth > MAX_TREE_DEPTH:
+        node["_truncated"] = True
+        return node
     if depth > 0 and current_depth >= depth:
         return node
+    child_list = []
     try:
-        children = obj.get_children()
-        child_list = []
-        for child in children:
+        for child in obj.get_children():
             child_list.append(
                 _build_tree(child, depth=depth, current_depth=current_depth + 1)
             )
-        if child_list:
-            node["children"] = child_list
-    except Exception:
-        pass
+    except Exception as error:
+        _log(
+            "Project tree: could not list the children of '{0}': {1}".format(
+                node["name"], error
+            )
+        )
+        node["_error"] = "could not list children: {0}".format(error)
+    if child_list:
+        node["children"] = child_list
     return node
 
 
@@ -372,16 +507,23 @@ def _get_sync_folder():
         prj = projects.primary
         if prj is None:
             return None, "No active project"
+        # getattr with a default, not hasattr: on Python 2 -- and so on
+        # IronPython -- hasattr answers False for *any* exception a property
+        # raises, so a Project Information that refuses to read would be
+        # reported as "Sync folder not configured" -- sending the user after a
+        # settings problem that is really a read failure. The outer except
+        # turns the refusal into (None, message) instead.
         proj_info = None
-        if hasattr(prj, "get_project_info"):
-            proj_info = prj.get_project_info()
-        elif hasattr(prj, "project_info"):
-            proj_info = prj.project_info
+        getter = getattr(prj, "get_project_info", None)
+        if callable(getter):
+            proj_info = getter()
+        if proj_info is None:
+            proj_info = getattr(prj, "project_info", None)
         if proj_info is None:
             return None, "Project info not available"
         props = getattr(proj_info, "values", proj_info)
         base_dir = ""
-        if hasattr(props, "__getitem__"):
+        if getattr(props, "__getitem__", None) is not None:
             try:
                 if "cds-sync-folder" in props:
                     base_dir = props["cds-sync-folder"]

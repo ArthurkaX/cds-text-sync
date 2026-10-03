@@ -2,8 +2,9 @@
 """
 conftest.py - Shared fixtures for the unit-test tier.
 
-Adds ``products/cds-text-sync/src/cds_text_sync/engine`` to ``sys.path`` so that production modules
-can be imported with their flat, non-package imports.
+Adds ``products/cds-text-sync/src`` to ``sys.path`` so the sync product is
+imported as the ``cds_text_sync`` package -- the one canonical name for every
+engine module, so a monkeypatch on a module reaches the code under test.
 """
 
 import os
@@ -15,7 +16,7 @@ import pytest
 # Path setup – keep this local to the test layer; do NOT refactor production
 # imports.
 # ---------------------------------------------------------------------------
-_EXTERNAL_ENGINE_DIR = os.path.normpath(
+_SYNC_PRODUCT_SRC_DIR = os.path.normpath(
     os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -23,8 +24,6 @@ _EXTERNAL_ENGINE_DIR = os.path.normpath(
         "products",
         "cds-text-sync",
         "src",
-        "cds_text_sync",
-        "engine",
     )
 )
 
@@ -56,8 +55,8 @@ if _ANALYZER_SRC_DIR not in sys.path:
 if _VISU_LINT_SRC_DIR not in sys.path:
     sys.path.insert(0, _VISU_LINT_SRC_DIR)
 
-if _EXTERNAL_ENGINE_DIR not in sys.path:
-    sys.path.insert(0, _EXTERNAL_ENGINE_DIR)
+if _SYNC_PRODUCT_SRC_DIR not in sys.path:
+    sys.path.insert(0, _SYNC_PRODUCT_SRC_DIR)
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Default profile contract for readable project exports."""
 
-from _project_profiles import enabled_projection_options, load_profile
+from cds_text_sync.engine._project_profiles import enabled_projection_options, load_profile
 
 
 def test_default_profile_enables_all_text_projections():

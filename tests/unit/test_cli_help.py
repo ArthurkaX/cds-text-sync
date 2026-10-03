@@ -133,6 +133,60 @@ def test_build_help_shows_install_flag():
     assert "library repository" in text
 
 
+def test_docs_output_flag_does_not_shadow_the_format_flag():
+    parser = build_parser()
+
+    args = parser.parse_args(["docs", "--output", "C:/docs/out"])
+    assert args.docs_output == "C:/docs/out"
+    assert args.output == "json"
+
+    args = parser.parse_args(["--output", "text", "docs"])
+    assert args.output == "text"
+    assert args.docs_output == ""
+
+
+def test_docs_output_reaches_generate_docs(monkeypatch):
+    from cds_cli import main as cli_main
+    import cds_text_sync.docgen as docgen
+
+    seen = {}
+
+    def _fake_generate(workspace, library_path=None, output=None):
+        seen["output"] = output
+        return {"output": "written"}
+
+    monkeypatch.setattr(docgen, "generate_docs", _fake_generate)
+    monkeypatch.setattr("sys.argv", ["cts", "docs", "--output", "C:/docs/out"])
+    cli_main.main()
+    assert seen["output"] == "C:/docs/out"
+
+
+def test_docs_output_reaches_check_and_validate(monkeypatch):
+    from cds_cli import main as cli_main
+    import cds_text_sync.docgen as docgen
+
+    seen = {}
+
+    def _fake_check(workspace, output=None):
+        seen["check"] = output
+        return {"ok": True}
+
+    def _fake_validate(output):
+        seen["validate"] = output
+        return []
+
+    monkeypatch.setattr(docgen, "check_docs", _fake_check)
+    monkeypatch.setattr(docgen, "validate_bundle", _fake_validate)
+
+    monkeypatch.setattr("sys.argv", ["cts", "docs", "--check", "--output", "C:/docs/out"])
+    cli_main.main()
+    monkeypatch.setattr(
+        "sys.argv", ["cts", "docs", "--validate", "--output", "C:/docs/out"]
+    )
+    cli_main.main()
+    assert seen == {"check": "C:/docs/out", "validate": "C:/docs/out"}
+
+
 def test_subcommand_help_is_not_replaced_by_top_level_help(monkeypatch, capsys):
     import pytest
     from cds_cli import main as cli_main
@@ -145,3 +199,19 @@ def test_subcommand_help_is_not_replaced_by_top_level_help(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "--install" in out
     assert "positional arguments:" not in out
+
+
+def test_main_module_does_not_re_export_handler_helpers():
+    """main() imports its helpers to call them, not to publish them [CLI4].
+
+    The module used to list ~35 private names in __all__ under "kept
+    accessible"; no consumer imported any of them from here, so the list is
+    gone and the names come from the modules that define them.
+    """
+    from cds_cli import main as cli_main
+
+    assert cli_main.__all__ == ["main", "build_parser"]
+    assert not hasattr(cli_main, "_project_command")
+    assert not hasattr(cli_main, "DAEMON_SCRIPT")
+    # Still a module global: test_cli_handlers_daemon patches it by name here.
+    assert callable(cli_main.send_command_reverse)

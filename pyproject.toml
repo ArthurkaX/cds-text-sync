@@ -13,8 +13,11 @@ authors = [{ name = "cds-text-sync contributors" }]
 Homepage = "https://github.com/ArthurkaX/cds-text-sync"
 
 [project.scripts]
+# This compatibility wheel is the distribution that gets installed today; the
+# products repeat their own entry points for the future split, and the two
+# copies must stay identical (tests/unit/test_version_consistency.py pins it).
 cts = "cds_cli.main:main"
-cds-text-sync = "cds_cli.main:main"
+cds-text-sync = "cds_cli.main:main"  # legacy alias, compatibility wheel only
 
 [project.optional-dependencies]
 # Kept optional: the command-line and CI workflows must stay dependency-free.

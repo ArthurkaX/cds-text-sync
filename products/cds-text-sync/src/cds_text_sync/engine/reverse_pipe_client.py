@@ -16,14 +16,15 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
-import json
 import os
 import random
-import struct
 import sys
 import time
 from ctypes import wintypes
 from typing import Any
+
+from cts_shared import wire
+from cts_shared.coerce import as_bool
 
 from cds_text_sync.engine.pipe_targets import (
     LEGACY,
@@ -225,7 +226,7 @@ def _current_user_sid() -> str:
 
 
 def _user_dacl_enabled() -> bool:
-    return os.environ.get("CTS_PIPE_USER_DACL", "") in ("1", "true", "yes")
+    return as_bool(os.environ.get("CTS_PIPE_USER_DACL", ""))
 
 
 def ssh_dacl_hint() -> str:
@@ -386,9 +387,9 @@ def _overlapped_op(
 
 
 def _write_msg(handle: int, data: dict, deadline: float, cmd_name: str = "") -> None:
-    msg = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    header = struct.pack("<I", len(msg))
-    data_to_send = header + msg
+    # cts_shared.wire owns the framing, so this is byte-for-byte the same
+    # length-prefixed JSON the daemon reads.
+    data_to_send = wire.encode_message(data)
     total_len = len(data_to_send)
     offset = 0
 
@@ -410,7 +411,7 @@ def _write_msg(handle: int, data: dict, deadline: float, cmd_name: str = "") -> 
 
 # Default maximum single response size (bytes). Raised to 32 MiB to support
 # large application_tree / sync_export_text responses on big projects.
-DEFAULT_MAX_RESPONSE_SIZE = 32 * 1024 * 1024
+DEFAULT_MAX_RESPONSE_SIZE = wire.MAX_MESSAGE_SIZE
 
 
 def _read_msg(
@@ -421,8 +422,8 @@ def _read_msg(
 ) -> dict:
     # Read 4-byte length
     raw_len = bytearray()
-    while len(raw_len) < 4:
-        needed = 4 - len(raw_len)
+    while len(raw_len) < wire.HEADER_SIZE:
+        needed = wire.HEADER_SIZE - len(raw_len)
         buf = ctypes.create_string_buffer(needed)
         n = _overlapped_op(
             handle,
@@ -436,7 +437,10 @@ def _read_msg(
             raise RuntimeError("Pipe disconnected while reading header")
         raw_len.extend(buf.raw[:n])
 
-    (msg_len,) = struct.unpack("<I", bytes(raw_len[:4]))
+    try:
+        msg_len = wire.parse_header(bytes(raw_len[: wire.HEADER_SIZE]))
+    except wire.WireError as exc:
+        raise RuntimeError("Invalid response frame: {0}".format(exc))
     if msg_len == 0:
         return {}
     if msg_len > max_size:
@@ -459,7 +463,7 @@ def _read_msg(
             raise RuntimeError("Pipe disconnected while reading body")
         raw_msg.extend(buf.raw[:n])
 
-    return json.loads(bytes(raw_msg).decode("utf-8"))
+    return wire.decode_body(bytes(raw_msg))
 
 
 # ── Target Resolution & Pipe Targets ───────────────────────────────────────
@@ -470,6 +474,7 @@ _configured_expect_project: str | None = None
 _resolved_pid: int | None = None
 _last_instance: dict[str, Any] | None = None
 _cached_codesys_pids: set[int] | None = None
+_codesys_pids_listed = False
 
 
 def configure(
@@ -490,11 +495,23 @@ def get_last_instance() -> dict[str, Any] | None:
     return _last_instance
 
 
-def _list_codesys_pids() -> set[int]:
-    """List running CODESYS.exe process IDs."""
-    global _cached_codesys_pids
-    if _cached_codesys_pids is not None:
+def _list_codesys_pids() -> set[int] | None:
+    """Running CODESYS.exe process IDs, or None when the list could not be taken.
+
+    None is not the same as an empty set: the empty set means tasklist ran and
+    found no IDE, while None means we do not know -- tasklist is missing or
+    refused (a non-Windows host driving a remote IDE has no tasklist at all).
+    Only the diagnostic distinguishes the two; the target decision cannot, and
+    must go on working exactly as before in that case.
+
+    The outcome is cached either way. A CLI invocation lives for one command,
+    so the process list cannot meaningfully change under it, and a failing
+    tasklist would otherwise be retried on every discovery loop.
+    """
+    global _cached_codesys_pids, _codesys_pids_listed
+    if _codesys_pids_listed:
         return _cached_codesys_pids
+    _codesys_pids_listed = True
     pids: set[int] = set()
     try:
         import subprocess
@@ -518,7 +535,7 @@ def _list_codesys_pids() -> set[int]:
             if len(fields) >= 2 and fields[1].isdigit():
                 pids.add(int(fields[1]))
     except Exception:
-        pass
+        return None
     _cached_codesys_pids = pids
     return pids
 
@@ -672,7 +689,16 @@ class _SessionLock:
 
 
 def _send_release_and_close(handle: int) -> None:
-    """Send R release message and close pipe handle."""
+    """Send R release message and close pipe handle.
+
+    The release is a courtesy, not the signal: the daemon also returns to its
+    poll loop when the connection simply drops (ide_reverse_pipe_loop.py, the
+    ``next_msg is None`` branch), and the close below always happens. So a
+    failed release is swallowed on purpose -- this runs while unwinding, often
+    from a ``finally`` of a loop holding several connections, and letting it
+    raise would abort the cleanup of the handles after this one, which is the
+    part that actually matters.
+    """
     if handle <= 0 or handle == INVALID_HANDLE_VALUE:
         return
     try:
@@ -718,7 +744,7 @@ def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
                 try:
                     _write_msg(
                         conn,
-                        {"method": "ping", "params": {"hello": 2}},
+                        wire.hello_request(),
                         deadline=time.monotonic() + 1.0,
                         cmd_name="ping",
                     )
@@ -748,6 +774,16 @@ def discover(budget_s: float = 1.0, user: str | None = None) -> list[Hello]:
 # Cache the last known IDE PID for smart timeout diagnostics
 _last_ide_pid: int | None = None
 
+# Commands sent by this process, for the optional request id on each command.
+_request_counter = 0
+
+
+def _next_request_id() -> str:
+    """A fresh id for one command, matching what the daemon logs."""
+    global _request_counter
+    _request_counter += 1
+    return wire.new_request_id(os.getpid(), _request_counter, time.strftime("%H%M%S"))
+
 
 class ReversePipeClient:
     """CLI creates a pipe server, IDE connects as client.
@@ -758,6 +794,9 @@ class ReversePipeClient:
     def __init__(self, user: str | None = None, timeout: float = 30):
         self._pipe_path = reverse_pipe_name(user)
         self._timeout = timeout
+        # The id of the command currently in flight, so the timeout message can
+        # name the value the daemon logged next to it.
+        self._request_id: str | None = None
 
     @staticmethod
     def _find_ide_pid() -> int | None:
@@ -773,6 +812,12 @@ class ReversePipeClient:
         global _last_ide_pid
         pid = target_pid or _last_ide_pid or ReversePipeClient._find_ide_pid()
         if pid is None:
+            if _list_codesys_pids() is None:
+                return (
+                    "Could not list CODESYS processes (tasklist failed), so it "
+                    "is unknown whether the IDE is running. Check that the IDE "
+                    "is up and Project_daemon.py is running inside it."
+                )
             return (
                 "No CODESYS process is running, so nothing could answer. Start "
                 "CODESYS and run Project_daemon.py inside it."
@@ -844,9 +889,35 @@ class ReversePipeClient:
                 f"Project_daemon.py is running inside CODESYS."
             )
 
+    def _exchange(self, conn: int, method: str, params: dict, deadline: float) -> dict:
+        """Send one command over *conn* and read its response.
+
+        On a timeout the original message is kept and extended with where the
+        outcome can still be found: a command that timed out may well have run
+        to completion, and its result is not gone just because this end stopped
+        listening.
+        """
+        cmd = {"method": method, "params": params}
+        if self._request_id:
+            cmd[wire.REQUEST_ID_KEY] = self._request_id
+        try:
+            _write_msg(conn, cmd, deadline=deadline, cmd_name=method)
+            return _read_msg(conn, deadline=deadline, cmd_name=method)
+        except RuntimeError as exc:
+            if "Timeout" not in str(exc):
+                raise
+            raise RuntimeError(
+                "{0}\nRequest id: {1}. If the daemon finished this command, "
+                "run `cts last-result` to read back its outcome, and search "
+                "the daemon log for that request id.".format(
+                    exc, self._request_id or "(none)"
+                )
+            )
+
     def send_command(self, method: str, params: dict | None = None) -> dict:
         global _last_ide_pid, _resolved_pid, _last_instance
         params = params or {}
+        self._request_id = _next_request_id()
         deadline = time.monotonic() + self._timeout
 
         # Determine target PID
@@ -894,7 +965,7 @@ class ReversePipeClient:
                     try:
                         _write_msg(
                             conn,
-                            {"method": "ping", "params": {"hello": 2}},
+                            wire.hello_request(),
                             deadline=time.monotonic() + 2.0,
                             cmd_name="ping",
                         )
@@ -974,9 +1045,7 @@ class ReversePipeClient:
                                 hint = self._diagnose_ide_timeout(target_pid=target_pid)
                                 raise RuntimeError(f"Timeout waiting for legacy IDE to connect. {hint}")
                             l_conn = legacy_listener.handle
-                            cmd = {"method": method, "params": params}
-                            _write_msg(l_conn, cmd, deadline=deadline, cmd_name=method)
-                            response = _read_msg(l_conn, deadline=deadline, cmd_name=method)
+                            response = self._exchange(l_conn, method, params, deadline)
                             if isinstance(response, dict):
                                 data = response.get("data", response)
                                 if isinstance(data, dict) and data.get("pid"):
@@ -1011,9 +1080,9 @@ class ReversePipeClient:
                         _last_ide_pid = chosen.pid
 
                         try:
-                            cmd = {"method": method, "params": params}
-                            _write_msg(chosen_conn, cmd, deadline=deadline, cmd_name=method)
-                            response = _read_msg(chosen_conn, deadline=deadline, cmd_name=method)
+                            response = self._exchange(
+                                chosen_conn, method, params, deadline
+                            )
 
                             if isinstance(response, dict) and "instance" in response:
                                 _last_instance = response["instance"]

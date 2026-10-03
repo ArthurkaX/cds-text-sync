@@ -442,6 +442,14 @@ Examples:
     p_log.add_argument("--last", default="", help="Maximum messages to read")
     p_log.add_argument("--clear", action="store_true", help="Clear log after read")
     add_daemon_parser(subparsers, "permissions", "Show daemon permissions", None)
+    # Fixed 10s: this only reads a small JSON file the daemon already wrote, so
+    # the daemon's timeout-profile preflight would be pure overhead.
+    add_daemon_parser(
+        subparsers,
+        "last-result",
+        "Read back the outcome of the last sync command (after a CLI timeout)",
+        10,
+    )
 
     # -- raw / engine / local utility commands -----------------------------
     register_utility(subparsers)

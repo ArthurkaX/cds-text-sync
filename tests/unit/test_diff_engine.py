@@ -5,9 +5,10 @@ test_diff_engine.py – Unit tests for diff_engine.py (Priority 3).
 Uses synthetic ProjectModel instances with small helper functions.
 """
 
+import pytest
 import xml.etree.ElementTree as ET
 from cds_text_sync.engine._project_model import COLLAPSED_OBJECT_TYPE_GUIDS, ProjectModel, ProjectNode
-from cds_text_sync.engine.diff_engine import DiffEngine
+from cds_text_sync.engine.diff_engine import DiffEngine, EntryXmlError
 
 # ===================================================================
 # Helpers
@@ -278,7 +279,7 @@ class TestDiffEngineExportOnly:
 
 class TestDiffEngineTextFirst:
     def _ide_node_and_st(self, declaration, implementation):
-        from xml_helpers import st_projection_content
+        from cds_text_sync.engine.xml_helpers import st_projection_content
 
         xml_text = _pou_xml(declaration, implementation)
         ide_node = _make_node("g1", xml_text=xml_text)
@@ -418,3 +419,45 @@ class TestLibraryResolutionDrift:
         assert "g1" in result["modified"]
         assert result["library_resolution"]["drift_only_objects"] == 0
         assert folder_node.metadata.get("library_drift_only") is None
+
+
+# ===================================================================
+# Unparseable object XML
+# ===================================================================
+
+
+class TestUnparseableEntryXml:
+    def _nodes(self, ide_xml):
+        ide_node = _make_node("g1", name="MyObj", xml_text=ide_xml)
+        folder_node = _make_node(
+            "g1",
+            st_only=True,
+            projection_contents={"MyObj.st": "PROGRAM P\nEND_PROGRAM"},
+            projection_changed_paths=["MyObj.st"],
+        )
+        return ide_node, folder_node
+
+    def test_an_unparseable_object_is_an_error_not_a_phantom_edit(self):
+        """Without XML to read, the fallback field invents a difference."""
+        ide_node, folder_node = self._nodes("<Single Name='Object'>")
+
+        with pytest.raises(EntryXmlError) as raised:
+            DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+
+        assert "MyObj" in str(raised.value)
+        assert "g1" in str(raised.value)
+        assert "could not be parsed" in str(raised.value)
+
+    def test_a_node_without_xml_is_still_compared_as_before(self):
+        """No XML at all is not an error -- only XML that will not parse is."""
+        ide_node = _make_node("g1", name="MyObj", xml_text=None)
+        folder_node = _make_node(
+            "g1",
+            st_only=True,
+            projection_contents={"MyObj.st": "PROGRAM P\nEND_PROGRAM"},
+            projection_changed_paths=["MyObj.st"],
+        )
+
+        result = DiffEngine(model_with(ide_node), model_with(folder_node)).compare()
+
+        assert "g1" in result["modified"]

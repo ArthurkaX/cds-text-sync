@@ -8,7 +8,12 @@ def register(subparsers):
         "--libraries", "--library-path", dest="library_path", default="",
         help=r"CODESYS library root (default: C:\ProgramData\CODESYS)",
     )
-    parser.add_argument("--output", "--out", dest="output", default="", help="Documentation output directory")
+    # Own dest: the global `--output`/`--pretty` select the JSON/text output
+    # format, and sharing `output` made the subparser default clobber it.
+    parser.add_argument(
+        "--output", "--out", dest="docs_output", default="",
+        help="Documentation output directory",
+    )
     parser.add_argument("--daemon", action="store_true", help="Generate through the running CODESYS daemon")
     parser.add_argument("--check", action="store_true", help="Check whether an existing bundle is fresh")
     parser.add_argument("--validate", action="store_true", help="Validate an existing documentation bundle")

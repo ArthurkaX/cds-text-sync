@@ -12,10 +12,8 @@ import xml.etree.ElementTree as ET
 
 ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 FIXTURE_DIR = os.path.join(ROOT_DIR, "tests", "fixtures", "offline_engine", "basic_case")
-ENGINE_DIR = os.path.join(
-    ROOT_DIR, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-)
-ENGINE_CLI = os.path.join(ENGINE_DIR, "engine_cli.py")
+PRODUCT_SRC_DIR = os.path.join(ROOT_DIR, "products", "cds-text-sync", "src")
+ENGINE_MODULE = "cds_text_sync.engine.engine_cli"
 
 
 class RegressionFailure(Exception):
@@ -23,24 +21,30 @@ class RegressionFailure(Exception):
 
 
 @contextlib.contextmanager
-def _engine_on_path():
-    """Put the engine dir on sys.path for the flat-import block, then remove it.
+def _product_on_path():
+    """Put the sync product's src dir on sys.path, then remove it.
 
-    The engine modules import each other flat (``from _project_model import ...``),
-    so a scenario that drives them directly must prepend the dir first. This
-    replaces the hand-rolled insert/try/finally that was repeated per scenario.
+    The engine modules are imported as ``cds_text_sync.engine.*``; a scenario
+    that drives them directly resolves them through that one canonical name.
     """
-    sys.path.insert(0, ENGINE_DIR)
+    sys.path.insert(0, PRODUCT_SRC_DIR)
     try:
         yield
     finally:
-        if sys.path and sys.path[0] == ENGINE_DIR:
+        if sys.path and sys.path[0] == PRODUCT_SRC_DIR:
             del sys.path[0]
 
 
 def _run(args, expect_code=0):
-    cmd = [sys.executable, ENGINE_CLI] + args
-    completed = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True)
+    cmd = [sys.executable, "-m", ENGINE_MODULE] + args
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        PRODUCT_SRC_DIR + os.pathsep + existing if existing else PRODUCT_SRC_DIR
+    )
+    completed = subprocess.run(
+        cmd, cwd=ROOT_DIR, capture_output=True, text=True, env=env
+    )
     if completed.returncode != expect_code:
         raise RegressionFailure(
             "Command failed: {0}\nexit={1} expected={2}\nstdout:\n{3}\nstderr:\n{4}".format(
@@ -576,9 +580,11 @@ def _scenario_projection_config(work_dir):
         if "x := 1;" in handle.read():
             raise RegressionFailure("ST projection text was not externalized from XML")
     projection_manifest = _read_json(os.path.join(config_layout_root, ".dump", "manifest.json"))
-    if projection_manifest["entries"][0].get("projection_paths") != ["Device\\Application\\PLC_PRG.st"]:
+    # Manifest paths are stored with "/" on every platform so a Windows export
+    # still resolves when the folder is synced to Linux.
+    if projection_manifest["entries"][0].get("projection_paths") != ["Device/Application/PLC_PRG.st"]:
         raise RegressionFailure("enabled ST projection was not recorded in manifest")
-    if not projection_manifest["entries"][0].get("projection_hashes", {}).get("Device\\Application\\PLC_PRG.st"):
+    if not projection_manifest["entries"][0].get("projection_hashes", {}).get("Device/Application/PLC_PRG.st"):
         raise RegressionFailure("enabled ST projection hash was not recorded in manifest")
     orphan_projection_path = os.path.join(config_layout_root, "project-view", "Device", "Application", "Orphan.st")
     projection_readme_path = os.path.join(config_layout_root, "project-view", "Device", "Application", "README.md")
@@ -612,7 +618,7 @@ def _scenario_projection_config(work_dir):
         raise RegressionFailure("compare report did not include projection diff metadata")
     _assert_equal(
         projection_objects[0]["projection_diff"].get("path"),
-        "Device\\Application\\PLC_PRG.st",
+        "Device/Application/PLC_PRG.st",
         "projection diff path",
     )
 
@@ -658,11 +664,11 @@ def _scenario_projection_config(work_dir):
 
 def _scenario_full_pou_and_child(work_dir):
     """Full-POU and POU-child ST projections round-trip declaration and body."""
-    with _engine_on_path():
-        from _project_model import ProjectModel, ProjectNode
-        from folder_reader import FolderReader
-        from folder_writer import FolderWriter
-        from xml_helpers import entry_to_xml
+    with _product_on_path():
+        from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+        from cds_text_sync.engine.folder_reader import FolderReader
+        from cds_text_sync.engine.folder_writer import FolderWriter
+        from cds_text_sync.engine.xml_helpers import entry_to_xml
         full_pou_root = os.path.join(work_dir, "full_pou_projection")
         full_pou_view = os.path.join(full_pou_root, "project-view")
         full_pou_dump = os.path.join(full_pou_root, ".dump")
@@ -802,9 +808,9 @@ def _scenario_full_pou_and_child(work_dir):
 
 def _scenario_projection_filter_graphical(work_dir):
     """Graphical POUs are excluded from ST projection."""
-    with _engine_on_path():
-        from _project_model import ProjectModel, ProjectNode
-        from folder_writer import FolderWriter
+    with _product_on_path():
+        from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+        from cds_text_sync.engine.folder_writer import FolderWriter
         projection_filter_root = os.path.join(work_dir, "projection_filter")
         projection_filter_view = os.path.join(projection_filter_root, "project-view")
         projection_filter_dump = os.path.join(projection_filter_root, ".dump")
@@ -838,9 +844,9 @@ def _scenario_projection_filter_graphical(work_dir):
 
 def _scenario_dut_projection(work_dir):
     """DUT ST projection is written with its type text."""
-    with _engine_on_path():
-        from _project_model import ProjectModel, ProjectNode
-        from folder_writer import FolderWriter
+    with _product_on_path():
+        from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+        from cds_text_sync.engine.folder_writer import FolderWriter
         dut_projection_root = os.path.join(work_dir, "dut_projection")
         dut_projection_view = os.path.join(dut_projection_root, "project-view")
         dut_projection_dump = os.path.join(dut_projection_root, ".dump")
@@ -876,10 +882,10 @@ def _scenario_dut_projection(work_dir):
 
 def _scenario_persistent_projection(work_dir):
     """Persistent variable list ST projection is written."""
-    with _engine_on_path():
-        from _project_model import ProjectModel, ProjectNode
-        from _project_profiles import load_profile
-        from folder_writer import FolderWriter
+    with _product_on_path():
+        from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+        from cds_text_sync.engine._project_profiles import load_profile
+        from cds_text_sync.engine.folder_writer import FolderWriter
         persistent_projection_root = os.path.join(work_dir, "persistent_projection")
         persistent_projection_view = os.path.join(persistent_projection_root, "project-view")
         persistent_projection_dump = os.path.join(persistent_projection_root, ".dump")
@@ -908,9 +914,9 @@ def _scenario_persistent_projection(work_dir):
 
 def _scenario_textlist_projection(work_dir):
     """TextList/GlobalTextList CSV projections write, round-trip and validate."""
-    with _engine_on_path():
-        from _project_model import ProjectModel, ProjectNode
-        from folder_writer import FolderWriter
+    with _product_on_path():
+        from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+        from cds_text_sync.engine.folder_writer import FolderWriter
 
     textlist_projection_root = os.path.join(work_dir, "textlist_projection")
     textlist_projection_view = os.path.join(textlist_projection_root, "project-view")
@@ -993,13 +999,13 @@ def _scenario_textlist_projection(work_dir):
         global_textlist_csv_content = handle.read()
     if 'TextID,TextDefault,ENG,DEU\n3,Global,Global EN,Global DE\n' != global_textlist_csv_content:
         raise RegressionFailure("TextList CSV language columns were unexpected")
-    with _engine_on_path():
-        from _patch_builder import PatchBuilder
-        from diff_engine import DiffEngine
-        from folder_reader import FolderReader
-        from xml_helpers import ProjectionValidationError
-        from xml_helpers import apply_textlist_csv
-        from xml_helpers import entry_to_xml
+    with _product_on_path():
+        from cds_text_sync.engine._patch_builder import PatchBuilder
+        from cds_text_sync.engine.diff_engine import DiffEngine
+        from cds_text_sync.engine.folder_reader import FolderReader
+        from cds_text_sync.engine.xml_helpers import ProjectionValidationError
+        from cds_text_sync.engine.xml_helpers import apply_textlist_csv
+        from cds_text_sync.engine.xml_helpers import entry_to_xml
         blank_textlist_entry = ET.fromstring(
             '<Single><Single Name="Object"><List Name="TextList">'
             '<Single><Single Name="TextID"></Single><Single Name="TextDefault"></Single></Single>'
@@ -1038,9 +1044,9 @@ def _scenario_textlist_projection(work_dir):
 
 def _scenario_alarm_projection(work_dir):
     """Alarm-items CSV projection writes, round-trips and enforces read-only columns."""
-    with _engine_on_path():
-        from _project_model import ProjectModel, ProjectNode
-        from folder_writer import FolderWriter
+    with _product_on_path():
+        from cds_text_sync.engine._project_model import ProjectModel, ProjectNode
+        from cds_text_sync.engine.folder_writer import FolderWriter
 
     alarm_projection_root = os.path.join(work_dir, "alarm_projection")
     alarm_projection_view = os.path.join(alarm_projection_root, "project-view")
@@ -1109,11 +1115,11 @@ def _scenario_alarm_projection(work_dir):
     alarm_extractors = alarm_manifest["entries"][0].get("projection_extractors") or {}
     if alarm_extractors.get("TEST_ALARMS.csv") != "alarm_items_csv":
         raise RegressionFailure("Alarm items CSV extractor was not recorded in manifest")
-    with _engine_on_path():
-        from _patch_builder import PatchBuilder
-        from diff_engine import DiffEngine
-        from folder_reader import FolderReader
-        from xml_helpers import ProjectionValidationError, apply_alarm_items_csv, entry_to_xml
+    with _product_on_path():
+        from cds_text_sync.engine._patch_builder import PatchBuilder
+        from cds_text_sync.engine.diff_engine import DiffEngine
+        from cds_text_sync.engine.folder_reader import FolderReader
+        from cds_text_sync.engine.xml_helpers import ProjectionValidationError, apply_alarm_items_csv, entry_to_xml
         blank_alarm_entry = ET.fromstring(
             '<Single><Single Name="Object"><Dictionary Name="Alarms">'
             '<Entry><Key><Single Type="string"></Single></Key><Value>'
@@ -1258,8 +1264,8 @@ def _scenario_settings_roundtrip(work_dir):
     """Project settings save/load round-trip."""
     settings_write_root = os.path.join(work_dir, "settings_write")
     os.makedirs(settings_write_root)
-    with _engine_on_path():
-        from _project_settings import load_project_settings, save_project_settings
+    with _product_on_path():
+        from cds_text_sync.engine._project_settings import load_project_settings, save_project_settings
         saved_settings = save_project_settings(settings_write_root, {
             "layout": "root-view",
             "view_root": None,
@@ -1280,9 +1286,9 @@ def _scenario_missing_settings(work_dir):
     """Missing project settings fall back to the project-view layout defaults."""
     missing_settings_root = os.path.join(work_dir, "missing_settings")
     os.makedirs(missing_settings_root)
-    with _engine_on_path():
-        from _project_layout import resolve_layout
-        from _project_settings import load_project_settings
+    with _product_on_path():
+        from cds_text_sync.engine._project_layout import resolve_layout
+        from cds_text_sync.engine._project_settings import load_project_settings
         missing_settings = load_project_settings(missing_settings_root)
         missing_layout = resolve_layout(missing_settings_root, layout_mode=missing_settings.get("layout"))
     _assert_equal(missing_settings["layout"], "project-view", "missing settings layout")
@@ -1315,8 +1321,8 @@ def _scenario_pathless_project_object(work_dir):
   </StructuredView>
 </Project>
 """)
-    with _engine_on_path():
-        from snapshot_reader import SnapshotReader
+    with _product_on_path():
+        from cds_text_sync.engine.snapshot_reader import SnapshotReader
         pathless_model = SnapshotReader(pathless_snapshot, project_name="VKO-Beumer").read()
     pathless_node = list(pathless_model.nodes.values())[0]
     _assert_equal(pathless_node.display_path, ["POUs"], "pathless project object display path")
@@ -1361,8 +1367,8 @@ def _scenario_duplicate_structured_view(work_dir):
   </StructuredView>
 </Project>
 """)
-    with _engine_on_path():
-        from snapshot_reader import SnapshotReader
+    with _product_on_path():
+        from cds_text_sync.engine.snapshot_reader import SnapshotReader
         duplicate_view_model = SnapshotReader(duplicate_view_snapshot, project_name="VKO-Beumer").read()
     _assert_equal(len(duplicate_view_model.nodes), 1, "structured view GUID normalization deduplicates nodes")
 
@@ -1414,8 +1420,8 @@ def _scenario_alias_structured_view(work_dir):
   </StructuredView>
 </Project>
 """)
-    with _engine_on_path():
-        from snapshot_reader import SnapshotReader
+    with _product_on_path():
+        from cds_text_sync.engine.snapshot_reader import SnapshotReader
         alias_view_model = SnapshotReader(alias_view_snapshot, project_name="VKO-Beumer").read()
     _assert_equal(len(alias_view_model.nodes), 1, "structured view path aliases deduplicate nodes")
     alias_node = list(alias_view_model.nodes.values())[0]

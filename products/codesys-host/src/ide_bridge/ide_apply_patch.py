@@ -13,8 +13,8 @@ import re
 import tempfile
 import xml.etree.ElementTree as ET
 
-from ide_runtime_common import normalize_guid, object_name
-from _locale_aliases import canonical_key
+from ide_runtime_common import normalize_guid, object_name, object_type
+from cds_text_sync.engine._locale_aliases import canonical_key
 from ide_xml import parse_xml_file
 
 
@@ -26,6 +26,7 @@ class ApplyPatchResult(object):
         self.native_guids = []
         self.textual_guids = []
         self.created_paths = []
+        self.reused_paths = []
         self.failed_guids = []
         self.failures = []
 
@@ -49,6 +50,17 @@ class ApplyPatchResult(object):
         if path and path not in self.created_paths:
             self.created_paths.append(path)
 
+    def add_reused(self, path):
+        """A create entry satisfied by an object that was already there.
+
+        Kept apart from add_created: a patch that only ever finds its objects
+        already present changed nothing, and saying it created them hides the
+        case where the disk baseline never caught up with the IDE.
+        """
+        path = str(path or "")
+        if path and path not in self.reused_paths:
+            self.reused_paths.append(path)
+
     def fail(self, error, guid=None):
         self.success = False
         self.error = str(error)
@@ -69,6 +81,8 @@ class ApplyPatchResult(object):
             parts.append("applied={0}".format(len(self.applied_guids)))
         if self.created_paths:
             parts.append("created={0}".format(len(self.created_paths)))
+        if self.reused_paths:
+            parts.append("reused={0}".format(len(self.reused_paths)))
         if self.failed_guids:
             parts.append("failed_guids={0}".format(",".join(self.failed_guids)))
         if self.error:
@@ -297,20 +311,60 @@ def _write_patch_without_text_creates(source_root):
 
 
 def _build_guid_map(project):
+    """Map guid -> object for every object in the project.
+
+    Returns ``(guid_map, unreadable)``. *unreadable* names the objects whose
+    guid could not be read (and, when the whole walk failed, the reason): such
+    an object is absent from the map, which makes it indistinguishable from an
+    object the patch does not know about. The caller has to know the map is
+    incomplete before it reads anything into a miss -- a patch guid that is
+    missing locally would otherwise be dropped, or created a second time.
+    """
     guid_map = {}
+    unreadable = []
     try:
         objects = project.get_children(recursive=True)
-    except Exception:
-        return guid_map
+    except Exception as error:
+        return guid_map, ["could not walk the project tree: {0}".format(error)]
 
     for obj in objects:
         try:
             guid = normalize_guid(obj.guid)
-            if guid:
-                guid_map[guid] = obj
+        except Exception as error:
+            unreadable.append(
+                "{0}: {1}".format(_best_effort_name(obj), error)
+            )
+            continue
+        if guid:
+            guid_map[guid] = obj
+    return guid_map, unreadable
+
+
+def _best_effort_name(obj):
+    """A readable label for an object we already know we cannot fully inspect."""
+    try:
+        return object_name(obj)
+    except Exception:
+        try:
+            return str(obj)
         except Exception:
-            pass
-    return guid_map
+            return "<unknown object>"
+
+
+def _incomplete_guid_map_error(unreadable_guids, unmatched_guids):
+    """Message for a patch that cannot be matched against a partly-read project."""
+    return (
+        "The guids of {0} project object(s) could not be read ({1}), so the "
+        "project could not be identified completely; {2} object(s) in the patch "
+        "({3}) were not matched here. Refusing to apply: an object that is "
+        "present but unrecognised would either have its edits dropped or be "
+        "created a second time.".format(
+            len(unreadable_guids),
+            unreadable_guids[0],
+            len(unmatched_guids),
+            ", ".join([str(guid) for guid in unmatched_guids[:3]]),
+        )
+    )
 
 
 def _children_of(obj):
@@ -578,23 +632,84 @@ def _to_system_guid(guid_string):
         return guid_string
 
 
-def _create_child_with_guid(target, name, guid_candidates):
+def _create_child_with_guid(target, name, guid_candidates, errors=None):
     """Try create_child(name, type_guid) with each GUID candidate.
 
     The CODESYS IronPython API requires System.Guid for the type_guid
     parameter.  This helper attempts the call with each GUID (converting
     to System.Guid when necessary) and returns the first successful result.
+
+    Trying several candidates is expected -- the right type guid varies by
+    project profile -- so a candidate that fails stays silent. It must not stay
+    *unrecorded*, though: a None return with no reason upstream turns a real
+    CODESYS refusal into "unsupported kind". Pass a list as *errors* to collect
+    one "guid -> reason" line per failed attempt for the caller's message.
     """
     if not isinstance(guid_candidates, (list, tuple)):
         guid_candidates = [guid_candidates]
     for guid_string in guid_candidates:
         guid_value = _to_system_guid(guid_string)
+        note = None
         try:
             obj = target.create_child(name, guid_value)
             if obj is not None:
                 return obj
-        except Exception:
-            pass
+            note = "create_child returned None"
+        except Exception as error:
+            note = str(error)
+        if errors is not None:
+            errors.append("{0}: {1}".format(guid_string, note))
+    return None
+
+
+_DEFAULT_PERSISTENT_GVL_NAMES = set(["persistentvars", "persistentvariables"])
+# normalize_guid() strips the braces KIND_TYPE_GUIDS stores them with.
+_PERSISTENT_GVL_TYPE_GUIDS = set(
+    normalize_guid(guid) for guid in KIND_TYPE_GUIDS["persistent_gvl"]
+)
+
+
+def _is_persistent_gvl_object(obj):
+    """Whether a live object is the application's Persistent Variables list.
+
+    The type GUID decides when it is readable: the persistent-list GUIDs are
+    the same ones ``_create_text_object`` passes to ``create_child``, so a
+    match is exact, not a guess. This used to also treat the object's *name*
+    as a type candidate, which made a POU or GVL called "PersistentVars" match.
+
+    Only when the type genuinely cannot be read does it fall back to the name
+    CODESYS gives the object it creates for "Add Persistent Variables" -- a
+    guess, and a defensive one at that (a project that already has a
+    persistent list would normally report its type).
+    """
+    type_guid, _type_error = object_type(obj)
+    if type_guid:
+        return type_guid in _PERSISTENT_GVL_TYPE_GUIDS
+    try:
+        return canonical_key(object_name(obj)) in _DEFAULT_PERSISTENT_GVL_NAMES
+    except Exception:
+        return False
+
+
+def _find_existing_persistent_gvl(container, container_chain=None):
+    """The application's Persistent Variables object, if the live project
+    reports one.
+
+    CODESYS accepts exactly one per application, and creating a second one is
+    what raised the modal "objects already existing" dialog that froze the
+    daemon (T46). Checking here turns that into a plain, named failure. Only the
+    resolved container and its ancestors are inspected -- never a sibling
+    application.
+    """
+    for target in _create_container_candidates(container, container_chain):
+        for child in _children_of(target):
+            if _is_persistent_gvl_object(child):
+                return child
+        for child in _children_of(target):
+            if canonical_key(object_name(child)) in _TRANSPARENT_CONTAINERS:
+                for grandchild in _children_of(child):
+                    if _is_persistent_gvl_object(grandchild):
+                        return grandchild
     return None
 
 
@@ -603,6 +718,7 @@ def _create_text_object(container, entry, container_chain=None):
     name = entry.get("name") or ""
     declaration = entry.get("declaration")
     type_guid = entry.get("type_guid") or ""
+    create_errors = []
 
     if kind == "pou":
         obj = _create_pou(container, name, declaration)
@@ -617,6 +733,27 @@ def _create_text_object(container, entry, container_chain=None):
         # Use create_child(name, type_guid) with the appropriate type GUID,
         # walking up the parent chain to find a container that supports create_child.
 
+        if kind == "persistent_gvl":
+            # Defence in depth (T46): an engine-side guard refuses this patch
+            # before it is applied, but when one slips through (an older engine,
+            # a hand-written IMPORT.xml) CODESYS answers the create with a modal
+            # "objects already existing" dialog -- and a modal blocks the
+            # single-threaded daemon, so every later command times out.
+            existing_persistent = _find_existing_persistent_gvl(
+                container, container_chain
+            )
+            if existing_persistent is not None:
+                raise Exception(
+                    "Cannot create persistent variable list '{0}' at {1}: the "
+                    "application already has one ({2}). CODESYS accepts only "
+                    "one Persistent Variables object per application; edit the "
+                    "existing object instead of creating a second one.".format(
+                        name,
+                        entry.get("path"),
+                        _object_location(existing_persistent),
+                    )
+                )
+
         # Build candidate list: explicit TypeGuid first, then profile/create_type_guids,
         # then built-in fallbacks.
         candidates = []
@@ -629,7 +766,7 @@ def _create_text_object(container, entry, container_chain=None):
         for target in _create_container_candidates(
             container, container_chain, "create_child"
         ):
-            obj = _create_child_with_guid(target, name, candidates)
+            obj = _create_child_with_guid(target, name, candidates, create_errors)
             if obj is not None:
                 return obj
 
@@ -648,8 +785,13 @@ def _create_text_object(container, entry, container_chain=None):
                         obj = method(name)
                         if obj is not None:
                             return obj
-                    except Exception:
-                        pass
+                        create_errors.append(
+                            "{0}: returned None".format(method_name)
+                        )
+                    except Exception as error:
+                        create_errors.append(
+                            "{0}: {1}".format(method_name, error)
+                        )
 
     if kind == "dut":
         target = _find_create_container(container, "create_dut")
@@ -661,7 +803,14 @@ def _create_text_object(container, entry, container_chain=None):
         return container.create_action(name)
     if kind == "property" and hasattr(container, "create_property"):
         return container.create_property(name)
-    raise Exception("Unsupported text object creation kind or API: {0}".format(kind))
+    details = ""
+    if create_errors:
+        # The kind may well be supported -- every API call for it failed. Say so,
+        # rather than the misleading "unsupported kind" that hides the reason.
+        details = " (creation attempts failed: {0})".format("; ".join(create_errors))
+    raise Exception(
+        "Unsupported text object creation kind or API: {0}{1}".format(kind, details)
+    )
 
 
 def _apply_text_create(project, entry, created_by_name):
@@ -685,7 +834,8 @@ def _apply_text_create(project, entry, created_by_name):
         container = parent
 
     existing = _find_child_transparent(container, entry.get("name"))
-    if existing is not None:
+    reused = existing is not None
+    if reused:
         obj = existing
     else:
         obj = _create_text_object(
@@ -700,15 +850,25 @@ def _apply_text_create(project, entry, created_by_name):
 
     _apply_textual_patch(obj, entry)
     created_by_name[object_name(obj).lower()] = obj
-    print("Created textual object from: " + str(entry.get("path")))
-    return True
+    # Say which of the two happened; a create entry satisfied by an object that
+    # was already there is not a creation (same wording as
+    # ide_handlers_sync._apply_text_create_entry, so the two paths report alike).
+    print(
+        "{0} textual object from: {1}".format(
+            "Updated existing" if reused else "Created", entry.get("path")
+        )
+    )
+    return reused
 
 
 def _apply_text_creates(project, text_creates, created_by_name, result):
     for entry in text_creates:
         try:
-            _apply_text_create(project, entry, created_by_name)
-            result.add_created(entry.get("path"))
+            reused = _apply_text_create(project, entry, created_by_name)
+            if reused:
+                result.add_reused(entry.get("path"))
+            else:
+                result.add_created(entry.get("path"))
         except Exception as error:
             print(
                 "Error creating textual object {0}: {1}".format(
@@ -1033,8 +1193,16 @@ def apply_patch(system, project, patch_path):
         patch_build_attrs = patch_data["build_attrs"]
         text_creates = patch_data["text_creates"]
         native_creates = patch_data["native_creates"]
-        guid_map = _build_guid_map(project)
+        guid_map, unreadable_guids = _build_guid_map(project)
         existing_objects = [guid_map[guid] for guid in patch_guids if guid in guid_map]
+        unmatched_guids = [guid for guid in patch_guids if guid not in guid_map]
+        if unreadable_guids and unmatched_guids:
+            # A miss in an incomplete map means nothing: the object may be one
+            # we could not identify. Applying anyway would skip its edit or
+            # create a duplicate, so refuse instead of guessing.
+            return result.fail(
+                _incomplete_guid_map_error(unreadable_guids, unmatched_guids)
+            )
         created_by_name = {}
 
         if existing_objects:

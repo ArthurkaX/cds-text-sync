@@ -19,7 +19,11 @@ def register(subparsers):
     project.add_argument("--enable", default="on", help="Enable/disable simulation (on|off, for simulate)")
     project.add_argument("--guid", default="", help="Object GUID (for read)")
     project.add_argument("--depth", type=int, default=0, help="Tree depth, 0 = unlimited")
-    project.add_argument("--against", default="", help="Path to snapshot for compare")
+    project.add_argument(
+        "--against",
+        default="",
+        help="Path to snapshot for compare (default: latest in .dump/)",
+    )
     project.add_argument("--device", default="", help="Device name filter (for device-status)")
     project.add_argument("--ip", default="", help="PLC IP address (for connect)")
     project.add_argument("--gateway", default="Gateway-1", help="Gateway name (for connect, default: Gateway-1)")

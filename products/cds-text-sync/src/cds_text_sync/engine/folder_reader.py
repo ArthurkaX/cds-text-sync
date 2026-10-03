@@ -6,30 +6,36 @@ folder_reader.py - Reads the Git-friendly folder structure into a ProjectModel.
 import json
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 
-from _project_model import ProjectNode
-from _project_profiles import kind_for_type_guid
-from _manifest_bookkeeper import entries as manifest_entries
-from _path_safety import replace_extension, safe_path_in_root
-from _projection_codec import decode_csv, decode_st
-from _projection_changes import detect as detect_projection_changes
-from _view_paths import (
+from ._project_model import ProjectNode
+from ._project_profiles import kind_for_type_guid
+from ._manifest_bookkeeper import entries as manifest_entries
+from ._path_safety import replace_extension, safe_path_in_root
+from ._projection_codec import decode_csv, decode_st
+from ._projection_changes import detect as detect_projection_changes
+from ._view_paths import (
+    join_view_path,
     managed_relative_paths,
+    manifest_path,
     manifest_view_root,
     normalize_fs_path,
 )
-from _view_text import read_view_text
-from xml_helpers import (
+from ._view_text import read_view_text
+from cts_shared.st.projection import (
+    find_implementation_split,
+    normalize_newlines,
+    split_action_body,
+)
+from .xml_helpers import (
     IMPORT_SAFE_CSV_EXTRACTORS,
-    ST_IMPLEMENTATION_MARKER,
     ProjectionValidationError,
     entry_to_xml,
     extract_bool_property,
     extract_cds_text_sync_type_guid,
     replace_text_blob_values,
     sha1_hex,
-    split_action_projection,
     strip_cds_text_sync_pragmas,
     text_blob_elements,
 )
@@ -80,21 +86,18 @@ def _detect_st_kind(content):
 
 
 def _split_st_create_content(content):
-    normalized = (content or "").replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalize_newlines(content)
     # An ACTION carries no declaration: everything after the synthesised
     # ``ACTION <name>`` header is implementation. Checked before the marker so
     # the header itself never ends up in the declaration of a new object.
-    action_body = split_action_projection(normalized)
+    action_body = split_action_body(normalized)
     if action_body is not None:
         return "", action_body.strip()
-    marker = "\n" + ST_IMPLEMENTATION_MARKER + "\n"
-    if marker in normalized:
-        declaration, implementation = normalized.split(marker, 1)
-        return declaration.strip(), implementation.strip()
-    if ST_IMPLEMENTATION_MARKER in normalized:
-        declaration, implementation = normalized.split(ST_IMPLEMENTATION_MARKER, 1)
-        return declaration.strip(), implementation.strip()
-    return normalized.strip(), None
+    parts = find_implementation_split(normalized)
+    if parts is None:
+        return normalized.strip(), None
+    declaration, implementation = parts
+    return declaration.strip(), implementation.strip()
 
 
 class FolderReader:
@@ -151,12 +154,20 @@ class FolderReader:
             return None
         try:
             root = ET.fromstring(xml_text)
-        except Exception:
-            return None
+        except Exception as error:
+            # A malformed view XML must not read as "the flag is absent": for
+            # ExcludeFromBuild that would silently place an object into the
+            # build that its own source excluded. Abort the read so the corrupt
+            # file is named and fixed instead of misclassified.
+            raise RuntimeError(
+                "Cannot read {0} from malformed XML: {1}".format(
+                    property_name, error
+                )
+            )
         return extract_bool_property(root, property_name)
 
     def _projection_full_path(self, relative_path):
-        return os.path.join(self.views_path, relative_path)
+        return join_view_path(self.views_path, relative_path)
 
     def _replace_extension(self, relative_path, extension):
         return replace_extension(relative_path, extension)
@@ -167,8 +178,8 @@ class FolderReader:
         if not xml_path:
             return None
         if (entry.get("xml_root") or "").lower() == "dump":
-            return os.path.join(self.dump_path, "xml", xml_path)
-        return os.path.join(self.views_path, xml_path)
+            return join_view_path(os.path.join(self.dump_path, "xml"), xml_path)
+        return join_view_path(self.views_path, xml_path)
 
     def _projection_change_info(
         self, projection_paths, projection_hashes, treat_missing_hash_as_changed=False
@@ -184,11 +195,11 @@ class FolderReader:
         return os.path.relpath(full_path, self.views_path).replace(os.sep, "/")
 
     def _discover_pending_st_creates(self, model, managed_paths, allow_sibling_xml=False):
-        from _pending_discovery import discover_pending_st
+        from ._pending_discovery import discover_pending_st
         return discover_pending_st(self, model, managed_paths, allow_sibling_xml)
 
     def _discover_pending_xml_creates(self, model, managed_paths):
-        from _pending_discovery import discover_pending_xml
+        from ._pending_discovery import discover_pending_xml
         return discover_pending_xml(self, model, managed_paths)
 
     def _xml_top_level_member_names(self, elem_root):
@@ -221,7 +232,16 @@ class FolderReader:
                 continue
             try:
                 root = ET.fromstring(xml_text)
-            except Exception:
+            except Exception as error:
+                # The whitelist is advisory, so an unreadable node is skipped
+                # rather than aborting the read -- but say so: silently
+                # dropping it can make the validator flag members that a
+                # genuine IDE export actually uses.
+                print(
+                    "[WARN] folder_reader: unreadable XML while learning the "
+                    "{0} member whitelist: {1}".format(type_guid, error),
+                    file=sys.stderr,
+                )
                 continue
             node_type = (root.attrib.get("Type") or "").strip().strip("{}").lower()
             if node_type != key:
@@ -400,10 +420,10 @@ class FolderReader:
         view_path = entry.get("view_path")
         if not view_path:
             return
-        normalized_path = view_path.replace("\\", "/")
+        normalized_path = manifest_path(view_path)
         managed_paths.add(normalized_path)
         node.metadata["view_path"] = view_path
-        full_path = os.path.join(self.views_path, view_path)
+        full_path = join_view_path(self.views_path, view_path)
         if os.path.exists(full_path):
             node.code = read_view_text(full_path)
 
@@ -414,5 +434,5 @@ class FolderReader:
         return text, sha1_hex(text)
 
     def read(self):
-        from _folder_reader_pipeline import read as read_pipeline
+        from ._folder_reader_pipeline import read as read_pipeline
         return read_pipeline(self)

@@ -100,7 +100,13 @@ def read_document(obj, attribute):
 
 
 def has_text_document(obj):
-    """Check for a text document without reading its contents."""
+    """Check for a text document without reading its contents.
+
+    A getter that raises means the object type has no such section -- CODESYS
+    objects without a textual_implementation raise instead of returning None
+    (see ``read_document``) -- so it is skipped, not read as a failure. Reading
+    the *contents* is where a raise becomes a real error; here nothing is read.
+    """
     for attribute in ("textual_declaration", "textual_implementation"):
         try:
             if getattr(obj, attribute, None) is not None:

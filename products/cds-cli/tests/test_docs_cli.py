@@ -21,7 +21,8 @@ def test_docs_command_exposes_library_and_daemon_options():
     assert args.command == "docs"
     assert args.workspace == "sync"
     assert args.library_path == r"C:\ProgramData\CODESYS"
-    assert args.output == "out"
+    assert args.docs_output == "out"
+    assert args.output == "json"  # the global format flag is a separate option
     assert args.daemon is True
     assert args.check is False
     assert args.timeout == 120

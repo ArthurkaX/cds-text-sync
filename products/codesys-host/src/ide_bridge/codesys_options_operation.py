@@ -140,22 +140,18 @@ def main(params=None, runtime=None):
     init_logging(base_dir)
 
     utility_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    engine_dir = os.path.join(
-        utility_root, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-    )
-    if not os.path.isdir(engine_dir):
-        engine_dir = os.path.join(utility_root, "src", "external_engine")
-    if engine_dir not in sys.path:
-        sys.path.insert(0, engine_dir)
+    product_src = os.path.join(utility_root, "products", "cds-text-sync", "src")
+    if os.path.isdir(product_src) and product_src not in sys.path:
+        sys.path.insert(0, product_src)
 
     try:
-        from _project_profiles import (
+        from cds_text_sync.engine._project_profiles import (
             list_profiles,
             load_profile,
             projection_options,
             xml_in_view_kind_options,
         )
-        from _project_settings import (
+        from cds_text_sync.engine._project_settings import (
             load_project_settings,
             normalize_sync_mode,
             save_project_settings,

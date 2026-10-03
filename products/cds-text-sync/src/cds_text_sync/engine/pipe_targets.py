@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from cts_shared import wire
+
 
 LEGACY = "LEGACY"
 
@@ -90,17 +92,16 @@ class Hello:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Hello:
-        if "hello" in data and isinstance(data["hello"], dict):
-            data = data["hello"]
-        pid = int(data.get("pid", 0))
-        target_id = data.get("id") or f"ide-{pid}"
+        # Field names, defaults and the nested-vs-bare envelope are decided in
+        # cts_shared.wire, the same module the daemon builds the hello with.
+        fields = wire.parse_hello(data)
         return cls(
-            protocol=int(data.get("protocol", 2)),
-            id=target_id,
-            pid=pid,
-            version=str(data.get("version", "")),
-            poll_ms=int(data.get("poll_ms", 200)),
-            project=data.get("project"),
+            protocol=fields["protocol"],
+            id=fields["id"],
+            pid=fields["pid"],
+            version=fields["version"],
+            poll_ms=fields["poll_ms"],
+            project=fields["project"],
         )
 
 

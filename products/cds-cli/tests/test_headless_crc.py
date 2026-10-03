@@ -11,7 +11,23 @@ from cds_cli import headless_crc
 
 def test_load_single_target():
     assert headless_crc.load_targets("192.0.2.10", "G") == [
-        {"ip": "192.0.2.10", "gateway": "G", "request_id": "1"}
+        {
+            "ip": "192.0.2.10",
+            "gateway": "G",
+            "request_id": "1",
+            "application": "Application",
+        }
+    ]
+
+
+def test_load_single_target_takes_a_custom_application():
+    assert headless_crc.load_targets("192.0.2.10", "G", application="MyApp") == [
+        {
+            "ip": "192.0.2.10",
+            "gateway": "G",
+            "request_id": "1",
+            "application": "MyApp",
+        }
     ]
 
 
@@ -20,6 +36,7 @@ def test_load_single_target_passes_credential_environment_names(monkeypatch):
     monkeypatch.setenv("CDS_CRC_PLC_PASSWORD", "secret")
     assert headless_crc.load_targets("192.0.2.10", "G") == [{
         "ip": "192.0.2.10", "gateway": "G", "request_id": "1",
+        "application": "Application",
         "credentials": {
             "username_env": "CDS_CRC_PLC_USERNAME",
             "password_env": "CDS_CRC_PLC_PASSWORD",
@@ -31,8 +48,16 @@ def test_load_batch_preserves_request_ids_and_defaults(tmp_path):
     path = tmp_path / "targets.json"
     path.write_text(json.dumps({"targets": [{"request_id": "a", "ip": "192.0.2.1"}, {"ip": "192.0.2.2"}]}))
     assert headless_crc.load_targets(input_path=str(path), gateway="G") == [
-        {"request_id": "a", "ip": "192.0.2.1", "gateway": "G"},
-        {"ip": "192.0.2.2", "gateway": "G", "request_id": "2"},
+        {"request_id": "a", "ip": "192.0.2.1", "gateway": "G", "application": "Application"},
+        {"ip": "192.0.2.2", "gateway": "G", "request_id": "2", "application": "Application"},
+    ]
+
+
+def test_load_batch_keeps_a_per_target_application(tmp_path):
+    path = tmp_path / "targets.json"
+    path.write_text(json.dumps({"targets": [{"ip": "192.0.2.1", "application": "Other"}]}))
+    assert headless_crc.load_targets(input_path=str(path)) == [
+        {"ip": "192.0.2.1", "gateway": "Gateway-1", "request_id": "1", "application": "Other"}
     ]
 
 
@@ -40,8 +65,8 @@ def test_load_batch_leaves_bad_row_for_per_target_validation(tmp_path):
     path = tmp_path / "targets.json"
     path.write_text(json.dumps({"targets": [{"ip": "192.0.2.1"}, {"name": "missing ip"}, 42]}))
     assert headless_crc.load_targets(input_path=str(path))[1:] == [
-        {"name": "missing ip", "gateway": "Gateway-1", "request_id": "2"},
-        {"value": 42, "gateway": "Gateway-1", "request_id": "3"},
+        {"name": "missing ip", "gateway": "Gateway-1", "request_id": "2", "application": "Application"},
+        {"value": 42, "gateway": "Gateway-1", "request_id": "3", "application": "Application"},
     ]
 
 
@@ -203,17 +228,55 @@ def _load_host_crc_module():
     return module
 
 
-def test_host_crc_reader_supports_cpython_bytes_and_name(tmp_path):
-    host = _load_host_crc_module()
-
+def _remote_writing(payload, uploaded):
     class Remote:
         def upload_file(self, remote, local, binary):
-            Path(local).write_bytes(bytes.fromhex("B11A9000") + bytes.fromhex("78563412") + b"Application\x00")
+            uploaded.append((remote, binary))
+            Path(local).write_bytes(payload)
 
-    result = host._read_crc(Remote(), str(tmp_path / "Application.crc"))
-    assert result["crc"] == "00901AB1"
-    assert result["metadata_timestamp_unix"] == 0x12345678
-    assert result["application"] == "Application"
+    return Remote()
+
+
+def test_host_crc_reader_returns_the_raw_file_as_base64(tmp_path):
+    # e4eab37 stopped parsing the CRC out of the file and returns it verbatim:
+    # the numeric value lives in CODESYS's own byte layout, which the caller
+    # decodes, so the reader must not invent one.
+    import base64
+
+    host = _load_host_crc_module()
+    payload = bytes.fromhex("B11A9000") + bytes.fromhex("78563412") + b"Application\x00"
+    uploaded = []
+
+    result = host._read_crc(
+        _remote_writing(payload, uploaded), str(tmp_path / "Application.crc")
+    )
+
+    assert uploaded == [("PlcLogic/Application/Application.crc", True)]
+    assert result == {
+        "crc_file_base64": base64.b64encode(payload).decode("ascii"),
+        "crc_file_size": len(payload),
+        "remote_file": "PlcLogic/Application/Application.crc",
+    }
+
+
+def test_host_crc_reader_uses_the_requested_application_name(tmp_path):
+    host = _load_host_crc_module()
+    uploaded = []
+
+    result = host._read_crc(
+        _remote_writing(b"x", uploaded), str(tmp_path / "other.crc"), "MyApp"
+    )
+
+    assert uploaded == [("PlcLogic/MyApp/MyApp.crc", True)]
+    assert result["remote_file"] == "PlcLogic/MyApp/MyApp.crc"
+
+
+@pytest.mark.parametrize("bad", ["", ".", "..", "a/b", "a\\b", None, 7])
+def test_host_crc_reader_rejects_a_non_single_application_name(tmp_path, bad):
+    host = _load_host_crc_module()
+
+    with pytest.raises(ValueError):
+        host._read_crc(_remote_writing(b"x", []), str(tmp_path / "a.crc"), bad)
 
 
 def test_host_crc_errors_distinguish_ambiguous_gateway():
@@ -302,6 +365,7 @@ def test_host_single_target_uses_conventional_credential_environment(monkeypatch
     monkeypatch.setenv("CDS_CRC_PLC_PASSWORD", "secret")
     assert host._targets() == [{
         "ip": "192.0.2.1", "gateway": "Gateway-1", "request_id": "1",
+        "application": "Application",
         "credentials": {
             "username_env": "CDS_CRC_PLC_USERNAME",
             "password_env": "CDS_CRC_PLC_PASSWORD",

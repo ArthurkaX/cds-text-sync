@@ -10,6 +10,8 @@ context alive for as long as the daemon runs. That is also why this does not go
 through codesys_runtime.run_operation -- that path clears the loaded modules and
 is built for short operations, whereas the daemon holds the context for hours.
 """
+from __future__ import print_function
+
 import os
 import sys
 import time

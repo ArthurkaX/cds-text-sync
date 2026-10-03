@@ -24,16 +24,35 @@ _ENGINE_DIR = (
     / "cds_text_sync"
     / "engine"
 )
-if _ENGINE_DIR.exists() and str(_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_ENGINE_DIR))
 from cds_text_sync.engine.reverse_pipe_client import (
     get_last_instance,
     send_command_reverse,
 )
+from cts_shared import wire
 
 # -- Config ------------------------------------------------------------------
 
 ENGINE_CLI = _ENGINE_DIR / "engine_cli.py"
+_ENGINE_MODULE = "cds_text_sync.engine.engine_cli"
+_PRODUCT_SRC = _SCRIPT_DIR / "products" / "cds-text-sync" / "src"
+_SHARED_SRC = _SCRIPT_DIR / "shared" / "src"
+
+
+def _engine_subprocess_env():
+    """Environment for the offline engine child.
+
+    PYTHONPATH pins the source checkout's packages, so the child imports the
+    same tree the CLI is running from. (The working directory is kept off
+    sys.path by ``-P`` in cmd_direct, not by this.)
+    """
+    parts = [str(path) for path in (_PRODUCT_SRC, _SHARED_SRC) if path.is_dir()]
+    existing = os.environ.get("PYTHONPATH")
+    if existing:
+        parts.append(existing)
+    env = dict(os.environ)
+    if parts:
+        env["PYTHONPATH"] = os.pathsep.join(parts)
+    return env
 _REPO_ROOT = _SCRIPT_DIR
 _HOST_DAEMON = _REPO_ROOT / "products" / "codesys-host" / "Project_daemon.py"
 _LEGACY_DAEMON = _REPO_ROOT / "Project_daemon.py"
@@ -254,26 +273,54 @@ def _launch_codesys(
 
 
 def _load_project_config():
-    """Load cds-text-sync.json and resolved profile from cwd.
+    """Load cds-text-sync.json and the profile it selects.
 
-    Returns (config, profile) or ({}, None).
+    The CLI's one reader for that file. The settings come from the engine's
+    reader, so the file has one interpretation whether it is read here, by the
+    engine, or by the CODESYS host, and the search is that module's shared
+    walk-up rule, so ``cts`` run from a subdirectory finds the same file as
+    ``cts`` run from the sync root.
+
+    Returns ``(settings, profile)`` or ``(settings, None)``. A missing file is
+    normal: the defaults are the settings and the default profile is the
+    profile. A file that exists but cannot be read is reported and yields the
+    same minus the app defaults -- the command still runs, but the user is told
+    the profile was ignored instead of having it dropped behind their back.
     """
-    config = {}
-    profile = None
-    config_path = os.path.join(os.getcwd(), "cds-text-sync.json")
-    if not os.path.exists(config_path):
-        return config, profile
+    from cds_text_sync.engine._project_profiles import PROFILES_DIR, load_profile
+    from cds_text_sync.engine._project_settings import (
+        SETTINGS_INVALID,
+        find_settings_root,
+        read_project_settings,
+    )
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
+    try:
+        root = find_settings_root(os.getcwd()) or os.getcwd()
+    except OSError:
+        root = os.getcwd()
+    settings, status, error = read_project_settings(root, warn=False)
+    if status == SETTINGS_INVALID:
+        _print_error(
+            "{0}; the profile's app/app_dir defaults were not applied".format(error)
+        )
+        return settings, None
+    return settings, load_profile(settings.get("profile"), PROFILES_DIR)
 
-    profile_name = config.get("profile")
-    if profile_name:
-        from _project_profiles import PROFILES_DIR, load_profile
 
-        profile = load_profile(profile_name, PROFILES_DIR)
+def _apply_profile_defaults(params, profile):
+    """Fill in the profile's application defaults for params that omit them.
 
-    return config, profile
+    An explicit --app / --app-dir always wins: a profile supplies a default,
+    never an override. Both daemon entry points go through here so the rule
+    lives in one place.
+    """
+    if not profile:
+        return params
+    if "default_app_name" in profile and "app" not in params:
+        params["app"] = profile["default_app_name"]
+    if "plc_app_path" in profile and "app_dir" not in params:
+        params["app_dir"] = profile["plc_app_path"]
+    return params
 
 
 # -- Reverse-pipe output helpers ----------------------------------------------
@@ -292,7 +339,10 @@ def _print_rp_error(resp, command):
         elif inst_id:
             inst_suffix = f" ({inst_id} · no project)"
 
-    err = resp.get("error")
+    # Empty default on purpose: no error text means "look at data instead"
+    # (library install failures and message lists arrive with ok False and no
+    # error), so this must not fall back to a generic "unknown error".
+    err = wire.response_error(resp, "")
     data = resp.get("data")
     install_error = data.get("install_error") if isinstance(data, dict) else None
     if err is not None and err != "":
@@ -372,11 +422,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
     # Apply profile defaults for app/app_dir
     try:
         _config, profile = _load_project_config()
-        if profile:
-            if "default_app_name" in profile and "app" not in params:
-                params["app"] = profile["default_app_name"]
-            if "plc_app_path" in profile and "app_dir" not in params:
-                params["app_dir"] = profile["plc_app_path"]
+        _apply_profile_defaults(params, profile)
     except Exception as e:
         _print_info("Warning: could not load profile: {0}".format(e))
     if "timeout" in params:
@@ -388,7 +434,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         _print_error("Reverse pipe error: {0}".format(e))
         sys.exit(1)
 
-    if resp.get("ok"):
+    if wire.response_ok(resp):
         data = resp.get("data", {})
         print(_format_output(data, fmt=output_fmt, title=command))
     else:
@@ -406,11 +452,7 @@ def cmd_daemon(
     params = params or {}
     try:
         _config, profile = _load_project_config()
-        if profile:
-            if "default_app_name" in profile and "app" not in params:
-                params["app"] = profile["default_app_name"]
-            if "plc_app_path" in profile and "app_dir" not in params:
-                params["app_dir"] = profile["plc_app_path"]
+        _apply_profile_defaults(params, profile)
     except Exception as e:
         _print_info("Warning: could not load profile: {0}".format(e))
 
@@ -420,7 +462,7 @@ def cmd_daemon(
         _print_error("Reverse pipe error: {0}".format(e))
         sys.exit(1)
 
-    if resp.get("ok"):
+    if wire.response_ok(resp):
         print(_format_output(resp.get("data", {}), fmt=output_fmt, title=method))
     else:
         _print_rp_error(resp, method)
@@ -430,7 +472,7 @@ def cmd_daemon(
 # -- Legacy project command low-level -----------------------------------------
 
 
-def _project_command(method, params=None, timeout=30, use_reverse=True):
+def _project_command(method, params=None, timeout=30):
     """Send a project command to the reverse-pipe daemon and print result.
 
     Exits non-zero on any failure so callers (and CI) get a truthful exit code,
@@ -445,7 +487,7 @@ def _project_command(method, params=None, timeout=30, use_reverse=True):
         _print_error("Command error: {0}".format(e))
         sys.exit(1)
 
-    if resp.get("ok"):
+    if wire.response_ok(resp):
         data = resp.get("data", {})
         print(_format_output(data, fmt="json", title=method))
     else:
@@ -464,8 +506,8 @@ def _batch(method, key, items, timeout):
     for i in range(0, len(items), _BATCH_SIZE):
         part = items[i : i + _BATCH_SIZE]
         resp = send_command_reverse(method, {key: part}, timeout=timeout)
-        if not resp.get("ok"):
-            raise RuntimeError(resp.get("error", method + " failed"))
+        if not wire.response_ok(resp):
+            raise RuntimeError(wire.response_error(resp, method + " failed"))
         for r in resp.get("data", {}).get("results", []):
             out[r["name"]] = r
     return out
@@ -475,7 +517,13 @@ def _batch(method, key, items, timeout):
 
 
 def cmd_direct(args: list[str]) -> NoReturn:
-    """Run engine_cli directly (blocking, no daemon)."""
+    """Run engine_cli directly (blocking, no daemon).
+
+    Launched as ``python -m cds_text_sync.engine.engine_cli`` rather than by
+    file path: as a script the module's relative imports would fail, and a
+    ``sys.path`` shim to work around that would load every engine module a
+    second time under its flat name.
+    """
     if not ENGINE_CLI.exists():
         _print_error("engine_cli.py not found: {0}".format(ENGINE_CLI))
         sys.exit(1)
@@ -493,9 +541,12 @@ def cmd_direct(args: list[str]) -> NoReturn:
         if arg.startswith("--timeout="):
             continue
         filtered.append(arg)
-    cmd = [sys.executable, str(ENGINE_CLI)] + filtered
+    # -P: ``-m`` would otherwise put the working directory first on the
+    # child's sys.path, ahead of PYTHONPATH, and a ``cds_text_sync`` directory
+    # there would shadow the engine.
+    cmd = [sys.executable, "-P", "-m", _ENGINE_MODULE] + filtered
     _print_info("Running: {0}".format(" ".join(cmd)))
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, env=_engine_subprocess_env())
     try:
         proc.wait()
     except KeyboardInterrupt:

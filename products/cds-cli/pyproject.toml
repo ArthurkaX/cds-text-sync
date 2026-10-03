@@ -9,11 +9,13 @@ description = "Command-line composition layer for cds-text-sync products"
 requires-python = ">=3.11"
 dependencies = [
   "cds-text-sync==3.3.0",
-  "cds-static-analyzer==3.0.0",
+  "cds-static-analyzer==1.0.0",
   "visu-lint==3.3.0",
 ]
 
 [project.scripts]
+# Also declared by the root compatibility wheel; both build, so the target
+# must match there too (tests/unit/test_version_consistency.py).
 cts = "cds_cli.main:main"
 
 [tool.setuptools]
@@ -26,11 +28,15 @@ where = ["src"]
 runtime = "cpython"
 test_paths = [
   "tests/test_*.py",
+  "../../tests/unit/test_cli_engine_child.py",
   "../../tests/unit/test_cli_handlers_daemon.py",
   "../../tests/unit/test_cli_handlers_patch.py",
   "../../tests/unit/test_cli_handlers_project.py",
   "../../tests/unit/test_cli_handlers_visu.py",
   "../../tests/unit/test_cli_help.py",
+  "../../tests/unit/test_cli_project_config.py",
   "../../tests/unit/test_cli_text_output.py",
   "../../tests/unit/test_engine_cli_helpers.py",
+  "../../tests/unit/test_no_shadowed_import_use.py",
+  "../../tests/unit/test_verify.py",
 ]

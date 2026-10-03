@@ -49,51 +49,109 @@ def _args(**kwargs):
 
 
 def test_info_routes_to_cmd_project_info(calls):
-    h.dispatch_project(_args(project_action="info"), use_reverse=True)
-    assert calls["cmd_project_info"] == {"use_reverse": True}
+    h.dispatch_project(_args(project_action="info"))
+    assert calls["cmd_project_info"] == {}
 
 
 def test_tree_forwards_depth(calls):
-    h.dispatch_project(_args(project_action="tree", depth=3), use_reverse=True)
-    assert calls["cmd_project_tree"] == {"depth": 3, "use_reverse": True}
+    h.dispatch_project(_args(project_action="tree", depth=3))
+    assert calls["cmd_project_tree"] == {"depth": 3}
 
 
 def test_read_forwards_path_name_guid(calls):
     h.dispatch_project(
-        _args(project_action="read", path="p", name="n", guid="g"), use_reverse=False
+        _args(project_action="read", path="p", name="n", guid="g")
     )
-    assert calls["cmd_project_read"] == {
-        "path": "p",
-        "name": "n",
-        "guid": "g",
-        "use_reverse": False,
-    }
+    assert calls["cmd_project_read"] == {"path": "p", "name": "n", "guid": "g"}
 
 
 def test_compare_forwards_against(calls):
-    h.dispatch_project(_args(project_action="compare", against="HEAD"), use_reverse=True)
-    assert calls["cmd_compare"] == {"against": "HEAD", "use_reverse": True}
+    h.dispatch_project(_args(project_action="compare", against="HEAD"))
+    assert calls["cmd_compare"] == {"against": "HEAD"}
+
+
+def test_compare_sends_sync_compare_to_the_daemon(monkeypatch):
+    """`compare` is the CRC alias; the snapshot compare is `sync_compare`."""
+    from cds_cli import _cli_io
+
+    seen = {}
+
+    def _fake_send(method, params, timeout=30):
+        seen["method"] = method
+        seen["params"] = params
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(_cli_io, "send_command_reverse", _fake_send)
+    h.cmd_compare(against="C:/snap/latest.xml")
+    assert seen["method"] == "sync_compare"
+    assert seen["params"] == {"against": "C:/snap/latest.xml"}
+
+
+def test_compare_without_against_asks_for_the_latest_snapshot(monkeypatch):
+    """`--against` is optional: the daemon falls back to the newest in .dump/."""
+    from cds_cli import _cli_io
+
+    seen = {}
+
+    def _fake_send(method, params, timeout=30):
+        seen["method"] = method
+        seen["params"] = params
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(_cli_io, "send_command_reverse", _fake_send)
+    h.cmd_compare()
+    assert seen["method"] == "sync_compare"
+    assert seen["params"] == {"against": ""}
+
+
+def test_sync_compare_reaches_the_handler_that_reads_against():
+    """Guard the CLI-side method against a host-side re-route [A1]."""
+    from pathlib import Path
+
+    bridge = (
+        Path(__file__).resolve().parents[2]
+        / "products"
+        / "codesys-host"
+        / "src"
+        / "ide_bridge"
+    )
+    if str(bridge) not in sys.path:
+        sys.path.insert(0, str(bridge))
+    import command_registry
+
+    assert command_registry.DISPATCH_SPECS["sync_compare"] == (
+        "direct",
+        "_cmd_sync_compare",
+    )
 
 
 def test_unknown_action_is_noop(calls):
-    h.dispatch_project(_args(project_action="does-not-exist"), use_reverse=True)
+    h.dispatch_project(_args(project_action="does-not-exist"))
     assert calls == {}
 
 
+def test_no_handler_keeps_the_dead_use_reverse_flag():
+    """It was threaded through every handler and read by none of them."""
+    import inspect
+
+    from cds_cli import _cli_io
+
+    assert "use_reverse" not in inspect.getfullargspec(_cli_io._project_command).args
+    for name, member in vars(h).items():
+        if name.startswith("cmd_") and callable(member):
+            assert "use_reverse" not in inspect.getfullargspec(member).args, name
+
+
 def test_pou_delete_routes(calls):
-    h.dispatch_pou(_args(pou_action="delete", name="MyPou", app="App"), use_reverse=True)
-    assert calls["cmd_pou_delete"] == {
-        "name": "MyPou",
-        "app": "App",
-        "use_reverse": True,
-    }
+    h.dispatch_pou(_args(pou_action="delete", name="MyPou", app="App"))
+    assert calls["cmd_pou_delete"] == {"name": "MyPou", "app": "App"}
 
 
 # -- deprecation warnings -----------------------------------------------------
 
 
 def test_duplicate_action_warns_with_replacement(calls, capsys):
-    h.dispatch_project(_args(project_action="info"), use_reverse=True)
+    h.dispatch_project(_args(project_action="info"))
     err = capsys.readouterr().err
     assert "[WARN]" in err
     assert "cts project info" in err
@@ -103,14 +161,14 @@ def test_duplicate_action_warns_with_replacement(calls, capsys):
 
 
 def test_unique_action_does_not_warn(calls, capsys):
-    h.dispatch_project(_args(project_action="list"), use_reverse=True)
+    h.dispatch_project(_args(project_action="list"))
     err = capsys.readouterr().err
     assert "[WARN]" not in err
     assert "cmd_project_list" in calls
 
 
 def test_pou_delete_warns(calls, capsys):
-    h.dispatch_pou(_args(pou_action="delete", name="X", app=""), use_reverse=True)
+    h.dispatch_pou(_args(pou_action="delete", name="X", app=""))
     err = capsys.readouterr().err
     assert "[WARN]" in err
     assert "cts delete-pou" in err

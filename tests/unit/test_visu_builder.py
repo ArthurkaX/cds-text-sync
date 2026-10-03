@@ -635,6 +635,18 @@ class TestSibling:
         tree.write(path, encoding="utf-8", xml_declaration=True)
         assert builder.find_sibling_object(str(tmp_path)) is None
 
+    def test_a_broken_object_file_is_an_error_not_a_missing_sibling(self, tmp_path):
+        """Skipping it would report "this folder holds no object" and hide it."""
+        from cds_text_sync.visu.screen_xml import ScreenError
+
+        with open(os.path.join(str(tmp_path), "broken.xml"), "w") as handle:
+            handle.write("<Single Name='Object'>")
+
+        with pytest.raises(ScreenError) as raised:
+            builder.find_sibling_object(str(tmp_path))
+
+        assert "broken.xml" in str(raised.value)
+
     def test_creates_screen_to_file(self, tmp_path, rectangle_catalog, placement):
         """End-to-end: create a screen file, then add a rectangle to it via the
         commands layer (simulated)."""
@@ -2306,3 +2318,33 @@ class TestMalformedSvg:
         assert "Supply air" in message
         assert '"--"' in message
         assert "====" in message
+
+
+class TestStrokeWidthIsNeverDroppedSilently:
+    """A border width that cannot be read must be reported, not dropped.
+
+    The SVG writer used to ``except: pass`` around ``int(border_width)``, so a
+    malformed value produced a borderless shape with no trace anywhere. The
+    width is now read by one helper that names the bad value on stderr.
+    """
+
+    def test_a_valid_width_is_kept(self):
+        from cds_text_sync.visu import svg_export
+
+        assert svg_export._stroke_width_attr("3") == "3"
+
+    def test_zero_means_no_border(self):
+        from cds_text_sync.visu import svg_export
+
+        assert svg_export._stroke_width_attr("0") is None
+
+    def test_no_value_means_no_border(self):
+        from cds_text_sync.visu import svg_export
+
+        assert svg_export._stroke_width_attr(None) is None
+
+    def test_a_non_numeric_width_is_reported(self, capsys):
+        from cds_text_sync.visu import svg_export
+
+        assert svg_export._stroke_width_attr("wide") is None
+        assert "border width" in capsys.readouterr().err

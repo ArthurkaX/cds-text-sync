@@ -27,8 +27,12 @@ from cds_cli._cli_io import (
     cmd_daemon,
     send_command_reverse,
 )
+from cts_shared import wire
 
-# command name -> daemon method for the thin passthrough family
+# command name -> daemon method for the thin passthrough family. This is a CLI
+# namespace, not the protocol's alias table (that one is command_registry
+# ALIASES in the host): names here are what `cts <cmd>` accepts. "stop" is the
+# PLC runtime stop, stop_plc; the daemon's own shutdown method is stop_daemon.
 _DAEMON_METHODS = {
     "ping": "ping",
     "status": "status",
@@ -45,6 +49,7 @@ _DAEMON_METHODS = {
     "project-info": "project_info",
     "set-sync-folder": "set_sync_folder",
     "permissions": "permissions",
+    "last-result": "last_result",
 }
 
 
@@ -218,13 +223,23 @@ def _handle_write(args, output_fmt):
             {"name": args.name, "value": args.value},
             timeout=timeout,
         )
-        if not wr.get("ok"):
+        if not wire.response_ok(wr):
             _print_rp_error(wr, "write_variable")
             sys.exit(1)
         rb = send_command_reverse(
             "read_variable", {"name": args.name}, timeout=timeout
         )
-        read_back = rb.get("data", {}) if rb.get("ok") else {}
+        if wire.response_ok(rb):
+            read_back = rb.get("data", {})
+        else:
+            # The write happened; the read-back did not. Saying so is the point:
+            # reporting an empty read_back as if the variable were empty would
+            # turn a failed verification into a wrong fact about the PLC.
+            read_back = {
+                "unavailable": wire.response_error(
+                    rb, "read-back failed (no error reported)"
+                )
+            }
         print(
             _format_output(
                 {"written": True, "read_back": read_back},

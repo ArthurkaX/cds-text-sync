@@ -4,10 +4,9 @@
 Kept in its own tiny module so that lightweight commands (``cts install-menu``,
 ``cts where``) can force UTF-8 output without importing the offline engine.
 
-Note: ``cds_text_sync/engine/engine_cli.py`` carries its own copy of this shim.
-It is executed as a bare script (``python <path>/engine_cli.py``) and imported
-flat by the tests, so the ``cds_text_sync`` package is not on ``sys.path`` at that point
-and it cannot import this module. Keep the two bodies in step.
+Note: ``cds_text_sync/engine/engine_cli.py`` carries its own copy of this shim,
+with engine-specific error handling (it reconfigures with ``errors="replace"``).
+Keep the two bodies in step.
 """
 
 import sys

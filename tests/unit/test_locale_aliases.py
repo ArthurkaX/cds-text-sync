@@ -6,7 +6,7 @@ Guards the invariant that English input is a strict no-op while known localized
 standard-container labels fold to their canonical English form.
 """
 
-from _locale_aliases import canonical_display, canonical_key
+from cds_text_sync.engine._locale_aliases import canonical_display, canonical_key
 
 
 def test_english_standard_names_are_unchanged():
