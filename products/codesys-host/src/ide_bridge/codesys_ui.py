@@ -17,9 +17,9 @@ try:
     clr.AddReference("System.Drawing")
     from System.Windows.Forms import (
         MessageBox, MessageBoxButtons, MessageBoxIcon, DialogResult,
-        Form, Label, Button, CheckBox, Panel, ToolTip, FormBorderStyle,
-        FormStartPosition, FlatStyle, ComboBox, TextBox, ComboBoxStyle,
-        Control, Keys, ScrollBars
+        Form, Label, Button, CheckBox, RadioButton, Panel, ToolTip,
+        FormBorderStyle, FormStartPosition, FlatStyle, ComboBox, TextBox,
+        ComboBoxStyle, TabControl, TabPage, Control, Keys, ScrollBars
     )
     from System.Drawing import Size, Point, Font, FontStyle, Color, ContentAlignment
 except Exception:
@@ -31,11 +31,14 @@ except Exception:
     Label = None
     Button = None
     CheckBox = None
+    RadioButton = None
     Panel = None
     ToolTip = None
     ComboBox = None
     TextBox = None
     ComboBoxStyle = None
+    TabControl = None
+    TabPage = None
     Control = None
     Keys = None
     ScrollBars = None
@@ -354,14 +357,26 @@ def show_toast(title, message, timeout=3000):
 
 
 class ProjectOptionsForm(Form if Form is not None else object):
+    """Project options in two tabs: General (per-user) and Project (per project).
+
+    General edits the sparse per-user file, which seeds new projects and holds
+    the behavior values a project inherits. Project edits this project's
+    ``cds-text-sync.json``; its behavior block is either "Same as General"
+    (inherited, greyed and mirroring the General values live) or "Own for this
+    project" (pinned in the project file). Saving writes the per-user file
+    first, and only when that succeeds hands the project assembly back to the
+    caller, which writes the project file.
+    """
+
     LAYOUTS = [
         ("project-view", "Project folder: project-view/"),
         ("root-view", "Root of project"),
     ]
 
+    # name -> checkbox/textbox for the five behavior keys, in the engine's order.
     def __init__(self, current_settings):
         self.Text = "cds-text-sync: Project Options"
-        self.Size = Size(660, 800)
+        self.Size = Size(680, 880)
         self.FormBorderStyle = FormBorderStyle.FixedDialog
         self.StartPosition = FormStartPosition.CenterScreen
         self.MaximizeBox = False
@@ -369,25 +384,10 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.BackColor = Color.FromArgb(250, 250, 250)
         self.result_settings = None
         self.result_pinned = None
-        self.projection_controls = []
-        self.xml_in_view_controls = []
-        # name -> (inherit checkbox, value control) for every behavior key.
-        self._behavior_controls = {}
+        self.result_user_defaults = None
+
         self._base_settings = dict(current_settings)
-        self._inherited_values = settings_layers_model.inherited_behavior_values()
-        self._behavior_hints = settings_layers_model.behavior_hints()
-        sources = current_settings.get("_sources")
-        if sources is None:
-            # No layer read was handed over: treat every behavior key as
-            # pinned, so the controls stay editable exactly as before.
-            sources = dict(
-                (name, "project")
-                for name in settings_layers_model.behavior_names()
-            )
-        self._behavior_rows = dict(
-            (row["name"], row)
-            for row in settings_layers_model.behavior_rows(current_settings, sources)
-        )
+        self._general_state = settings_layers_model.general_state()
         self.view_root_locked = bool(current_settings.get("_view_root_locked"))
         self.sync_mode_locked = bool(current_settings.get("_sync_mode_locked"))
         self.initial_layout = current_settings.get("layout") or "project-view"
@@ -398,514 +398,229 @@ class ProjectOptionsForm(Form if Form is not None else object):
             else current_settings.get("sync_mode")
         ) or "xml_first"
 
+        sources = current_settings.get("_sources")
+        if sources is None:
+            # No layer read was handed over: treat every behavior key as owned
+            # by the project, so the controls stay editable exactly as before.
+            sources = dict(
+                (name, "project")
+                for name in settings_layers_model.behavior_names()
+            )
+        self._mode = settings_layers_model.behavior_mode(current_settings, sources)
+
+        # Per-tab control registries, keyed by setting name, plus the state of
+        # each tab's pair of derived-view lists.
+        self._general_behavior = {}
+        self._project_behavior = {}
+        self._general_lists = None
+        self._project_lists = None
+
         self._build_header()
 
-        lbl_layout = Label()
-        lbl_layout.Text = "View storage"
-        lbl_layout.Location = Point(24, 88)
-        lbl_layout.Size = Size(120, 20)
-        self.Controls.Add(lbl_layout)
+        self.tabs = TabControl()
+        self.tabs.Location = Point(20, 74)
+        self.tabs.Size = Size(640, 700)
+        self.tab_general = TabPage()
+        self.tab_general.Text = "General"
+        self.tab_general.BackColor = Color.FromArgb(250, 250, 250)
+        self.tab_project = TabPage()
+        self.tab_project.Text = "Project"
+        self.tab_project.BackColor = Color.FromArgb(250, 250, 250)
+        self.tabs.Controls.Add(self.tab_general)
+        self.tabs.Controls.Add(self.tab_project)
+        self.Controls.Add(self.tabs)
 
-        self.cmb_layout = ComboBox()
-        self.cmb_layout.Location = Point(150, 85)
-        self.cmb_layout.Size = Size(310, 24)
-        self.cmb_layout.DropDownStyle = ComboBoxStyle.DropDownList
-        for layout_id, layout_label in self.LAYOUTS:
-            self.cmb_layout.Items.Add(layout_label)
-        current_layout = current_settings.get("layout") or "project-view"
-        selected_index = 0
-        for index, (layout_id, layout_label) in enumerate(self.LAYOUTS):
-            if layout_id == current_layout:
-                selected_index = index
-                break
-        self.cmb_layout.SelectedIndex = selected_index
-        self.cmb_layout.SelectedIndexChanged += self._on_layout_changed
-        self.cmb_layout.Enabled = not self.view_root_locked
-        self.Controls.Add(self.cmb_layout)
-
-        lbl_layout_help = Label()
-        if self.view_root_locked:
-            lbl_layout_help.Text = "Folder choice is locked after first export."
-        else:
-            lbl_layout_help.Text = "Choose where generated views live by default."
-        lbl_layout_help.Location = Point(150, 111)
-        lbl_layout_help.Size = Size(340, 18)
-        lbl_layout_help.ForeColor = Color.FromArgb(110, 110, 110)
-        lbl_layout_help.Font = Font("Segoe UI", 8)
-        self.Controls.Add(lbl_layout_help)
-
-        self.chk_custom_view_root = CheckBox()
-        self.chk_custom_view_root.Text = "Use custom view root"
-        self.chk_custom_view_root.Location = Point(150, 132)
-        self.chk_custom_view_root.Size = Size(200, 22)
-        self.chk_custom_view_root.Checked = bool(current_settings.get("view_root"))
-        self.chk_custom_view_root.CheckedChanged += self._on_custom_view_root_changed
-        self.chk_custom_view_root.Enabled = not self.view_root_locked
-        self.Controls.Add(self.chk_custom_view_root)
-
-        lbl_view_root = Label()
-        lbl_view_root.Text = "Custom view root"
-        lbl_view_root.Location = Point(24, 160)
-        lbl_view_root.Size = Size(120, 20)
-        self.Controls.Add(lbl_view_root)
-
-        self.txt_view_root = TextBox()
-        self.txt_view_root.Location = Point(150, 157)
-        self.txt_view_root.Size = Size(310, 22)
-        self.txt_view_root.Text = current_settings.get("view_root") or ""
-        self.txt_view_root.Enabled = bool(current_settings.get("view_root")) and not self.view_root_locked
-        self.txt_view_root.TextChanged += self._on_view_root_changed
-        self.Controls.Add(self.txt_view_root)
-
-        self.lbl_view_root_mode = Label()
-        self.lbl_view_root_mode.Text = ""
-        self.lbl_view_root_mode.Location = Point(150, 181)
-        self.lbl_view_root_mode.Size = Size(340, 34)
-        self.lbl_view_root_mode.ForeColor = Color.FromArgb(110, 110, 110)
-        self.lbl_view_root_mode.Font = Font("Segoe UI", 8)
-        self.Controls.Add(self.lbl_view_root_mode)
-
-        hint = Label()
-        if self.view_root_locked:
-            hint.Text = "To choose another folder, start over with a clean sync directory."
-        else:
-            hint.Text = "Leave custom view root off to use the preset. Relative paths stay portable."
-        hint.Location = Point(150, 216)
-        hint.Size = Size(340, 34)
-        hint.ForeColor = Color.FromArgb(110, 110, 110)
-        hint.Font = Font("Segoe UI", 8)
-        self.Controls.Add(hint)
-
-        self._build_profile_controls(current_settings)
-
-        self._build_sync_mode_controls()
-
-        self._build_view_lists(current_settings)
-
-        self._build_backup_controls(current_settings)
-
+        self._build_general_tab(current_settings)
+        self._build_project_tab(current_settings)
         self._build_dialog_buttons()
 
-    def _build_dialog_buttons(self):
-        self.btn_reset_formats = Button()
-        self.btn_reset_formats.Text = "Reset to defaults"
-        self.btn_reset_formats.Location = Point(24, 724)
-        self.btn_reset_formats.Size = Size(140, 28)
-        self.btn_reset_formats.Click += self._on_reset_formats
-        self.Controls.Add(self.btn_reset_formats)
-
-        self.btn_cts_defaults = Button()
-        self.btn_cts_defaults.Text = "CTS Defaults..."
-        self.btn_cts_defaults.Location = Point(172, 724)
-        self.btn_cts_defaults.Size = Size(120, 28)
-        self.btn_cts_defaults.Click += self._on_open_cts_defaults
-        self.Controls.Add(self.btn_cts_defaults)
-
-        btn_ok = Button()
-        btn_ok.Text = "Save"
-        btn_ok.Location = Point(424, 724)
-        btn_ok.Size = Size(85, 28)
-        btn_ok.Click += self._on_save
-        self.Controls.Add(btn_ok)
-        self.AcceptButton = btn_ok
-
-        btn_cancel = Button()
-        btn_cancel.Text = "Cancel"
-        btn_cancel.Location = Point(516, 724)
-        btn_cancel.Size = Size(85, 28)
-        btn_cancel.DialogResult = DialogResult.Cancel
-        self.Controls.Add(btn_cancel)
-        self.CancelButton = btn_cancel
+        self.tabs.SelectedIndex = 1
+        self._refresh_project_behavior_state()
         self._refresh_view_root_state()
         self._refresh_view_root_summary()
-        self._refresh_sync_mode_panels()
+        self._refresh_view_lists(self._project_lists, self._project_text_first())
+        self._refresh_view_lists(self._general_lists, self._general_text_first())
 
-    def _apply_format_values(self, values):
-        """Fill the format controls from a values dict, without saving."""
-        layout = values.get("layout")
-        if layout and not self.view_root_locked:
-            for index, (layout_id, _label) in enumerate(self.LAYOUTS):
-                if layout_id == layout:
-                    self.cmb_layout.SelectedIndex = index
-                    break
-        profile = values.get("profile")
-        if profile:
-            items = [str(self.cmb_profile.Items[index]) for index in range(self.cmb_profile.Items.Count)]
-            if profile not in items:
-                self.cmb_profile.Items.Add(profile)
-                items.append(profile)
-            self.cmb_profile.SelectedIndex = items.index(profile)
-        if not self.sync_mode_locked and values.get("sync_mode"):
-            self.chk_text_first.Checked = values.get("sync_mode") == "text_first"
-        if isinstance(values.get("projections"), dict):
-            enabled_map = {"projections": values.get("projections")}
-            for checkbox in self.projection_controls:
+    # -- small builders ---------------------------------------------------
+
+    def _make_label(self, text, x, y, width, height=20, size=9, bold=False,
+                    grey=False, red=False):
+        label = Label()
+        label.Text = text
+        label.Location = Point(x, y)
+        label.Size = Size(width, height)
+        if bold:
+            label.Font = Font("Segoe UI", size, FontStyle.Bold)
+        elif size != 9:
+            label.Font = Font("Segoe UI", size)
+        if grey:
+            label.ForeColor = Color.FromArgb(110, 110, 110)
+        if red:
+            label.ForeColor = Color.FromArgb(160, 40, 40)
+        return label
+
+    def _make_heading(self, text, x, y, width=360):
+        return self._make_label(text, x, y, width, 20, size=9, bold=True)
+
+    def _make_layout_combo(self, value, enabled=True):
+        combo = ComboBox()
+        combo.DropDownStyle = ComboBoxStyle.DropDownList
+        combo.Size = Size(300, 24)
+        for _layout_id, layout_label in self.LAYOUTS:
+            combo.Items.Add(layout_label)
+        index = 0
+        for position, (layout_id, _label) in enumerate(self.LAYOUTS):
+            if layout_id == value:
+                index = position
+                break
+        combo.SelectedIndex = index
+        combo.Enabled = enabled
+        return combo
+
+    def _profile_ids(self, current):
+        profiles = self._base_settings.get("_available_profiles") or []
+        ids = []
+        for profile in profiles:
+            profile_id = profile.get("id") or profile.get("name")
+            if profile_id and profile_id not in ids:
+                ids.append(profile_id)
+        if current and current not in ids:
+            ids.insert(0, current)
+        return ids
+
+    def _make_profile_combo(self, value):
+        combo = ComboBox()
+        combo.DropDownStyle = ComboBoxStyle.DropDownList
+        combo.Size = Size(300, 24)
+        ids = self._profile_ids(value)
+        for profile_id in ids:
+            combo.Items.Add(profile_id)
+        combo.SelectedIndex = ids.index(value) if value in ids else 0
+        return combo
+
+    def _selected_layout(self, combo):
+        index = combo.SelectedIndex
+        if index < 0 or index >= len(self.LAYOUTS):
+            return "project-view"
+        return self.LAYOUTS[index][0]
+
+    def _selected_profile(self, combo):
+        return str(combo.SelectedItem) or "default"
+
+    def _select_combo_value(self, combo, value):
+        items = [str(combo.Items[index]) for index in range(combo.Items.Count)]
+        if value not in items:
+            combo.Items.Add(value)
+            items.append(value)
+        combo.SelectedIndex = items.index(value)
+
+    def _build_view_lists(self, parent, y, current_settings, projections, kinds):
+        """Build the tab's pair of derived-view lists and return their state.
+
+        The two panels share a spot: only the one matching the tab's sync mode
+        is shown, the other keeps its checkboxes (and their values) hidden.
+        """
+        state = {}
+        state["label"] = self._make_label("Derived views", 16, y, 120, 20)
+        parent.Controls.Add(state["label"])
+
+        projection_panel = Panel()
+        projection_panel.Location = Point(140, y - 4)
+        projection_panel.Size = Size(420, 118)
+        projection_panel.BackColor = Color.White
+        parent.Controls.Add(projection_panel)
+        state["projection_panel"] = projection_panel
+        state["projection_controls"] = []
+        options = current_settings.get("_available_projections") or []
+        if not options:
+            projection_panel.Controls.Add(self._make_label(
+                "No optional projections in selected profile.",
+                8, 8, 380, 20, size=8, grey=True))
+        else:
+            offset = 6
+            for projection in options:
+                checkbox = CheckBox()
+                checkbox.Text = (
+                    projection.get("label")
+                    or projection.get("id")
+                    or projection.get("kind")
+                    or "projection"
+                )
+                checkbox.Location = Point(8, offset)
+                checkbox.Size = Size(390, 22)
+                checkbox.Checked = self._projection_enabled(
+                    {"projections": projections}, projection
+                )
+                checkbox.Tag = projection
+                projection_panel.Controls.Add(checkbox)
+                state["projection_controls"].append(checkbox)
+                offset += 24
+
+        xml_panel = Panel()
+        xml_panel.Location = Point(140, y - 4)
+        xml_panel.Size = Size(420, 118)
+        xml_panel.AutoScroll = True
+        xml_panel.BackColor = Color.White
+        parent.Controls.Add(xml_panel)
+        state["xml_panel"] = xml_panel
+        state["xml_controls"] = []
+        selected = [str(kind).strip().lower() for kind in (kinds or [])]
+        kind_options = current_settings.get("_available_xml_in_view_kinds") or []
+        if not kind_options:
+            xml_panel.Controls.Add(self._make_label(
+                "No XML-only kinds in selected profile.",
+                8, 8, 380, 20, size=8, grey=True))
+        else:
+            offset = 6
+            for kind in kind_options:
+                checkbox = CheckBox()
+                checkbox.Text = kind
+                checkbox.Location = Point(8, offset)
+                checkbox.Size = Size(390, 22)
+                checkbox.Checked = str(kind).strip().lower() in selected
+                checkbox.Tag = kind
+                xml_panel.Controls.Add(checkbox)
+                state["xml_controls"].append(checkbox)
+                offset += 24
+
+        state["hint"] = self._make_label("", 140, y + 118, 420, 20, size=8, grey=True)
+        parent.Controls.Add(state["hint"])
+        return state
+
+    def _refresh_view_lists(self, state, text_first):
+        if not state:
+            return
+        state["projection_panel"].Visible = not text_first
+        state["xml_panel"].Visible = text_first
+        if text_first:
+            state["label"].Text = "Keep XML in view"
+            state["hint"].Text = (
+                "These kinds keep their native .xml in the view; every other "
+                "kind's XML moves to the .dump/xml mirror."
+            )
+        else:
+            state["label"].Text = "Derived views"
+            state["hint"].Text = (
+                "Enabled .st views own text on disk; XML is rehydrated internally."
+            )
+
+    def _apply_view_values(self, state, values):
+        projections = values.get("projections")
+        if isinstance(projections, dict):
+            for checkbox in state["projection_controls"]:
                 if checkbox.Tag:
-                    checkbox.Checked = self._projection_enabled(enabled_map, checkbox.Tag)
+                    checkbox.Checked = self._projection_enabled(
+                        {"projections": projections}, checkbox.Tag
+                    )
         kinds = values.get("xml_in_view_kinds")
         if isinstance(kinds, (list, tuple)):
             wanted = [str(kind).strip().lower() for kind in kinds]
-            for checkbox in self.xml_in_view_controls:
+            for checkbox in state["xml_controls"]:
                 checkbox.Checked = str(checkbox.Tag).strip().lower() in wanted
-        self._refresh_sync_mode_panels()
 
-    def _on_reset_formats(self, sender, event):
-        """Fill the format controls from the user defaults; nothing is saved."""
-        try:
-            values = settings_layers_model.format_reset_values()
-        except Exception as exc:
-            print("Error reading user defaults: " + str(exc))
-            return
-        self._apply_format_values(values)
-
-    def _on_open_cts_defaults(self, sender, event):
-        """Open the per-user defaults window, then refresh inherited values."""
-        if not show_user_defaults_dialog():
-            return
-        try:
-            self._inherited_values = settings_layers_model.inherited_behavior_values()
-            self._behavior_hints = settings_layers_model.behavior_hints()
-        except Exception as exc:
-            print("Error reading user defaults: " + str(exc))
-            return
-        for name, pair in self._behavior_controls.items():
-            checkbox, control = pair
-            hint = self._behavior_hints.get(name, "built-in")
-            checkbox.Text = "Inherit (" + hint + ")"
-            if checkbox.Checked:
-                self._set_behavior_value(name, self._inherited_values.get(name))
-                control.Enabled = False
-
-    def _build_header(self):
-        title = Label()
-        title.Text = "Project Sync Options"
-        title.Font = Font("Segoe UI", 14, FontStyle.Bold)
-        title.Location = Point(20, 18)
-        title.Size = Size(460, 28)
-        self.Controls.Add(title)
-
-        subtitle = Label()
-        subtitle.Text = "These settings are saved to cds-text-sync.json in the sync root."
-        subtitle.Font = Font("Segoe UI", 9)
-        subtitle.ForeColor = Color.FromArgb(90, 90, 90)
-        subtitle.Location = Point(22, 50)
-        subtitle.Size = Size(460, 22)
-        self.Controls.Add(subtitle)
-
-    def _build_profile_controls(self, current_settings):
-        lbl_profile = Label()
-        lbl_profile.Text = "Profile"
-        lbl_profile.Location = Point(24, 252)
-        lbl_profile.Size = Size(120, 20)
-        self.Controls.Add(lbl_profile)
-
-        self.cmb_profile = ComboBox()
-        self.cmb_profile.Location = Point(150, 249)
-        self.cmb_profile.Size = Size(310, 24)
-        self.cmb_profile.DropDownStyle = ComboBoxStyle.DropDownList
-        profiles = current_settings.get("_available_profiles") or []
-        profile_ids = []
-        for profile in profiles:
-            profile_id = profile.get("id") or profile.get("name")
-            if profile_id and profile_id not in profile_ids:
-                profile_ids.append(profile_id)
-        current_profile = current_settings.get("profile") or "default"
-        if current_profile not in profile_ids:
-            profile_ids.insert(0, current_profile)
-        for profile_id in profile_ids:
-            self.cmb_profile.Items.Add(profile_id)
-        self.cmb_profile.SelectedIndex = (
-            profile_ids.index(current_profile) if current_profile in profile_ids else 0
-        )
-        self.Controls.Add(self.cmb_profile)
-
-    def _build_sync_mode_controls(self):
-        lbl_sync_mode = Label()
-        lbl_sync_mode.Text = "Sync mode"
-        lbl_sync_mode.Location = Point(24, 290)
-        lbl_sync_mode.Size = Size(120, 20)
-        self.Controls.Add(lbl_sync_mode)
-
-        self.chk_text_first = CheckBox()
-        self.chk_text_first.Text = "Text-first mode (.st files are the source of truth)"
-        self.chk_text_first.Location = Point(150, 286)
-        self.chk_text_first.Size = Size(360, 22)
-        self.chk_text_first.Checked = self.initial_sync_mode == "text_first"
-        self.chk_text_first.Enabled = not self.sync_mode_locked
-        self.chk_text_first.CheckedChanged += self._on_text_first_changed
-        self.Controls.Add(self.chk_text_first)
-
-        lbl_sync_mode_help = Label()
-        if self.sync_mode_locked:
-            lbl_sync_mode_help.Text = (
-                "Mode is fixed at initialization. To switch, initialize a new "
-                "empty sync folder."
-            )
-        else:
-            lbl_sync_mode_help.Text = (
-                "Choose before the first export. Text-first hides native XML in "
-                ".dump/xml and ST files drive import."
-            )
-        lbl_sync_mode_help.Location = Point(150, 310)
-        lbl_sync_mode_help.Size = Size(370, 30)
-        lbl_sync_mode_help.ForeColor = Color.FromArgb(110, 110, 110)
-        lbl_sync_mode_help.Font = Font("Segoe UI", 8)
-        self.Controls.Add(lbl_sync_mode_help)
-
-    def _build_view_lists(self, current_settings):
-        self.lbl_list = Label()
-        self.lbl_list.Location = Point(24, 352)
-        self.lbl_list.Size = Size(120, 20)
-        self.Controls.Add(self.lbl_list)
-
-        self.projections_panel = Panel()
-        self.projections_panel.Location = Point(150, 348)
-        self.projections_panel.Size = Size(360, 118)
-        self.projections_panel.AutoScroll = False
-        self.projections_panel.BackColor = Color.White
-        self.Controls.Add(self.projections_panel)
-        self._add_projection_options(current_settings)
-
-        self.xml_in_view_panel = Panel()
-        self.xml_in_view_panel.Location = Point(150, 348)
-        self.xml_in_view_panel.Size = Size(360, 118)
-        self.xml_in_view_panel.AutoScroll = True
-        self.xml_in_view_panel.BackColor = Color.White
-        self.Controls.Add(self.xml_in_view_panel)
-        self._add_xml_in_view_options(current_settings)
-
-        self.list_hint = Label()
-        self.list_hint.Location = Point(150, 470)
-        self.list_hint.Size = Size(370, 20)
-        self.list_hint.ForeColor = Color.FromArgb(110, 110, 110)
-        self.list_hint.Font = Font("Segoe UI", 8)
-        self.Controls.Add(self.list_hint)
-
-    def _add_inherit_checkbox(self, name, control, x, y):
-        """Pair a behavior control with its "Inherit" box and wire the two.
-
-        Checked means "not pinned": the control shows the inherited value,
-        disabled. Unchecked means the project file owns the value, so the
-        control is editable and saving re-pins it.
-        """
-        row = self._behavior_rows.get(name) or {"pinned": True}
-        checkbox = CheckBox()
-        checkbox.Text = "Inherit (" + self._behavior_hints.get(name, "built-in") + ")"
-        checkbox.Location = Point(x, y)
-        checkbox.Size = Size(170, 22)
-        checkbox.Checked = not row.get("pinned", True)
-        checkbox.CheckedChanged += self._make_inherit_handler(name)
-        self.Controls.Add(checkbox)
-        self._behavior_controls[name] = (checkbox, control)
-        control.Enabled = not checkbox.Checked
-        return checkbox
-
-    def _make_inherit_handler(self, name):
-        def _handler(sender, event):
-            self._on_behavior_inherit_changed(name)
-        return _handler
-
-    def _on_behavior_inherit_changed(self, name):
-        pair = self._behavior_controls.get(name)
-        if not pair:
-            return
-        checkbox, control = pair
-        if checkbox.Checked:
-            self._set_behavior_value(name, self._inherited_values.get(name))
-            control.Enabled = False
-        else:
-            control.Enabled = True
-
-    def _behavior_value(self, name):
-        if name == "pre_import_backup_enabled":
-            return bool(self.chk_pre_import_backup.Checked)
-        if name == "backup_retention_count":
-            return self._backup_retention_count()
-        if name == "verbose_logging":
-            return bool(self.chk_verbose_logging.Checked)
-        if name == "advanced_debug":
-            return bool(self.chk_advanced_debug.Checked)
-        if name == "show_completion_popup":
-            return bool(self.chk_completion_popup.Checked)
-        return None
-
-    def _set_behavior_value(self, name, value):
-        if name == "pre_import_backup_enabled":
-            self.chk_pre_import_backup.Checked = bool(value)
-        elif name == "backup_retention_count":
-            self.txt_backup_retention.Text = str(value if value is not None else 10)
-        elif name == "verbose_logging":
-            self.chk_verbose_logging.Checked = bool(value)
-        elif name == "advanced_debug":
-            self.chk_advanced_debug.Checked = bool(value)
-        elif name == "show_completion_popup":
-            self.chk_completion_popup.Checked = bool(value)
-
-    def _build_backup_controls(self, current_settings):
-        lbl_backup = Label()
-        lbl_backup.Text = "Safety backup"
-        lbl_backup.Location = Point(24, 496)
-        lbl_backup.Size = Size(120, 20)
-        self.Controls.Add(lbl_backup)
-
-        self.chk_pre_import_backup = CheckBox()
-        self.chk_pre_import_backup.Text = "Backup before import"
-        self.chk_pre_import_backup.Location = Point(150, 496)
-        self.chk_pre_import_backup.Size = Size(300, 22)
-        self.chk_pre_import_backup.Checked = bool(current_settings.get("pre_import_backup_enabled", True))
-        self.Controls.Add(self.chk_pre_import_backup)
-        self._add_inherit_checkbox("pre_import_backup_enabled", self.chk_pre_import_backup, 458, 496)
-
-        lbl_retention = Label()
-        lbl_retention.Text = "Max backups"
-        lbl_retention.Location = Point(150, 524)
-        lbl_retention.Size = Size(110, 20)
-        self.Controls.Add(lbl_retention)
-
-        self.txt_backup_retention = TextBox()
-        self.txt_backup_retention.Location = Point(264, 521)
-        self.txt_backup_retention.Size = Size(50, 22)
-        self.txt_backup_retention.Text = str(current_settings.get("backup_retention_count", 10))
-        self.Controls.Add(self.txt_backup_retention)
-        self._add_inherit_checkbox("backup_retention_count", self.txt_backup_retention, 458, 524)
-
-        backup_hint = Label()
-        backup_hint.Text = "Timestamped project binaries are written to .backup/ before IDE changes."
-        backup_hint.Location = Point(150, 550)
-        backup_hint.Size = Size(470, 20)
-        backup_hint.ForeColor = Color.FromArgb(110, 110, 110)
-        backup_hint.Font = Font("Segoe UI", 8)
-        self.Controls.Add(backup_hint)
-
-        self.chk_verbose_logging = CheckBox()
-        self.chk_verbose_logging.Text = "Save detailed engine logs in .dump"
-        self.chk_verbose_logging.Location = Point(150, 574)
-        self.chk_verbose_logging.Size = Size(300, 22)
-        self.chk_verbose_logging.Checked = bool(current_settings.get("verbose_logging", False))
-        self.Controls.Add(self.chk_verbose_logging)
-        self._add_inherit_checkbox("verbose_logging", self.chk_verbose_logging, 458, 574)
-
-        self.chk_advanced_debug = CheckBox()
-        self.chk_advanced_debug.Text = "Advanced debug: also log IDE script messages"
-        self.chk_advanced_debug.Location = Point(150, 602)
-        self.chk_advanced_debug.Size = Size(300, 22)
-        self.chk_advanced_debug.Checked = bool(current_settings.get("advanced_debug", False))
-        self.Controls.Add(self.chk_advanced_debug)
-        self._add_inherit_checkbox("advanced_debug", self.chk_advanced_debug, 458, 602)
-
-        self.chk_completion_popup = CheckBox()
-        self.chk_completion_popup.Text = "Show completion summary after import/export"
-        self.chk_completion_popup.Location = Point(150, 630)
-        self.chk_completion_popup.Size = Size(300, 22)
-        self.chk_completion_popup.Checked = bool(current_settings.get("show_completion_popup", True))
-        self.Controls.Add(self.chk_completion_popup)
-        self._add_inherit_checkbox("show_completion_popup", self.chk_completion_popup, 458, 630)
-
-        self.chk_gitignore = CheckBox()
-        self.chk_gitignore.Text = "Add recommended .gitignore entries"
-        self.chk_gitignore.Location = Point(150, 658)
-        self.chk_gitignore.Size = Size(310, 22)
-        self.chk_gitignore.Checked = bool(current_settings.get("_ensure_gitignore", False))
-        self.Controls.Add(self.chk_gitignore)
-
-        behavior_hint = Label()
-        behavior_hint.Text = (
-            "Inherit keeps the value from your user defaults (or the built-in "
-            "default) and stores nothing here. Uncheck to pin a value in "
-            "cds-text-sync.json for this project."
-        )
-        behavior_hint.Location = Point(150, 684)
-        behavior_hint.Size = Size(470, 34)
-        behavior_hint.ForeColor = Color.FromArgb(110, 110, 110)
-        behavior_hint.Font = Font("Segoe UI", 8)
-        self.Controls.Add(behavior_hint)
-
-    def _projection_enabled(self, current_settings, projection):
-        current = current_settings.get("projections") or {}
-        projection_id = projection.get("id")
-        kind = projection.get("kind")
-        if projection_id in current:
-            value = current.get(projection_id)
-            if isinstance(value, dict):
-                return bool(value.get("enabled", True))
-            return bool(value)
-        if kind in current:
-            return True
-        return bool(projection.get("default_enabled", False))
-
-    def _selected_layout_value(self):
-        if self.cmb_layout.SelectedIndex < 0:
-            return "project-view"
-        if self.cmb_layout.SelectedIndex >= len(self.LAYOUTS):
-            return "project-view"
-        return self.LAYOUTS[self.cmb_layout.SelectedIndex][0]
-
-    def _refresh_view_root_state(self):
-        if hasattr(self, "txt_view_root") and hasattr(self, "chk_custom_view_root"):
-            self.txt_view_root.Enabled = bool(self.chk_custom_view_root.Checked) and not self.view_root_locked
-
-    def _refresh_view_root_summary(self):
-        if not hasattr(self, "lbl_view_root_mode"):
-            return
-        if self.view_root_locked:
-            locked_value = self.initial_view_root
-            if locked_value:
-                self.lbl_view_root_mode.Text = "Locked path: custom view root = {0}".format(locked_value)
-            elif self.initial_layout == "root-view":
-                self.lbl_view_root_mode.Text = "Locked path: sync root"
-            else:
-                self.lbl_view_root_mode.Text = "Locked path: project-view/"
-            return
-        layout_value = self._selected_layout_value()
-        if layout_value == "project-view":
-            default_text = "Default: project-view/"
-        else:
-            default_text = "Default: sync root"
-
-        custom_path = self.txt_view_root.Text.strip() if hasattr(self, "txt_view_root") else ""
-        if self.chk_custom_view_root.Checked and custom_path:
-            self.lbl_view_root_mode.Text = "Active path: custom view root = {0}".format(custom_path)
-        elif self.chk_custom_view_root.Checked:
-            self.lbl_view_root_mode.Text = "Custom view root is enabled, but the path is empty."
-        else:
-            self.lbl_view_root_mode.Text = default_text
-
-    def _on_layout_changed(self, sender, event):
-        self._refresh_view_root_summary()
-
-    def _on_custom_view_root_changed(self, sender, event):
-        self._refresh_view_root_state()
-        self._refresh_view_root_summary()
-
-    def _on_view_root_changed(self, sender, event):
-        self._refresh_view_root_summary()
-
-    def _add_projection_options(self, current_settings):
-        options = current_settings.get("_available_projections") or []
-        if not options:
-            empty = Label()
-            empty.Text = "No optional projections in selected profile."
-            empty.Location = Point(8, 8)
-            empty.Size = Size(320, 20)
-            empty.ForeColor = Color.FromArgb(110, 110, 110)
-            self.projections_panel.Controls.Add(empty)
-            return
-
-        y = 6
-        for projection in options:
-            checkbox = CheckBox()
-            checkbox.Text = projection.get("label") or projection.get("id") or projection.get("kind") or "projection"
-            checkbox.Location = Point(8, y)
-            checkbox.Size = Size(320, 22)
-            checkbox.Checked = self._projection_enabled(current_settings, projection)
-            checkbox.Tag = projection
-            self.projections_panel.Controls.Add(checkbox)
-            self.projection_controls.append(checkbox)
-            y += 24
-
-    def _selected_projections(self):
+    def _selected_projections(self, controls):
         selected = {}
-        for checkbox in self.projection_controls:
+        for checkbox in controls:
             if not checkbox.Checked or not checkbox.Tag:
                 continue
             projection = checkbox.Tag
@@ -920,86 +635,473 @@ class ProjectOptionsForm(Form if Form is not None else object):
             }
         return selected
 
-    def _add_xml_in_view_options(self, current_settings):
-        kinds = current_settings.get("_available_xml_in_view_kinds") or []
-        selected_kinds = [
-            str(kind).strip().lower()
-            for kind in (current_settings.get("xml_in_view_kinds") or [])
-        ]
-        if not kinds:
-            empty = Label()
-            empty.Text = "No XML-only kinds in selected profile."
-            empty.Location = Point(8, 8)
-            empty.Size = Size(320, 20)
-            empty.ForeColor = Color.FromArgb(110, 110, 110)
-            self.xml_in_view_panel.Controls.Add(empty)
-            return
-
-        y = 6
-        for kind in kinds:
-            checkbox = CheckBox()
-            checkbox.Text = kind
-            checkbox.Location = Point(8, y)
-            checkbox.Size = Size(320, 22)
-            checkbox.Checked = str(kind).strip().lower() in selected_kinds
-            checkbox.Tag = kind
-            self.xml_in_view_panel.Controls.Add(checkbox)
-            self.xml_in_view_controls.append(checkbox)
-            y += 24
-
-    def _selected_xml_in_view_kinds(self):
+    def _selected_kinds(self, controls):
         selected = []
-        for checkbox in self.xml_in_view_controls:
+        for checkbox in controls:
             if checkbox.Checked and checkbox.Tag:
                 selected.append(str(checkbox.Tag).strip().lower())
         return selected
 
-    def _text_first_selected(self):
+    def _projection_enabled(self, current_settings, projection):
+        current = current_settings.get("projections") or {}
+        projection_id = projection.get("id")
+        kind = projection.get("kind")
+        if projection_id in current:
+            value = current.get(projection_id)
+            if isinstance(value, dict):
+                return bool(value.get("enabled", True))
+            return bool(value)
+        if kind in current:
+            return True
+        return bool(projection.get("default_enabled", False))
+
+    # -- behavior controls ------------------------------------------------
+
+    def _build_behavior_controls(self, parent, y, controls, mirror):
+        """Build the five behavior controls into *parent* at *y*.
+
+        ``mirror`` wires the General tab's controls, so an edit there updates
+        the greyed Project controls live while the radio says "Same as General".
+        """
+        backup = CheckBox()
+        backup.Text = "Backup before import"
+        backup.Location = Point(140, y)
+        backup.Size = Size(300, 22)
+        parent.Controls.Add(backup)
+        controls["pre_import_backup_enabled"] = backup
+
+        parent.Controls.Add(self._make_label("Max backups", 140, y + 28, 110, 20))
+        retention = TextBox()
+        retention.Location = Point(254, y + 25)
+        retention.Size = Size(50, 22)
+        parent.Controls.Add(retention)
+        controls["backup_retention_count"] = retention
+
+        entries = [
+            ("verbose_logging", "Save detailed engine logs in .dump", y + 54),
+            ("advanced_debug", "Advanced debug: also log IDE script messages", y + 80),
+            ("show_completion_popup", "Show completion summary after import/export", y + 106),
+        ]
+        for name, text, top in entries:
+            checkbox = CheckBox()
+            checkbox.Text = text
+            checkbox.Location = Point(140, top)
+            checkbox.Size = Size(430, 22)
+            parent.Controls.Add(checkbox)
+            controls[name] = checkbox
+
+        if mirror:
+            backup.CheckedChanged += self._make_general_behavior_handler(
+                "pre_import_backup_enabled")
+            retention.TextChanged += self._make_general_behavior_handler(
+                "backup_retention_count")
+            for name, _text, _top in entries:
+                controls[name].CheckedChanged += self._make_general_behavior_handler(name)
+
+    def _make_general_behavior_handler(self, name):
+        def _handler(sender, event):
+            self._on_general_behavior_changed(name)
+        return _handler
+
+    def _read_behavior(self, controls, name):
+        control = controls.get(name)
+        if control is None:
+            return None
+        if name == "backup_retention_count":
+            try:
+                value = int(str(control.Text).strip())
+                if value >= 1:
+                    return value
+            except Exception:
+                pass
+            return 10
+        return bool(control.Checked)
+
+    def _write_behavior(self, controls, name, value):
+        control = controls.get(name)
+        if control is None:
+            return
+        if name == "backup_retention_count":
+            control.Text = str(value if value is not None else 10)
+        else:
+            control.Checked = bool(value)
+
+    def _apply_behavior_values(self, controls, values):
+        for name in settings_layers_model.behavior_names():
+            if name in values:
+                self._write_behavior(controls, name, values[name])
+
+    def _set_behavior_enabled(self, controls, enabled):
+        for control in controls.values():
+            control.Enabled = enabled
+
+    def _project_behavior_mode(self):
+        if getattr(self, "rb_own", None) is not None and self.rb_own.Checked:
+            return settings_layers_model.BEHAVIOR_MODE_OWN
+        return settings_layers_model.BEHAVIOR_MODE_SAME
+
+    def _refresh_project_behavior_state(self):
+        """Grey or enable the Project behavior block to match the radio.
+
+        On "Same as General" the block mirrors the General tab's current values
+        and is disabled; on "Own" the controls are editable and hold whatever
+        they held, so switching Same -> Own keeps the shown values.
+        """
+        if self._project_behavior_mode() == settings_layers_model.BEHAVIOR_MODE_SAME:
+            for name in settings_layers_model.behavior_names():
+                self._write_behavior(
+                    self._project_behavior, name,
+                    self._read_behavior(self._general_behavior, name),
+                )
+            self._set_behavior_enabled(self._project_behavior, False)
+        else:
+            self._set_behavior_enabled(self._project_behavior, True)
+
+    def _on_behavior_mode_changed(self, sender, event):
+        self._refresh_project_behavior_state()
+
+    def _on_general_behavior_changed(self, name):
+        if self._project_behavior_mode() != settings_layers_model.BEHAVIOR_MODE_SAME:
+            return
+        self._write_behavior(
+            self._project_behavior, name,
+            self._read_behavior(self._general_behavior, name),
+        )
+
+    # -- tabs -------------------------------------------------------------
+
+    def _build_header(self):
+        title = Label()
+        title.Text = "Sync Options"
+        title.Font = Font("Segoe UI", 14, FontStyle.Bold)
+        title.Location = Point(20, 16)
+        title.Size = Size(500, 28)
+        self.Controls.Add(title)
+
+        subtitle = Label()
+        subtitle.Text = (
+            "General applies to every project on this computer; Project is saved "
+            "to this project's cds-text-sync.json."
+        )
+        subtitle.Font = Font("Segoe UI", 9)
+        subtitle.ForeColor = Color.FromArgb(90, 90, 90)
+        subtitle.Location = Point(22, 46)
+        subtitle.Size = Size(620, 22)
+        self.Controls.Add(subtitle)
+
+    def _build_general_tab(self, current_settings):
+        page = self.tab_general
+        path, rows, status, error = self._general_state
+        values = dict((row["name"], row["value"]) for row in rows)
+
+        page.Controls.Add(self._make_label(
+            "All projects on this computer", 16, 12, 520, 26, size=12, bold=True))
+        page.Controls.Add(self._make_label(path, 18, 40, 590, 18, size=8, grey=True))
+        if status == "invalid" and error:
+            page.Controls.Add(self._make_label(
+                "Defaults file could not be read: " + error,
+                18, 58, 590, 34, size=8, red=True))
+
+        page.Controls.Add(self._make_heading("New projects start with", 16, 94))
+
+        page.Controls.Add(self._make_label("View storage", 16, 122, 120, 20))
+        self.cmb_general_layout = self._make_layout_combo(values.get("layout"))
+        self.cmb_general_layout.Location = Point(140, 119)
+        page.Controls.Add(self.cmb_general_layout)
+        page.Controls.Add(self._make_label(
+            "Choose where generated views live by default for new projects.",
+            140, 145, 430, 18, size=8, grey=True))
+
+        page.Controls.Add(self._make_label("Profile", 16, 172, 120, 20))
+        self.cmb_general_profile = self._make_profile_combo(
+            values.get("profile") or "default")
+        self.cmb_general_profile.Location = Point(140, 169)
+        page.Controls.Add(self.cmb_general_profile)
+
+        page.Controls.Add(self._make_label("Sync mode", 16, 204, 120, 20))
+        self.chk_general_text_first = CheckBox()
+        self.chk_general_text_first.Text = (
+            "Text-first mode (.st files are the source of truth)")
+        self.chk_general_text_first.Location = Point(140, 200)
+        self.chk_general_text_first.Size = Size(430, 22)
+        self.chk_general_text_first.Checked = values.get("sync_mode") == "text_first"
+        self.chk_general_text_first.CheckedChanged += self._on_general_text_first_changed
+        page.Controls.Add(self.chk_general_text_first)
+        page.Controls.Add(self._make_label(
+            "Text-first hides native XML in .dump/xml and ST files drive import.",
+            140, 224, 440, 18, size=8, grey=True))
+
+        self._general_lists = self._build_view_lists(
+            page, 258, current_settings,
+            values.get("projections"), values.get("xml_in_view_kinds"))
+
+        page.Controls.Add(self._make_heading("Behavior", 16, 402))
+        self._build_behavior_controls(page, 428, self._general_behavior, True)
+        self._apply_behavior_values(self._general_behavior, values)
+
+        btn_reset = Button()
+        btn_reset.Text = "Reset to built-in"
+        btn_reset.Location = Point(16, 568)
+        btn_reset.Size = Size(150, 28)
+        btn_reset.Click += self._on_reset_general
+        page.Controls.Add(btn_reset)
+
+    def _build_project_tab(self, current_settings):
+        page = self.tab_project
+        project_name = current_settings.get("_project_name") or "this project"
+        project_path = current_settings.get("_settings_path") or "cds-text-sync.json"
+
+        page.Controls.Add(self._make_label(
+            "This project: " + str(project_name), 16, 12, 520, 26,
+            size=12, bold=True))
+        page.Controls.Add(self._make_label(
+            project_path + "  (in git)", 18, 40, 590, 18, size=8, grey=True))
+
+        page.Controls.Add(self._make_heading("Format", 16, 72))
+
+        page.Controls.Add(self._make_label("View storage", 16, 100, 120, 20))
+        self.cmb_layout = self._make_layout_combo(
+            current_settings.get("layout"), enabled=not self.view_root_locked)
+        self.cmb_layout.Location = Point(140, 97)
+        self.cmb_layout.SelectedIndexChanged += self._on_layout_changed
+        page.Controls.Add(self.cmb_layout)
+        if self.view_root_locked:
+            layout_help = "Folder choice is locked after first export."
+        else:
+            layout_help = "Choose where generated views live by default."
+        page.Controls.Add(self._make_label(
+            layout_help, 140, 123, 430, 18, size=8, grey=True))
+
+        self.chk_custom_view_root = CheckBox()
+        self.chk_custom_view_root.Text = "Use custom view root"
+        self.chk_custom_view_root.Location = Point(140, 148)
+        self.chk_custom_view_root.Size = Size(200, 22)
+        self.chk_custom_view_root.Checked = bool(current_settings.get("view_root"))
+        self.chk_custom_view_root.CheckedChanged += self._on_custom_view_root_changed
+        self.chk_custom_view_root.Enabled = not self.view_root_locked
+        page.Controls.Add(self.chk_custom_view_root)
+
+        self.txt_view_root = TextBox()
+        self.txt_view_root.Location = Point(348, 149)
+        self.txt_view_root.Size = Size(220, 22)
+        self.txt_view_root.Text = current_settings.get("view_root") or ""
+        self.txt_view_root.Enabled = (
+            bool(current_settings.get("view_root")) and not self.view_root_locked
+        )
+        self.txt_view_root.TextChanged += self._on_view_root_changed
+        page.Controls.Add(self.txt_view_root)
+
+        self.lbl_view_root_mode = self._make_label(
+            "", 140, 174, 430, 34, size=8, grey=True)
+        page.Controls.Add(self.lbl_view_root_mode)
+
+        page.Controls.Add(self._make_label("Profile", 16, 218, 120, 20))
+        self.cmb_profile = self._make_profile_combo(
+            current_settings.get("profile") or "default")
+        self.cmb_profile.Location = Point(140, 215)
+        page.Controls.Add(self.cmb_profile)
+
+        page.Controls.Add(self._make_label("Sync mode", 16, 248, 120, 20))
+        self.chk_text_first = CheckBox()
+        self.chk_text_first.Text = "Text-first mode (.st files are the source of truth)"
+        self.chk_text_first.Location = Point(140, 244)
+        self.chk_text_first.Size = Size(430, 22)
+        self.chk_text_first.Checked = self.initial_sync_mode == "text_first"
+        self.chk_text_first.Enabled = not self.sync_mode_locked
+        self.chk_text_first.CheckedChanged += self._on_text_first_changed
+        page.Controls.Add(self.chk_text_first)
+        if self.sync_mode_locked:
+            sync_help = (
+                "Mode is fixed at initialization. To switch, initialize a new "
+                "empty sync folder."
+            )
+        else:
+            sync_help = (
+                "Choose before the first export. Text-first hides native XML in "
+                ".dump/xml and ST files drive import."
+            )
+        page.Controls.Add(self._make_label(
+            sync_help, 140, 268, 440, 30, size=8, grey=True))
+
+        self._project_lists = self._build_view_lists(
+            page, 308, current_settings,
+            current_settings.get("projections"),
+            current_settings.get("xml_in_view_kinds"))
+
+        page.Controls.Add(self._make_heading("Behavior", 16, 452))
+
+        self.rb_same = RadioButton()
+        self.rb_same.Text = "Same as General"
+        self.rb_same.Location = Point(140, 478)
+        self.rb_same.Size = Size(180, 22)
+        self.rb_same.Checked = self._mode == settings_layers_model.BEHAVIOR_MODE_SAME
+        self.rb_same.CheckedChanged += self._on_behavior_mode_changed
+        page.Controls.Add(self.rb_same)
+
+        self.rb_own = RadioButton()
+        self.rb_own.Text = "Own for this project"
+        self.rb_own.Location = Point(330, 478)
+        self.rb_own.Size = Size(200, 22)
+        self.rb_own.Checked = self._mode == settings_layers_model.BEHAVIOR_MODE_OWN
+        self.rb_own.CheckedChanged += self._on_behavior_mode_changed
+        page.Controls.Add(self.rb_own)
+
+        self._build_behavior_controls(page, 506, self._project_behavior, False)
+        for name in settings_layers_model.behavior_names():
+            self._write_behavior(
+                self._project_behavior, name, current_settings.get(name))
+
+        self.chk_gitignore = CheckBox()
+        self.chk_gitignore.Text = "Add recommended .gitignore entries"
+        self.chk_gitignore.Location = Point(140, 642)
+        self.chk_gitignore.Size = Size(430, 22)
+        self.chk_gitignore.Checked = bool(current_settings.get("_ensure_gitignore", False))
+        page.Controls.Add(self.chk_gitignore)
+
+    def _build_dialog_buttons(self):
+        btn_ok = Button()
+        btn_ok.Text = "Save"
+        btn_ok.Location = Point(444, 790)
+        btn_ok.Size = Size(85, 28)
+        btn_ok.Click += self._on_save
+        self.Controls.Add(btn_ok)
+        self.AcceptButton = btn_ok
+
+        btn_cancel = Button()
+        btn_cancel.Text = "Cancel"
+        btn_cancel.Location = Point(536, 790)
+        btn_cancel.Size = Size(85, 28)
+        btn_cancel.DialogResult = DialogResult.Cancel
+        self.Controls.Add(btn_cancel)
+        self.CancelButton = btn_cancel
+
+    # -- view root and sync mode -----------------------------------------
+
+    def _refresh_view_root_state(self):
+        if self.txt_view_root is not None and self.chk_custom_view_root is not None:
+            self.txt_view_root.Enabled = (
+                bool(self.chk_custom_view_root.Checked) and not self.view_root_locked
+            )
+
+    def _refresh_view_root_summary(self):
+        if self.lbl_view_root_mode is None:
+            return
+        if self.view_root_locked:
+            locked_value = self.initial_view_root
+            if locked_value:
+                self.lbl_view_root_mode.Text = (
+                    "Locked path: custom view root = {0}".format(locked_value))
+            elif self.initial_layout == "root-view":
+                self.lbl_view_root_mode.Text = "Locked path: sync root"
+            else:
+                self.lbl_view_root_mode.Text = "Locked path: project-view/"
+            return
+        layout_value = self._selected_layout(self.cmb_layout)
+        if layout_value == "project-view":
+            default_text = "Default: project-view/"
+        else:
+            default_text = "Default: sync root"
+
+        custom_path = self.txt_view_root.Text.strip()
+        if self.chk_custom_view_root.Checked and custom_path:
+            self.lbl_view_root_mode.Text = (
+                "Active path: custom view root = {0}".format(custom_path))
+        elif self.chk_custom_view_root.Checked:
+            self.lbl_view_root_mode.Text = (
+                "Custom view root is enabled, but the path is empty.")
+        else:
+            self.lbl_view_root_mode.Text = default_text
+
+    def _on_layout_changed(self, sender, event):
+        self._refresh_view_root_summary()
+
+    def _on_custom_view_root_changed(self, sender, event):
+        self._refresh_view_root_state()
+        self._refresh_view_root_summary()
+
+    def _on_view_root_changed(self, sender, event):
+        self._refresh_view_root_summary()
+
+    def _general_text_first(self):
+        return bool(self.chk_general_text_first.Checked)
+
+    def _project_text_first(self):
         if self.sync_mode_locked:
             return self.initial_sync_mode == "text_first"
         return bool(self.chk_text_first.Checked)
 
-    def _refresh_sync_mode_panels(self):
-        # The two derived-file lists are mutually exclusive by paradigm, so only
-        # the one matching the selected mode is shown (the other's checkboxes are
-        # kept but hidden, preserving their saved values). xml-first: choose which
-        # .st/.csv views to derive. text-first: ST is forced on, so instead choose
-        # which kinds keep their native .xml in the view vs. the .dump/xml mirror.
-        text_first = self._text_first_selected()
-        self.projections_panel.Visible = not text_first
-        self.xml_in_view_panel.Visible = text_first
-        if text_first:
-            self.lbl_list.Text = "Keep XML in view"
-            self.list_hint.Text = (
-                "These kinds keep their native .xml in the view; every other "
-                "kind's XML moves to the .dump/xml mirror."
-            )
-        else:
-            self.lbl_list.Text = "Derived views"
-            self.list_hint.Text = (
-                "Enabled .st views own text on disk; XML is rehydrated internally."
-            )
+    def _on_general_text_first_changed(self, sender, event):
+        self._refresh_view_lists(self._general_lists, self._general_text_first())
 
     def _on_text_first_changed(self, sender, event):
-        self._refresh_sync_mode_panels()
+        self._refresh_view_lists(self._project_lists, self._project_text_first())
 
-    def _backup_retention_count(self):
-        try:
-            value = int(self.txt_backup_retention.Text.strip())
-            if value >= 1:
-                return value
-        except Exception:
-            pass
-        return 10
+    # -- saving -----------------------------------------------------------
+
+    def _collect_general_raw(self):
+        return {
+            "layout": self._selected_layout(self.cmb_general_layout),
+            "profile": self._selected_profile(self.cmb_general_profile),
+            "sync_mode": "text_first" if self._general_text_first() else "xml_first",
+            "projections": self._selected_projections(
+                self._general_lists["projection_controls"]),
+            "xml_in_view_kinds": self._selected_kinds(
+                self._general_lists["xml_controls"]),
+            "pre_import_backup_enabled": self._read_behavior(
+                self._general_behavior, "pre_import_backup_enabled"),
+            "backup_retention_count": self._read_behavior(
+                self._general_behavior, "backup_retention_count"),
+            "verbose_logging": self._read_behavior(
+                self._general_behavior, "verbose_logging"),
+            "advanced_debug": self._read_behavior(
+                self._general_behavior, "advanced_debug"),
+            "show_completion_popup": self._read_behavior(
+                self._general_behavior, "show_completion_popup"),
+        }
+
+    def _on_reset_general(self, sender, event):
+        """Fill the General controls from the built-in defaults; nothing is saved."""
+        self._apply_general_values(settings_layers_model.reset_user_rows())
+
+    def _apply_general_values(self, values):
+        layout = values.get("layout")
+        if layout:
+            for position, (layout_id, _label) in enumerate(self.LAYOUTS):
+                if layout_id == layout:
+                    self.cmb_general_layout.SelectedIndex = position
+                    break
+        profile = values.get("profile")
+        if profile:
+            self._select_combo_value(self.cmb_general_profile, profile)
+        self.chk_general_text_first.Checked = values.get("sync_mode") == "text_first"
+        self._apply_view_values(self._general_lists, values)
+        self._apply_behavior_values(self._general_behavior, values)
+
+    def _show_error(self, title, message):
+        if MessageBox is not None:
+            MessageBox.Show(
+                message, title, MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        else:
+            print(title + ": " + message)
 
     def _on_save(self, sender, event):
-        view_root_value = None
-        layout_value = self._selected_layout_value()
+        # General first: the project file must inherit whatever it just wrote,
+        # and a failure here has to stop the project write.
+        written, error = settings_layers_model.save_user_defaults(
+            self._collect_general_raw())
+        if error:
+            self._show_error("Cannot save your defaults", error)
+            return
+        self.result_user_defaults = written
+
         if self.view_root_locked:
             layout_value = self.initial_layout
             view_root_value = self.initial_view_root
-        elif self.chk_custom_view_root.Checked:
-            view_root_value = self.txt_view_root.Text.strip() or None
+        else:
+            layout_value = self._selected_layout(self.cmb_layout)
+            view_root_value = None
+            if self.chk_custom_view_root.Checked:
+                view_root_value = self.txt_view_root.Text.strip() or None
         if self.sync_mode_locked:
             sync_mode_value = self.initial_sync_mode
         else:
@@ -1009,27 +1111,24 @@ class ProjectOptionsForm(Form if Form is not None else object):
         format_values = {
             "layout": layout_value,
             "view_root": view_root_value,
-            "profile": str(self.cmb_profile.SelectedItem) or "default",
-            "projections": self._selected_projections(),
+            "profile": self._selected_profile(self.cmb_profile),
+            "projections": self._selected_projections(
+                self._project_lists["projection_controls"]),
             "sync_mode": sync_mode_value,
-            "xml_in_view_kinds": self._selected_xml_in_view_kinds(),
+            "xml_in_view_kinds": self._selected_kinds(
+                self._project_lists["xml_controls"]),
         }
         behavior_values = {}
-        pinned = []
-        for name, pair in self._behavior_controls.items():
-            checkbox, _control = pair
-            if checkbox.Checked:
-                # Not pinned: hand back the inherited value so the writer
-                # omits the key and the project keeps inheriting.
-                behavior_values[name] = self._inherited_values.get(name)
-            else:
-                behavior_values[name] = self._behavior_value(name)
-                pinned.append(name)
-        self.result_settings, self.result_pinned = settings_layers_model.assemble_project_save(
-            self._base_settings, format_values, behavior_values, pinned
+        for name in settings_layers_model.behavior_names():
+            behavior_values[name] = self._read_behavior(self._project_behavior, name)
+        settings, pinned = settings_layers_model.assemble_project_save(
+            self._base_settings, format_values, behavior_values,
+            self._project_behavior_mode(),
         )
-        self.result_settings["_ensure_gitignore"] = bool(self.chk_gitignore.Checked)
-        self.result_settings["_pinned_behavior"] = self.result_pinned
+        settings["_ensure_gitignore"] = bool(self.chk_gitignore.Checked)
+        settings["_pinned_behavior"] = pinned
+        self.result_settings = settings
+        self.result_pinned = pinned
         self.DialogResult = DialogResult.OK
         self.Close()
 
@@ -1045,267 +1144,6 @@ def show_project_options_dialog(current_settings):
         except Exception as e:
             print("Error showing project options dialog: " + str(e))
     return None
-
-
-class UserDefaultsForm(Form if Form is not None else object):
-    """Edits the sparse per-user defaults file (``%APPDATA%\\cds-text-sync\\defaults.json``).
-
-    Personal and per-machine: format keys seed a new project, behavior keys are
-    inherited unless a project pins them. Saving keeps the file sparse (a value
-    equal to the built-in default disappears). A file that cannot be read shows
-    its error but does not block a save -- overwriting it is the fix.
-    """
-
-    LAYOUTS = ["project-view", "root-view", "legacy-dump-views"]
-    SYNC_MODES = ["xml_first", "text_first"]
-
-    LABELS = {
-        "layout": "View storage",
-        "profile": "Profile",
-        "sync_mode": "Sync mode",
-        "projections": "Projections (JSON)",
-        "xml_in_view_kinds": "XML kinds in view",
-        "verbose_logging": "Save detailed engine logs in .dump",
-        "advanced_debug": "Advanced debug: also log IDE script messages",
-        "show_completion_popup": "Show completion summary after import/export",
-        "pre_import_backup_enabled": "Backup before import",
-        "backup_retention_count": "Max backups",
-    }
-
-    def __init__(self, path, rows, status, error):
-        self.Text = "cds-text-sync: CTS Defaults"
-        self.Size = Size(620, 600)
-        self.FormBorderStyle = FormBorderStyle.FixedDialog
-        self.StartPosition = FormStartPosition.CenterScreen
-        self.MaximizeBox = False
-        self.MinimizeBox = False
-        self.BackColor = Color.FromArgb(250, 250, 250)
-        self.path = path
-        self.saved = False
-        self.rows = list(rows)
-        self.combo_controls = {}
-        self.check_controls = {}
-        self.text_controls = {}
-        self._row_kind = {}
-        for row in self.rows:
-            name = row["name"]
-            if isinstance(row["value"], bool):
-                self._row_kind[name] = "check"
-            elif name in ("layout", "sync_mode"):
-                self._row_kind[name] = "combo"
-            else:
-                self._row_kind[name] = "text"
-        self._status = status
-        self._error = error
-
-        self._build_header()
-        self._build_rows()
-
-    def _build_header(self):
-        title = Label()
-        title.Text = "CTS Defaults"
-        title.Font = Font("Segoe UI", 14, FontStyle.Bold)
-        title.Location = Point(20, 18)
-        title.Size = Size(460, 28)
-        self.Controls.Add(title)
-
-        subtitle = Label()
-        subtitle.Text = "Your personal defaults on this machine. Nothing here is committed."
-        subtitle.Font = Font("Segoe UI", 9)
-        subtitle.ForeColor = Color.FromArgb(90, 90, 90)
-        subtitle.Location = Point(22, 50)
-        subtitle.Size = Size(570, 20)
-        self.Controls.Add(subtitle)
-
-        path_label = Label()
-        path_label.Text = self.path
-        path_label.Font = Font("Segoe UI", 8)
-        path_label.ForeColor = Color.FromArgb(110, 110, 110)
-        path_label.Location = Point(22, 72)
-        path_label.Size = Size(570, 18)
-        self.Controls.Add(path_label)
-
-        if self._status == "invalid" and self._error:
-            self.lbl_error = Label()
-            self.lbl_error.Text = "Defaults file could not be read: " + self._error
-            self.lbl_error.Font = Font("Segoe UI", 8)
-            self.lbl_error.ForeColor = Color.FromArgb(160, 40, 40)
-            self.lbl_error.Location = Point(22, 92)
-            self.lbl_error.Size = Size(570, 30)
-            self.Controls.Add(self.lbl_error)
-
-    def _add_section_heading(self, text, y):
-        heading = Label()
-        heading.Text = text
-        heading.Font = Font("Segoe UI", 9, FontStyle.Bold)
-        heading.Location = Point(22, y)
-        heading.Size = Size(320, 20)
-        self.Controls.Add(heading)
-
-    def _add_control(self, row, y):
-        name = row["name"]
-        kind = self._row_kind[name]
-        if kind == "check":
-            control = CheckBox()
-            control.Text = self.LABELS.get(name, name)
-            control.Location = Point(32, y)
-            control.Size = Size(520, 22)
-            control.Checked = bool(row["value"])
-            self.Controls.Add(control)
-            self.check_controls[name] = control
-            return
-        label = Label()
-        label.Text = self.LABELS.get(name, name)
-        label.Location = Point(32, y + 3)
-        label.Size = Size(150, 20)
-        self.Controls.Add(label)
-        if kind == "combo":
-            control = ComboBox()
-            control.DropDownStyle = ComboBoxStyle.DropDownList
-            choices = self.LAYOUTS if name == "layout" else self.SYNC_MODES
-            value = row["value"]
-            if value not in choices:
-                choices = choices + [value]
-            for choice in choices:
-                control.Items.Add(choice)
-            control.SelectedIndex = choices.index(value)
-            control.Location = Point(190, y)
-            control.Size = Size(160, 24)
-            self.Controls.Add(control)
-            self.combo_controls[name] = control
-            return
-        control = TextBox()
-        control.Location = Point(190, y)
-        if name in ("projections", "xml_in_view_kinds"):
-            control.Size = Size(300, 22)
-        else:
-            control.Size = Size(120, 22)
-        control.Text = self._row_text(name, row["value"])
-        self.Controls.Add(control)
-        self.text_controls[name] = control
-
-    def _build_rows(self):
-        self._add_section_heading("Format (seeds new projects)", 128)
-        y = 152
-        for row in self.rows:
-            if row["class"] != "format":
-                continue
-            self._add_control(row, y)
-            y += 30
-
-        self._add_section_heading("Behavior (inherited by projects)", y + 12)
-        y += 36
-        for row in self.rows:
-            if row["class"] != "behavior":
-                continue
-            self._add_control(row, y)
-            y += 28
-
-        note = Label()
-        note.Text = (
-            "A value equal to the built-in default is not stored, so a key added "
-            "in a later version keeps its new default."
-        )
-        note.Location = Point(32, y + 12)
-        note.Size = Size(560, 20)
-        note.ForeColor = Color.FromArgb(110, 110, 110)
-        note.Font = Font("Segoe UI", 8)
-        self.Controls.Add(note)
-
-        btn_reset = Button()
-        btn_reset.Text = "Reset all to built-in"
-        btn_reset.Location = Point(32, y + 40)
-        btn_reset.Size = Size(150, 28)
-        btn_reset.Click += self._on_reset_all
-        self.Controls.Add(btn_reset)
-
-        btn_save = Button()
-        btn_save.Text = "Save"
-        btn_save.Location = Point(424, y + 40)
-        btn_save.Size = Size(85, 28)
-        btn_save.Click += self._on_save
-        self.Controls.Add(btn_save)
-        self.AcceptButton = btn_save
-
-        btn_cancel = Button()
-        btn_cancel.Text = "Cancel"
-        btn_cancel.Location = Point(516, y + 40)
-        btn_cancel.Size = Size(85, 28)
-        btn_cancel.DialogResult = DialogResult.Cancel
-        self.Controls.Add(btn_cancel)
-        self.CancelButton = btn_cancel
-
-    def _row_text(self, name, value):
-        if name == "projections":
-            if not value:
-                return ""
-            return json.dumps(value, sort_keys=True)
-        if name == "xml_in_view_kinds":
-            if not value:
-                return ""
-            return ", ".join(str(item) for item in value)
-        if value is None:
-            return ""
-        return str(value)
-
-    def _collect_raw(self):
-        raw = {}
-        for name, control in self.combo_controls.items():
-            raw[name] = str(control.SelectedItem)
-        for name, control in self.check_controls.items():
-            raw[name] = bool(control.Checked)
-        for name, control in self.text_controls.items():
-            raw[name] = control.Text
-        return raw
-
-    def _apply_values(self, values):
-        for name, control in self.combo_controls.items():
-            value = values.get(name)
-            items = [str(control.Items[index]) for index in range(control.Items.Count)]
-            if value not in items:
-                control.Items.Add(value)
-                items.append(value)
-            control.SelectedIndex = items.index(value)
-        for name, control in self.check_controls.items():
-            control.Checked = bool(values.get(name))
-        for name, control in self.text_controls.items():
-            control.Text = self._row_text(name, values.get(name))
-
-    def _on_reset_all(self, sender, event):
-        """Set every control to its built-in default; nothing is saved yet."""
-        self._apply_values(settings_layers_model.reset_user_rows(self.path))
-
-    def _on_save(self, sender, event):
-        written, error = settings_layers_model.save_user_defaults(
-            self._collect_raw(), self.path
-        )
-        if error:
-            if MessageBox is not None:
-                MessageBox.Show(
-                    error, "Cannot Save Defaults",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning,
-                )
-            else:
-                print("Cannot save defaults: " + error)
-            return
-        self.saved = True
-        self.DialogResult = DialogResult.OK
-        self.Close()
-
-
-def show_user_defaults_dialog(path=None):
-    """Open the CTS Defaults window. Returns True when the file was saved."""
-    if Form is None:
-        return False
-    try:
-        path, rows, status, error = settings_layers_model.user_defaults_state(path)
-        form = UserDefaultsForm(path, rows, status, error)
-        form.ShowDialog()
-        return bool(form.saved)
-    except Exception as e:
-        print("Error showing CTS defaults dialog: " + str(e))
-        return False
-
 
 
 class CompareResultsForm(Form if Form is not None else object):

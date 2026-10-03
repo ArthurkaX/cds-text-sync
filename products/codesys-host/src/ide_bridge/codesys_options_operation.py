@@ -11,7 +11,7 @@ import sys
 import json
 
 from codesys_runtime import resolve_runtime
-from codesys_utils import load_base_dir, init_logging
+from codesys_utils import load_base_dir, init_logging, resolve_projects
 
 
 RECOMMENDED_GITIGNORE_ENTRIES = [
@@ -120,6 +120,29 @@ def _export_lock_info(project_root):
     }
 
 
+def _folder_name(path):
+    trimmed = (path or "").rstrip("\\/")
+    return os.path.basename(trimmed) or None
+
+
+def _active_project_name():
+    """The active CODESYS project's name, or None when it cannot be read.
+
+    Only the Project tab's heading uses it; a missing name falls back to the
+    sync folder's own name.
+    """
+    try:
+        projects_obj = resolve_projects()
+        project = projects_obj.primary if projects_obj else None
+        if project is not None:
+            name = getattr(project, "name", None)
+            if name:
+                return str(name)
+    except Exception:
+        pass
+    return None
+
+
 def _setting_changed(settings, key, value):
     current = settings.get(key)
     if key == "view_root":
@@ -158,10 +181,12 @@ def main(params=None, runtime=None):
             settings_path,
         )
 
-        # Layer provenance travels with the settings so the dialog can show
-        # each behavior key as pinned or inherited, and say from where.
+        # Layer provenance travels with the settings so the dialog can seed the
+        # Project tab's behavior radio and label both files it writes.
         settings, sources, _status, _error = read_project_settings_layers(base_dir)
         settings["_sources"] = sources
+        settings["_settings_path"] = settings_path(base_dir)
+        settings["_project_name"] = _active_project_name() or _folder_name(base_dir)
         export_lock = _export_lock_info(base_dir)
         settings["_view_root_locked"] = export_lock.get("locked")
         settings["_view_root_lock_path"] = export_lock.get("path")
@@ -258,8 +283,9 @@ def main(params=None, runtime=None):
                 runtime.ui.info("Project sync options cancelled.")
                 return {"status": "cancelled", "settings": settings, "path": settings_path(base_dir)}
             ensure_gitignore = bool(selected.pop("_ensure_gitignore", False))
-            # Behavior keys the dialog left editable are pins: the project file
-            # owns them. Keys left on "Inherit" write nothing and keep inheriting.
+            # The Project tab's behavior radio decides the pins: "Own for this
+            # project" pins the whole block, "Same as General" pins none and
+            # hands back the inherited values so nothing is written.
             pinned = selected.pop("_pinned_behavior", None)
             settings.update(selected)
             if export_lock.get("locked"):

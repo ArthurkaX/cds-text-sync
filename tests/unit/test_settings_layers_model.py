@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-test_settings_layers_model.py - Decision logic behind the settings dialogs.
+test_settings_layers_model.py - Decision logic behind the settings dialog.
 
-The WinForms code is a thin shell over ``settings_layers_model``; these pin the
-rules that shell depends on: which behavior key is pinned, where an inherited
-value comes from, what "Reset to defaults" fills in, what the dialog writes,
-and how the CTS Defaults window parses its controls back into overrides.
+The WinForms dialog is a thin shell over ``settings_layers_model``; these pin
+the rules that shell depends on: which radio the Project tab starts on, what
+"Same as General" writes (nothing) versus "Own for this project" (the whole
+behavior block), how the General tab's controls turn into per-user overrides,
+and what a first access or a broken file does to the rows it shows.
 """
 
 import io
@@ -38,127 +39,174 @@ def _write_user(overrides, path):
     _user_defaults.write_user_defaults(overrides, path=path)
 
 
-class TestBehaviorRows:
-    def test_sources_decide_pinned_and_hint(self, tmp_path):
-        root = tmp_path / "sync"
-        root.mkdir()
-        _write_project(root, {"version": 2, "advanced_debug": True})
-        user = str(tmp_path / "config" / "defaults.json")
-        _write_user({"verbose_logging": True}, user)
-
-        settings, sources, _status, _error = model.project_layers(
-            str(root), user_defaults_path=user
-        )
-        rows = dict(
-            (row["name"], row) for row in model.behavior_rows(settings, sources)
-        )
-
-        assert rows["advanced_debug"]["pinned"] is True
-        assert rows["advanced_debug"]["source"] == "project"
-        assert rows["verbose_logging"]["pinned"] is False
-        assert rows["verbose_logging"]["source"] == "user"
-        assert rows["verbose_logging"]["hint"] == "user default"
-        assert rows["advanced_debug"]["hint"] == "project file"
-        # untouched key: not pinned, code default
-        assert rows["show_completion_popup"]["pinned"] is False
-        assert rows["show_completion_popup"]["hint"] == "built-in"
-
-    def test_behavior_rows_cover_every_behavior_key(self):
-        rows = model.behavior_rows(
-            _project_settings.default_project_settings(), {}
-        )
-        assert [row["name"] for row in rows] == list(_user_defaults.BEHAVIOR_KEYS)
+def _behavior_values(settings):
+    return dict((name, settings[name]) for name in model.behavior_names())
 
 
-class TestInheritedValues:
-    def test_override_wins_else_code_default(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        _write_user({"advanced_debug": True}, _user_defaults.defaults_path())
-
-        values = model.inherited_behavior_values()
-        defaults = _project_settings.default_project_settings()
-
-        assert values["advanced_debug"] is True
-        assert values["verbose_logging"] == defaults["verbose_logging"]
-
-    def test_hints_follow_the_user_layer(self, tmp_path):
-        _write_user({"advanced_debug": True}, _user_defaults.defaults_path())
-
-        hints = model.behavior_hints()
-
-        assert hints["advanced_debug"] == "user default"
-        assert hints["verbose_logging"] == "built-in"
+def _general_behavior_values():
+    """What the General tab's behavior controls hold for every behavior key."""
+    _path, rows, _status, _error = model.general_state()
+    values = dict((row["name"], row["value"]) for row in rows)
+    return dict((name, values[name]) for name in model.behavior_names())
 
 
-class TestFormatReset:
-    def test_overrides_win_and_view_root_is_untouched(self, tmp_path):
-        user = str(tmp_path / "config" / "defaults.json")
-        _write_user({"sync_mode": "text_first", "profile": "astra"}, user)
-
-        values = model.format_reset_values(user)
-
-        assert values["sync_mode"] == "text_first"
-        assert values["profile"] == "astra"
-        assert values["layout"] == _project_settings.default_project_settings()["layout"]
-        assert "view_root" not in values
-        assert not (set(_user_defaults.PROJECT_ONLY_KEYS) & set(values))
-
-    def test_missing_file_falls_back_to_code_defaults(self, tmp_path):
-        values = model.format_reset_values(str(tmp_path / "nope" / "defaults.json"))
-        defaults = _project_settings.default_project_settings()
-
-        assert values["sync_mode"] == defaults["sync_mode"]
-        assert values["xml_in_view_kinds"] == defaults["xml_in_view_kinds"]
-
-
-class TestAssembleProjectSave:
-    def test_pinned_order_follows_the_engine(self):
-        _settings, pinned = model.assemble_project_save(
-            {},
-            {},
-            {"verbose_logging": True, "advanced_debug": True},
-            ["advanced_debug", "verbose_logging"],
-        )
-        assert pinned == ["verbose_logging", "advanced_debug"]
-
-    def test_unpinned_key_keeps_inheriting(self, tmp_path, monkeypatch):
+class TestBehaviorMode:
+    def test_fresh_project_starts_on_same(self, tmp_path, monkeypatch):
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         root = tmp_path / "sync"
         root.mkdir()
         _write_project(root, {"version": 2})
 
-        # The control was edited to True, but its "Inherit" box stayed checked:
-        # the value handed back is the inherited one, so nothing is written.
+        settings, sources, _status, _error = model.project_layers(str(root))
+
+        assert model.behavior_mode(settings, sources) == "same"
+
+    def test_a_user_override_alone_is_still_same(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": 2})
+        _write_user({"advanced_debug": True}, _user_defaults.defaults_path())
+
+        settings, sources, _status, _error = model.project_layers(str(root))
+
+        assert sources["advanced_debug"] == "user"
+        assert model.behavior_mode(settings, sources) == "same"
+
+    def test_a_project_pin_selects_own(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": 2, "advanced_debug": True})
+
+        settings, sources, _status, _error = model.project_layers(str(root))
+
+        assert model.behavior_mode(settings, sources) == "own"
+
+    def test_pins_follow_the_mode(self):
+        assert model.project_behavior_pins("same") == []
+        assert model.project_behavior_pins("own") == list(_user_defaults.BEHAVIOR_KEYS)
+
+
+class TestAssembleProjectSave:
+    def test_own_pins_every_behavior_key_in_engine_order(self):
+        _settings, pinned = model.assemble_project_save(
+            {}, {}, {"verbose_logging": True}, "own"
+        )
+        assert pinned == list(_user_defaults.BEHAVIOR_KEYS)
+
+    def test_same_pins_nothing_and_writes_no_behavior_key(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": 2, "verbose_logging": True})
+
+        settings, _sources, _status, _error = model.project_layers(str(root))
+        # Under "Same as General" the controls mirror the General tab, so the
+        # dialog hands back the per-user values, not the project's own pin.
         settings, pinned = model.assemble_project_save(
-            {}, {}, {"verbose_logging": False}, ["advanced_debug"]
+            settings, {}, _general_behavior_values(), "same"
         )
-        assert pinned == ["advanced_debug"]
+        assert pinned == []
+        _project_settings.save_project_settings(str(root), settings, pinned=pinned)
 
-        _project_settings.save_project_settings(
-            str(root), settings, pinned=pinned
-        )
         on_disk = _read_project(root)
+        for name in model.behavior_names():
+            assert name not in on_disk
 
-        assert "verbose_logging" not in on_disk
-        assert on_disk["advanced_debug"] is False  # pinned, written explicitly
+    def test_own_writes_every_behavior_value(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": 2})
+
+        settings, _sources, _status, _error = model.project_layers(str(root))
+        values = _behavior_values(settings)
+        values["verbose_logging"] = True
+        settings, pinned = model.assemble_project_save(settings, {}, values, "own")
+        _project_settings.save_project_settings(str(root), settings, pinned=pinned)
+
+        on_disk = _read_project(root)
+        for name in model.behavior_names():
+            assert name in on_disk
+        assert on_disk["verbose_logging"] is True
+        assert on_disk["advanced_debug"] is False
 
     def test_format_values_reach_the_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         root = tmp_path / "sync"
         root.mkdir()
         settings, pinned = model.assemble_project_save(
-            {}, {"sync_mode": "text_first"}, {}, []
+            {}, {"sync_mode": "text_first"}, {}, "same"
         )
         _project_settings.save_project_settings(str(root), settings, pinned=pinned)
 
         assert _read_project(root)["sync_mode"] == "text_first"
 
 
-class TestUserDefaultsState:
+class TestProjectDialogRoundTrip:
+    def test_same_keeps_inheriting_the_general_value(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": 2})
+        user = _user_defaults.defaults_path()
+
+        # General tab: turn advanced_debug on for every project.
+        written, error = model.save_user_defaults(
+            {
+                "advanced_debug": True,
+                "layout": "project-view",
+                "profile": "default",
+                "sync_mode": "xml_first",
+                "projections": {},
+                "xml_in_view_kinds": ["visu"],
+            },
+            user,
+        )
+        assert error == ""
+        assert written["advanced_debug"] is True
+
+        # Project tab: "Same as General" shows that value and stores nothing.
+        settings, sources, _status, _error = model.project_layers(str(root))
+        assert model.behavior_mode(settings, sources) == "same"
+        settings, pinned = model.assemble_project_save(
+            settings, {}, _general_behavior_values(), "same"
+        )
+        _project_settings.save_project_settings(str(root), settings, pinned=pinned)
+
+        reloaded, reloaded_sources, _status, _error = model.project_layers(str(root))
+        assert reloaded["advanced_debug"] is True
+        assert reloaded_sources["advanced_debug"] == "user"
+        assert model.behavior_mode(reloaded, reloaded_sources) == "same"
+
+    def test_own_survives_a_reload_as_pinned(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": 2})
+        _write_user({"advanced_debug": True}, _user_defaults.defaults_path())
+
+        settings, sources, _status, _error = model.project_layers(str(root))
+        assert model.behavior_mode(settings, sources) == "same"
+        values = _behavior_values(settings)
+        values["verbose_logging"] = True
+
+        # Switching Same -> Own keeps the shown values as the starting point.
+        settings, pinned = model.assemble_project_save(settings, {}, values, "own")
+        _project_settings.save_project_settings(str(root), settings, pinned=pinned)
+
+        reloaded, reloaded_sources, _status, _error = model.project_layers(str(root))
+        assert model.behavior_mode(reloaded, reloaded_sources) == "own"
+        assert reloaded["verbose_logging"] is True
+        assert reloaded["advanced_debug"] is True  # kept the shown value, pinned
+
+
+class TestGeneralState:
     def test_rows_show_effective_values_and_create_the_file(self, tmp_path):
         path = str(tmp_path / "config" / "cds-text-sync" / "defaults.json")
 
-        returned_path, rows, status, error = model.user_defaults_state(path)
+        returned_path, rows, status, error = model.general_state(path)
 
         assert returned_path == path
         assert os.path.exists(path)
@@ -180,7 +228,7 @@ class TestUserDefaultsState:
         path = str(tmp_path / "config" / "defaults.json")
         _write_user({"advanced_debug": True}, path)
 
-        _returned, rows, _status, _error = model.user_defaults_state(path)
+        _returned, rows, _status, _error = model.general_state(path)
         by_name = dict((row["name"], row) for row in rows)
 
         assert by_name["advanced_debug"]["overridden"] is True
@@ -191,14 +239,14 @@ class TestUserDefaultsState:
         path.parent.mkdir(parents=True)
         path.write_text("{not json", encoding="utf-8")
 
-        _returned, rows, status, error = model.user_defaults_state(str(path))
+        _returned, rows, status, error = model.general_state(str(path))
 
         assert status == _project_settings.SETTINGS_INVALID
         assert error
         by_name = dict((row["name"], row) for row in rows)
         assert by_name["advanced_debug"]["value"] is False
 
-    def test_reset_user_rows_are_the_code_defaults(self):
+    def test_reset_rows_are_the_code_defaults(self):
         values = model.reset_user_rows()
         defaults = _project_settings.default_project_settings()
 
@@ -304,42 +352,3 @@ class TestSaveUserDefaults:
 
         assert written is None
         assert "read-only" in error
-
-
-class TestProjectDialogRoundTrip:
-    def test_pinned_state_survives_a_save_and_reload(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        root = tmp_path / "sync"
-        root.mkdir()
-        _write_project(root, {"version": 2})
-        _write_user({"advanced_debug": True}, _user_defaults.defaults_path())
-
-        settings, sources, _status, _error = model.project_layers(str(root))
-        rows = dict(
-            (row["name"], row) for row in model.behavior_rows(settings, sources)
-        )
-        # advanced_debug inherits the user's True, verbose_logging is at the
-        # built-in False; the user pins verbose_logging and leaves the rest.
-        assert rows["advanced_debug"]["pinned"] is False
-        inherited = model.inherited_behavior_values()
-
-        save_settings, pinned = model.assemble_project_save(
-            settings,
-            {},
-            {
-                "advanced_debug": inherited["advanced_debug"],
-                "verbose_logging": True,
-            },
-            ["verbose_logging"],
-        )
-        _project_settings.save_project_settings(str(root), save_settings, pinned=pinned)
-
-        reloaded, reloaded_sources, _status, _error = model.project_layers(str(root))
-        reloaded_rows = dict(
-            (row["name"], row)
-            for row in model.behavior_rows(reloaded, reloaded_sources)
-        )
-        assert reloaded_rows["verbose_logging"]["pinned"] is True
-        assert reloaded["verbose_logging"] is True
-        assert reloaded_rows["advanced_debug"]["pinned"] is False
-        assert reloaded["advanced_debug"] is True  # still inherited from the user
