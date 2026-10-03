@@ -44,6 +44,11 @@ def _user_defaults():
     return _user_defaults
 
 
+def _project_profiles():
+    from cds_text_sync.engine import _project_profiles
+    return _project_profiles
+
+
 def behavior_names():
     """The behavior keys, in the engine's order."""
     return list(_user_defaults().BEHAVIOR_KEYS)
@@ -143,25 +148,17 @@ def general_state(path=None):
 
 
 def projection_enabled(projections, projection):
-    """Whether *projection* is on in a projections dict, with no default.
+    """Whether *projection* is on in a ``projections`` mapping.
 
-    The General tab starts each box from the user layer alone -- a projection
-    the code enables by default stays unchecked until the user asks for it --
-    so an untouched save cannot turn that default into an override. (The
-    project tab keeps the older rule, which does honour ``default_enabled``,
-    because the project file has always been written from the offered options.)
+    This delegates to the engine's
+    ``_project_profiles.projection_enabled``, the one rule the pipeline uses:
+    an explicit entry for the projection's id or kind wins -- a dict whose
+    ``enabled`` is false turns it off, any other truthy value turns it on --
+    and a projection no entry mentions follows the profile's
+    ``default_enabled``. Both tabs show this answer, so a box matches what a
+    new project gets.
     """
-    current = projections or {}
-    projection_id = projection.get("id")
-    kind = projection.get("kind")
-    if projection_id is not None and projection_id in current:
-        value = current.get(projection_id)
-        if isinstance(value, dict):
-            return bool(value.get("enabled", True))
-        return bool(value)
-    if kind is not None and kind in current:
-        return True
-    return False
+    return _project_profiles().projection_enabled(projection, projections)
 
 
 def general_kind_initial(original, available):
@@ -181,7 +178,12 @@ def general_kind_initial(original, available):
 
 
 def general_projection_initial(original, options):
-    """The projection ids the General tab shows checked."""
+    """The projection ids the General tab shows checked.
+
+    Each box starts at the engine's effective answer for the General value,
+    ``default_enabled`` included, so what the tab shows is what a new project
+    gets. A box the user never moves is therefore not an edit.
+    """
     checked = []
     for projection in (options or []):
         projection_id = projection.get("id") or projection.get("kind")
@@ -246,8 +248,10 @@ def general_values_to_store(originals, initials, current, options,
     the control state it was built with, *current* the same shape read back at
     save: the scalar controls plus ``kinds_checked`` and ``projections_checked``
     (the offered options whose boxes are on). *options* are the project profile's
-    projection descriptors and *projection_entries* maps every currently checked
-    projection id to the entry to store.
+    projection descriptors and *projection_entries* describes every offered
+    projection -- the entry to store, with ``enabled`` already set to the state
+    of its box -- so a projection the user switched off can be written as an
+    explicit ``{"enabled": false, ...}``.
 
     Only the controls that differ from *initials* are applied, and a list key
     keeps everything the profile cannot offer, so an untouched tab returns
@@ -268,23 +272,33 @@ def general_values_to_store(originals, initials, current, options,
 
     initial_projections = set(initials.get("projections_checked") or [])
     current_projections = set(current.get("projections_checked") or [])
-    stored_projections = originals.get("projections") or {}
     turned_on = {}
-    for projection_id, entry in (projection_entries or {}).items():
-        if projection_id not in initial_projections:
-            turned_on[projection_id] = entry
     turned_off = []
     for projection in (options or []):
         projection_id = projection.get("id") or projection.get("kind")
         if not projection_id:
             continue
-        if projection_id in current_projections or projection_id not in initial_projections:
+        if (projection_id in current_projections) == (
+                projection_id in initial_projections):
             continue
+        keys = []
         for key in (projection.get("id"), projection.get("kind")):
-            if key and key in stored_projections and key not in turned_off:
-                turned_off.append(key)
+            if key and key not in keys:
+                keys.append(key)
+        state = projection_id in current_projections
+        if state == bool(projection.get("default_enabled")):
+            # The box is back at the profile's own answer, so no explicit entry
+            # is needed: the projection follows the profile again.
+            turned_off.extend(keys)
+        else:
+            entry = dict((projection_entries or {}).get(projection_id) or {})
+            entry["enabled"] = state
+            turned_on[projection_id] = entry
+            for key in keys:
+                if key != projection_id:
+                    turned_off.append(key)
     values["projections"] = merge_general_projections(
-        stored_projections, turned_on, turned_off)
+        originals.get("projections"), turned_on, turned_off)
     return values
 
 

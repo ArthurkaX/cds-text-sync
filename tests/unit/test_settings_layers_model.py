@@ -281,18 +281,21 @@ class TestGeneralEdits:
             originals.get("projections"), options)
         return state
 
-    def _entries(self, originals, options):
-        """What the form would store for each projection box that is on."""
+    def _entries(self, options, checked):
+        """What the form hands the model: an entry per offered projection.
+
+        The dialog describes every box, checked or not, because unchecking one
+        the profile enables by default has to be written as ``enabled: false``.
+        """
         entries = {}
         for projection in options:
             projection_id = projection.get("id") or projection.get("kind")
-            if model.projection_enabled(originals.get("projections"), projection):
-                entries[projection_id] = {
-                    "enabled": True,
-                    "kind": projection.get("kind"),
-                    "format": projection.get("format"),
-                    "import_safe": False,
-                }
+            entries[projection_id] = {
+                "enabled": projection_id in checked,
+                "kind": projection.get("kind"),
+                "format": projection.get("format"),
+                "import_safe": False,
+            }
         return entries
 
     def test_untouched_tab_rewrites_the_same_file(self, tmp_path):
@@ -307,7 +310,7 @@ class TestGeneralEdits:
         initials = self._state(originals, self.PROJECTIONS, ["visu"])
         values = model.general_values_to_store(
             originals, initials, self._state(originals, self.PROJECTIONS, ["visu"]),
-            self.PROJECTIONS, self._entries(originals, self.PROJECTIONS),
+            self.PROJECTIONS, self._entries(self.PROJECTIONS, []),
         )
         written, error = model.save_user_defaults(values, str(path))
 
@@ -349,11 +352,12 @@ class TestGeneralEdits:
         _returned, rows, _status, _error = model.general_state(str(path))
         originals = dict((row["name"], row["value"]) for row in rows)
         initials = self._state(originals, options, [])
-        # The box starts unchecked because the user layer says nothing.
-        assert initials["projections_checked"] == []
+        # The box shows the profile's own answer, so an untouched tab is still
+        # not an edit: nothing is written for it.
+        assert initials["projections_checked"] == ["st_views"]
         values = model.general_values_to_store(
             originals, initials, self._state(originals, options, []), options,
-            self._entries(originals, options),
+            self._entries(options, ["st_views"]),
         )
 
         assert values["projections"] == {}
@@ -361,6 +365,71 @@ class TestGeneralEdits:
         assert error == ""
         assert path.read_bytes() == before
         assert "projections" not in written
+
+    def test_unchecking_a_default_enabled_projection_writes_enabled_false(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user({}, str(path))
+        options = [
+            {"id": "st_views", "kind": "st_views", "label": "ST views",
+             "default_enabled": True},
+        ]
+
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        initials = self._state(originals, options, [])
+        current = self._state(originals, options, [])
+        current["projections_checked"] = []  # the box the profile offers is off
+        values = model.general_values_to_store(
+            originals, initials, current, options, self._entries(options, []))
+
+        assert values["projections"]["st_views"]["enabled"] is False
+        written, error = model.save_user_defaults(values, str(path))
+        assert error == ""
+        assert written["projections"]["st_views"]["enabled"] is False
+
+    def test_rechecking_a_default_enabled_projection_removes_the_entry(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user({}, str(path))
+        options = [
+            {"id": "st_views", "kind": "st_views", "label": "ST views",
+             "default_enabled": True},
+        ]
+
+        _returned, rows, _status, _error = model.general_state(str(path))
+        originals = dict((row["name"], row["value"]) for row in rows)
+        # The layer already switched the projection off; the box opens
+        # unchecked and the user ticks it again.
+        originals["projections"] = {"st_views": {"enabled": False}}
+        initials = self._state(originals, options, [])
+        assert initials["projections_checked"] == []
+        current = self._state(originals, options, [])
+        current["projections_checked"] = ["st_views"]
+        values = model.general_values_to_store(
+            originals, initials, current, options, self._entries(options, ["st_views"]))
+
+        assert values["projections"] == {}
+
+    def test_unchecking_a_plain_projection_drops_its_entry(self):
+        options = [{"id": "visu_views", "kind": "visu", "label": "Visu"}]
+        originals = {"projections": {"visu_views": {"enabled": True}}}
+        initials = model.general_projection_initial(originals["projections"], options)
+        assert initials == ["visu_views"]
+
+        values = model.general_values_to_store(
+            originals, {"projections_checked": initials},
+            {"projections_checked": []}, options, self._entries(options, []))
+
+        # Back at the profile default (off), so no entry is left behind.
+        assert values["projections"] == {}
+
+    def test_reset_shows_the_profile_defaults_again(self):
+        assert model.reset_user_rows()["projections"] == {}
+
+        options = [
+            {"id": "st_views", "kind": "st_views", "default_enabled": True},
+            {"id": "visu_views", "kind": "visu"},
+        ]
+        assert model.general_projection_initial({}, options) == ["st_views"]
 
     def test_toggling_one_kind_changes_only_that_kind(self, tmp_path):
         path = tmp_path / "config" / "defaults.json"
@@ -375,7 +444,7 @@ class TestGeneralEdits:
         current["kinds_checked"] = ["text"]  # visu unchecked, text checked
         values = model.general_values_to_store(
             originals, initials, current, self.PROJECTIONS,
-            self._entries(originals, self.PROJECTIONS),
+            self._entries(self.PROJECTIONS, []),
         )
 
         assert values["xml_in_view_kinds"] == ["text"]
@@ -413,24 +482,32 @@ class TestGeneralEdits:
         assert edited["layout"] == "root-view"
         assert edited["advanced_debug"] is True
 
-    def test_projection_enabled_has_no_default_fallback(self):
+    def test_projection_enabled_follows_the_profile_default(self):
         default_on = {"id": "st_views", "kind": "st_views", "default_enabled": True}
-        assert model.projection_enabled({}, default_on) is False
-        assert model.projection_enabled({"st_views": {}}, default_on) is True
+        default_off = {"id": "visu_views", "kind": "visu"}
+        # Nothing said: the profile decides.
+        assert model.projection_enabled({}, default_on) is True
+        assert model.projection_enabled({}, default_off) is False
+        # An explicit entry wins over the default, whichever way it points.
+        assert model.projection_enabled({"st_views": {"enabled": False}}, default_on) is False
+        assert model.projection_enabled({"visu_views": {"enabled": True}}, default_off) is True
         assert model.projection_enabled({"st_views": False}, default_on) is False
-        # A value keyed by kind still counts.
         assert model.projection_enabled({"st_views": True}, default_on) is True
-        assert model.projection_enabled({"visu": True}, default_on) is False
+        # A value keyed by kind counts too.
+        assert model.projection_enabled({"visu": {"enabled": True}}, default_off) is True
+        assert model.projection_enabled({"st_views": True}, default_off) is False
 
-    def test_general_projection_initial_is_strict(self):
+    def test_general_projection_initial_shows_the_profile_defaults(self):
         options = [
             {"id": "st_views", "kind": "st_views", "default_enabled": True},
             {"id": "visu_views", "kind": "visu"},
         ]
-        assert model.general_projection_initial({}, options) == []
+        assert model.general_projection_initial({}, options) == ["st_views"]
         assert model.general_projection_initial({"visu_views": {}}, options) == [
-            "visu_views"
+            "st_views", "visu_views"
         ]
+        assert model.general_projection_initial(
+            {"st_views": {"enabled": False}}, options) == []
 
     def test_general_kind_initial_is_strict(self):
         assert model.general_kind_initial(["visu"], []) == []

@@ -160,28 +160,37 @@ def kind_for_type_guid(profile, type_guid):
     return None
 
 
+def projection_enabled(projection, selected):
+    """Whether one projection is on for a ``selected`` projections mapping.
+
+    This is the rule the whole pipeline uses: an explicit entry for the
+    projection's id or kind wins -- a dict whose ``enabled`` is false turns it
+    off, any other truthy value turns it on -- and a projection no entry
+    mentions follows the profile's ``default_enabled``. The settings dialog
+    shows the same answer, so a checkbox matches what a new project gets.
+    """
+    selected = _safe_dict(selected)
+    projection_id = projection.get("id")
+    kind = projection.get("kind")
+    if projection_id in selected:
+        selected_value = selected.get(projection_id)
+    elif kind in selected:
+        selected_value = selected.get(kind)
+    else:
+        return bool(projection.get("default_enabled"))
+
+    if isinstance(selected_value, dict):
+        return bool(selected_value.get("enabled", True))
+    return bool(selected_value)
+
+
 def enabled_projection_options(profile, selected):
     selected = _safe_dict(selected)
-    result = []
-    for projection in projection_options(profile):
-        projection_id = projection.get("id")
-        kind = projection.get("kind")
-        selected_value = None
-        if projection_id in selected:
-            selected_value = selected.get(projection_id)
-        elif kind in selected:
-            selected_value = selected.get(kind)
-        elif projection.get("default_enabled"):
-            selected_value = True
-
-        if isinstance(selected_value, dict):
-            if not selected_value.get("enabled", True):
-                continue
-        elif not selected_value:
-            continue
-
-        result.append(projection)
-    return result
+    return [
+        projection
+        for projection in projection_options(profile)
+        if projection_enabled(projection, selected)
+    ]
 
 
 def _projection_kinds(projection):
