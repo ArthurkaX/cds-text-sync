@@ -33,8 +33,9 @@ Two folders, and it is worth knowing which is which:
   `Project_*.py` menu scripts**, nothing else.
 
 The split is not cosmetic. CODESYS scans its ScriptDir recursively and lists
-every `.py` it finds, so installing the whole tool there would put ~120 internal
-modules into **Tools > Scripting** alongside the ten commands you actually use.
+every `.py` it finds, so installing the whole tool there would put hundreds of
+internal modules into **Tools > Scripting** alongside the `Project_*` commands
+you actually use.
 Keeping the program out of ScriptDir is what keeps that menu clean.
 
 Run `cts where` at any time to see both paths and whether the menu is in order.
