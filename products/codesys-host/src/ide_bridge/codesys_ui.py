@@ -1091,6 +1091,11 @@ class ProjectOptionsForm(Form if Form is not None else object):
         # they produced. Only a control that differs from this is an edit.
         self._general_originals = values
         self._general_initials = self._read_general_controls()
+        # "Reset to built-in" empties the user layer: from then on the base is
+        # the code defaults, not the file's effective values, so keys the tab
+        # cannot even show are dropped too.
+        self._general_reset_pending = False
+        self._general_reset_initials = None
 
         list_y = self._general_lists["list_y"]
         self._page_specs[page] = {
@@ -1558,10 +1563,18 @@ class ProjectOptionsForm(Form if Form is not None else object):
         The model keeps everything the user did not touch at the effective
         value the tab opened with, so pressing Save on an untouched tab
         rewrites the same sparse file (a first save writes just the version).
+        After "Reset to built-in" the base is the code defaults instead, so the
+        save lands on an empty user layer with only the edits made since.
         """
+        if self._general_reset_pending:
+            originals = settings_layers_model.reset_user_rows()
+            initials = self._general_reset_initials
+        else:
+            originals = self._general_originals
+            initials = self._general_initials
         return settings_layers_model.general_values_to_store(
-            self._general_originals,
-            self._general_initials,
+            originals,
+            initials,
             self._read_general_controls(),
             self._base_settings.get("_available_projections") or [],
             self._all_projection_entries(self._general_lists),
@@ -1597,6 +1610,8 @@ class ProjectOptionsForm(Form if Form is not None else object):
     def _on_reset_general(self, sender, event):
         """Fill the General controls from the built-in defaults; nothing is saved."""
         self._apply_general_values(settings_layers_model.reset_user_rows())
+        self._general_reset_pending = True
+        self._general_reset_initials = self._read_general_controls()
 
     def _apply_general_values(self, values):
         layout = values.get("layout")

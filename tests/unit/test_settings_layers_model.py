@@ -542,6 +542,86 @@ class TestGeneralEdits:
         assert model.general_kind_initial(None, ["visu"]) == []
 
 
+class TestResetToBuiltIn:
+    """"Reset to built-in" makes the save land on an empty user layer.
+
+    The tab's Reset puts the controls at the code defaults and marks the tab
+    reset, so the save starts from no overrides at all instead of from the
+    file's effective values -- which is what drops the keys the tab cannot show.
+    Cancelling never runs this: nothing is written until Save.
+    """
+
+    PROJECTIONS = [
+        {"id": "pou_st", "kind": "pou_st", "label": "POU", "format": "st",
+         "default_enabled": True},
+        {"id": "visu_views", "kind": "visu", "label": "Visu", "format": "xml",
+         "default_enabled": True},
+    ]
+    KINDS = ["visu"]
+
+    def _reset_state(self):
+        return TestGeneralEdits._state(
+            self, model.reset_user_rows(), self.PROJECTIONS, self.KINDS)
+
+    def _entries(self, checked):
+        return TestGeneralEdits._entries(self, self.PROJECTIONS, checked)
+
+    def test_reset_then_save_leaves_no_overrides(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        # One key the tab can show and two it cannot: a projection and a kind
+        # the current profile does not offer.
+        _write_user(
+            {
+                "verbose_logging": True,
+                "projections": {"legacy_views": {"enabled": True}},
+                "xml_in_view_kinds": ["visu", "alarm"],
+            },
+            str(path),
+        )
+
+        reset = model.reset_user_rows()
+        state = self._reset_state()
+        values = model.general_values_to_store(
+            reset, state, state, self.PROJECTIONS, self._entries(
+                state["projections_checked"]))
+
+        assert values["xml_in_view_kinds"] == ["visu"]
+        assert values["projections"] == {}
+        written, error = model.save_user_defaults(values, str(path))
+
+        assert error == ""
+        assert written == {"version": _user_defaults.DEFAULTS_VERSION}
+        assert _user_defaults.read_user_defaults(str(path))[0] == {}
+
+    def test_an_edit_after_reset_is_stored_on_the_empty_base(self, tmp_path):
+        path = tmp_path / "config" / "defaults.json"
+        _write_user(
+            {"verbose_logging": True, "projections": {"legacy_views": True}},
+            str(path),
+        )
+
+        reset = model.reset_user_rows()
+        initial = self._reset_state()
+        current = dict(initial)
+        current["verbose_logging"] = True
+        current["projections_checked"] = ["pou_st"]  # visu_views unchecked
+        values = model.general_values_to_store(
+            reset, initial, current, self.PROJECTIONS,
+            self._entries(["pou_st"]))
+        written, error = model.save_user_defaults(values, str(path))
+
+        assert error == ""
+        # Only the two edits survive; the unoffered legacy entry is gone.
+        assert written["verbose_logging"] is True
+        assert written["projections"] == {
+            "visu_views": {
+                "enabled": False, "kind": "visu", "format": "xml",
+                "import_safe": False,
+            }
+        }
+        assert "legacy_views" not in written
+
+
 class TestProjectTabEdits:
     """The Project tab saves the same way the General tab does.
 
