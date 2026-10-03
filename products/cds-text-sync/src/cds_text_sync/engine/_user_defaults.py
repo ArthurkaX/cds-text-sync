@@ -73,15 +73,6 @@ USER_DEFAULT_KEYS = FORMAT_KEYS + BEHAVIOR_KEYS
 # root names a directory inside one project, so it must not be inherited.
 PROJECT_ONLY_KEYS = ("view_root",)
 
-_SYNC_MODE_WORDS = (
-    "text_first",
-    "text",
-    "textfirst",
-    "xml_first",
-    "xml",
-    "xmlfirst",
-)
-
 
 def key_class(name):
     """Classify a setting name as ``"format"`` or ``"behavior"``.
@@ -160,10 +151,12 @@ def _valid_dict(value):
 
 
 def _valid_sync_mode(value):
-    text = str(value or "").strip().lower().replace("-", "_")
-    if text not in _SYNC_MODE_WORDS:
+    # ``_safe_sync_mode(value, None)`` returns None for anything it cannot
+    # recognize, which is exactly the "invalid" signal this layer needs.
+    result = _safe_sync_mode(value, None)
+    if result is None:
         return False, None
-    return True, _safe_sync_mode(value)
+    return True, result
 
 
 def _valid_kind_list(value):
