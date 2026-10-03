@@ -42,6 +42,7 @@ test_paths = [
   "../../tests/unit/test_setup_dryrun_guard.py",
   "../../tests/unit/test_st_projection_format.py",
   "../../tests/unit/test_ui.py",
+  "../../tests/unit/test_user_defaults.py",
   "../../tests/unit/test_version_consistency.py",
   "../../tests/unit/test_view_text_encoding.py",
   "../../tests/unit/test_visu_bind.py",
