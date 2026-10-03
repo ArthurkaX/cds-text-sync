@@ -152,13 +152,16 @@ def main(params=None, runtime=None):
             xml_in_view_kind_options,
         )
         from cds_text_sync.engine._project_settings import (
-            load_project_settings,
             normalize_sync_mode,
+            read_project_settings_layers,
             save_project_settings,
             settings_path,
         )
 
-        settings = load_project_settings(base_dir)
+        # Layer provenance travels with the settings so the dialog can show
+        # each behavior key as pinned or inherited, and say from where.
+        settings, sources, _status, _error = read_project_settings_layers(base_dir)
+        settings["_sources"] = sources
         export_lock = _export_lock_info(base_dir)
         settings["_view_root_locked"] = export_lock.get("locked")
         settings["_view_root_lock_path"] = export_lock.get("path")
@@ -247,6 +250,7 @@ def main(params=None, runtime=None):
             changed = True
 
         ensure_gitignore = bool(params.get("ensure_gitignore", False))
+        pinned = None
 
         if not has_explicit_params and not runtime.is_headless:
             selected = runtime.ui.show_project_options_dialog(settings)
@@ -254,6 +258,9 @@ def main(params=None, runtime=None):
                 runtime.ui.info("Project sync options cancelled.")
                 return {"status": "cancelled", "settings": settings, "path": settings_path(base_dir)}
             ensure_gitignore = bool(selected.pop("_ensure_gitignore", False))
+            # Behavior keys the dialog left editable are pins: the project file
+            # owns them. Keys left on "Inherit" write nothing and keep inheriting.
+            pinned = selected.pop("_pinned_behavior", None)
             settings.update(selected)
             if export_lock.get("locked"):
                 # Belt-and-braces: the mode can never change after initialization.
@@ -265,7 +272,7 @@ def main(params=None, runtime=None):
             gitignore_result = _ensure_gitignore_entries(base_dir)
 
         if changed or bool(params.get("create", True)):
-            settings = save_project_settings(base_dir, settings)
+            settings = save_project_settings(base_dir, settings, pinned=pinned)
             message = "Project sync settings saved:\n" + settings_path(base_dir) + "\n" + _compact_settings(settings)
             if gitignore_result:
                 if gitignore_result.get("added") or gitignore_result.get("migrated"):
