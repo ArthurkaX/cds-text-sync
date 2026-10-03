@@ -195,10 +195,11 @@ def _unknown_key(key, user_defaults):
 def _normalize_for_project(key, value, user_defaults):
     """Normalize a value for the project layer, ``(ok, normalized)``.
 
-    ``view_root`` is project-only, so the user layer has no validator for it:
-    it takes a non-empty path string.
+    ``view_root`` names a folder inside this one project, so the project layer
+    takes any non-empty path string -- relative or absolute -- even though the
+    user layer requires a relative one.
     """
-    if key in user_defaults.PROJECT_ONLY_KEYS:
+    if key == "view_root":
         if isinstance(value, str) and value.strip():
             return True, value.strip()
         return False, None
@@ -220,13 +221,6 @@ def cmd_config_set(key, value_text, layer="user", project_root=""):
     value = _parse_value(value_text)
 
     if layer == "user":
-        if key in user_defaults.PROJECT_ONLY_KEYS:
-            _print_error(
-                "{0} is project-specific; set it with `cts config set {0} ... --project`".format(
-                    key
-                )
-            )
-            sys.exit(1)
         ok, normalized = user_defaults._validate(key, value)
         if not ok:
             _print_error("Invalid value for {0}: {1}".format(key, value_text))
@@ -281,13 +275,6 @@ def cmd_config_unset(key, layer="user", project_root=""):
         _unknown_key(key, user_defaults)
 
     if layer == "user":
-        if key in user_defaults.PROJECT_ONLY_KEYS:
-            _print_error(
-                "{0} cannot be stored in the user defaults, so there is nothing to remove".format(
-                    key
-                )
-            )
-            sys.exit(1)
         path, overrides = _load_user_overrides(user_defaults)
         if key not in overrides:
             print(

@@ -3,8 +3,9 @@
 test_user_defaults.py - Unit tests for the per-user sparse defaults layer.
 
 Covers path resolution, first-access creation, sparse/validated writes,
-tolerant reads (invalid JSON, invalid values, unknown keys, view_root) and the
-future-key case where a value missing from the file keeps its code default.
+tolerant reads (invalid JSON, invalid values, unknown keys, a non-relative
+view_root) and the future-key case where a value missing from the file keeps
+its code default.
 """
 
 import io
@@ -142,11 +143,43 @@ class TestWriteSparse:
         assert data["sync_mode"] == "text_first"
         assert data["layout"] == "root-view"
 
-    def test_view_root_is_rejected(self, tmp_path):
+    def test_a_relative_view_root_is_stored(self, tmp_path):
+        path = _empty_file(tmp_path)
+        written = _user_defaults.write_user_defaults(
+            {"view_root": "views\\nested"}, path
+        )
+        assert written["view_root"] == "views/nested"
+        assert _read_json(path)["view_root"] == "views/nested"
+
+    def test_an_absolute_view_root_is_rejected(self, tmp_path):
         path = _empty_file(tmp_path)
         written = _user_defaults.write_user_defaults({"view_root": "/somewhere"}, path)
         assert "view_root" not in written
         assert _read_json(path) == {"version": 1}
+
+    def test_a_drive_letter_view_root_is_rejected(self, tmp_path):
+        path = _empty_file(tmp_path)
+        written = _user_defaults.write_user_defaults(
+            {"view_root": "C:\\elsewhere"}, path
+        )
+        assert "view_root" not in written
+
+    def test_a_parent_segment_view_root_is_rejected(self, tmp_path):
+        path = _empty_file(tmp_path)
+        written = _user_defaults.write_user_defaults(
+            {"view_root": "views/../../outside"}, path
+        )
+        assert "view_root" not in written
+
+    def test_an_empty_view_root_is_rejected(self, tmp_path):
+        path = _empty_file(tmp_path)
+        written = _user_defaults.write_user_defaults({"view_root": ""}, path)
+        assert "view_root" not in written
+
+    def test_no_view_root_is_the_default_and_is_not_written(self, tmp_path):
+        path = _empty_file(tmp_path)
+        written = _user_defaults.write_user_defaults({"view_root": None}, path)
+        assert "view_root" not in written
 
     def test_invalid_values_are_dropped(self, tmp_path):
         path = _empty_file(tmp_path)
@@ -214,13 +247,22 @@ class TestReadTolerance:
         overrides, status, error = _user_defaults.read_user_defaults(path)
         assert overrides == {}
 
-    def test_view_root_is_refused(self, tmp_path):
+    def test_a_relative_view_root_is_read(self, tmp_path):
+        path = _empty_file(tmp_path)
+        os.makedirs(os.path.dirname(path))
+        _write_json(path, {"version": 1, "view_root": "views/nested"})
+        overrides, status, error = _user_defaults.read_user_defaults(path)
+        assert status == SETTINGS_OK
+        assert overrides["view_root"] == "views/nested"
+
+    def test_an_absolute_view_root_is_refused_with_a_warning(self, tmp_path, capsys):
         path = _empty_file(tmp_path)
         os.makedirs(os.path.dirname(path))
         _write_json(path, {"version": 1, "view_root": "/somewhere"})
         overrides, status, error = _user_defaults.read_user_defaults(path)
         assert status == SETTINGS_OK
         assert "view_root" not in overrides
+        assert "view_root" in capsys.readouterr().out
 
     def test_sync_mode_alias_is_normalized(self, tmp_path):
         path = _empty_file(tmp_path)

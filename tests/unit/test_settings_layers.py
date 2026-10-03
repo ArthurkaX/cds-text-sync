@@ -164,13 +164,45 @@ class TestFormatKeys:
         assert settings["advanced_debug"] is True
         assert sources["advanced_debug"] == "user"
 
-    def test_view_root_is_never_taken_from_user_defaults(self, tmp_path):
+    def test_relative_view_root_seeds_a_missing_project_file(self, tmp_path):
+        root = tmp_path / "sync"
+        root.mkdir()
+        user = _user_path(tmp_path)
+        _write_json(user, {"version": 1, "view_root": "views"})
+
+        settings, sources, status, _error = read_project_settings_layers(
+            str(root), user_defaults_path=user
+        )
+
+        assert status == SETTINGS_MISSING
+        # The user value is relative; seeded into this project it is resolved
+        # against the project's own sync folder, not the working directory.
+        assert settings["view_root"] == os.path.normpath(
+            os.path.join(str(root), "views")
+        )
+        assert sources["view_root"] == "user"
+
+    def test_view_root_does_not_touch_an_existing_project_file(self, tmp_path):
+        root = tmp_path / "sync"
+        root.mkdir()
+        _write_project(root, {"version": SETTINGS_VERSION, "layout": "project-view"})
+        user = _user_path(tmp_path)
+        _write_json(user, {"version": 1, "view_root": "views"})
+
+        settings, sources, _status, _error = read_project_settings_layers(
+            str(root), user_defaults_path=user
+        )
+
+        assert settings["view_root"] is None
+        assert sources["view_root"] == "code"
+
+    def test_an_absolute_view_root_in_the_user_file_is_ignored(self, tmp_path):
         root = tmp_path / "sync"
         root.mkdir()
         user = _user_path(tmp_path)
         _write_raw(user, json.dumps({"version": 1, "view_root": "/elsewhere"}))
 
-        settings, sources, status, _error = read_project_settings_layers(
+        settings, sources, _status, _error = read_project_settings_layers(
             str(root), user_defaults_path=user
         )
 

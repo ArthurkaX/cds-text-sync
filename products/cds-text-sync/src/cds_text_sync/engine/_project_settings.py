@@ -13,7 +13,9 @@ BEHAVIOR keys inherit: an effective value is the project's own when the file
 pins it, otherwise the user's override, otherwise the code default. FORMAT
 keys describe what gets written to disk, so they are only ever inherited into
 a project that has no settings file yet (that is the file it would be seeded
-with); once the file exists its own value or the code default wins.
+with); once the file exists its own value or the code default wins. A
+``view_root`` in the user layer is relative to each project's sync folder, so
+seeding one resolves it against that project's own root.
 """
 from __future__ import print_function
 import json
@@ -219,17 +221,12 @@ def _merge_layers(settings, sources, values, version, overrides, module):
     FORMAT keys from the file win outright; BEHAVIOR keys win only when the
     file pins them (present under version 2, or different from the code
     default under the legacy version 1), otherwise the user override and then
-    the code default take over. ``view_root`` is project-only.
+    the code default take over.
     """
     defaults = default_project_settings()
     pinned_file = version == SETTINGS_VERSION
     for name in module.USER_DEFAULT_KEYS:
         present = name in values
-        if name in module.PROJECT_ONLY_KEYS:
-            if present:
-                settings[name] = values[name]
-                sources[name] = "project"
-            continue
         if name in module.BEHAVIOR_KEYS:
             pinned = present and (pinned_file or values[name] != defaults[name])
             if pinned:
@@ -272,10 +269,14 @@ def read_project_settings_layers(project_root, warn=True, user_defaults_path=Non
     path = settings_path(project_root)
     if not os.path.exists(path):
         for name in module.USER_DEFAULT_KEYS:
-            if name in module.PROJECT_ONLY_KEYS:
-                continue
             if name in overrides:
-                settings[name] = overrides[name]
+                value = overrides[name]
+                if name == "view_root":
+                    # The user layer holds a path relative to each project's
+                    # sync folder, so it is resolved here, exactly as a relative
+                    # value in a project file would be.
+                    value = _normalize_view_root(project_root, value)
+                settings[name] = value
                 sources[name] = "user"
         return settings, sources, SETTINGS_MISSING, ""
 

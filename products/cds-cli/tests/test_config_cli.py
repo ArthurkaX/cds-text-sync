@@ -168,15 +168,29 @@ class TestSetUser:
         assert stored["backup_retention_count"] == 25
         assert stored["profile"] == "astra"
 
-    def test_view_root_is_refused(self, capsys):
+    def test_a_relative_view_root_is_stored(self, capsys):
+        cmd_config_set("view_root", "views")
+        result = json.loads(capsys.readouterr().out)
+
+        assert result["layer"] == "user"
+        assert result["value"] == "views"
+        assert _read_user_file()["view_root"] == "views"
+
+    def test_an_absolute_view_root_is_refused(self, capsys):
         with pytest.raises(SystemExit) as exc:
             cmd_config_set("view_root", "/elsewhere")
 
         assert exc.value.code == 1
-        assert "project-specific" in capsys.readouterr().err
+        assert "Invalid value" in capsys.readouterr().err
         # refused before anything is written
         path = defaults_module.defaults_path()
         assert not os.path.exists(path) or "view_root" not in _read_user_file()
+
+    def test_a_parent_segment_view_root_is_refused(self, capsys):
+        with pytest.raises(SystemExit):
+            cmd_config_set("view_root", "../up")
+
+        assert "Invalid value" in capsys.readouterr().err
 
     def test_unknown_key_lists_the_valid_ones(self, capsys):
         with pytest.raises(SystemExit) as exc:
@@ -241,6 +255,15 @@ class TestUnset:
         cmd_config_unset("advanced_debug")
 
         assert json.loads(capsys.readouterr().out)["removed"] is False
+
+    def test_user_view_root_can_be_unset(self, capsys):
+        cmd_config_set("view_root", "views")
+        capsys.readouterr()
+
+        cmd_config_unset("view_root")
+
+        assert json.loads(capsys.readouterr().out)["removed"] is True
+        assert "view_root" not in _read_user_file()
 
     def test_project_unset_removes_the_pin(self, project_root, capsys):
         _write_project(project_root, {"version": 2, "advanced_debug": True})

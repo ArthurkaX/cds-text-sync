@@ -14,8 +14,10 @@ file at all) means "the code defaults", which is what first access generates.
 
 Keys fall into two classes. FORMAT keys change what gets written to disk, so
 they only ever SEED a new project file; BEHAVIOR keys are personal and are
-inherited at runtime. ``view_root`` is project-specific by nature and is
-therefore refused in the user layer.
+inherited at runtime. ``view_root`` is a format key like the rest, and it is
+the one that has to be relative here: it names a folder inside each project's
+own sync root, so an absolute path would send every new project to the same
+directory.
 
 IronPython 2.7 compatible: no f-strings, no annotations, no pathlib. Reads and
 writes go through ``io.open`` with an explicit UTF-8 encoding.
@@ -68,10 +70,6 @@ BEHAVIOR_KEYS = (
 )
 
 USER_DEFAULT_KEYS = FORMAT_KEYS + BEHAVIOR_KEYS
-
-# Project-specific even though ``key_class`` calls it a format key: the view
-# root names a directory inside one project, so it must not be inherited.
-PROJECT_ONLY_KEYS = ("view_root",)
 
 
 def key_class(name):
@@ -144,6 +142,37 @@ def _valid_profile(value):
     return True, text
 
 
+def _valid_view_root(value):
+    """A user-layer view root: relative, inside each project's own sync folder.
+
+    ``None`` is the code default -- no custom root -- and is accepted so that
+    turning the choice off round-trips. Anything absolute is refused: a shared
+    path in the per-user file would point every new project at one directory.
+    ``..`` is refused as well, because it would escape the project. The value
+    is normalized to forward slashes so a backslash-typed path still works.
+    """
+    if value is None:
+        return True, None
+    text = str(value).strip()
+    if not text:
+        return False, None
+    normalized = text.replace("\\", "/")
+    if normalized.startswith("/") or os.path.isabs(text):
+        return False, None
+    if len(normalized) > 1 and normalized[1] == ":":
+        return False, None
+    parts = []
+    for part in normalized.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            return False, None
+        parts.append(part)
+    if not parts:
+        return False, None
+    return True, "/".join(parts)
+
+
 def _valid_dict(value):
     if not isinstance(value, dict):
         return False, None
@@ -170,6 +199,7 @@ def _valid_kind_list(value):
 # it normalized the same way the project loader would have.
 _VALIDATORS = {
     "layout": _valid_layout,
+    "view_root": _valid_view_root,
     "profile": _valid_profile,
     "projections": _valid_dict,
     "sync_mode": _valid_sync_mode,
@@ -206,9 +236,9 @@ def read_user_defaults(path=None, warn=True):
 
     ``overrides`` is sparse: only known keys survive, each normalized by the
     same helper the project loader uses. A value that does not validate is
-    dropped with a warning; unknown keys are ignored silently;
-    ``view_root`` is refused even when present; ``version`` is metadata, not
-    an override.
+    dropped with a warning; unknown keys are ignored silently; a ``view_root``
+    that is not a relative path is refused; ``version`` is metadata, not an
+    override.
     """
     if path is None:
         path = defaults_path()
@@ -233,7 +263,7 @@ def read_user_defaults(path=None, warn=True):
         return overrides, SETTINGS_INVALID, message
 
     for name in USER_DEFAULT_KEYS:
-        if name in PROJECT_ONLY_KEYS or name not in data:
+        if name not in data:
             continue
         ok, value = _validate(name, data[name])
         if ok:
@@ -261,7 +291,7 @@ def write_user_defaults(overrides, path=None):
 
     data = {"version": DEFAULTS_VERSION}
     for name in USER_DEFAULT_KEYS:
-        if name in PROJECT_ONLY_KEYS or name not in source:
+        if name not in source:
             continue
         ok, value = _validate(name, source[name])
         if ok and value != defaults.get(name):

@@ -531,10 +531,12 @@ Settings come from three layers, from weakest to strongest:
 3. **The project file** — `cds-text-sync.json` in the sync folder. Committed and
    shared with the project.
 
-Keys are of two kinds. **Format** keys (`layout`, `profile`, `projections`,
-`sync_mode`, `xml_in_view_kinds`, and the project-only `view_root`) change what
+Keys are of two kinds. **Format** keys (`layout`, `view_root`, `profile`,
+`projections`, `sync_mode`, `xml_in_view_kinds`) change what
 gets written to disk, so they only *seed* a new project file and are never
-inherited into an existing one. **Behavior** keys (`verbose_logging`,
+inherited into an existing one. A `view_root` in the per-user file must be a
+relative path inside the sync folder — an absolute one would point every new
+project at the same directory. **Behavior** keys (`verbose_logging`,
 `advanced_debug`, `show_completion_popup`, `pre_import_backup_enabled`,
 `backup_retention_count`) are personal: unless the project file pins one, the
 per-user value applies.
@@ -544,7 +546,7 @@ per-user value applies.
 | Command | Meaning |
 | --- | --- |
 | `config show [--project-root PATH] [--json]` | Print each setting's effective value, where it came from (`code`, `user` or `project`), and its class (`format` or `behavior`), plus both files and their status. Without `--project-root` the nearest `cds-text-sync.json` from the working directory upward is used; with none found, only the code and user layers are shown. |
-| `config set KEY VALUE [--user\|--project] [--project-root PATH]` | Change one setting. `--user` (default) writes the per-user file and refuses `view_root`; `--project` requires an existing project file. `VALUE` is parsed as JSON when it looks like it (`true`, `10`, `[..]`), otherwise taken as a raw string. |
+| `config set KEY VALUE [--user\|--project] [--project-root PATH]` | Change one setting. `--user` (default) writes the per-user file; a `view_root` there must be relative and without `..`. `--project` requires an existing project file and accepts any non-empty path. `VALUE` is parsed as JSON when it looks like it (`true`, `10`, `[..]`), otherwise taken as a raw string. |
 | `config unset KEY [--user\|--project]` | Remove one setting. `--user` drops the override; `--project` removes the pin of a behavior key. Format keys are always explicit in the project file, so they cannot be unset — use `set`. |
 
 An unknown key is an error that lists the valid ones. A project file with
@@ -555,6 +557,7 @@ to the code default starts inheriting, a differing value stays pinned.
 cts config show
 cts config show --json
 cts config set advanced_debug true             # just for me
+cts config set view_root views --user          # new projects start here, relative
 cts config set sync_mode text_first --project  # in the project file
 cts config unset advanced_debug --project      # let it inherit again
 ```
