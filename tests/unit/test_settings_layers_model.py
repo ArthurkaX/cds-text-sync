@@ -22,7 +22,7 @@ if str(_BRIDGE) not in sys.path:
 
 import settings_layers_model as model
 
-from cds_text_sync.engine import _project_settings, _user_defaults
+from cds_text_sync.engine import _project_profiles, _project_settings, _user_defaults
 
 
 def _write_project(root, data):
@@ -540,6 +540,207 @@ class TestGeneralEdits:
         assert model.general_kind_initial(["visu"], []) == []
         assert model.general_kind_initial(["visu"], ["text", "visu"]) == ["visu"]
         assert model.general_kind_initial(None, ["visu"]) == []
+
+
+class TestProjectTabEdits:
+    """The Project tab saves the same way the General tab does.
+
+    Unchecking a projection has to write an explicit ``enabled: false``, or the
+    engine falls back to the profile's ``default_enabled`` and the view stays
+    exported; a box put back at the profile's own answer must not leave an
+    entry behind; and an untouched tab must not rewrite the file at all.
+    """
+
+    def _options(self):
+        return model.profile_view_options("default")[0]
+
+    def _kinds(self):
+        return model.profile_view_options("default")[1]
+
+    def _tab_state(self, settings, options, kinds):
+        return TestGeneralEdits._state(self, settings, options, kinds)
+
+    def _entries(self, options, checked):
+        return TestGeneralEdits._entries(self, options, checked)
+
+    def _file(self, **overrides):
+        data = {
+            "version": 2,
+            "layout": "project-view",
+            "profile": "default",
+            "projections": {},
+            "sync_mode": "xml_first",
+            "xml_in_view_kinds": ["visu"],
+        }
+        data.update(overrides)
+        return data
+
+    def _save(self, root, settings, view_values):
+        format_values = {
+            "layout": settings["layout"],
+            "view_root": settings.get("view_root"),
+            "profile": settings["profile"],
+            "projections": view_values["projections"],
+            "sync_mode": settings["sync_mode"],
+            "xml_in_view_kinds": view_values["xml_in_view_kinds"],
+        }
+        merged, pinned = model.assemble_project_save(
+            settings, format_values, {}, "same")
+        _project_settings.save_project_settings(str(root), merged, pinned=pinned)
+
+    def _enabled_ids(self, settings):
+        profile = _project_profiles.load_profile(settings["profile"])
+        return [
+            projection.get("id")
+            for projection in _project_profiles.enabled_projection_options(
+                profile, settings["projections"])
+        ]
+
+    def test_untouched_project_save_is_byte_identical(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        # A file the dialog itself wrote: every projection explicit at the
+        # profile's answer, plus a kind the profile does not offer.
+        options = self._options()
+        _project_settings.save_project_settings(str(root), self._file(
+            projections=dict(
+                (projection["id"], model.projection_entry(
+                    projection,
+                    bool(projection.get("default_enabled"))))
+                for projection in options),
+            xml_in_view_kinds=["visu", "custom"],
+        ))
+        before = _project_settings.settings_path(str(root))
+        with io.open(before, encoding="utf-8") as handle:
+            original = handle.read()
+
+        settings, _sources, _status, _error = model.project_layers(str(root))
+        state = self._tab_state(settings, options, self._kinds())
+        view_values = model.project_view_values(
+            settings, state, state, options,
+            self._entries(options, state["projections_checked"]))
+
+        assert view_values["xml_in_view_kinds"] == ["visu", "custom"]
+        self._save(root, settings, view_values)
+        with io.open(before, encoding="utf-8") as handle:
+            assert handle.read() == original
+
+    def test_unchecking_a_projection_disables_it_in_the_engine(
+            self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        options = self._options()
+        _write_project(root, self._file(
+            projections=dict(
+                (projection["id"], model.projection_entry(projection, True))
+                for projection in options)))
+
+        settings, _sources, _status, _error = model.project_layers(str(root))
+        initial = self._tab_state(settings, options, self._kinds())
+        assert "pou_st" in initial["projections_checked"]
+
+        current = dict(initial)
+        current["projections_checked"] = [
+            projection_id for projection_id in initial["projections_checked"]
+            if projection_id != "pou_st"
+        ]
+        view_values = model.project_view_values(
+            settings, initial, current, options,
+            self._entries(options, current["projections_checked"]))
+        self._save(root, settings, view_values)
+
+        reloaded, _sources, _status, _error = model.project_layers(str(root))
+        assert reloaded["projections"]["pou_st"]["enabled"] is False
+        assert "pou_st" not in self._enabled_ids(reloaded)
+        # Reopening shows it unchecked, so the box matches the pipeline.
+        reopened = self._tab_state(reloaded, options, self._kinds())
+        assert "pou_st" not in reopened["projections_checked"]
+        assert "gvl_st" in reopened["projections_checked"]
+
+    def test_checking_it_back_removes_the_entry(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        options = self._options()
+        _write_project(root, self._file(
+            projections={"pou_st": model.projection_entry(options[0], False)}))
+
+        settings, _sources, _status, _error = model.project_layers(str(root))
+        initial = self._tab_state(settings, options, self._kinds())
+        assert "pou_st" not in initial["projections_checked"]
+
+        current = dict(initial)
+        current["projections_checked"] = (
+            list(initial["projections_checked"]) + ["pou_st"])
+        view_values = model.project_view_values(
+            settings, initial, current, options,
+            self._entries(options, current["projections_checked"]))
+        self._save(root, settings, view_values)
+
+        reloaded, _sources, _status, _error = model.project_layers(str(root))
+        assert "pou_st" not in reloaded["projections"]
+        assert "pou_st" in self._enabled_ids(reloaded)
+
+    def test_an_unoffered_kind_survives_a_toggle(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        root = tmp_path / "sync"
+        root.mkdir()
+        options = self._options()
+        _write_project(root, self._file(xml_in_view_kinds=["visu", "custom"]))
+
+        settings, _sources, _status, _error = model.project_layers(str(root))
+        kinds = self._kinds()
+        initial = self._tab_state(settings, options, kinds)
+        assert initial["kinds_checked"] == ["visu"]
+
+        current = dict(initial)
+        current["kinds_checked"] = []  # the one offered kind is switched off
+        view_values = model.project_view_values(
+            settings, initial, current, options, self._entries(options, []))
+        self._save(root, settings, view_values)
+
+        reloaded, _sources, _status, _error = model.project_layers(str(root))
+        # The kind the profile cannot offer is still there.
+        assert reloaded["xml_in_view_kinds"] == ["custom"]
+
+
+class TestProjectProfileChange:
+    """A profile change re-reads the boxes against the new profile."""
+
+    def test_a_box_disagreeing_with_the_new_default_gets_an_entry(self):
+        boxed_off = {"id": "visu_views", "kind": "visu", "format": "xml"}
+        offered = [
+            {"id": "visu_views", "kind": "visu", "format": "xml",
+             "default_enabled": True},
+            {"id": "pou_st", "kind": "pou", "format": "st",
+             "default_enabled": True},
+        ]
+
+        values = model.project_view_values_for_profile(
+            {"projections": {"legacy": True}, "xml_in_view_kinds": ["old"]},
+            [(boxed_off, False)], offered, ["visu"], [])
+
+        # visu_views disagrees with the new default; pou_st has no box, so it
+        # keeps the new profile's answer; the unoffered entry is preserved.
+        assert values["projections"] == {
+            "legacy": True,
+            "visu_views": model.projection_entry(boxed_off, False),
+        }
+        assert values["xml_in_view_kinds"] == ["old"]
+
+    def test_boxes_matching_the_new_default_write_no_entry(self):
+        boxed = {"id": "pou_st", "kind": "pou", "format": "st"}
+        values = model.project_view_values_for_profile(
+            {"projections": {"pou_st": {"enabled": False}}},
+            [(boxed, True)],
+            [{"id": "pou_st", "kind": "pou", "format": "st",
+              "default_enabled": True}],
+            ["visu"], ["visu"])
+
+        assert values["projections"] == {}
+        assert values["xml_in_view_kinds"] == ["visu"]
 
 
 class TestUserValuesToOverrides:

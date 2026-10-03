@@ -835,12 +835,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         return projection.get("id") or projection.get("kind")
 
     def _projection_entry(self, projection, enabled=True):
-        return {
-            "enabled": enabled,
-            "kind": projection.get("kind"),
-            "format": projection.get("format"),
-            "import_safe": bool(projection.get("import_safe", False)),
-        }
+        return settings_layers_model.projection_entry(projection, enabled)
 
     def _all_projection_entries(self, state):
         """Every offered projection as ``{id: entry}``, whatever its box says.
@@ -859,20 +854,6 @@ class ProjectOptionsForm(Form if Form is not None else object):
                 entries[projection_id] = self._projection_entry(
                     projection, bool(box.GetItemChecked(position)))
         return entries
-
-    def _selected_projections(self, state):
-        """The checked projections as the ``{id: entry}`` mapping to store."""
-        if not state:
-            return {}
-        selected = {}
-        box = state["projection_box"]
-        for position, projection in enumerate(state["projection_options"]):
-            if not box.GetItemChecked(position):
-                continue
-            projection_id = self._projection_id(projection)
-            if projection_id:
-                selected[projection_id] = self._projection_entry(projection)
-        return selected
 
     def _checked_projection_ids(self, state):
         if not state:
@@ -1256,6 +1237,11 @@ class ProjectOptionsForm(Form if Form is not None else object):
             self._write_behavior(
                 self._project_behavior, name, current_settings.get(name))
 
+        # What the Project tab opened with: the profile and the box state its
+        # lists were built from, so only a box the user moved is an edit.
+        self._initial_profile = current_settings.get("profile") or "default"
+        self._project_initials = self._read_project_lists()
+
         list_y = self._project_lists["list_y"]
         self._page_specs[page] = {
             "left": left,
@@ -1558,6 +1544,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
             self._general_lists)
         return state
 
+    def _read_project_lists(self):
+        """The Project tab's derived-view box state, in the model's shape."""
+        return {
+            "kinds_checked": self._selected_kinds(self._project_lists),
+            "projections_checked": self._checked_projection_ids(
+                self._project_lists),
+        }
+
     def _general_values_to_store(self):
         """Assemble the General values to write from the controls.
 
@@ -1571,6 +1565,33 @@ class ProjectOptionsForm(Form if Form is not None else object):
             self._read_general_controls(),
             self._base_settings.get("_available_projections") or [],
             self._all_projection_entries(self._general_lists),
+        )
+
+    def _project_view_values(self, profile_value):
+        """The Project tab's projections and kinds to store.
+
+        Boxes the user did not move keep what the file already carried, so an
+        untouched save is byte-identical. When the profile combo changed the
+        boxes describe the old profile, so the new profile's own options are
+        consulted instead.
+        """
+        if profile_value != self._initial_profile:
+            offered, offered_kinds = settings_layers_model.profile_view_options(
+                profile_value)
+            displayed = []
+            box = self._project_lists["projection_box"]
+            for position, projection in enumerate(
+                    self._project_lists["projection_options"]):
+                displayed.append((projection, bool(box.GetItemChecked(position))))
+            return settings_layers_model.project_view_values_for_profile(
+                self._base_settings, displayed, offered, offered_kinds,
+                self._selected_kinds(self._project_lists))
+        return settings_layers_model.project_view_values(
+            self._base_settings,
+            self._project_initials,
+            self._read_project_lists(),
+            self._project_lists["projection_options"],
+            self._all_projection_entries(self._project_lists),
         )
 
     def _on_reset_general(self, sender, event):
@@ -1624,13 +1645,15 @@ class ProjectOptionsForm(Form if Form is not None else object):
             sync_mode_value = (
                 "text_first" if self.chk_text_first.Checked else "xml_first"
             )
+        profile_value = self._selected_profile(self.cmb_profile)
+        view_values = self._project_view_values(profile_value)
         format_values = {
             "layout": layout_value,
             "view_root": view_root_value,
-            "profile": self._selected_profile(self.cmb_profile),
-            "projections": self._selected_projections(self._project_lists),
+            "profile": profile_value,
+            "projections": view_values["projections"],
             "sync_mode": sync_mode_value,
-            "xml_in_view_kinds": self._selected_kinds(self._project_lists),
+            "xml_in_view_kinds": view_values["xml_in_view_kinds"],
         }
         behavior_values = {}
         for name in settings_layers_model.behavior_names():

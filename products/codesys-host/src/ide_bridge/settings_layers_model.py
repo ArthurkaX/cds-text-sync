@@ -244,6 +244,71 @@ def merge_general_projections(original, turned_on, turned_off):
     return result
 
 
+def projection_entry(projection, enabled=True):
+    """The mapping stored for one projection.
+
+    ``enabled`` is the box state; the rest describes the projection so a reader
+    that only has the file can tell what the entry means.
+    """
+    return {
+        "enabled": bool(enabled),
+        "kind": projection.get("kind"),
+        "format": projection.get("format"),
+        "import_safe": bool(projection.get("import_safe", False)),
+    }
+
+
+def _projection_keys(projection):
+    """The keys a projection's explicit entry may sit under, id first."""
+    keys = []
+    for key in (projection.get("id"), projection.get("kind")):
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _toggled_kinds(initials, current):
+    """The kinds the boxes gained and lost since *initials*."""
+    initial = list(initials.get("kinds_checked") or [])
+    current_kinds = list(current.get("kinds_checked") or [])
+    initial_set = set(initial)
+    current_set = set(current_kinds)
+    return (
+        [kind for kind in current_kinds if kind not in initial_set],
+        [kind for kind in initial if kind not in current_set],
+    )
+
+
+def _toggled_projections(initials, current, options, projection_entries):
+    """The projection entries to add and the keys to drop, from the boxes.
+
+    A box back at the profile's own ``default_enabled`` needs no entry: the
+    projection follows the profile again, so any explicit entry is dropped.
+    """
+    initial = set(initials.get("projections_checked") or [])
+    current_checked = set(current.get("projections_checked") or [])
+    turned_on = {}
+    turned_off = []
+    for projection in (options or []):
+        projection_id = projection.get("id") or projection.get("kind")
+        if not projection_id:
+            continue
+        if (projection_id in current_checked) == (projection_id in initial):
+            continue
+        keys = _projection_keys(projection)
+        state = projection_id in current_checked
+        if state == bool(projection.get("default_enabled")):
+            turned_off.extend(keys)
+        else:
+            entry = dict((projection_entries or {}).get(projection_id) or {})
+            entry["enabled"] = state
+            turned_on[projection_id] = entry
+            for key in keys:
+                if key != projection_id:
+                    turned_off.append(key)
+    return turned_on, turned_off
+
+
 def general_values_to_store(originals, initials, current, options,
                             projection_entries):
     """Assemble the General values to write from the tab's control state.
@@ -264,46 +329,92 @@ def general_values_to_store(originals, initials, current, options,
     """
     values = merge_general_values(originals, initials, current)
 
-    initial_kinds = list(initials.get("kinds_checked") or [])
-    current_kinds = list(current.get("kinds_checked") or [])
-    initial_kind_set = set(initial_kinds)
-    current_kind_set = set(current_kinds)
+    kinds_on, kinds_off = _toggled_kinds(initials, current)
     values["xml_in_view_kinds"] = merge_general_kinds(
-        originals.get("xml_in_view_kinds"),
-        [kind for kind in current_kinds if kind not in initial_kind_set],
-        [kind for kind in initial_kinds if kind not in current_kind_set],
-    )
+        originals.get("xml_in_view_kinds"), kinds_on, kinds_off)
 
-    initial_projections = set(initials.get("projections_checked") or [])
-    current_projections = set(current.get("projections_checked") or [])
-    turned_on = {}
-    turned_off = []
+    turned_on, turned_off = _toggled_projections(
+        initials, current, options, projection_entries)
+    values["projections"] = merge_general_projections(
+        originals.get("projections"), turned_on, turned_off)
+    return values
+
+
+def project_view_values(originals, initials, current, options, projection_entries):
+    """The Project tab's lists to store when its profile did not change.
+
+    Same diff rule as the General tab, but written into the project file rather
+    than the user's: a projection the box was moved off gets an explicit
+    ``enabled: false``, one moved back to the profile's own answer has its
+    entry removed, and a projection or kind the profile does not offer keeps
+    whatever the project file already carried. An untouched tab therefore
+    returns *originals* unchanged, which is what keeps the file byte-identical.
+    """
+    kinds_on, kinds_off = _toggled_kinds(initials, current)
+    turned_on, turned_off = _toggled_projections(
+        initials, current, options, projection_entries)
+    return {
+        "xml_in_view_kinds": merge_general_kinds(
+            originals.get("xml_in_view_kinds"), kinds_on, kinds_off),
+        "projections": merge_general_projections(
+            originals.get("projections"), turned_on, turned_off),
+    }
+
+
+def project_view_values_for_profile(originals, displayed, options, kinds,
+                                    kinds_checked):
+    """The Project tab's lists to store when its profile combo changed.
+
+    The checkboxes describe the profile the tab opened with, so their state
+    cannot be diffed against the new profile's answers. The new profile's
+    projections are read instead: one with a displayed box keeps that state,
+    one without sits at the profile's ``default_enabled``, and an entry is
+    stored only where the answer differs from ``default_enabled``. Entries and
+    kinds the new profile does not offer are preserved as they are.
+    """
+    boxed = {}
+    for projection, checked in (displayed or []):
+        for key in _projection_keys(projection):
+            if key not in boxed:
+                boxed[key] = bool(checked)
+
+    offered_keys = set()
+    for projection in (options or []):
+        offered_keys.update(_projection_keys(projection))
+    projections = {}
+    for key, entry in (originals.get("projections") or {}).items():
+        if key not in offered_keys:
+            projections[key] = entry
     for projection in (options or []):
         projection_id = projection.get("id") or projection.get("kind")
         if not projection_id:
             continue
-        if (projection_id in current_projections) == (
-                projection_id in initial_projections):
-            continue
-        keys = []
-        for key in (projection.get("id"), projection.get("kind")):
-            if key and key not in keys:
-                keys.append(key)
-        state = projection_id in current_projections
-        if state == bool(projection.get("default_enabled")):
-            # The box is back at the profile's own answer, so no explicit entry
-            # is needed: the projection follows the profile again.
-            turned_off.extend(keys)
-        else:
-            entry = dict((projection_entries or {}).get(projection_id) or {})
-            entry["enabled"] = state
-            turned_on[projection_id] = entry
-            for key in keys:
-                if key != projection_id:
-                    turned_off.append(key)
-    values["projections"] = merge_general_projections(
-        originals.get("projections"), turned_on, turned_off)
-    return values
+        state = boxed.get(projection_id, bool(projection.get("default_enabled")))
+        if state != bool(projection.get("default_enabled")):
+            projections[projection_id] = projection_entry(projection, state)
+
+    offered_kinds = set(
+        str(kind).strip().lower() for kind in (kinds or []) if str(kind).strip())
+    checked = set(kinds_checked or [])
+    stored_kinds = [
+        kind for kind in (originals.get("xml_in_view_kinds") or [])
+        if str(kind).strip().lower() not in offered_kinds
+    ]
+    for kind in (kinds or []):
+        key = str(kind).strip().lower()
+        if key and key in checked and key not in stored_kinds:
+            stored_kinds.append(key)
+    return {"projections": projections, "xml_in_view_kinds": stored_kinds}
+
+
+def profile_view_options(profile_id):
+    """The projections and XML-in-view kinds a profile offers, in order."""
+    module = _project_profiles()
+    profile = module.load_profile(profile_id)
+    return (
+        module.projection_options(profile),
+        module.xml_in_view_kind_options(profile),
+    )
 
 
 def _parse_projections(value):
