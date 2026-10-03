@@ -547,9 +547,11 @@ per-user value applies.
 | --- | --- |
 | `config show [--project-root PATH] [--json]` | Print each setting's effective value, where it came from (`code`, `user` or `project`), and its class (`format` or `behavior`), plus both files and their status. Without `--project-root` the nearest `cds-text-sync.json` from the working directory upward is used; with none found, only the code and user layers are shown. |
 | `config set KEY VALUE [--user\|--project] [--project-root PATH]` | Change one setting. `--user` (default) writes the per-user file; a `view_root` there must be relative and without `..`. `--project` requires an existing project file and accepts any non-empty path. `VALUE` is parsed as JSON when it looks like it (`true`, `10`, `[..]`), otherwise taken as a raw string. |
-| `config unset KEY [--user\|--project]` | Remove one setting. `--user` drops the override; `--project` removes the pin of a behavior key. Format keys are always explicit in the project file, so they cannot be unset — use `set`. |
+| `config unset KEY [--user\|--project] [--project-root PATH]` | Remove one setting. `--user` drops the override; `--project` removes the pin of a behavior key. Format keys are always explicit in the project file, so they cannot be unset — use `set`. |
 
-An unknown key is an error that lists the valid ones. A project file with
+`show` creates the per-user file when it is missing — empty apart from its
+`version`, which reads as "no overrides". An unknown key is an error that lists
+the valid ones. A project file with
 version 1 (or no version) is migrated on the next save: a behavior value equal
 to the code default starts inheriting, a differing value stays pinned.
 
@@ -577,7 +579,7 @@ lands in `project-view/` and reaches the IDE through the normal `cts import`.
 | `visu from-svg --svg FILE ...` | Compile the sketch into a screen `.xml`. Runs lint and writes a preview on the way through. |
 | `visu to-svg --screen NAME` | Decompile an existing screen back to SVG. A dark screen comes back stamped `data-cds-scheme="dark"`, so recompiling reproduces it. |
 | `visu check --screen NAME` | Validate a *compiled* screen (bounds, member consistency, Text-IDs). |
-| `visu add / list / types / describe / create-screen` | Element-level operations on a compiled screen, without going through SVG. |
+| `visu add / list / types / describe / create-screen / capture-frame` | Element-level operations on a compiled screen, without going through SVG. `capture-frame` snapshots an existing `VisuFbFrame` as a reusable golden template. |
 
 Flags shared by the SVG commands:
 
