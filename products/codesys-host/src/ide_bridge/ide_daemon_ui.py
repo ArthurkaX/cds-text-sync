@@ -286,9 +286,11 @@ class SettingsForm(Form):
         tab.Padding = Padding(12, 12, 12, 12)
 
         lbl_info = Label()
-        lbl_info.Text = "Check operations to DENY (block):"
+        # One line above the list: a note under it fell below the page, which
+        # the 12-row list fills.
+        lbl_info.Text = "Checked = blocked (the CLI gets 'Forbidden'). Unchecked = allowed."
         lbl_info.Location = Point(12, 12)
-        lbl_info.Size = Size(400, 20)
+        lbl_info.Size = Size(420, 20)
 
         self.perm_list = CheckedListBox()
         self.perm_list.Location = Point(12, 36)
@@ -321,16 +323,8 @@ class SettingsForm(Form):
         # Store keys for later retrieval
         self._perm_keys = [k for k, _ in all_ops]
 
-        lbl_note = Label()
-        lbl_note.Text = "Unchecked = allowed. Checked = blocked (CLI gets 'Forbidden' error)."
-        lbl_note.Location = Point(12, 324)
-        lbl_note.Size = Size(420, 20)
-        lbl_note.Font = Font("Segoe UI", 8, FontStyle.Italic)
-        lbl_note.ForeColor = Color.Gray
-
         tab.Controls.Add(lbl_info)
         tab.Controls.Add(self.perm_list)
-        tab.Controls.Add(lbl_note)
 
     def _on_poll_changed(self, sender, args):
         val = self.track_poll.Value
