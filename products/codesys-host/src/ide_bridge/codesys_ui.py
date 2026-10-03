@@ -362,6 +362,31 @@ def show_toast(title, message, timeout=3000):
     print("%s: %s" % (title, message))
 
 
+def locked_hover_reason(children, point):
+    """What a locked control under *point* would say, or None.
+
+    Windows sends no mouse messages to a disabled control, so a tooltip
+    attached to one never opens; the container it sits in has to hit-test the
+    disabled children itself and speak for them. *children* is a sequence of
+    ``(rect, enabled, reason)`` where ``rect`` is ``(left, top, width,
+    height)`` in the container's client coordinates and *reason* is what that
+    control would explain, or a false value for a control with nothing to say.
+    The first disabled child that has a reason and contains the point wins; an
+    enabled child is skipped because it opens its own tooltip, and no match
+    means the caller should keep quiet. Kept pure so the rule is unit-tested
+    without WinForms.
+    """
+    x = point[0]
+    y = point[1]
+    for rect, enabled, reason in (children or []):
+        if enabled or not reason:
+            continue
+        left, top, width, height = rect
+        if left <= x < left + width and top <= y < top + height:
+            return reason
+    return None
+
+
 class ProjectOptionsForm(Form if Form is not None else object):
     """Project options in two tabs: General (per-user) and Project (per project).
 
@@ -413,6 +438,8 @@ class ProjectOptionsForm(Form if Form is not None else object):
     LOCKED_MODE_HINT = (
         "Mode is fixed at initialization. To switch between XML-first and "
         "text-first, initialize a new empty sync folder.")
+    SAME_AS_GENERAL_HINT = (
+        "Follows the General tab. Choose 'Own for this project' to edit.")
 
     def __init__(self, current_settings):
         self.Text = "cds-text-sync: Options"
@@ -431,6 +458,12 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self._base_settings = dict(current_settings)
         self._general_state = settings_layers_model.general_state()
         self._tip = ToolTip()
+        # Tooltip texts by control, plus the ones a disabled control should say
+        # instead of its own; the locked-field hover handler reads both.
+        self._tip_texts = {}
+        self._hover_reasons = {}
+        self._hover_window = None
+        self._hover_reason = None
         self.view_root_locked = bool(current_settings.get("_view_root_locked"))
         self.sync_mode_locked = bool(current_settings.get("_sync_mode_locked"))
         self.initial_layout = current_settings.get("layout") or "project-view"
@@ -500,6 +533,12 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self._layout_all()
         self._use_gdi_text()
 
+        # Only the Project tab locks anything, so only its groups need to
+        # explain a disabled control.
+        project_spec = self._page_specs.get(self.tab_project) or {}
+        self._wire_locked_hover(project_spec.get("left"))
+        self._wire_locked_hover(project_spec.get("right"))
+
     def _use_gdi_text(self):
         """Draw the dialog's text with GDI instead of GDI+.
 
@@ -561,10 +600,79 @@ class ProjectOptionsForm(Form if Form is not None else object):
         return box
 
     def _set_tip(self, control, text):
-        """Attach *text* as the control's tooltip, if tooltips are available."""
-        if self._tip is None or control is None:
+        """Attach *text* as the control's tooltip, if tooltips are available.
+
+        The text is remembered as well: a disabled control never opens its own
+        tooltip, so the group handlers below have to repeat it themselves.
+        """
+        if control is None:
+            return
+        self._tip_texts[control] = text
+        if self._tip is None:
             return
         self._tip.SetToolTip(control, text)
+
+    # -- explaining locked fields on hover --------------------------------
+
+    def _wire_locked_hover(self, group):
+        """Let *group* explain its disabled children while the mouse crosses it.
+
+        A disabled control receives no mouse messages, so tooltips set on it
+        never open. The group watches instead: over one of its disabled
+        children it shows what that child would say, and it hides again when
+        the pointer reaches a control that speaks for itself, empty space, or
+        the group's edge.
+        """
+        if group is None or self._tip is None:
+            return
+        group.MouseMove += self._on_group_mouse_move
+        group.MouseLeave += self._on_group_mouse_leave
+
+    def _hover_reason_for(self, control):
+        """The text *control* should show when it is disabled."""
+        reason = self._hover_reasons.get(control)
+        if reason:
+            return reason
+        return self._tip_texts.get(control)
+
+    def _locked_hover_children(self, group):
+        """*group*'s children as ``(rect, enabled, reason)`` in child order."""
+        children = []
+        for index in range(group.Controls.Count):
+            control = group.Controls[index]
+            bounds = control.Bounds
+            children.append((
+                (bounds.Left, bounds.Top, bounds.Width, bounds.Height),
+                bool(control.Enabled),
+                self._hover_reason_for(control),
+            ))
+        return children
+
+    def _on_group_mouse_move(self, sender, event):
+        reason = locked_hover_reason(
+            self._locked_hover_children(sender), (event.X, event.Y))
+        if reason is None:
+            self._hide_locked_hover()
+            return
+        if reason == self._hover_reason and sender is self._hover_window:
+            # Still over the same locked field: leave the tip where it is
+            # rather than reopening it at every mouse step.
+            return
+        self._hover_window = sender
+        self._hover_reason = reason
+        self._tip.Show(reason, sender, event.X + 12, event.Y + 20)
+
+    def _on_group_mouse_leave(self, sender, event):
+        self._hide_locked_hover()
+
+    def _hide_locked_hover(self):
+        if self._hover_reason is None:
+            return
+        window = self._hover_window
+        self._hover_window = None
+        self._hover_reason = None
+        if self._tip is not None and window is not None:
+            self._tip.Hide(window)
 
     def _make_layout_combo(self, value, enabled=True):
         combo = ComboBox()
@@ -1117,6 +1225,11 @@ class ProjectOptionsForm(Form if Form is not None else object):
         right.Controls.Add(self.sep_behavior)
 
         self._build_behavior_controls(right, 78, self._project_behavior, False)
+        # Greyed out under "Same as General", these describe a value the
+        # project does not own, so hover says how to take them over instead of
+        # repeating what the setting does.
+        for control in self._project_behavior.values():
+            self._hover_reasons[control] = self.SAME_AS_GENERAL_HINT
         for name in settings_layers_model.behavior_names():
             self._write_behavior(
                 self._project_behavior, name, current_settings.get(name))
