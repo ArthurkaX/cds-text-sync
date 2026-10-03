@@ -519,6 +519,46 @@ are not part of the normal edit cycle.
 Prefer `import` over `update-pou` for normal work. `update-pou` is an escape
 hatch for single-object repairs.
 
+## Settings Layers (`cts config`)
+
+Settings come from three layers, from weakest to strongest:
+
+1. **Code defaults** — what the program ships with.
+2. **Per-user defaults** — `%APPDATA%\cds-text-sync\defaults.json` on Windows,
+   `$XDG_CONFIG_HOME/cds-text-sync/defaults.json` (or `~/.config/...`)
+   elsewhere. Sparse: only the keys you changed, so a key added in a later
+   version is picked up without touching your file. Never committed.
+3. **The project file** — `cds-text-sync.json` in the sync folder. Committed and
+   shared with the project.
+
+Keys are of two kinds. **Format** keys (`layout`, `profile`, `projections`,
+`sync_mode`, `xml_in_view_kinds`, and the project-only `view_root`) change what
+gets written to disk, so they only *seed* a new project file and are never
+inherited into an existing one. **Behavior** keys (`verbose_logging`,
+`advanced_debug`, `show_completion_popup`, `pre_import_backup_enabled`,
+`backup_retention_count`) are personal: unless the project file pins one, the
+per-user value applies.
+
+`cts config` is offline — no daemon is needed.
+
+| Command | Meaning |
+| --- | --- |
+| `config show [--project-root PATH] [--json]` | Print each setting's effective value, where it came from (`code`, `user` or `project`), and its class (`format` or `behavior`), plus both files and their status. Without `--project-root` the nearest `cds-text-sync.json` from the working directory upward is used; with none found, only the code and user layers are shown. |
+| `config set KEY VALUE [--user\|--project] [--project-root PATH]` | Change one setting. `--user` (default) writes the per-user file and refuses `view_root`; `--project` requires an existing project file. `VALUE` is parsed as JSON when it looks like it (`true`, `10`, `[..]`), otherwise taken as a raw string. |
+| `config unset KEY [--user\|--project]` | Remove one setting. `--user` drops the override; `--project` removes the pin of a behavior key. Format keys are always explicit in the project file, so they cannot be unset — use `set`. |
+
+An unknown key is an error that lists the valid ones. A project file with
+version 1 (or no version) is migrated on the next save: a behavior value equal
+to the code default starts inheriting, a differing value stays pinned.
+
+```bash
+cts config show
+cts config show --json
+cts config set advanced_debug true             # just for me
+cts config set sync_mode text_first --project  # in the project file
+cts config unset advanced_debug --project      # let it inherit again
+```
+
 ## Visualization (SVG → CODESYS)
 
 `cts visu` authors HMI screens as SVG and compiles them into CODESYS
@@ -633,6 +673,7 @@ The simplified CLI maps to daemon methods as follows:
 | `verify` | `ping` + `build` (+ `cicd` with `--with-test`); offline stages need no daemon |
 | `fsm scan/show/ui` | offline — no daemon method |
 | `visu-lint` | offline — no daemon method |
+| `config show/set/unset` | offline — no daemon method |
 
 ## Timeouts
 

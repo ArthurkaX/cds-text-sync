@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Unreleased
 
+**Per-user settings and `cts config`:**
+
+- Settings are now layered: code defaults, then a sparse per-user file, then the project's `cds-text-sync.json`. The per-user file is `%APPDATA%\cds-text-sync\defaults.json` on Windows and `$XDG_CONFIG_HOME/cds-text-sync/defaults.json` (or `~/.config/...`) elsewhere; it holds only the keys you changed, so a key added in a later version keeps its new default. Format keys (layout, sync mode, profile, projections, view kinds, view root) only seed a project that has no settings file yet; behavior keys (verbose logging, advanced debug, completion popup, pre-import backup, retention) are inherited at runtime unless the project file pins them.
+- The project settings file moves to schema version 2. A version-1 file (or one without a version) is migrated on the next save: a behavior value equal to the code default stops being pinned and starts inheriting, while a differing value stays pinned. Reading never rewrites the file.
+- New offline `cts config` command. `cts config show` prints each effective setting with its source (`code`, `user` or `project`) and class (`format` or `behavior`), plus both files with their status and version; `--json` emits the same as a machine-readable object. `cts config set KEY VALUE` and `cts config unset KEY` change the per-user file by default, or the project file with `--project`; a project set of a behavior key pins it, an unset removes the pin. No daemon is required.
+
 **Reliability and internal cleanup:**
 
 - `cts project compare` works again: it calls the snapshot-compare handler, compares snapshot objects by identity instead of by XML attribute names, and `--against` is optional (the newest snapshot in `.dump` is used). The project-level `__VisualizationStyle` alias is listed under `project_alias_nodes` instead of being reported as missing from the export.

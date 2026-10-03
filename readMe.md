@@ -31,8 +31,10 @@ For each project, the important path is:
 
 That is enough for the first export/import cycle. `Project_options.py` is only
 needed for advanced settings such as sync mode, layout, profile or projection
-selection. See the [installation guide](docs/install.md) if the scripts do not
-appear under **Tools > Scripting**.
+selection; the same settings can be read and changed offline with
+`cts config show` / `cts config set`. See the
+[installation guide](docs/install.md) if the scripts do not appear under
+**Tools > Scripting**.
 
 New here? **[Onboarding: your first hour](docs/onboarding.md)** walks the same
 path with the detail this list leaves out — where the commands live in the menu,
@@ -179,6 +181,7 @@ cts import                 # project-view/ -> CODESYS
 cts build                  # build the active application
 cts analyze --workspace .  # offline check; daemon is not required
 cts verify                 # every applicable check, one verdict, one exit code
+cts config show            # effective settings and where each value came from
 ```
 
 <details>
