@@ -101,7 +101,8 @@ Details: [static analyzer](products/cds-static-analyzer/README.md).
 
 `cts verify` runs every applicable check — static analysis, SVG sketch lint,
 and (if CODESYS is open) the compiler — and returns a single verdict with a
-single exit code. It is read-only, so it is safe on a live production project.
+single exit code. The offline stages only read; the compiler stage touches IDE
+build state and `--with-test` writes to the PLC, so those two are not read-only.
 
 ```powershell
 cts --pretty verify --sync-folder C:\path\to\sync-folder
