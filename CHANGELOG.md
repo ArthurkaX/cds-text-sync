@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**Reliability and internal cleanup:**
+
+- `cts project compare` works again: it calls the snapshot-compare handler, compares snapshot objects by identity instead of by XML attribute names, and `--against` is optional (the newest snapshot in `.dump` is used). The project-level `__VisualizationStyle` alias is listed under `project_alias_nodes` instead of being reported as missing from the export.
+- Repeated exports of an unchanged project are byte-identical even across a CODESYS restart: a view file whose only difference is the object timestamp or the per-session `VisuStyleDefaultImages` temp path keeps its previous bytes.
+- Failures are no longer silently turned into normal results: an unreadable file counts as dirty, a partial project walk or half-read project refuses the patch, unparseable XML is not diffed, and visu, online-state and project-info read errors are reported with their cause.
+- A second persistent variable list is refused before CODESYS is asked to create it (the IDE dialog used to block the daemon). A reused text object is no longer reported as created, and a refused import says why.
+- The daemon config fails closed: a config that cannot be read no longer drops the deny list.
+- A result the CLI never received (for example after a timeout) is kept and can be fetched with `last-result`; it is written as UTF-8, so Cyrillic names survive under IronPython.
+- Manifest paths are stored with `/` on every host and read with either separator.
+- `cts docs --output` no longer collides with the global option; the analyzer dependency pins a version that exists; both `cts` script declarations point at the same entry.
+- Internals: one module each for the `.st` projection format, the reverse-pipe wire format and the `cds-text-sync.json` loader; the command registry is the single source for daemon commands; engine modules load under one package name; the IronPython compatibility gate covers the whole host and flags Python 3-only imports.
+
+---
+
 ### Version 3.3.0 (2026-09-30)
 
 **Multi-instance IDE support & Protocol v2:**
