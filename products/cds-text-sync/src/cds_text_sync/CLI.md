@@ -186,8 +186,8 @@ CTS|<level>|<CODE>|<TAG>|k=v;k=v
 
 Example: `CTS|M|ALM_RAISE|P1_OVERLOAD|I=12.4;LT1=78`.
 
-`--cts` keeps only entries that carry the marker anywhere in the message and
-returns them as JSON records:
+`--cts` keeps only entries that carry the marker anywhere in the message. The
+well-formed ones are returned in `records`:
 
 ```json
 {
@@ -200,18 +200,35 @@ returns them as JSON records:
 }
 ```
 
-`--level` and `--code` filter the records and imply `--cts`. A line that
-carries the marker but does not parse is kept with a `parse_error` field
-instead of being dropped, and such records survive the filters so the count
-in `parse_errors` is the full count of bad lines. `time` comes from the
-runtime header when it parses, otherwise it is empty.
+`--level` and `--code` filter `records` and imply `--cts`. A line that carries
+the marker but does not parse is not dropped and is not mixed into
+`records`: it is reported in a separate `malformed` list, and `parse_errors`
+counts them. That count is the same whatever filters are applied, so bad
+lines can never hide behind `--level`/`--code`. The response is:
+
+```json
+{
+  "file": "codesyscontrol.log",
+  "source": "file",
+  "count": 6,
+  "parse_errors": 5,
+  "records": [
+    {"time": "…", "level": "M", "code": "ALM_RAISE", "tag": "P1_OVERLOAD",
+     "fields": {"I": "12.4", "LT1": "78"}, "raw": "…"}
+  ],
+  "malformed": [
+    {"time": "…", "raw": "… CTS|M|bad_code|T1",
+     "parse_error": "code 'bad_code' is not [A-Z0-9_]+"}
+  ]
+}
+```
+
+`time` comes from the runtime header when it parses, otherwise it is empty.
 
 Parsing needs the file text, and the daemon returns only a tail, so a plain
-`--cts` read asks the daemon to save the log into a scratch folder, reads it
-there, and deletes it again. That assumes the CLI and CODESYS share a
-filesystem (true for a local IDE and for the `cts-win` SSH wrapper). On a
-split setup, use `--output DIR --cts` to keep the file and read it, or
-`--tail N --cts`.
+`--cts` read asks the daemon to save the log into a temporary folder and reads
+the file it saved on the same machine. If that file cannot be read, use
+`--output DIR --cts` to keep it yourself, or `--tail N --cts`.
 
 ## Variables
 

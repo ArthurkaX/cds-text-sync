@@ -18,10 +18,11 @@ def register(subparsers):
             "the generated 'CTS|<level>|<CODE>|<TAG>|k=v;k=v' marker and "
             "returns them parsed as JSON records. --level and --code filter "
             "those records and imply --cts. A CTS line that does not parse is "
-            "kept with a 'parse_error' field rather than dropped.\n\n"
+            "reported separately in a 'malformed' list with a 'parse_errors' "
+            "count instead of being dropped.\n\n"
             "Parsing needs the file text, which the daemon returns only as a "
             "tail; for a plain --cts read the CLI asks the daemon to save the "
-            "log into a scratch folder, reads it there and deletes it again."
+            "log into a temporary folder and reads the file there."
         ),
         epilog=(
             "Examples:\n"
