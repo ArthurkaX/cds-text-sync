@@ -136,20 +136,24 @@ def test_parse_lines_keeps_only_cts_records():
     assert len(records) == _TOTAL
 
 
-def test_filter_keeps_malformed_records_visible():
-    records = p.parse_cts_lines(_fixture_lines())
-    # A malformed record survives every filter -- that is what parse_error is
-    # for -- while the well-formed records follow the filter.
-    kept = p.filter_records(records, code="ALM_RAISE")
-    assert [r["code"] for r in kept if not r.get("parse_error")] == [
+def test_partition_separates_malformed_and_keeps_only_their_report_fields():
+    valid, malformed = p.partition_records(p.parse_cts_lines(_fixture_lines()))
+    assert len(valid) == _TOTAL - _MALFORMED
+    assert len(malformed) == _MALFORMED
+    assert all(set(item) == {"time", "raw", "parse_error"} for item in malformed)
+    assert all("parse_error" not in record for record in valid)
+
+
+def test_filter_applies_to_valid_records_only():
+    valid, _ = p.partition_records(p.parse_cts_lines(_fixture_lines()))
+    assert [r["code"] for r in p.filter_records(valid, code="ALM_RAISE")] == [
         "ALM_RAISE",
         "ALM_RAISE",
     ]
-    assert sum(1 for r in kept if r.get("parse_error")) == _MALFORMED
-
-    assert len(p.filter_records(records, level="M")) == 4 + _MALFORMED
-    assert len(p.filter_records(records, level="V")) == 2 + _MALFORMED
-    assert len(p.filter_records(records, code="DBG_STEP")) == 1 + _MALFORMED
+    assert len(p.filter_records(valid, level="M")) == 4
+    assert len(p.filter_records(valid, level="V")) == 2
+    assert len(p.filter_records(valid, code="DBG_STEP")) == 1
+    assert len(p.filter_records(valid)) == len(valid)
 
 
 # -- handler ------------------------------------------------------------------
@@ -205,9 +209,22 @@ def test_cts_parses_the_tail(daemon, capsys):
 
     payload = _payload(capsys)
     assert payload["source"] == "tail"
-    assert payload["count"] == _TOTAL
+    assert payload["count"] == _TOTAL - _MALFORMED
     assert payload["parse_errors"] == _MALFORMED
     assert payload["records"][0]["code"] == "ALM_RAISE"
+    assert len(payload["malformed"]) == _MALFORMED
+
+
+def test_malformed_records_carry_only_time_raw_and_reason(daemon, capsys):
+    daemon.responses["plc_log"] = {"ok": True, "data": {"tail": _fixture_lines()}}
+    h.dispatch_plc_log(_args(cts=True, tail=200))
+    payload = _payload(capsys)
+
+    for item in payload["malformed"]:
+        assert set(item) == {"time", "raw", "parse_error"}
+        assert item["parse_error"]
+    # No malformed line leaks into the results.
+    assert all("parse_error" not in record for record in payload["records"])
 
 
 def test_cts_full_log_uses_a_scratch_folder(daemon, monkeypatch, tmp_path, capsys):
@@ -225,7 +242,7 @@ def test_cts_full_log_uses_a_scratch_folder(daemon, monkeypatch, tmp_path, capsy
 
     payload = _payload(capsys)
     assert payload["source"] == "file"
-    assert payload["count"] == _TOTAL
+    assert payload["count"] == _TOTAL - _MALFORMED
     assert not scratch.exists()  # the scratch folder is not left behind
 
 
@@ -236,7 +253,7 @@ def test_cts_with_output_reads_the_saved_file(daemon, capsys):
     }
     h.dispatch_plc_log(_args(cts=True, log_output="C:/Temp"))
     payload = _payload(capsys)
-    assert payload["count"] == _TOTAL
+    assert payload["count"] == _TOTAL - _MALFORMED
     assert payload["saved_to"] == _FIXTURE
 
 
@@ -244,18 +261,18 @@ def test_level_implies_cts(daemon, capsys):
     daemon.responses["plc_log"] = {"ok": True, "data": {"tail": _fixture_lines()}}
     h.dispatch_plc_log(_args(level="V", tail=200))
     payload = _payload(capsys)
-    assert payload["count"] == 2 + _MALFORMED
+    assert payload["count"] == 2
+    assert payload["parse_errors"] == _MALFORMED  # unchanged by the filter
 
 
 def test_code_implies_cts(daemon, capsys):
     daemon.responses["plc_log"] = {"ok": True, "data": {"tail": _fixture_lines()}}
     h.dispatch_plc_log(_args(code="DBG_STEP", tail=200))
     payload = _payload(capsys)
-    assert payload["count"] == 1 + _MALFORMED
-    # The one well-formed match comes first (file order); malformed records
-    # are appended because they are never filtered out.
+    assert payload["count"] == 1
     assert payload["records"][0]["code"] == "DBG_STEP"
     assert payload["parse_errors"] == _MALFORMED
+    assert len(payload["malformed"]) == _MALFORMED
 
 
 def test_cts_without_a_saved_file_errors(daemon, capsys):

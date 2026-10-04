@@ -21,7 +21,7 @@ from cds_cli._cli_io import (
     _print_rp_error,
     send_command_reverse,
 )
-from cds_cli.plc_log import filter_records, parse_cts_lines
+from cds_cli.plc_log import filter_records, parse_cts_lines, partition_records
 from cts_shared import wire
 
 DEFAULT_LOG_FILE = "codesyscontrol.log"
@@ -57,10 +57,8 @@ def dispatch_plc_log(args, output_fmt="json"):
 
     # Parsing the whole log needs its text, but the daemon only returns a tail
     # (the full file can be tens of MB). With neither --tail nor --output the
-    # CLI asks the daemon to save the log into a scratch folder, reads it
-    # there, and deletes the folder again. This assumes the CLI and the daemon
-    # share a filesystem -- true for a local CODESYS and for the SSH `cts-win`
-    # wrapper, which runs the CLI inside the same VM.
+    # CLI asks the daemon to save the log into a temporary folder, reads the
+    # file the daemon saved on the same machine, and deletes the folder again.
     scratch_dir = None
     if want_cts and not output_path and not tail_n:
         scratch_dir = tempfile.mkdtemp(prefix="cts-plc-log-")
@@ -89,13 +87,15 @@ def dispatch_plc_log(args, output_fmt="json"):
         if lines is None:
             sys.exit(1)
 
-        records = filter_records(parse_cts_lines(lines), level=level, code=code)
+        valid, malformed = partition_records(parse_cts_lines(lines))
+        valid = filter_records(valid, level=level, code=code)
         payload = {
             "file": log_file,
             "source": source,
-            "count": len(records),
-            "parse_errors": sum(1 for r in records if r.get("parse_error")),
-            "records": records,
+            "count": len(valid),
+            "parse_errors": len(malformed),
+            "records": valid,
+            "malformed": malformed,
         }
         if output_path and data.get("saved_to"):
             payload["saved_to"] = data["saved_to"]
@@ -135,9 +135,8 @@ def _cts_lines(data, tail_n, output_path):
 
     if not os.path.isfile(saved_to):
         _print_error(
-            "plc-log: cannot read {0!r} on this host. If the CLI runs on a "
-            "different machine than CODESYS, use --output DIR --cts and read "
-            "the file there, or --tail N --cts.".format(saved_to)
+            "plc-log: cannot read the saved log {0!r}; use --output DIRECTORY "
+            "or --tail N and read the file yourself.".format(saved_to)
         )
         return None, ""
 

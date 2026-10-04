@@ -15,8 +15,8 @@ A runtime log line wraps that message in the CODESYS header
 real sample ``2026-04-22T18:23:47.110Z, 0x00008005, 1, 1, 0, CTS|M|...`` -- but
 this module stays tolerant: the ``CTS|`` marker may sit anywhere in the line
 and the timestamp is taken from the leading field only when it parses. A line
-that carries the marker but does not parse is kept with ``parse_error`` set
-rather than dropped.
+that carries the marker but does not parse is reported separately (see
+:func:`partition_records`) rather than dropped or mixed into the results.
 
 Pure functions only, so the format can be unit-tested without a daemon.
 """
@@ -27,10 +27,9 @@ import re
 
 CTS_MARKER = "CTS|"
 
-# Leading timestamp of a CODESYS runtime log line. Accepts the ISO form the
-# Linux runtime writes (``2026-04-22T18:23:47.110Z``) and the space-separated
-# form older Windows runtimes wrote (``22.04.2026 18:23:47`` is not covered --
-# that is not ISO, so such a line keeps an empty ``time``).
+# Leading timestamp of a runtime log line. Accepts the ISO form
+# ``2026-04-22T18:23:47.110Z``; a timestamp that is not ISO (for example a
+# dotted date) is not recognised, so such a line keeps an empty ``time``.
 _TIMESTAMP_RE = re.compile(
     r"^\s*(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d{1,9})?\s*Z?)"
 )
@@ -121,19 +120,42 @@ def parse_cts_lines(lines):
     return records
 
 
-def filter_records(records, level="", code=""):
-    """Apply the --level / --code filters.
+def partition_records(records):
+    """Split parsed records into ``(valid, malformed)``.
 
-    A malformed record has no trustworthy level or code, so it is always kept
-    -- the whole point of ``parse_error`` is that bad lines stay visible (and
-    they are counted in the response) instead of vanishing behind a filter.
+    Malformed records are reduced to the fields worth reporting -- the
+    timestamp, the raw line, and why it failed -- because their level/code
+    could not be trusted enough to parse in the first place.
+    """
+    valid = []
+    malformed = []
+    for record in records:
+        error = record.get("parse_error")
+        if error:
+            malformed.append(
+                {
+                    "time": record.get("time", ""),
+                    "raw": record.get("raw", ""),
+                    "parse_error": error,
+                }
+            )
+        else:
+            valid.append(record)
+    return valid, malformed
+
+
+def filter_records(records, level="", code=""):
+    """Apply the --level / --code filters to valid records.
+
+    ``records`` is expected to hold only valid records (see
+    :func:`partition_records`); malformed lines are reported in their own
+    list so they never disappear behind a filter.
     """
     kept = []
     for record in records:
-        if not record.get("parse_error"):
-            if level and record.get("level") != level:
-                continue
-            if code and record.get("code") != code:
-                continue
+        if level and record.get("level") != level:
+            continue
+        if code and record.get("code") != code:
+            continue
         kept.append(record)
     return kept
