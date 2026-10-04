@@ -605,8 +605,7 @@ browser the preview SVG is still written.
 Colours are never written into a sketch. Elements carry a semantic
 `class="panel|card|h1|value|ok|warn|alarm|pipe-water|metal|…"`, defined in
 `cds_text_sync/visu/stylesheet.css` and overridable per project with a `visu.css` in the
-project-view directory. See `skills/cds-visu-svg/SKILL.md` for the authoring
-contract.
+project-view directory. See `cts guide visu-svg` for the authoring contract.
 
 ### `cts visu-lint`
 
@@ -625,6 +624,23 @@ dead when a live `NamedColor` takes precedence — generated XML must not carry
 both. Output is a single JSON object on `stdout` (`schema_version`, `ok`,
 `findings`); exit code is `0` when clean, `1` when findings exist, `2` on an
 unreadable input file.
+
+## Operating Guides (`cts guide`)
+
+The operating guides ship inside the package, so an install always carries the
+docs that match the CLI it serves:
+
+| Command | Meaning |
+| --- | --- |
+| `guide` | List the topics and print the guide directory. |
+| `guide workflow` | How to operate `cts`: state model, mutation scope, reporting. |
+| `guide commands` | Routing table: which command for which job. |
+| `guide visu-svg` | Authoring SVG sketches that compile into HMI screens. |
+| `guide visu-svg --file NAME` | A file shipped with a topic, e.g. `examples/pid-schematic.svg` or `advanced-elements.md`. |
+
+Text output prints the guide verbatim; with JSON (the default) a topic comes
+back as `{"topic", "path", "text"}` (plus `files` for the extra files). It needs
+no daemon or IDE, like `where`.
 
 ## Raw And Engine Escape Hatches
 
@@ -679,6 +695,7 @@ The simplified CLI maps to daemon methods as follows:
 | `fsm scan/show/ui` | offline — no daemon method |
 | `visu-lint` | offline — no daemon method |
 | `config show/set/unset` | offline — no daemon method |
+| `guide [TOPIC]` | offline — no daemon method |
 
 ## Timeouts
 

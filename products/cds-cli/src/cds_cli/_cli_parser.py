@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 How to use:
+  Agents: start with `cts guide` (operating rules, command reference, visu authoring).
   cts can run from any folder, but works best from the exported project folder.
   If project-view/ is available, treat the folder as the single source of truth.
   Prefer full imports: edit folder -> cts import -> cts build -> cts download/connect.

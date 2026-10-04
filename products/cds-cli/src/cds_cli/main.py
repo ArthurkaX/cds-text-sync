@@ -51,6 +51,7 @@ __all__ = [
 
 from cds_cli._cli_handlers_config import dispatch_config  # noqa: E402
 from cds_cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
+from cds_cli._cli_handlers_guide import dispatch_guide  # noqa: E402
 from cds_cli._cli_handlers_menu import dispatch_menu  # noqa: E402
 from cds_cli._cli_handlers_patch import dispatch_patch  # noqa: E402
 from cds_cli._cli_handlers_project import (  # noqa: E402
@@ -183,6 +184,9 @@ def main():
             return
 
         if dispatch_menu(args, output_fmt):
+            return
+
+        if dispatch_guide(args, output_fmt):
             return
 
         if dispatch_daemon(args, output_fmt):

@@ -2,6 +2,14 @@
 
 Use this reference as a routing guide. Confirm exact syntax with the installed `cts --help` and `cts <command> --help`.
 
+## Guides
+
+| Goal | Command |
+|---|---|
+| List the shipped operating guides | `cts guide` |
+| Read the operating rules | `cts guide workflow` |
+| Read a file shipped with a topic | `cts guide visu-svg --file examples/pid-schematic.svg` |
+
 ## Daemon and State
 
 | Goal | Command |

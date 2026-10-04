@@ -1,7 +1,7 @@
 # Advanced elements (lamp, image-switcher, combobox, alarm-banner)
 
 These are specialized native CODESYS controls. Use them only when the screen
-genuinely needs that specific control — the core elements in `SKILL.md` cover
+genuinely needs that specific control — the core elements in `cts guide visu-svg` cover
 almost every screen. They compile and decompile through `cts visu from-svg` /
 `cts visu to-svg` like the core elements, and their variables are auto-declared
 by `--gvl` with the types listed here.

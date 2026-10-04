@@ -41,6 +41,8 @@ start. These pages are the detail.
 
 - **[Profiles](../profiles/profiles.md)** — vendor/fork object kinds, projection
   availability, safety rules.
-- **[SVG authoring contract](../skills/cds-visu-svg/SKILL.md)** — layout rules,
-  the type scale, and the conventions an authoring model is expected to follow.
+- **[Operating guides](../products/cds-cli/src/cds_cli/guides/)** — shipped in the
+  package and read with `cts guide` (workflow, commands, SVG authoring contract);
+  version-matched with the installed CLI. See also
+  [the skill wrapper](../skills/cds-visu-svg/SKILL.md).
 - **[Changelog](../CHANGELOG.md)**

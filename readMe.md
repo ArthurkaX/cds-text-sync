@@ -271,6 +271,8 @@ Details: [HMI screens from SVG](docs/visu.md).
 - [Static analyzer](products/cds-static-analyzer/README.md)
 - [HMI screens from SVG](docs/visu.md)
 - [Profiles](profiles/profiles.md)
+- [Operating guides](products/cds-cli/src/cds_cli/guides/) — also shipped in the
+  package, listed with `cts guide`
 - [Releases and rollback](docs/releases.md)
 
 Issues, friction reports and feature requests are welcome in the [GitHub issue
