@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Unreleased
 
+**PLC runtime log (`cts plc-log`):**
+
+- New `cts plc-log` reads the PLC runtime log (CmpLog) over the online device: no arguments lists the log files, `--file NAME` selects one, `--tail N` prints the last N lines, and `--output PATH` saves the whole file. With `--cts` it keeps only entries carrying the generated `CTS|<level>|<CODE>|<TAG>|k=v;k=v` marker and returns them as JSON records (`time`, `level`, `code`, `tag`, `fields`, `raw`); `--level M|V` and `--code CODE` filter the records and imply `--cts`. A marker line that does not parse is kept with a `parse_error` field rather than dropped, and such records survive the filters. Parsing runs on the CLI side (the IronPython daemon stays a plain reader); because the daemon returns only a tail, a plain `--cts` read saves the log into a scratch folder, reads it there and deletes it. `plc_log` also gets its own entry in the daemon timeout profile (minimum 60 s) for full-sized logs.
+
 **Per-user settings and `cts config`:**
 
 - Settings are now layered: code defaults, then a sparse per-user file, then the project's `cds-text-sync.json`. The per-user file is `%APPDATA%\cds-text-sync\defaults.json` on Windows and `$XDG_CONFIG_HOME/cds-text-sync/defaults.json` (or `~/.config/...`) elsewhere; it holds only the keys you changed, so a key added in a later version keeps its new default. Format keys (layout, view root, sync mode, profile, projections, view kinds) only seed a project that has no settings file yet; behavior keys (verbose logging, advanced debug, completion popup, pre-import backup, retention) are inherited at runtime unless the project file pins them. A view root in the per-user file is relative to each project's sync folder.

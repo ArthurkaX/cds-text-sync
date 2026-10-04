@@ -120,6 +120,7 @@ Rules:
 | `stop` | Stop PLC application. | online | automatic |
 | `app-state` | Show application run/stop/login state. | daemon | automatic |
 | `plc-crc` | Compare PLC `Application.crc` with the local IDE build output. | online | automatic |
+| `plc-log [--file NAME] [--tail N] [--output PATH] [--cts] [--level M\|V] [--code CODE]` | Read the PLC runtime log. No arguments lists the log files; `--cts` extracts generated `CTS\|` events as JSON. | online | automatic (min 60 s) |
 
 The daemon counts `project-view/*.st` once at startup and exposes a
 per-operation timeout profile. Every daemon-backed CLI command uses that
@@ -152,6 +153,65 @@ cts plc-crc --build --timeout 120
 
 `connect` uses the normal CODESYS login flow. If the change cannot be handled
 as an online change, use `download`.
+
+## PLC Log (`cts plc-log`)
+
+`plc-log` reads the runtime log (CmpLog) over the online device. With no
+options it lists the log files on the PLC; `--file NAME` picks one (default
+`codesyscontrol.log`), `--tail N` prints the last N lines, and `--output PATH`
+saves the whole file. `--output` is this command's own file path, so use the
+global `--pretty` (before the subcommand) for human-readable output.
+
+```bash
+cts plc-log                       # list the log files on the PLC
+cts plc-log --tail 200            # last 200 raw runtime lines
+cts plc-log --cts                 # parse the whole log for CTS| events
+cts plc-log --cts --level M       # minimal (always-on) events only
+```
+
+### CTS log line format
+
+Generated PLC code logs one event per CmpLog entry as:
+
+```text
+CTS|<level>|<CODE>|<TAG>|k=v;k=v
+```
+
+- `level` — `M` (minimal, always on) or `V` (verbose, commissioning/debug).
+- `CODE` — event code, `[A-Z0-9_]+`.
+- `TAG` — equipment/signal tag; may be empty.
+- payload — optional `key=value` pairs separated by `;`. Keys match
+  `[A-Za-z0-9_.]+`; values never contain `|` or `;` (the generator guarantees
+  it), so the line is unambiguous.
+
+Example: `CTS|M|ALM_RAISE|P1_OVERLOAD|I=12.4;LT1=78`.
+
+`--cts` keeps only entries that carry the marker anywhere in the message and
+returns them as JSON records:
+
+```json
+{
+  "time": "2026-04-22T18:23:48.001Z",
+  "level": "M",
+  "code": "ALM_RAISE",
+  "tag": "P1_OVERLOAD",
+  "fields": {"I": "12.4", "LT1": "78"},
+  "raw": "2026-04-22T18:23:48.001Z, 0x00000001, 1, 1, 0, CTS|M|ALM_RAISE|P1_OVERLOAD|I=12.4;LT1=78"
+}
+```
+
+`--level` and `--code` filter the records and imply `--cts`. A line that
+carries the marker but does not parse is kept with a `parse_error` field
+instead of being dropped, and such records survive the filters so the count
+in `parse_errors` is the full count of bad lines. `time` comes from the
+runtime header when it parses, otherwise it is empty.
+
+Parsing needs the file text, and the daemon returns only a tail, so a plain
+`--cts` read asks the daemon to save the log into a scratch folder, reads it
+there, and deletes it again. That assumes the CLI and CODESYS share a
+filesystem (true for a local IDE and for the `cts-win` SSH wrapper). On a
+split setup, use `--output DIR --cts` to keep the file and read it, or
+`--tail N --cts`.
 
 ## Variables
 
