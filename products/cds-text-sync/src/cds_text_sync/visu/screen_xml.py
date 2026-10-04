@@ -23,7 +23,7 @@ from __future__ import print_function
 import re
 import xml.etree.ElementTree as ET
 
-from .xml_ns import find_named, named_text, strip_ns
+from .xml_ns import find_named, member_map, named_text, strip_ns
 
 # Screen root type guid (used for sibling discovery but defined here
 # only if/when needed; builder.py owns the _ROOT_TYPE constant).
@@ -197,43 +197,11 @@ def clear_elements(xml_text):
 
 
 def _member_map(element):
-    """Map member id -> {value, kind, color, canonical_name} for one element."""
-    out = {}
-    member_container = find_named(element, "Single", "VisualElemMemberList")
-    mlist = (
-        find_named(member_container, "List", "VisualElemMemberList")
-        if member_container is not None
-        else None
-    )
-    if mlist is None:
-        return out
-    for member in list(mlist):
-        if strip_ns(member.tag) != "Single":
-            continue
-        idc = find_named(member, "Single", "Id")
-        if idc is None or not idc.text:
-            continue
-        mid = int(idc.text.strip())
-        scalar = find_named(member, "Single", "Value")
-        if scalar is not None:
-            out[mid] = {"kind": "scalar", "value": (scalar.text or "")}
-            continue
-        listval = find_named(member, "List", "Value")
-        if listval is not None:
-            inner = list(listval)
-            if inner and find_named(inner[0], "Single", "Color") is not None:
-                color_el = find_named(inner[0], "Single", "Color")
-                cn_el = find_named(inner[0], "Single", "CanonicalName")
-                out[mid] = {
-                    "kind": "color",
-                    "color": (color_el.text or "").strip()
-                    if color_el is not None
-                    else "",
-                    "canonical_name": (cn_el.text or "") if cn_el is not None else "",
-                }
-            else:
-                out[mid] = {"kind": "list", "value": None}
-    return out
+    """Map member id -> {value, kind, color, canonical_name} for one element.
+
+    Thin alias for ``xml_ns.member_map``, the shared implementation.
+    """
+    return member_map(element)
 
 
 # ---------------------------------------------------------------------------

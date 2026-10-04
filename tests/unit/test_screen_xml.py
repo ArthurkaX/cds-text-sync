@@ -15,7 +15,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from cds_text_sync.visu import builder, screen_xml
+from cds_text_sync.visu import builder, screen_xml, svg_export, xml_ns
 
 
 @pytest.fixture
@@ -197,3 +197,103 @@ class TestFromSvgCompatibility:
         bg = screen_xml.set_screen_background(screen_xml_text, "#FF336699")
         # 0xFF336699 as signed int = -13408615
         assert 'BgUseColor" Type="int">-13408615' in bg
+
+
+# ===================================================================
+# Shared VisualElemMemberList traversal (visu.xml_ns)
+# ===================================================================
+
+
+def _member_list_element():
+    """An element with one well-formed, one colour, one flat-list member and
+    two entries the traversal must skip (not a <Single>, and no <Id>)."""
+    import xml.etree.ElementTree as ET
+
+    element = ET.Element("Single", {"Name": "Elem"})
+    container = ET.SubElement(element, "Single", {"Name": "VisualElemMemberList"})
+    mlist = ET.SubElement(container, "List", {"Name": "VisualElemMemberList"})
+
+    scalar = ET.SubElement(mlist, "Single")
+    ET.SubElement(scalar, "Single", {"Name": "Id"}).text = "1"
+    ET.SubElement(scalar, "Single", {"Name": "Value"}).text = "hello"
+
+    ET.SubElement(mlist, "List")  # wrong tag: skipped
+
+    ET.SubElement(mlist, "Single")  # no Id: skipped
+
+    colour = ET.SubElement(mlist, "Single")
+    ET.SubElement(colour, "Single", {"Name": "Id"}).text = "3"
+    value = ET.SubElement(colour, "List", {"Name": "Value"})
+    inner = ET.SubElement(value, "Single")
+    ET.SubElement(inner, "Single", {"Name": "Color"}).text = "-1"
+    ET.SubElement(inner, "Single", {"Name": "CanonicalName"}).text = (
+        "Font-Default-Color"
+    )
+
+    slots = ET.SubElement(mlist, "Single")
+    ET.SubElement(slots, "Single", {"Name": "Id"}).text = "4"
+    slot_list = ET.SubElement(slots, "List", {"Name": "Value"})
+    ET.SubElement(slot_list, "Single").text = "10"
+    ET.SubElement(slot_list, "Single").text = "20"
+    return element
+
+
+class TestMemberListTraversal:
+    def test_find_member_list_returns_the_list(self):
+        mlist = xml_ns.find_member_list(_member_list_element())
+        assert mlist is not None
+        assert mlist.tag == "List"
+
+    def test_find_member_list_none_when_absent(self):
+        import xml.etree.ElementTree as ET
+
+        assert xml_ns.find_member_list(ET.Element("Single")) is None
+
+    def test_iter_member_list_skips_unusable_entries(self):
+        pairs = list(xml_ns.iter_member_list(_member_list_element()))
+        assert [id_text for id_text, _ in pairs] == ["1", "3", "4"]
+
+    def test_iter_member_list_empty_without_a_list(self):
+        import xml.etree.ElementTree as ET
+
+        assert list(xml_ns.iter_member_list(ET.Element("Single"))) == []
+
+    def test_member_map_reads_scalar_and_colour_members(self):
+        mapped = xml_ns.member_map(_member_list_element())
+        assert mapped[1] == {"kind": "scalar", "value": "hello"}
+        assert mapped[3]["kind"] == "color"
+        assert mapped[3]["color"] == "-1"
+        assert mapped[3]["canonical_name"] == "Font-Default-Color"
+        assert mapped[4] == {"kind": "list", "value": None}
+
+    def test_member_map_empty_without_a_list(self):
+        import xml.etree.ElementTree as ET
+
+        assert xml_ns.member_map(ET.Element("Single")) == {}
+
+
+class TestMemberReadersKeepTheirContracts:
+    """``screen_xml._member_map`` and the two svg_export readers now share the
+    traversal, but keep their own answers when the list is missing."""
+
+    def test_screen_xml_member_map_returns_empty_dict(self):
+        import xml.etree.ElementTree as ET
+
+        assert screen_xml._member_map(ET.Element("Single")) == {}
+
+    def test_svg_export_member_value_returns_none(self):
+        import xml.etree.ElementTree as ET
+
+        element = _member_list_element()
+        assert svg_export._member_value(element, 1) == "hello"
+        assert svg_export._member_value(element, 3)["color"] == "-1"
+        assert svg_export._member_value(element, 99) is None
+        assert svg_export._member_value(ET.Element("Single"), 1) is None
+
+    def test_svg_export_member_list_values_returns_none(self):
+        import xml.etree.ElementTree as ET
+
+        element = _member_list_element()
+        assert svg_export._member_list_values(element, 4) == ["10", "20"]
+        assert svg_export._member_list_values(element, 1) is None
+        assert svg_export._member_list_values(ET.Element("Single"), 4) is None
