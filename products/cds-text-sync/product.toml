@@ -18,6 +18,7 @@ test_paths = [
   "../../tests/unit/test_fsm_api.py",
   "../../tests/unit/test_fsm_core.py",
   "../../tests/unit/test_fsm_extract.py",
+  "../../tests/unit/test_fsm_layout_golden.py",
   "../../tests/unit/test_fsm_payload_contract.py",
   "../../tests/unit/test_fsm_plantuml.py",
   "../../tests/unit/test_fsm_render.py",
