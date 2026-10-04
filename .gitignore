@@ -24,6 +24,8 @@ fix_specs.md
 
 # Logs and temp output
 *.log
+# ...except test fixtures that must ship: a runtime-log sample for `cts plc-log`.
+!tests/fixtures/**/*.log
 temp/
 offline-regression-*/
 

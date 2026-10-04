@@ -1,0 +1,19 @@
+;****************************************************************
+;<loggername>/var/log/codesyscontrol.log</loggername>
+;Timestamp, CmpId, ClassId, ErrorId, InfoId, InfoText
+;****************************************************************
+2026-04-22T18:23:47.110Z, 0x00008005, 1, 1, 0, SAC -> FSC
+2026-04-22T18:23:47.164Z, 0x00008005, 1, 1, 0, {"destinationReply":{"messageHeader":{"sequence":"000607"}}}
+
+2026-04-22T18:23:48.001Z, 0x00000001, 1, 1, 0, CTS|M|ALM_RAISE|P1_OVERLOAD|I=12.4;LT1=78
+2026-04-22T18:23:48.002Z, 0x00000002, 16, 1, 0, CTS|V|DBG_STEP|P1|state=RUN;step=4
+2026-04-22T18:23:48.003Z, 0x00000003, 2, 1, 0, CTS|M|ALM_CLEAR|
+2026-04-22T18:23:48.004Z, 0x00000004, 1, 1, 0, CTS|M|ALM_RAISE|P1_OVERLOAD|I=12.4;LT1=78
+2026-04-22T18:23:48.005Z, 0x00000005, 1, 1, 0, prefix CTS|M|MSG_WRAPPED|T2|x=1
+CTS|V|DBG_NO_TS|P3|k=v
+2026-04-22T18:23:48.006Z, 0x00000006, 1, 1, 0, CTS|X|BAD_LEVEL|T1
+2026-04-22T18:23:48.007Z, 0x00000007, 1, 1, 0, CTS|M|bad_code|T1
+2026-04-22T18:23:48.008Z, 0x00000008, 1, 1, 0, CTS|M|ALM_RAISE|T1|novalue
+2026-04-22T18:23:48.009Z, 0x00000009, 1, 1, 0, CTS|M|ALM_RAISE|T1|K=1|bad
+2026-04-22T18:23:48.010Z, 0x00000010, 1, 1, 0, CTS|
+2026-04-22T18:23:48.011Z, 0x00008005, 1, 1, 0, {"trackingReport":{"lic":"321"}}
