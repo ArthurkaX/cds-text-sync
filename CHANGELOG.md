@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
 - The options dialog fits a small screen: 640×470, resizable, with both tabs laid out as two columns (format on the left, behavior on the right). The derived views are checked lists that show the profile's own defaults, so every option stays reachable. A field locked after the first export (view storage, custom root, text-first mode) explains why on hover, and so does a behavior control greyed by `Same as General`.
 - The daemon settings no longer carry a "copy command for SSH" option. The daemon's Copy button has one form, `!cts --target ide-<pid> …`, and the SSH wrapper (`tools/cts-win`) is substituted on the remote side. A config that still stores `copy_command` keeps working; the key is simply ignored.
 
+**Operating guides ship with the CLI:**
+
+- New `cts guide [TOPIC]` prints the operating guides (`workflow`, `commands`, `visu-svg`), and `cts guide <topic> --file <name>` reads a file shipped with a topic such as an example sketch. The guides are package data, so a pip/irm install now carries them and they always match the installed CLI version; `cts --help` points at `cts guide` as the first step. Unknown topics exit non-zero and list the valid ones. The `skills/` SKILL.md files are now thin wrappers that tell an agent to run `cts guide`, and the reference and example files they used to duplicate moved into the package.
+
 **Reliability and internal cleanup:**
 
 - `cts project compare` works again: it calls the snapshot-compare handler, compares snapshot objects by identity instead of by XML attribute names, and `--against` is optional (the newest snapshot in `.dump` is used). The project-level `__VisualizationStyle` alias is listed under `project_alias_nodes` instead of being reported as missing from the export.

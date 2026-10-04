@@ -8,8 +8,8 @@ This page is the walkthrough: what you need before you start, the whole chain
 from an empty file to a screen open in CODESYS, and how the screen gets wired to
 PLC variables. For the exhaustive flag reference see
 [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md#visualization-svg--codesys); for the authoring
-contract an LLM is expected to follow, see
-[`skills/cds-visu-svg/SKILL.md`](../skills/cds-visu-svg/SKILL.md).
+contract an LLM is expected to follow, run `cts guide visu-svg` (it ships in the
+package, so it always matches the installed CLI version).
 
 ---
 
@@ -142,12 +142,13 @@ style your project actually uses. The same sketch, with nothing else changed,
 comes out light or dark.
 
 `cts visu preview` renders the colours the compiler emits, before anything
-reaches the IDE. Render your own; the two shipped examples are a good place
-to start:
+reaches the IDE. Render your own; the two examples shipped in the package are a
+good place to start — write one out with `cts guide visu-svg --file`:
 
 ```powershell
-cts visu preview --svg skills/cds-visu-svg/examples/pid-schematic.svg
-cts visu preview --svg skills/cds-visu-svg/examples/pid-schematic.svg --scheme dark
+cts guide visu-svg --file examples/pid-schematic.svg > pid-schematic.svg
+cts visu preview --svg pid-schematic.svg
+cts visu preview --svg pid-schematic.svg --scheme dark
 ```
 
 Three flags control the resolution, and `lint`, `preview` and `from-svg` all
@@ -257,12 +258,14 @@ other documentation to author a screen:
 cts visu --help
 ```
 
-For a better result, install [`skills/cds-visu-svg/`](../skills/cds-visu-svg/)
-as a skill. It adds what `--help` cannot fit: layout rules (the 4px grid, page
-margin, bands, type scale, touch targets, the text-baseline rule), the ordered
-workflow with the approval pause before compiling, two lint-clean example
-sketches to imitate, and the per-class text-box geometry. Point your agent at
-`SKILL.md` and describe the screen you want.
+For a better result, point your agent at the shipped guide:
+[`cts guide visu-svg`](../products/cds-cli/src/cds_cli/guides/visu-svg.md) adds
+what `--help` cannot fit: layout rules (the 4px grid, page margin, bands, type
+scale, touch targets, the text-baseline rule), the ordered workflow with the
+approval pause before compiling, two lint-clean example sketches to imitate
+(reachable with `cts guide visu-svg --file examples/…`), and the per-class
+text-box geometry. The Claude Code skill [`skills/cds-visu-svg/`](../skills/cds-visu-svg/)
+is a thin wrapper that tells the agent to read it.
 
 Two real runs, sketch on the left, the same screen after `from-svg` and an
 actual import into the CODESYS IDE on the right — no manual touch-up either
