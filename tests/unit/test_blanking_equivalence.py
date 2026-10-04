@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Differential characterisation of the three ``blank_noise`` copies.
+"""Regression tests for the shared ST blanker.
 
-``blanking`` exists three times: ``cts_shared.st.blanking`` (the IronPython
-copy the CODESYS host runs), ``cds_static_analyzer.st.blanking`` (the
-analyzer's fork) and ``cds_text_sync.engine.variable_map._blank_noise``.  This
-module pins what is equal between them today so a later consolidation cannot
-change behaviour by accident, and pins the one place they differ so the
-difference stays a known, deliberate one.
-
-Nothing here asserts that the copies *should* diverge -- a test failing after a
-consolidation means the consolidation changed an output, which is exactly the
-signal worth having.
+``blanking`` used to exist three times -- ``cts_shared.st.blanking``,
+``cds_static_analyzer.st.blanking`` and
+``cds_text_sync.engine.variable_map._blank_noise`` -- with byte-identical
+output.  They are one implementation now, reached through those import paths,
+and these tests pin the behaviour on a corpus of edge cases so the
+consolidation stays lossless.
 """
 
 import os
@@ -23,8 +19,8 @@ from cds_text_sync.engine import variable_map
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-# Edge cases the three copies must agree on: nesting, escapes, EOF endings,
-# CRLF, and every construct that switches the lexer out of plain-text mode.
+# Edge cases the lexer must handle: nesting, EOF endings, CRLF, and every
+# construct that switches it out of plain-text mode.
 _EDGE_CASES = [
     "a := 1; // line comment\nb := 2;",
     "a := 1; (* block *) b := 2;",
@@ -55,6 +51,21 @@ _EDGE_CASES = [
     "{",
 ]
 
+# (input, expected blank_noise output), captured from the unified lexer.
+_GOLDEN = [
+    ("a := 1; // c\nb := 2;", "a := 1;     \nb := 2;"),
+    ("a := 1; (* c *) b := 2;", "a := 1;         b := 2;"),
+    ("a := 1; (* open", "a := 1;        "),
+    ("x := 1; {p {n} q} y := 2;", "x := 1;           y := 2;"),
+    ("x := '// not a comment';\n", "x := '// not a comment';\n"),
+    ("a := 1; /* not handled */ b := 2;", "a := 1; /* not handled */ b := 2;"),
+    (
+        "a := 1; (* (* inner *) tail *) b := 2;",
+        "a := 1;                tail *) b := 2;",
+    ),
+    ("s := 'it$'s';\n", "s := 'it$'s';\n"),
+]
+
 
 def _repo_samples():
     """Every ``*.st`` in the repo, alongside the synthetic edge cases."""
@@ -69,31 +80,60 @@ def _repo_samples():
     return samples
 
 
-def _id_of(text):
-    return repr(text[:40])
+def test_blank_noise_is_a_single_implementation():
+    assert analyzer.blank_noise is shared.blank_noise
+    assert variable_map._blank_noise is shared.blank_noise
 
 
-def test_blank_noise_equivalent_across_copies():
-    """All three copies blank byte-for-byte identically, offsets included."""
+def test_comment_spans_is_a_single_implementation():
+    assert analyzer.comment_spans is shared.comment_spans
+
+
+def test_has_intentional_noop_comment_is_shared():
+    assert analyzer.has_intentional_noop_comment is shared.has_intentional_noop_comment
+    assert shared.has_intentional_noop_comment("// wait\n\nend_if;", 8) is True
+    assert shared.has_intentional_noop_comment("// nothing here\nend_if;", 8) is False
+
+
+def test_blanked_is_the_trim_then_blank_pipeline():
+    text = "a := 1; (* c *)"
+    assert shared.blanked(text) == shared.trim_strings(shared.blank_noise(text))
+
+
+@pytest.mark.parametrize("text,expected", _GOLDEN)
+def test_blank_noise_golden(text, expected):
+    assert shared.blank_noise(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", _GOLDEN)
+def test_blank_noise_preserves_length(text, expected):
+    assert len(expected) == len(text)
+
+
+def test_blank_noise_preserves_offsets_over_the_corpus():
     for text in _repo_samples():
-        reference = shared.blank_noise(text)
-        assert analyzer.blank_noise(text) == reference
-        assert variable_map._blank_noise(text) == reference
-        assert len(reference) == len(text)
+        blanked = shared.blank_noise(text)
+        assert len(blanked) == len(text)
+        for index, char in enumerate(text):
+            if char == "\n":
+                assert blanked[index] == "\n"
 
 
-def test_comment_spans_equivalent_across_copies():
-    for text in _repo_samples():
-        assert analyzer.comment_spans(text) == shared.comment_spans(text)
+def test_comment_spans_reconstruct_the_comments():
+    assert shared.comment_spans("a // c\nb") == [(2, 6, " c")]
+    assert shared.comment_spans("a (* c *) b") == [(2, 9, " c ")]
+    assert shared.comment_spans("x 'q' (* c *)") == [(6, 13, " c ")]
 
 
 def test_trim_strings_differ_only_on_doubled_quote_escapes():
-    """The analyzer's copy is one byte short per ``''`` escape.
+    """The two ``trim_strings`` copies still exist and differ.
 
     ``cts_shared`` writes two spaces for a doubled quote (it consumed two
     characters); the analyzer writes one.  Every other input agrees, so the
-    divergence is entirely explained by that branch.
+    divergence is entirely explained by that branch.  This pin goes away when
+    the analyzer switches to the shared copy.
     """
+    assert analyzer.trim_strings is not shared.trim_strings
     unexplained = []
     for text in _repo_samples():
         a = shared.trim_strings(text)
@@ -104,42 +144,11 @@ def test_trim_strings_differ_only_on_doubled_quote_escapes():
 
 
 def test_trim_strings_analyzer_length_bug_is_pinned():
-    """Characterise the divergence so a fix shows up as a test change."""
+    """Characterise the divergence so the fix shows up as a test change."""
     text = "s := 'a''b';\n"
-    assert len(text) == 13
     fixed = shared.trim_strings(text)
     buggy = analyzer.trim_strings(text)
     assert fixed == "s := '    ';\n"
     assert len(fixed) == len(text)
     assert buggy == "s := '   ';\n"
     assert len(buggy) == len(text) - 1
-
-
-def test_shared_only_helpers_are_absent_from_the_analyzer():
-    """``blanked`` and ``has_intentional_noop_comment`` are each copy-only.
-
-    A consolidation has to keep both names: the shared pipeline is what the
-    block scanner consumes, and the no-op predicate is what CTS0037 consumes.
-    """
-    assert shared.blanked("a := 1; (* c *)") == shared.trim_strings(
-        shared.blank_noise("a := 1; (* c *)")
-    )
-    assert not hasattr(analyzer, "blanked")
-    assert not hasattr(shared, "has_intentional_noop_comment")
-
-
-@pytest.mark.parametrize(
-    "snippet",
-    [
-        "a := 1; (* n *) b := 2;",
-        "x := 'it$\\'s';\n",
-        "a := 1; {p {n} q} b := 2;",
-        "a := 1; (* still open",
-    ],
-)
-def test_blank_noise_offsets_survive_on_edge_cases(snippet):
-    blanked = shared.blank_noise(snippet)
-    assert len(blanked) == len(snippet)
-    for index, char in enumerate(snippet):
-        if char == "\n":
-            assert blanked[index] == "\n"
