@@ -23,7 +23,7 @@ from collections import OrderedDict
 
 from . import style_roles, themes
 from .element_registry import CODESYS_TYPES
-from .xml_ns import find_named, named_text, strip_ns
+from .xml_ns import find_named, iter_member_list, named_text, strip_ns
 
 
 class SvgExportError(Exception):
@@ -49,22 +49,8 @@ def _member_value(element, member_id):
 
     Returns ``None`` when the member id is not present in the element.
     """
-    member_container = find_named(element, "Single", "VisualElemMemberList")
-    mlist = (
-        find_named(member_container, "List", "VisualElemMemberList")
-        if member_container is not None
-        else None
-    )
-    if mlist is None:
-        return None
-    for member in list(mlist):
-        if strip_ns(member.tag) != "Single":
-            continue
-        idc = find_named(member, "Single", "Id")
-        if idc is None or not idc.text:
-            continue
-        mid = int(idc.text.strip())
-        if mid != member_id:
+    for id_text, member in iter_member_list(element):
+        if int(id_text) != member_id:
             continue
 
         # Scalar (short-form) value.
@@ -259,22 +245,9 @@ def _member_list_values(element, member_id):
     -- reading the struct's outer text would hand back whitespace and flatten
     every gradient to black/white, which is exactly the repair case.
     """
-    member_container = find_named(element, "Single", "VisualElemMemberList")
-    mlist = (
-        find_named(member_container, "List", "VisualElemMemberList")
-        if member_container is not None
-        else None
-    )
-    if mlist is None:
-        return None
-    for member in list(mlist):
-        if strip_ns(member.tag) != "Single":
-            continue
-        idc = find_named(member, "Single", "Id")
-        if idc is None or not idc.text:
-            continue
+    for id_text, member in iter_member_list(element):
         try:
-            if int(idc.text.strip()) != member_id:
+            if int(id_text) != member_id:
                 continue
         except (ValueError, TypeError):
             continue
@@ -449,12 +422,47 @@ def _stroke_width_attr(border_width):
     return str(value) if value > 0 else None
 
 
-def _render_rect(x, y, w, h, element, rx=None, gradient_ref=None):
-    """Render a ``<rect>`` from a simple shape element."""
+def _shape_paint_attrs(element, gradient_ref):
+    """Fill/stroke attributes shared by the simple shape renderers.
+
+    A live gradient hides the solid fill member entirely, so the reference
+    replaces it rather than sitting beside it.
+    """
     fill = _resolve_color_value(_member_value(element, _MID_FILL))
     stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
     _sw = _member_value(element, _MID_BORDER_WIDTH)
 
+    attrs = {}
+    if gradient_ref:
+        attrs["fill"] = gradient_ref
+        if _gradient_axial(element):
+            attrs["data-cds-gradient-type"] = "axial"
+    elif fill:
+        attrs["fill"] = fill
+    if stroke:
+        attrs["stroke"] = stroke
+    stroke_width = _stroke_width_attr(_sw)
+    if stroke_width is not None:
+        attrs["stroke-width"] = stroke_width
+    return attrs
+
+
+def _box_attrs(attrs, element):
+    """Add the X/Y/W/H members of *element* to *attrs*, when present."""
+    for svg_name, member_id in (
+        ("x", _MID_X),
+        ("y", _MID_Y),
+        ("width", _MID_W),
+        ("height", _MID_H),
+    ):
+        value = _member_value(element, member_id)
+        if isinstance(value, str):
+            attrs[svg_name] = value
+    return attrs
+
+
+def _render_rect(x, y, w, h, element, rx=None, gradient_ref=None):
+    """Render a ``<rect>`` from a simple shape element."""
     attrs = {
         "x": str(x),
         "y": str(y),
@@ -463,40 +471,14 @@ def _render_rect(x, y, w, h, element, rx=None, gradient_ref=None):
     }
     if rx is not None:
         attrs["rx"] = str(rx)
-    if gradient_ref:
-        # A live gradient hides the solid fill member entirely, so the
-        # reference replaces it rather than sitting beside it.
-        attrs["fill"] = gradient_ref
-        if _gradient_axial(element):
-            attrs["data-cds-gradient-type"] = "axial"
-    elif fill:
-        attrs["fill"] = fill
-    if stroke:
-        attrs["stroke"] = stroke
-    stroke_width = _stroke_width_attr(_sw)
-    if stroke_width is not None:
-        attrs["stroke-width"] = stroke_width
+    attrs.update(_shape_paint_attrs(element, gradient_ref))
     return _svg_tag("rect", attrs)
 
 
 def _render_circle(cx, cy, r, element, gradient_ref=None):
     """Render a ``<circle>`` from a simple shape element (VISU_ST_CIRCLE)."""
-    fill = _resolve_color_value(_member_value(element, _MID_FILL))
-    stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
-    _sw = _member_value(element, _MID_BORDER_WIDTH)
-
     attrs = {"cx": str(cx), "cy": str(cy), "r": str(r)}
-    if gradient_ref:
-        attrs["fill"] = gradient_ref
-        if _gradient_axial(element):
-            attrs["data-cds-gradient-type"] = "axial"
-    elif fill:
-        attrs["fill"] = fill
-    if stroke:
-        attrs["stroke"] = stroke
-    stroke_width = _stroke_width_attr(_sw)
-    if stroke_width is not None:
-        attrs["stroke-width"] = stroke_width
+    attrs.update(_shape_paint_attrs(element, gradient_ref))
     return _svg_tag("circle", attrs)
 
 
@@ -532,8 +514,13 @@ def _render_line(element):
     return _svg_tag("line", attrs)
 
 
-def _render_label(element):
-    """Render a ``<text>`` from a VisuFbLabel element."""
+def _text_attrs(attrs, element):
+    """Add the geometry/font attributes shared by ``<text>`` elements.
+
+    Label and textfield carry the same box, caption and font members; only the
+    attribute dict they start from and the extra members they append differ.
+    Returns ``(attrs, text)`` with *text* the raw caption.
+    """
     _x = _member_value(element, _MID_X)
     _y = _member_value(element, _MID_Y)
     _w = _member_value(element, _MID_W)
@@ -552,7 +539,6 @@ def _render_label(element):
     font_name = _font_name if isinstance(_font_name, str) else None
     font_size = _font_size if isinstance(_font_size, str) else None
 
-    attrs = {}
     if x is not None:
         attrs["x"] = x
     if y is not None:
@@ -574,57 +560,23 @@ def _render_label(element):
             attrs["font-size"] = str(int(font_size))
         except (ValueError, TypeError):
             attrs["font-size"] = font_size
+    return attrs, text
 
+
+def _render_label(element):
+    """Render a ``<text>`` from a VisuFbLabel element."""
+    attrs, text = _text_attrs({}, element)
     body = _esc_xml(text) if text else ""
     return _svg_tag("text", attrs, body)
 
 
 def _render_textfield(element):
     """Render a ``<text data-cds-type="textfield">`` from a VisuFbElemTextfield."""
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
-    _text = _member_value(element, _MID_TEXT)
+    attrs, text = _text_attrs({"data-cds-type": "textfield"}, element)
     _text_var = _member_value(element, 2477733581)
-
-    fill = _resolve_color_value(_member_value(element, _MID_FONT_COLOR))
-    _font_name = _member_value(element, _MID_FONT_NAME)
-    _font_size = _member_value(element, _MID_FONT_SIZE)
-
-    x = _x if isinstance(_x, str) else None
-    y = _y if isinstance(_y, str) else None
-    w = _w if isinstance(_w, str) else None
-    h = _h if isinstance(_h, str) else None
-    text = _text if isinstance(_text, str) else ""
     text_var = _text_var if isinstance(_text_var, str) else ""
-    font_name = _font_name if isinstance(_font_name, str) else None
-    font_size = _font_size if isinstance(_font_size, str) else None
-
-    attrs = {"data-cds-type": "textfield"}
-    if x is not None:
-        attrs["x"] = x
-    if y is not None:
-        anchor, y = _text_geometry(element, y, h, font_size)
-        attrs["y"] = y
-        if anchor:
-            attrs["text-anchor"] = anchor
-    if w is not None:
-        attrs["data-width"] = w
-    if h is not None:
-        attrs["data-height"] = h
-    if fill:
-        attrs["fill"] = fill
-    if font_name:
-        attrs["font-family"] = font_name
-    if font_size:
-        try:
-            attrs["font-size"] = str(int(font_size))
-        except (ValueError, TypeError):
-            attrs["font-size"] = font_size
     if text_var:
         attrs["data-text-var"] = text_var
-
     body = _esc_xml(text) if text else ""
     return _svg_tag("text", attrs, body)
 
@@ -635,30 +587,15 @@ def _render_button(element):
     Caption goes into ``data-text``. Colors are resolved from uint literals
     (set via themeable_colors) or struct + CanonicalName.
     """
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
     _text = _member_value(element, _MID_TEXT)
 
     fill = _resolve_color_value(_member_value(element, _MID_FILL))
     stroke = _resolve_color_value(_member_value(element, _MID_FRAME))
 
-    x = _x if isinstance(_x, str) else None
-    y = _y if isinstance(_y, str) else None
-    w = _w if isinstance(_w, str) else None
-    h = _h if isinstance(_h, str) else None
     text = _text if isinstance(_text, str) else ""
 
     attrs = {"data-cds-type": "button"}
-    if x is not None:
-        attrs["x"] = x
-    if y is not None:
-        attrs["y"] = y
-    if w is not None:
-        attrs["width"] = w
-    if h is not None:
-        attrs["height"] = h
+    _box_attrs(attrs, element)
     if text:
         attrs["data-text"] = text
     if fill:
@@ -716,22 +653,11 @@ _LAMP_ROLE_COLORS = {
 
 def _render_lamp(element):
     """Render a ``<rect data-cds-type="lamp">`` from a VisuFbElemLamp element."""
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
     _role = _member_value(element, 4062784938)
     _var = _member_value(element, 743958181)
 
     attrs = {"data-cds-type": "lamp"}
-    if isinstance(_x, str):
-        attrs["x"] = _x
-    if isinstance(_y, str):
-        attrs["y"] = _y
-    if isinstance(_w, str):
-        attrs["width"] = _w
-    if isinstance(_h, str):
-        attrs["height"] = _h
+    _box_attrs(attrs, element)
 
     # Map the style role (e.g. 'Element-Lamp-Lamp1-Red') back to a colour.
     if isinstance(_role, str) and _role:
@@ -748,23 +674,12 @@ def _render_lamp(element):
 
 def _render_image_switcher(element):
     """Render a <rect data-cds-type="image-switcher"> from a VisuFbImageSwitcher element."""
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
     _image_on = _member_value(element, 427565733)
     _image_off = _member_value(element, 296037572)
     _var = _member_value(element, 743958181)
 
     attrs = {"data-cds-type": "image-switcher"}
-    if isinstance(_x, str):
-        attrs["x"] = _x
-    if isinstance(_y, str):
-        attrs["y"] = _y
-    if isinstance(_w, str):
-        attrs["width"] = _w
-    if isinstance(_h, str):
-        attrs["height"] = _h
+    _box_attrs(attrs, element)
     if isinstance(_image_on, str) and _image_on:
         attrs["data-image-on"] = _image_on
     if isinstance(_image_off, str) and _image_off:
@@ -777,22 +692,11 @@ def _render_image_switcher(element):
 
 def _render_combobox(element):
     """Render a <rect data-cds-type="combobox"> from a VisuFbComboBoxInteger element."""
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
     _items = _member_value(element, 2114174855)
     _var = _member_value(element, 397264524)
 
     attrs = {"data-cds-type": "combobox"}
-    if isinstance(_x, str):
-        attrs["x"] = _x
-    if isinstance(_y, str):
-        attrs["y"] = _y
-    if isinstance(_w, str):
-        attrs["width"] = _w
-    if isinstance(_h, str):
-        attrs["height"] = _h
+    _box_attrs(attrs, element)
     if isinstance(_items, str) and _items:
         attrs["data-items"] = _items
     if isinstance(_var, str) and _var:
@@ -803,11 +707,6 @@ def _render_combobox(element):
 
 def _render_frame(element):
     """Render a ``<rect data-cds-type="frame">`` from a VisuFbFrame element."""
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
-
     attrs = {"data-cds-type": "frame"}
 
     # Build parent map for navigating descendants.
@@ -850,38 +749,20 @@ def _render_frame(element):
                         attrs["data-param-" + param_name] = param_value
 
     # Geometry attributes (mirror _render_combobox style).
-    if isinstance(_x, str):
-        attrs["x"] = _x
-    if isinstance(_y, str):
-        attrs["y"] = _y
-    if isinstance(_w, str):
-        attrs["width"] = _w
-    if isinstance(_h, str):
-        attrs["height"] = _h
+    _box_attrs(attrs, element)
 
     return _svg_tag("rect", attrs)
 
 
 def _render_slider(element):
  """Render a <rect data-cds-type="slider"> from a VisuFbElemSlider element."""
- _x = _member_value(element, _MID_X)
- _y = _member_value(element, _MID_Y)
- _w = _member_value(element, _MID_W)
- _h = _member_value(element, _MID_H)
  _var = _member_value(element, 397264524)
  _orientation = _member_value(element, 2640826223)
  _min = _member_value(element, 1404881523)
  _max = _member_value(element, 3837067714)
 
  attrs = {"data-cds-type": "slider"}
- if isinstance(_x, str):
-  attrs["x"] = _x
- if isinstance(_y, str):
-  attrs["y"] = _y
- if isinstance(_w, str):
-  attrs["width"] = _w
- if isinstance(_h, str):
-  attrs["height"] = _h
+ _box_attrs(attrs, element)
  if isinstance(_var, str) and _var:
   attrs["data-var"] = _var
  if isinstance(_orientation, str) and _orientation:
@@ -899,20 +780,8 @@ def _render_alarm_banner(element):
 
     Geometry only -- no bound variable, no extra params.
     """
-    _x = _member_value(element, _MID_X)
-    _y = _member_value(element, _MID_Y)
-    _w = _member_value(element, _MID_W)
-    _h = _member_value(element, _MID_H)
-
     attrs = {"data-cds-type": "alarm-banner"}
-    if isinstance(_x, str):
-        attrs["x"] = _x
-    if isinstance(_y, str):
-        attrs["y"] = _y
-    if isinstance(_w, str):
-        attrs["width"] = _w
-    if isinstance(_h, str):
-        attrs["height"] = _h
+    _box_attrs(attrs, element)
 
     return _svg_tag("rect", attrs)
 
