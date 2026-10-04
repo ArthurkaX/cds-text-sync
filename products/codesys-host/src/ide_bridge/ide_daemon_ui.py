@@ -547,19 +547,34 @@ class DaemonForm(Form):
         except Exception:
             pass
 
-    def _on_copy_target_click(self, sender, args):
-        """Copy the target CLI command to the clipboard."""
-        cmd = format_copy_command(self._instance_info)
+    def _copy_to_clipboard(self, text):
+        """Put text on the clipboard; return True on success.
+
+        Another program (a clipboard manager, remote-desktop clipboard
+        sync) can hold the clipboard open for a moment, and SetText gives
+        up after about a second. Retry for longer and report a busy
+        clipboard in one line instead of a .NET stack trace.
+        """
         try:
-            Clipboard.SetText(cmd)
-            self.log_command("Copied: {0}".format(cmd))
-        except Exception as e:
+            Clipboard.SetDataObject(text, True, 30, 100)
+            return True
+        except Exception:
             MessageBox.Show(
-                "Failed to copy to clipboard:\n" + str(e),
+                "The clipboard is busy: another program is holding it open.\n"
+                "Try again in a moment.",
                 "Clipboard Error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning,
             )
+            return False
+
+    def _on_copy_target_click(self, sender, args):
+        """Copy the target CLI command to the clipboard."""
+        cmd = format_copy_command(self._instance_info)
+        if self._copy_to_clipboard(cmd):
+            self.log_command("Copied: {0}".format(cmd))
+        else:
+            self.log_command("Not copied (clipboard busy): {0}".format(cmd))
 
     def log_command(self, method):
         """Add a line to the command log."""
@@ -584,11 +599,7 @@ class DaemonForm(Form):
         text = self._get_log_text()
         if not text:
             return
-        try:
-            Clipboard.SetText(text)
-        except Exception as e:
-            MessageBox.Show("Failed to copy log:\n" + str(e), "Clipboard Error",
-                          MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        self._copy_to_clipboard(text)
 
     def _on_clear_log_click(self, sender, args):
         """Clear the dashboard command log."""
