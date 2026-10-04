@@ -57,6 +57,11 @@ def _helpers_stub():
     module = type(sys)("ide_daemon_helpers")
     module._get_sync_folder = lambda *args, **kwargs: ""
     module._build_path = lambda obj: ""
+    # ide_handlers_build's module-level imports must resolve against the stub.
+    module._require_online_app = lambda: (
+        None,
+        {"ok": False, "error": "Not connected. Call connect_to_device first."},
+    )
     return module
 
 

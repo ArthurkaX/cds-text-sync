@@ -40,6 +40,7 @@ from ide_daemon_helpers import (
     _invalidate_device_cache,
     _find_object_by_selector,
     _online_app_if_connected,
+    _require_online_app,
     _build_tree,
     _read_text_member,
 )
@@ -532,9 +533,9 @@ def _cmd_probe_oa(params):
     import System
     import System.Reflection
 
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+    oa, err = _require_online_app()
+    if err:
+        return err
 
     result = {}
 

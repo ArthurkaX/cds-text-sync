@@ -22,6 +22,7 @@ from ide_daemon_state import (
 
 from ide_daemon_helpers import (
     _get_sync_folder,
+    _require_online_app,
 )
 
 from ide_st_objects import (
@@ -516,9 +517,9 @@ def _cmd_export_csv(params):
         --values: include current values (requires connection)
         --pattern FILTER: filter by name
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+    oa, err = _require_online_app()
+    if err:
+        return err
 
     try:
         read_values = as_bool(params.get("values", ""))
@@ -732,9 +733,9 @@ def _cmd_application_tree(params):
             --flat: return flat list instead of tree
             --output PATH: write JSON to file (recommended for large projects)
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+    oa, err = _require_online_app()
+    if err:
+        return err
 
     try:
         read_values = as_bool(params.get("values", ""))

@@ -20,6 +20,8 @@ from ide_daemon_state import (
 
 from ide_daemon_helpers import (
     _online_app_if_connected,
+    _require_online_app,
+    _require_online_device,
 )
 
 # Imported for its side effect: puts shared/src on sys.path so this module can be
@@ -123,12 +125,9 @@ def _cmd_reset_plc(params):
         params: dict with optional 'kind' key ("warm", "cold", or "origin")
     """
     try:
-        oa = sys._codesys_daemon_loop.get("online_app")
-        if oa is None:
-            return {
-                "ok": False,
-                "error": "Not connected. Call connect_to_device first.",
-            }
+        oa, err = _require_online_app()
+        if err:
+            return err
         if not hasattr(oa, "reset"):
             return {"ok": False, "error": "OnlineApplication has no reset() method"}
         kind = (params.get("kind") or "warm").lower()
@@ -214,12 +213,9 @@ def _cmd_reset_plc(params):
 def _cmd_create_boot_app():
     """Create boot application on the PLC."""
     try:
-        oa = sys._codesys_daemon_loop.get("online_app")
-        if oa is None:
-            return {
-                "ok": False,
-                "error": "Not connected. Call connect_to_device first.",
-            }
+        oa, err = _require_online_app()
+        if err:
+            return err
         if not hasattr(oa, "create_boot_application"):
             return {
                 "ok": False,
@@ -243,12 +239,9 @@ def _cmd_source_download(params):
         params: dict with optional 'output' key for destination directory
     """
     try:
-        oa = sys._codesys_daemon_loop.get("online_app")
-        if oa is None:
-            return {
-                "ok": False,
-                "error": "Not connected. Call connect_to_device first.",
-            }
+        oa, err = _require_online_app()
+        if err:
+            return err
         if not hasattr(oa, "source_download"):
             return {
                 "ok": False,
@@ -273,14 +266,10 @@ def _cmd_source_download(params):
 
 def _cmd_plc_files(params):
     """List files on the PLC via get_online_device().get_file_list_of_directory()."""
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-
     try:
-        online_dev = oa.get_online_device()
-        if online_dev is None:
-            return {"ok": False, "error": "get_online_device() returned None"}
+        _oa, online_dev, err = _require_online_device()
+        if err:
+            return err
 
         diag = {}
 
@@ -410,14 +399,10 @@ def _cmd_plc_files(params):
 
 def _cmd_plc_download(params):
     """Download a file from PLC to the local filesystem."""
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-
     try:
-        online_dev = oa.get_online_device()
-        if online_dev is None:
-            return {"ok": False, "error": "get_online_device() returned None"}
+        _oa, online_dev, err = _require_online_device()
+        if err:
+            return err
 
         src = params.get("src", "")
         if not src:
@@ -472,14 +457,10 @@ def _cmd_plc_upload(params):
         --dest PATH: destination path on PLC (e.g. PlcLogic/Application/myfile.bin)
         --overwrite 0|1: overwrite if exists (default: 1)
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-
     try:
-        online_dev = oa.get_online_device()
-        if online_dev is None:
-            return {"ok": False, "error": "get_online_device() returned None"}
+        _oa, online_dev, err = _require_online_device()
+        if err:
+            return err
 
         src = params.get("src", "")
         if not src:
@@ -527,14 +508,10 @@ def _cmd_plc_log(params):
         --output PATH: save full log to file/directory
         If neither --tail nor --output: list available log files.
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-
     try:
-        online_dev = oa.get_online_device()
-        if online_dev is None:
-            return {"ok": False, "error": "get_online_device() returned None"}
+        _oa, online_dev, err = _require_online_device()
+        if err:
+            return err
 
         log_file = params.get("file", "codesyscontrol.log")
         tail_n = None
