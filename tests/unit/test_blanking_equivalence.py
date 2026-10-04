@@ -125,30 +125,18 @@ def test_comment_spans_reconstruct_the_comments():
     assert shared.comment_spans("x 'q' (* c *)") == [(6, 13, " c ")]
 
 
-def test_trim_strings_differ_only_on_doubled_quote_escapes():
-    """The two ``trim_strings`` copies still exist and differ.
-
-    ``cts_shared`` writes two spaces for a doubled quote (it consumed two
-    characters); the analyzer writes one.  Every other input agrees, so the
-    divergence is entirely explained by that branch.  This pin goes away when
-    the analyzer switches to the shared copy.
-    """
-    assert analyzer.trim_strings is not shared.trim_strings
-    unexplained = []
-    for text in _repo_samples():
-        a = shared.trim_strings(text)
-        b = analyzer.trim_strings(text)
-        if a != b and "''" not in text:
-            unexplained.append(text)
-    assert unexplained == []
+def test_trim_strings_is_a_single_implementation():
+    assert analyzer.trim_strings is shared.trim_strings
 
 
-def test_trim_strings_analyzer_length_bug_is_pinned():
-    """Characterise the divergence so the fix shows up as a test change."""
+def test_trim_strings_preserves_length_with_doubled_quote():
+    """The escaped-quote branch keeps two spaces for the two characters it
+    consumed, so the result stays as long as its input."""
     text = "s := 'a''b';\n"
-    fixed = shared.trim_strings(text)
-    buggy = analyzer.trim_strings(text)
-    assert fixed == "s := '    ';\n"
-    assert len(fixed) == len(text)
-    assert buggy == "s := '   ';\n"
-    assert len(buggy) == len(text) - 1
+    assert shared.trim_strings(text) == "s := '    ';\n"
+    assert len(shared.trim_strings(text)) == len(text)
+
+
+def test_trim_strings_preserves_length_over_the_corpus():
+    for text in _repo_samples():
+        assert len(shared.trim_strings(text)) == len(text)
