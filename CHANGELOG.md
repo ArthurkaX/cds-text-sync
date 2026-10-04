@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
 - The daemon config fails closed: a config that cannot be read no longer drops the deny list.
 - A result the CLI never received (for example after a timeout) is kept and can be fetched with `last-result`; it is written as UTF-8, so Cyrillic names survive under IronPython.
 - Manifest paths are stored with `/` on every host and read with either separator.
+- An object's view path now follows its parent's exported name instead of the casing CODESYS records in the object's own `Path` array. A device under `Plc Logic` whose children's `Path` said `PLC Logic` was exported twice — `PLC_Stabur/PLC Logic/…` next to `PLC_Stabur/Plc Logic/…` — on a case-sensitive filesystem, and the IDE then reported that it could not normalize the path casing. An existing split heals on the next export.
 - `cts docs --output` no longer collides with the global option; the analyzer dependency pins a version that exists; both `cts` script declarations point at the same entry.
 - Internals: one module each for the `.st` projection format, the reverse-pipe wire format and the `cds-text-sync.json` loader; the command registry is the single source for daemon commands; engine modules load under one package name; the IronPython compatibility gate covers the whole host and flags Python 3-only imports.
 
