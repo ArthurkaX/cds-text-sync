@@ -26,6 +26,9 @@ _TIMEOUT_RULES = {
     "read_variable": (25, 0.0, 25),
     "write_variable": (25, 0.0, 25),
     "read_log": (10, 0.0, 10),
+    # Uploads the file over the online connection, so give a full-sized log
+    # (up to its configured MaxFileSize) room to come across.
+    "plc_log": (30, 0.0, 60),
     "project_info": (10, 0.0, 10),
     "permissions": (5, 0.0, 5),
     "build": (60, 0.55, 120),

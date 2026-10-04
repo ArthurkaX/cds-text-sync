@@ -58,6 +58,8 @@ Prefer full folder import for coordinated source changes. Use object-level mutat
 | Start or stop the application | `cts start`, `cts stop` |
 | Read application state | `cts app-state` |
 | Compare PLC and local build CRC | `cts plc-crc` |
+| Read or list the PLC runtime log | `cts plc-log [--file NAME] [--tail N]` |
+| Extract generated `CTS\|` events as JSON | `cts plc-log --cts [--level M\|V] [--code CODE]` |
 
 Check the installed command help for whether download also starts the application; do not encode that behavior as version-independent.
 
