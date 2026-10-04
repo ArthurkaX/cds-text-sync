@@ -54,6 +54,7 @@ from cds_cli._cli_handlers_daemon import dispatch_daemon  # noqa: E402
 from cds_cli._cli_handlers_guide import dispatch_guide  # noqa: E402
 from cds_cli._cli_handlers_menu import dispatch_menu  # noqa: E402
 from cds_cli._cli_handlers_patch import dispatch_patch  # noqa: E402
+from cds_cli._cli_handlers_plc_log import dispatch_plc_log  # noqa: E402
 from cds_cli._cli_handlers_project import (  # noqa: E402
     cmd_discover,
     dispatch_pou,
@@ -196,6 +197,9 @@ def main():
             return
 
         if dispatch_config(args, output_fmt):
+            return
+
+        if dispatch_plc_log(args, output_fmt):
             return
 
         if args.command in ("raw", "rp"):
