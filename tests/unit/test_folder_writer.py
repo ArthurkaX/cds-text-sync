@@ -939,3 +939,145 @@ class TestLegacyBackslashDumpMirrorRemoval:
         assert removed == 1
         assert not os.path.exists(stale_mirror), "stale .dump/xml mirror file survived"
         assert os.path.exists(view_twin), "same-named file in the view root was deleted"
+
+
+class TestCaseSplitViewPaths:
+    """A child whose Path array casing differs from the parent's Name must not
+    land in a second sibling directory on a case-sensitive filesystem.
+
+    The device "PLC_Stabur" owns "Plc Logic"; CODESYS records the Application's
+    Path as "...\\PLC Logic", so exporting both verbatim produced
+    "PLC_Stabur/PLC Logic/Application" next to "PLC_Stabur/Plc Logic" and the
+    IDE answered with a failed casing-normalization warning.
+    """
+
+    def _model(self):
+        import xml.etree.ElementTree as ET
+
+        def node(guid, name, parent_guid, display_path):
+            obj = ProjectNode(guid, name, parent_guid=parent_guid)
+            obj.display_path = display_path
+            elem = ET.Element("Single", {"Name": "Object"})
+            ET.SubElement(elem, "Single", {"Name": "Data"}).text = name
+            obj.entry_element = elem
+            return obj
+
+        model = ProjectModel()
+        model.add_node(node("dev-guid", "PLC_Stabur", None, []))
+        model.add_node(node("logic-guid", "Plc Logic", "dev-guid", ["PLC_Stabur"]))
+        model.add_node(
+            node("app-guid", "Application", "logic-guid", ["PLC_Stabur", "PLC Logic"])
+        )
+        model.add_node(
+            node(
+                "lib-guid",
+                "Library Manager",
+                "app-guid",
+                ["PLC_Stabur", "PLC Logic", "Application"],
+            )
+        )
+        model.normalize_display_paths()
+        return model
+
+    def test_export_writes_one_directory_not_two(self, tmp_path):
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+
+        FolderWriter(views, dump).write(self._model())
+
+        assert os.path.exists(
+            os.path.join(views, "PLC_Stabur", "Plc Logic", "Application", ".cds-object.xml")
+        )
+        assert os.path.exists(
+            os.path.join(
+                views, "PLC_Stabur", "Plc Logic", "Application", "Library Manager.xml"
+            )
+        )
+        assert not os.path.exists(os.path.join(views, "PLC_Stabur", "PLC Logic"))
+
+    def test_an_existing_case_split_heals_on_the_next_export(self, tmp_path):
+        """A split left by an older export is healed by the manifest-driven
+        prune: the stale twin's files are removed as unmanaged-then-managed
+        paths, its now-empty directories go with them, and the corrected tree
+        is written in one pass. No clean re-export is needed."""
+        from cds_text_sync.engine.xml_helpers import sha1_hex
+
+        views = str(tmp_path / "views")
+        dump = str(tmp_path / ".dump")
+        os.makedirs(dump, exist_ok=True)
+        stale_paths = [
+            "PLC_Stabur/.cds-object.xml",
+            "PLC_Stabur/Plc Logic/.cds-object.xml",
+            "PLC_Stabur/PLC Logic/Application/.cds-object.xml",
+            "PLC_Stabur/PLC Logic/Application/Library Manager.xml",
+        ]
+        entries = []
+        for index, relative_path in enumerate(stale_paths):
+            content = "<Root>{0}</Root>".format(index)
+            _write_file(views, relative_path, content)
+            entries.append(
+                {
+                    "guid": "guid-{0}".format(index),
+                    "name": "stale-{0}".format(index),
+                    "xml_path": relative_path,
+                    "hash": sha1_hex(content),
+                }
+            )
+        _write_manifest(dump, {"view_root": views, "ns": "", "entries": entries})
+
+        FolderWriter(views, dump).write(self._model())
+
+        assert not os.path.exists(os.path.join(views, "PLC_Stabur", "PLC Logic"))
+        assert os.path.exists(
+            os.path.join(views, "PLC_Stabur", "Plc Logic", "Application", ".cds-object.xml")
+        )
+
+
+class TestRenameCaseOnly:
+    """``_rename_case_only`` must not surface a modal warning for a split that
+    cts itself created. Where the filesystem folds the two spellings together
+    and both exist as separate directories, the desired directory is already on
+    disk, so the swap is skipped instead of failing with WinError 183."""
+
+    def _case_folding(self, monkeypatch):
+        """Emulate the Windows ``normcase`` that the swap's guard relies on."""
+        import cds_text_sync.engine.folder_writer as folder_writer
+
+        monkeypatch.setattr(
+            folder_writer,
+            "_normalize_fs_path",
+            lambda path: os.path.abspath(os.path.normpath(path or "")).lower(),
+        )
+        return folder_writer
+
+    def test_separate_directories_are_told_apart(self, tmp_path):
+        from cds_text_sync.engine.folder_writer import _is_separate_existing_directory
+
+        source = tmp_path / "PLC Logic"
+        target = tmp_path / "Plc Logic"
+        source.mkdir()
+        target.mkdir()
+
+        assert _is_separate_existing_directory(str(source), str(target)) is True
+        assert _is_separate_existing_directory(str(source), str(source / "missing")) is False
+
+    def test_split_twin_is_left_as_found(self, tmp_path, monkeypatch):
+        folder_writer = self._case_folding(monkeypatch)
+        source = tmp_path / "PLC Logic"
+        target = tmp_path / "Plc Logic"
+        source.mkdir()
+        target.mkdir()
+
+        assert folder_writer._rename_case_only(str(source), str(target)) is False
+        assert source.is_dir() and target.is_dir()
+        assert not any(name.startswith(".cds-casefix-") for name in os.listdir(tmp_path))
+
+    def test_single_directory_still_gets_its_casing_fixed(self, tmp_path, monkeypatch):
+        folder_writer = self._case_folding(monkeypatch)
+        source = tmp_path / "plc logic"
+        source.mkdir()
+
+        assert folder_writer._rename_case_only(str(source), str(tmp_path / "Plc Logic")) is True
+        assert (tmp_path / "Plc Logic").is_dir()
+        assert not source.exists()

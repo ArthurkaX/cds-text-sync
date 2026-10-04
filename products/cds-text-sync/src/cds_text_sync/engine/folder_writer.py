@@ -134,6 +134,23 @@ def _split_path_components(path):
     return "", parts
 
 
+def _is_separate_existing_directory(source_path, target_path):
+    """True when both spellings are real, distinct directories on disk.
+
+    On a case-insensitive filesystem one directory answers to both spellings,
+    so ``samefile`` reports True and the temp-swap below can rewrite the
+    casing in place. On a case-sensitive filesystem the two spellings are two
+    distinct directories -- typically the split an older export left behind --
+    and the swap could only fail with "target already exists". Asking
+    ``samefile`` tells the two apart; it raises when the target is missing,
+    which means there is nothing to keep and the swap should run.
+    """
+    try:
+        return not os.path.samefile(source_path, target_path)
+    except OSError:
+        return False
+
+
 def _rename_case_only(source_path, target_path):
     if _normalize_fs_path(source_path) != _normalize_fs_path(target_path):
         return False
@@ -143,6 +160,19 @@ def _rename_case_only(source_path, target_path):
         return False
     parent_dir = os.path.dirname(source_path)
     if not parent_dir:
+        return False
+    if _is_separate_existing_directory(source_path, target_path):
+        # The desired directory already exists next to a differently-cased
+        # twin: the end state the swap wanted is already there, so there is
+        # nothing to normalize. Merging the twins is deliberately not done --
+        # a hostile case would silently drop files that share a name. The
+        # managed-file pass prunes the stale twin once it is empty, and
+        # anything unmanaged in it is left for the user rather than moved.
+        _log(
+            "Notice: View path {0} already exists next to {1}; leaving both as found.".format(
+                target_path, source_path
+            )
+        )
         return False
     temp_name = ".cds-casefix-{0}-{1}".format(os.getpid(), int(time.time() * 1000000))
     temp_path = os.path.join(parent_dir, temp_name)
