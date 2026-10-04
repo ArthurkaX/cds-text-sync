@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import hashlib
-import os
 import re
 import shutil
 import tempfile
@@ -50,54 +49,6 @@ POU_HEADER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 INTERFACE_COLUMNS = ("scope", "name", "type", "initial", "comment")
-
-
-def _pou_sections(text, stem):
-    """Split ``text`` into POU sections at every ``POU_HEADER_RE`` match.
-
-    Each section spans from the start of its header match to the start of the
-    next match (or end of text).  ``TYPE`` sections are re-parsed as DUTs so
-    the kind becomes ``STRUCT``/``ENUM``/``ALIAS`` and the fields travel along
-    under ``"dut"``.  Methods, properties and actions coming from
-    ``Parent.Method.st`` files carry the qualified ``stem`` as their name.  A
-    file with no header at all but a ``VAR_GLOBAL`` block becomes a single
-    synthetic ``GVL`` section; a file with neither yields ``[]``.
-    """
-    matches = list(POU_HEADER_RE.finditer(text))
-    if not matches:
-        if re.search(r"^[ \t]*VAR_GLOBAL\b", text, re.IGNORECASE | re.MULTILINE):
-            return [
-                {"kind": "GVL", "name": stem, "start": 0, "text": text, "line": 1}
-            ]
-        return []
-    sections = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        section_text = text[match.start():end]
-        kind = match.group(1).upper()
-        name = match.group(2)
-        return_type = match.group(3) or ""
-        section = {
-            "kind": kind,
-            "name": name,
-            "start": match.start(),
-            "text": section_text,
-            "line": text[: match.start()].count("\n") + 1,
-            "return_type": return_type,
-        }
-        if kind == "TYPE":
-            try:
-                dut = parse_dut(section_text)
-            except Exception:
-                dut = None
-            if dut is not None:
-                section["kind"] = str(dut.get("kind") or "").upper()
-                section["name"] = dut.get("name") or name
-                section["dut"] = dut
-        elif kind in ("METHOD", "PROPERTY", "ACTION") and "." in stem:
-            section["name"] = stem
-        sections.append(section)
-    return sections
 
 
 def _merge_line_comments(text, spans):
@@ -201,32 +152,6 @@ def _section_description(text, section, spans):
             boundary = span_start
         winner = "\n".join(_clean_comment(part) for part in reversed(preceding))
     return _clean_comment(winner)
-
-
-def _member_comment(section_text, line_no):
-    """Return the trailing ``//`` comment of the member on ``line_no``.
-
-    ``parse_var_blocks`` blanks comments internally, so the per-member
-    comment is recovered from the original section text: the first ``//`` on
-    that line that is not inside a single-quoted string literal.
-    """
-    try:
-        line = section_text.split("\n")[int(line_no) - 1]
-    except (IndexError, TypeError, ValueError):
-        return ""
-    in_string = False
-    length = len(line)
-    index = 0
-    while index < length:
-        char = line[index]
-        if char == "'":
-            in_string = not in_string
-            index += 1
-            continue
-        if not in_string and char == "/" and line[index + 1 : index + 2] == "/":
-            return line[index + 2 :].strip()
-        index += 1
-    return ""
 
 
 def _section_interface(section):
@@ -480,7 +405,6 @@ class _DocContext:
     doc_diagnostics: list = field(default_factory=list)
     doc_relations: list = field(default_factory=list)
     project_ids: dict = field(default_factory=dict)
-    library_ids: dict = field(default_factory=dict)
     references: list = field(default_factory=list)
     documented: list = field(default_factory=list)
     missing: list = field(default_factory=list)
@@ -791,13 +715,6 @@ def _collect_library_rows(context):
                 namespace=ref.get("namespace") or ref.get("name"),
                 version=libdoc.get("version"),
             )
-            library_key = (
-                str(ref.get("name") or "").casefold(),
-                str(libdoc.get("version") or "").casefold(),
-                str(sym.get("name") or "").casefold(),
-                str(sym.get("kind") or "POU").casefold(),
-            )
-            context.library_ids[library_key] = symbol_id
             symbol_name = str(sym.get("name") or "").casefold()
             candidate_keys = {symbol_name}
             # LibDoc pages usually expose the symbol without its namespace,
