@@ -57,5 +57,39 @@ def register(subparsers):
     where.add_argument("--body", default="", help=argparse.SUPPRESS)
     where.add_argument("--script-dir", dest="script_dir", default="", help=argparse.SUPPRESS)
 
+    guide = subparsers.add_parser(
+        "guide",
+        help="Read the shipped operating guides (workflow, commands, visu-svg)",
+        description=(
+            "Print the operating guides that ship inside this package, so they "
+            "always match the installed CLI version. Topics: workflow (how to "
+            "operate cts), commands (which command for which job), visu-svg "
+            "(authoring HMI sketches). With no topic, list the topics and the "
+            "guide directory. Text output prints the guide verbatim; the default "
+            "JSON wraps it as {\"topic\", \"path\", \"text\"}. Needs no daemon or IDE."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  cts guide\n"
+            "  cts guide workflow --pretty\n"
+            "  cts guide visu-svg --file examples/pid-schematic.svg"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    guide.add_argument(
+        "topic",
+        nargs="?",
+        default="",
+        help="workflow | commands | visu-svg (omit to list the topics)",
+    )
+    guide.add_argument(
+        "--file",
+        default="",
+        help=(
+            "with a topic, print one of its extra files instead, e.g. "
+            "examples/pid-schematic.svg (visu-svg)"
+        ),
+    )
+
 
 __all__ = ["register"]
