@@ -81,6 +81,62 @@ class TestGetViewPath:
 
 
 # ===================================================================
+# ProjectModel.normalize_display_paths
+# ===================================================================
+
+
+class TestNormalizeDisplayPaths:
+    """Child paths follow the parent's own exported name.
+
+    CODESYS records each object's Path array from the project tree's folder
+    labels, which can disagree in case with the parent object's Name. Turning
+    that array straight into directories split one object across two sibling
+    folders on a case-sensitive filesystem.
+    """
+
+    def _tree(self):
+        model = ProjectModel()
+        device = ProjectNode("dev", "PLC_Stabur")
+        device.display_path = []
+        logic = ProjectNode("logic", "Plc Logic", parent_guid="dev")
+        logic.display_path = ["PLC_Stabur"]
+        app = ProjectNode("app", "Application", parent_guid="logic")
+        app.display_path = ["PLC_Stabur", "PLC Logic"]
+        for node in (device, logic, app):
+            model.add_node(node)
+        return model
+
+    def test_child_adopts_the_parent_spelling(self):
+        model = self._tree()
+        model.normalize_display_paths()
+        assert model.get_node("app").display_path == ["PLC_Stabur", "Plc Logic"]
+
+    def test_an_already_correct_path_is_untouched(self):
+        model = self._tree()
+        model.get_node("logic").display_path = ["PLC_Stabur"]
+        assert model.get_node("logic").display_path == ["PLC_Stabur"]
+        model.normalize_display_paths()
+        assert model.get_node("logic").display_path == ["PLC_Stabur"]
+
+    def test_a_path_on_another_branch_is_left_alone(self):
+        model = self._tree()
+        # An object CODESYS deliberately places outside the device branch
+        # (an embedded resource) must keep its recorded path.
+        model.get_node("app").display_path = ["Resources", "Embedded"]
+        model.normalize_display_paths()
+        assert model.get_node("app").display_path == ["Resources", "Embedded"]
+
+    def test_sibling_collision_index_is_rebuilt_for_the_new_paths(self):
+        model = self._tree()
+        twin = ProjectNode("app2", "Application", parent_guid="logic")
+        twin.display_path = ["PLC_Stabur", "PLC Logic"]
+        model.add_node(twin)
+        model.normalize_display_paths()
+        assert model.has_output_name_collision(model.get_node("app"))
+        assert "__" in model.get_node("app").get_view_path(model)
+
+
+# ===================================================================
 # Collapsed object behavior
 # ===================================================================
 

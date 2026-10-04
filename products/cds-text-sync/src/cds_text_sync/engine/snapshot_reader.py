@@ -248,4 +248,7 @@ class SnapshotReader:
             if node.guid in model.nodes:
                 continue
             model.add_node(node)
+        # Fold the per-object Path arrays onto the parent chain's own spelling
+        # before the paths are turned into directories (see the method).
+        model.normalize_display_paths()
         return model
