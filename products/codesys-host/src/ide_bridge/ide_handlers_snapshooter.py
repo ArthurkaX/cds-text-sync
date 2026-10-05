@@ -6,13 +6,15 @@ The CODESYS menu only opens the Snapshooter dialog in front of a person
 (Tools -> Scripting -> cds-text-sync -> Project_snapshooter).  This handler is
 the same backend without the person: it drives project_snapshooter.py's UI-free
 functions so ``cts snapshooter`` can build the variable tree, take a preset,
-diff one against the live PLC, and restore it (dry-run by default).
+diff one against the live PLC, restore it (dry-run by default), or run the
+dialog headlessly through project_snapshooter_ui.check.
 
 Actions arrive as ``params["action"]``:
     tree      -- leaf variables (path, type); ``params["path"]`` filters by prefix
     take      -- a preset document; ``params["out"]`` saves it
     diff      -- compare a preset (``params["input"]`` or ``params["preset"]``)
     restore   -- same preset source; writes only when ``params["apply"]`` is true
+    ui_check  -- create the dialog without showing it and drive a scripted run
 
 Every response is ``{"ok": ..., "data": ...}`` or ``{"ok": False, "error": ...}``,
 matching the neighbouring handlers.  This runs in IronPython 2.7.
@@ -24,7 +26,7 @@ import project_snapshooter as backend
 from cts_shared.coerce import as_bool
 from ide_daemon_state import _get_active_project
 
-_ACTIONS = ("tree", "take", "diff", "restore")
+_ACTIONS = ("tree", "take", "diff", "restore", "ui_check")
 
 
 def _text(value):
@@ -49,6 +51,8 @@ def _cmd_snapshooter(params):
             "error": "Unknown snapshooter action: {0}".format(action or "(none)"),
         }
     try:
+        if action == "ui_check":
+            return _snapshooter_ui_check(params)
         project, err = _get_active_project()
         if err is not None:
             return err
@@ -141,3 +145,22 @@ def _snapshooter_restore(params, project, app):
             "result": result,
         },
     }
+
+
+def _snapshooter_ui_check(params):
+    """Create the dialog without Show/DoEvents and run the scripted scenario.
+
+    A failure to build the window at all (for example a session with no
+    desktop) is reported as ``{"ok": False, "error": ...}``; a dialog step
+    that raises is kept inside the returned report instead.
+    """
+    import project_snapshooter_ui
+
+    report = project_snapshooter_ui.check(
+        backend=vars(backend),
+        app=_action_app(params),
+        script=params.get("script"),
+    )
+    if not report.get("ok", False):
+        return {"ok": False, "error": report.get("error", "ui_check failed")}
+    return {"ok": True, "data": {"action": "ui_check", "report": report}}

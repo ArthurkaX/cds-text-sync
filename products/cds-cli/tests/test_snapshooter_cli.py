@@ -45,7 +45,7 @@ def pipe(monkeypatch):
 
 
 def test_the_actions_are_registered():
-    for action in ("tree", "take", "diff", "restore"):
+    for action in ("tree", "take", "diff", "restore", "ui-check"):
         args = _args(["snapshooter", action] + (["--input", "p.json"] if action in ("diff", "restore") else []))
         assert args.snap_action == action
 
@@ -134,6 +134,22 @@ def test_restore_is_dry_run_by_default_and_applies_on_flag(pipe):
     handler.dispatch_snapshooter(_args(["snapshooter", "restore", "--input", "p.json", "--apply"]))
     _method, params, _timeout = pipe.calls[1]
     assert params == {"action": "restore", "input": "p.json", "apply": True}
+
+
+def test_ui_check_sends_the_app_and_script(pipe):
+    handler.dispatch_snapshooter(
+        _args(["snapshooter", "ui-check", "--app", "MainApp", "--script", "save, load"])
+    )
+
+    _method, params, _timeout = pipe.calls[0]
+    assert params == {"action": "ui_check", "app": "MainApp", "script": ["save", "load"]}
+
+
+def test_ui_check_without_script_omits_the_key(pipe):
+    handler.dispatch_snapshooter(_args(["snapshooter", "ui-check"]))
+
+    _method, params, _timeout = pipe.calls[0]
+    assert params == {"action": "ui_check", "app": "Application"}
 
 
 # ── Handler: output and failures ────────────────────────────────────────────

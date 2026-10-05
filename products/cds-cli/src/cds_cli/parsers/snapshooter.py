@@ -15,7 +15,7 @@ DEFAULT_TIMEOUT = 300
 def register(subparsers):
     parser = subparsers.add_parser(
         "snapshooter",
-        help="PLC value presets (JSON): tree/take/diff/restore",
+        help="PLC value presets (JSON): tree/take/diff/restore, or run the dialog headlessly",
         description=(
             "Drive the Project_snapshooter backend without the CODESYS dialog.\n\n"
             "Unlike variable-snapshot/variable-restore (CSV via the offline "
@@ -27,7 +27,8 @@ def register(subparsers):
             "  tree      list leaf variables (path, type), optionally by prefix\n"
             "  take      read the selected variables into a preset document\n"
             "  diff      compare a preset against the live PLC\n"
-            "  restore   validate a preset, writing only with --apply"
+            "  restore   validate a preset, writing only with --apply\n"
+            "  ui-check  build the dialog without showing it and drive a scripted run"
         ),
         epilog=(
             "Examples:\n"
@@ -35,12 +36,20 @@ def register(subparsers):
             "  cts snapshooter take --paths-file selected.txt --label speed --out preset.json\n"
             "  cts snapshooter diff --input preset.json\n"
             "  cts snapshooter restore --input preset.json            # dry-run\n"
-            "  cts snapshooter restore --input preset.json --apply"
+            "  cts snapshooter restore --input preset.json --apply\n"
+            "  cts snapshooter ui-check"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     actions = parser.add_subparsers(dest="snap_action", required=True, metavar="action")
+    _add_tree(actions)
+    _add_take(actions)
+    _add_diff(actions)
+    _add_restore(actions)
+    _add_ui_check(actions)
 
+
+def _add_tree(actions):
     tree = actions.add_parser(
         "tree",
         help="List leaf variables (path, type)",
@@ -49,6 +58,8 @@ def register(subparsers):
     tree.add_argument("--path", default="", help="Only variables whose path starts with this prefix")
     add_timeout(tree, DEFAULT_TIMEOUT)
 
+
+def _add_take(actions):
     take = actions.add_parser(
         "take",
         help="Read the selected variables into a JSON preset",
@@ -72,6 +83,8 @@ def register(subparsers):
     take.add_argument("--out", default="", help="Also save the preset to this .json path")
     add_timeout(take, DEFAULT_TIMEOUT)
 
+
+def _add_diff(actions):
     diff = actions.add_parser(
         "diff",
         help="Compare a preset against the live PLC",
@@ -80,6 +93,8 @@ def register(subparsers):
     diff.add_argument("--input", default="", required=True, help="Preset .json produced by take")
     add_timeout(diff, DEFAULT_TIMEOUT)
 
+
+def _add_restore(actions):
     restore = actions.add_parser(
         "restore",
         help="Validate a preset and (with --apply) write it back",
@@ -92,6 +107,28 @@ def register(subparsers):
         help="Actually write matching variables to the PLC (default: dry-run)",
     )
     add_timeout(restore, DEFAULT_TIMEOUT)
+
+
+def _add_ui_check(actions):
+    ui_check = actions.add_parser(
+        "ui-check",
+        help="Build the dialog without showing it and drive a scripted run",
+        description=(
+            "Headless smoke test of the Snapshooter window: build the form in "
+            "memory (never shown), substitute recording MessageBox/file "
+            "dialogs, then run the default scenario -- check the first leaf, "
+            "search next/prev, save, load, diff, restore (dry-run). Returns "
+            "which windows were shown, per-step exceptions, and the checked "
+            "and parent state. Needs a session where WinForms can be created."
+        ),
+    )
+    ui_check.add_argument("--app", default="Application", help="Application name (default: Application)")
+    ui_check.add_argument(
+        "--script",
+        default="",
+        help="Comma-separated step names to run instead of the default scenario",
+    )
+    add_timeout(ui_check, 120)
 
 
 __all__ = ["register"]

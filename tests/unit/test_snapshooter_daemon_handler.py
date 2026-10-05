@@ -254,3 +254,46 @@ def test_online_guard_on_apply_is_surfaced(monkeypatch, project):
 
     assert result["ok"] is False
     assert "online" in result["error"]
+
+
+def test_ui_check_returns_the_report(monkeypatch):
+    captured = {}
+    report = {"ok": True, "steps": [{"name": "save", "ok": True, "error": ""}]}
+
+    def fake_check(backend, app="Application", script=None):
+        captured["backend"] = backend
+        captured["app"] = app
+        captured["script"] = script
+        return report
+
+    _patch_check(monkeypatch, fake_check)
+
+    result = handler._cmd_snapshooter({"action": "ui_check", "app": "MainApp", "script": ["save"]})
+
+    assert result["ok"] is True
+    assert result["data"]["report"] is report
+    assert captured["app"] == "MainApp"
+    assert captured["script"] == ["save"]
+    assert captured["backend"] is not None
+
+
+def test_ui_check_reports_a_window_that_cannot_be_built(monkeypatch):
+    _patch_check(
+        monkeypatch,
+        lambda backend, app="Application", script=None: {
+            "ok": False,
+            "error": "cannot create the Snapshooter window: ImportError: no clr",
+        },
+    )
+
+    result = handler._cmd_snapshooter({"action": "ui_check"})
+
+    assert result["ok"] is False
+    assert "no clr" in result["error"]
+
+
+def _patch_check(monkeypatch, fake):
+    """Install ``fake`` as ``project_snapshooter_ui.check`` for the lazy import."""
+    import project_snapshooter_ui
+
+    monkeypatch.setattr(project_snapshooter_ui, "check", fake)

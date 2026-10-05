@@ -205,5 +205,5 @@ HELP_TEXT = {
 "cicd": "Run CI/CD test plan --file path [--timeout N]",
 "permissions": "Show daemon security config (read-only)",
 "plc_log": "Read PLC log [--file codesyscontrol.log] [--tail N] [--output DIR]",
-"snapshooter": "PLC value presets (JSON): action tree/take/diff/restore --action A. restore is a dry-run unless --apply",
+"snapshooter": "PLC value presets (JSON): action tree/take/diff/restore/ui_check --action A. restore is a dry-run unless --apply",
 }

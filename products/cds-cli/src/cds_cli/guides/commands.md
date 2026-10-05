@@ -77,6 +77,7 @@ Check the installed command help for whether download also starts the applicatio
 | Read a JSON preset | `cts snapshooter take [--path P] [--paths-file F] [--label L] [--out FILE]` |
 | Diff a preset against the PLC | `cts snapshooter diff --input PRESET.json` |
 | Restore a preset (dry-run unless `--apply`) | `cts snapshooter restore --input PRESET.json [--apply]` |
+| Smoke-test the dialog headlessly | `cts snapshooter ui-check` |
 
 Keep restore in dry-run mode unless the user explicitly requests application.
 

@@ -41,6 +41,7 @@ test_paths = [
   "../../tests/unit/test_require_online_device.py",
   "../../tests/unit/test_snapshooter_map.py",
   "../../tests/unit/test_snapshooter_daemon_handler.py",
+  "../../tests/unit/test_snapshooter_ui_check.py",
   "../../tests/unit/test_snapshooter_ui_run.py",
   "../../tests/unit/test_snapshot_reader.py",
   "../../tests/unit/test_snapshot_reader_locale.py",

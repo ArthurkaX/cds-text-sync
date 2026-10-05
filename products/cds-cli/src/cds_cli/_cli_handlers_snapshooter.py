@@ -48,6 +48,13 @@ def dispatch_snapshooter(args, output_fmt="json"):
 def _build_params(args):
     """Map the parsed sub-action onto the daemon's ``action`` payload."""
     action = getattr(args, "snap_action", "")
+    if action == "ui-check":
+        params = {"action": "ui_check", "app": getattr(args, "app", "") or "Application"}
+        script = _split_script(getattr(args, "script", ""))
+        if script:
+            params["script"] = script
+        return params
+
     params = {"action": action}
     if action == "tree":
         params["path"] = getattr(args, "path", "") or ""
@@ -80,3 +87,7 @@ def _collect_paths(args):
                 if line and not line.startswith("#"):
                     paths.append(line)
     return paths
+
+
+def _split_script(value):
+    return [name.strip() for name in str(value or "").split(",") if name.strip()]
