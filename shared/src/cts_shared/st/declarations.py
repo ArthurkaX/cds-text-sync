@@ -367,6 +367,45 @@ def _base_type_name(type_name):
     return match.group(1).upper() if match else type_name.strip().upper()
 
 
+_POU_KEYWORDS = (
+    "FUNCTION_BLOCK", "FUNCTION", "PROGRAM", "METHOD", "INTERFACE",
+    "PROPERTY", "ACTION",
+)
+#: ``FUNCTION_BLOCK Name : ReturnType EXTENDS Base IMPLEMENTS I_a, I_b`` -
+#: only the header line is scanned, so an ``EXTENDS`` in the body is ignored.
+_POU_HEADER_RE = re.compile(
+    r"(?im)^[ \t]*(?:" + "|".join(_POU_KEYWORDS) + r")[ \t]+"
+    r"[A-Za-z_]\w*(?:[ \t]*:[ \t]*[A-Za-z_][\w.]*)?[ \t]*(?P<tail>[^\n]*)"
+)
+_EXTENDS_RE = re.compile(r"(?i)\bEXTENDS\s+([A-Za-z_][\w.]*)")
+_IMPLEMENTS_RE = re.compile(r"(?i)\bIMPLEMENTS\s+([^\n;]+)")
+
+
+def parse_pou_header(declaration):
+    """Return ``{"extends": ..., "implements": [...]}`` for a POU header.
+
+    A ``FUNCTION_BLOCK``/``PROGRAM`` declaration names its base with
+    ``EXTENDS`` and the interfaces it implements with ``IMPLEMENTS`` - unlike
+    ``TYPE``, which ``parse_dut`` handles.  Both are read from the header line
+    only, so the same keyword inside the body is not mistaken for one.  Names
+    are returned as written; an empty string and an empty list mean "none".
+    """
+    header = _POU_HEADER_RE.search(blank_noise(declaration or ""))
+    tail = header.group("tail") if header else ""
+    extends = _EXTENDS_RE.search(tail)
+    implements = _IMPLEMENTS_RE.search(tail)
+    names = []
+    if implements:
+        for part in implements.group(1).split(","):
+            name = part.strip().split()[0] if part.strip() else ""
+            if name:
+                names.append(name)
+    return {
+        "extends": extends.group(1) if extends else "",
+        "implements": names,
+    }
+
+
 def _split_dims(text: str):
     parts, current, depth = [], [], 0
     for char in text:

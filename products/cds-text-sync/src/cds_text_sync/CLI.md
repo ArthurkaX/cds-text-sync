@@ -859,7 +859,11 @@ cts docs --daemon --libraries "C:\ProgramData\CODESYS"
 ```
 
 The library path defaults to `C:\ProgramData\CODESYS`. Output is written to
-`.cts-docs/` in format `cts-docs/v3`:
+`.cts-docs/` beside the view root in format `cts-docs/v3` — a generated
+directory that export, import, compare and the workspace fingerprint all
+ignore (they skip dot-named entries at the top of the view root), and that the
+recommended `.gitignore` entries cover, so generating the docs does not litter
+the project folder. `--output` replaces the directory outright:
 
 - `project.md` — one section per project POU: kind, name, source path, the
   doc comment, and an interface table (`Scope | Name | Type | Initial | Comment`).
@@ -899,6 +903,15 @@ read and the entries are merged, deduplicated on name and version. A project
 commonly has more than one — for example an application-level manager plus a
 visualization one — so a single-manager read would silently lose libraries.
 
+Both kinds of entry count as a reference, and both carry a `kind` in the
+report: a **placeholder** (`placeholder`), and a **concrete** pin
+(`concrete`) written directly with `Name`/`Resolution` instead of a
+placeholder. The `PlaceholderRedirectionTable` is read as well: a placeholder
+it names is referenced (`redirected`) even when it has no `Items` entry -
+`Standard` arrives that way - and when it also has one, the table's version is
+the version actually used. A declared version of `*` means "newest installed"
+and is resolved against the LibDoc tree, as before.
+
 Two failure modes are reported rather than papered over:
 
 - **Missing LibDoc** — the library is referenced but no documentation is
@@ -908,6 +921,16 @@ Two failure modes are reported rather than papered over:
   does not reference. Only their names and versions are listed; their contents
   are not exported. To use one, it has to be added to the Library Manager
   first, which is a user action inside the IDE.
+
+### Inheritance
+
+A `FUNCTION_BLOCK`/`PROGRAM` that declares `EXTENDS Base` and `IMPLEMENTS I_a, I_b`
+carries both into the bundle: `declaration.extends`, `declaration.implements`,
+`extends`/`implements` relations, and a base link on the card when the base is
+itself a project symbol. Inherited members — the base's variables and its
+methods/properties/actions, which are symbols of their own — are listed on the
+card as `inherited from <Base>`, chains included. A base from a library is not
+in the project, so it stays a name and materializes nothing.
 
 ### Daemon endpoint
 

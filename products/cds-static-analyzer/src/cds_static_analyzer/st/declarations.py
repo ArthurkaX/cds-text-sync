@@ -8,6 +8,7 @@ _split_statements = _shared._split_statements
 _parse_member_statement = _shared._parse_member_statement
 parse_var_blocks = _shared.parse_var_blocks
 parse_dut = _shared.parse_dut
+parse_pou_header = _shared.parse_pou_header
 _base_type_name = _shared._base_type_name
 _split_dims = _shared._split_dims
 classify_type = _shared.classify_type
@@ -16,5 +17,6 @@ __all__ = [
     "SCALAR_TYPES",
     "parse_var_blocks",
     "parse_dut",
+    "parse_pou_header",
     "classify_type",
 ]

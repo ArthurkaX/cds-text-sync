@@ -179,6 +179,37 @@ class TestScope:
 
         assert _digest(tmp_path) == before
 
+    def test_the_docs_bundle_beside_the_view_root_is_not_hashed(self, tmp_path):
+        """``cts docs`` output is not workspace content.
+
+        The default bundle lands in ``<sync>/.cts-docs`` next to the view root,
+        so re-generating the documentation must not look like the workspace
+        changed.
+        """
+        _project(tmp_path)
+        before = _digest(tmp_path)
+
+        _write(tmp_path, ".cts-docs/manifest.json", "{}\n")
+        _write(tmp_path, ".cts-docs/project.md", "# Project\n")
+
+        assert _digest(tmp_path) == before
+
+    def test_the_docs_bundle_inside_a_root_view_layout_is_not_hashed(self, tmp_path):
+        """In root-view layout the sync root *is* the view root.
+
+        There the bundle sits inside the scanned tree; the dotted top-level
+        rule is what keeps it out, for the whole bundle and for the staging
+        directory a regeneration writes beside it.
+        """
+        _project(tmp_path, layout="root-view")
+        _write(tmp_path, "POUs/PLC_PRG.st", "PROGRAM PLC_PRG\n")
+        before = _digest(tmp_path)
+
+        _write(tmp_path, ".cts-docs/libraries/Demo-1.0.0.md", "# Demo\n")
+        _write(tmp_path, "..cts-docs.staging-abc/manifest.json", "{}\n")
+
+        assert _digest(tmp_path) == before
+
     def test_an_explicit_view_root_is_honoured(self, tmp_path):
         _write(tmp_path, "cds-text-sync.json", json.dumps({"view_root": "views"}))
         _write(tmp_path, "views/POUs/PLC_PRG.st", "PROGRAM PLC_PRG\n")

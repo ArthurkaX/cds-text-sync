@@ -431,6 +431,7 @@ def test_unresolved_reference_is_reported_not_substituted(tmp_path):
             "version": "4.9.1.0",
             "vendor": "System",
             "placeholder": "System_VisuElems",
+            "kind": "placeholder",
             "reason": "documentation_package_absent",
         }
     ]
@@ -732,3 +733,146 @@ def test_project_cards_are_written_once(tmp_path, monkeypatch):
     docgen.generate_docs(project_view, library_path=libraries)
 
     assert rendered == ["FB_Sensor"]
+
+
+CONCRETE_ITEM_GUID = "51a11660-6c0d-4598-8c08-419c5845ea1f"
+
+
+def _concrete_item_xml(resolution, namespace, system):
+    """A concrete item as CODESYS writes it: the whole resolution in ``Name``."""
+    return (
+        '\n        <Single Type="{{{0}}}" Method="IArchivable">\n'
+        '          <Single Name="Name" Type="string">{1}</Single>\n'
+        '          <Single Name="Namespace" Type="string">{2}</Single>\n'
+        '          <Single Name="SystemLibrary" Type="bool">{3}</Single>\n'
+        "        </Single>"
+    ).format(CONCRETE_ITEM_GUID, resolution, namespace, system)
+
+
+def test_a_concrete_library_reference_is_reported_and_resolved(tmp_path):
+    """A pinned library is a reference even when it names no placeholder.
+
+    Real Library Managers carry both kinds of entry. Reading only the
+    placeholder ones dropped ``PSVRetain``/``PSVLeds`` from a project whose
+    build succeeded with zero errors, so the report disagreed with CODESYS.
+    The ``*`` version resolves to the newest installed LibDoc, exactly as for
+    a placeholder.
+    """
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    items = _concrete_item_xml("PSVRetain, * (PSV Electro)", "PSVRetain", "True")
+    (project / "Library Manager.xml").write_text(
+        '<?xml version=\'1.0\' encoding=\'utf-8\'?>\n'
+        '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">\n'
+        '  <Single Name="Object" Type="{adb5cb65-8e1d-4a00-b70a-375ea27582f3}" Method="IArchivable">\n'
+        '    <List Name="Items" Type="System.Collections.ArrayList">'
+        + items
+        + "\n    </List>\n  </Single>\n</Single>\n",
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "PSV Electro", "PSVRetain", "1.0.0")
+    _make_libdoc(libraries, "PSV Electro", "PSVRetain", "2.0.0")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, manifest, symbols = _read_output(workspace)
+
+    assert manifest["counts"]["libraries_referenced"] == 1
+    assert manifest["counts"]["libraries_documented"] == 1
+    # ``*`` means "newest installed", numerically - not 1.0.0 by string order.
+    assert symbols[0]["version"] == "2.0.0"
+    index = (output / "index.md").read_text(encoding="utf-8")
+    assert "| PSVRetain | concrete | 2.0.0 |" in index
+
+
+def _library_manager_with_redirections(entries):
+    rows = "\n".join(
+        '        <Entry>\n'
+        '          <Key><Single Type="string">{0}</Single></Key>\n'
+        '          <Value><Single Type="string">{1}</Single></Value>\n'
+        "        </Entry>".format(key, value)
+        for key, value in entries
+    )
+    return (
+        '<?xml version=\'1.0\' encoding=\'utf-8\'?>\n'
+        '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">\n'
+        '  <Single Name="Object" Type="{adb5cb65-8e1d-4a00-b70a-375ea27582f3}" Method="IArchivable">\n'
+        '    <List Name="Items" Type="System.Collections.ArrayList">\n'
+        '      <Dictionary Name="PlaceholderRedirectionTable">\n'
+        + rows
+        + "\n      </Dictionary>\n    </List>\n  </Single>\n</Single>\n"
+    )
+
+
+def test_a_redirected_placeholder_is_referenced_with_the_tables_version(tmp_path):
+    """``Standard`` is pulled in by the system, so it has no Items entry.
+
+    Reading only the Items left the resolution table out of the report and put
+    the library into "Not referenced" even though the build resolves it.
+    """
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Library Manager.xml").write_text(
+        _library_manager_with_redirections(
+            [("Standard", "Standard, 3.5.22.0 (System)")]
+        ),
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "System", "Standard", "3.5.22.0")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, manifest, _symbols = _read_output(workspace)
+
+    assert manifest["counts"]["libraries_referenced"] == 1
+    assert manifest["counts"]["libraries_not_referenced"] == 0
+    not_referenced = (output / "libraries" / "not-referenced.md").read_text(encoding="utf-8")
+    assert "Standard" not in not_referenced
+    index = (output / "index.md").read_text(encoding="utf-8")
+    assert "| Standard | redirected | 3.5.22.0 | System |" in index
+
+
+def _fb(name, extends="", body="    value : INT;\n"):
+    header = "FUNCTION_BLOCK " + name
+    if extends:
+        header += " EXTENDS " + extends
+    return header + "\nVAR\n" + body + "END_VAR\n"
+
+
+def test_function_block_inheritance_chains_and_cycles(tmp_path):
+    """``EXTENDS`` on a FUNCTION_BLOCK: a chain (A->B->C), a cycle, a library base."""
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    units = {
+        "FB_A.st": _fb("FB_A"),
+        "FB_B.st": _fb("FB_B", "FB_A"),
+        "FB_C.st": _fb("FB_C", "FB_B"),
+        "FB_Loop1.st": _fb("FB_Loop1", "FB_Loop2"),
+        "FB_Loop2.st": _fb("FB_Loop2", "FB_Loop1"),
+        # The base lives in a library, so it is not a project symbol.
+        "FB_Orphan.st": _fb("FB_Orphan", "FB_FromALibrary"),
+    }
+    for file_name, text in units.items():
+        (project / file_name).write_text(text, encoding="utf-8")
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    _output, _manifest, symbols = _read_output(workspace)
+    by_name = {row["name"]: row for row in symbols}
+
+    # A->B->C: every level is materialised, nearest base first.
+    assert [m["name"] for m in by_name["FB_C"]["inherited_members"]] == ["value", "value"]
+    assert {m["inherited_from"] for m in by_name["FB_C"]["inherited_members"]} == {
+        "FB_B", "FB_A",
+    }
+    # A cycle terminates instead of recursing forever.
+    assert sorted(m["name"] for m in by_name["FB_Loop1"]["inherited_members"]) == [
+        "value", "value",
+    ]
+    # An absent base is a name, not a crash.
+    assert by_name["FB_Orphan"]["declaration"]["extends"] == "FB_FromALibrary"
+    assert by_name["FB_Orphan"]["inherited_members"] == []
