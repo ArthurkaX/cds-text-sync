@@ -190,7 +190,7 @@ HELP_TEXT = {
 "read_variables": 'Batch-read expressions {"names": [...]} -> per-item value/read_ok/read_error',
 "write_variables": 'Batch-write {"items": [{name,value}]} -> per-item written/write_error',
 "application_tree": "Walk the application OBJECT tree [--depth N] [--values] [--pattern FILTER] [--flat] [--output PATH]",
-"plc_files": "List files on PLC [--path /]",
+"plc_files": "List files on PLC [--path PATH on the PLC; '.' or omit = the PLC root]",
 "plc_download": "Download file from PLC --src PATH [--dest PATH]",
 "plc_upload": "Upload file to PLC --src PATH --dest PLC_PATH [--overwrite 0|1]",
 "export_csv": "Export PLC variable tree as CSV [--output PATH] [--values]",
@@ -204,6 +204,6 @@ HELP_TEXT = {
 "sync_compare_text": "Compare project against project-view/ (diff report)",
 "cicd": "Run CI/CD test plan --file path [--timeout N]",
 "permissions": "Show daemon security config (read-only)",
-"plc_log": "Read PLC log [--file codesyscontrol.log] [--tail N] [--output DIR]",
+"plc_log": "Read PLC log [--file NAME on the PLC] [--tail N] [--output HOST DIR]",
 "snapshooter": "PLC value presets (JSON): action tree/take/diff/restore/ui_check --action A. restore is a dry-run unless --apply",
 }

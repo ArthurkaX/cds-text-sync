@@ -82,9 +82,11 @@ def test_compare_sends_sync_compare_to_the_daemon(monkeypatch):
         return {"ok": True, "data": {}}
 
     monkeypatch.setattr(_cli_io, "send_command_reverse", _fake_send)
-    h.cmd_compare(against="C:/snap/latest.xml")
+    h.cmd_compare(against="snap/latest.xml")
     assert seen["method"] == "sync_compare"
-    assert seen["params"] == {"against": "C:/snap/latest.xml"}
+    # A HOST path: the daemon opens it inside CODESYS, so it is made absolute
+    # before it crosses the pipe (see _daemon_path).
+    assert seen["params"] == {"against": os.path.abspath("snap/latest.xml")}
 
 
 def test_compare_without_against_asks_for_the_latest_snapshot(monkeypatch):
@@ -187,3 +189,50 @@ def test_every_deprecated_action_maps_to_a_real_top_level_command():
         cmd = replacement.split(" ", 1)[1]  # strip the "cts " prefix
         assert cmd in choices, "{0} is not a real top-level command".format(cmd)
 
+
+
+# ── host paths are absolutised before they cross the pipe ──────────────────
+#
+# The daemon runs inside CODESYS.exe; a relative path it opens lands in the
+# IDE's installation directory. `_daemon_path` is the one place the CLI fixes
+# that, and every host path the daemon opens goes through it.
+
+
+@pytest.fixture
+def sent(monkeypatch):
+    from cds_cli import _cli_io
+
+    seen = {}
+
+    def _fake_send(method, params, timeout=30):
+        seen["method"] = method
+        seen["params"] = params
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(_cli_io, "send_command_reverse", _fake_send)
+    return seen
+
+
+def test_project_open_sends_an_absolute_host_path(sent):
+    h.cmd_project_open(path="projects/plant.project")
+    assert sent["method"] == "project_open"
+    assert sent["params"] == {"path": os.path.abspath("projects/plant.project")}
+
+
+def test_project_snapshot_sends_an_absolute_output_path(sent):
+    h.cmd_project_snapshot(path="snap/project.xml")
+    assert sent["method"] == "export"
+    assert sent["params"] == {"output": os.path.abspath("snap/project.xml")}
+
+
+def test_project_snapshot_without_a_path_omits_output(sent):
+    h.cmd_project_snapshot(path="")
+    assert sent["method"] == "export"
+    assert sent["params"] == {}
+
+
+def test_an_absolute_host_path_is_left_alone(sent):
+    absolute = os.path.join(os.sep, "work", "plant.project")
+    h.cmd_project_open(path=absolute)
+    h.cmd_compare(against=absolute)
+    assert sent["params"] == {"against": absolute}

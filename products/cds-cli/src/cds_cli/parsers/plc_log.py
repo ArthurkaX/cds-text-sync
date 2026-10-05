@@ -22,7 +22,11 @@ def register(subparsers):
             "count instead of being dropped.\n\n"
             "Parsing needs the file text, which the daemon returns only as a "
             "tail; for a plain --cts read the CLI asks the daemon to save the "
-            "log into a temporary folder and reads the file there."
+            "log into a temporary folder and reads the file there.\n\n"
+            "--file names a file on the PLC and is sent as typed; --output "
+            "names a file on this PC and is made absolute before it is sent. "
+            "A leading '/' in a PLC path does not survive Git Bash: MSYS "
+            "rewrites it into a Windows path before cts runs."
         ),
         epilog=(
             "Examples:\n"
@@ -38,7 +42,7 @@ def register(subparsers):
     parser.add_argument(
         "--file",
         default="codesyscontrol.log",
-        help="Which log file to read (default: codesyscontrol.log)",
+        help="Which log file to read on the PLC (default: codesyscontrol.log)",
     )
     parser.add_argument(
         "--tail",

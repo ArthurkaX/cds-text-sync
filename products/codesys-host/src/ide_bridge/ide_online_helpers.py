@@ -692,7 +692,11 @@ def download_impl(project, start=True):
         pass
 
     app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
-    return {"downloaded": True, "option": used, "started": started,
+    # ``online_change_option`` names the CODESYS login mode: "Never" is what
+    # makes this a FULL download rather than an online change, so it is the
+    # reason new objects' symbols become readable.  It is not a question the
+    # user answered.
+    return {"downloaded": True, "online_change_option": used, "started": started,
             "state": state, "application": app_name}
 
 

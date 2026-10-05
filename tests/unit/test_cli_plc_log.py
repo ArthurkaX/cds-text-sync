@@ -197,10 +197,23 @@ def test_output_is_saved_and_reported(daemon, capsys):
         "data": {"file": "codesyscontrol.log", "saved_to": "C:/Temp/codesyscontrol.log"},
     }
     h.dispatch_plc_log(_args(log_output="C:/Temp"))
-    assert daemon.calls == [
-        ("plc_log", {"file": "codesyscontrol.log", "output": "C:/Temp"})
-    ]
+
+    method, params = daemon.calls[0]
+    assert method == "plc_log"
+    # --output is a HOST path: it is made absolute so the daemon writes where
+    # the user ran cts, not inside the CODESYS installation.
+    assert params["output"] == os.path.abspath("C:/Temp")
     assert _payload(capsys)["saved_to"] == "C:/Temp/codesyscontrol.log"
+
+
+def test_the_plc_file_path_is_not_absolutised(daemon):
+    """--file names a path on the PLC; only --output is a host path."""
+    daemon.responses["plc_log"] = {"ok": True, "data": {"tail": []}}
+    h.dispatch_plc_log(_args(file="PlcLogic/extra.log", tail=5))
+
+    method, params = daemon.calls[0]
+    assert params["file"] == "PlcLogic/extra.log"
+    assert "output" not in params
 
 
 def test_cts_parses_the_tail(daemon, capsys):

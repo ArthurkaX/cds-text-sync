@@ -315,7 +315,7 @@ def test_attach_leaves_a_non_dict_response_alone():
         {"ok": True, "data": {"status": "pong"}},                                # ping
         {"ok": True, "data": {"saved": False}},                                  # editing (import)
         {"ok": True, "data": {"messages": [], "success": True}},                 # build
-        {"ok": True, "data": {"downloaded": True, "option": "Never"}},           # download
+        {"ok": True, "data": {"downloaded": True, "online_change_option": "Never"}},  # download
         {"ok": False, "error": "The IDE is online with the PLC; ..."},           # refusal
         {"ok": True, "data": {"leaves": [{"path": "GVL.a", "type": "BOOL"}]}},   # tree
     ],

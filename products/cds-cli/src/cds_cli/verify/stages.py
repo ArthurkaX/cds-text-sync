@@ -16,6 +16,8 @@ from cts_shared import wire
 
 from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
 
+from cds_cli._cli_io import _print_error_context
+
 from cds_cli.verify.model import (
     STATUS_ERROR,
     STATUS_FAIL,
@@ -285,13 +287,19 @@ def _daemon_call(ctx, method, params, timeout, stage_name):
             stage_name, ctx.daemon_reason, reason_code="daemon_unavailable"
         )
     try:
-        return send_command_reverse(method, params, timeout=timeout), None
+        resp = send_command_reverse(method, params, timeout=timeout)
     except Exception as exc:
         return None, StageResult.skipped(
             stage_name,
             f"daemon stopped responding during {method}: {_brief(exc)}",
             reason_code="daemon_timeout",
         )
+    if not wire.response_ok(resp):
+        # A refusal carries the daemon's context; the report on stdout is JSON,
+        # so the "[ctx]" line goes to stderr like it does after any other failed
+        # command.  The stage's own reason already names what went wrong.
+        _print_error_context(resp)
+    return resp, None
 
 
 class _BuildEvidence:

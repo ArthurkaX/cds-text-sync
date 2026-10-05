@@ -421,7 +421,8 @@ def test_download_help_explains_its_own_login_and_the_never_option():
     help_text = " ".join(parser.format_help().split())
 
     assert "OnlineChangeOption.Never" in help_text
-    assert 'option: "Never"' in help_text
+    assert 'online_change_option: "Never"' in help_text
+    assert "not a question the user answered" in help_text
     assert "does not need an online session first" in help_text
 
 

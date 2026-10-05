@@ -16,6 +16,7 @@ import tempfile
 import time
 
 import ide_online_guard
+import ide_path_guards
 import ide_runtime_common as _common
 import ide_time
 import ide_tree_cache
@@ -364,6 +365,9 @@ def _cmd_sync_compare(params):
     Args:
         --against PATH: specific snapshot to compare against (default: latest from .dump/)
     """
+    refusal = ide_path_guards.host_path_error(params, "against")
+    if refusal is not None:
+        return refusal
     project, err = _get_active_project()
     if err:
         return err

@@ -210,6 +210,46 @@ def test_write_does_read_back(monkeypatch, capsys):
     assert "read_back" in out and "42" in out
 
 
+_CTX = {
+    "project": "cts-reference-project",
+    "ide": "ide-3444",
+    "plc": {"online": True, "state": "run"},
+    "edits_allowed": False,
+    "hint_short": "cts disconnect",
+}
+
+
+def test_write_reports_the_context_when_the_read_back_fails(monkeypatch, capsys):
+    """The failed read-back is a daemon response too; its [ctx] goes to stderr."""
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            return {"ok": False, "error": "boom", "context": _CTX}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    d.dispatch_daemon(_args(command="write", name="MyVar", value="42"))
+
+    captured = capsys.readouterr()
+    assert "[ctx] project=cts-reference-project ide=ide-3444" in captured.err
+    assert "edits=blocked" in captured.err
+    # stdout stays the JSON envelope, and it still says the read-back failed.
+    assert "unavailable" in captured.out
+    assert "[ctx]" not in captured.out
+
+
+def test_write_adds_no_context_line_without_one(monkeypatch, capsys):
+    """An older daemon sends no context; then nothing is added."""
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            return {"ok": False, "error": "boom"}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    d.dispatch_daemon(_args(command="write", name="MyVar", value="42"))
+
+    assert "[ctx]" not in capsys.readouterr().err
+
+
 def test_write_failure_exits_nonzero(monkeypatch):
     def _fake_send(method, params=None, timeout=15):
         return {"ok": False, "error": "boom"}

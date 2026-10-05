@@ -10,7 +10,12 @@ cmd_discover, cmd_pou_delete.
 
 from __future__ import annotations
 
-from cds_cli._cli_io import _print_error, _print_warn, _project_command
+from cds_cli._cli_io import (
+    _daemon_path,
+    _print_error,
+    _print_warn,
+    _project_command,
+)
 
 
 # -- Project commands ---------------------------------------------------------
@@ -38,7 +43,7 @@ def cmd_project_read(path="", name="", guid=""):
 def cmd_project_open(path=""):
     """Open a project in CODESYS."""
     # Loading a project from disk can take a while on large projects.
-    _project_command("project_open", {"path": path}, timeout=180)
+    _project_command("project_open", {"path": _daemon_path(path)}, timeout=180)
 
 
 def cmd_project_close():
@@ -59,7 +64,7 @@ def cmd_project_list():
 
 def cmd_project_snapshot(path=""):
     """Export project snapshot (full XML) via daemon."""
-    _project_command("export", {"output": path} if path else {})
+    _project_command("export", {"output": _daemon_path(path)} if path else {})
 
 
 def cmd_project_build():
@@ -147,7 +152,7 @@ def cmd_compare(against=""):
     """
     # `compare` is a deprecated alias for the online CRC read; the snapshot
     # comparison that reads --against is `sync_compare`.
-    _project_command("sync_compare", {"against": against}, timeout=120)
+    _project_command("sync_compare", {"against": _daemon_path(against)}, timeout=120)
 
 
 # -- POU deletion -------------------------------------------------------------

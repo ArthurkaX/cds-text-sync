@@ -16,6 +16,7 @@ import tempfile
 
 from cds_cli._cli_handlers_daemon import _daemon_timeout
 from cds_cli._cli_io import (
+    _daemon_path,
     _format_output,
     _print_daemon_unreachable,
     _print_error,
@@ -50,11 +51,14 @@ def dispatch_plc_log(args, output_fmt="json"):
     code = getattr(args, "code", "") or ""
     want_cts = bool(getattr(args, "cts", False) or level or code)
 
+    # `file` is a path on the PLC, not on this host: it is sent as typed (see
+    # `cts plc-log --help`); only `output` names a file this machine opens, so
+    # only it is made absolute (see `_daemon_path`).
     params = {"file": log_file}
     if tail_n:
         params["tail"] = str(tail_n)
     if output_path:
-        params["output"] = output_path
+        params["output"] = _daemon_path(output_path)
 
     # Parsing the whole log needs its text, but the daemon only returns a tail
     # (the full file can be tens of MB). With neither --tail nor --output the
