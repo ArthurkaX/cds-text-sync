@@ -275,24 +275,71 @@ def stage_visu_sketch(ctx):
 
 # -- build --------------------------------------------------------------------
 
+#: What a heavy stage waits when the daemon cannot say how big the project is.
+_HEAVY_STAGE_FALLBACK = 120
 
-def _daemon_call(ctx, method, params, timeout, stage_name):
+#: How long the daemon's timeout profile may take to answer. The profile is a
+#: cached, read-only preflight, so this only has to cover a busy loop; the
+#: daemon handlers use the same budget for the same call.
+_PROFILE_TIMEOUT = 10
+
+#: Errors a timeout-profile lookup may fail with. Anything else is a bug here.
+_PROFILE_ERRORS = (RuntimeError, TypeError, ValueError, AttributeError, KeyError)
+
+
+def _profile_timeout(ctx, method, fallback):
+    """The daemon's own size-aware budget for a heavy stage, or ``fallback``.
+
+    ``cts build`` and ``cts import`` take their timeout from the daemon's
+    ``timeout_profile``, which it sizes from the exported ST-block count. A
+    fixed 120 s here gave up mid-build on a large project while the daemon kept
+    working, which reads as "no verdict" rather than "wait longer". An older
+    daemon without the profile keeps the historical default.
+    """
+    try:
+        response = send_command_reverse("timeout_profile", {}, timeout=_PROFILE_TIMEOUT)
+        value = float(response.get("data", {}).get("timeouts", {}).get(method))
+    except _PROFILE_ERRORS:
+        return fallback
+    if value <= 0:
+        return fallback
+    return value
+
+
+def _timeout_hint(retry_flag):
+    """What to tell the caller when a heavy stage stopped waiting."""
+    if not retry_flag:
+        return ""
+    return (
+        f" Raise the budget with {retry_flag} N; the command's result is kept "
+        f"for `cts last-result`."
+    )
+
+
+def _daemon_call(ctx, method, params, timeout, stage_name, retry_flag=""):
     """Send one daemon request, mapping failures onto stage statuses.
 
     Returns ``(response, stage_result)``; exactly one is non-None. The
     distinction that matters: a dead daemon is ``skipped`` (nothing was
     learned), while a daemon that answered with a refusal is ``error``.
+
+    ``timeout`` of ``None`` means "ask the daemon": the size-aware profile
+    costs one extra round trip and is looked up only once the daemon is known
+    to be answering.
     """
     if not ctx.daemon_alive():
         return None, StageResult.skipped(
             stage_name, ctx.daemon_reason, reason_code="daemon_unavailable"
         )
+    if timeout is None:
+        timeout = _profile_timeout(ctx, method, _HEAVY_STAGE_FALLBACK)
     try:
         resp = send_command_reverse(method, params, timeout=timeout)
     except Exception as exc:
         return None, StageResult.skipped(
             stage_name,
-            f"daemon stopped responding during {method}: {_brief(exc)}",
+            f"daemon stopped responding during {method}: {_brief(exc)}"
+            f"{_timeout_hint(retry_flag)}",
             reason_code="daemon_timeout",
         )
     if not wire.response_ok(resp):
@@ -621,7 +668,9 @@ def stage_build(ctx):
     params = {}
     if fingerprint_complete:
         params["workspace_fingerprint"] = expected_fingerprint
-    resp, skipped = _daemon_call(ctx, "build", params, ctx.build_timeout or 120, "build")
+    resp, skipped = _daemon_call(
+        ctx, "build", params, ctx.build_timeout, "build", "--build-timeout"
+    )
     if skipped is not None:
         return skipped
 
@@ -716,7 +765,7 @@ def stage_test(ctx):
         params["file"] = ctx.test_file
 
     resp, skipped = _daemon_call(
-        ctx, "cicd", params, ctx.test_timeout or 120, "test"
+        ctx, "cicd", params, ctx.test_timeout, "test", "--test-timeout"
     )
     if skipped is not None:
         return skipped

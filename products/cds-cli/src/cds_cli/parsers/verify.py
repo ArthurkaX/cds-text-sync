@@ -78,14 +78,16 @@ def register(subparsers):
         dest="build_timeout",
         type=float,
         default=None,
-        help="Daemon timeout for the build stage in seconds (default: 120)",
+        help="Daemon timeout for the build stage in seconds (default: the "
+        "daemon's own budget for this project, at least 120)",
     )
     parser.add_argument(
         "--test-timeout",
         dest="test_timeout",
         type=float,
         default=None,
-        help="Daemon timeout for the test stage in seconds (default: 120)",
+        help="Daemon timeout for the test stage in seconds (default: the "
+        "daemon's own budget for this project, at least 120)",
     )
 
 

@@ -73,13 +73,19 @@ def dead_daemon(monkeypatch):
 
 
 def _fake_daemon(monkeypatch, responses):
-    """Answer ``ping`` alive and every other method from *responses*."""
+    """Answer ``ping`` alive and every other method from *responses*.
+
+    ``timeout_profile`` answers an empty profile unless the test scripts one,
+    so a stage keeps the built-in default budget it had before.
+    """
     seen = []
 
     def _send(method, params=None, timeout=None, **kwargs):
         seen.append((method, params))
         if method == "ping":
             return {"ok": True}
+        if method == "timeout_profile":
+            return responses.get(method, {"ok": True, "data": {"timeouts": {}}})
         if method not in responses:
             raise AssertionError(f"unexpected daemon method {method!r}")
         return responses[method]
