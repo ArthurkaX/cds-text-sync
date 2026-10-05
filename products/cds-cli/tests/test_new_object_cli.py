@@ -208,6 +208,31 @@ class TestSyncFolderResolution:
         assert code == 2
         assert "No such folder" in err
 
+    def test_a_relative_sync_folder_is_reported_absolutely(self, tmp_path, capsys, monkeypatch):
+        """So a reader can tell which folder was meant, not which was typed."""
+        monkeypatch.chdir(tmp_path)
+
+        _out, err, code = _run_capture(
+            capsys, _args(["new", "gvl", "GVL_A", "--sync-folder", "missing"])
+        )
+
+        assert code == 2
+        assert str(tmp_path / "missing") in err
+
+    def test_a_relative_project_view_parent_is_resolved(self, project, capsys, monkeypatch):
+        views = os.path.join(project, "project-view")
+        parent = os.path.dirname(views)
+        monkeypatch.chdir(parent)
+
+        _out, _err, code = _run_capture(
+            capsys, _args(["new", "gvl", "GVL_A", "--sync-folder", "project-view"])
+        )
+
+        assert code == 0
+        assert os.path.isfile(
+            os.path.join(views, *APPLICATION.split("/"), "GVL_A.st")
+        )
+
     def test_a_tree_without_a_project_view_is_exit_2(self, tmp_path, capsys, monkeypatch):
         monkeypatch.chdir(tmp_path)
 
