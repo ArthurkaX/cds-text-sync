@@ -623,6 +623,26 @@ def test_a_project_of_only_creates_has_no_structured_view(bridge):
     assert bridge.project.import_native_calls == []
 
 
+def test_a_structured_view_alone_counts_as_a_mutation(bridge):
+    """A StructuredView applied with no creates still mutates the project, so
+    the result must carry the "unsaved" warning rather than claiming nothing
+    happened."""
+    bridge.write_import_xml(structured_view=True)
+    data = bridge.run()["data"]
+    assert data["created_text_objects"] == []
+    assert data["updated_text_objects"] == []
+    assert "unsaved" in data
+    assert bridge.project.save_calls == 0
+
+
+def test_a_structured_view_alone_is_saved_when_asked(bridge):
+    bridge.write_import_xml(structured_view=True)
+    data = bridge.run({"save": True})["data"]
+    assert data["saved"] is True
+    assert "unsaved" not in data
+    assert bridge.project.save_calls == 1
+
+
 # ── 10. save is the user's call ────────────────────────────────────────────
 
 
