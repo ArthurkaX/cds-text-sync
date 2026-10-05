@@ -293,7 +293,15 @@ Examples:
         "Force a full download to the PLC. CODESYS may open a modal Download, "
         "Online Change, Login, or safety confirmation. The CLI cannot answer "
         "IDE questions: if this command waits, open CODESYS and approve or "
-        "cancel the dialog."
+        "cancel the dialog.\n\n"
+        "Download performs its own login with CODESYS OnlineChangeOption.Never "
+        "-- the only mode that forces a full download rather than an online "
+        "change -- and reports that mode back as the response field "
+        "option: \"Never\". It does not need an online session first, but the "
+        "active application must have a reachable PLC gateway or simulation "
+        "mode. Build first: download pushes the last built code, and after "
+        "adding a GVL/DUT/POU a full download is what makes its symbols "
+        "readable."
     )
     p_download.add_argument(
         "--start",
@@ -452,6 +460,14 @@ Examples:
         "--app", default="", help="Application name (default: active application)"
     )
     p_dpou = add_daemon_parser(subparsers, "delete-pou", "Delete a POU/Function/FunctionBlock", None)
+    p_dpou.description = (
+        "Delete one object from the project. Refused while the IDE is online "
+        "with the PLC (run `cts disconnect` first): deleting is a project edit.\n\n"
+        "The daemon may also forbid this command through its deny list -- see "
+        "`cts permissions`. When it is denied there is no override: delete the "
+        "object in the CODESYS IDE instead, then `cts export`."
+    )
+    p_dpou.formatter_class = argparse.RawDescriptionHelpFormatter
     p_dpou.add_argument("name", help="Object name")
     p_dpou.add_argument(
         "--app", default="", help="Application name (default: active application)"

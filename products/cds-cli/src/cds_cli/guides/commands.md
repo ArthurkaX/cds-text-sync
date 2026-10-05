@@ -47,6 +47,11 @@ Import applies to the in-memory project and does not save — saving commits eve
 | Update one POU from Structured Text | `cts update-pou` |
 | Delete a POU, function, or function block | `cts delete-pou` |
 
+`update-pou` and `delete-pou` are refused while the IDE is online (see below).
+They may also be forbidden by the daemon deny list — check `cts permissions`.
+When the deny list blocks `delete-pou`, delete the object in the CODESYS IDE
+instead, then `cts export`.
+
 Prefer full folder import for coordinated source changes. Use object-level mutation only when its narrower scope is intentional.
 
 ## Creating objects
@@ -73,6 +78,10 @@ cts new pou <Name> --kind program|function|function-block [--return-type T]
 cts new dut <Name> --kind struct|enum|union|alias [--base-type T]
 ```
 
+`--text` is used **verbatim** — there is no escape processing. A literal `\n`
+inside single quotes stays a backslash-n, not a line break; use bash ANSI-C
+quoting (`$'x : BOOL;\ny : BOOL;'`) or `--text-file` for a multi-line body.
+
 | What | Supported |
 |---|---|
 | `gvl` — global variable list | yes |
@@ -90,12 +99,14 @@ applications.
 **No manifest entry is written, and none is needed.** An unmanaged `.st` under
 the view root is discovered by the reader from its own declaration keyword
 (`VAR_GLOBAL`, `PROGRAM`, `FUNCTION_BLOCK`, `FUNCTION`, `TYPE`), so
-`cts compare` sees it as `added` and `cts import` creates it. Do **not** add a
-sibling `.xml` next to a new `.st`: a `.st` with a sibling `.xml` is read as an
-externalized-text projection by the ST pass and skipped, and the XML pass skips
-the pair from the other side too — a `Name.st` + `Name.xml` pair is discovered
-by nothing, which is why the old hand-written workflow needed a hand-written
-manifest entry to become visible at all.
+`cts compare` sees it as `added` and `cts import` creates it. Do **not** write a
+sibling `.xml` next to a new `.st` **before** the first import: a `.st` with a
+sibling `.xml` is read as an externalized-text projection by the ST pass and
+skipped, and the XML pass skips the pair from the other side too — a `Name.st` +
+`Name.xml` pair is discovered by nothing, which is why the old hand-written
+workflow needed a hand-written manifest entry to become visible at all. This is
+about a `.xml` you author yourself; after `import`, CODESYS writes the sibling
+`.xml` itself, that is the normal export shape, and `cts compare` stays clean.
 
 **After adding a GVL, POU or DUT, reading it from the PLC needs a full
 `cts download`.** An import alone (or an online change) leaves the PLC's symbol
@@ -126,6 +137,8 @@ the collision has to be caught here.
 | Extract generated `CTS\|` events as JSON | `cts plc-log --cts [--level M\|V] [--code CODE]` |
 
 Check the installed command help for whether download also starts the application; do not encode that behavior as version-independent.
+
+`cts download` performs its own full-download login — CODESYS `OnlineChangeOption.Never`, the only mode that forces a full download rather than an online change — so it does not need an online session first. The active application still needs a reachable PLC gateway (or simulation mode). The response field `option: "Never"` names that mode; `started` says whether the app was started again.
 
 ## Variables
 
