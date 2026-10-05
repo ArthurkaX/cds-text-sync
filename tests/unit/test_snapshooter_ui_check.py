@@ -13,9 +13,9 @@ model of WinForms.  These tests pin what a future decomposition must keep:
 * no ``Form.Show`` and no ``Application.DoEvents`` (the whole point of a
   headless run);
 * every MessageBox is recorded with its title and text;
-* the default scenario runs every step and reports the ``Load`` handler's known
-  ``_recompute_parent_states`` crash instead of stopping there;
-* a failing step leaves the rest of the scenario running;
+* the default scenario runs every step, and its ``Load`` step completes now
+  that ``_recompute_parent_states`` no longer crashes;
+* a failing step is recorded and leaves the rest of the scenario running;
 * a window that cannot be built at all yields ``ok: False`` with a message.
 """
 
@@ -76,19 +76,12 @@ def test_the_default_scenario_runs_every_step(ui_env):
     assert _names(report) == list(ui_env[0]._DEFAULT_CHECK_STEPS)
 
 
-def test_the_load_step_reports_the_known_recompute_crash(ui_env):
+def test_every_default_step_succeeds(ui_env):
+    """The Load step used to report the known _recompute_parent_states crash."""
     report = _check(ui_env)
 
-    by_name = {step["name"]: step for step in report["steps"]}
-    # The dialog's Load handler is known-broken: _recompute_parent_states sorts
-    # id() ints as nodes.  The headless check must show the crash, not hide it.
-    assert by_name["load"]["ok"] is False
-    assert "AttributeError" in by_name["load"]["error"]
-    assert "'int' object has no attribute 'Name'" in by_name["load"]["error"]
-    # Every other step survived.
-    for name, step in by_name.items():
-        if name != "load":
-            assert step["ok"] is True, (name, step["error"])
+    for step in report["steps"]:
+        assert step["ok"] is True, (step["name"], step["error"])
 
 
 def test_the_form_is_built_but_never_shown_or_pumped(ui_env):
@@ -110,17 +103,17 @@ def test_the_windows_shown_are_reported_with_title_and_text(ui_env):
 
     assert report["windows"], "the scenario shows at least the Save box"
     titles = [window["title"] for window in report["windows"]]
-    assert titles == ["Save", "Diff", "Restore"]
+    # Load used to be absent here: it died before its completion box.
+    assert titles == ["Save", "Load", "Diff", "Restore"]
     assert all(set(window) == {"title", "text"} for window in report["windows"])
     assert all(isinstance(window["text"], str) for window in report["windows"])
 
 
-def test_the_load_step_shows_no_box_because_it_crashes_first(ui_env):
+def test_the_load_step_reports_how_many_variables_it_loaded(ui_env):
     report = _check(ui_env)
 
-    # Load sets _last_data and the checks, then dies in _recompute_parent_states
-    # BEFORE its "Loaded N variables." MessageBox -- pinned known behaviour.
-    assert "Load" not in [window["title"] for window in report["windows"]]
+    loaded = [w for w in report["windows"] if w["title"] == "Load"]
+    assert loaded == [{"title": "Load", "text": "Loaded 1 variables."}]
 
 
 def test_the_save_and_open_dialogs_are_reported(ui_env):
@@ -175,12 +168,37 @@ def test_an_unknown_step_is_recorded_not_raised(ui_env):
 
 
 def test_a_failing_step_does_not_stop_the_rest(ui_env):
+    ui, _backend, _dotnet = ui_env
+
+    def boom(_state):
+        raise RuntimeError("step is broken")
+
+    ui._CHECK_STEPS["load"] = boom
+
     report = _check(ui_env, script=["load", "diff", "restore"])
 
     by_name = {step["name"]: step for step in report["steps"]}
     assert by_name["load"]["ok"] is False
+    assert by_name["load"]["error"] == "RuntimeError: step is broken"
     assert by_name["diff"]["ok"] is True
     assert by_name["restore"]["ok"] is True
+
+
+def test_a_backend_failure_inside_a_step_is_caught(ui_env):
+    """The step's own backend call failing is recorded, not raised."""
+    _ui, backend, _dotnet = ui_env
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("preset is unreadable")
+
+    backend.load = boom
+    backend.as_dict()["load"] = boom
+
+    report = _check(ui_env, script=["load"])
+
+    assert report["steps"] == [
+        {"name": "load", "ok": False, "error": "RuntimeError: preset is unreadable"}
+    ]
 
 
 def test_restore_is_a_dry_run_when_answered_no(ui_env):

@@ -447,36 +447,51 @@ def _update_parent_state(start_node, node_models, leaf_nodes):
         parent = parent.Parent
 
 
-def _recompute_parent_states(leaf_nodes, node_models):
-    """Known-broken: collects ``id(parent)`` ints, then sorts them as nodes.
+def _subtree_leaf_counts(node):
+    """``(checked, total)`` leaves in ``node``'s subtree, off the UI tree."""
+    checked = 0
+    total = 0
+    for i in range(node.Nodes.Count):
+        child = node.Nodes[i]
+        if child.Tag == 1:
+            total += 1
+            if child.Checked:
+                checked += 1
+        else:
+            child_checked, child_total = _subtree_leaf_counts(child)
+            checked += child_checked
+            total += child_total
+    return checked, total
 
-    The Load handler always dies here with ``AttributeError: 'int' object has
-    no attribute 'Name'`` on a non-empty tree.  The grid pins that crash; it is
-    preserved verbatim on purpose and must not be silently repaired.
+
+def _recompute_parent_states(leaf_nodes):
+    """Re-derive every branch's check state from the leaves beneath it.
+
+    Load writes the leaves and nothing else, so the branches have to be brought
+    back in line afterwards.  A branch is checked exactly when every leaf under
+    it is -- the same rule ``_update_parent_state`` applies while the user
+    clicks -- and unchecked otherwise, including when only some of its leaves
+    are on, because a WinForms TreeView checkbox has no third state.
+
+    The counts come from the UI tree rather than ``node_models[...].leaf_count``:
+    the checkboxes are what the user reads back, so the branch state has to
+    agree with the boxes actually on screen.  (The version this replaced
+    collected ``id(parent)`` ints and sorted them as if they were nodes, so
+    Load died with ``AttributeError: 'int' object has no attribute 'Name'``.)
     """
+    branches = []
     seen = set()
     for leaf in leaf_nodes:
-        parent = leaf.Parent
-        while parent is not None and id(parent) not in seen:
-            seen.add(id(parent))
-            parent = parent.Parent
-    # Process deepest first by sorting on path depth (Name dots).
-    parents = list(seen)
-    parents.sort(key=lambda n: str(n.Name).count("."), reverse=True)
-    for parent in parents:
-        model = node_models.get(parent)
-        total = model.leaf_count if model else 0
-        if total == 0:
-            parent.Checked = False
-            continue
-        checked_count = 0
-        for i in range(parent.Nodes.Count):
-            if parent.Nodes[i].Checked:
-                checked_count += 1
-        # For a branch, checked_count is the number of *direct* children
-        # whose Checked box is on. With full parent tri-state that only
-        # happens when every descendant leaf is selected.
-        parent.Checked = checked_count == parent.Nodes.Count
+        node = leaf.Parent
+        while node is not None:
+            if id(node) in seen:
+                break
+            seen.add(id(node))
+            branches.append(node)
+            node = node.Parent
+    for branch in branches:
+        checked, total = _subtree_leaf_counts(branch)
+        branch.Checked = total > 0 and checked == total
 
 
 def _search_matches(leaf_nodes, node_models, query):
@@ -803,7 +818,7 @@ class _FormMethods(object):
                 if checked:
                     selected += 1
             self._selected_count = selected
-            _recompute_parent_states(self._all_leaf_nodes, self._node_models)
+            _recompute_parent_states(self._all_leaf_nodes)
         finally:
             self.tree.EndUpdate()
             self._checking = False
