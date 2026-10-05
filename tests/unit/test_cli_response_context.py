@@ -161,3 +161,56 @@ def test_unreachable_line_is_not_printed_on_success(with_context, monkeypatch, c
     )
     _cli_io.cmd_daemon("ping", {}, output_fmt="json")
     assert capsys.readouterr().err == ""
+
+
+# ── a failure still says where you are ─────────────────────────────────────
+
+
+def test_a_failed_command_prints_the_context_line_to_stderr(monkeypatch, capsys):
+    """`cts read GVL.iNoSuchVar` fails on the IDE side and carries context."""
+    response = {
+        "ok": False,
+        "error": "Read variable error: no such variable",
+        "context": ONLINE,
+    }
+    monkeypatch.setattr(
+        _cli_io, "send_command_reverse", lambda *a, **k: response
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _cli_io.cmd_daemon("read_variable", {"name": "GVL.iNoSuchVar"})
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "[ERROR] Read variable error" in err
+    assert "[ctx] project=cts-reference-project ide=ide-3444" in err
+    assert "edits=blocked" in err
+
+
+def test_a_failed_command_without_context_adds_nothing(monkeypatch, capsys):
+    """An older daemon sends no context; the error must look as it always did."""
+    response = {"ok": False, "error": "Read variable error: no such variable"}
+    monkeypatch.setattr(
+        _cli_io, "send_command_reverse", lambda *a, **k: response
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _cli_io.cmd_daemon("read_variable", {"name": "GVL.iNoSuchVar"})
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "[ERROR] Read variable error" in err
+    assert "[ctx]" not in err
+
+
+def test_context_is_not_printed_on_stdout_in_json_mode(monkeypatch, capsys):
+    """stderr carries the line; stdout stays machine-parseable (empty here)."""
+    response = {"ok": False, "error": "boom", "context": ONLINE}
+    monkeypatch.setattr(_cli_io, "send_command_reverse", lambda *a, **k: response)
+
+    with pytest.raises(SystemExit):
+        _cli_io.cmd_daemon("ping", {})
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "[ctx]" in captured.err
