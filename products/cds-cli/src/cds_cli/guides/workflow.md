@@ -28,6 +28,16 @@ folder <--export-- CODESYS IDE
 
 Run `cts guide commands` when selecting commands or diagnosing a workflow. Treat installed CLI help as authoritative if it differs from the guide.
 
+## Reading the context
+
+Every daemon response carries a `context` block (and `--pretty` prints it as a
+trailing `[ctx] ...` line) telling you where you are: the open project, the IDE
+id, the cached PLC state, and `edits_allowed`. The state is cached — `age_s` is
+how old it is. When `edits_allowed` is `false` the IDE is online with the PLC:
+run `cts disconnect`, then repeat the command; do not edit online. A `null`
+`plc.online` means the daemon has no cached session, not that the IDE is
+offline. See `cts guide commands`, "Reading the context", for the field list.
+
 ## Apply Folder Changes
 
 Use this sequence for normal source changes:

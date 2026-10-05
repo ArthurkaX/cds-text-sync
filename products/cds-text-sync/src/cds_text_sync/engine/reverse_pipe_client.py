@@ -474,6 +474,7 @@ _configured_target: str | int | None = None
 _configured_expect_project: str | None = None
 _resolved_pid: int | None = None
 _last_instance: dict[str, Any] | None = None
+_last_context: dict[str, Any] | None = None
 _cached_codesys_pids: set[int] | None = None
 _codesys_pids_listed = False
 
@@ -494,6 +495,15 @@ def configure(
 def get_last_instance() -> dict[str, Any] | None:
     """Return the last instance metadata seen by reverse pipe client."""
     return _last_instance
+
+
+def get_last_context() -> dict[str, Any] | None:
+    """Return the last response's ``context`` block, or None.
+
+    Attached by the daemon beside ``instance``; older daemons do not send it,
+    so callers must treat None as "no context available".
+    """
+    return _last_context
 
 
 def _list_codesys_pids() -> set[int] | None:
@@ -1203,10 +1213,15 @@ class ReversePipeClient:
                 chosen_conn, session.method, session.params, session.deadline
             )
 
+            global _last_context
             if isinstance(response, dict) and "instance" in response:
                 _last_instance = response["instance"]
             else:
                 _last_instance = {"id": chosen.id, "project": chosen.project}
+            if isinstance(response, dict) and "context" in response:
+                _last_context = response["context"]
+            else:
+                _last_context = None
 
             return response
         finally:

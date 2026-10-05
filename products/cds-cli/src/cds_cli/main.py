@@ -70,6 +70,7 @@ from cds_cli._cli_handlers_vars import (  # noqa: E402
 )
 from cds_cli._cli_handlers_visu import dispatch_visu  # noqa: E402
 from cds_cli._cli_io import (  # noqa: E402
+    _print_daemon_unreachable,
     _print_error,
     _print_rp_error,
     cmd_direct,
@@ -426,6 +427,7 @@ def _run_docs_daemon(args, workspace):
         resp = send_command_reverse("generate_docs", {}, timeout=args.timeout)
     except RuntimeError as e:
         _print_error("Reverse pipe error: {0}".format(e))
+        _print_daemon_unreachable()
         sys.exit(1)
 
     if not wire.response_ok(resp):

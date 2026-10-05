@@ -67,6 +67,7 @@ from ide_daemon_state import (
 from ide_daemon_helpers import (
     _get_sync_folder,
 )
+import ide_response_context
 from ide_last_result import _cmd_last_result, record_last_result
 from ide_timeout_profile import count_st_blocks, make_timeout_profile
 from ide_online_helpers import adopt_existing_online_session
@@ -399,11 +400,9 @@ def _serve_connection(pipe, dash=None):
     # Execute command in main script context
     response = handle_command(method, params, request_id=request_id)
 
-    # Attach instance info to response (computed after command execution)
-    if isinstance(response, dict):
-        response["instance"] = _instance_info()
-        if request_id:
-            response[wire.REQUEST_ID_KEY] = request_id
+    # Attach instance and the "where am I" context (computed after command
+    # execution; cached state only, never a new PLC/IDE call).
+    ide_response_context.attach_response_metadata(response, request_id)
 
     if dash is not None:
         _dashboard_log_response(dash, method, response)
@@ -438,6 +437,7 @@ def run_loop():
     capture_codesys_globals()
     sys._codesys_daemon_loop["running"] = True
     sys._codesys_daemon_loop["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    sys._codesys_daemon_loop["started_ts"] = time.time()
     sys._codesys_daemon_loop["started"] = True
 
     # The supported operating order is IDE Online/Login first, daemon second.

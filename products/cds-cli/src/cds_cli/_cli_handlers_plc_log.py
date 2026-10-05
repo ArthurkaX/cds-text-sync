@@ -17,6 +17,7 @@ import tempfile
 from cds_cli._cli_handlers_daemon import _daemon_timeout
 from cds_cli._cli_io import (
     _format_output,
+    _print_daemon_unreachable,
     _print_error,
     _print_rp_error,
     send_command_reverse,
@@ -70,6 +71,7 @@ def dispatch_plc_log(args, output_fmt="json"):
             response = send_command_reverse("plc_log", params, timeout=timeout)
         except RuntimeError as exc:
             _print_error("Reverse pipe error: {0}".format(exc))
+            _print_daemon_unreachable()
             sys.exit(1)
 
         if not wire.response_ok(response):

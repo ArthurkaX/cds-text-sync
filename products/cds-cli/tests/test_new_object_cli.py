@@ -258,8 +258,9 @@ class TestReport:
         ]
         assert payload["next"][0] == "cts compare"
         assert payload["next"][1] == "cts import"
-        assert "cts download" in payload["next"][2]
-        assert "full download" in payload["next"][2]
+        assert "the PLC never gets it" in payload["next"][2]
+        assert "cts download" in payload["next"][3]
+        assert "full download" in payload["next"][3]
 
     def test_the_text_rendering_is_available(self, project, capsys):
         out, _err, code = _run_capture(

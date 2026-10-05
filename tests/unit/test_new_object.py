@@ -447,6 +447,26 @@ class TestWhatIsWritten:
         assert "cts download" in joined
         assert "full download" in joined
 
+    def test_a_gvl_report_says_it_must_be_referenced_first(self, tmp_path):
+        """CODESYS compiles out an object nothing calls: the reminder is the
+        difference between a full download that works and one that does not."""
+        root, _views = _make_project(tmp_path)
+
+        report = no.create_object(root, "gvl", "GVL_A")
+
+        joined = "\n".join(report["next"])
+        assert "the PLC never gets it" in joined
+        assert "reachable from a task's call tree" in joined
+
+    def test_a_dut_report_has_no_reference_step(self, tmp_path):
+        root, _views = _make_project(tmp_path)
+
+        report = no.create_object(root, "dut", "ST_A", dut_kind="struct")
+
+        joined = "\n".join(report["next"])
+        assert "the PLC never gets it" not in joined
+        assert "cts download" in joined
+
     def test_the_report_names_the_type_guid_for_this_kind(self, tmp_path):
         root, _views = _make_project(tmp_path)
 
