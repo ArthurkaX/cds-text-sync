@@ -322,6 +322,28 @@ def _write_new_file(full_path, body):
         raise NewObjectError("Could not write {0}: {1}".format(full_path, error))
 
 
+def _next_steps(kind):
+    """The ordered next steps. A GVL/POU must be referenced to reach the PLC.
+
+    CODESYS loads only objects reachable from a task's call tree, so a new
+    executable object that nothing calls is compiled out: a full download alone
+    is not enough. A full download is still needed *after* it is referenced, or
+    the PLC's symbol table stays stale.
+    """
+    steps = ["cts compare", "cts import"]
+    if kind in ("gvl", "pou"):
+        steps.append(
+            "Reference it from a POU the task calls, or the PLC never gets it: "
+            "CODESYS loads only objects reachable from a task's call tree "
+            "(for a GVL, add e.g. `GVL.x;` to MAIN)."
+        )
+    steps.append(
+        "cts download  # full download, after the object is referenced, before "
+        "its symbols are readable"
+    )
+    return steps
+
+
 def _new_object_report(kind, name, parent_path, views, relative, full_path, body):
     """The JSON the CLI prints: what was written and what to run next."""
     result = {
@@ -334,12 +356,7 @@ def _new_object_report(kind, name, parent_path, views, relative, full_path, body
         "type_guid": KIND_TYPE_GUIDS.get(kind, ""),
         "bytes": len(body.encode("utf-8")),
         "discovery": "pending-create (no manifest entry needed)",
-        "next": [
-            "cts compare",
-            "cts import",
-            "cts download  # full download: new objects need it before PLC "
-            "symbols are readable",
-        ],
+        "next": _next_steps(kind),
     }
     note = _placeholder_note(kind, body)
     if note:

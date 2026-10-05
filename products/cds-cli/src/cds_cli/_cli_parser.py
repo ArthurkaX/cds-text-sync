@@ -68,6 +68,10 @@ Connection state:
     connected, online, running, application_state, application
   They do not auto-connect to the PLC. If the daemon has not seen an online
   session yet, plc.known is false.
+  Every daemon response also carries a compact context block (project, IDE id,
+  cached PLC state, whether project edits are allowed); --pretty/--output text
+  prints it as one `[ctx] ...` line. See `cts guide commands`, "Reading the
+  context".
 
 Advanced headless CRC probe:
   `cts plc-crc-headless` reads the deployed Application.crc through a temporary

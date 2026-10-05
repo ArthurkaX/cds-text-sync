@@ -36,6 +36,50 @@ Disconnect before any project edit when the IDE is online with the PLC. Import, 
 
 Import applies to the in-memory project and does not save — saving commits everything else open in the IDE, so it is the user's call. Report the `unsaved` warning when it appears; use `--save` only when the user asked for it. Import does re-baseline `project-view/` and `manifest.json` from the IDE, so the next compare is clean. When it withholds that refresh it says why in `manifest_refresh_skipped` — always because an edit did not reach the IDE and the disk still holds the only copy.
 
+## Reading the context
+
+Every daemon response carries a `context` block, beside `instance`. It answers
+"where am I" without a second command:
+
+```json
+"context": {
+  "project": "cts-reference-project", "ide": "ide-3444",
+  "plc": {"online": true, "state": "run", "application": "Application"},
+  "edits_allowed": false,
+  "hint": "The IDE is online with the PLC; project edits are refused. Run cts disconnect, then repeat the command.",
+  "hint_short": "cts disconnect",
+  "age_s": 3
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `project` | Project name open in that IDE, or `null` when none is open |
+| `ide` | Daemon instance id (`ide-<pid>`), the same value `--target` takes |
+| `plc.online` | Cached session state: `true`, `false`, or `null` when the daemon has not seen a session |
+| `plc.state` | Application state from the cache (`run`, `stop`, or empty when unknown) |
+| `plc.application` | Name of the cached online application |
+| `edits_allowed` | `false` while the IDE is online with the PLC — editing is then refused |
+| `hint` | Present only when there is something to do; explains what |
+| `hint_short` | The action from `hint`, short (e.g. `cts disconnect`) |
+| `age_s` | Age in seconds of the cached PLC view; large means stale |
+
+The state is **cached** — it is the daemon's last-known PLC view, not a fresh
+probe, and `age_s` says how old it is. `plc.online: null` means unknown, not
+offline: an edit may still be refused. When `edits_allowed` is `false`, run
+`cts disconnect` (and, if the state does not clear, end the online session in
+the CODESYS IDE), then repeat the command.
+
+In `--pretty` / `--output text` the same block prints as one line at the end:
+
+```
+[ctx] project=cts-reference-project ide=ide-3444 plc=online/run edits=blocked (cts disconnect)
+```
+
+The context is added to every daemon command; commands that run without a
+daemon (`cts new`, `cts guide`, `cts where`, `cts analyze`, `cts fsm`) have no
+context — there is no daemon state to report.
+
 ## Project Inspection and Object Changes
 
 | Goal | Command |
@@ -64,13 +108,14 @@ the existing sync steps carry it into CODESYS:
 cts new gvl GVL_HMI --text 'xStart : BOOL;'   # 1. author on disk
 cts compare                                   # 2. reports added=1
 cts import                                    # 3. CODESYS creates it
-cts download                                  # 4. FULL download (see below)
+# 4. make it reachable from a block the task calls (see below)
+cts download                                  # 5. FULL download, after the reference
 ```
 
 Step 3 asks the user first when it would save the IDE project — `cts import`
 applies to the in-memory project, and saving commits everything else that is
-open. Step 4 is only needed when something must *read* the new object back
-from the PLC; skip it if the object is not going to be read.
+open. Steps 4-5 are only needed when something must *read* the new object back
+from the PLC; skip them if the object is not going to be read.
 
 ```
 cts new gvl <Name> [--text T | --text-file F] [--parent PATH]
@@ -108,9 +153,21 @@ workflow needed a hand-written manifest entry to become visible at all. This is
 about a `.xml` you author yourself; after `import`, CODESYS writes the sibling
 `.xml` itself, that is the normal export shape, and `cts compare` stays clean.
 
-**After adding a GVL, POU or DUT, reading it from the PLC needs a full
-`cts download`.** An import alone (or an online change) leaves the PLC's symbol
-table stale, and every read of a variable in the new object fails with:
+**A new object reaches the PLC only if BOTH hold — reference it, then download.**
+
+1. **It is reachable from a block the task calls.** CODESYS loads only objects
+   in a task's call tree, so a GVL/POU that nothing references is compiled out
+   — a full download alone does not bring it in. For an I/O GVL, mention it in
+   `MAIN` or another called block, e.g. add the line
+
+   ```
+   GVL_HMI.xStart;              // or:  xLocal := GVL_HMI.xStart;
+   ```
+
+2. **A FULL download runs after that.** `cts download` is the full download; an
+   import alone, or an online change, leaves the PLC's symbol table stale.
+
+Without both, every read of a variable in the new object fails with exactly:
 
 ```
 Invalid expression: 'GVL_HMI.xStart' is not exported to the online

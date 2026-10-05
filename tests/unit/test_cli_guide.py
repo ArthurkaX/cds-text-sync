@@ -126,8 +126,8 @@ def test_commands_guide_documents_creating_objects():
     assert "cts new gvl GVL_HMI" in text
     assert "needs no daemon and no IDE" in text
     assert "No manifest entry is written, and none is needed" in text
-    assert "reading it from the PLC needs a full" in text
-    assert "is not exported to the online" in text
+    assert "A new object reaches the PLC only if BOTH hold" in text
+    assert "not exported to the online" in text
 
 
 def test_commands_guide_warns_against_a_sibling_xml():
@@ -182,6 +182,31 @@ def test_commands_guide_explains_the_download_never_option():
 
     assert "OnlineChangeOption.Never" in text
     assert 'option: "Never"' in text
+
+
+def test_commands_guide_documents_reachability_before_download():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "reachable from a block the task calls" in text
+    assert "compiled out" in text
+    assert "GVL_HMI.xStart;" in text
+    assert "A FULL download runs after that" in text
+
+
+def test_commands_guide_documents_reading_the_context():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "## Reading the context" in text
+    assert "`edits_allowed`" in text
+    assert "cts disconnect`" in text
+    assert "is **cached**" in text
+
+
+def test_workflow_guide_points_at_the_context():
+    text = " ".join(read_topic("workflow")["text"].split())
+
+    assert "## Reading the context" in text
+    assert "edits_allowed" in text
 
 
 def test_commands_guide_documents_the_tree_cache_refresh():

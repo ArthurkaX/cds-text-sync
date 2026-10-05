@@ -38,6 +38,14 @@ def test_connect_help_warns_about_modal_ide_questions():
     assert "complete Online -> Login before starting the daemon" in help_text
 
 
+def test_root_help_mentions_the_context_block():
+    help_text = " ".join(build_parser().format_help().split())
+
+    assert "compact context block" in help_text
+    assert "[ctx]" in help_text
+    assert "Reading the context" in help_text
+
+
 def test_download_help_warns_about_modal_ide_questions():
     parser = build_parser()._subparsers._group_actions[0].choices["download"]
     help_text = " ".join(parser.format_help().split())
@@ -370,12 +378,13 @@ def test_new_help_gives_the_order_of_commands(monkeypatch):
     assert "cts download" in help_text
 
 
-def test_new_help_warns_that_a_full_download_is_needed_to_read_the_object(
-    monkeypatch,
-):
+def test_new_help_states_the_two_conditions_to_reach_the_plc(monkeypatch):
     help_text = _new_help(monkeypatch)
 
-    assert "needs a FULL download" in help_text
+    assert "reaches the PLC only if BOTH hold" in help_text
+    assert "reachable from a block the task calls" in help_text
+    assert "compiled out" in help_text
+    assert "GVL_HMI.xStart;" in help_text
     assert "is not exported to the online application" in help_text
 
 
