@@ -1,0 +1,4025 @@
+{
+  "fixtures": {
+    "branching": {
+      "any_box": null,
+      "chips": [],
+      "columns": 2,
+      "dropped": 0,
+      "height": 650,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            223,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            250,
+            83
+          ],
+          "guard_text": "xRun",
+          "guard_w": 28,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              223,
+              58
+            ],
+            [
+              223,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "xRun",
+            "offset": 38,
+            "source": "OFF",
+            "target": "RED"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            223,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            250,
+            181
+          ],
+          "guard_text": "ELSIF xNight",
+          "guard_w": 84,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              223,
+              154
+            ],
+            [
+              223,
+              174
+            ],
+            [
+              223,
+              174
+            ],
+            [
+              223,
+              256
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF xNight",
+            "offset": 123,
+            "source": "RED",
+            "target": "FLASH"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            858,
+            362,
+            "h"
+          ],
+          "guard_at": [
+            885,
+            355
+          ],
+          "guard_text": "xTimer",
+          "guard_w": 42,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              858,
+              290
+            ],
+            [
+              858,
+              392
+            ]
+          ],
+          "transition": {
+            "guard": "xTimer",
+            "offset": 301,
+            "source": "REDY",
+            "target": "GREEN"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            858,
+            460,
+            "h"
+          ],
+          "guard_at": [
+            885,
+            453
+          ],
+          "guard_text": "ELSIF xTimer",
+          "guard_w": 84,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              858,
+              426
+            ],
+            [
+              858,
+              446
+            ],
+            [
+              858,
+              446
+            ],
+            [
+              858,
+              528
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF xTimer",
+            "offset": 428,
+            "source": "GREEN",
+            "target": "YELLOW"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            858,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            885,
+            181
+          ],
+          "guard_text": "ELSIF xTimer",
+          "guard_w": 84,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              223,
+              154
+            ],
+            [
+              223,
+              174
+            ],
+            [
+              858,
+              174
+            ],
+            [
+              858,
+              256
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF xTimer",
+            "offset": 161,
+            "source": "RED",
+            "target": "REDY"
+          }
+        },
+        {
+          "arrow": [
+            120,
+            198,
+            "up"
+          ],
+          "bar": [
+            98,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            125,
+            181
+          ],
+          "guard_text": "NOT xRun",
+          "guard_w": 56,
+          "kind": "jump",
+          "note_at": [
+            130,
+            200
+          ],
+          "note_text": "1  OFF",
+          "note_w": 42,
+          "points": [
+            [
+              223,
+              174
+            ],
+            [
+              98,
+              174
+            ],
+            [
+              98,
+              228
+            ],
+            [
+              120,
+              228
+            ],
+            [
+              120,
+              198
+            ]
+          ],
+          "transition": {
+            "guard": "NOT xRun",
+            "offset": 87,
+            "source": "RED",
+            "target": "OFF"
+          }
+        },
+        {
+          "arrow": [
+            169,
+            334,
+            "up"
+          ],
+          "bar": [
+            147,
+            324,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            317
+          ],
+          "guard_text": "NOT xRun",
+          "guard_w": 56,
+          "kind": "jump",
+          "note_at": [
+            179,
+            336
+          ],
+          "note_text": "1  OFF",
+          "note_w": 42,
+          "points": [
+            [
+              223,
+              290
+            ],
+            [
+              223,
+              310
+            ],
+            [
+              147,
+              310
+            ],
+            [
+              147,
+              364
+            ],
+            [
+              169,
+              364
+            ],
+            [
+              169,
+              334
+            ]
+          ],
+          "transition": {
+            "guard": "NOT xRun",
+            "offset": 213,
+            "source": "FLASH",
+            "target": "OFF"
+          }
+        },
+        {
+          "arrow": [
+            321,
+            334,
+            "up"
+          ],
+          "bar": [
+            299,
+            324,
+            "h"
+          ],
+          "guard_at": [
+            326,
+            317
+          ],
+          "guard_text": "ELSIF NOT xNight",
+          "guard_w": 112,
+          "kind": "jump",
+          "note_at": [
+            331,
+            336
+          ],
+          "note_text": "2  RED",
+          "note_w": 42,
+          "points": [
+            [
+              223,
+              310
+            ],
+            [
+              299,
+              310
+            ],
+            [
+              299,
+              364
+            ],
+            [
+              321,
+              364
+            ],
+            [
+              321,
+              334
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF NOT xNight",
+            "offset": 253,
+            "source": "FLASH",
+            "target": "RED"
+          }
+        },
+        {
+          "arrow": [
+            630,
+            470,
+            "up"
+          ],
+          "bar": [
+            608,
+            460,
+            "h"
+          ],
+          "guard_at": [
+            635,
+            453
+          ],
+          "guard_text": "NOT xRun",
+          "guard_w": 56,
+          "kind": "jump",
+          "note_at": [
+            640,
+            472
+          ],
+          "note_text": "1  OFF",
+          "note_w": 42,
+          "points": [
+            [
+              858,
+              446
+            ],
+            [
+              608,
+              446
+            ],
+            [
+              608,
+              500
+            ],
+            [
+              630,
+              500
+            ],
+            [
+              630,
+              470
+            ]
+          ],
+          "transition": {
+            "guard": "NOT xRun",
+            "offset": 354,
+            "source": "GREEN",
+            "target": "OFF"
+          }
+        },
+        {
+          "arrow": [
+            755,
+            470,
+            "up"
+          ],
+          "bar": [
+            733,
+            460,
+            "h"
+          ],
+          "guard_at": [
+            760,
+            453
+          ],
+          "guard_text": "ELSIF xNight",
+          "guard_w": 84,
+          "kind": "jump",
+          "note_at": [
+            765,
+            472
+          ],
+          "note_text": "3  FLASH",
+          "note_w": 56,
+          "points": [
+            [
+              858,
+              446
+            ],
+            [
+              733,
+              446
+            ],
+            [
+              733,
+              500
+            ],
+            [
+              755,
+              500
+            ],
+            [
+              755,
+              470
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF xNight",
+            "offset": 390,
+            "source": "GREEN",
+            "target": "FLASH"
+          }
+        },
+        {
+          "arrow": [
+            880,
+            592,
+            "up"
+          ],
+          "bar": [
+            858,
+            582,
+            "h"
+          ],
+          "guard_at": [
+            885,
+            575
+          ],
+          "guard_text": "xTimer",
+          "guard_w": 42,
+          "kind": "jump",
+          "note_at": [
+            890,
+            594
+          ],
+          "note_text": "2  RED",
+          "note_w": 42,
+          "points": [
+            [
+              858,
+              562
+            ],
+            [
+              858,
+              622
+            ],
+            [
+              880,
+              622
+            ],
+            [
+              880,
+              592
+            ]
+          ],
+          "transition": {
+            "guard": "xTimer",
+            "offset": 481,
+            "source": "YELLOW",
+            "target": "RED"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "OFF",
+          "h": 34,
+          "inbound": [
+            2,
+            3,
+            5
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "OFF",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 138,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "RED",
+          "h": 34,
+          "inbound": [
+            3,
+            6
+          ],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "RED",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 138,
+          "y": 120
+        },
+        {
+          "col": 0,
+          "full_label": "FLASH",
+          "h": 34,
+          "inbound": [
+            5
+          ],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "FLASH",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 138,
+          "y": 256
+        },
+        {
+          "col": 1,
+          "full_label": "REDY",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 567,
+          "initial": false,
+          "label": "REDY",
+          "number": 4,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 773,
+          "y": 256
+        },
+        {
+          "col": 1,
+          "full_label": "GREEN",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 567,
+          "initial": false,
+          "label": "GREEN",
+          "number": 5,
+          "priority": false,
+          "row": 3,
+          "w": 170,
+          "x": 773,
+          "y": 392
+        },
+        {
+          "col": 1,
+          "full_label": "YELLOW",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 567,
+          "initial": false,
+          "label": "YELLOW",
+          "number": 6,
+          "priority": false,
+          "row": 4,
+          "w": 170,
+          "x": 773,
+          "y": 528
+        }
+      ],
+      "width": 989
+    },
+    "dropped": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 1,
+      "height": 182,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            83
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              58
+            ],
+            [
+              135,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 0,
+            "source": "A",
+            "target": "B"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 50,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 50,
+          "y": 120
+        }
+      ],
+      "width": 280
+    },
+    "empty": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 0,
+      "height": 52,
+      "links": [],
+      "prefix": "",
+      "steps": [],
+      "width": 48
+    },
+    "fan_jumps": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 0,
+      "height": 352,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            83
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              58
+            ],
+            [
+              135,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            186,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            179
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              216
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 73,
+            "source": "B",
+            "target": "C"
+          }
+        },
+        {
+          "arrow": [
+            120,
+            294,
+            "up"
+          ],
+          "bar": [
+            98,
+            284,
+            "h"
+          ],
+          "guard_at": [
+            125,
+            277
+          ],
+          "guard_text": "g3",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            130,
+            296
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              135,
+              250
+            ],
+            [
+              135,
+              270
+            ],
+            [
+              98,
+              270
+            ],
+            [
+              98,
+              324
+            ],
+            [
+              120,
+              324
+            ],
+            [
+              120,
+              294
+            ]
+          ],
+          "transition": {
+            "guard": "g3",
+            "offset": 112,
+            "source": "C",
+            "target": "A"
+          }
+        },
+        {
+          "arrow": [
+            194,
+            294,
+            "up"
+          ],
+          "bar": [
+            172,
+            284,
+            "h"
+          ],
+          "guard_at": [
+            199,
+            277
+          ],
+          "guard_text": "g4",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            204,
+            296
+          ],
+          "note_text": "2  B",
+          "note_w": 28,
+          "points": [
+            [
+              135,
+              270
+            ],
+            [
+              172,
+              270
+            ],
+            [
+              172,
+              324
+            ],
+            [
+              194,
+              324
+            ],
+            [
+              194,
+              294
+            ]
+          ],
+          "transition": {
+            "guard": "g4",
+            "offset": 146,
+            "source": "C",
+            "target": "B"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            3
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 50,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [
+            3
+          ],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 50,
+          "y": 120
+        },
+        {
+          "col": 0,
+          "full_label": "C",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "C",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 50,
+          "y": 216
+        }
+      ],
+      "width": 280
+    },
+    "linear": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 0,
+      "height": 338,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            83
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              58
+            ],
+            [
+              135,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            186,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            179
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              216
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 73,
+            "source": "B",
+            "target": "C"
+          }
+        },
+        {
+          "arrow": [
+            157,
+            280,
+            "up"
+          ],
+          "bar": [
+            135,
+            270,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            263
+          ],
+          "guard_text": "=1",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            167,
+            282
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              135,
+              250
+            ],
+            [
+              135,
+              310
+            ],
+            [
+              157,
+              310
+            ],
+            [
+              157,
+              280
+            ]
+          ],
+          "transition": {
+            "guard": "",
+            "offset": 101,
+            "source": "C",
+            "target": "A"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            3
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 50,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 50,
+          "y": 120
+        },
+        {
+          "col": 0,
+          "full_label": "C",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "C",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 50,
+          "y": 216
+        }
+      ],
+      "width": 280
+    },
+    "long_guard": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 0,
+      "height": 242,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            83
+          ],
+          "guard_text": "this_guard_name_is_far_longer_than_th...",
+          "guard_w": 280,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              58
+            ],
+            [
+              135,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "this_guard_name_is_far_longer_than_the_limit",
+            "offset": 76,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": [
+            157,
+            184,
+            "up"
+          ],
+          "bar": [
+            135,
+            174,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            167
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            167,
+            186
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              214
+            ],
+            [
+              157,
+              214
+            ],
+            [
+              157,
+              184
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 115,
+            "source": "B",
+            "target": "A"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            2
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 50,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 50,
+          "y": 120
+        }
+      ],
+      "width": 462
+    },
+    "merge_fan": {
+      "any_box": null,
+      "chips": [],
+      "columns": 3,
+      "dropped": 0,
+      "height": 366,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            147,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            85
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              58
+            ],
+            [
+              147,
+              78
+            ],
+            [
+              147,
+              78
+            ],
+            [
+              147,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            447,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            474,
+            85
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              58
+            ],
+            [
+              147,
+              78
+            ],
+            [
+              447,
+              78
+            ],
+            [
+              447,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 68,
+            "source": "A",
+            "target": "P"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            728,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            755,
+            195
+          ],
+          "guard_text": "g4",
+          "guard_w": 14,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              168
+            ],
+            [
+              147,
+              188
+            ],
+            [
+              728,
+              188
+            ],
+            [
+              728,
+              244
+            ]
+          ],
+          "transition": {
+            "guard": "g4",
+            "offset": 141,
+            "source": "B",
+            "target": "Q"
+          }
+        },
+        {
+          "arrow": [
+            169,
+            308,
+            "up"
+          ],
+          "bar": [
+            147,
+            298,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            291
+          ],
+          "guard_text": "g6",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            179,
+            310
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              147,
+              278
+            ],
+            [
+              147,
+              338
+            ],
+            [
+              169,
+              338
+            ],
+            [
+              169,
+              308
+            ]
+          ],
+          "transition": {
+            "guard": "g6",
+            "offset": 219,
+            "source": "T",
+            "target": "A"
+          }
+        },
+        {
+          "arrow": [
+            750,
+            308,
+            "up"
+          ],
+          "bar": [
+            728,
+            298,
+            "h"
+          ],
+          "guard_at": [
+            755,
+            291
+          ],
+          "guard_text": "g7",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            760,
+            310
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              728,
+              278
+            ],
+            [
+              728,
+              338
+            ],
+            [
+              750,
+              338
+            ],
+            [
+              750,
+              308
+            ]
+          ],
+          "transition": {
+            "guard": "g7",
+            "offset": 258,
+            "source": "Q",
+            "target": "A"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            147,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            195
+          ],
+          "guard_text": "g3",
+          "guard_w": 14,
+          "kind": "merge",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              168
+            ],
+            [
+              147,
+              188
+            ],
+            [
+              147,
+              188
+            ],
+            [
+              147,
+              224
+            ],
+            [
+              147,
+              224
+            ],
+            [
+              147,
+              244
+            ]
+          ],
+          "transition": {
+            "guard": "g3",
+            "offset": 107,
+            "source": "B",
+            "target": "T"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            447,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            474,
+            181
+          ],
+          "guard_text": "g5",
+          "guard_w": 14,
+          "kind": "merge",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              447,
+              168
+            ],
+            [
+              447,
+              224
+            ],
+            [
+              147,
+              224
+            ],
+            [
+              147,
+              244
+            ]
+          ],
+          "transition": {
+            "guard": "g5",
+            "offset": 180,
+            "source": "P",
+            "target": "T"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            3,
+            5
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 62,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 62,
+          "y": 134
+        },
+        {
+          "col": 0,
+          "full_label": "T",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "T",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 62,
+          "y": 244
+        },
+        {
+          "col": 1,
+          "full_label": "P",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 336,
+          "initial": false,
+          "label": "P",
+          "number": 4,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 362,
+          "y": 134
+        },
+        {
+          "col": 2,
+          "full_label": "Q",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 617,
+          "initial": false,
+          "label": "Q",
+          "number": 5,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 643,
+          "y": 244
+        }
+      ],
+      "width": 808
+    },
+    "merge_reject": {
+      "any_box": null,
+      "chips": [],
+      "columns": 2,
+      "dropped": 0,
+      "height": 366,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            159,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            186,
+            85
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              159,
+              58
+            ],
+            [
+              159,
+              78
+            ],
+            [
+              159,
+              78
+            ],
+            [
+              159,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            159,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            186,
+            195
+          ],
+          "guard_text": "a",
+          "guard_w": 7,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              159,
+              168
+            ],
+            [
+              159,
+              188
+            ],
+            [
+              159,
+              188
+            ],
+            [
+              159,
+              244
+            ]
+          ],
+          "transition": {
+            "guard": "a",
+            "offset": 106,
+            "source": "B",
+            "target": "T"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            565,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            592,
+            85
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              159,
+              58
+            ],
+            [
+              159,
+              78
+            ],
+            [
+              565,
+              78
+            ],
+            [
+              565,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 68,
+            "source": "A",
+            "target": "P"
+          }
+        },
+        {
+          "arrow": [
+            74,
+            261,
+            "right"
+          ],
+          "bar": [
+            249,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            276,
+            195
+          ],
+          "guard_text": "ELSIF b",
+          "guard_w": 49,
+          "kind": "side",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              159,
+              168
+            ],
+            [
+              159,
+              188
+            ],
+            [
+              249,
+              188
+            ],
+            [
+              249,
+              216
+            ],
+            [
+              50,
+              216
+            ],
+            [
+              50,
+              261
+            ],
+            [
+              74,
+              261
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF b",
+            "offset": 135,
+            "source": "B",
+            "target": "T"
+          }
+        },
+        {
+          "arrow": [
+            587,
+            198,
+            "up"
+          ],
+          "bar": [
+            565,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            592,
+            181
+          ],
+          "guard_text": "c",
+          "guard_w": 7,
+          "kind": "jump",
+          "note_at": [
+            597,
+            200
+          ],
+          "note_text": "3  T",
+          "note_w": 28,
+          "points": [
+            [
+              565,
+              168
+            ],
+            [
+              565,
+              228
+            ],
+            [
+              587,
+              228
+            ],
+            [
+              587,
+              198
+            ]
+          ],
+          "transition": {
+            "guard": "c",
+            "offset": 173,
+            "source": "P",
+            "target": "T"
+          }
+        },
+        {
+          "arrow": [
+            181,
+            308,
+            "up"
+          ],
+          "bar": [
+            159,
+            298,
+            "h"
+          ],
+          "guard_at": [
+            186,
+            291
+          ],
+          "guard_text": "d",
+          "guard_w": 7,
+          "kind": "jump",
+          "note_at": [
+            191,
+            310
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              159,
+              278
+            ],
+            [
+              159,
+              338
+            ],
+            [
+              181,
+              338
+            ],
+            [
+              181,
+              308
+            ]
+          ],
+          "transition": {
+            "guard": "d",
+            "offset": 211,
+            "source": "T",
+            "target": "A"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            3
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 74,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 74,
+          "y": 134
+        },
+        {
+          "col": 0,
+          "full_label": "T",
+          "h": 34,
+          "inbound": [
+            4
+          ],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "T",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 74,
+          "y": 244
+        },
+        {
+          "col": 1,
+          "full_label": "P",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 454,
+          "initial": false,
+          "label": "P",
+          "number": 4,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 480,
+          "y": 134
+        }
+      ],
+      "width": 645
+    },
+    "prefixed": {
+      "any_box": [
+        194,
+        24,
+        96,
+        34
+      ],
+      "chips": [
+        {
+          "h": 34,
+          "label": "E_STOPPED",
+          "number": 6,
+          "w": 170,
+          "x": 50,
+          "y": 130
+        },
+        {
+          "h": 34,
+          "label": "WARN",
+          "number": 2,
+          "w": 170,
+          "x": 264,
+          "y": 130
+        }
+      ],
+      "columns": 3,
+      "dropped": 0,
+      "height": 619,
+      "links": [
+        {
+          "arrow": [
+            135,
+            130,
+            "down"
+          ],
+          "bar": [
+            135,
+            100,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            93
+          ],
+          "guard_text": "stop",
+          "guard_w": 28,
+          "kind": "global",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              242,
+              58
+            ],
+            [
+              242,
+              80
+            ],
+            [
+              135,
+              80
+            ],
+            [
+              135,
+              130
+            ]
+          ],
+          "transition": {
+            "guard": "stop",
+            "offset": 17,
+            "source": null,
+            "target": "ENUM_S.E_STOPPED"
+          }
+        },
+        {
+          "arrow": [
+            349,
+            130,
+            "down"
+          ],
+          "bar": [
+            349,
+            100,
+            "h"
+          ],
+          "guard_at": [
+            376,
+            93
+          ],
+          "guard_text": "alarm",
+          "guard_w": 35,
+          "kind": "global",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              242,
+              58
+            ],
+            [
+              242,
+              80
+            ],
+            [
+              349,
+              80
+            ],
+            [
+              349,
+              130
+            ]
+          ],
+          "transition": {
+            "guard": "alarm",
+            "offset": 69,
+            "source": null,
+            "target": "ENUM_S.WARN"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            147,
+            261,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            254
+          ],
+          "guard_text": "start",
+          "guard_w": 35,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              229
+            ],
+            [
+              147,
+              291
+            ]
+          ],
+          "transition": {
+            "guard": "start",
+            "offset": 144,
+            "source": "ENUM_S.OFF",
+            "target": "ENUM_S.WARN"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            147,
+            357,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            350
+          ],
+          "guard_text": "timer",
+          "guard_w": 35,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              325
+            ],
+            [
+              147,
+              387
+            ]
+          ],
+          "transition": {
+            "guard": "timer",
+            "offset": 206,
+            "source": "ENUM_S.WARN",
+            "target": "ENUM_S.RUN"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            147,
+            455,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            448
+          ],
+          "guard_text": "fault",
+          "guard_w": 35,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              421
+            ],
+            [
+              147,
+              441
+            ],
+            [
+              147,
+              441
+            ],
+            [
+              147,
+              497
+            ]
+          ],
+          "transition": {
+            "guard": "fault",
+            "offset": 266,
+            "source": "ENUM_S.RUN",
+            "target": "ENUM_S.SAVE"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            461,
+            455,
+            "h"
+          ],
+          "guard_at": [
+            488,
+            448
+          ],
+          "guard_text": "done",
+          "guard_w": 28,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              147,
+              421
+            ],
+            [
+              147,
+              441
+            ],
+            [
+              461,
+              441
+            ],
+            [
+              461,
+              497
+            ]
+          ],
+          "transition": {
+            "guard": "done",
+            "offset": 312,
+            "source": "ENUM_S.RUN",
+            "target": "ENUM_S.CALL"
+          }
+        },
+        {
+          "arrow": [
+            169,
+            561,
+            "up"
+          ],
+          "bar": [
+            147,
+            551,
+            "h"
+          ],
+          "guard_at": [
+            174,
+            544
+          ],
+          "guard_text": "reset",
+          "guard_w": 35,
+          "kind": "jump",
+          "note_at": [
+            179,
+            563
+          ],
+          "note_text": "1  OFF",
+          "note_w": 42,
+          "points": [
+            [
+              147,
+              531
+            ],
+            [
+              147,
+              591
+            ],
+            [
+              169,
+              591
+            ],
+            [
+              169,
+              561
+            ]
+          ],
+          "transition": {
+            "guard": "reset",
+            "offset": 374,
+            "source": "ENUM_S.SAVE",
+            "target": "ENUM_S.OFF"
+          }
+        },
+        {
+          "arrow": [
+            483,
+            561,
+            "up"
+          ],
+          "bar": [
+            461,
+            551,
+            "h"
+          ],
+          "guard_at": [
+            488,
+            544
+          ],
+          "guard_text": "ack",
+          "guard_w": 21,
+          "kind": "jump",
+          "note_at": [
+            493,
+            563
+          ],
+          "note_text": "3  RUN",
+          "note_w": 42,
+          "points": [
+            [
+              461,
+              531
+            ],
+            [
+              461,
+              591
+            ],
+            [
+              483,
+              591
+            ],
+            [
+              483,
+              561
+            ]
+          ],
+          "transition": {
+            "guard": "ack",
+            "offset": 433,
+            "source": "ENUM_S.CALL",
+            "target": "ENUM_S.RUN"
+          }
+        },
+        {
+          "arrow": [
+            797,
+            259,
+            "up"
+          ],
+          "bar": [
+            775,
+            249,
+            "h"
+          ],
+          "guard_at": [
+            802,
+            242
+          ],
+          "guard_text": "release",
+          "guard_w": 49,
+          "kind": "jump",
+          "note_at": [
+            807,
+            261
+          ],
+          "note_text": "1  OFF",
+          "note_w": 42,
+          "points": [
+            [
+              775,
+              229
+            ],
+            [
+              775,
+              289
+            ],
+            [
+              797,
+              289
+            ],
+            [
+              797,
+              259
+            ]
+          ],
+          "transition": {
+            "guard": "release",
+            "offset": 501,
+            "source": "ENUM_S.E_STOPPED",
+            "target": "ENUM_S.OFF"
+          }
+        }
+      ],
+      "prefix": "ENUM_S.",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "ENUM_S.OFF",
+          "h": 34,
+          "inbound": [
+            4,
+            6
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "OFF",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 62,
+          "y": 195
+        },
+        {
+          "col": 0,
+          "full_label": "ENUM_S.WARN",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "WARN",
+          "number": 2,
+          "priority": true,
+          "row": 1,
+          "w": 170,
+          "x": 62,
+          "y": 291
+        },
+        {
+          "col": 0,
+          "full_label": "ENUM_S.RUN",
+          "h": 34,
+          "inbound": [
+            5
+          ],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "RUN",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 62,
+          "y": 387
+        },
+        {
+          "col": 0,
+          "full_label": "ENUM_S.SAVE",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "SAVE",
+          "number": 4,
+          "priority": false,
+          "row": 3,
+          "w": 170,
+          "x": 62,
+          "y": 497
+        },
+        {
+          "col": 1,
+          "full_label": "ENUM_S.CALL",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 350,
+          "initial": false,
+          "label": "CALL",
+          "number": 5,
+          "priority": false,
+          "row": 3,
+          "w": 170,
+          "x": 376,
+          "y": 497
+        },
+        {
+          "col": 2,
+          "full_label": "ENUM_S.E_STOPPED",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 664,
+          "initial": false,
+          "label": "E_STOPPED",
+          "number": 6,
+          "priority": true,
+          "row": 0,
+          "w": 170,
+          "x": 690,
+          "y": 195
+        }
+      ],
+      "width": 871
+    },
+    "routing": {
+      "any_box": null,
+      "chips": [],
+      "columns": 3,
+      "dropped": 0,
+      "height": 448,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            83
+          ],
+          "guard_text": "xStart",
+          "guard_w": 42,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              58
+            ],
+            [
+              135,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "xStart",
+            "offset": 41,
+            "source": "IDLE",
+            "target": "EXIT"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            181
+          ],
+          "guard_text": "xLeft",
+          "guard_w": 35,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              174
+            ],
+            [
+              135,
+              174
+            ],
+            [
+              135,
+              230
+            ]
+          ],
+          "transition": {
+            "guard": "xLeft",
+            "offset": 89,
+            "source": "EXIT",
+            "target": "LEFT"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            456,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            483,
+            181
+          ],
+          "guard_text": "ELSIF xForward",
+          "guard_w": 98,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              174
+            ],
+            [
+              456,
+              174
+            ],
+            [
+              456,
+              230
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF xForward",
+            "offset": 128,
+            "source": "EXIT",
+            "target": "FWD"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            821,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            848,
+            181
+          ],
+          "guard_text": "ELSIF xRight",
+          "guard_w": 84,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              174
+            ],
+            [
+              821,
+              174
+            ],
+            [
+              821,
+              230
+            ]
+          ],
+          "transition": {
+            "guard": "ELSIF xRight",
+            "offset": 164,
+            "source": "EXIT",
+            "target": "RIGHT"
+          }
+        },
+        {
+          "arrow": [
+            157,
+            390,
+            "up"
+          ],
+          "bar": [
+            135,
+            380,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            373
+          ],
+          "guard_text": "xReset",
+          "guard_w": 42,
+          "kind": "jump",
+          "note_at": [
+            167,
+            392
+          ],
+          "note_text": "1  IDLE",
+          "note_w": 49,
+          "points": [
+            [
+              135,
+              360
+            ],
+            [
+              135,
+              420
+            ],
+            [
+              157,
+              420
+            ],
+            [
+              157,
+              390
+            ]
+          ],
+          "transition": {
+            "guard": "xReset",
+            "offset": 358,
+            "source": "DONE",
+            "target": "IDLE"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            284,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            277
+          ],
+          "guard_text": "xDone",
+          "guard_w": 35,
+          "kind": "merge",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              264
+            ],
+            [
+              135,
+              306
+            ],
+            [
+              135,
+              306
+            ],
+            [
+              135,
+              326
+            ]
+          ],
+          "transition": {
+            "guard": "xDone",
+            "offset": 213,
+            "source": "LEFT",
+            "target": "DONE"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            456,
+            284,
+            "h"
+          ],
+          "guard_at": [
+            483,
+            277
+          ],
+          "guard_text": "xDone",
+          "guard_w": 35,
+          "kind": "merge",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              456,
+              264
+            ],
+            [
+              456,
+              306
+            ],
+            [
+              135,
+              306
+            ],
+            [
+              135,
+              326
+            ]
+          ],
+          "transition": {
+            "guard": "xDone",
+            "offset": 260,
+            "source": "FWD",
+            "target": "DONE"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            821,
+            284,
+            "h"
+          ],
+          "guard_at": [
+            848,
+            277
+          ],
+          "guard_text": "xDone",
+          "guard_w": 35,
+          "kind": "merge",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              821,
+              264
+            ],
+            [
+              821,
+              306
+            ],
+            [
+              135,
+              306
+            ],
+            [
+              135,
+              326
+            ]
+          ],
+          "transition": {
+            "guard": "xDone",
+            "offset": 309,
+            "source": "RIGHT",
+            "target": "DONE"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "IDLE",
+          "h": 34,
+          "inbound": [
+            4
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "IDLE",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 50,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "EXIT",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "EXIT",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 50,
+          "y": 120
+        },
+        {
+          "col": 0,
+          "full_label": "LEFT",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "LEFT",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 50,
+          "y": 230
+        },
+        {
+          "col": 0,
+          "full_label": "DONE",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "DONE",
+          "number": 4,
+          "priority": false,
+          "row": 3,
+          "w": 170,
+          "x": 50,
+          "y": 326
+        },
+        {
+          "col": 1,
+          "full_label": "FWD",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 345,
+          "initial": false,
+          "label": "FWD",
+          "number": 5,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 371,
+          "y": 230
+        },
+        {
+          "col": 2,
+          "full_label": "RIGHT",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 710,
+          "initial": false,
+          "label": "RIGHT",
+          "number": 6,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 736,
+          "y": 230
+        }
+      ],
+      "width": 952
+    },
+    "self": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 0,
+      "height": 338,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            90,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            83
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              58
+            ],
+            [
+              135,
+              120
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            135,
+            186,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            179
+          ],
+          "guard_text": "g3",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              135,
+              154
+            ],
+            [
+              135,
+              216
+            ]
+          ],
+          "transition": {
+            "guard": "g3",
+            "offset": 107,
+            "source": "B",
+            "target": "C"
+          }
+        },
+        {
+          "arrow": [
+            220,
+            50,
+            "left"
+          ],
+          "bar": [
+            232,
+            32,
+            "v"
+          ],
+          "guard_at": [
+            256,
+            34
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "self",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              220,
+              32
+            ],
+            [
+              244,
+              32
+            ],
+            [
+              244,
+              50
+            ],
+            [
+              220,
+              50
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 68,
+            "source": "A",
+            "target": "A"
+          }
+        },
+        {
+          "arrow": [
+            157,
+            280,
+            "up"
+          ],
+          "bar": [
+            135,
+            270,
+            "h"
+          ],
+          "guard_at": [
+            162,
+            263
+          ],
+          "guard_text": "g4",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            167,
+            282
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              135,
+              250
+            ],
+            [
+              135,
+              310
+            ],
+            [
+              157,
+              310
+            ],
+            [
+              157,
+              280
+            ]
+          ],
+          "transition": {
+            "guard": "g4",
+            "offset": 146,
+            "source": "C",
+            "target": "A"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            3
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 50,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 50,
+          "y": 120
+        },
+        {
+          "col": 0,
+          "full_label": "C",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "C",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 50,
+          "y": 216
+        }
+      ],
+      "width": 290
+    },
+    "sides_multicol": {
+      "any_box": null,
+      "chips": [],
+      "columns": 2,
+      "dropped": 0,
+      "height": 462,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            171,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            198,
+            85
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              171,
+              58
+            ],
+            [
+              171,
+              78
+            ],
+            [
+              171,
+              78
+            ],
+            [
+              171,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            171,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            198,
+            195
+          ],
+          "guard_text": "g3",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              171,
+              168
+            ],
+            [
+              171,
+              188
+            ],
+            [
+              171,
+              188
+            ],
+            [
+              171,
+              244
+            ]
+          ],
+          "transition": {
+            "guard": "g3",
+            "offset": 107,
+            "source": "B",
+            "target": "C"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            171,
+            310,
+            "h"
+          ],
+          "guard_at": [
+            198,
+            303
+          ],
+          "guard_text": "g5",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              171,
+              278
+            ],
+            [
+              171,
+              340
+            ]
+          ],
+          "transition": {
+            "guard": "g5",
+            "offset": 180,
+            "source": "C",
+            "target": "D"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            507,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            534,
+            85
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "fork",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              171,
+              58
+            ],
+            [
+              171,
+              78
+            ],
+            [
+              507,
+              78
+            ],
+            [
+              507,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 68,
+            "source": "A",
+            "target": "P"
+          }
+        },
+        {
+          "arrow": [
+            86,
+            357,
+            "right"
+          ],
+          "bar": [
+            226,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            253,
+            195
+          ],
+          "guard_text": "g4",
+          "guard_w": 14,
+          "kind": "side",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              171,
+              168
+            ],
+            [
+              171,
+              188
+            ],
+            [
+              226,
+              188
+            ],
+            [
+              226,
+              216
+            ],
+            [
+              62,
+              216
+            ],
+            [
+              62,
+              357
+            ],
+            [
+              86,
+              357
+            ]
+          ],
+          "transition": {
+            "guard": "g4",
+            "offset": 141,
+            "source": "B",
+            "target": "D"
+          }
+        },
+        {
+          "arrow": [
+            193,
+            404,
+            "up"
+          ],
+          "bar": [
+            171,
+            394,
+            "h"
+          ],
+          "guard_at": [
+            198,
+            387
+          ],
+          "guard_text": "g6",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            203,
+            406
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              171,
+              374
+            ],
+            [
+              171,
+              434
+            ],
+            [
+              193,
+              434
+            ],
+            [
+              193,
+              404
+            ]
+          ],
+          "transition": {
+            "guard": "g6",
+            "offset": 219,
+            "source": "D",
+            "target": "A"
+          }
+        },
+        {
+          "arrow": [
+            529,
+            198,
+            "up"
+          ],
+          "bar": [
+            507,
+            188,
+            "h"
+          ],
+          "guard_at": [
+            534,
+            181
+          ],
+          "guard_text": "g7",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            539,
+            200
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              507,
+              168
+            ],
+            [
+              507,
+              228
+            ],
+            [
+              529,
+              228
+            ],
+            [
+              529,
+              198
+            ]
+          ],
+          "transition": {
+            "guard": "g7",
+            "offset": 258,
+            "source": "P",
+            "target": "A"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            4,
+            5
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 86,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 86,
+          "y": 134
+        },
+        {
+          "col": 0,
+          "full_label": "C",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "C",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 86,
+          "y": 244
+        },
+        {
+          "col": 0,
+          "full_label": "D",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "D",
+          "number": 4,
+          "priority": false,
+          "row": 3,
+          "w": 170,
+          "x": 86,
+          "y": 340
+        },
+        {
+          "col": 1,
+          "full_label": "P",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 396,
+          "initial": false,
+          "label": "P",
+          "number": 5,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 422,
+          "y": 134
+        }
+      ],
+      "width": 587
+    },
+    "skips": {
+      "any_box": null,
+      "chips": [],
+      "columns": 1,
+      "dropped": 0,
+      "height": 558,
+      "links": [
+        {
+          "arrow": null,
+          "bar": [
+            183,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            210,
+            85
+          ],
+          "guard_text": "g1",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              183,
+              58
+            ],
+            [
+              183,
+              78
+            ],
+            [
+              183,
+              78
+            ],
+            [
+              183,
+              134
+            ]
+          ],
+          "transition": {
+            "guard": "g1",
+            "offset": 34,
+            "source": "A",
+            "target": "B"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            183,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            210,
+            195
+          ],
+          "guard_text": "g3",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              183,
+              168
+            ],
+            [
+              183,
+              188
+            ],
+            [
+              183,
+              188
+            ],
+            [
+              183,
+              244
+            ]
+          ],
+          "transition": {
+            "guard": "g3",
+            "offset": 107,
+            "source": "B",
+            "target": "C"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            183,
+            310,
+            "h"
+          ],
+          "guard_at": [
+            210,
+            303
+          ],
+          "guard_text": "g5",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              183,
+              278
+            ],
+            [
+              183,
+              340
+            ]
+          ],
+          "transition": {
+            "guard": "g5",
+            "offset": 180,
+            "source": "C",
+            "target": "D"
+          }
+        },
+        {
+          "arrow": null,
+          "bar": [
+            183,
+            406,
+            "h"
+          ],
+          "guard_at": [
+            210,
+            399
+          ],
+          "guard_text": "g6",
+          "guard_w": 14,
+          "kind": "chain",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              183,
+              374
+            ],
+            [
+              183,
+              436
+            ]
+          ],
+          "transition": {
+            "guard": "g6",
+            "offset": 219,
+            "source": "D",
+            "target": "E"
+          }
+        },
+        {
+          "arrow": [
+            98,
+            357,
+            "right"
+          ],
+          "bar": [
+            238,
+            92,
+            "h"
+          ],
+          "guard_at": [
+            265,
+            85
+          ],
+          "guard_text": "g2",
+          "guard_w": 14,
+          "kind": "side",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              183,
+              58
+            ],
+            [
+              183,
+              78
+            ],
+            [
+              238,
+              78
+            ],
+            [
+              238,
+              106
+            ],
+            [
+              74,
+              106
+            ],
+            [
+              74,
+              357
+            ],
+            [
+              98,
+              357
+            ]
+          ],
+          "transition": {
+            "guard": "g2",
+            "offset": 68,
+            "source": "A",
+            "target": "D"
+          }
+        },
+        {
+          "arrow": [
+            98,
+            453,
+            "right"
+          ],
+          "bar": [
+            238,
+            202,
+            "h"
+          ],
+          "guard_at": [
+            265,
+            195
+          ],
+          "guard_text": "g4",
+          "guard_w": 14,
+          "kind": "side",
+          "note_at": null,
+          "note_text": "",
+          "note_w": 0,
+          "points": [
+            [
+              183,
+              168
+            ],
+            [
+              183,
+              188
+            ],
+            [
+              238,
+              188
+            ],
+            [
+              238,
+              216
+            ],
+            [
+              50,
+              216
+            ],
+            [
+              50,
+              453
+            ],
+            [
+              98,
+              453
+            ]
+          ],
+          "transition": {
+            "guard": "g4",
+            "offset": 141,
+            "source": "B",
+            "target": "E"
+          }
+        },
+        {
+          "arrow": [
+            205,
+            500,
+            "up"
+          ],
+          "bar": [
+            183,
+            490,
+            "h"
+          ],
+          "guard_at": [
+            210,
+            483
+          ],
+          "guard_text": "g7",
+          "guard_w": 14,
+          "kind": "jump",
+          "note_at": [
+            215,
+            502
+          ],
+          "note_text": "1  A",
+          "note_w": 28,
+          "points": [
+            [
+              183,
+              470
+            ],
+            [
+              183,
+              530
+            ],
+            [
+              205,
+              530
+            ],
+            [
+              205,
+              500
+            ]
+          ],
+          "transition": {
+            "guard": "g7",
+            "offset": 258,
+            "source": "E",
+            "target": "A"
+          }
+        }
+      ],
+      "prefix": "",
+      "steps": [
+        {
+          "col": 0,
+          "full_label": "A",
+          "h": 34,
+          "inbound": [
+            5
+          ],
+          "inbound_x": 24,
+          "initial": true,
+          "label": "A",
+          "number": 1,
+          "priority": false,
+          "row": 0,
+          "w": 170,
+          "x": 98,
+          "y": 24
+        },
+        {
+          "col": 0,
+          "full_label": "B",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "B",
+          "number": 2,
+          "priority": false,
+          "row": 1,
+          "w": 170,
+          "x": 98,
+          "y": 134
+        },
+        {
+          "col": 0,
+          "full_label": "C",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "C",
+          "number": 3,
+          "priority": false,
+          "row": 2,
+          "w": 170,
+          "x": 98,
+          "y": 244
+        },
+        {
+          "col": 0,
+          "full_label": "D",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "D",
+          "number": 4,
+          "priority": false,
+          "row": 3,
+          "w": 170,
+          "x": 98,
+          "y": 340
+        },
+        {
+          "col": 0,
+          "full_label": "E",
+          "h": 34,
+          "inbound": [],
+          "inbound_x": 24,
+          "initial": false,
+          "label": "E",
+          "number": 5,
+          "priority": false,
+          "row": 4,
+          "w": 170,
+          "x": 98,
+          "y": 436
+        }
+      ],
+      "width": 299
+    }
+  }
+}
