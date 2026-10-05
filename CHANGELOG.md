@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 - New offline `cts config` command. `cts config show` prints each effective setting with its source (`code`, `user` or `project`) and class (`format` or `behavior`), plus both files with their status and version; `--json` emits the same as a machine-readable object. `cts config set KEY VALUE` and `cts config unset KEY` change the per-user file by default, or the project file with `--project`; a project set of a behavior key pins it, an unset removes the pin. No daemon is required.
 - The CODESYS project options dialog has two tabs. `General` edits the per-user file: its path, the format values new projects start with (view storage, custom view root, profile, text-first mode and the derived-view lists), the five behavior values, and `Reset to built-in`. Reset now empties the per-user file on the next save — including a projection or kind the dialog cannot show, and a key set with `cts config` — while an edit made after it is kept on top of the empty base. Cancelling still writes nothing. `Project` edits this project's file — the format controls as before, plus a behavior block that is either `Same as General`, greyed and following the General values live, or `Own for this project`, which pins all five in `cds-text-sync.json`. Saving writes the per-user file first and the project file only if that succeeds.
 - The options dialog fits a small screen: 640×470, resizable, with both tabs laid out as two columns (format on the left, behavior on the right). The derived views are checked lists that show the profile's own defaults, so every option stays reachable. A field locked after the first export (view storage, custom root, text-first mode) explains why on hover, and so does a behavior control greyed by `Same as General`.
-- The daemon settings no longer carry a "copy command for SSH" option. The daemon's Copy button has one form, `!cts --target ide-<pid> …`, and the SSH wrapper (`tools/cts-win`) is substituted on the remote side. A config that still stores `copy_command` keeps working; the key is simply ignored.
+- The daemon settings no longer carry a second, differently formatted copy command. The Copy button has one form, `!cts --target ide-<pid> …`. A config that still stores the old `copy_command` key keeps working; the key is simply ignored.
 
 **Operating guides ship with the CLI:**
 
@@ -56,7 +56,6 @@ All notable changes to this project will be documented in this file.
 - **Instance metadata in results:** Every command output (JSON and text format) now carries the instance identity (`ide-<pid>`) and current active project name/path in metadata and footer lines.
 - **Help discovery header:** `cts --help` now probes for live daemon instances and displays target status and project info right in the help banner.
 - **Daemon UI target line & Copy button:** The daemon window displays a docked target panel (`IDE: ide-<pid> · <project>`) with a `Copy` button that generates `!cts --target ide-<pid> [--expect-project <name>] --help` for immediate pasting into agent sessions.
-- **SSH & remote execution (`tools/cts-win`):** Includes a `cts-win` wrapper script for calling `cts` inside a Windows VM over SSH, along with a Daemon Settings option to copy commands formatted for `cts-win`.
 
 **Library projects:**
 
