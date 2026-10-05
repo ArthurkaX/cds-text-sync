@@ -72,6 +72,7 @@ def test_every_reference_of_the_reference_project_is_read(references):
         "Breakpoint Logging Functions",
     }
     assert by_kind["concrete"] == {"PSVRetain", "PSVLeds"}
+    assert by_kind["redirected"] == {"Standard"}
 
 
 def test_a_concrete_item_splits_its_name_field(references):
@@ -96,3 +97,13 @@ def test_a_placeholder_keeps_its_placeholder_name(references):
     assert logging["placeholder"] == "BreakpointLogging"
     assert logging["version"] == "*"
     assert logging["vendor"] == "3S - Smart Software Solutions GmbH"
+
+
+def test_the_redirection_table_is_read_from_its_entry_pairs(references):
+    """``Standard`` is reached only through the table, which holds Entry rows."""
+    standard = _by_name(references)["Standard"]
+
+    assert standard["kind"] == "redirected"
+    assert (standard["version"], standard["vendor"]) == ("3.5.22.0", "System")
+    assert standard["placeholder"] == "Standard"
+    assert standard["system"] is True

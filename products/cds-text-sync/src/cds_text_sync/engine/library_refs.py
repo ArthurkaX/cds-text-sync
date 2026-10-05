@@ -214,14 +214,29 @@ def _apply_redirections(root, container, references, seen):
 
 
 def _redirections(root):
-    """Yield ``(placeholder, resolution)`` from every redirect table in *root*."""
+    """Yield ``(placeholder, resolution)`` from every redirect table in *root*.
+
+    The table is a ``Dictionary`` of ``Entry`` rows, each carrying a ``Key``
+    and a ``Value`` element that wrap a single ``Single`` with the text.
+    """
     for table in root.iter("Dictionary"):
         if (table.get("Name") or "").strip() != REDIRECTION_TABLE_NAME:
             continue
-        for entry in table:
-            key = (entry.get("Name") or "").strip()
+        for entry in table.iter("Entry"):
+            key = _wrapped_text(entry, "Key")
             if key:
-                yield key, entry.text or ""
+                yield key, _wrapped_text(entry, "Value")
+
+
+def _wrapped_text(entry, name):
+    """The text of ``<name><Single ...>text</Single></name>`` inside one entry."""
+    holder = entry.find(name)
+    if holder is None:
+        return ""
+    inner = holder.find("Single")
+    if inner is not None:
+        return (inner.text or "").strip()
+    return (holder.text or "").strip()
 
 
 def _apply_one_redirection(references, seen, placeholder_name, resolved, container):

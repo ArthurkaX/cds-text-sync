@@ -788,7 +788,10 @@ def test_a_concrete_library_reference_is_reported_and_resolved(tmp_path):
 
 def _library_manager_with_redirections(entries):
     rows = "\n".join(
-        '          <Single Name="{0}" Type="string">{1}</Single>'.format(key, value)
+        '        <Entry>\n'
+        '          <Key><Single Type="string">{0}</Single></Key>\n'
+        '          <Value><Single Type="string">{1}</Single></Value>\n'
+        "        </Entry>".format(key, value)
         for key, value in entries
     )
     return (

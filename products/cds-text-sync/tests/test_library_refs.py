@@ -69,12 +69,15 @@ def _concrete_item(name, version, vendor, namespace, system="False"):
 
 def _redirection_table(entries):
     rows = "\n".join(
-        '          <Single Name="{0}" Type="string">{1}</Single>'.format(key, value)
+        '        <Entry>\n'
+        '          <Key><Single Type="string">{0}</Single></Key>\n'
+        '          <Value><Single Type="string">{1}</Single></Value>\n'
+        "        </Entry>".format(key, value)
         for key, value in entries
     )
     return (
-        '      <Dictionary Name="PlaceholderRedirectionTable"'
-        ' Type="System.Collections.Hashtable">\n'
+        '      <Dictionary Type="System.Collections.Hashtable"'
+        ' Name="PlaceholderRedirectionTable">\n'
         + rows
         + "\n      </Dictionary>"
     )
