@@ -232,3 +232,37 @@ def test_attach_echoes_the_request_id_only_when_present(monkeypatch):
 def test_attach_leaves_a_non_dict_response_alone():
     assert ctx.attach_response_metadata("not a dict") == "not a dict"
     assert ctx.attach_response_metadata(None) is None
+
+
+# ── every representative command envelope gets one context, at the top ─────
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {"ok": True, "data": {"status": "pong"}},                                # ping
+        {"ok": True, "data": {"saved": False}},                                  # editing (import)
+        {"ok": True, "data": {"messages": [], "success": True}},                 # build
+        {"ok": True, "data": {"downloaded": True, "option": "Never"}},           # download
+        {"ok": False, "error": "The IDE is online with the PLC; ..."},           # refusal
+        {"ok": True, "data": {"leaves": [{"path": "GVL.a", "type": "BOOL"}]}},   # tree
+    ],
+    ids=["ping", "import", "build", "download", "refusal", "tree"],
+)
+def test_every_representative_envelope_gets_one_context(monkeypatch, envelope):
+    _install(monkeypatch, online="run", project=PROJECT)
+    before = json.loads(json.dumps(envelope))
+    ctx.attach_response_metadata(envelope)
+    assert "context" in envelope
+    # Additive only: every original key is untouched.
+    for key, value in before.items():
+        assert envelope[key] == value
+
+
+def test_context_is_once_at_the_top_not_in_the_arrays(monkeypatch):
+    _install(monkeypatch, online="run", project=PROJECT)
+    envelope = {"ok": True, "data": {"leaves": [{"path": "GVL.a"}]}}
+    ctx.attach_response_metadata(envelope)
+    assert "context" in envelope
+    assert "context" not in envelope["data"]
+    assert "context" not in envelope["data"]["leaves"][0]
