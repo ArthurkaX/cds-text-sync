@@ -10,7 +10,9 @@ never exported to the running application, so every later read fails with
 Every command that edits the project asks this module for a refusal first, and
 one helper answers for all of them. A per-handler copy would drift, and the
 check has to run before the handler touches the project, the manifest or any
-file, so that a refused edit leaves nothing half-written.
+file, so that a refused edit leaves nothing half-written. Each refusal is also
+written to the daemon log beside "Adopted existing IDE online session", so the
+IDE-side story of a failed edit is visible from the log alone.
 
 IronPython 2.7: no f-strings, no annotations, no pathlib.
 """
@@ -18,6 +20,8 @@ IronPython 2.7: no f-strings, no annotations, no pathlib.
 from __future__ import print_function
 
 import ide_online_helpers
+
+from ide_daemon_state import _log
 
 # The refusal text is fixed apart from the command name; tests pin the
 # ``cts disconnect`` instruction so it cannot be reworded into a dead end.
@@ -77,6 +81,7 @@ def project_edit_refusal(project, command):
     """
     if _live_session(project) is None:
         return None
+    _log("edit refused: IDE online ({0})".format(command))
     return {"ok": False, "error": _REFUSAL.format(cli_command(command))}
 
 

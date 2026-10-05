@@ -348,3 +348,28 @@ def test_the_two_import_methods_share_one_cli_command():
     assert guard.CLI_COMMANDS["sync_import"] == "import"
     assert guard.CLI_COMMANDS["sync_import_text"] == "import"
     assert guard.cli_command("sync_import_text") == "`cts import`"
+
+
+# ── the daemon log records the refusal ─────────────────────────────────────
+
+
+def test_a_refusal_is_written_to_the_daemon_log(monkeypatch):
+    """The debug log is the only place the daemon's own story is visible."""
+    guard = _load("ide_online_guard")
+    logged = []
+    monkeypatch.setattr(guard, "_log", lambda msg: logged.append(msg))
+    monkeypatch.setattr(guard, "_live_session", lambda project: object())
+
+    guard.project_edit_refusal(object(), "sync_import_text")
+
+    assert logged == ["edit refused: IDE online (sync_import_text)"]
+
+
+def test_no_log_line_when_the_edit_is_allowed(monkeypatch):
+    guard = _load("ide_online_guard")
+    logged = []
+    monkeypatch.setattr(guard, "_log", lambda msg: logged.append(msg))
+    monkeypatch.setattr(guard, "_live_session", lambda project: None)
+
+    assert guard.project_edit_refusal(object(), "sync_import_text") is None
+    assert logged == []
