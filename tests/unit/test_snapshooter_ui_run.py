@@ -712,6 +712,15 @@ def test_log_lines_carry_app_and_project(scenario):
     assert logs[3] == "build_tree returned 3 rows in 0.00s"
 
 
+def test_app_is_forwarded_to_both_tree_builders(scenario):
+    _run(scenario, app="MyApp")
+
+    build_event = [e for e in scenario.events if e[0] == "build_tree"][0]
+    assert build_event[1] == "MyApp"
+    tui_event = [e for e in scenario.events if e[0] == "build_tui_tree"][0]
+    assert tui_event[1] == "MyApp"
+
+
 def test_project_name_blank_falls_back_to_project(scenario):
     scenario.backend.project_name = ""
     _run(scenario)
