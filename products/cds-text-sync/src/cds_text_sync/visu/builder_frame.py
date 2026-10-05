@@ -16,6 +16,7 @@ from __future__ import print_function
 import re
 
 from .xml_ns import find_named, strip_ns
+from .xml_ns import member_map as _member_map
 
 
 # Member IDs whose <Value> text becomes a template placeholder.
@@ -27,50 +28,6 @@ _FRAME_TOKEN_GEOMETRY = {
 	550940142: "@@CENTER_X@@",
 	1473355128: "@@CENTER_Y@@",
 }
-
-
-def _member_map(element):
-	"""Map member id -> {value, kind, color, canonical_name} for one element.
-
-	Duplicated from screen_xml._member_map for convenience (avoids extra
-	cross-module coupling in the frame-capture code path).
-	"""
-	out = {}
-	member_container = find_named(element, "Single", "VisualElemMemberList")
-	mlist = (
-		find_named(member_container, "List", "VisualElemMemberList")
-		if member_container is not None
-		else None
-	)
-	if mlist is None:
-		return out
-	for member in list(mlist):
-		if strip_ns(member.tag) != "Single":
-			continue
-		idc = find_named(member, "Single", "Id")
-		if idc is None or not idc.text:
-			continue
-		mid = int(idc.text.strip())
-		scalar = find_named(member, "Single", "Value")
-		if scalar is not None:
-			out[mid] = {"kind": "scalar", "value": (scalar.text or "")}
-			continue
-		listval = find_named(member, "List", "Value")
-		if listval is not None:
-			inner = list(listval)
-			if inner and find_named(inner[0], "Single", "Color") is not None:
-				color_el = find_named(inner[0], "Single", "Color")
-				cn_el = find_named(inner[0], "Single", "CanonicalName")
-				out[mid] = {
-					"kind": "color",
-					"color": (color_el.text or "").strip()
-					if color_el is not None
-					else "",
-					"canonical_name": (cn_el.text or "") if cn_el is not None else "",
-				}
-			else:
-				out[mid] = {"kind": "list", "value": None}
-	return out
 
 
 def _extract_frame_params(element):

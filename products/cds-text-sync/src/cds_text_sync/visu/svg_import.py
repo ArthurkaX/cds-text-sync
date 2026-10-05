@@ -236,6 +236,36 @@ def _gradient_from_fill(fill_attr, gradients, theme_colors, type_override=None):
 # ---------------------------------------------------------------------------
 
 
+def _shape_paint(elem, theme, gradients):
+    """Paint entries (``gradient``/``fill``/``frame``) for a shape element.
+
+    Shared by ``rect``, ``circle`` and ``ellipse``: a live gradient replaces
+    the solid fill member, and a stroke becomes the frame.  Entries come back
+    in the order the parsers used to insert them.
+    """
+    gradient = _gradient_from_fill(
+        elem.get("fill"),
+        gradients or {},
+        theme,
+        elem.get("data-cds-gradient-type"),
+    )
+    out = {}
+    if gradient is not None:
+        out["gradient"] = gradient
+    else:
+        fill = _resolve(
+            _apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme
+        )
+        if fill is not None:
+            out["fill"] = fill
+    stroke = _resolve(
+        _apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme
+    )
+    if stroke is not None:
+        out["frame"] = stroke
+    return out
+
+
 def _parse_rect(elem, theme, gradients=None):
     """Parse a plain ``<rect>`` -> rectangle / rounded-rectangle."""
     x = _float(elem.get("x"), 0)
@@ -243,17 +273,6 @@ def _parse_rect(elem, theme, gradients=None):
     w = _float(elem.get("width"), 100)
     h = _float(elem.get("height"), 100)
     rx = elem.get("rx")
-
-    gradient = _gradient_from_fill(
-        elem.get("fill"),
-        gradients or {},
-        theme,
-        elem.get("data-cds-gradient-type"),
-    )
-    fill = None
-    if gradient is None:
-        fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
-    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
 
     params = {
         "x": str(int(x)),
@@ -268,12 +287,7 @@ def _parse_rect(elem, theme, gradients=None):
     else:
         params["shape"] = "rectangle"
 
-    if gradient is not None:
-        params["gradient"] = gradient
-    elif fill is not None:
-        params["fill"] = fill
-    if stroke is not None:
-        params["frame"] = stroke
+    params.update(_shape_paint(elem, theme, gradients))
 
     return {"type": "rectangle", "params": params}
 
@@ -289,17 +303,6 @@ def _parse_circle(elem, theme, gradients=None):
     w = 2.0 * r
     h = 2.0 * r
 
-    gradient = _gradient_from_fill(
-        elem.get("fill"),
-        gradients or {},
-        theme,
-        elem.get("data-cds-gradient-type"),
-    )
-    fill = None
-    if gradient is None:
-        fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
-    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
-
     params = {
         "x": str(int(x)),
         "y": str(int(y)),
@@ -308,12 +311,7 @@ def _parse_circle(elem, theme, gradients=None):
         "shape": "ellipse",
     }
 
-    if gradient is not None:
-        params["gradient"] = gradient
-    elif fill is not None:
-        params["fill"] = fill
-    if stroke is not None:
-        params["frame"] = stroke
+    params.update(_shape_paint(elem, theme, gradients))
 
     return {"type": "rectangle", "params": params}
 
@@ -330,17 +328,6 @@ def _parse_ellipse(elem, theme, gradients=None):
     w = 2.0 * rx
     h = 2.0 * ry
 
-    gradient = _gradient_from_fill(
-        elem.get("fill"),
-        gradients or {},
-        theme,
-        elem.get("data-cds-gradient-type"),
-    )
-    fill = None
-    if gradient is None:
-        fill = _resolve(_apply_opacity(elem.get("fill"), elem.get("fill-opacity")), theme)
-    stroke = _resolve(_apply_opacity(elem.get("stroke"), elem.get("stroke-opacity")), theme)
-
     params = {
         "x": str(int(x)),
         "y": str(int(y)),
@@ -349,12 +336,7 @@ def _parse_ellipse(elem, theme, gradients=None):
         "shape": "ellipse",
     }
 
-    if gradient is not None:
-        params["gradient"] = gradient
-    elif fill is not None:
-        params["fill"] = fill
-    if stroke is not None:
-        params["frame"] = stroke
+    params.update(_shape_paint(elem, theme, gradients))
 
     return {"type": "rectangle", "params": params}
 
