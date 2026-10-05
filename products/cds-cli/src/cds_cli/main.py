@@ -60,6 +60,7 @@ from cds_cli._cli_handlers_project import (  # noqa: E402
     dispatch_pou,
     dispatch_project,
 )
+from cds_cli._cli_handlers_new_object import dispatch_new_object  # noqa: E402
 from cds_cli._cli_handlers_snapshooter import dispatch_snapshooter  # noqa: E402
 from cds_cli._cli_handlers_vars import (  # noqa: E402
     cmd_read_vars,
@@ -462,6 +463,8 @@ def _dispatch_command(args, output_fmt, parser):
     if _dispatch_project_command(args):
         return
     if _dispatch_variable_command(args, output_fmt):
+        return
+    if dispatch_new_object(args, output_fmt):
         return
     if dispatch_snapshooter(args, output_fmt):
         return

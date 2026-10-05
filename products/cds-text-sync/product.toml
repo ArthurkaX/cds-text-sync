@@ -31,6 +31,7 @@ test_paths = [
   "../../tests/unit/test_locale_aliases.py",
   "../../tests/unit/test_menu_layout.py",
   "../../tests/unit/test_manifest_bookkeeper.py",
+  "../../tests/unit/test_new_object.py",
   "../../tests/unit/test_pending_files.py",
   "../../tests/unit/test_patch_builder.py",
   "../../tests/unit/test_pipe_targets.py",

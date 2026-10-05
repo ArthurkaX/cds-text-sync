@@ -20,6 +20,7 @@ from cds_cli.parsers.plc_log import register as register_plc_log
 from cds_cli.parsers.utility import register as register_utility
 from cds_cli.parsers.patch import register as register_patch
 from cds_cli.parsers.project import register as register_project
+from cds_cli.parsers.new_object import register as register_new_object
 from cds_cli.parsers.snapshooter import register as register_snapshooter
 from cds_cli.parsers.variables import register as register_variables
 from cds_cli.parsers.verify import register as register_verify
@@ -491,6 +492,9 @@ Examples:
 
     # -- variable commands --------------------------------------------------
     register_variables(subparsers)
+
+    # -- create objects in the project view (offline) -----------------------
+    register_new_object(subparsers)
 
     # -- snapshooter presets (daemon) ---------------------------------------
     register_snapshooter(subparsers)
