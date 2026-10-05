@@ -150,9 +150,14 @@ class _FakeListener:
         if connected:
             # A connect is quick; a wait that finds nobody burns the timeout
             # it was given (capped so a 30s default cannot spin forever here).
+            # A zero-second wait still moves the clock a little: a real one
+            # returns at once, but real time keeps passing underneath it, which
+            # is what eventually ends a call that is left spinning.
             self.harness.clock.advance(self.harness.connect_latency)
         else:
-            self.harness.clock.advance(min(timeout_s, self.harness.idle_advance))
+            self.harness.clock.advance(
+                max(min(timeout_s, self.harness.idle_advance), self.harness.spin_advance)
+            )
         return connected
 
     def close(self):
@@ -165,6 +170,7 @@ class Harness:
 
     connect_latency = 0.02
     idle_advance = 0.2
+    spin_advance = 0.01
 
     def __init__(self, monkeypatch, timeout=1.0, real_decide=False):
         self.monkeypatch = monkeypatch
@@ -801,6 +807,9 @@ class TestLegacyPath:
         # listener is even opened; the command goes out on that fresh listener.
         assert harness.released == [100]
         assert harness.write_calls[-1][0] == 102
+        # Order matters: the release is part of the legacy branch, not of the
+        # unwinding, so it precedes opening the legacy listener.
+        assert harness.first("release_close") < harness.events.index(("listener.new", 102))
 
 
 # ── Error decisions ────────────────────────────────────────────────────────
@@ -927,6 +936,27 @@ class TestTimeout:
 
 
 class TestLockSlicing:
+    def test_a_targeted_wait_is_capped_by_the_lock_slice_not_the_timeout(self, harness):
+        harness.client = rpc.ReversePipeClient(timeout=5)
+        harness.monkeypatch.setattr(rpc, "_resolved_pid", 1234)
+        harness.decide_default = Decision(kind="wait")
+
+        with pytest.raises(RuntimeError):
+            harness.run()
+
+        # First wait: the deadline is 5s away, but a targeted call must come
+        # back to the lock every _SESSION_LOCK_SLICE_S (1.0) seconds.
+        assert harness.listeners[0].wait_timeouts[0] == pytest.approx(1.0)
+
+    def test_an_untargeted_wait_uses_the_whole_timeout(self, harness):
+        harness.client = rpc.ReversePipeClient(timeout=5)
+        harness.decide_default = Decision(kind="wait")
+
+        with pytest.raises(RuntimeError):
+            harness.run()
+
+        assert harness.listeners[0].wait_timeouts[0] == pytest.approx(5.0)
+
     def test_a_targeted_call_gives_the_pipe_back_after_the_slice(self, harness):
         harness.monkeypatch.setattr(rpc, "_resolved_pid", 1234)
         harness.decide_default = Decision(kind="wait")
