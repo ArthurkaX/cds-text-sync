@@ -533,6 +533,27 @@ def _snapshooter_export_objects(project):
     return filtered
 
 
+def _tree_cache_valid(sync_folder, pkl_path, tree_json_path, ide_xml_path):
+    """Whether the cached tree can be served without re-exporting.
+
+    False when any file is missing, when the pickle is older than its sources,
+    or when the edit marker is newer: an unsaved import changes nothing on
+    disk, so its mtime cannot be trusted (see ide_tree_cache).
+    """
+    if not (
+        os.path.exists(pkl_path)
+        and os.path.exists(tree_json_path)
+        and os.path.exists(ide_xml_path)
+    ):
+        return False
+    pkl_mtime = os.path.getmtime(pkl_path)
+    return (
+        pkl_mtime >= os.path.getmtime(tree_json_path)
+        and pkl_mtime >= os.path.getmtime(ide_xml_path)
+        and pkl_mtime >= ide_tree_cache.marker_mtime(sync_folder)
+    )
+
+
 def _build_available_rows(project):
     global _SNAPSHOOTER_ROWS_BY_PATH
     sync_folder = _sync_folder(project)
@@ -545,18 +566,7 @@ def _build_available_rows(project):
     _log("tree_json_path={0}".format(tree_json_path))
 
     pkl_path = _pickle_path(tree_json_path)
-    # A project edit the daemon cannot see in any mtime (an unsaved import)
-    # bumps the edit marker; treat a marker newer than the cache as a miss.
-    marker_mtime = ide_tree_cache.marker_mtime(sync_folder)
-    cache_valid = (
-        os.path.exists(pkl_path)
-        and os.path.exists(tree_json_path)
-        and os.path.exists(ide_xml_path)
-        and os.path.getmtime(pkl_path) >= os.path.getmtime(tree_json_path)
-        and os.path.getmtime(pkl_path) >= os.path.getmtime(ide_xml_path)
-        and os.path.getmtime(pkl_path) >= marker_mtime
-    )
-    if cache_valid:
+    if _tree_cache_valid(sync_folder, pkl_path, tree_json_path, ide_xml_path):
         _log("tree + IDE.xml + pickle all present, skipping export and engine")
         t0 = time.time()
         rows, stats = _load_snapshooter_tree(tree_json_path)
@@ -566,7 +576,7 @@ def _build_available_rows(project):
             raise RuntimeError("Snapshooter variable tree is empty: {0}".format(tree_json_path))
         _set_last_tree_build("cache", tree_json_path)
         return rows, stats
-    if marker_mtime > 0.0:
+    if ide_tree_cache.marker_mtime(sync_folder) > 0.0:
         _log("tree cache stale: the project was edited after it was built")
 
     _log("cache miss, calling _snapshooter_export_objects...")

@@ -1143,6 +1143,21 @@ def _import_text_finish(context):
     return {"ok": True, "data": context.return_data}
 
 
+def _import_text_guard():
+    """``(project, error)`` before any side effect: resolve and refuse online.
+
+    Both must happen before the baseline export and everything after it, so
+    the online refusal leaves the project, the manifest and the disk untouched.
+    """
+    project, error = _get_active_project()
+    if error is not None:
+        return None, error
+    refusal = ide_online_guard.project_edit_refusal(project, "sync_import_text")
+    if refusal is not None:
+        return None, refusal
+    return project, None
+
+
 def _cmd_sync_import_text(params):
     """Apply an on-disk patch to the running IDE, then re-baseline the manifest.
 
@@ -1153,13 +1168,9 @@ def _cmd_sync_import_text(params):
     Each stage is a named helper over a shared :class:`_ImportTextContext`;
     only the create/apply loop and the save are allowed to fail softly.
     """
-    project, error = _get_active_project()
+    project, error = _import_text_guard()
     if error is not None:
         return error
-
-    refusal = ide_online_guard.project_edit_refusal(project, "sync_import_text")
-    if refusal is not None:
-        return refusal
 
     context = _ImportTextContext(params)
     context.project = project

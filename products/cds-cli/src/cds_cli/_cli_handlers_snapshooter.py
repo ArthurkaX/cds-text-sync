@@ -85,9 +85,7 @@ def _build_params(args):
 
     params = {"action": action}
     if action == "tree":
-        params["path"] = getattr(args, "path", "") or ""
-        if getattr(args, "refresh", False):
-            params["refresh"] = True
+        params.update(_tree_params(args))
     elif action == "take":
         paths = _collect_paths(args)
         if paths:
@@ -100,6 +98,14 @@ def _build_params(args):
         params["input"] = _daemon_path(getattr(args, "input", "") or "")
         if action == "restore":
             params["apply"] = bool(getattr(args, "apply", False))
+    return params
+
+
+def _tree_params(args):
+    """The ``tree`` payload; ``refresh`` is sent only when asked."""
+    params = {"path": getattr(args, "path", "") or ""}
+    if getattr(args, "refresh", False):
+        params["refresh"] = True
     return params
 
 
