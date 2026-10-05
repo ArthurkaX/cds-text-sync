@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Build-message number conversion must not invoke IronPython's .NET binder."""
+"""Build-message plumbing: number conversion, and the resolver's log noise.
+
+The number conversion must not invoke IronPython's .NET binder (``int(...)``
+on a .NET value can enter the overload binder and fail with an ambiguity),
+and an unresolvable message object must not cost one log line per message.
+"""
 
 import importlib.util
 import sys
@@ -90,3 +95,66 @@ def test_message_number_handles_numeric_strings():
 def test_message_number_ignores_non_numeric_values():
     assert build._message_number(_NonNumericNumber()) == 0
     assert build._message_number(None) == 0
+
+
+class _NoName:
+    """A build-message object whose name the scripting API refuses to give."""
+
+    def get_name(self):
+        raise RuntimeError("object has no name")
+
+
+class _Message:
+    def __init__(self, severity="Error", text="cannot convert INT to STRING", obj=None):
+        self.severity = severity
+        self.text = text
+        self.prefix = "C"
+        self.number = 32
+        self.object = obj
+
+
+class _System:
+    def __init__(self, messages):
+        self._messages = messages
+
+    def get_message_objects(self, _category_guid):
+        return self._messages
+
+
+def _logged(monkeypatch):
+    lines = []
+    monkeypatch.setattr(build, "_log", lines.append)
+    return lines
+
+
+def test_an_unresolvable_object_name_is_logged_once_for_the_whole_build(monkeypatch):
+    """Library and device messages carry no project object.
+
+    That is normal and true for every such message, so one line per message
+    floods the daemon log on a large project with a fact that never varies.
+    """
+    lines = _logged(monkeypatch)
+    messages = [_Message(obj=_NoName()) for _ in range(5)]
+
+    rows, errors, _warnings, _complete = build._collect_build_messages(_System(messages), "g")
+
+    assert errors == 5
+    assert [row["object"] for row in rows] == [""] * 5
+    summary = [line for line in lines if "no project object" in line]
+    assert len(summary) == 1, lines
+    assert "5 build message(s)" in summary[0]
+
+
+def test_a_resolvable_message_object_logs_nothing(monkeypatch):
+    lines = _logged(monkeypatch)
+
+    class _Named:
+        def get_name(self):
+            return "PLC_PRG"
+
+    rows, _errors, _warnings, _complete = build._collect_build_messages(
+        _System([_Message(obj=_Named())]), "g"
+    )
+
+    assert [row["object"] for row in rows] == ["PLC_PRG"]
+    assert [line for line in lines if "no project object" in line] == []

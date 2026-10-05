@@ -181,12 +181,30 @@ def _message_number(value):
         return 0
 
 
+def _message_object_name(msg):
+    """``(name, error)`` for the project object a build message points at.
+
+    Library and device messages have no project object, and the scripting API
+    refuses to name one. That is normal -- it is not a broken message -- so
+    the failure is returned to the caller, which reports the total once per
+    build instead of logging the same line for every such message.
+    """
+    try:
+        obj_ref = getattr(msg, "object", None)
+        if obj_ref:
+            return str(obj_ref.get_name()), ""
+    except Exception as error:
+        return "", str(error)
+    return "", ""
+
+
 def _collect_build_messages(system_obj, category_guid):
     """Read the build-category messages into rows; returns (rows, errors, warnings, complete)."""
     messages = []
     error_count = 0
     warning_count = 0
     diagnostics_complete = True
+    unnamed_objects = []
     try:
         msg_objects = system_obj.get_message_objects(category_guid)
         for msg in msg_objects:
@@ -200,14 +218,9 @@ def _collect_build_messages(system_obj, category_guid):
                     error_count += 1
                 if kind == SEVERITY_WARNING:
                     warning_count += 1
-                obj_ref = None
-                obj_name = ""
-                try:
-                    obj_ref = getattr(msg, "object", None)
-                    if obj_ref:
-                        obj_name = str(obj_ref.get_name())
-                except Exception as error:
-                    _log("Could not resolve build message object name: {0}".format(error))
+                obj_name, obj_error = _message_object_name(msg)
+                if obj_error:
+                    unnamed_objects.append(obj_error)
                 msg_id = ""
                 try:
                     prefix = str(getattr(msg, "prefix", ""))
@@ -232,6 +245,11 @@ def _collect_build_messages(system_obj, category_guid):
     except Exception as error:
         diagnostics_complete = False
         _log("Could not collect build messages: {0}".format(error))
+    if unnamed_objects:
+        _log(
+            "{0} build message(s) have no project object (library/device "
+            "messages): {1}".format(len(unnamed_objects), unnamed_objects[0])
+        )
     return messages, error_count, warning_count, diagnostics_complete
 
 
