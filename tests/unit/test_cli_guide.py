@@ -239,6 +239,23 @@ def test_commands_guide_documents_the_tree_cache_refresh():
     assert "`tree_source` says `cache` or `rebuilt`" in text
 
 
+def test_commands_guide_names_export_as_the_text_export():
+    """An agent looked for an `export-text` command that does not exist."""
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "`cts export` **is** the export-text command" in text
+    assert "no separate `export-text`" in text
+
+
+def test_commands_guide_warns_that_a_copied_project_keeps_the_sync_folder():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "carries its own sync-folder setting" in text
+    assert "keep writing into the *original's* folder" in text
+    assert "`cts set-sync-folder <path> --save`" in text
+    assert "resolved against the `.project` file's own directory" in text
+
+
 def test_workflow_guide_states_the_online_edit_refusal():
     text = " ".join(read_topic("workflow")["text"].split())
 

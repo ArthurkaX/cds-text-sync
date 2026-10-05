@@ -11,11 +11,11 @@ different stage status, reason and reason_code, and the CLI's exit code and
 
 The end-to-end tests in ``tests/unit/test_verify.py`` cover the common routes
 through the CLI. This grid pins the whole contract of the stage itself: the
-fingerprint handshake, the probe-then-build request order and their timeouts,
-every payload shape that means "not evidence", the compiler-message
-classification, and how the counts, summary and ``complete`` flag are built.
-Boundaries are faked (daemon transport, fingerprint scan, clock); the
-workspace is a real temporary directory.
+fingerprint handshake, the probe-then-profile-then-build request order and
+their timeouts, every payload shape that means "not evidence", the
+compiler-message classification, and how the counts, summary and ``complete``
+flag are built. Boundaries are faked (daemon transport, fingerprint scan,
+clock); the workspace is a real temporary directory.
 
 Known oddities are pinned as they are and described in the task report; none
 is fixed here.
@@ -66,6 +66,8 @@ class Harness:
         self.calls = []
         self.ping_response = {"ok": True}
         self.ping_raises = None
+        self.profile_response = {"ok": True, "data": {"timeouts": {}, "default": 120}}
+        self.profile_raises = None
         self.build_response = clean_payload()
         self.build_raises = None
         self.fingerprint = (_SHA, True, [])
@@ -84,6 +86,10 @@ class Harness:
             if self.ping_raises is not None:
                 raise self.ping_raises
             return self.ping_response
+        if method == "timeout_profile":
+            if self.profile_raises is not None:
+                raise self.profile_raises
+            return self.profile_response
         if method == "build":
             if self.build_raises is not None:
                 raise self.build_raises
@@ -166,10 +172,42 @@ class TestFingerprintHandshake:
         assert "workspace_fingerprint_complete" not in result.summary
         assert "workspace_fingerprint_errors" not in result.summary
 
-    def test_the_daemon_is_probed_before_the_build_is_requested(self, build):
+    def test_the_daemon_is_probed_before_the_budget_is_asked_for(self, build):
+        """The profile is only worth a round trip once the daemon answers."""
         build.run()
 
-        assert build.methods() == ["ping", "build"]
+        assert build.methods() == ["ping", "timeout_profile", "build"]
+
+    def test_the_daemon_budget_replaces_the_fixed_default(self, build):
+        build.profile_response = {
+            "ok": True,
+            "data": {"timeouts": {"build": 640}, "default": 600},
+        }
+
+        build.run()
+
+        _params, timeout = build.build_call()
+        assert timeout == 640
+
+    def test_an_explicit_build_timeout_beats_the_daemon_budget(self, build):
+        build.profile_response = {
+            "ok": True,
+            "data": {"timeouts": {"build": 640}, "default": 600},
+        }
+        build.ctx.build_timeout = 7.5
+
+        build.run()
+
+        _params, timeout = build.build_call()
+        assert timeout == 7.5
+
+    def test_a_daemon_without_a_profile_keeps_the_old_default(self, build):
+        build.profile_raises = RuntimeError("unknown method timeout_profile")
+
+        build.run()
+
+        _params, timeout = build.build_call()
+        assert timeout == 120
 
     def test_the_probe_uses_the_context_probe_timeout(self, build):
         build.ctx.probe_timeout = 0.25
@@ -217,9 +255,11 @@ class TestDaemonAvailability:
         assert result.status == STATUS_SKIPPED
         assert result.reason_code == "daemon_timeout"
         assert result.reason == (
-            "daemon stopped responding during build: Timeout (120s) waiting for IDE"
+            "daemon stopped responding during build: Timeout (120s) waiting for "
+            "IDE Raise the budget with --build-timeout N; the command's result "
+            "is kept for `cts last-result`."
         )
-        assert build.methods() == ["ping", "build"]
+        assert build.methods() == ["ping", "timeout_profile", "build"]
 
     def test_the_probe_answer_is_cached_for_the_whole_context(self, build):
         build.run()
@@ -524,13 +564,19 @@ class TestCountsAndMessages:
         assert result.status == STATUS_PASS
         assert result.problem_count == 0
 
-    def test_only_a_severity_containing_the_word_error_becomes_a_problem(self, build):
+    def test_any_severity_that_means_error_becomes_a_problem(self, build):
+        """The severity word is CODESYS's, so its casing cannot decide.
+
+        This grid used to pin the opposite behaviour: ``error`` and ``ERROR``
+        were read as unknown and dropped, so an IDE that spells the severity
+        differently turned a real compile failure into a clean build.
+        """
         build.build_response = clean_payload(
             errors=1,
             messages=[
                 compiler_error(text="real failure"),
-                {"severity": "error", "text": "lowercase is ignored"},
-                {"severity": "ERROR", "text": "shouty is ignored"},
+                {"severity": "error", "text": "lowercase counts"},
+                {"severity": "ERROR", "text": "shouty counts"},
                 {"severity": "Warning", "text": "warned"},
                 {"severity": "", "text": "unclassified"},
                 {"severity": "Fatal Error", "text": "substring match"},
@@ -539,8 +585,13 @@ class TestCountsAndMessages:
 
         result = build.run()
 
-        assert result.problem_count == 2
-        assert [p.message for p in result.problems] == ["real failure", "substring match"]
+        assert result.problem_count == 4
+        assert [p.message for p in result.problems] == [
+            "real failure",
+            "lowercase counts",
+            "shouty counts",
+            "substring match",
+        ]
 
     def test_a_message_is_mapped_onto_the_problem_fields(self, build):
         build.build_response = clean_payload(

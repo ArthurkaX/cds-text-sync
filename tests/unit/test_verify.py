@@ -73,13 +73,19 @@ def dead_daemon(monkeypatch):
 
 
 def _fake_daemon(monkeypatch, responses):
-    """Answer ``ping`` alive and every other method from *responses*."""
+    """Answer ``ping`` alive and every other method from *responses*.
+
+    ``timeout_profile`` answers an empty profile unless the test scripts one,
+    so a stage keeps the built-in default budget it had before.
+    """
     seen = []
 
     def _send(method, params=None, timeout=None, **kwargs):
         seen.append((method, params))
         if method == "ping":
             return {"ok": True}
+        if method == "timeout_profile":
+            return responses.get(method, {"ok": True, "data": {"timeouts": {}}})
         if method not in responses:
             raise AssertionError(f"unexpected daemon method {method!r}")
         return responses[method]
@@ -270,6 +276,42 @@ def test_compiler_errors_are_a_fail(workspace, monkeypatch):
     assert doc["verdict"] == "fail"
     # A real compile failure is a complete answer, not an incomplete one.
     assert doc["complete"] is True
+    assert code == 1
+
+
+def test_a_lowercased_error_severity_still_fails_the_gate(workspace, monkeypatch):
+    """CODESYS spells the severity; the gate must not depend on its casing.
+
+    With ``error`` read as an unknown word the stage counted zero problems and
+    passed, which is the one answer a compile failure must never produce.
+    """
+    _fake_daemon(
+        monkeypatch,
+        {
+            "build": {
+                "ok": False,
+                "data": {
+                    "application": "Device.Application",
+                    "errors": 1,
+                    "warnings": 0,
+                    "messages": [
+                        {
+                            "severity": "ERROR",
+                            "code": "C0032",
+                            "text": "cannot convert INT to STRING",
+                            "object": "PLC_PRG",
+                        }
+                    ],
+                },
+            }
+        },
+    )
+
+    code, doc, _err = _verify_json(workspace, ["--only", "build"])
+    build = _stage(doc, "build")
+    assert build["status"] == "fail"
+    assert build["problem_count"] == 1
+    assert doc["verdict"] == "fail"
     assert code == 1
 
 

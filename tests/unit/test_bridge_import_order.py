@@ -213,6 +213,7 @@ def test_cts_shared_importers_are_discovered():
     # A guard on the guard: the cold-import test is only meaningful while it
     # still covers the modules that pull cts_shared in.
     assert _modules_importing_cts_shared() == [
+        "codesys_build_operation",
         "codesys_fmt_operation",
         "ide_daemon_state",
         "ide_handlers_build",

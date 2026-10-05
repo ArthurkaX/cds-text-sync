@@ -69,3 +69,23 @@ def test_changelog_top_release_is_current_version():
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     first = re.search(r"^### Version (\S+)", changelog, re.MULTILINE)
     assert first and first.group(1) == release
+
+
+def test_shipped_texts_do_not_name_the_maintainers_ssh_wrapper():
+    """`tools/cts-win` was how the maintainer reached a Windows VM, not a product.
+
+    Users run `cts` locally on Windows, so a changelog or a shipped guide that
+    tells them to call the wrapper describes a setup they cannot have -- and
+    the script is no longer in the repository at all. The daemon's own
+    ``ssh_dacl_hint`` is a different thing: it is a runtime hint for a user who
+    happens to be on an SSH session, not an instruction to install a wrapper.
+    """
+    shipped = [path for path in ("CHANGELOG.md", "readMe.md") if (ROOT / path).is_file()]
+    shipped += [
+        str(path.relative_to(ROOT))
+        for folder in ("docs", "products/cds-cli/src/cds_cli/guides")
+        for path in sorted((ROOT / folder).rglob("*.md"))
+    ]
+    for relative in shipped:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert "cts-win" not in text, relative

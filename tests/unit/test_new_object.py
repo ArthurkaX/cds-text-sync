@@ -458,13 +458,21 @@ class TestWhatIsWritten:
         assert "the PLC never gets it" in joined
         assert "reachable from a task's call tree" in joined
 
-    def test_a_dut_report_has_no_reference_step(self, tmp_path):
+    def test_a_dut_report_says_the_type_must_be_used_from_called_code(self, tmp_path):
+        """A DUT is reached through a variable, not through a call of its own.
+
+        Without the reminder a struct created, imported and downloaded still
+        never reaches the PLC: nothing in the task's call tree uses the type,
+        so CODESYS compiles it out.
+        """
         root, _views = _make_project(tmp_path)
 
         report = no.create_object(root, "dut", "ST_A", dut_kind="struct")
 
         joined = "\n".join(report["next"])
-        assert "the PLC never gets it" not in joined
+        assert "the PLC never gets it" in joined
+        assert "a variable that uses it" in joined
+        assert "task's call tree" in joined
         assert "cts download" in joined
 
     def test_the_report_names_the_type_guid_for_this_kind(self, tmp_path):

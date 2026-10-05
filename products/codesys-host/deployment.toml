@@ -13,6 +13,7 @@ test_paths = [
   "../../tests/unit/test_bridge_import_order.py",
   "../../tests/unit/test_build_library.py",
   "../../tests/unit/test_build_message_identifier.py",
+  "../../tests/unit/test_build_severity.py",
   "../../tests/unit/test_cli_daemon_protocol.py",
   "../../tests/unit/test_codesys_analyze_ui_launcher.py",
   "../../tests/unit/test_codesys_external_ui_launcher.py",
