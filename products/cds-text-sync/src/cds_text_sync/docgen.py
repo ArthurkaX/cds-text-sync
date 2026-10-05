@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import json
 import hashlib
-import os
 import re
 import shutil
 import tempfile
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +35,7 @@ from cds_text_sync.docs.behavior import extract_behavior
 from cds_static_analyzer.execution import ExecutionGraph
 from cds_static_analyzer.global_access import GlobalAccessIndex
 from cds_static_analyzer.model import line_col_of
+from cds_static_analyzer.project import ProjectSnapshot
 from cds_static_analyzer.st import kinds as K
 from cts_shared.st.blanking import comment_spans
 from cts_shared.st.declarations import member_comment, parse_dut, parse_var_blocks
@@ -48,54 +49,6 @@ POU_HEADER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 INTERFACE_COLUMNS = ("scope", "name", "type", "initial", "comment")
-
-
-def _pou_sections(text, stem):
-    """Split ``text`` into POU sections at every ``POU_HEADER_RE`` match.
-
-    Each section spans from the start of its header match to the start of the
-    next match (or end of text).  ``TYPE`` sections are re-parsed as DUTs so
-    the kind becomes ``STRUCT``/``ENUM``/``ALIAS`` and the fields travel along
-    under ``"dut"``.  Methods, properties and actions coming from
-    ``Parent.Method.st`` files carry the qualified ``stem`` as their name.  A
-    file with no header at all but a ``VAR_GLOBAL`` block becomes a single
-    synthetic ``GVL`` section; a file with neither yields ``[]``.
-    """
-    matches = list(POU_HEADER_RE.finditer(text))
-    if not matches:
-        if re.search(r"^[ \t]*VAR_GLOBAL\b", text, re.IGNORECASE | re.MULTILINE):
-            return [
-                {"kind": "GVL", "name": stem, "start": 0, "text": text, "line": 1}
-            ]
-        return []
-    sections = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        section_text = text[match.start():end]
-        kind = match.group(1).upper()
-        name = match.group(2)
-        return_type = match.group(3) or ""
-        section = {
-            "kind": kind,
-            "name": name,
-            "start": match.start(),
-            "text": section_text,
-            "line": text[: match.start()].count("\n") + 1,
-            "return_type": return_type,
-        }
-        if kind == "TYPE":
-            try:
-                dut = parse_dut(section_text)
-            except Exception:
-                dut = None
-            if dut is not None:
-                section["kind"] = str(dut.get("kind") or "").upper()
-                section["name"] = dut.get("name") or name
-                section["dut"] = dut
-        elif kind in ("METHOD", "PROPERTY", "ACTION") and "." in stem:
-            section["name"] = stem
-        sections.append(section)
-    return sections
 
 
 def _merge_line_comments(text, spans):
@@ -199,32 +152,6 @@ def _section_description(text, section, spans):
             boundary = span_start
         winner = "\n".join(_clean_comment(part) for part in reversed(preceding))
     return _clean_comment(winner)
-
-
-def _member_comment(section_text, line_no):
-    """Return the trailing ``//`` comment of the member on ``line_no``.
-
-    ``parse_var_blocks`` blanks comments internally, so the per-member
-    comment is recovered from the original section text: the first ``//`` on
-    that line that is not inside a single-quoted string literal.
-    """
-    try:
-        line = section_text.split("\n")[int(line_no) - 1]
-    except (IndexError, TypeError, ValueError):
-        return ""
-    in_string = False
-    length = len(line)
-    index = 0
-    while index < length:
-        char = line[index]
-        if char == "'":
-            in_string = not in_string
-            index += 1
-            continue
-        if not in_string and char == "/" and line[index + 1 : index + 2] == "/":
-            return line[index + 2 :].strip()
-        index += 1
-    return ""
 
 
 def _section_interface(section):
@@ -457,232 +384,270 @@ def _missing_library_reason(library_root, ref):
     return "documentation_package_absent"
 
 
-def _generate_docs(workspace, library_path=None, output=None):
-    """Write and return a documentation bundle for *workspace*.
+@dataclass
+class _DocContext:
+    """Explicit mutable state shared by the docgen pipeline stages.
 
-    ``workspace`` may be the sync root or its ``project-view`` directory.
-    ``library_path`` defaults to the standard CODESYS installation directory.
+    ``_generate_docs`` runs the collection stages in order and then renders the
+    accumulated records into the bundle.  Keeping the state on one object lets
+    each stage be read on its own instead of threading a dozen locals through a
+    single long function.
     """
-    workspace = Path(workspace).resolve()
-    if workspace.is_dir() and workspace.name.casefold() == "project-view":
-        sync_root = workspace.parent
-        project_view = workspace
-    else:
-        sync_root = workspace
-        project_view = workspace / "project-view" if (workspace / "project-view").is_dir() else workspace
-    library_root = Path(library_path or DEFAULT_LIBRARY_PATH).expanduser().resolve()
-    output_root = Path(output).expanduser().resolve() if output else sync_root / ".cts-docs"
 
-    snapshot = build_compat_snapshot(str(project_view))
-    project_symbols = []
-    doc_sources = []
-    doc_diagnostics = []
-    doc_model_symbols = []
-    for unit in snapshot.units:
+    project_view: Path
+    library_root: Path
+    output_root: Path
+    snapshot: ProjectSnapshot
+    project_symbols: list = field(default_factory=list)
+    library_rows: list = field(default_factory=list)
+    doc_sources: list = field(default_factory=list)
+    doc_model_symbols: list = field(default_factory=list)
+    doc_diagnostics: list = field(default_factory=list)
+    doc_relations: list = field(default_factory=list)
+    project_ids: dict = field(default_factory=dict)
+    references: list = field(default_factory=list)
+    documented: list = field(default_factory=list)
+    missing: list = field(default_factory=list)
+    gap: str | None = None
+    library_candidates: dict = field(default_factory=dict)
+    unresolved_call_records: list = field(default_factory=list)
+    not_referenced: dict = field(default_factory=dict)
+    execution: ExecutionGraph | None = None
+    model_by_id: dict = field(default_factory=dict)
+    card_meta: dict = field(default_factory=dict)
+    all_diagnostics: list = field(default_factory=list)
+    artifact_symbols: list = field(default_factory=list)
+
+
+def _new_context(workspace, library_path=None, output=None):
+    """Resolve the workspace paths and snapshot the project view."""
+    project_view, output_root = _resolve_doc_paths(workspace, output)
+    library_root = Path(library_path or DEFAULT_LIBRARY_PATH).expanduser().resolve()
+    return _DocContext(
+        project_view=project_view,
+        library_root=library_root,
+        output_root=output_root,
+        snapshot=build_compat_snapshot(str(project_view)),
+    )
+
+
+def _add_project_unit(context, unit):
+    """Record one ``.st`` unit as a source, a symbol and any diagnostics."""
+    text = unit.text or ""
+    source = DocSource.from_text("project", unit.source_path, text)
+    context.doc_sources.append(source)
+    section = _unit_section(unit)
+    spans = _merge_line_comments(text, comment_spans(text))
+    description = _section_description(text, section, spans)
+    interface = _section_interface(section)
+    symbol_id = stable_id("project", section["kind"], unit.qualified_name)
+    parse_status = "complete" if unit.kind != K.UNKNOWN else "failed"
+    warnings = []
+    if unit.kind == K.UNKNOWN:
+        warnings.append("unit kind could not be classified")
+        context.doc_diagnostics.append(DocDiagnostic(
+            "unsupported_construct", "warning",
+            f"could not classify Structured Text unit: {unit.source_path}",
+            symbol_id=symbol_id,
+            source_ref={"id": source.id, "line": 1},
+        ))
+    declaration = {}
+    dut = section.get("dut")
+    if dut:
+        declaration = {
+            "attributes": list(dut.get("attributes") or []),
+            "attribute_values": dict(dut.get("attribute_values") or {}),
+            "base_type": dut.get("base_type") or dut.get("base"),
+            "extends": dut.get("extends"),
+            "members": interface,
+        }
+        warnings.extend(dut.get("warnings") or [])
+        if dut.get("warnings"):
+            parse_status = "partial"
+            context.doc_diagnostics.append(DocDiagnostic(
+                "parse_loss", "warning",
+                "one or more declaration members could not be parsed",
+                symbol_id=symbol_id,
+            ))
+        if section["kind"] == "ENUM" and not declaration["base_type"]:
+            warnings = ["enum base_type could not be determined"]
+            parse_status = "partial"
+            context.doc_diagnostics.append(DocDiagnostic(
+                "parse_loss", "warning",
+                f"enum {unit.qualified_name} has no preserved base_type",
+                symbol_id=symbol_id,
+            ))
+    behavior_status, behavior_facts, behavior_summary = extract_behavior(unit)
+    context.doc_model_symbols.append(DocSymbol(
+        id=symbol_id,
+        source="project",
+        kind=section["kind"],
+        name=unit.qualified_name,
+        qualified_name=unit.qualified_name,
+        path=unit.source_path,
+        line=section["line"],
+        description=description,
+        interface=interface,
+        source_ref=_source_ref(source),
+        declaration=declaration,
+        owner_id=unit.owner_id,
+        source_spans=[span.to_dict() for span in unit.source_spans],
+        parse_status=parse_status,
+        parse_warnings=warnings,
+        behavior_status=behavior_status,
+        behavior_facts=behavior_facts,
+        behavior_summary=behavior_summary,
+    ))
+    context.project_symbols.append({
+        "id": symbol_id,
+        "source": "project",
+        "library": None,
+        "version": None,
+        "kind": section["kind"],
+        "name": unit.qualified_name,
+        "qualified_name": unit.qualified_name,
+        "path": unit.source_path,
+        "line": section["line"],
+        "description": description,
+        "interface": interface,
+        "own_members": interface,
+        "inherited_members": [],
+        "source_ref": _source_ref(source),
+        "declaration": declaration,
+        "owner_id": unit.owner_id,
+        "source_spans": [span.to_dict() for span in unit.source_spans],
+        "parse": {"status": parse_status, "warnings": warnings},
+        "behavior": {
+            "status": behavior_status,
+            "facts": behavior_facts,
+            "summary": behavior_summary,
+        },
+    })
+
+    project_path = Path(unit.source_path)
+    if not project_path.is_absolute():
+        project_path = context.project_view / project_path
+    if not project_path.is_file():
+        context.doc_diagnostics.append(DocDiagnostic(
+            "source_error", "error",
+            f"project source path does not exist: {unit.source_path}",
+            symbol_id=symbol_id,
+            source_ref={"id": source.id, "line": 1},
+        ))
+
+
+def _collect_project_symbols(context):
+    """Turn every ``.st`` unit and source error into symbols and diagnostics."""
+    for unit in context.snapshot.units:
         if not unit.source_path.lower().endswith(".st"):
             continue
-        text = unit.text or ""
-        source = DocSource.from_text("project", unit.source_path, text)
-        doc_sources.append(source)
-        section = _unit_section(unit)
-        spans = _merge_line_comments(text, comment_spans(text))
-        description = _section_description(text, section, spans)
-        interface = _section_interface(section)
-        symbol_id = stable_id("project", section["kind"], unit.qualified_name)
-        parse_status = "complete" if unit.kind != K.UNKNOWN else "failed"
-        warnings = []
-        if unit.kind == K.UNKNOWN:
-            warnings.append("unit kind could not be classified")
-            doc_diagnostics.append(DocDiagnostic(
-                "unsupported_construct", "warning",
-                f"could not classify Structured Text unit: {unit.source_path}",
-                symbol_id=symbol_id,
-                source_ref={"id": source.id, "line": 1},
-            ))
-        declaration = {}
-        dut = section.get("dut")
-        if dut:
-            declaration = {
-                "attributes": list(dut.get("attributes") or []),
-                "attribute_values": dict(dut.get("attribute_values") or {}),
-                "base_type": dut.get("base_type") or dut.get("base"),
-                "extends": dut.get("extends"),
-                "members": interface,
-            }
-            warnings.extend(dut.get("warnings") or [])
-            if dut.get("warnings"):
-                parse_status = "partial"
-                doc_diagnostics.append(DocDiagnostic(
-                    "parse_loss", "warning",
-                    "one or more declaration members could not be parsed",
-                    symbol_id=symbol_id,
-                ))
-            if section["kind"] == "ENUM" and not declaration["base_type"]:
-                warnings = ["enum base_type could not be determined"]
-                parse_status = "partial"
-                doc_diagnostics.append(DocDiagnostic(
-                    "parse_loss", "warning",
-                    f"enum {unit.qualified_name} has no preserved base_type",
-                    symbol_id=symbol_id,
-                ))
-        behavior_status, behavior_facts, behavior_summary = extract_behavior(unit)
-        doc_model_symbols.append(DocSymbol(
-            id=symbol_id,
-            source="project",
-            kind=section["kind"],
-            name=unit.qualified_name,
-            qualified_name=unit.qualified_name,
-            path=unit.source_path,
-            line=section["line"],
-            description=description,
-            interface=interface,
-            source_ref=_source_ref(source),
-            declaration=declaration,
-            owner_id=unit.owner_id,
-            source_spans=[span.to_dict() for span in unit.source_spans],
-            parse_status=parse_status,
-            parse_warnings=warnings,
-            behavior_status=behavior_status,
-            behavior_facts=behavior_facts,
-            behavior_summary=behavior_summary,
-        ))
-        project_symbols.append({
-            "id": symbol_id,
-            "source": "project",
-            "library": None,
-            "version": None,
-            "kind": section["kind"],
-            "name": unit.qualified_name,
-            "qualified_name": unit.qualified_name,
-            "path": unit.source_path,
-            "line": section["line"],
-            "description": description,
-            "interface": interface,
-            "own_members": interface,
-            "inherited_members": [],
-            "source_ref": _source_ref(source),
-            "declaration": declaration,
-            "owner_id": unit.owner_id,
-            "source_spans": [span.to_dict() for span in unit.source_spans],
-            "parse": {"status": parse_status, "warnings": warnings},
-            "behavior": {
-                "status": behavior_status,
-                "facts": behavior_facts,
-                "summary": behavior_summary,
-            },
-        })
-
-        project_path = Path(unit.source_path)
-        if not project_path.is_absolute():
-            project_path = project_view / project_path
-        if not project_path.is_file():
-            doc_diagnostics.append(DocDiagnostic(
-                "source_error", "error",
-                f"project source path does not exist: {unit.source_path}",
-                symbol_id=symbol_id,
-                source_ref={"id": source.id, "line": 1},
-            ))
-
-    for error in snapshot.source_errors:
-        doc_diagnostics.append(DocDiagnostic(
+        _add_project_unit(context, unit)
+    for error in context.snapshot.source_errors:
+        context.doc_diagnostics.append(DocDiagnostic(
             "source_error", "error", error.message,
             source_ref={"path": error.location.path, "line": error.location.line},
         ))
-
-    project_ids = {
-        symbol.qualified_name.casefold(): symbol.id for symbol in doc_model_symbols
+    context.project_ids = {
+        symbol.qualified_name.casefold(): symbol.id for symbol in context.doc_model_symbols
     }
-    doc_relations = []
-    for symbol in doc_model_symbols:
+
+
+def _collect_extends_relations(context):
+    """Materialize the ``extends`` relations of the project symbols."""
+    for symbol in context.doc_model_symbols:
         if symbol.source != "project":
             continue
         extends = (symbol.declaration or {}).get("extends")
         if not extends:
             continue
-        target = project_ids.get(str(extends).casefold(), f"unresolved::type:{extends}")
-        doc_relations.append(DocRelation(
+        target = context.project_ids.get(str(extends).casefold(), f"unresolved::type:{extends}")
+        context.doc_relations.append(DocRelation(
             "extends", symbol.id, target,
-            resolution="exact" if target in project_ids.values() else "unresolved",
-            confidence="high" if target in project_ids.values() else "low",
+            resolution="exact" if target in context.project_ids.values() else "unresolved",
+            confidence="high" if target in context.project_ids.values() else "low",
         ))
-    unresolved_call_records = []
+
+
+def _call_site(context, units_by_name, caller, offsets):
+    """Describe the first call offset as a line/column (plus source) site."""
+    if not offsets:
+        return None
+    unit = units_by_name.get(caller)
+    if unit is None:
+        return None
+    line, column = line_col_of(unit.text, offsets[0])
+    site = {"line": line, "column": column}
+    source_id = next(
+        (source.id for source in context.doc_sources if source.path == unit.source_path),
+        None,
+    )
+    if source_id:
+        site["source_id"] = source_id
+    return site
+
+
+def _collect_execution_relations(context):
+    """Add the call, unresolved-call and task-reachability relations."""
     try:
-        execution = ExecutionGraph(snapshot)
+        context.execution = ExecutionGraph(context.snapshot)
     except Exception as exc:
-        execution = None
-        doc_diagnostics.append(DocDiagnostic(
+        context.execution = None
+        context.doc_diagnostics.append(DocDiagnostic(
             "execution_graph_error", "warning", f"could not build execution graph: {exc}"
         ))
-    if execution is not None:
-        units_by_name = {
-            unit.qualified_name.casefold(): unit for unit in snapshot.units
-        }
-        for caller, callee, offsets in execution.call_edges():
-            caller_id = project_ids.get(caller)
-            if not caller_id:
-                continue
-            callee_id = project_ids.get(callee, f"unresolved::call:{callee}")
-            site = None
-            if offsets:
-                unit = units_by_name.get(caller)
-                if unit is not None:
-                    line, column = line_col_of(unit.text, offsets[0])
-                    site = {"line": line, "column": column}
-                    source_id = next(
-                        (source.id for source in doc_sources if source.path == unit.source_path),
-                        None,
-                    )
-                    if source_id:
-                        site["source_id"] = source_id
-            doc_relations.append(DocRelation("calls", caller_id, callee_id, site=site))
-        for caller, name, offsets in execution.unresolved_call_sites():
-            caller_id = project_ids.get(caller)
-            if not caller_id:
-                continue
-            site = None
-            if offsets:
-                unit = units_by_name.get(caller)
-                if unit is not None:
-                    line, column = line_col_of(unit.text, offsets[0])
-                    site = {"line": line, "column": column}
-                    source_id = next(
-                        (source.id for source in doc_sources if source.path == unit.source_path),
-                        None,
-                    )
-                    if source_id:
-                        site["source_id"] = source_id
-            doc_relations.append(DocRelation(
-                "calls", caller_id, f"unresolved::call:{name}", site=site,
-                resolution="unresolved", confidence="low",
+    execution = context.execution
+    if execution is None:
+        return
+    units_by_name = {
+        unit.qualified_name.casefold(): unit for unit in context.snapshot.units
+    }
+    for caller, callee, offsets in execution.call_edges():
+        caller_id = context.project_ids.get(caller)
+        if not caller_id:
+            continue
+        callee_id = context.project_ids.get(callee, f"unresolved::call:{callee}")
+        site = _call_site(context, units_by_name, caller, offsets)
+        context.doc_relations.append(DocRelation("calls", caller_id, callee_id, site=site))
+    for caller, name, offsets in execution.unresolved_call_sites():
+        caller_id = context.project_ids.get(caller)
+        if not caller_id:
+            continue
+        site = _call_site(context, units_by_name, caller, offsets)
+        context.doc_relations.append(DocRelation(
+            "calls", caller_id, f"unresolved::call:{name}", site=site,
+            resolution="unresolved", confidence="low",
+        ))
+        context.unresolved_call_records.append((caller_id, name))
+    for unit_name, tasks in sorted(execution._tasks_by_unit.items()):
+        target_id = context.project_ids.get(unit_name)
+        if not target_id:
+            continue
+        for task in sorted(tasks):
+            context.doc_relations.append(DocRelation(
+                "reachable_from_task", f"external::task:{task}", target_id,
             ))
-            unresolved_call_records.append((caller_id, name))
-        for unit_name, tasks in sorted(execution._tasks_by_unit.items()):
-            target_id = project_ids.get(unit_name)
-            if not target_id:
-                continue
-            for task in sorted(tasks):
-                doc_relations.append(DocRelation(
-                    "reachable_from_task", f"external::task:{task}", target_id,
-                ))
 
-    source_ids_by_path = {source.path: source.id for source in doc_sources}
+
+def _collect_global_relations(context):
+    """Add the ``reads_global``/``writes_global`` relations with their sites."""
+    source_ids_by_path = {source.path: source.id for source in context.doc_sources}
     try:
-        global_access = GlobalAccessIndex(snapshot)
+        global_access = GlobalAccessIndex(context.snapshot)
         for access in global_access.all_accesses():
-            caller_id = project_ids.get(access.unit.qualified_name.casefold())
+            caller_id = context.project_ids.get(access.unit.qualified_name.casefold())
             if not caller_id:
                 continue
             source_id = source_ids_by_path.get(access.unit.source_path)
             site = {"line": access.line, "column": access.column}
             if source_id:
                 site["source_id"] = source_id
-            if execution is not None:
-                tasks = sorted(execution.tasks_for(access.unit.qualified_name))
+            if context.execution is not None:
+                tasks = sorted(context.execution.tasks_for(access.unit.qualified_name))
                 if tasks:
                     site["tasks"] = tasks
             relation_kind = "writes_global" if access.write else "reads_global"
             target = f"external::global:{access.global_unit.qualified_name}.{access.member['name']}"
-            doc_relations.append(DocRelation(
+            context.doc_relations.append(DocRelation(
                 relation_kind,
                 caller_id,
                 target,
@@ -691,15 +656,18 @@ def _generate_docs(workspace, library_path=None, output=None):
                 confidence=access.confidence,
             ))
     except Exception as exc:
-        doc_diagnostics.append(DocDiagnostic(
+        context.doc_diagnostics.append(DocDiagnostic(
             "global_access_error", "warning", f"could not build global access index: {exc}"
         ))
 
-    references, gap = explicit_library_references(project_view)
-    documented = []
-    missing = []
+
+def _collect_library_references(context):
+    """Locate the LibDoc tree for every library reference of the project."""
+    references, gap = explicit_library_references(context.project_view)
+    context.references = references
+    context.gap = gap
     for ref in references:
-        libdoc = find_libdoc(library_root, ref["name"], ref["vendor"], ref["version"])
+        libdoc = find_libdoc(context.library_root, ref["name"], ref["vendor"], ref["version"])
         requested_version = str(ref.get("version") or "*")
         if libdoc is not None and requested_version not in ("", "*") and str(libdoc.get("version")) != requested_version:
             # find_libdoc intentionally supports wildcard/fallback lookup for
@@ -708,19 +676,19 @@ def _generate_docs(workspace, library_path=None, output=None):
             libdoc = None
         if libdoc is None:
             missing_ref = dict(ref)
-            missing_ref["reason"] = _missing_library_reason(library_root, ref)
-            missing.append(missing_ref)
-            doc_diagnostics.append(DocDiagnostic(
+            missing_ref["reason"] = _missing_library_reason(context.library_root, ref)
+            context.missing.append(missing_ref)
+            context.doc_diagnostics.append(DocDiagnostic(
                 "missing_external_docs", "warning",
                 f"LibDoc unavailable for {ref['name']} {ref.get('version') or '*'}: {missing_ref['reason']}",
             ))
             continue
-        documented.append({"ref": ref, "libdoc": libdoc, "symbols": library_symbols(libdoc)})
+        context.documented.append({"ref": ref, "libdoc": libdoc, "symbols": library_symbols(libdoc)})
 
-    library_rows = []
-    library_ids = {}
-    library_candidates = {}
-    for entry in documented:
+
+def _collect_library_rows(context):
+    """Expand each documented LibDoc tree into symbols, sources and rows."""
+    for entry in context.documented:
         libdoc = entry["libdoc"]
         for sym in entry["symbols"]:
             ref = entry["ref"]
@@ -738,7 +706,7 @@ def _generate_docs(workspace, library_path=None, output=None):
                         f"{ref['vendor']}/{ref['name']}/{libdoc['version']}/{location}",
                         html_text,
                     )
-                    doc_sources.append(source)
+                    context.doc_sources.append(source)
                     source_ref = _source_ref(source)
             symbol_id = stable_id(
                 "library",
@@ -747,13 +715,6 @@ def _generate_docs(workspace, library_path=None, output=None):
                 namespace=ref.get("namespace") or ref.get("name"),
                 version=libdoc.get("version"),
             )
-            library_key = (
-                str(ref.get("name") or "").casefold(),
-                str(libdoc.get("version") or "").casefold(),
-                str(sym.get("name") or "").casefold(),
-                str(sym.get("kind") or "POU").casefold(),
-            )
-            library_ids[library_key] = symbol_id
             symbol_name = str(sym.get("name") or "").casefold()
             candidate_keys = {symbol_name}
             # LibDoc pages usually expose the symbol without its namespace,
@@ -764,12 +725,12 @@ def _generate_docs(workspace, library_path=None, output=None):
                 if qualifier:
                     candidate_keys.add(qualifier + "." + symbol_name)
             for candidate_key in candidate_keys:
-                library_candidates.setdefault(candidate_key, []).append(symbol_id)
+                context.library_candidates.setdefault(candidate_key, []).append(symbol_id)
             interface = [
                 {c: str(row.get(c, "")) for c in INTERFACE_COLUMNS}
                 for row in sym.get("interface") or []
             ]
-            doc_model_symbols.append(DocSymbol(
+            context.doc_model_symbols.append(DocSymbol(
                 id=symbol_id,
                 source="library",
                 kind=sym.get("kind") or "POU",
@@ -785,7 +746,7 @@ def _generate_docs(workspace, library_path=None, output=None):
                 vendor=ref.get("vendor"),
                 namespace=ref.get("namespace"),
             ))
-            library_rows.append(
+            context.library_rows.append(
                 {
                     "id": symbol_id,
                     "source": "library",
@@ -807,104 +768,120 @@ def _generate_docs(workspace, library_path=None, output=None):
                 }
             )
 
-    # Materialize inherited declaration members after all project symbols are
-    # known. Unresolved/cyclic inheritance stays represented by its relation.
-    project_rows_by_name = {
-        str(row.get("name") or "").casefold(): row
-        for row in project_symbols
+
+def _inherited_for(row, rows_by_name, cache, visiting=()):
+    """Resolve the inherited members of *row*, guarding against cycles."""
+    row_id = row.get("id")
+    if row_id in cache:
+        return cache[row_id]
+    if row_id in visiting:
+        return []
+    base_name = str((row.get("declaration") or {}).get("extends") or "").casefold()
+    base = rows_by_name.get(base_name)
+    if base is None:
+        cache[row_id] = []
+        return []
+    members = [dict(member) for member in (base.get("own_members") or [])]
+    members.extend(_inherited_for(base, rows_by_name, cache, visiting + (row_id,)))
+    for member in members:
+        member.setdefault("inherited_from", base.get("name"))
+    cache[row_id] = members
+    return members
+
+
+def _apply_inheritance(context):
+    """Materialize inherited declaration members after all symbols are known.
+
+    The project rows are the only source of inheritance; unresolved or cyclic
+    inheritance stays represented by its relation alone.
+    """
+    rows_by_name = {
+        str(row.get("name") or "").casefold(): row for row in context.project_symbols
     }
-    inherited_cache = {}
+    cache = {}
+    for row in context.project_symbols:
+        row["inherited_members"] = _inherited_for(row, rows_by_name, cache)
 
-    def inherited_for(row, visiting=()):
-        row_id = row.get("id")
-        if row_id in inherited_cache:
-            return inherited_cache[row_id]
-        if row_id in visiting:
-            return []
-        base_name = str((row.get("declaration") or {}).get("extends") or "").casefold()
-        base = project_rows_by_name.get(base_name)
-        if base is None:
-            inherited_cache[row_id] = []
-            return []
-        members = [dict(member) for member in (base.get("own_members") or [])]
-        members.extend(inherited_for(base, visiting + (row_id,)))
-        for member in members:
-            member.setdefault("inherited_from", base.get("name"))
-        inherited_cache[row_id] = members
-        return members
 
-    for row in project_symbols:
-        row["inherited_members"] = inherited_for(row)
-
-    # Build reverse navigation for cards from the canonical one-way relations.
-    model_by_id = {symbol.id: symbol for symbol in doc_model_symbols}
-    card_meta = {symbol.id: {"callers": [], "callees": [], "tasks": [], "globals": []}
-                 for symbol in doc_model_symbols}
-    for relation in doc_relations:
+def _build_card_navigation(context):
+    """Attach reverse navigation, card paths and source hashes to the rows."""
+    context.model_by_id = {symbol.id: symbol for symbol in context.doc_model_symbols}
+    context.card_meta = {
+        symbol.id: {"callers": [], "callees": [], "tasks": [], "globals": []}
+        for symbol in context.doc_model_symbols
+    }
+    for relation in context.doc_relations:
         if relation.kind == "calls":
-            if relation.from_id in card_meta:
-                card_meta[relation.from_id]["callees"].append(relation.to_id)
-            if relation.to_id in card_meta:
-                card_meta[relation.to_id]["callers"].append(relation.from_id)
-        elif relation.kind in ("reads_global", "writes_global") and relation.from_id in card_meta:
-            card_meta[relation.from_id]["globals"].append(
+            if relation.from_id in context.card_meta:
+                context.card_meta[relation.from_id]["callees"].append(relation.to_id)
+            if relation.to_id in context.card_meta:
+                context.card_meta[relation.to_id]["callers"].append(relation.from_id)
+        elif relation.kind in ("reads_global", "writes_global") and relation.from_id in context.card_meta:
+            context.card_meta[relation.from_id]["globals"].append(
                 f"{relation.kind}:{relation.to_id}"
             )
-        elif relation.kind == "reachable_from_task" and relation.to_id in card_meta:
-            card_meta[relation.to_id]["tasks"].append(
+        elif relation.kind == "reachable_from_task" and relation.to_id in context.card_meta:
+            context.card_meta[relation.to_id]["tasks"].append(
                 relation.from_id.removeprefix("external::task:")
             )
-    for values in card_meta.values():
+    for values in context.card_meta.values():
         for key in values:
             values[key] = sorted(set(values[key]))
 
     cards_by_id = {}
-    for symbol in doc_model_symbols:
+    for symbol in context.doc_model_symbols:
         if symbol.source != "project":
             continue
         card = f"project/{_card_name(symbol.id, symbol.name)}"
         symbol.card = card
         cards_by_id[symbol.id] = card
-    for row in project_symbols:
+    for row in context.project_symbols:
         row["card"] = cards_by_id.get(row.get("id"))
-        row.update(card_meta.get(row.get("id"), {}))
+        row.update(context.card_meta.get(row.get("id"), {}))
         source = next(
-            (item for item in doc_sources
+            (item for item in context.doc_sources
              if item.id == (row.get("source_ref") or {}).get("id")),
             None,
         )
         row["source_sha256"] = source.sha256 if source else None
-    for row in library_rows:
+    for row in context.library_rows:
         library_slug = f"{_slug(row.get('library'))}-{_slug(row.get('version'))}"
         row["card"] = f"libraries/{library_slug}/{_card_name(row.get('id'), row.get('name'))}"
-        model = model_by_id.get(row.get("id"))
+        model = context.model_by_id.get(row.get("id"))
         if model is not None:
             model.card = row["card"]
 
-    for caller_id, name in unresolved_call_records:
-        candidates = sorted(set(library_candidates.get(name.casefold(), [])))
+
+def _resolve_library_candidates(context):
+    """Point unresolved call relations at library symbols when unambiguous."""
+    for caller_id, name in context.unresolved_call_records:
+        candidates = sorted(set(context.library_candidates.get(name.casefold(), [])))
         if not candidates and "." in name:
             # A qualified call may use a namespace spelling not present in the
             # manager metadata; use the final symbol only if globally unique.
-            candidates = sorted(set(library_candidates.get(name.rsplit(".", 1)[-1].casefold(), [])))
+            candidates = sorted(set(context.library_candidates.get(name.rsplit(".", 1)[-1].casefold(), [])))
         if len(candidates) == 1:
-            for relation in doc_relations:
+            for relation in context.doc_relations:
                 if relation.from_id == caller_id and relation.to_id == f"unresolved::call:{name}":
                     relation.to_id = candidates[0]
                     relation.resolution = "exact"
                     relation.confidence = "high"
             continue
-        for relation in doc_relations:
+        for relation in context.doc_relations:
             if relation.from_id == caller_id and relation.to_id == f"unresolved::call:{name}":
                 relation.candidates = candidates
                 relation.confidence = "low" if not candidates else "medium"
-        doc_diagnostics.append(DocDiagnostic(
+        context.doc_diagnostics.append(DocDiagnostic(
             "unresolved_relation", "warning",
             f"could not resolve call {name!r}"
             + (f"; candidates: {', '.join(candidates)}" if candidates else ""),
             symbol_id=caller_id,
         ))
 
+
+def _scan_not_referenced(context):
+    """List the installed LibDocs that no project reference points at."""
+    library_root = context.library_root
     libdoc_root = None
     if (library_root / "LibDoc").is_dir():
         libdoc_root = library_root / "LibDoc"
@@ -913,7 +890,7 @@ def _generate_docs(workspace, library_path=None, output=None):
     not_referenced = {}
     if libdoc_root is not None:
         try:
-            referenced_names = {ref["name"].casefold() for ref in references}
+            referenced_names = {ref["name"].casefold() for ref in context.references}
             for vendor_dir in sorted(libdoc_root.iterdir()):
                 if not vendor_dir.is_dir():
                     continue
@@ -929,44 +906,47 @@ def _generate_docs(workspace, library_path=None, output=None):
                     not_referenced.setdefault(library_dir.name, set()).update(versions)
         except OSError:
             not_referenced = {}
-    not_referenced = {name: sorted(versions) for name, versions in not_referenced.items()}
+    context.not_referenced = {name: sorted(versions) for name, versions in not_referenced.items()}
 
+
+def _build_manifest(context):
+    """Validate the bundle and assemble the manifest for serialization."""
     bundle = DocBundle(
-        sources=doc_sources,
-        symbols=doc_model_symbols,
-        relations=doc_relations,
-        diagnostics=doc_diagnostics,
+        sources=context.doc_sources,
+        symbols=context.doc_model_symbols,
+        relations=context.doc_relations,
+        diagnostics=context.doc_diagnostics,
     )
-    validation_diagnostics = bundle.validate()
-    all_diagnostics = [diagnostic.to_dict() for diagnostic in validation_diagnostics]
+    context.all_diagnostics = [diagnostic.to_dict() for diagnostic in bundle.validate()]
     input_fingerprint = hashlib.sha256(
         "\n".join(
-            f"{source.path}\0{source.sha256}" for source in sorted(doc_sources, key=lambda item: item.path)
+            f"{source.path}\0{source.sha256}"
+            for source in sorted(context.doc_sources, key=lambda item: item.path)
         ).encode("utf-8")
     ).hexdigest()
     generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     # Keep manifest counts derived from the exact record collections that are
     # serialized below.  This prevents a future renderer-side filter from
     # silently making the manifest disagree with JSONL.
-    artifact_symbols = project_symbols + library_rows
-    artifact_diagnostics = all_diagnostics
-    artifact_relations = doc_relations
-    manifest = {
+    context.artifact_symbols = context.project_symbols + context.library_rows
+    artifact_diagnostics = context.all_diagnostics
+    artifact_relations = context.doc_relations
+    return {
         "format": "cts-docs/v3",
         "schema_version": "3",
         "generator_version": "docgen-project-snapshot-2",
         "generated_at": generated_at,
-        "project_view": str(project_view),
-        "libraries": str(library_root),
-        "library_path_exists": library_root.is_dir(),
+        "project_view": str(context.project_view),
+        "libraries": str(context.library_root),
+        "library_path_exists": context.library_root.is_dir(),
         "input_fingerprint": input_fingerprint,
         "counts": {
-            "project_pous": sum(item.get("source") == "project" for item in artifact_symbols),
-            "library_pous": sum(item.get("source") == "library" for item in artifact_symbols),
-            "libraries_referenced": len(references),
-            "libraries_documented": len(documented),
-            "libraries_missing": len(missing),
-            "libraries_not_referenced": len(not_referenced),
+            "project_pous": sum(item.get("source") == "project" for item in context.artifact_symbols),
+            "library_pous": sum(item.get("source") == "library" for item in context.artifact_symbols),
+            "libraries_referenced": len(context.references),
+            "libraries_documented": len(context.documented),
+            "libraries_missing": len(context.missing),
+            "libraries_not_referenced": len(context.not_referenced),
             "diagnostics": len(artifact_diagnostics),
             "diagnostic_errors": sum(item["severity"] == "error" for item in artifact_diagnostics),
             "diagnostic_warnings": sum(item["severity"] == "warning" for item in artifact_diagnostics),
@@ -980,23 +960,21 @@ def _generate_docs(workspace, library_path=None, output=None):
                 "placeholder": ref["placeholder"],
                 "reason": ref.get("reason", "documentation_package_absent"),
             }
-            for ref in missing
+            for ref in context.missing
         ],
-        "gaps": [gap] if gap else [],
+        "gaps": [context.gap] if context.gap else [],
         "diagnostics": "diagnostics.jsonl",
         "sources": "sources.jsonl",
         "relations": "relations.jsonl",
     }
 
-    output_root.mkdir(parents=True, exist_ok=True)
-    try:
-        (output_root / "bundle.md").unlink(missing_ok=True)
-    except OSError:
-        pass
 
+def _write_project_cards(context):
+    """Write the per-project-symbol cards and the project overview page."""
+    output_root = context.output_root
     project_dir = output_root / "project"
     project_dir.mkdir(parents=True, exist_ok=True)
-    for symbol in project_symbols:
+    for symbol in context.project_symbols:
         card = symbol.get("card")
         if not card:
             continue
@@ -1004,12 +982,12 @@ def _generate_docs(workspace, library_path=None, output=None):
             "\n".join(_symbol_card(symbol, "../index.md")) + "\n", encoding="utf-8"
         )
 
-    lines = ["# Project POUs", "", f"Generated from `{project_view}`.", ""]
-    if not project_symbols:
+    lines = ["# Project POUs", "", f"Generated from `{context.project_view}`.", ""]
+    if not context.project_symbols:
         lines.extend(["_No POUs found under the project view._", ""])
     else:
         lines.extend(["| Kind | Name | Source | Card |", "|---|---|---|---|"])
-        for symbol in project_symbols:
+        for symbol in context.project_symbols:
             card = symbol.get("card") or ""
             lines.append(
                 f"| {symbol['kind']} | {symbol['name']} | `{symbol['path']}` | "
@@ -1017,16 +995,20 @@ def _generate_docs(workspace, library_path=None, output=None):
             )
     (output_root / "project.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+
+def _write_library_docs(context):
+    """Write the library symbol cards and the per-library pages."""
+    output_root = context.output_root
     libraries_dir = output_root / "libraries"
     libraries_dir.mkdir(parents=True, exist_ok=True)
-    for row in library_rows:
+    for row in context.library_rows:
         card_path = output_root / row["card"]
         card_path.parent.mkdir(parents=True, exist_ok=True)
         card_path.write_text(
             "\n".join(_symbol_card(row, "../../index.md")) + "\n",
             encoding="utf-8",
         )
-    for entry in documented:
+    for entry in context.documented:
         ref = entry["ref"]
         libdoc = entry["libdoc"]
         file_name = f"{_slug(ref['name'])}-{_slug(libdoc['version'])}.md"
@@ -1061,13 +1043,17 @@ def _generate_docs(workspace, library_path=None, output=None):
             lines.append("")
         (libraries_dir / file_name).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+
+def _write_index(context, manifest):
+    """Write the top-level ``index.md`` navigation page."""
+    output_root = context.output_root
     lines = [
         "# CODESYS documentation index",
         "",
         "Generation timestamp: see `manifest.json` (`generated_at`).",
         "",
-        f"- Project view: `{project_view}`",
-        f"- Library root: `{library_root}`",
+        f"- Project view: `{context.project_view}`",
+        f"- Library root: `{context.library_root}`",
         "",
         "## Machine-readable bundle",
         "",
@@ -1082,8 +1068,8 @@ def _generate_docs(workspace, library_path=None, output=None):
         "## Project symbols",
         "",
     ]
-    if project_symbols:
-        for symbol in project_symbols:
+    if context.project_symbols:
+        for symbol in context.project_symbols:
             card = symbol.get("card") or "project.md"
             lines.append(
                 f"- [{symbol['kind']} {symbol['name']}]({card}) — `{symbol['path']}`"
@@ -1106,7 +1092,7 @@ def _generate_docs(workspace, library_path=None, output=None):
         "|---|---|---|---|---|---:|---|",
         ]
     )
-    for entry in documented:
+    for entry in context.documented:
         ref = entry["ref"]
         file_name = f"{_slug(ref['name'])}-{_slug(entry['libdoc']['version'])}.md"
         lines.append(
@@ -1127,8 +1113,8 @@ def _generate_docs(workspace, library_path=None, output=None):
             "|---|---|---|---|---|",
         ]
     )
-    if missing:
-        for ref in missing:
+    if context.missing:
+        for ref in context.missing:
             lines.append(
                 f"| {ref['name']} | {ref['version']} | {ref['vendor'] or '-'} "
                 f"| {ref['placeholder'] or '-'} | {ref.get('reason', '-')} |"
@@ -1144,48 +1130,91 @@ def _generate_docs(workspace, library_path=None, output=None):
             "libraries that are not referenced by this project.",
         ]
     )
-    if gap:
-        lines.extend(["", "## Gaps", "", f"- {gap}"])
+    if context.gap:
+        lines.extend(["", "## Gaps", "", f"- {context.gap}"])
     (output_root / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    not_referenced_lines = [
+
+def _write_not_referenced(context):
+    """Write the ``libraries/not-referenced.md`` page."""
+    lines = [
         "# Installed libraries not referenced by the project", "",
         "These libraries were found in the configured LibDoc root but were not exported.", "",
         "| Library | Versions |", "|---|---|",
     ]
-    if not_referenced:
-        for name, versions in not_referenced.items():
-            not_referenced_lines.append(f"| {name} | {', '.join(versions)} |")
+    if context.not_referenced:
+        for name, versions in context.not_referenced.items():
+            lines.append(f"| {name} | {', '.join(versions)} |")
     else:
-        not_referenced_lines.append("_None._")
-    (libraries_dir / "not-referenced.md").write_text(
-        "\n".join(not_referenced_lines) + "\n", encoding="utf-8"
+        lines.append("_None._")
+    (context.output_root / "libraries" / "not-referenced.md").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
     )
 
+
+def _write_jsonl(context, manifest):
+    """Serialize the machine-readable collections and the manifest."""
+    output_root = context.output_root
     with (output_root / "symbols.jsonl").open("w", encoding="utf-8") as stream:
-        for row in artifact_symbols:
+        for row in context.artifact_symbols:
             stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
     with (output_root / "sources.jsonl").open("w", encoding="utf-8") as stream:
-        for source in sorted(doc_sources, key=lambda item: item.path):
+        for source in sorted(context.doc_sources, key=lambda item: item.path):
             stream.write(json_line(source.to_dict()) + "\n")
 
     with (output_root / "diagnostics.jsonl").open("w", encoding="utf-8") as stream:
-        for diagnostic in all_diagnostics:
+        for diagnostic in context.all_diagnostics:
             stream.write(json_line(diagnostic) + "\n")
 
     with (output_root / "relations.jsonl").open("w", encoding="utf-8") as stream:
         for relation in sorted(
-            doc_relations,
+            context.doc_relations,
             key=lambda item: (item.kind, item.from_id, item.to_id),
         ):
             stream.write(json_line(relation.to_dict()) + "\n")
 
-    (output_root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (output_root / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _generate_docs(workspace, library_path=None, output=None):
+    """Write and return a documentation bundle for *workspace*.
+
+    ``workspace`` may be the sync root or its ``project-view`` directory.
+    ``library_path`` defaults to the standard CODESYS installation directory.
+
+    The work runs as explicit stages over one :class:`_DocContext`: first the
+    project symbols, relations and library rows are collected, then the bundle
+    is rendered and serialized.  Public behaviour is unchanged.
+    """
+    context = _new_context(workspace, library_path, output)
+    _collect_project_symbols(context)
+    _collect_extends_relations(context)
+    _collect_execution_relations(context)
+    _collect_global_relations(context)
+    _collect_library_references(context)
+    _collect_library_rows(context)
+    _apply_inheritance(context)
+    _build_card_navigation(context)
+    _resolve_library_candidates(context)
+    _scan_not_referenced(context)
+
+    manifest = _build_manifest(context)
+    output_root = context.output_root
+    output_root.mkdir(parents=True, exist_ok=True)
+    try:
+        (output_root / "bundle.md").unlink(missing_ok=True)
+    except OSError:
+        pass
+    _write_project_cards(context)
+    _write_library_docs(context)
+    _write_index(context, manifest)
+    _write_not_referenced(context)
+    _write_jsonl(context, manifest)
 
     return {"ok": True, "output": str(output_root), "manifest": manifest}
-
-
 def validate_bundle(bundle_or_output):
     """Validate an in-memory ``DocBundle`` or an emitted bundle directory."""
     if isinstance(bundle_or_output, DocBundle):
