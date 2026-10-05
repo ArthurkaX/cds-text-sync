@@ -137,6 +137,11 @@ def _add_pou(actions):
         choices=["program", "function", "function-block"],
         help="Which POU keyword the header uses",
     )
+    _add_pou_type_options(parser)
+    return parser
+
+
+def _add_pou_type_options(parser):
     parser.add_argument(
         "--return-type",
         dest="return_type",
@@ -148,7 +153,6 @@ def _add_pou(actions):
         default="st",
         help="Only 'st' is supported: the import path creates textual objects",
     )
-    return parser
 
 
 def _add_dut(actions):

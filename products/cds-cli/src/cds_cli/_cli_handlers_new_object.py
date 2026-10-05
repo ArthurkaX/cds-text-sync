@@ -52,34 +52,49 @@ def dispatch_new_object(args, output_fmt="json"):
 _MAX_ANCESTORS = 6
 
 
-def _sync_folder(args):
-    """The sync folder, resolved offline.
+def _explicit_sync_folder(value):
+    """The folder from ``--sync-folder``, absolutised and validated.
 
-    ``--sync-folder`` wins (a ``project-view`` path resolves to its parent, as
-    the other commands accept it). Otherwise walk up from the current directory
-    looking for a ``project-view/``: asking the daemon would make an offline
-    command need a running IDE, which is the one thing it must not do.
+    A ``project-view`` path resolves to its parent, the spelling the sibling
+    commands accept. Absolutising is for the error message -- "No such folder:
+    ./missing" tells the reader less than the full path does -- and because a
+    relative path would otherwise be resolved again by whoever opens it.
     """
-    explicit = getattr(args, "sync_folder", "") or ""
-    if explicit:
-        base = os.path.abspath(explicit)
-        if os.path.basename(os.path.normpath(base)) == "project-view" and os.path.isdir(
-            base
-        ):
-            base = os.path.dirname(os.path.normpath(base))
-        if not os.path.isdir(base):
-            _print_error("No such folder: {0}".format(base))
-            sys.exit(2)
-        return base
+    base = os.path.abspath(value)
+    if os.path.isdir(base) and os.path.basename(os.path.normpath(base)) == "project-view":
+        return os.path.dirname(os.path.normpath(base))
+    if not os.path.isdir(base):
+        _print_error("No such folder: {0}".format(base))
+        sys.exit(2)
+    return base
 
-    current = os.path.abspath(os.getcwd())
+
+def _search_upwards(start):
+    """The nearest ancestor holding a ``project-view/``, or ``None``."""
+    current = os.path.abspath(start)
     for _ in range(_MAX_ANCESTORS):
         if os.path.isdir(os.path.join(current, "project-view")):
             return current
         parent = os.path.dirname(current)
         if parent == current:
-            break
+            return None
         current = parent
+    return None
+
+
+def _sync_folder(args):
+    """The sync folder, resolved offline.
+
+    ``--sync-folder`` wins; otherwise walk up from the current directory
+    looking for a ``project-view/``. Asking the daemon would make an offline
+    command need a running IDE, which is the one thing it must not do.
+    """
+    explicit = getattr(args, "sync_folder", "") or ""
+    if explicit:
+        return _explicit_sync_folder(explicit)
+    found = _search_upwards(os.getcwd())
+    if found is not None:
+        return found
     _print_error(
         "No project-view/ found here or in any parent folder. Pass "
         "--sync-folder <path> to point at the project."
