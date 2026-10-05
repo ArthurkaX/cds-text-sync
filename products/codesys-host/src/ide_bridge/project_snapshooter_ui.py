@@ -1,9 +1,25 @@
 # -*- coding: utf-8 -*-
 # ruff: noqa: F821  (backend symbols are injected by run())
-"""WinForms frontend for the project snapshot tool."""
+"""WinForms frontend for the project snapshot tool.
 
-def run(backend, app="Application", save_to=""):
-    globals().update(backend)
+``run`` is a thin orchestrator: it binds the injected backend and the .NET
+surface, resolves the active project, builds the variable tree, then hands the
+model to :func:`SnapshooterForm` and pumps messages until the user closes it.
+
+The form class cannot live at module scope: its base class ``Form`` only exists
+after ``run`` has imported ``System.Windows.Forms`` from inside CODESYS'
+IronPython.  It is therefore built on demand by :func:`_build_form_class`, and
+its handlers resolve the backend helpers (``take``, ``save``, ...) and the
+WinForms names as module globals that ``run`` injects before building it.
+"""
+
+
+def _load_winforms():
+    """Import the .NET surface and return it as a ``{name: object}`` mapping.
+
+    ``run`` folds the mapping into this module's globals so ``SnapshooterForm``
+    (built afterwards) can resolve ``Form``, ``MessageBox`` and friends.
+    """
     import clr
 
     clr.AddReference("System.Windows.Forms")
@@ -17,17 +33,36 @@ def run(backend, app="Application", save_to=""):
     )
     from System.Drawing import Point, Size, Font, FontStyle, Color
 
+    return {
+        "Form": Form, "TreeView": TreeView, "Button": Button, "Label": Label,
+        "TextBox": TextBox, "Panel": Panel, "DockStyle": DockStyle,
+        "FormStartPosition": FormStartPosition, "AnchorStyles": AnchorStyles,
+        "MessageBox": MessageBox, "MessageBoxButtons": MessageBoxButtons,
+        "MessageBoxIcon": MessageBoxIcon, "DialogResult": DialogResult,
+        "SaveFileDialog": SaveFileDialog, "OpenFileDialog": OpenFileDialog,
+        "Application": Application, "Padding": Padding, "TreeNode": TreeNode,
+        "Keys": Keys, "Point": Point, "Size": Size, "Font": Font,
+        "FontStyle": FontStyle, "Color": Color,
+    }
+
+
+def _prepare_project(app):
+    """Resolve the active project, ensure the snapshot dir, log the banner."""
     project = _get_active_project()
     _log("=== _run_winforms_interactive START app={0} ===".format(app))
     _ensure_default_snapshot_dir(project)
     project_name = _project_name(project) or "project"
     _log("project_name={0}".format(project_name))
+    return project, project_name
+
+
+def _build_variable_tree(app, project):
+    """Build the TUI tree model, or report the failure and return ``None``."""
     try:
         _log("calling build_tree (structure only, no PLC read)...")
         t0 = time.time()
-        tree = build_tree(app=app, project=project)
-        _log("build_tree returned {0} rows in {1:.2f}s".format(len(tree), time.time() - t0))
-        rows = tree
+        rows = build_tree(app=app, project=project)
+        _log("build_tree returned {0} rows in {1:.2f}s".format(len(rows), time.time() - t0))
     except RuntimeError as e:
         MessageBox.Show(
             "Cannot build Snapshooter variable tree.\n\n{0}\n\n"
@@ -40,11 +75,40 @@ def run(backend, app="Application", save_to=""):
             MessageBoxIcon.Warning,
         )
         return None
-    root_model = build_tui_tree(rows, app=app)
+    return build_tui_tree(rows, app=app)
+
+
+def _pump_form(form):
+    """Show the form and pump WinForms messages until the user closes it."""
+    form.Show()
+    while not form._closed:
+        Application.DoEvents()
+        time.sleep(0.05)
+    return form._last_data
+
+
+def run(backend, app="Application", save_to=""):
+    globals().update(backend)
+    globals().update(_load_winforms())
+
+    project, project_name = _prepare_project(app)
+    root_model = _build_variable_tree(app=app, project=project)
+    if root_model is None:
+        return None
+    form_class = _build_form_class()
+    return _pump_form(form_class(project, app, project_name, root_model))
+
+
+def _build_form_class():
+    """Build ``SnapshooterForm`` against the currently injected .NET surface."""
 
     class SnapshooterForm(Form):
-        def __init__(self):
+        def __init__(self, project, app, project_name, root_model):
             Form.__init__(self)
+            self._project = project
+            self._app = app
+            self._project_name = project_name
+            self._root_model = root_model
             self.Text = "Project_snapshooter"
             self.Width = 760
             self.Height = 560
@@ -66,7 +130,7 @@ def run(backend, app="Application", save_to=""):
 
         def _build_ui(self):
             title = Label()
-            title.Text = "Snapshooter :: {0} :: {1}".format(project_name, app)
+            title.Text = "Snapshooter :: {0} :: {1}".format(self._project_name, self._app)
             title.Dock = DockStyle.Top
             title.Height = 34
             title.Font = Font("Segoe UI", 11, FontStyle.Bold)
@@ -196,11 +260,11 @@ def run(backend, app="Application", save_to=""):
             self.tree.BeginUpdate()
             try:
                 self.tree.Nodes.Clear()
-                root_ui = TreeNode(self._node_text(root_model))
-                root_ui.Name = root_model.path
+                root_ui = TreeNode(self._node_text(self._root_model))
+                root_ui.Name = self._root_model.path
                 root_ui.Tag = 0
-                self._node_models[root_ui] = root_model
-                for child in root_model.children:
+                self._node_models[root_ui] = self._root_model
+                for child in self._root_model.children:
                     self._add_node(root_ui, child)
                 self.tree.Nodes.Add(root_ui)
                 self._leaf_count = len(self._all_leaf_nodes)
@@ -335,7 +399,7 @@ def run(backend, app="Application", save_to=""):
                 args.SuppressKeyPress = True
 
         def _default_path(self, label):
-            return _default_preset_path(project, label or "preset")
+            return _default_preset_path(self._project, label or "preset")
 
         def _on_save(self, sender, args):
             paths = self._selected_paths()
@@ -354,7 +418,7 @@ def run(backend, app="Application", save_to=""):
             if dialog.ShowDialog(self) != DialogResult.OK:
                 return
             label = os.path.splitext(os.path.basename(dialog.FileName))[0]
-            data = take(paths=paths, app=app, label=label, project=project)
+            data = take(paths=paths, app=self._app, label=label, project=self._project)
             save(data, dialog.FileName)
             self._last_data = data
             MessageBox.Show("Saved {0} variables.".format(len(_vars_from_data(data))),
@@ -363,7 +427,7 @@ def run(backend, app="Application", save_to=""):
         def _load_dialog(self):
             dialog = OpenFileDialog()
             dialog.Filter = "JSON presets (*.json)|*.json|All files (*.*)|*.*"
-            directory = os.path.dirname(_default_preset_path(project, "preset"))
+            directory = os.path.dirname(_default_preset_path(self._project, "preset"))
             if os.path.isdir(directory):
                 dialog.InitialDirectory = directory
             if dialog.ShowDialog(self) != DialogResult.OK:
@@ -434,7 +498,7 @@ def run(backend, app="Application", save_to=""):
             data = self._last_data or self._load_dialog()
             if data is None:
                 return
-            current = take([v.get("path", "") for v in _vars_from_data(data)], project=project)
+            current = take([v.get("path", "") for v in _vars_from_data(data)], project=self._project)
             report = compare(data, current=current)
             MessageBox.Show(self._format_diff(report), "Diff",
                             MessageBoxButtons.OK,
@@ -451,7 +515,7 @@ def run(backend, app="Application", save_to=""):
                 MessageBox.Show(str(exc), "Restore blocked", MessageBoxButtons.OK,
                                 MessageBoxIcon.Warning)
                 return
-            current = take([v.get("path", "") for v in _vars_from_data(data)], project=project)
+            current = take([v.get("path", "") for v in _vars_from_data(data)], project=self._project)
             report = compare(data, current=current)
             answer = MessageBox.Show(
                 self._format_diff(report) + "\n\nWrite matching variables to PLC?",
@@ -461,7 +525,7 @@ def run(backend, app="Application", save_to=""):
             )
             if answer != DialogResult.Yes:
                 return
-            result = restore(data, apply=True, project=project)
+            result = restore(data, apply=True, project=self._project)
             MessageBox.Show(
                 "Written: {0}\nSkipped: {1}".format(result.get("written"), result.get("skipped")),
                 "Restore",
@@ -476,9 +540,4 @@ def run(backend, app="Application", save_to=""):
         def _on_closed(self, sender, args):
             self._closed = True
 
-    form = SnapshooterForm()
-    form.Show()
-    while not form._closed:
-        Application.DoEvents()
-        time.sleep(0.05)
-    return form._last_data
+    return SnapshooterForm
