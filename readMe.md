@@ -238,7 +238,8 @@ per POU — kind, name, doc comment, interface table), an `index.md` summary
 with a **Missing LibDoc** and **Not referenced** section, and machine-readable
 `symbols.jsonl` / `manifest.json`. Only libraries the Library Manager actually
 references are documented; nothing outside the project's own dependencies is
-pulled in.
+pulled in. `.cts-docs/` is generated, so export/import/compare ignore it and
+the recommended `.gitignore` entries cover it; `--output` writes elsewhere.
 
 Details: [documentation bundle](products/cds-text-sync/src/cds_text_sync/CLI.md#documentation-bundle).
 

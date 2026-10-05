@@ -158,6 +158,19 @@ class TestScanDirty:
         with_ext = scan_dirty(manifest, views, enabled_extensions={".st"})
         assert [item["path"] for item in with_ext["orphans"]] == ["hand_made.st"]
 
+    def test_a_dotted_top_level_folder_is_never_an_orphan(self, tmp_path):
+        """The docs bundle is tool output, not a stray projection file.
+
+        ``cts docs`` writes ``.cts-docs/`` at the top of the view root in
+        root-view layout. An orphan scan that flagged its contents would make
+        ``cts export`` offer to delete the documentation.
+        """
+        views = str(tmp_path / "views")
+        _write_file(views, ".cts-docs/misc/leftover.st", "PROGRAM L\nEND_PROGRAM")
+        report = scan_dirty(_manifest([]), views, enabled_extensions={".st"})
+
+        assert report["orphans"] == []
+
     def test_managed_projection_is_not_an_orphan(self, tmp_path):
         views = str(tmp_path / "views")
         content = "PROGRAM P\nEND_PROGRAM"

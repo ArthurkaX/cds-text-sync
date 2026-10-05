@@ -12,7 +12,11 @@ def register(subparsers):
     # format, and sharing `output` made the subparser default clobber it.
     parser.add_argument(
         "--output", "--out", dest="docs_output", default="",
-        help="Documentation output directory",
+        help=(
+            "Documentation output directory (default: .cts-docs/ beside the view "
+            "root, which export/import/compare ignore and the recommended "
+            ".gitignore covers)"
+        ),
     )
     parser.add_argument("--daemon", action="store_true", help="Generate through the running CODESYS daemon")
     parser.add_argument("--check", action="store_true", help="Check whether an existing bundle is fresh")

@@ -859,7 +859,11 @@ cts docs --daemon --libraries "C:\ProgramData\CODESYS"
 ```
 
 The library path defaults to `C:\ProgramData\CODESYS`. Output is written to
-`.cts-docs/` in format `cts-docs/v3`:
+`.cts-docs/` beside the view root in format `cts-docs/v3` — a generated
+directory that export, import, compare and the workspace fingerprint all
+ignore (they skip dot-named entries at the top of the view root), and that the
+recommended `.gitignore` entries cover, so generating the docs does not litter
+the project folder. `--output` replaces the directory outright:
 
 - `project.md` — one section per project POU: kind, name, source path, the
   doc comment, and an interface table (`Scope | Name | Type | Initial | Comment`).

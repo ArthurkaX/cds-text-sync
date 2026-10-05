@@ -22,6 +22,7 @@ RECOMMENDED_GITIGNORE_ENTRIES = [
     ".backup/",
     ".diff/",
     ".visu/",
+    ".cts-docs/",
     "sync_debug.log",
     "compare.log",
     "build.log",
