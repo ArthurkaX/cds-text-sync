@@ -922,6 +922,16 @@ Two failure modes are reported rather than papered over:
   are not exported. To use one, it has to be added to the Library Manager
   first, which is a user action inside the IDE.
 
+### Inheritance
+
+A `FUNCTION_BLOCK`/`PROGRAM` that declares `EXTENDS Base` and `IMPLEMENTS I_a, I_b`
+carries both into the bundle: `declaration.extends`, `declaration.implements`,
+`extends`/`implements` relations, and a base link on the card when the base is
+itself a project symbol. Inherited members — the base's variables and its
+methods/properties/actions, which are symbols of their own — are listed on the
+card as `inherited from <Base>`, chains included. A base from a library is not
+in the project, so it stays a name and materializes nothing.
+
 ### Daemon endpoint
 
 The daemon endpoint `generate_docs` no longer generates anything. It resolves

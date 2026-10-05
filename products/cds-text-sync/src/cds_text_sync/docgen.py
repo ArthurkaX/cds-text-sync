@@ -38,7 +38,12 @@ from cds_static_analyzer.model import line_col_of
 from cds_static_analyzer.project import ProjectSnapshot
 from cds_static_analyzer.st import kinds as K
 from cts_shared.st.blanking import comment_spans
-from cts_shared.st.declarations import member_comment, parse_dut, parse_var_blocks
+from cts_shared.st.declarations import (
+    member_comment,
+    parse_dut,
+    parse_pou_header,
+    parse_var_blocks,
+)
 
 DEFAULT_LIBRARY_PATH = Path(r"C:\ProgramData\CODESYS")
 
@@ -251,12 +256,21 @@ def _unit_section(unit):
         "line": text[:start].count("\n") + 1,
         "return_type": match.group(3) if match else "",
     }
+    section.update(_section_declaration(unit, text))
+    return section
+
+
+def _section_declaration(unit, text):
+    """The DUT fields or the POU header of one unit, whichever kind it is."""
     if unit.kind in K.TYPE:
         try:
-            section["dut"] = parse_dut(text)
+            return {"dut": parse_dut(text)}
         except Exception:
-            section["dut"] = None
-    return section
+            return {"dut": None}
+    try:
+        return {"header": parse_pou_header(text)}
+    except Exception:
+        return {"header": {}}
 
 
 def _source_ref(source):
@@ -282,9 +296,70 @@ def _card_name(symbol_id, name):
     return f"{_slug(name)}--{short_id}.md"
 
 
+def _declaration_lines(symbol):
+    """Render the declaration block, linking a base type that is in the project."""
+    declaration = symbol.get("declaration") or {}
+    lines = []
+    for key in ("attributes", "base_type", "extends", "signature"):
+        value = declaration.get(key)
+        if value in (None, "", []):
+            continue
+        lines.append(f"- {key}: {_declared_value(symbol, key, value)}")
+    interfaces = declaration.get("implements") or []
+    if interfaces:
+        lines.append(f"- implements: {_implemented_names(symbol, interfaces)}")
+    if not lines:
+        return []
+    return ["## Declaration", ""] + lines + [""]
+
+
+def _implemented_names(symbol, interfaces):
+    """Comma-join the implemented interfaces, linking the project ones."""
+    links = symbol.get("interface_links") or {}
+    return ", ".join(links.get(name) or f"`{name}`" for name in interfaces)
+
+
+def _declared_value(symbol, key, value):
+    """Render one declared value, as a link when it names a project symbol."""
+    if key in ("base_type", "extends"):
+        link = symbol.get("base_link")
+        if link:
+            return link
+    return f"`{value}`"
+
+
+def _member_label(member):
+    """``SCOPE Name`` for one member row, as the interface table shows it."""
+    name = str(member.get("name") or "")
+    scope = str(member.get("scope") or member.get("kind") or "").strip()
+    return f"{scope} {name}".strip() if scope else name
+
+
+def _members_section(symbol):
+    """The own/inherited counts and the inherited member list."""
+    own_members = symbol.get("own_members")
+    inherited = symbol.get("inherited_members")
+    if own_members is None and inherited is None:
+        return []
+    lines = [
+        "## Members",
+        "",
+        f"- Own members: {len(own_members or [])}",
+        f"- Inherited members: {len(inherited or [])}",
+        "",
+    ]
+    for member in inherited or []:
+        lines.append(
+            f"- `{_member_label(member)}` — inherited from "
+            f"{member.get('inherited_from') or '?'}"
+        )
+    if inherited:
+        lines.append("")
+    return lines
+
+
 def _symbol_card(symbol, back_link="../index.md"):
     """Render a declaration-only card; implementation text is never included."""
-    declaration = symbol.get("declaration") or {}
     lines = [
         f"# {symbol.get('kind') or 'SYMBOL'} {symbol.get('name') or ''}",
         "",
@@ -298,23 +373,11 @@ def _symbol_card(symbol, back_link="../index.md"):
         symbol.get("description") or "_undocumented_",
         "",
     ]
-    if declaration:
-        lines.extend(["## Declaration", ""])
-        for key in ("attributes", "base_type", "extends", "signature"):
-            value = declaration.get(key)
-            if value not in (None, "", []):
-                lines.append(f"- {key}: `{value}`")
-        lines.append("")
+    lines.extend(_declaration_lines(symbol))
     lines.extend(["## Interface", ""])
     lines.extend(_interface_table(symbol.get("interface") or []))
     lines.append("")
-    own_members = symbol.get("own_members")
-    inherited_members = symbol.get("inherited_members")
-    if own_members is not None or inherited_members is not None:
-        lines.extend(["## Members", ""])
-        lines.append(f"- Own members: {len(own_members or [])}")
-        lines.append(f"- Inherited members: {len(inherited_members or [])}")
-        lines.append("")
+    lines.extend(_members_section(symbol))
     for title, key in (("Callers", "callers"), ("Callees", "callees"),
                        ("Tasks", "tasks"), ("Global dependencies", "globals")):
         values = symbol.get(key) or []
@@ -451,16 +514,9 @@ def _add_project_unit(context, unit):
             symbol_id=symbol_id,
             source_ref={"id": source.id, "line": 1},
         ))
-    declaration = {}
+    declaration = _unit_declaration(section, interface)
     dut = section.get("dut")
     if dut:
-        declaration = {
-            "attributes": list(dut.get("attributes") or []),
-            "attribute_values": dict(dut.get("attribute_values") or {}),
-            "base_type": dut.get("base_type") or dut.get("base"),
-            "extends": dut.get("extends"),
-            "members": interface,
-        }
         warnings.extend(dut.get("warnings") or [])
         if dut.get("warnings"):
             parse_status = "partial"
@@ -536,6 +592,26 @@ def _add_project_unit(context, unit):
         ))
 
 
+def _unit_declaration(section, interface):
+    """The declared shape of one unit: DUT fields, or a POU header, or nothing."""
+    dut = section.get("dut")
+    if dut:
+        return {
+            "attributes": list(dut.get("attributes") or []),
+            "attribute_values": dict(dut.get("attribute_values") or {}),
+            "base_type": dut.get("base_type") or dut.get("base"),
+            "extends": dut.get("extends"),
+            "members": interface,
+        }
+    header = section.get("header") or {}
+    if header.get("extends") or header.get("implements"):
+        return {
+            "extends": header.get("extends") or "",
+            "implements": list(header.get("implements") or []),
+        }
+    return {}
+
+
 def _collect_project_symbols(context):
     """Turn every ``.st`` unit and source error into symbols and diagnostics."""
     for unit in context.snapshot.units:
@@ -553,19 +629,29 @@ def _collect_project_symbols(context):
 
 
 def _collect_extends_relations(context):
-    """Materialize the ``extends`` relations of the project symbols."""
+    """Materialize the ``extends`` and ``implements`` type relations."""
     for symbol in context.doc_model_symbols:
         if symbol.source != "project":
             continue
-        extends = (symbol.declaration or {}).get("extends")
-        if not extends:
-            continue
-        target = context.project_ids.get(str(extends).casefold(), f"unresolved::type:{extends}")
-        context.doc_relations.append(DocRelation(
-            "extends", symbol.id, target,
-            resolution="exact" if target in context.project_ids.values() else "unresolved",
-            confidence="high" if target in context.project_ids.values() else "low",
-        ))
+        declaration = symbol.declaration or {}
+        targets = [("extends", declaration.get("extends"))]
+        targets.extend(
+            ("implements", name) for name in (declaration.get("implements") or [])
+        )
+        for kind, name in targets:
+            if name:
+                _append_type_relation(context, symbol.id, kind, str(name))
+
+
+def _append_type_relation(context, symbol_id, kind, name):
+    """Point one type relation at a project symbol, or leave it unresolved."""
+    target = context.project_ids.get(name.casefold(), "unresolved::type:" + name)
+    resolved = target in context.project_ids.values()
+    context.doc_relations.append(DocRelation(
+        kind, symbol_id, target,
+        resolution="exact" if resolved else "unresolved",
+        confidence="high" if resolved else "low",
+    ))
 
 
 def _call_site(context, units_by_name, caller, offsets):
@@ -769,7 +855,35 @@ def _collect_library_rows(context):
             )
 
 
-def _inherited_for(row, rows_by_name, cache, visiting=()):
+def _rows_by_owner(rows):
+    """Group method/property/action rows under the name of the type that owns them.
+
+    ``owner_id`` names the owning unit (``POUs/FB_Motor.st#FB_Motor``), while a
+    method is a symbol of its own; the owner's name is the join key both sides
+    carry.
+    """
+    owners = {}
+    for row in rows:
+        owner = str(row.get("owner_id") or "").rsplit("#", 1)[-1].strip().casefold()
+        if owner:
+            owners.setdefault(owner, []).append(row)
+    return owners
+
+
+def _own_members(base, rows_by_owner):
+    """The inheritable members of *base*: its variables and its methods."""
+    members = [dict(member) for member in (base.get("own_members") or [])]
+    for row in rows_by_owner.get(str(base.get("name") or "").casefold(), []):
+        members.append({
+            "kind": row.get("kind") or "",
+            "scope": row.get("kind") or "",
+            "name": row.get("name") or "",
+            "type": "",
+        })
+    return members
+
+
+def _inherited_for(row, rows_by_name, rows_by_owner, cache, visiting=()):
     """Resolve the inherited members of *row*, guarding against cycles."""
     row_id = row.get("id")
     if row_id in cache:
@@ -779,10 +893,14 @@ def _inherited_for(row, rows_by_name, cache, visiting=()):
     base_name = str((row.get("declaration") or {}).get("extends") or "").casefold()
     base = rows_by_name.get(base_name)
     if base is None:
+        # A library base is not in the analysis: the relation carries the name
+        # and there is nothing to materialize, not an error.
         cache[row_id] = []
         return []
-    members = [dict(member) for member in (base.get("own_members") or [])]
-    members.extend(_inherited_for(base, rows_by_name, cache, visiting + (row_id,)))
+    members = _own_members(base, rows_by_owner)
+    members.extend(
+        _inherited_for(base, rows_by_name, rows_by_owner, cache, visiting + (row_id,))
+    )
     for member in members:
         member.setdefault("inherited_from", base.get("name"))
     cache[row_id] = members
@@ -798,9 +916,12 @@ def _apply_inheritance(context):
     rows_by_name = {
         str(row.get("name") or "").casefold(): row for row in context.project_symbols
     }
+    rows_by_owner = _rows_by_owner(context.project_symbols)
     cache = {}
     for row in context.project_symbols:
-        row["inherited_members"] = _inherited_for(row, rows_by_name, cache)
+        row["inherited_members"] = _inherited_for(
+            row, rows_by_name, rows_by_owner, cache
+        )
 
 
 def _build_card_navigation(context):
@@ -850,6 +971,39 @@ def _build_card_navigation(context):
         model = context.model_by_id.get(row.get("id"))
         if model is not None:
             model.card = row["card"]
+
+
+def _card_link(row):
+    """A markdown link to *row*'s card, or None when it has none.
+
+    Project cards all live in one directory, so the link is the card's own
+    file name.
+    """
+    card = (row or {}).get("card")
+    if not card:
+        return None
+    return "[{0}]({1})".format(row.get("name") or "", str(card).rsplit("/", 1)[-1])
+
+
+def _link_type_names(context):
+    """Link a base type and every implemented interface that has a card.
+
+    A base or interface that is not a project symbol (a library type) keeps
+    its plain name; nothing here raises on it.
+    """
+    rows_by_name = {
+        str(row.get("name") or "").casefold(): row for row in context.project_symbols
+    }
+    for row in context.project_symbols:
+        declaration = row.get("declaration") or {}
+        base = rows_by_name.get(str(declaration.get("extends") or "").casefold())
+        row["base_link"] = _card_link(base)
+        links = {}
+        for name in declaration.get("implements") or []:
+            link = _card_link(rows_by_name.get(str(name).casefold()))
+            if link:
+                links[name] = link
+        row["interface_links"] = links
 
 
 def _resolve_library_candidates(context):
@@ -1202,6 +1356,7 @@ def _generate_docs(workspace, library_path=None, output=None):
     _collect_library_rows(context)
     _apply_inheritance(context)
     _build_card_navigation(context)
+    _link_type_names(context)
     _resolve_library_candidates(context)
     _scan_not_referenced(context)
 

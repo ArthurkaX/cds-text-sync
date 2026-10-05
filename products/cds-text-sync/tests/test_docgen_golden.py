@@ -85,11 +85,28 @@ IMPLEMENTATION
 xActive := xEnable;
 END_FUNCTION_BLOCK
 """,
+    "FB_Base.Reset.st": """\
+(*
+Clear the accumulated runtime.
+*)
+METHOD Reset : BOOL
+IMPLEMENTATION
+nRuntime := 0;
+Reset := TRUE;
+END_METHOD
+""",
+    "I_Drive.st": """\
+(*
+Common contract for a motor-like block.
+*)
+INTERFACE I_Drive
+END_INTERFACE
+""",
     "FB_Motor.st": """\
 (*
 Concrete drive block, derived from FB_Base.
 *)
-FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base IMPLEMENTS I_Drive, I_Missing
 VAR_INPUT
     nSpeed : INT := 0;           // target speed in rpm
     bReverse : BOOL;             // direction flag
@@ -541,7 +558,7 @@ def test_fixture_reaches_the_intended_branches(tmp_path):
     manifest = docgen.generate_docs(workspace, library_path=libraries)["manifest"]
     counts = manifest["counts"]
 
-    assert counts["project_pous"] == 15
+    assert counts["project_pous"] == 17
     assert counts["library_pous"] == 1
     assert counts["libraries_referenced"] == 4
     assert counts["libraries_documented"] == 1
@@ -628,26 +645,53 @@ def test_known_behaviour_unreferenced_libraries_are_listed(tmp_path):
     assert "| Unused | 2.0.0, 2.1.0 |" in not_referenced
 
 
-def test_known_behaviour_project_extensions_are_not_parsed_for_function_blocks(tmp_path):
-    """Known gap: ``EXTENDS`` is only materialised for DUT/``TYPE`` units.
+def test_function_block_inheritance_is_materialised(tmp_path):
+    """``EXTENDS``/``IMPLEMENTS`` on a FUNCTION_BLOCK reach the bundle.
 
-    ``_unit_section`` re-parses a unit through ``parse_dut`` only for the
-    ``TYPE`` kinds, so ``FUNCTION_BLOCK FB_Motor EXTENDS FB_Base`` yields no
-    ``extends`` relation and no inherited members, while the same relation on a
-    ``STRUCT`` does.  Pinned so the future decomposition makes the asymmetry
-    deliberate.
+    ``_unit_section`` used to re-parse a unit through ``parse_dut`` only for
+    the ``TYPE`` kinds, so ``FB_Motor EXTENDS FB_Base`` produced no relation,
+    no base type and no inherited members, while the same ``EXTENDS`` on a
+    ``STRUCT`` did.
+
+    ``FB_Motor`` now inherits the base's variables *and* its methods
+    (``FB_Base.Reset`` is a symbol of its own, joined by the owner name), and
+    its card links the base. ``I_Missing`` is not a project symbol, so it stays
+    a plain name instead of breaking the run.
     """
     workspace = tmp_path / "sync"
     workspace.mkdir()
     _project, libraries = _build_fixture(workspace)
     docgen.generate_docs(workspace, library_path=libraries)
 
+    output = workspace / ".cts-docs"
     symbols = [
         json.loads(line)
-        for line in (workspace / ".cts-docs" / "symbols.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        for line in (output / "symbols.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     motor = next(row for row in symbols if row["name"] == "FB_Motor")
-    assert motor["declaration"].get("extends") is None
-    assert motor["inherited_members"] == []
+    assert motor["declaration"] == {
+        "extends": "FB_Base",
+        "implements": ["I_Drive", "I_Missing"],
+    }
+    inherited = {
+        (member["name"], member["inherited_from"]) for member in motor["inherited_members"]
+    }
+    assert inherited == {
+        ("xEnable", "FB_Base"),
+        ("xActive", "FB_Base"),
+        ("nRuntime", "FB_Base"),
+        ("FB_Base.Reset", "FB_Base"),
+    }
+
+    relations = [
+        json.loads(line)
+        for line in (output / "relations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    by_kind = {(relation["kind"], relation["resolution"]) for relation in relations}
+    assert ("extends", "exact") in by_kind
+    assert ("implements", "exact") in by_kind
+    assert ("implements", "unresolved") in by_kind
+
+    card = (output / motor["card"]).read_text(encoding="utf-8")
+    assert "FB_Base--" in card  # the base is a link, not a bare name
+    assert "inherited from FB_Base" in card

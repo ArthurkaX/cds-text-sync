@@ -1,6 +1,11 @@
 """Contract tests for the analyzer-owned neutral ST declaration parser."""
 
-from cds_static_analyzer.st.declarations import classify_type, parse_dut, parse_var_blocks
+from cds_static_analyzer.st.declarations import (
+    classify_type,
+    parse_dut,
+    parse_pou_header,
+    parse_var_blocks,
+)
 
 
 def test_parse_var_blocks_preserves_scope_members_and_initializers():
@@ -121,3 +126,35 @@ def test_classify_type_returns_only_neutral_type_information():
         "dims": [("-2", "3"), ("0", "7")],
     }
     assert classify_type("MyStruct") == {"kind": "ref", "name": "MyStruct"}
+
+
+def test_parse_pou_header_reads_extends_and_implements():
+    """A FUNCTION_BLOCK declares inheritance in its header, not via TYPE."""
+    parsed = parse_pou_header(
+        "FUNCTION_BLOCK FB_Motor EXTENDS FB_Base IMPLEMENTS I_Motor, I_Diag\n"
+        "VAR_INPUT\n    nSpeed : INT;\nEND_VAR\n"
+    )
+
+    assert parsed == {"extends": "FB_Base", "implements": ["I_Motor", "I_Diag"]}
+
+
+def test_parse_pou_header_without_inheritance_is_empty():
+    parsed = parse_pou_header("PROGRAM Prg_Main\nVAR\n    n : INT;\nEND_VAR\n")
+
+    assert parsed == {"extends": "", "implements": []}
+
+
+def test_parse_pou_header_ignores_extends_in_the_body():
+    """Only the header line counts; the body is full of identifiers."""
+    parsed = parse_pou_header(
+        "FUNCTION_BLOCK FB_Caller\n"
+        "VAR\n    sText : STRING;  // EXTENDS FB_Base is documentation\nEND_VAR\n"
+    )
+
+    assert parsed["extends"] == ""
+
+
+def test_parse_pou_header_reads_an_interface_chain():
+    parsed = parse_pou_header("INTERFACE I_Child EXTENDS I_Parent\n")
+
+    assert parsed["extends"] == "I_Parent"

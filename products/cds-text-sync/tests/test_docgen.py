@@ -831,3 +831,47 @@ def test_a_redirected_placeholder_is_referenced_with_the_tables_version(tmp_path
     assert "Standard" not in not_referenced
     index = (output / "index.md").read_text(encoding="utf-8")
     assert "| Standard | redirected | 3.5.22.0 | System |" in index
+
+
+def _fb(name, extends="", body="    value : INT;\n"):
+    header = "FUNCTION_BLOCK " + name
+    if extends:
+        header += " EXTENDS " + extends
+    return header + "\nVAR\n" + body + "END_VAR\n"
+
+
+def test_function_block_inheritance_chains_and_cycles(tmp_path):
+    """``EXTENDS`` on a FUNCTION_BLOCK: a chain (A->B->C), a cycle, a library base."""
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    units = {
+        "FB_A.st": _fb("FB_A"),
+        "FB_B.st": _fb("FB_B", "FB_A"),
+        "FB_C.st": _fb("FB_C", "FB_B"),
+        "FB_Loop1.st": _fb("FB_Loop1", "FB_Loop2"),
+        "FB_Loop2.st": _fb("FB_Loop2", "FB_Loop1"),
+        # The base lives in a library, so it is not a project symbol.
+        "FB_Orphan.st": _fb("FB_Orphan", "FB_FromALibrary"),
+    }
+    for file_name, text in units.items():
+        (project / file_name).write_text(text, encoding="utf-8")
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    _output, _manifest, symbols = _read_output(workspace)
+    by_name = {row["name"]: row for row in symbols}
+
+    # A->B->C: every level is materialised, nearest base first.
+    assert [m["name"] for m in by_name["FB_C"]["inherited_members"]] == ["value", "value"]
+    assert {m["inherited_from"] for m in by_name["FB_C"]["inherited_members"]} == {
+        "FB_B", "FB_A",
+    }
+    # A cycle terminates instead of recursing forever.
+    assert sorted(m["name"] for m in by_name["FB_Loop1"]["inherited_members"]) == [
+        "value", "value",
+    ]
+    # An absent base is a name, not a crash.
+    assert by_name["FB_Orphan"]["declaration"]["extends"] == "FB_FromALibrary"
+    assert by_name["FB_Orphan"]["inherited_members"] == []
