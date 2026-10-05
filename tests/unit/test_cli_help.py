@@ -407,6 +407,37 @@ def test_download_help_explains_its_own_login_and_the_never_option():
     assert "does not need an online session first" in help_text
 
 
+def test_the_guards_cli_commands_really_exist():
+    """The online refusal names a command to retype; it must be one the CLI
+    accepts, or `cts disconnect` would send the caller into a dead end."""
+    import os
+    import sys
+
+    bridge = os.path.normpath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "products", "codesys-host",
+        "src", "ide_bridge",
+    ))
+    if bridge not in sys.path:
+        sys.path.insert(0, bridge)
+    import ide_online_guard as guard
+
+    choices = build_parser()._subparsers._group_actions[0].choices
+    for method, cli in guard.CLI_COMMANDS.items():
+        parts = cli.split()
+        assert parts[0] in choices, (method, cli)
+        if len(parts) == 1:
+            continue
+        target = choices[parts[0]]
+        subs = getattr(target, "_subparsers", None)
+        if subs is not None:
+            assert parts[1] in subs._group_actions[0].choices, (method, cli)
+        else:
+            allowed = set()
+            for action in target._actions:
+                allowed.update(action.choices or [])
+            assert parts[1] in allowed, (method, cli)
+
+
 def test_delete_pou_help_mentions_the_deny_list():
     parser = build_parser()._subparsers._group_actions[0].choices["delete-pou"]
     help_text = " ".join(parser.format_help().split())

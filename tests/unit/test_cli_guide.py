@@ -225,5 +225,6 @@ def test_workflow_guide_states_the_online_edit_refusal():
     text = " ".join(read_topic("workflow")["text"].split())
 
     assert "editing the project while online is not supported" in text
-    assert "Run `cts disconnect`, then repeat <command>." in text
+    assert "Run `cts disconnect`, then repeat `cts import`." in text
+    assert "the message names the command to repeat" in text
     assert "refused while the IDE is online with the PLC" in text
