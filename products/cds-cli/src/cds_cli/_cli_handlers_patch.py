@@ -25,6 +25,7 @@ from cds_cli._cli_handlers_vars import _resolve_sync_folder
 from cds_cli._cli_io import (
     _format_output,
     _print_error,
+    _print_error_context,
     _print_info,
     _print_warn,
     send_command_reverse,
@@ -95,6 +96,7 @@ def _run_compare(timeout):
         _print_error(
             "Compare failed: {0}".format(wire.response_error(response))
         )
+        _print_error_context(response)
         sys.exit(1)
     return response.get("data") or {}
 

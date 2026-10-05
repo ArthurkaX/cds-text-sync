@@ -52,6 +52,13 @@ How to use:
   small steps: draw one element, preview, lint, repeat -- then wire signals
   as a separate pass with `cts visu bind`.
 
+Global flags:
+  --pretty/-p, --output, --target and --expect-project are global: they go
+  BEFORE the command. `cts --pretty ping` works; `cts ping --pretty` does not
+  ("unrecognized arguments"). Subcommands reuse some of these names for their
+  own options (`cts docs --output DIR` is a folder, not the format), so the
+  globals are not accepted after the command.
+
 State model:
   There are three independent states: folder, CODESYS IDE, and PLC.
   Data moves in one direction during deployment: folder -> IDE -> PLC.

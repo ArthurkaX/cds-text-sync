@@ -8,10 +8,12 @@ builds a small ``context`` block -- project, IDE id, PLC state, whether edits
 are allowed -- and the reverse-pipe loop attaches it to every command response
 next to the existing ``instance``.
 
-Cheap by construction: it reads only the daemon's cached state (the same
-snapshot ``cts ping`` reports) and never opens a session, logs in or touches
-the PLC. When the state is not known, it says so -- ``online: null`` plus a
-hint -- rather than waiting.
+Cheap by construction: it reads the daemon's cached state (the same snapshot
+``cts ping`` reports), and it never logs in, never opens a connection and
+never waits. The one probe it may make is the guard's own -- asking the IDE
+whether a session already exists -- and only when the cache is blind, because
+``null`` alone could not tell "the IDE is offline" from "the daemon has not
+looked". When even that cannot be answered, it says so: ``online: null``.
 
 IronPython 2.7: no f-strings, no annotations, no pathlib.
 """
@@ -23,6 +25,7 @@ import sys
 import time
 
 from ide_daemon_state import _get_plc_status_snapshot, _instance_info, wire
+import ide_online_helpers
 
 _DAEMON_STATE_KEY = "_codesys_daemon_loop"
 
@@ -80,6 +83,21 @@ def _age_seconds(online_app, now):
     return None
 
 
+def _edits_allowed(online):
+    """Tri-state: True/False when the PLC state is known, else None.
+
+    ``None`` is not "no": live, the daemon reported ``edits_allowed: true``
+    with ``plc.online: null`` while an edit was refused, because the IDE was
+    online and the daemon simply had no cached handle. "Unknown" is the honest
+    answer, so an agent does not read permission into a blind spot.
+    """
+    if online is True:
+        return False
+    if online is False:
+        return True
+    return None
+
+
 def _hint(project_name, online):
     """``(hint, hint_short)`` for the one thing worth saying, else (None, None)."""
     if not project_name:
@@ -102,12 +120,46 @@ def _hint(project_name, online):
     return None, None
 
 
+def _active_project():
+    """The project object from the daemon state, or ``None``."""
+    projects = _state().get("projects")
+    return getattr(projects, "primary", None) if projects is not None else None
+
+
+def _refresh_online(snapshot):
+    """Fill a blind ``online`` from one cheap IDE probe.
+
+    The cache is empty right after a daemon restart, and ``null`` cannot tell
+    "the IDE is offline" from "the daemon has not looked". This asks the IDE
+    the same question the edit guard asks -- is a session already there --
+    without logging in and without opening a connection; the guard's own
+    probe. When the answer cannot be had, the field stays ``null``.
+    """
+    project = _active_project()
+    if project is None:
+        return snapshot
+    try:
+        online, known = ide_online_helpers.probe_online_state(project)
+    except Exception:
+        return snapshot
+    if not known:
+        return snapshot
+    if online:
+        # The probe cached the handle, so the full snapshot is readable now.
+        return _get_plc_status_snapshot()
+    snapshot = dict(snapshot)
+    snapshot["online"] = False
+    return snapshot
+
+
 def build_context(instance_info=None):
     """The context block for one response; see the module docstring."""
     state = _state()
     if instance_info is None:
         instance_info = _instance_info()
     snapshot = _get_plc_status_snapshot()
+    if snapshot.get("online") is None:
+        snapshot = _refresh_online(snapshot)
     project = _project_block(instance_info)
     project_name = project["name"] if project else None
     online = snapshot.get("online")
@@ -117,7 +169,7 @@ def build_context(instance_info=None):
     context["project"] = project_name
     context["ide"] = instance_info.get("id") if isinstance(instance_info, dict) else None
     context["plc"] = _plc_block(snapshot)
-    context["edits_allowed"] = online is not True
+    context["edits_allowed"] = _edits_allowed(online)
     if hint:
         context["hint"] = hint
         context["hint_short"] = hint_short

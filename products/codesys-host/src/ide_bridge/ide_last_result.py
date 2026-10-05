@@ -23,8 +23,8 @@ from __future__ import print_function
 import io
 import json
 import os
-import time
 
+import ide_time
 from ide_daemon_helpers import _get_sync_folder
 from ide_daemon_state import _log
 
@@ -112,7 +112,7 @@ def record_last_result(method, response, request_id=None, write_failed=False):
         "schema_version": SCHEMA_VERSION,
         "request_id": request_id or "",
         "method": method,
-        "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "recorded_at": ide_time.iso_utc(),
         "delivered": not write_failed,
         "ok": bool(response.get("ok")) if isinstance(response, dict) else False,
         "error": (response.get("error") if isinstance(response, dict) else None) or "",

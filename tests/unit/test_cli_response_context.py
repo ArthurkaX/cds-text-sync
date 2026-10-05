@@ -46,7 +46,7 @@ UNKNOWN = {
     "project": None,
     "ide": "ide-3444",
     "plc": {"online": None, "state": "", "application": ""},
-    "edits_allowed": True,
+    "edits_allowed": None,
     "hint": "The daemon holds no cached PLC session; the IDE may still be online.",
     "hint_short": "cts disconnect",
     "age_s": 900,
@@ -87,7 +87,9 @@ def test_unknown_plc_is_spelled_unknown(with_context):
     with_context(UNKNOWN)
     line = _format_output({"x": 1}, "text").splitlines()[-1]
     assert "plc=unknown" in line
-    assert "project=? " in line + " "
+    # Unknown edits must not read as permission: live, "edits=allowed" was
+    # printed while the next edit was refused.
+    assert "edits=unknown" in line
 
 
 def test_a_missing_context_keeps_the_legacy_instance_line(monkeypatch, with_context):
@@ -103,7 +105,7 @@ def test_a_missing_context_keeps_the_legacy_instance_line(monkeypatch, with_cont
 def test_a_partial_context_does_not_crash(with_context):
     with_context({"project": "P", "ide": "ide-1"})
     line = _context_line({"project": "P", "ide": "ide-1"})
-    assert line == "[ctx] project=P ide=ide-1 plc=unknown edits=allowed"
+    assert line == "[ctx] project=P ide=ide-1 plc=unknown edits=unknown"
 
 
 def test_context_line_is_empty_without_a_context():
@@ -159,3 +161,56 @@ def test_unreachable_line_is_not_printed_on_success(with_context, monkeypatch, c
     )
     _cli_io.cmd_daemon("ping", {}, output_fmt="json")
     assert capsys.readouterr().err == ""
+
+
+# ── a failure still says where you are ─────────────────────────────────────
+
+
+def test_a_failed_command_prints_the_context_line_to_stderr(monkeypatch, capsys):
+    """`cts read GVL.iNoSuchVar` fails on the IDE side and carries context."""
+    response = {
+        "ok": False,
+        "error": "Read variable error: no such variable",
+        "context": ONLINE,
+    }
+    monkeypatch.setattr(
+        _cli_io, "send_command_reverse", lambda *a, **k: response
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _cli_io.cmd_daemon("read_variable", {"name": "GVL.iNoSuchVar"})
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "[ERROR] Read variable error" in err
+    assert "[ctx] project=cts-reference-project ide=ide-3444" in err
+    assert "edits=blocked" in err
+
+
+def test_a_failed_command_without_context_adds_nothing(monkeypatch, capsys):
+    """An older daemon sends no context; the error must look as it always did."""
+    response = {"ok": False, "error": "Read variable error: no such variable"}
+    monkeypatch.setattr(
+        _cli_io, "send_command_reverse", lambda *a, **k: response
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _cli_io.cmd_daemon("read_variable", {"name": "GVL.iNoSuchVar"})
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "[ERROR] Read variable error" in err
+    assert "[ctx]" not in err
+
+
+def test_context_is_not_printed_on_stdout_in_json_mode(monkeypatch, capsys):
+    """stderr carries the line; stdout stays machine-parseable (empty here)."""
+    response = {"ok": False, "error": "boom", "context": ONLINE}
+    monkeypatch.setattr(_cli_io, "send_command_reverse", lambda *a, **k: response)
+
+    with pytest.raises(SystemExit):
+        _cli_io.cmd_daemon("ping", {})
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "[ctx]" in captured.err

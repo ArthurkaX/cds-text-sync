@@ -234,6 +234,25 @@ def _footer_lines(last_inst, last_ctx):
     return [f"{inst_id} · {prj_name}" if prj_name else f"{inst_id} · no project"]
 
 
+def _plc_text(plc):
+    """``online`` / ``offline`` / ``unknown`` for the ``plc`` block."""
+    online = plc.get("online")
+    if online is True:
+        return "online"
+    if online is False:
+        return "offline"
+    return "unknown"
+
+
+def _edits_text(value):
+    """``blocked`` / ``allowed`` / ``unknown`` for ``edits_allowed``."""
+    if value is False:
+        return "blocked"
+    if value is True:
+        return "allowed"
+    return "unknown"
+
+
 def _context_line(context):
     """The one-line ``[ctx] ...`` footer, or "" when there is no context.
 
@@ -244,17 +263,11 @@ def _context_line(context):
     if not isinstance(context, dict):
         return ""
     plc = context.get("plc") if isinstance(context.get("plc"), dict) else {}
-    online = plc.get("online")
-    if online is True:
-        plc_text = "online"
-    elif online is False:
-        plc_text = "offline"
-    else:
-        plc_text = "unknown"
+    plc_text = _plc_text(plc)
     state = plc.get("state")
     if state:
         plc_text = f"{plc_text}/{state}"
-    edits = "blocked" if context.get("edits_allowed") is False else "allowed"
+    edits = _edits_text(context.get("edits_allowed"))
     line = "[ctx] project={0} ide={1} plc={2} edits={3}".format(
         context.get("project") or "?", context.get("ide") or "?", plc_text, edits
     )
@@ -409,18 +422,41 @@ def _daemon_path(value):
     return os.path.abspath(str(value))
 
 
+def _inst_suffix(resp):
+    """`` (ide-1 · Project)`` for an error line, or "" when there is no instance."""
+    inst = resp.get("instance") or get_last_instance()
+    if not (inst and isinstance(inst, dict)):
+        return ""
+    inst_id = inst.get("id", "")
+    prj = inst.get("project")
+    prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
+    if prj_name:
+        return f" ({inst_id} · {prj_name})"
+    if inst_id:
+        return f" ({inst_id} · no project)"
+    return ""
+
+
+def _print_message_errors(messages, command, inst_suffix):
+    """Report a message-list failure. False when there is no list to report."""
+    if not isinstance(messages, list) or not messages:
+        return False
+    errors = [m for m in messages if m.get("severity") in ("Error", "error")]
+    if not errors:
+        _print_error(
+            "{0} failed with {1} warnings{2}".format(command, len(messages), inst_suffix)
+        )
+        return True
+    for m in errors:
+        _print_error("[{0}] {1} (in {2}){3}".format(
+            m.get("code", ""), m.get("text", ""), m.get("object", ""), inst_suffix
+        ))
+    return True
+
+
 def _print_rp_error(resp, command):
     """Print reverse-pipe error details."""
-    inst = resp.get("instance") or get_last_instance()
-    inst_suffix = ""
-    if inst and isinstance(inst, dict):
-        inst_id = inst.get("id", "")
-        prj = inst.get("project")
-        prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
-        if prj_name:
-            inst_suffix = f" ({inst_id} · {prj_name})"
-        elif inst_id:
-            inst_suffix = f" ({inst_id} · no project)"
+    inst_suffix = _inst_suffix(resp)
 
     # Empty default on purpose: no error text means "look at data instead"
     # (library install failures and message lists arrive with ok False and no
@@ -432,25 +468,30 @@ def _print_rp_error(resp, command):
         _print_error(f"{err}{inst_suffix}")
     elif install_error:
         _print_error(f"library install failed: {install_error}{inst_suffix}")
+    elif _print_message_errors(
+        resp.get("data", {}).get("messages"), command, inst_suffix
+    ):
+        pass
     else:
-        messages = resp.get("data", {}).get("messages")
-        if isinstance(messages, list) and messages:
-            errors = [m for m in messages if m.get("severity") in ("Error", "error")]
-            if errors:
-                for m in errors:
-                    code = m.get("code", "")
-                    text = m.get("text", "")
-                    obj = m.get("object", "")
-                    _print_error("[{0}] {1} (in {2}){3}".format(code, text, obj, inst_suffix))
-            else:
-                _print_error(
-                    "{0} failed with {1} warnings{2}".format(command, len(messages), inst_suffix)
-                )
-        else:
-            _print_error(f"unknown error{inst_suffix}")
+        _print_error(f"unknown error{inst_suffix}")
     diag = resp.get("diagnostics")
     if diag:
         _print_info("Diagnostics: {0}".format(json.dumps(diag, ensure_ascii=False)))
+    _print_error_context(resp)
+
+
+def _print_error_context(resp):
+    """One ``[ctx]`` line after a failed command, on stderr like the error.
+
+    A failure is where an agent most wants to know where it is -- which
+    project, and whether the IDE is online -- so the same line ``--pretty``
+    appends to a success is printed here too. Only from a context the daemon
+    actually sent: an older daemon sends none, and then nothing is added.
+    """
+    context = resp.get("context") if isinstance(resp, dict) else None
+    line = _context_line(context)
+    if line:
+        print(line, file=sys.stderr)
 
 
 def _is_negative_number(token: str) -> bool:

@@ -200,6 +200,27 @@ def test_commands_guide_documents_reading_the_context():
     assert "`edits_allowed`" in text
     assert "cts disconnect`" in text
     assert "is **cached**" in text
+    # The tri-state: unknown must not read as permission.
+    assert "and `null` when the state is unknown" in text
+    assert "never as permission" in text
+    assert "edits=unknown" in text
+
+
+def test_commands_guide_states_the_timestamp_zone():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "## Timestamps" in text
+    assert "ISO-8601, with a trailing `Z`" in text
+    assert "2026-10-05T20:45:12Z" in text
+    assert "Older values without a `Z` are read as they are" in text
+
+
+def test_commands_guide_places_the_global_flags_before_the_command():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "go **before** the command" in text
+    assert "`cts --pretty ping`" in text
+    assert "not `cts ping --pretty`" in text
 
 
 def test_workflow_guide_points_at_the_context():
@@ -221,5 +242,6 @@ def test_workflow_guide_states_the_online_edit_refusal():
     text = " ".join(read_topic("workflow")["text"].split())
 
     assert "editing the project while online is not supported" in text
-    assert "Run `cts disconnect`, then repeat <command>." in text
+    assert "Run `cts disconnect`, then repeat `cts import`." in text
+    assert "the message names the command to repeat" in text
     assert "refused while the IDE is online with the PLC" in text

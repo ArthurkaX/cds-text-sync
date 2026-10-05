@@ -9,11 +9,11 @@ and the old preflight (``is_online_session_active``) only ever looked at that
 cache. The import silently created half-applied objects, and their symbols were
 never exported to the running application.
 
-The guard therefore asks ``require_online_session`` -- the same detection the
-data plane uses -- which adopts the session already online in the IDE UI
-(a wrapper only, never a login). One helper answers for every project-editing
-command; this module pins the helper, the detection it must use, and that the
-guarded handlers refuse before touching anything.
+The guard therefore asks ``live_online_session`` -- the same detection the data
+plane and ``disconnect`` use -- which adopts the session already online in the
+IDE UI (a wrapper only, never a login). One helper answers for every
+project-editing command; this module pins the helper, the detection it must
+use, and that the guarded handlers refuse before touching anything.
 """
 
 from __future__ import print_function
@@ -74,7 +74,8 @@ def test_online_refuses_and_names_the_command():
     assert refusal["ok"] is False
     assert "cts disconnect" in refusal["error"]
     assert "editing the project while online is not supported" in refusal["error"]
-    assert refusal["error"].endswith("repeat update_pou.")
+    # The CLI command, not the internal method name.
+    assert refusal["error"].endswith("repeat `cts update-pou`.")
 
 
 # ── the bug: an IDE session the daemon never cached ─────────────────────────
@@ -318,3 +319,57 @@ def test_every_project_editing_command_is_guarded():
 def test_the_refusal_text_has_exactly_one_definition():
     guard = open(os.path.join(_BRIDGE, "ide_online_guard.py"), encoding="utf-8").read()
     assert guard.count("The IDE is online with the PLC; editing the project while") == 1
+
+
+# ── the refusal names a CLI command, not the internal method ───────────────
+
+
+def test_every_guarded_method_has_a_cli_command():
+    guard = _load("ide_online_guard")
+    guarded = (
+        _guarded_commands("ide_handlers_sync.py", "project_edit_refusal")
+        | _guarded_commands("ide_handlers_project.py", "project_edit_refusal")
+    )
+    missing = sorted(guarded - set(guard.CLI_COMMANDS))
+    assert not missing, "no CLI name for: {0}".format(", ".join(missing))
+
+
+def test_no_cli_name_is_the_internal_method_name():
+    """A fallback would leave ``repeat sync_import_text`` in the message."""
+    guard = _load("ide_online_guard")
+    for method, cli in guard.CLI_COMMANDS.items():
+        assert cli, method
+        assert cli != method, method
+
+
+def test_the_two_import_methods_share_one_cli_command():
+    """`cts import` is what the user typed; which method it maps to is internal."""
+    guard = _load("ide_online_guard")
+    assert guard.CLI_COMMANDS["sync_import"] == "import"
+    assert guard.CLI_COMMANDS["sync_import_text"] == "import"
+    assert guard.cli_command("sync_import_text") == "`cts import`"
+
+
+# ── the daemon log records the refusal ─────────────────────────────────────
+
+
+def test_a_refusal_is_written_to_the_daemon_log(monkeypatch):
+    """The debug log is the only place the daemon's own story is visible."""
+    guard = _load("ide_online_guard")
+    logged = []
+    monkeypatch.setattr(guard, "_log", lambda msg: logged.append(msg))
+    monkeypatch.setattr(guard, "_live_session", lambda project: object())
+
+    guard.project_edit_refusal(object(), "sync_import_text")
+
+    assert logged == ["edit refused: IDE online (sync_import_text)"]
+
+
+def test_no_log_line_when_the_edit_is_allowed(monkeypatch):
+    guard = _load("ide_online_guard")
+    logged = []
+    monkeypatch.setattr(guard, "_log", lambda msg: logged.append(msg))
+    monkeypatch.setattr(guard, "_live_session", lambda project: None)
+
+    assert guard.project_edit_refusal(object(), "sync_import_text") is None
+    assert logged == []

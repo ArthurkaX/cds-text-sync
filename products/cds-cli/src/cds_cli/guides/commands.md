@@ -2,6 +2,8 @@
 
 Use this reference as a routing guide. Confirm exact syntax with the installed `cts --help` and `cts <command> --help`.
 
+Global flags (`--pretty`/`-p`, `--output`, `--target`, `--expect-project`) go **before** the command: `cts --pretty ping`, not `cts ping --pretty` (that is "unrecognized arguments"; a few subcommands reuse `--output` for a folder of their own, so the globals are not accepted after the command).
+
 ## Guides
 
 | Goal | Command |
@@ -32,7 +34,7 @@ Use this reference as a routing guide. Confirm exact syntax with the installed `
 | Apply without re-baselining the disk | `cts import --no-refresh` |
 | Compile the active application | `cts build` |
 
-Disconnect before any project edit when the IDE is online with the PLC. Import, one-object updates (`update-pou`), deletion (`delete-pou`), `set-sync-folder` and simulation mode are all refused while online, with one message: the IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat the command. There is no override flag. An edit that slips through online leaves the new objects half-applied — their symbols are never exported to the running application, so every later read fails with *"is not exported to the online application"* even after a full download.
+Disconnect before any project edit when the IDE is online with the PLC. Import, one-object updates (`update-pou`), deletion (`delete-pou`), `set-sync-folder` and simulation mode are all refused while online, with one message: the IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat the command — the refusal names the exact `cts` command to retype (`cts import`, `cts update-pou`, `cts delete-pou`, `cts set-sync-folder`, `cts project simulate on`). There is no override flag. An edit that slips through online leaves the new objects half-applied — their symbols are never exported to the running application, so every later read fails with *"is not exported to the online application"* even after a full download.
 
 Import applies to the in-memory project and does not save — saving commits everything else open in the IDE, so it is the user's call. Report the `unsaved` warning when it appears; use `--save` only when the user asked for it. Import does re-baseline `project-view/` and `manifest.json` from the IDE, so the next compare is clean. When it withholds that refresh it says why in `manifest_refresh_skipped` — always because an edit did not reach the IDE and the disk still holds the only copy.
 
@@ -56,29 +58,45 @@ Every daemon response carries a `context` block, beside `instance`. It answers
 |---|---|
 | `project` | Project name open in that IDE, or `null` when none is open |
 | `ide` | Daemon instance id (`ide-<pid>`), the same value `--target` takes |
-| `plc.online` | Cached session state: `true`, `false`, or `null` when the daemon has not seen a session |
+| `plc.online` | Session state: `true`, `false`, or `null` when it cannot be determined. When the cache is empty the daemon asks the IDE whether a session already exists — no login, no connection — so `null` means even that was impossible |
 | `plc.state` | Application state from the cache (`run`, `stop`, or empty when unknown) |
 | `plc.application` | Name of the cached online application |
-| `edits_allowed` | `false` while the IDE is online with the PLC — editing is then refused |
+| `edits_allowed` | `true` when offline, `false` while the IDE is online with the PLC (editing is then refused), and `null` when the state is unknown |
 | `hint` | Present only when there is something to do; explains what |
 | `hint_short` | The action from `hint`, short (e.g. `cts disconnect`) |
 | `age_s` | Age in seconds of the cached PLC view; large means stale |
 
-The state is **cached** — it is the daemon's last-known PLC view, not a fresh
-probe, and `age_s` says how old it is. `plc.online: null` means unknown, not
-offline: an edit may still be refused. When `edits_allowed` is `false`, run
+The state is **cached** — it is the daemon's last-known PLC view, and `age_s`
+says how old it is. When the cache is empty the daemon makes one cheap probe:
+it asks the IDE whether a session already exists, the same question the edit
+guard asks, with no login and no connection. So `plc.online` is `true`/`false`
+whenever that can be answered, and `plc.online: null` is the honest fallback
+when it cannot. When it is `null`, `edits_allowed` is `null` too: an edit may
+still be refused, because the daemon is blind rather than sure. Treat `null`
+as "ask before editing", never as permission. When `edits_allowed` is `false`, run
 `cts disconnect` (and, if the state does not clear, end the online session in
 the CODESYS IDE), then repeat the command.
 
-In `--pretty` / `--output text` the same block prints as one line at the end:
+In `--pretty` / `--output text` the same block prints as one line at the end
+(`edits=unknown` when `edits_allowed` is `null`):
 
 ```
 [ctx] project=cts-reference-project ide=ide-3444 plc=online/run edits=blocked (cts disconnect)
+[ctx] project=cts-reference-project ide=ide-3444 plc=unknown edits=unknown
 ```
 
 The context is added to every daemon command; commands that run without a
 daemon (`cts new`, `cts guide`, `cts where`, `cts analyze`, `cts fsm`) have no
 context — there is no daemon state to report.
+
+## Timestamps
+
+Every timestamp a daemon response carries (`tree_built_at`, `imported_at` in
+the verify attestation, `started_at`, `recorded_at`, the CRC history stamp) is
+UTC, ISO-8601, with a trailing `Z` — `2026-10-05T20:45:12Z` — so it always
+compares against another clock. Older values without a `Z` are read as they
+are. Only the daemon's own debug log keeps local time: it is read on the
+machine that wrote it.
 
 ## Project Inspection and Object Changes
 

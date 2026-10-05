@@ -185,6 +185,41 @@ def _cmd_project_tree(params):
         return {"ok": False, "error": "Project tree error: {0}".format(e)}
 
 
+def _online_attr(oa, attr):
+    """``(value, error)`` for one property; ``(None, None)`` when it is absent.
+
+    Only AttributeError means "this wrapper has no such property". Anything
+    else means the property is there and the CODESYS call refused -- which must
+    be reported, never dropped: a missing is_running would otherwise read as
+    "not running". (hasattr is not used for exactly this reason: it swallows
+    only AttributeError, so an unreadable property would escape the guard.)
+    """
+    try:
+        val = getattr(oa, attr)
+    except AttributeError:
+        return None, None
+    except Exception as error:
+        return None, str(error)
+    try:
+        if callable(val):
+            val = val()
+        return str(val), None
+    except Exception as error:
+        return None, str(error)
+
+
+def _online_attr_info(oa):
+    """String values of the online-application properties we can read."""
+    info = {}
+    for attr in ["application_state", "is_connected", "is_running", "is_online"]:
+        value, error = _online_attr(oa, attr)
+        if error is not None:
+            info[attr + "_error"] = error
+        elif value is not None:
+            info[attr] = value
+    return info
+
+
 def _cmd_application_state():
     try:
         import scriptengine as se
@@ -192,8 +227,7 @@ def _cmd_application_state():
         projects = sys._codesys_daemon_loop.get("projects")
         if projects is None:
             return {"ok": False, "error": "projects not captured"}
-        prj = projects.primary
-        app = prj.active_application
+        app = projects.primary.active_application
         if app is None:
             return {
                 "ok": True,
@@ -205,31 +239,11 @@ def _cmd_application_state():
         oa = se.online.create_online_application(app)
         if oa is None:
             return {"ok": True, "data": {"application_state": "disconnected"}}
-        # Cache the online app
-        sys._codesys_daemon_loop["online_app"] = oa
-        sys._codesys_daemon_loop["online_target_app"] = app
-        info = {}
-        for attr in ["application_state", "is_connected", "is_running", "is_online"]:
-            # Only AttributeError means "this wrapper has no such property".
-            # Anything else means the property is there and the CODESYS call
-            # refused -- which must be reported, never dropped: a missing
-            # is_running would otherwise read as "not running". (hasattr is not
-            # used for exactly this reason: it swallows only AttributeError, so
-            # an unreadable property would escape the guard.)
-            try:
-                val = getattr(oa, attr)
-            except AttributeError:
-                continue
-            except Exception as error:
-                info[attr + "_error"] = str(error)
-                continue
-            try:
-                if callable(val):
-                    val = val()
-                info[attr] = str(val)
-            except Exception as error:
-                info[attr + "_error"] = str(error)
-        return {"ok": True, "data": info}
+        # Cache only a handle that is really logged in. Caching an unlogged
+        # one made the context block report online:true for an unreachable
+        # PLC, and every later edit then looked online and was refused.
+        _helpers.cache_if_live(oa, app)
+        return {"ok": True, "data": _online_attr_info(oa)}
     except Exception as e:
         _log("app_state ERROR: {0}".format(e))
         return {"ok": False, "error": "Application state error: {0}".format(e)}
@@ -259,10 +273,18 @@ def _cmd_disconnect_from_device():
         return err
     try:
         result = _helpers.disconnect_from_device_impl(project)
+        if result.get("online_after"):
+            # Do not claim success: the IDE still holds the session, so the
+            # next edit would be refused. Fail loudly with the fix instead.
+            return {
+                "ok": False,
+                "error": result.get("warning", _helpers.STILL_ONLINE),
+                "data": result,
+            }
         return {"ok": True, "data": result}
     except Exception as e:
         _log("Disconnect warning: {0}".format(e))
-        return {"ok": True, "data": {"state": "disconnected", "warning": str(e)}}
+        return {"ok": False, "error": "Disconnect error: {0}".format(e)}
 
 
 def _cmd_download(params):

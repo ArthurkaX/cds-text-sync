@@ -68,6 +68,7 @@ from ide_daemon_helpers import (
     _get_sync_folder,
 )
 import ide_response_context
+import ide_time
 from ide_last_result import _cmd_last_result, record_last_result
 from ide_timeout_profile import count_st_blocks, make_timeout_profile
 from ide_online_helpers import adopt_existing_online_session
@@ -436,7 +437,7 @@ def run_loop():
         raise RuntimeError("The reverse-pipe loop must run inside CODESYS.")
     capture_codesys_globals()
     sys._codesys_daemon_loop["running"] = True
-    sys._codesys_daemon_loop["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    sys._codesys_daemon_loop["started_at"] = ide_time.iso_utc()
     sys._codesys_daemon_loop["started_ts"] = time.time()
     sys._codesys_daemon_loop["started"] = True
 

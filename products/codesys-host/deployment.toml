@@ -3,6 +3,7 @@ name = "codesys-host"
 runtime = "codesys-ironpython"
 artifact = "flat-deployment-tree"
 test_paths = [
+  "../../tests/unit/test_app_state_cache.py",
   "../../tests/unit/test_apply_patch_guid_identity.py",
   "../../tests/unit/test_apply_patch_persistent_guard.py",
   "../../tests/unit/test_apply_patch_text_create_reporting.py",
@@ -24,6 +25,7 @@ test_paths = [
   "../../tests/unit/test_daemon_name_resolution.py",
   "../../tests/unit/test_daemon_partial_reads.py",
   "../../tests/unit/test_daemon_ui.py",
+  "../../tests/unit/test_disconnect_session.py",
   "../../tests/unit/test_discover_report.py",
   "../../tests/unit/test_find_child_transparent_locale.py",
   "../../tests/unit/test_fmt_stabilization.py",
@@ -31,6 +33,7 @@ test_paths = [
   "../../tests/unit/test_ide_sync_compare.py",
   "../../tests/unit/test_ide_sync_import_refresh.py",
   "../../tests/unit/test_ide_sync_import_text.py",
+  "../../tests/unit/test_ide_time.py",
   "../../tests/unit/test_ide_xml.py",
   "../../tests/unit/test_object_selector_precedence.py",
   "../../tests/unit/test_online_diagnose_reporting.py",
