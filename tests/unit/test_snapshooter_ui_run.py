@@ -952,6 +952,33 @@ def test_branch_tristate_follows_partial_selection(scenario):
     assert root_ui.Checked is False
 
 
+def test_unchecking_a_branch_subtracts_its_selected_leaves(scenario):
+    """Unticking a branch takes its descendants back out of the count.
+
+    ``_set_checked_cascade`` returns a signed delta: checking the root selects
+    three leaves, unticking ``GVL`` must hand two of them back.  The single-leaf
+    scenario cannot reach that subtraction -- a leaf has no descendants -- so
+    the negative branch is pinned here.
+    """
+    _run(scenario)
+    form = scenario.form()
+    root_ui = form.tree.Nodes[0]
+    gvl_ui = root_ui.Nodes[0]
+
+    root_ui.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=root_ui))
+    assert form._selected_count == 3
+
+    gvl_ui.Checked = False
+    form._on_after_check(None, types.SimpleNamespace(Node=gvl_ui))
+
+    assert form._selected_count == 1
+    assert [n.Name for n in form._all_leaf_nodes if n.Checked] == ["App.x"]
+    assert gvl_ui.Checked is False
+    assert root_ui.Checked is False
+    assert form.status.Text == "Selected: 1/3 leaves"
+
+
 def test_unchecking_a_leaf_leaves_the_count_stale(scenario):
     """Known quirk: a leaf's own checkbox never moves ``_selected_count``.
 
@@ -1089,8 +1116,12 @@ def test_load_crashes_after_checking_matching_leaves(scenario, tmp_path):
     _run(scenario)
     form = scenario.form()
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError) as excinfo:
         form._on_load(None, None)
+    # The failure is the id() int being sorted as if it were a node: the sort
+    # key reads ``n.Name`` off an int.  Pin the message, not just the type, so
+    # a different AttributeError further down cannot stand in for this one.
+    assert "'int' object has no attribute 'Name'" in str(excinfo.value)
 
     checked = sorted(node.Name for node in form._all_leaf_nodes if node.Checked)
     assert checked == ["App.x", "GVL.a"]
