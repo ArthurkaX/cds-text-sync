@@ -23,6 +23,7 @@ _ENGINE = _PROJECT_ROOT / "products" / "cds-text-sync" / "src"
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
+from cds_text_sync import docgen  # noqa: E402
 from cds_text_sync.engine import library_refs  # noqa: E402
 
 FIXTURE = (
@@ -107,3 +108,49 @@ def test_the_redirection_table_is_read_from_its_entry_pairs(references):
     assert (standard["version"], standard["vendor"]) == ("3.5.22.0", "System")
     assert standard["placeholder"] == "Standard"
     assert standard["system"] is True
+
+
+def test_docgen_reports_all_seven_and_never_lists_standard_as_unreferenced(tmp_path):
+    """End to end on the real export, with no LibDoc installed.
+
+    Every library is missing its LibDoc here - that is what a machine without
+    CODESYS looks like - but all seven must be *named* correctly, and ``Standard``
+    must not fall through to "not referenced".
+    """
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Library Manager.xml").write_text(
+        FIXTURE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    libraries = tmp_path / "codesys"
+    libraries.mkdir()
+
+    manifest = docgen.generate_docs(workspace, library_path=libraries)["manifest"]
+    counts = manifest["counts"]
+
+    assert counts["libraries_referenced"] == 7
+    assert counts["libraries_documented"] == 0
+    assert counts["libraries_missing"] == 7
+    assert counts["libraries_not_referenced"] == 0
+
+    missing = {row["name"]: row for row in manifest["libraries_missing"]}
+    assert set(missing) == {
+        "IoStandard",
+        "3SLicense",
+        "CAA Device Diagnosis",
+        "Breakpoint Logging Functions",
+        "PSVRetain",
+        "PSVLeds",
+        "Standard",
+    }
+    assert missing["PSVRetain"]["kind"] == "concrete"
+    assert missing["PSVRetain"]["vendor"] == "PSV Electro"
+    assert missing["Standard"]["kind"] == "redirected"
+    assert missing["Standard"]["version"] == "3.5.22.0"
+
+    not_referenced = (
+        workspace / ".cts-docs" / "libraries" / "not-referenced.md"
+    ).read_text(encoding="utf-8")
+    assert "Standard" not in not_referenced
+    assert "PSVRetain" not in not_referenced

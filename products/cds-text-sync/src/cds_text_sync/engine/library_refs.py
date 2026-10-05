@@ -5,11 +5,18 @@ library_refs.py - Explicit library references declared by a project's Library Ma
 A CODESYS project exports every Library Manager object as one XML file under
 the project-view tree (``project-view/.../Library Manager.xml``): a
 project-level one under the POUs view (visualization libraries) and one per
-application under the device tree, plus one per additional PLC device. Each
-``Items`` entry is a library placeholder: the ``DefaultResolution`` string
-carries the declared default as ``name, version (vendor)``,
-``PlaceholderName`` and ``Namespace`` name it, and ``SystemLibrary`` flags
-framework libraries.
+application under the device tree, plus one per additional PLC device.
+
+Three shapes carry a reference. A *placeholder* ``Items`` entry
+(``4723ebe7-...``) names a library through ``PlaceholderName`` and declares
+its default in ``DefaultResolution`` as ``name, version (vendor)``. A
+*concrete* ``Items`` entry (``51a11660-...``) pins a library directly and
+carries that same string in its single ``Name`` field instead. A
+``PlaceholderRedirectionTable`` - a ``Dictionary`` of ``Entry`` rows with a
+``Key``/``Value`` pair each - points a placeholder at the version actually
+used, which is how a system library such as ``Standard`` reaches a project
+without any ``Items`` entry at all. ``Namespace`` names the library and
+``SystemLibrary`` flags framework libraries, where the entry has those fields.
 
 This module reads all of those declarations straight from the export, merged
 across every Library Manager found. They are matched by type GUID, not by
