@@ -28,6 +28,7 @@ from cts_shared.coerce import as_bool
 
 from cds_text_sync.engine.pipe_targets import (
     LEGACY,
+    Decision,
     Hello,
     TargetError,
     decide,
@@ -785,6 +786,104 @@ def _next_request_id() -> str:
     return wire.new_request_id(os.getpid(), _request_counter, time.strftime("%H%M%S"))
 
 
+class _CommandSession:
+    """Mutable state of one ``send_command`` call, threaded through its stages.
+
+    One instance is built before the pipe opens and each stage reads or
+    updates it, so no stage has to carry a dozen locals and the call's
+    progress stays inspectable in one place.
+    """
+
+    def __init__(
+        self,
+        pipe_path,
+        method,
+        params,
+        request_id,
+        timeout,
+        deadline,
+        target_pid,
+        codesys_pids,
+        discovery_budget_s,
+    ):
+        self.pipe_path = pipe_path
+        self.method = method
+        self.params = params
+        self.request_id = request_id
+        self.timeout = timeout
+        self.deadline = deadline
+        self.target_pid = target_pid
+        self.codesys_pids = codesys_pids
+        self.discovery_budget_s = discovery_budget_s
+        # Opened by _open_session, replaced as connections come and go.
+        self.lock = None
+        self.listener = None
+        self.lock_since = 0.0
+        # What the daemons have told us so far.
+        self.hellos = {}
+        self.held_conns = {}
+        self.legacy_pids = set()
+        # None until the first daemon answers; see the discovery budget.
+        self.window_end = None
+
+
+def _session_wait_timeout(session, current_time):
+    """How long this round may wait for a connection.
+
+    Bounded by the call deadline, by the discovery window once it is open, and
+    -- for a targeted call -- by the session-lock slice, so a busy IDE never
+    keeps the pipe to itself.
+    """
+    if session.window_end is not None:
+        wait_timeout = min(
+            session.deadline - current_time, max(0.0, session.window_end - current_time)
+        )
+    else:
+        wait_timeout = session.deadline - current_time
+
+    if wait_timeout < 0:
+        wait_timeout = 0
+    if session.target_pid is not None and session.lock.held:
+        wait_timeout = min(
+            wait_timeout,
+            max(0.0, session.lock_since + _SESSION_LOCK_SLICE_S - current_time),
+        )
+    return wait_timeout
+
+
+def _session_window_is_over(session):
+    """Whether discovery is done: the hello window closed or the call ran out."""
+    return (session.window_end is not None and time.monotonic() >= session.window_end) or (
+        time.monotonic() >= session.deadline
+    )
+
+
+def _current_decision(session):
+    return decide(
+        session.hellos,
+        legacy_pids=session.legacy_pids,
+        target_pid=session.target_pid,
+        codesys_pids=session.codesys_pids,
+        window_over=_session_window_is_over(session),
+    )
+
+
+def _release_held_connections(session):
+    """Politely drop every connection still held for a target we did not pick."""
+    for h_conn in list(session.held_conns.values()):
+        _send_release_and_close(h_conn)
+    session.held_conns.clear()
+
+
+def _close_session(session):
+    """Release the pipe, the lock and every connection still held, always."""
+    if session.listener:
+        session.listener.close()
+    session.lock.release()
+    _release_held_connections(session)
+    session.lock.close()
+
+
 class ReversePipeClient:
     """CLI creates a pipe server, IDE connects as client.
 
@@ -914,221 +1013,234 @@ class ReversePipeClient:
                 )
             )
 
+    # ── send_command, stage by stage ───────────────────────────────────────
+
     def send_command(self, method: str, params: dict | None = None) -> dict:
-        global _last_ide_pid, _resolved_pid, _last_instance
-        params = params or {}
-        self._request_id = _next_request_id()
-        deadline = time.monotonic() + self._timeout
+        """Run one command over the reverse pipe and return the daemon's reply.
 
-        # Determine target PID
-        target_pid = None
-        if _resolved_pid is not None:
-            target_pid = _resolved_pid
-        elif _configured_target is not None:
-            target_pid = parse_target(_configured_target)
-
-        codesys_pids = None if target_pid is not None else _list_codesys_pids()
-
-        discovery_ms = int(os.environ.get("CTS_DISCOVERY_MS", 400))
-        discovery_budget_s = discovery_ms / 1000.0
-        window_end: float | None = None
-
-        hellos: dict[int, Hello] = {}
-        held_conns: dict[int, int] = {}
-        legacy_pids: set[int] = set()
-
-        lock = _SessionLock(self._pipe_path)
-        lock.acquire()
-        lock_since = time.monotonic()
-        listener = _PipeListener(self._pipe_path)
-
+        Opens a pipe server, waits for daemons to answer the hello probe, lets
+        :func:`decide` pick the target, and sends over the chosen connection.
+        """
+        session = self._start_session(method, params)
+        self._open_session(session)
         try:
-            while time.monotonic() < deadline:
+            while time.monotonic() < session.deadline:
                 current_time = time.monotonic()
-                if window_end is not None:
-                    wait_timeout = min(deadline - current_time, max(0.0, window_end - current_time))
-                else:
-                    wait_timeout = deadline - current_time
-
-                if wait_timeout < 0:
-                    wait_timeout = 0
-                if target_pid is not None and lock.held:
-                    wait_timeout = min(
-                        wait_timeout, max(0.0, lock_since + _SESSION_LOCK_SLICE_S - current_time)
-                    )
-
-                connected = listener.wait(wait_timeout)
-                if connected:
-                    conn = listener.handle
-                    listener = _PipeListener(self._pipe_path)
-
-                    try:
-                        _write_msg(
-                            conn,
-                            wire.hello_request(),
-                            deadline=time.monotonic() + 2.0,
-                            cmd_name="ping",
-                        )
-                        reply = _read_msg(conn, deadline=time.monotonic() + 2.0, cmd_name="ping")
-                    except Exception:
-                        with contextlib.suppress(Exception):
-                            CloseHandle(conn)
-                        conn = -1
-                        reply = None
-
-                    if conn > 0 and reply is not None:
-                        if isinstance(reply, dict) and "hello" in reply:
-                            h = Hello.from_dict(reply)
-                            if h.pid in held_conns:
-                                _send_release_and_close(held_conns.pop(h.pid))
-                            hellos[h.pid] = h
-                            held_conns[h.pid] = conn
-
-                            if target_pid is not None and h.pid != target_pid:
-                                _send_release_and_close(held_conns.pop(h.pid))
-
-                            if target_pid is None and window_end is None:
-                                window_end = time.monotonic() + discovery_budget_s
-                        elif isinstance(reply, dict):
-                            lp = reply.get("data", {}).get("pid") or reply.get("pid")
-                            if lp:
-                                legacy_pids.add(int(lp))
-                            with contextlib.suppress(Exception):
-                                CloseHandle(conn)
-                            if target_pid is None and window_end is None:
-                                window_end = time.monotonic() + discovery_budget_s
-
-                if (
-                    not connected
-                    and target_pid is not None
-                    and lock.held
-                    and time.monotonic() - lock_since >= _SESSION_LOCK_SLICE_S
-                ):
-                    # The target has not answered for a while: give other calls a
-                    # turn at the pipe. Nothing to lose -- in targeted mode a
-                    # daemon that is not the target is released on arrival, and
-                    # the target itself is used the moment it says hello.
-                    listener.close()
-                    lock.release()
-                    time.sleep(random.uniform(0.03, 0.1))
-                    lock.acquire()
-                    lock_since = time.monotonic()
-                    listener = _PipeListener(self._pipe_path)
-
-                window_is_over = (
-                    window_end is not None and time.monotonic() >= window_end
-                ) or (time.monotonic() >= deadline)
-
-                decision = decide(
-                    hellos,
-                    legacy_pids=legacy_pids,
-                    target_pid=target_pid,
-                    codesys_pids=codesys_pids,
-                    window_over=window_is_over,
+                connected = self._accept_connection(
+                    session, _session_wait_timeout(session, current_time)
                 )
+                self._rotate_starved_lock(session, connected)
 
+                decision = _current_decision(session)
                 if decision.kind == "send":
-                    listener.close()
+                    session.listener.close()
                     if decision.target != LEGACY:
                         # Target chosen: the rest of the call runs over the held
                         # connection, so the pipe is free for the next cts.
-                        lock.release()
+                        session.lock.release()
                     if decision.target == LEGACY:
-                        for h_conn in list(held_conns.values()):
-                            _send_release_and_close(h_conn)
-                        held_conns.clear()
-
-                        legacy_listener = _PipeListener(self._pipe_path)
-                        try:
-                            ok = legacy_listener.wait(max(0.1, deadline - time.monotonic()))
-                            if not ok:
-                                hint = self._diagnose_ide_timeout(target_pid=target_pid)
-                                raise RuntimeError(f"Timeout waiting for legacy IDE to connect. {hint}")
-                            l_conn = legacy_listener.handle
-                            response = self._exchange(l_conn, method, params, deadline)
-                            if isinstance(response, dict):
-                                data = response.get("data", response)
-                                if isinstance(data, dict) and data.get("pid"):
-                                    _last_ide_pid = int(data["pid"])
-                            return response
-                        finally:
-                            legacy_listener.close()
-
-                    elif isinstance(decision.target, Hello):
-                        chosen = decision.target
-                        chosen_conn = held_conns.pop(chosen.pid)
-                        for h_conn in list(held_conns.values()):
-                            _send_release_and_close(h_conn)
-                        held_conns.clear()
-
-                        if _configured_expect_project:
-                            if not match_project(chosen.project, _configured_expect_project):
-                                curr_desc = (
-                                    chosen.project.get("name") if chosen.project else None
-                                ) or "no project"
-                                _send_release_and_close(chosen_conn)
-                                raise TargetError(
-                                    "project_mismatch",
-                                    (
-                                        f"error: project mismatch: expected '{_configured_expect_project}', "
-                                        f"but IDE {chosen.id} has '{curr_desc}' open."
-                                    ),
-                                    instances=[chosen],
-                                )
-
-                        _resolved_pid = chosen.pid
-                        _last_ide_pid = chosen.pid
-
-                        try:
-                            response = self._exchange(
-                                chosen_conn, method, params, deadline
-                            )
-
-                            if isinstance(response, dict) and "instance" in response:
-                                _last_instance = response["instance"]
-                            else:
-                                _last_instance = {"id": chosen.id, "project": chosen.project}
-
-                            return response
-                        finally:
-                            with contextlib.suppress(Exception):
-                                CloseHandle(chosen_conn)
-
+                        return self._send_over_legacy(session)
+                    if isinstance(decision.target, Hello):
+                        return self._send_over_hello(session, decision.target)
                 elif decision.kind == "error":
-                    listener.close()
-                    for h_conn in list(held_conns.values()):
-                        _send_release_and_close(h_conn)
-                    held_conns.clear()
-                    raise _with_ssh_hint(decision.error, hellos)
+                    self._abandon_with_error(session, decision)
 
-            listener.close()
-            for h_conn in list(held_conns.values()):
-                _send_release_and_close(h_conn)
-            held_conns.clear()
+            session.listener.close()
+            _release_held_connections(session)
+            self._raise_connect_timeout(session)
+        finally:
+            _close_session(session)
 
-            if target_pid is not None:
-                final_dec = decide(hellos, legacy_pids, target_pid, codesys_pids, window_over=True)
-                if final_dec.kind == "error":
-                    raise _with_ssh_hint(final_dec.error, hellos)
+    def _start_session(self, method: str, params: dict | None) -> _CommandSession:
+        """Fix the target and the deadline before the pipe is opened."""
+        self._request_id = _next_request_id()
 
-            hint = ssh_dacl_hint() or self._diagnose_ide_timeout(target_pid=target_pid)
-            raise RuntimeError(
-                f"Timeout ({self._timeout}s) waiting for IDE to connect to "
-                f"{self._pipe_path}. The daemon never picked up this "
-                f"request: it is either not running, or still running an "
-                f"earlier command -- the command loop is single-threaded, "
-                f"so one slow command makes every other one time out here. "
-                f"{hint}"
+        # Determine target PID
+        target_pid = _resolved_pid
+        if target_pid is None and _configured_target is not None:
+            target_pid = parse_target(_configured_target)
+        codesys_pids = None if target_pid is not None else _list_codesys_pids()
+
+        discovery_ms = int(os.environ.get("CTS_DISCOVERY_MS", 400))
+        return _CommandSession(
+            pipe_path=self._pipe_path,
+            method=method,
+            params=params or {},
+            request_id=self._request_id,
+            timeout=self._timeout,
+            deadline=time.monotonic() + self._timeout,
+            target_pid=target_pid,
+            codesys_pids=codesys_pids,
+            discovery_budget_s=discovery_ms / 1000.0,
+        )
+
+    def _open_session(self, session: _CommandSession) -> None:
+        """Take the session lock and put the pipe server on the wire."""
+        session.lock = _SessionLock(session.pipe_path)
+        session.lock.acquire()
+        session.lock_since = time.monotonic()
+        session.listener = _PipeListener(session.pipe_path)
+
+    def _accept_connection(self, session: _CommandSession, wait_timeout: float) -> bool:
+        """Wait for a daemon and, when one arrives, run the hello probe on it."""
+        if not session.listener.wait(wait_timeout):
+            return False
+
+        conn = session.listener.handle
+        session.listener = _PipeListener(session.pipe_path)
+
+        reply = self._probe_hello(conn)
+        if conn > 0 and reply is not None:
+            if isinstance(reply, dict) and "hello" in reply:
+                self._register_hello(session, conn, reply)
+            elif isinstance(reply, dict):
+                self._register_legacy(session, conn, reply)
+        return True
+
+    def _probe_hello(self, conn: int):
+        """Ask a fresh connection who it is; None when it went away."""
+        try:
+            _write_msg(
+                conn,
+                wire.hello_request(),
+                deadline=time.monotonic() + 2.0,
+                cmd_name="ping",
+            )
+            return _read_msg(conn, deadline=time.monotonic() + 2.0, cmd_name="ping")
+        except Exception:
+            with contextlib.suppress(Exception):
+                CloseHandle(conn)
+            return None
+
+    def _register_hello(self, session: _CommandSession, conn: int, reply: dict) -> None:
+        """Record a v2 hello, holding its connection for the decision."""
+        h = Hello.from_dict(reply)
+        if h.pid in session.held_conns:
+            _send_release_and_close(session.held_conns.pop(h.pid))
+        session.hellos[h.pid] = h
+        session.held_conns[h.pid] = conn
+
+        if session.target_pid is not None and h.pid != session.target_pid:
+            _send_release_and_close(session.held_conns.pop(h.pid))
+
+        if session.target_pid is None and session.window_end is None:
+            session.window_end = time.monotonic() + session.discovery_budget_s
+
+    def _register_legacy(self, session: _CommandSession, conn: int, reply: dict) -> None:
+        """Record an old daemon that answers without a hello."""
+        lp = reply.get("data", {}).get("pid") or reply.get("pid")
+        if lp:
+            session.legacy_pids.add(int(lp))
+        with contextlib.suppress(Exception):
+            CloseHandle(conn)
+        if session.target_pid is None and session.window_end is None:
+            session.window_end = time.monotonic() + session.discovery_budget_s
+
+    def _rotate_starved_lock(self, session: _CommandSession, connected: bool) -> None:
+        """Give other calls the pipe when the target has been silent a while."""
+        if connected or session.target_pid is None or not session.lock.held:
+            return
+        if time.monotonic() - session.lock_since < _SESSION_LOCK_SLICE_S:
+            return
+        # The target has not answered for a while: give other calls a
+        # turn at the pipe. Nothing to lose -- in targeted mode a
+        # daemon that is not the target is released on arrival, and
+        # the target itself is used the moment it says hello.
+        session.listener.close()
+        session.lock.release()
+        time.sleep(random.uniform(0.03, 0.1))
+        session.lock.acquire()
+        session.lock_since = time.monotonic()
+        session.listener = _PipeListener(session.pipe_path)
+
+    def _send_over_legacy(self, session: _CommandSession) -> dict:
+        """Open a fresh listener for a daemon that never said hello."""
+        global _last_ide_pid
+        _release_held_connections(session)
+
+        legacy_listener = _PipeListener(session.pipe_path)
+        try:
+            ok = legacy_listener.wait(max(0.1, session.deadline - time.monotonic()))
+            if not ok:
+                hint = self._diagnose_ide_timeout(target_pid=session.target_pid)
+                raise RuntimeError(f"Timeout waiting for legacy IDE to connect. {hint}")
+            l_conn = legacy_listener.handle
+            response = self._exchange(l_conn, session.method, session.params, session.deadline)
+            if isinstance(response, dict):
+                data = response.get("data", response)
+                if isinstance(data, dict) and data.get("pid"):
+                    _last_ide_pid = int(data["pid"])
+            return response
+        finally:
+            legacy_listener.close()
+
+    def _send_over_hello(self, session: _CommandSession, chosen: Hello) -> dict:
+        """Send the command over the connection of the chosen daemon."""
+        global _last_ide_pid, _resolved_pid, _last_instance
+        chosen_conn = session.held_conns.pop(chosen.pid)
+        _release_held_connections(session)
+
+        if _configured_expect_project:
+            if not match_project(chosen.project, _configured_expect_project):
+                curr_desc = (chosen.project.get("name") if chosen.project else None) or (
+                    "no project"
+                )
+                _send_release_and_close(chosen_conn)
+                raise TargetError(
+                    "project_mismatch",
+                    (
+                        f"error: project mismatch: expected '{_configured_expect_project}', "
+                        f"but IDE {chosen.id} has '{curr_desc}' open."
+                    ),
+                    instances=[chosen],
+                )
+
+        _resolved_pid = chosen.pid
+        _last_ide_pid = chosen.pid
+
+        try:
+            response = self._exchange(
+                chosen_conn, session.method, session.params, session.deadline
             )
 
+            if isinstance(response, dict) and "instance" in response:
+                _last_instance = response["instance"]
+            else:
+                _last_instance = {"id": chosen.id, "project": chosen.project}
+
+            return response
         finally:
-            if listener:
-                listener.close()
-            lock.release()
-            for h_conn in list(held_conns.values()):
-                _send_release_and_close(h_conn)
-            held_conns.clear()
-            lock.close()
+            with contextlib.suppress(Exception):
+                CloseHandle(chosen_conn)
+
+    def _abandon_with_error(self, session: _CommandSession, decision: Decision) -> None:
+        """Drop everything held and raise the error decide produced."""
+        session.listener.close()
+        _release_held_connections(session)
+        raise _with_ssh_hint(decision.error, session.hellos)
+
+    def _raise_connect_timeout(self, session: _CommandSession) -> None:
+        """Nobody answered within the deadline: explain why, as precisely as we can."""
+        if session.target_pid is not None:
+            final_dec = decide(
+                session.hellos,
+                session.legacy_pids,
+                session.target_pid,
+                session.codesys_pids,
+                window_over=True,
+            )
+            if final_dec.kind == "error":
+                raise _with_ssh_hint(final_dec.error, session.hellos)
+
+        hint = ssh_dacl_hint() or self._diagnose_ide_timeout(target_pid=session.target_pid)
+        raise RuntimeError(
+            f"Timeout ({session.timeout}s) waiting for IDE to connect to "
+            f"{session.pipe_path}. The daemon never picked up this "
+            f"request: it is either not running, or still running an "
+            f"earlier command -- the command loop is single-threaded, "
+            f"so one slow command makes every other one time out here. "
+            f"{hint}"
+        )
 
 
 # ── Convenience ────────────────────────────────────────────────────────────
