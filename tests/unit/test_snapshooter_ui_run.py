@@ -697,6 +697,9 @@ def test_startup_side_effects_run_in_order(scenario):
 
     tail = scenario.event_names()[-3:]
     assert tail == ["Form.Show", "Application.DoEvents", "time.sleep"]
+    # The pump: DoEvents then a 50 ms sleep, once per tick, until the form closes.
+    assert scenario.events[-1] == ("time.sleep", 0.05)
+    assert scenario.event_names().count("Application.DoEvents") == 1
 
 
 def test_log_lines_carry_app_and_project(scenario):
