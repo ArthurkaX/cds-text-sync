@@ -94,6 +94,12 @@ read it back) and needs a project open in the IDE.
 | `take`, `diff`, `restore` | an existing **online session**, even in dry-run | they read live values; without a session the daemon answers `Not connected` — run `cts connect`, or log in in the CODESYS UI first (the daemon adopts a session but never logs in itself) |
 | `ui-check` | a session where WinForms can be created | the form needs no online session; its `save`/`diff`/`restore` steps read live values, so without one they land in `failed_steps` |
 
+Values are read through the online application's **symbols**, so a leaf that is
+not exported (a struct/array member, an object not declared as a symbol, or code
+not compiled into the PLC) comes back `read_ok: false` with *"is not exported to
+the online application"* in `read_error` — that is a per-variable result, not a
+command failure.
+
 `--path` on `tree` is a **case-sensitive prefix** of the leaf path (not an exact
 path, not a glob); `--path` on `take` is an exact path and is repeatable.
 
