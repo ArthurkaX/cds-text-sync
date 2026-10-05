@@ -373,8 +373,11 @@ class TestWorkspaceIdentity:
         result = build.run()
 
         assert result.status == STATUS_SKIPPED
+        # Both sides are named and shortened, so the divergence is visible
+        # without going to the daemon's last-result file for it.
         assert result.reason == (
-            "IDE workspace fingerprint does not match the requested workspace"
+            "IDE workspace fingerprint does not match the requested workspace "
+            "(ide=bbbbbbbbbbbb cli=aaaaaaaaaaaa)"
         )
         assert result.reason_code == "stale_ide"
 
@@ -406,6 +409,25 @@ class TestWorkspaceIdentity:
         )
         assert result.reason_code == "stale_ide"
         assert result.summary == {"import_freshness": "stale"}
+        assert result.complete is False
+
+    def test_a_stale_attestation_names_both_fingerprints(self, build):
+        build.build_response = clean_payload(
+            import_freshness="stale",
+            workspace_fingerprint=_SHA,
+            import_freshness_details={
+                "imported_fingerprint": "c" * 64,
+                "imported_at": "2026-10-05T09:00:00",
+            },
+        )
+
+        result = build.run()
+
+        assert result.reason == (
+            "workspace has changed since the last successful IDE import "
+            "(imported=cccccccccccc current=aaaaaaaaaaaa)"
+        )
+        assert result.reason_code == "stale_ide"
         assert result.complete is False
 
     def test_an_unknown_import_attestation_skips(self, build):

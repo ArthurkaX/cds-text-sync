@@ -386,9 +386,25 @@ matches the last successful daemon import, `stale` means it changed afterwards,
 and `unknown` means no usable attestation could be read. An import without
 `--save` is trusted only while the same daemon process remains alive; after a
 restart it becomes `unknown`. The latter two are skipped with `stale_ide` /
-`identity_unknown`; re-run `cts import --save` before verifying. This
-attestation proves the disk snapshot accepted by the daemon, but does not yet
-cover every IDE setting or library resolution.
+`identity_unknown`. This attestation proves the disk snapshot accepted by the
+daemon, but does not yet cover every IDE setting or library resolution.
+
+The fingerprint covers the **view root** — the folder the export writes and the
+import reads (`project-view/` by default) — not the sync folder around it, and
+skips dot-named entries at the top of that scope (`.dump/`, `.backup/`,
+`.git/`). A CODESYS project kept in the same folder as its own sync root
+rewrites `*.~u`, `*.project`, `*.opt` and `*.precompilecache` while the IDE
+runs; those are not workspace content, and hashing them reported a new
+workspace on every call. Both `reason` lines for a stale handshake name the two
+shortened fingerprints (`ide=`/`cli=`, or `imported=`/`current=`) so the
+divergence is visible in the report itself.
+
+A stale handshake is not necessarily a change on disk: the IDE can be unable to
+describe the workspace it just imported, or the attestation can predate the
+fingerprint rule above. `next` therefore says to run `cts compare` first — a
+clean compare means only the attestation needs refreshing — and `cts import`
+(no `--save` needed) re-attests the workspace. `--save` stays opt-in because it
+also saves everything else open in the IDE.
 
 | Exit code | Meaning |
 | --- | --- |
