@@ -543,6 +543,20 @@ def _current_match_index(selected, matches):
     return -1
 
 
+def _loaded_text(selected, missing):
+    """What Load reports: the leaves it ticked, then what it could not find.
+
+    The count is the leaves actually marked in this tree, not the number of
+    entries in the preset: a preset naming a path this project does not have
+    used to read "Loaded 1 variables." with nothing ticked.  Those paths are
+    named separately, because "loaded 0" alone would hide them.
+    """
+    text = "Loaded {0} variables.".format(selected)
+    if missing > 0:
+        text += "\n{0} not found in the tree.".format(missing)
+    return text
+
+
 def _format_diff(report):
     """The four-count summary the Diff and Restore boxes show."""
     return (
@@ -858,7 +872,7 @@ class _FormMethods(object):
             self.tree.EndUpdate()
             self._checking = False
         self._update_status()
-        MessageBox.Show("Loaded {0} variables.".format(selected), "Load",
+        MessageBox.Show(_loaded_text(selected, len(paths) - selected), "Load",
                         MessageBoxButtons.OK, MessageBoxIcon.Information)
 
     def _on_diff(self, sender, args):

@@ -1214,6 +1214,30 @@ def test_load_ignores_paths_the_tree_does_not_have(scenario, tmp_path):
     assert form.tree.Nodes[0].Nodes[0].Checked is False  # GVL: 1 of 2
 
 
+def test_load_counts_the_ticked_leaves_not_the_preset_entries(scenario, tmp_path):
+    """The old message said "Loaded 1 variables." with nothing ticked at all."""
+    _load(scenario, tmp_path, ["Nope.missing"])
+
+    assert scenario.messages()[-1][:2] == (
+        "Loaded 0 variables.\n1 not found in the tree.",
+        "Load",
+    )
+
+
+def test_load_reports_how_many_paths_were_missing(scenario, tmp_path):
+    _load(scenario, tmp_path, ["GVL.a", "Nope.one", "Nope.two"])
+
+    assert scenario.messages()[-1][0] == (
+        "Loaded 1 variables.\n2 not found in the tree."
+    )
+
+
+def test_a_preset_with_nothing_missing_says_only_what_loaded(scenario, tmp_path):
+    _load(scenario, tmp_path, ["GVL.a"])
+
+    assert scenario.messages()[-1][0] == "Loaded 1 variables."
+
+
 def test_load_checks_the_root_from_descendant_leaves_not_direct_children(scenario, tmp_path):
     """The root has two child nodes but three leaves below them.
 
