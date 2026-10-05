@@ -131,6 +131,7 @@ DISPATCH_SPECS = {
     "set_credentials": ("direct", "_cmd_set_credentials"),
     "diagnose_online": ("noarg", "_cmd_diagnose_online"),
     "discover": ("direct", "_cmd_discover"),
+    "snapshooter": ("direct", "_cmd_snapshooter"),
 }
 
 # Derived, never listed separately: a command is dispatchable exactly when the
@@ -204,4 +205,5 @@ HELP_TEXT = {
 "cicd": "Run CI/CD test plan --file path [--timeout N]",
 "permissions": "Show daemon security config (read-only)",
 "plc_log": "Read PLC log [--file codesyscontrol.log] [--tail N] [--output DIR]",
+"snapshooter": "PLC value presets (JSON): action tree/take/diff/restore --action A. restore is a dry-run unless --apply",
 }
