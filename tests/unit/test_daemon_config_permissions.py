@@ -152,7 +152,7 @@ def test_valid_config_is_merged_over_the_defaults():
 
 def test_a_legacy_copy_command_key_is_harmless():
     """An old file still carries copy_command; nothing reads it now."""
-    _configure(stored='{"poll_ms": 500, "copy_command": "cts-win"}')
+    _configure(stored='{"poll_ms": 500, "copy_command": "cts-old"}')
     config, status = ds._read_daemon_config()
     assert status == ds._CONFIG_OK
     assert config["poll_ms"] == 500

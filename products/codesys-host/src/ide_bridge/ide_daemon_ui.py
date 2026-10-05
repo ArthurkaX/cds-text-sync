@@ -85,8 +85,8 @@ def format_copy_command(info):
     - project open: '!cts --target ide-3684 --expect-project VKO --help'
     - no project:   '!cts --target ide-3684 --help'
 
-    Always a plain ``cts`` command: over SSH the caller substitutes the wrapper
-    (``tools/cts-win``) rather than the daemon knowing about the transport.
+    Always a plain ``cts`` command; the daemon knows nothing about how the
+    caller reaches the machine.
     """
     if not info:
         ide_id = "ide-{0}".format(os.getpid())
