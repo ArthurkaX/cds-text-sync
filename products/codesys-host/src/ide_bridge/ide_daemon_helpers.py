@@ -430,6 +430,39 @@ def _online_app_if_connected(project):
     return online_app, target_app, None
 
 
+def _require_online_app():
+    """The daemon's cached online application, or ``(None, err)``.
+
+    Shared opening of every handler that needs the online session. It reads
+    the session the daemon already holds and never opens one (see
+    ``_online_app_if_connected``); an absent session is an answer. ``err`` is
+    the response that has always been returned for that case, byte for byte,
+    so a caller is one ``if err: return err``.
+    """
+    oa = sys._codesys_daemon_loop.get("online_app")
+    if oa is None:
+        return None, {
+            "ok": False,
+            "error": "Not connected. Call connect_to_device first.",
+        }
+    return oa, None
+
+
+def _require_online_device():
+    """``(oa, online_dev, err)`` for handlers that need the online device.
+
+    On top of ``_require_online_app`` this resolves ``get_online_device()``.
+    Both error responses are the ones these handlers have always produced.
+    """
+    oa, err = _require_online_app()
+    if err:
+        return None, None, err
+    online_dev = oa.get_online_device()
+    if online_dev is None:
+        return oa, None, {"ok": False, "error": "get_online_device() returned None"}
+    return oa, online_dev, None
+
+
 # ── Tree building ──────────────────────────────────────────────────────────
 
 

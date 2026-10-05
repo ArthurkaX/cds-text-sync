@@ -37,6 +37,7 @@ test_paths = [
   "../../tests/unit/test_options_locked_hover.py",
   "../../tests/unit/test_project_file_path.py",
   "../../tests/unit/test_project_snapshooter.py",
+  "../../tests/unit/test_require_online_device.py",
   "../../tests/unit/test_snapshooter_map.py",
   "../../tests/unit/test_snapshot_reader.py",
   "../../tests/unit/test_snapshot_reader_locale.py",

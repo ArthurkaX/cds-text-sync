@@ -26,6 +26,8 @@ from ide_daemon_state import (
 from ide_daemon_helpers import (
     _online_app_if_connected,
     _get_sync_folder,
+    _require_online_app,
+    _require_online_device,
 )
 
 # Imported for its side effect: puts shared/src on sys.path so this module can be
@@ -66,14 +68,10 @@ def _cmd_app_crc(params):
 
     Downloads Application.crc and Application.app info from PlcLogic.
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
-
     try:
-        online_dev = oa.get_online_device()
-        if online_dev is None:
-            return {"ok": False, "error": "get_online_device() returned None"}
+        _oa, online_dev, err = _require_online_device()
+        if err:
+            return err
 
         app_dir = None
         result = {}
@@ -209,9 +207,9 @@ def _cmd_app_info():
 
     Tries to extract: version, build date, checksum, signature, etc.
     """
-    oa = sys._codesys_daemon_loop.get("online_app")
-    if oa is None:
-        return {"ok": False, "error": "Not connected. Call connect_to_device first."}
+    oa, err = _require_online_app()
+    if err:
+        return err
 
     try:
 
