@@ -6,9 +6,9 @@ project references:
 
 * placeholder items (type ``4723ebe7-...``): the project names a library and a
   default version and CODESYS resolves it against the machine;
-* concrete items (type ``51a11660...``): the project pins a library directly,
-  carrying ``Name``/``Resolution`` instead of ``PlaceholderName``/
-  ``DefaultResolution``.
+* concrete items (type ``51a11660-...``): the project pins a library directly,
+  carrying the whole ``name, version (vendor)`` string in ``Name`` instead of
+  ``PlaceholderName``/``DefaultResolution``.
 
 Both are real references; reading only the placeholder ones leaves a pinned
 library out of the report.
@@ -33,7 +33,7 @@ from cds_text_sync.engine import library_refs  # noqa: E402
 
 LIBRARY_MANAGER_GUID = library_refs.LIBRARY_MANAGER_TYPE_GUID
 PLACEHOLDER_GUID = library_refs.PLACEHOLDER_ITEM_TYPE_GUID
-CONCRETE_GUID = library_refs.CONCRETE_ITEM_TYPE_GUID_PREFIX + "-2362-4f77-9ad0-7f11f8a5b001"
+CONCRETE_GUID = library_refs.CONCRETE_ITEM_TYPE_GUID
 
 
 def _single(name, value):
@@ -55,11 +55,11 @@ def _placeholder_item(name, version, vendor, namespace, system="False"):
 
 
 def _concrete_item(name, version, vendor, namespace, system="False"):
+    """A concrete item: the whole resolution lives in ``Name``, not in a field."""
     return "\n".join(
         [
             '        <Single Type="{%s}" Method="IArchivable">' % CONCRETE_GUID,
-            _single("Name", name),
-            _single("Resolution", "{0}, {1} ({2})".format(name, version, vendor)),
+            _single("Name", "{0}, {1} ({2})".format(name, version, vendor)),
             _single("Namespace", namespace),
             _single("SystemLibrary", system),
             "        </Single>",

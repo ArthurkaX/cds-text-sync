@@ -1,0 +1,116 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">87280c30-9f41-4442-8340-fdb4292a9a0e</Single>
+        <Single Name="ParentGuid" Type="System.Guid">32d92914-bcb4-4227-b529-32fd90910eca</Single>
+        <Single Name="Name" Type="string">Library Manager</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">adb5cb65-8e1d-4a00-b70a-375ea27582f3</Single>
+        <Null Name="EmbeddedTypeGuids" />
+        <Single Name="Timestamp" Type="long">639266844183841030</Single>
+      </Single>
+      <Single Name="Object" Type="{adb5cb65-8e1d-4a00-b70a-375ea27582f3}" Method="IArchivable">
+        <List2 Name="ParameterTable" />
+        <List Name="Items" Type="System.Collections.ArrayList">
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">IoStandard, 3.5.16.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">IoStandard</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">b303f5ce-75ff-4668-a777-7da8debb449c</Single>
+            <Single Name="Id" Type="long">307721746</Single>
+            <Single Name="Namespace" Type="string">IoStandard</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">True</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">3SLicense, 0.0.0.0 (3S - Smart Software Solutions GmbH)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">3SLicense</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">97c3b452-d9fa-4ac2-9d0c-3d420aa6d95b</Single>
+            <Single Name="Id" Type="long">252061208</Single>
+            <Single Name="Namespace" Type="string">_3S_LICENSE</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">CAA Device Diagnosis, 3.5.15.0 (CAA Technical Workgroup)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">CAA Device Diagnosis</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">b303f5ce-75ff-4668-a777-7da8debb449c</Single>
+            <Single Name="Id" Type="long">1714253339</Single>
+            <Single Name="Namespace" Type="string">DED</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">True</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">Breakpoint Logging Functions, * (3S - Smart Software Solutions GmbH)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">BreakpointLogging</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">b303f5ce-75ff-4668-a777-7da8debb449c</Single>
+            <Single Name="Id" Type="long">3699318507</Single>
+            <Single Name="Namespace" Type="string">BPLog</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{51a11660-6c0d-4598-8c08-419c5845ea1f}" Method="IArchivable">
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="Name" Type="string">PSVRetain, * (PSV Electro)</Single>
+            <Single Name="Id" Type="long">100672614</Single>
+            <Single Name="Namespace" Type="string">PSVRetain</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{51a11660-6c0d-4598-8c08-419c5845ea1f}" Method="IArchivable">
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="Name" Type="string">PSVLeds, * (PSV Electro)</Single>
+            <Single Name="Id" Type="long">992720533</Single>
+            <Single Name="Namespace" Type="string">PSVLEDS</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+        </List>
+        <Dictionary Type="System.Collections.Hashtable" Name="PlaceholderRedirectionTable">
+          <Entry>
+            <Key>
+              <Single Type="string">Standard</Single>
+            </Key>
+            <Value>
+              <Single Type="string">Standard, 3.5.22.0 (System)</Single>
+            </Value>
+          </Entry>
+        </Dictionary>
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">32d92914-bcb4-4227-b529-32fd90910eca</Single>
+      <Array Name="Path" Type="string">
+        <Single Type="string">PLC_Stabur</Single>
+        <Single Type="string">PLC Logic</Single>
+        <Single Type="string">Application</Single>
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>
+  

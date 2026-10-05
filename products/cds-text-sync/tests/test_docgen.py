@@ -735,18 +735,18 @@ def test_project_cards_are_written_once(tmp_path, monkeypatch):
     assert rendered == ["FB_Sensor"]
 
 
-CONCRETE_ITEM_GUID = "51a11660-2362-4f77-9ad0-7f11f8a5b001"
+CONCRETE_ITEM_GUID = "51a11660-6c0d-4598-8c08-419c5845ea1f"
 
 
-def _concrete_item_xml(name, resolution, namespace, system):
+def _concrete_item_xml(resolution, namespace, system):
+    """A concrete item as CODESYS writes it: the whole resolution in ``Name``."""
     return (
         '\n        <Single Type="{{{0}}}" Method="IArchivable">\n'
         '          <Single Name="Name" Type="string">{1}</Single>\n'
-        '          <Single Name="Resolution" Type="string">{2}</Single>\n'
-        '          <Single Name="Namespace" Type="string">{3}</Single>\n'
-        '          <Single Name="SystemLibrary" Type="bool">{4}</Single>\n'
+        '          <Single Name="Namespace" Type="string">{2}</Single>\n'
+        '          <Single Name="SystemLibrary" Type="bool">{3}</Single>\n'
         "        </Single>"
-    ).format(CONCRETE_ITEM_GUID, name, resolution, namespace, system)
+    ).format(CONCRETE_ITEM_GUID, resolution, namespace, system)
 
 
 def test_a_concrete_library_reference_is_reported_and_resolved(tmp_path):
@@ -761,9 +761,7 @@ def test_a_concrete_library_reference_is_reported_and_resolved(tmp_path):
     workspace = tmp_path / "sync"
     project = workspace / "project-view"
     project.mkdir(parents=True)
-    items = _concrete_item_xml(
-        "PSVRetain", "PSVRetain, * (PSV Electro)", "PSVRetain", "True"
-    )
+    items = _concrete_item_xml("PSVRetain, * (PSV Electro)", "PSVRetain", "True")
     (project / "Library Manager.xml").write_text(
         '<?xml version=\'1.0\' encoding=\'utf-8\'?>\n'
         '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">\n'

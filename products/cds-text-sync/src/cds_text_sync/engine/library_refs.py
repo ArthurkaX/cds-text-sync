@@ -32,11 +32,10 @@ LIBRARY_MANAGER_TYPE_GUID = "adb5cb65-8e1d-4a00-b70a-375ea27582f3"
 PLACEHOLDER_ITEM_TYPE_GUID = "4723ebe7-5bfc-43c6-be6b-5097002ef6b4"
 
 # Type GUID of a *concrete* library item - a library pinned directly by the
-# project instead of named through a placeholder. Its fields differ: ``Name``
-# and ``Resolution`` replace ``PlaceholderName`` and ``DefaultResolution``.
-# Only the leading segment of the GUID was readable in the export that
-# surfaced this, so the item is matched by prefix.
-CONCRETE_ITEM_TYPE_GUID_PREFIX = "51a11660"
+# project instead of named through a placeholder. It carries no
+# ``DefaultResolution``: the whole ``name, version (vendor)`` string is in its
+# single ``Name`` field. Read off the reference project's export.
+CONCRETE_ITEM_TYPE_GUID = "51a11660-6c0d-4598-8c08-419c5845ea1f"
 
 # Name of the dictionary that points a placeholder at the version actually
 # used. ``Standard`` reaches a project only this way: the system pulls it in,
@@ -157,39 +156,32 @@ def _item_kind(item):
     guid = _normalise_guid(item.get("Type"))
     if guid == PLACEHOLDER_ITEM_TYPE_GUID:
         return KIND_PLACEHOLDER
-    if guid.startswith(CONCRETE_ITEM_TYPE_GUID_PREFIX):
+    if guid == CONCRETE_ITEM_TYPE_GUID:
         return KIND_CONCRETE
     return ""
 
 
-def _resolution_text(item):
-    """The declared ``name, version (vendor)`` string of one item, or None.
+def _resolution_text(item, kind):
+    """The ``name, version (vendor)`` string of one item, or None.
 
-    A placeholder declares it as ``DefaultResolution``; a concrete item as
-    ``Resolution``. Both forms are accepted for either kind, because the two
-    differ only in which one CODESYS writes.
+    A placeholder declares it in ``DefaultResolution``. A concrete item has no
+    resolution field at all: the same string is its ``Name``, so a bare
+    library name and a full resolution are told apart by ``parse_default_resolution``.
     """
-    for name in ("DefaultResolution", "Resolution"):
-        element = item.find("Single[@Name='{0}']".format(name))
-        if element is not None and (element.text or "").strip():
-            return element.text
-    return None
+    if kind == KIND_CONCRETE:
+        return _single_text(item, "Name") or None
+    return _single_text(item, "DefaultResolution") or None
 
 
 def _item_reference(item, kind, container):
     """Build one reference dict from an ``Items`` element, or None if unnamed.
 
-    ``parse_default_resolution`` supplies version and vendor; a missing
-    resolution leaves the wildcard version and an empty vendor, exactly as for
-    a placeholder named without one.
+    ``parse_default_resolution`` supplies the name, version and vendor; a
+    string without a version leaves the wildcard version and an empty vendor.
     """
-    declared = _single_text(item, "Name")
     placeholder = _single_text(item, "PlaceholderName")
-    name, version, vendor = parse_default_resolution(_resolution_text(item))
-    if kind == KIND_PLACEHOLDER:
-        resolved_name = name or placeholder or declared
-    else:
-        resolved_name = declared or name
+    name, version, vendor = parse_default_resolution(_resolution_text(item, kind))
+    resolved_name = name or placeholder
     if not resolved_name:
         return None
     return {
