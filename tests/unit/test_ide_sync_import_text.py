@@ -264,8 +264,20 @@ def bridge(monkeypatch, tmp_path):
     def invalidate():
         record("invalidate")
 
+    def project_edit_refusal(project, command):
+        if not b.online:
+            return None
+        return {
+            "ok": False,
+            "error": (
+                "The IDE is online with the PLC; editing the project while "
+                "online is not supported. Run `cts disconnect`, then repeat "
+                "{0}."
+            ).format(command),
+        }
+
     monkeypatch.setattr(
-        sync, "_active_app_online_state", lambda: (b.online, b.online_state)
+        sync.ide_online_guard, "project_edit_refusal", project_edit_refusal
     )
     monkeypatch.setattr(
         sync,
@@ -336,23 +348,16 @@ def _fb(name="FB_A"):
 
 def test_online_application_refuses_before_touching_the_project(bridge):
     bridge.online = True
-    bridge.online_state = "running"
     result = bridge.run()
-    assert result == {
-        "ok": False,
-        "error": (
-            "Active application is online (state: running). Adding/creating "
-            "objects is an offline operation. Run disconnect_from_device "
-            "first, then retry sync_import_text."
-        ),
-    }
+    assert result["ok"] is False
+    assert "cts disconnect" in result["error"]
+    assert "sync_import_text" in result["error"]
     assert bridge.calls == []
 
 
-def test_online_refusal_defaults_the_state_name(bridge):
+def test_the_online_refusal_names_the_command_to_repeat(bridge):
     bridge.online = True
-    bridge.online_state = ""
-    assert "(state: connected)" in bridge.run()["error"]
+    assert bridge.run()["error"].endswith("repeat sync_import_text.")
 
 
 # ── 2. the export baseline is a precondition ───────────────────────────────

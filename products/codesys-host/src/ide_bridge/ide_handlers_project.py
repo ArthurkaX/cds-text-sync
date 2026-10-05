@@ -20,6 +20,7 @@ import ide_runtime_common as _common  # noqa: F401 – imported for completeness
 
 from cts_shared.coerce import as_bool
 
+import ide_online_guard
 import ide_online_helpers as _helpers
 
 from ide_daemon_state import (
@@ -106,6 +107,10 @@ def _cmd_set_sync_folder(params):
     project, err = _get_active_project()
     if err:
         return err
+
+    refusal = ide_online_guard.project_edit_refusal(project, "set_sync_folder")
+    if refusal is not None:
+        return refusal
 
     raw_path = params.get("path", "")
     try:
@@ -908,6 +913,9 @@ def _cmd_set_simulation_mode(params):
     project, err = _get_active_project()
     if err:
         return err
+    refusal = ide_online_guard.project_edit_refusal(project, "set_simulation_mode")
+    if refusal is not None:
+        return refusal
     try:
         enable_raw = (params or {}).get("enable", "on")
         enable = _bool_or_none(enable_raw)

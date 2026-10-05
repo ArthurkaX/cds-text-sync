@@ -15,6 +15,7 @@ import os
 import tempfile
 import time
 
+import ide_online_guard
 import ide_runtime_common as _common
 
 from ide_daemon_state import (
@@ -24,7 +25,6 @@ from ide_daemon_state import (
 )
 
 from ide_daemon_helpers import (
-    _active_app_online_state,
     _active_application_name,
     _find_object_by_selector,
     _find_object_in_project,
@@ -302,6 +302,10 @@ def _cmd_sync_import(params):
     project, err = _get_active_project()
     if err:
         return err
+
+    refusal = ide_online_guard.project_edit_refusal(project, "sync_import")
+    if refusal is not None:
+        return refusal
 
     in_path = params.get("input", "")
     if not in_path:
@@ -654,27 +658,6 @@ class _ImportTextContext(object):
         self.return_data = {}
 
 
-def _import_text_online_refusal():
-    """Refuse before any export when a live session would swallow the creates.
-
-    Creating/adding POU/GVL/DUT is an offline operation.  If a live online
-    session is active the new objects silently won't be created, so fail early
-    with a clear instruction to disconnect first.  Returns the refusal dict, or
-    None when the import may proceed.
-    """
-    online, state = _active_app_online_state()
-    if not online:
-        return None
-    return {
-        "ok": False,
-        "error": (
-            "Active application is online (state: {0}). Adding/creating "
-            "objects is an offline operation. Run disconnect_from_device "
-            "first, then retry sync_import_text."
-        ).format(state or "connected"),
-    }
-
-
 def _import_text_export_baseline(context):
     """Export the live IDE state and record the patch paths on the context.
 
@@ -727,15 +710,6 @@ def _import_text_build_import_patch(context):
         "--include-objects",
     ]
     _common.run_external_engine(compare_args)
-    return None
-
-
-def _import_text_resolve_project(context):
-    """Resolve the active CODESYS project onto the context, or return its error."""
-    project, error = _get_active_project()
-    if error:
-        return error
-    context.project = project
     return None
 
 
@@ -1161,20 +1135,21 @@ def _cmd_sync_import_text(params):
     Each stage is a named helper over a shared :class:`_ImportTextContext`;
     only the create/apply loop and the save are allowed to fail softly.
     """
-    refusal = _import_text_online_refusal()
+    project, error = _get_active_project()
+    if error is not None:
+        return error
+
+    refusal = ide_online_guard.project_edit_refusal(project, "sync_import_text")
     if refusal is not None:
         return refusal
 
     context = _ImportTextContext(params)
+    context.project = project
     error = _import_text_export_baseline(context)
     if error is not None:
         return error
 
     error = _import_text_build_import_patch(context)
-    if error is not None:
-        return error
-
-    error = _import_text_resolve_project(context)
     if error is not None:
         return error
 
@@ -1488,6 +1463,10 @@ def _cmd_update_pou(params):
     if err:
         return err
 
+    refusal = ide_online_guard.project_edit_refusal(project, "update_pou")
+    if refusal is not None:
+        return refusal
+
     pou_name = params.get("name", "")
     app_name = params.get("app") or _active_application_name(project)
     st_path = params.get("st_path", "")
@@ -1614,6 +1593,10 @@ def _cmd_delete_pou(params):
     project, err = _get_active_project()
     if err:
         return err
+
+    refusal = ide_online_guard.project_edit_refusal(project, "delete_pou")
+    if refusal is not None:
+        return refusal
 
     obj_name = params.get("name", "")
     app_name = params.get("app") or _active_application_name(project)

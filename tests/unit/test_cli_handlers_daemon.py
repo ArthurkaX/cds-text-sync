@@ -78,6 +78,37 @@ def test_import_does_not_allow_online_override(daemon_calls):
     assert daemon_calls == [("sync_import_text", {})]
 
 
+def test_the_online_edit_refusal_exits_nonzero_and_names_disconnect(monkeypatch, capsys):
+    """The daemon's ok=False refusal must reach the shell as a real failure.
+
+    A refusal that exited 0 is how the live online import looked successful.
+    """
+    refusal = {
+        "ok": False,
+        "error": (
+            "The IDE is online with the PLC; editing the project while online "
+            "is not supported. Run `cts disconnect`, then repeat "
+            "sync_import_text."
+        ),
+    }
+
+    def fake_send(method, params=None, timeout=15):
+        if method == "timeout_profile":
+            return {"ok": True, "data": {"timeouts": {}, "default": 5}}
+        return refusal
+
+    monkeypatch.setattr(d, "send_command_reverse", fake_send)
+    monkeypatch.setattr("cds_cli._cli_io.send_command_reverse", fake_send)
+
+    with pytest.raises(SystemExit) as exc:
+        d.dispatch_daemon(
+            _args(command="import", dry_run=False, save=False, no_refresh=False)
+        )
+
+    assert exc.value.code == 1
+    assert "cts disconnect" in capsys.readouterr().err
+
+
 def test_plc_crc_builds_first(daemon_calls):
     d.dispatch_daemon(_args(command="plc-crc", build=True))
     # build runs before the CRC comparison. The daemon method is plc_crc, not
