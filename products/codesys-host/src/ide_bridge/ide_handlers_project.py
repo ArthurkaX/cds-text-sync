@@ -22,6 +22,7 @@ from cts_shared.coerce import as_bool
 
 import ide_online_guard
 import ide_online_helpers as _helpers
+import ide_path_guards
 
 from ide_daemon_state import (
     _log,
@@ -817,6 +818,9 @@ def _open_projects(projects):
 
 
 def _cmd_project_open(params):
+    refusal = ide_path_guards.host_path_error(params, "path")
+    if refusal is not None:
+        return refusal
     path = (params or {}).get("path", "")
     if not path:
         return {"ok": False, "error": "project open requires a 'path'"}

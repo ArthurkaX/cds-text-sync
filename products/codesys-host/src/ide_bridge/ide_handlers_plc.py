@@ -24,6 +24,8 @@ from ide_daemon_helpers import (
     _require_online_device,
 )
 
+from ide_path_guards import host_path_error
+
 # Imported for its side effect: puts shared/src on sys.path so this module can be
 # imported cold, without depending on some earlier bridge module having done it.
 import ide_runtime_common  # noqa: F401
@@ -399,6 +401,9 @@ def _cmd_plc_files(params):
 
 def _cmd_plc_download(params):
     """Download a file from PLC to the local filesystem."""
+    refusal = host_path_error(params, "dest")
+    if refusal is not None:
+        return refusal
     try:
         _oa, online_dev, err = _require_online_device()
         if err:
@@ -457,6 +462,9 @@ def _cmd_plc_upload(params):
         --dest PATH: destination path on PLC (e.g. PlcLogic/Application/myfile.bin)
         --overwrite 0|1: overwrite if exists (default: 1)
     """
+    refusal = host_path_error(params, "src")
+    if refusal is not None:
+        return refusal
     try:
         _oa, online_dev, err = _require_online_device()
         if err:
@@ -508,6 +516,9 @@ def _cmd_plc_log(params):
         --output PATH: save full log to file/directory
         If neither --tail nor --output: list available log files.
     """
+    refusal = host_path_error(params, "output")
+    if refusal is not None:
+        return refusal
     try:
         _oa, online_dev, err = _require_online_device()
         if err:

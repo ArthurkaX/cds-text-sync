@@ -29,6 +29,8 @@ from ide_st_objects import (
     read_document as _read_document,
 )
 
+from ide_path_guards import host_path_error
+
 # Imported for its side effect: puts shared/src on sys.path so this module can be
 # imported cold, without depending on some earlier bridge module having done it.
 import ide_runtime_common  # noqa: F401
@@ -105,6 +107,9 @@ def _import_freshness(sync_folder, fingerprint, app_name, project_path):
 
 
 def _cmd_export(params):
+    refusal = host_path_error(params, "output")
+    if refusal is not None:
+        return refusal
     project, err = _get_active_project()
     if err:
         return err
@@ -350,6 +355,9 @@ def _cmd_build(params):
     Collects build messages via system.get_messages().
     Supports --output PATH and --stdout flags.
     """
+    refusal = host_path_error(params, "output")
+    if refusal is not None:
+        return refusal
     project, err = _get_active_project()
     if err:
         return err
@@ -505,6 +513,9 @@ def _cmd_export_csv(params):
         --values: include current values (requires connection)
         --pattern FILTER: filter by name
     """
+    refusal = host_path_error(params, "output")
+    if refusal is not None:
+        return refusal
     oa, err = _require_online_app()
     if err:
         return err
@@ -602,6 +613,9 @@ def _cmd_export_st(params):
     Args:
         --output DIR: destination directory (default: .dump/st/)
     """
+    refusal = host_path_error(params, "output")
+    if refusal is not None:
+        return refusal
     project, err = _get_active_project()
     if err:
         return err
@@ -721,6 +735,9 @@ def _cmd_application_tree(params):
             --flat: return flat list instead of tree
             --output PATH: write JSON to file (recommended for large projects)
     """
+    refusal = host_path_error(params, "output")
+    if refusal is not None:
+        return refusal
     oa, err = _require_online_app()
     if err:
         return err
