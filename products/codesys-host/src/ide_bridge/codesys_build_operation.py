@@ -19,6 +19,16 @@ from codesys_utils import (
     safe_str,
 )
 
+# Imported for its side effect: puts shared/src on sys.path so this module can be
+# imported cold, without depending on some earlier bridge module having done it.
+import ide_runtime_common  # noqa: F401
+
+from cts_shared.build_severity import (
+    SEVERITY_ERROR,
+    SEVERITY_WARNING,
+    severity_kind,
+)
+
 
 BUILD_CATEGORY_GUID = "97F48D64-A2A3-4856-B640-75C046E37EA9"
 
@@ -237,12 +247,13 @@ def _format_messages(messages, app_name):
             continue
 
         severity = _severity(msg)
-        if "Error" not in severity and "Warning" not in severity:
+        kind = severity_kind(severity)
+        if kind not in (SEVERITY_ERROR, SEVERITY_WARNING):
             continue
 
-        if "Error" in severity:
+        if kind == SEVERITY_ERROR:
             error_count += 1
-        if "Warning" in severity:
+        if kind == SEVERITY_WARNING:
             warning_count += 1
 
         obj_text, obj_ref = _object_name(msg, app_name)

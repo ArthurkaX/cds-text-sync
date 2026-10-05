@@ -273,6 +273,42 @@ def test_compiler_errors_are_a_fail(workspace, monkeypatch):
     assert code == 1
 
 
+def test_a_lowercased_error_severity_still_fails_the_gate(workspace, monkeypatch):
+    """CODESYS spells the severity; the gate must not depend on its casing.
+
+    With ``error`` read as an unknown word the stage counted zero problems and
+    passed, which is the one answer a compile failure must never produce.
+    """
+    _fake_daemon(
+        monkeypatch,
+        {
+            "build": {
+                "ok": False,
+                "data": {
+                    "application": "Device.Application",
+                    "errors": 1,
+                    "warnings": 0,
+                    "messages": [
+                        {
+                            "severity": "ERROR",
+                            "code": "C0032",
+                            "text": "cannot convert INT to STRING",
+                            "object": "PLC_PRG",
+                        }
+                    ],
+                },
+            }
+        },
+    )
+
+    code, doc, _err = _verify_json(workspace, ["--only", "build"])
+    build = _stage(doc, "build")
+    assert build["status"] == "fail"
+    assert build["problem_count"] == 1
+    assert doc["verdict"] == "fail"
+    assert code == 1
+
+
 def test_daemon_refusal_is_error_not_fail(workspace, monkeypatch):
     _fake_daemon(monkeypatch, {"build": {"ok": False, "error": "no project open"}})
 

@@ -13,6 +13,7 @@ import os
 import time
 
 from cts_shared import wire
+from cts_shared.build_severity import SEVERITY_ERROR, severity_kind
 
 from cds_text_sync.engine.reverse_pipe_client import send_command_reverse
 
@@ -503,10 +504,10 @@ def _read_build_counts(evidence):
 def _read_build_messages(evidence):
     """Turn the compiler's message list into normalised problems.
 
-    Only a severity containing the word ``Error`` counts: the daemon's own
-    capitalisation is the contract. A message that is not an object is counted
-    as malformed rather than reported, but it does make the diagnostics
-    incomplete.
+    Any severity that *means* an error counts, whatever its casing: the word
+    comes from CODESYS, not from a contract, so ``error`` must not read as a
+    clean build. A message that is not an object is counted as malformed
+    rather than reported, but it does make the diagnostics incomplete.
     """
     messages = evidence.data.get("messages") or []
     if not isinstance(messages, list):
@@ -520,7 +521,7 @@ def _read_build_messages(evidence):
             evidence.malformed_messages += 1
             continue
         severity = str(message.get("severity", ""))
-        if "Error" not in severity:
+        if severity_kind(severity) != SEVERITY_ERROR:
             continue
         evidence.problems.append(
             Problem(

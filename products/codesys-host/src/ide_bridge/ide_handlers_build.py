@@ -35,6 +35,11 @@ from ide_path_guards import host_path_error
 # imported cold, without depending on some earlier bridge module having done it.
 import ide_runtime_common  # noqa: F401
 
+from cts_shared.build_severity import (
+    SEVERITY_ERROR,
+    SEVERITY_WARNING,
+    severity_kind,
+)
 from cts_shared.coerce import as_bool
 
 from cds_text_sync.engine._workspace_fingerprint import (
@@ -190,9 +195,10 @@ def _collect_build_messages(system_obj, category_guid):
                 if "Build started" in msg_text or "Compile complete" in msg_text:
                     continue
                 severity = str(getattr(msg, "severity", ""))
-                if "Error" in severity:
+                kind = severity_kind(severity)
+                if kind == SEVERITY_ERROR:
                     error_count += 1
-                if "Warning" in severity:
+                if kind == SEVERITY_WARNING:
                     warning_count += 1
                 obj_ref = None
                 obj_name = ""
