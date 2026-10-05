@@ -23,6 +23,11 @@ if BRIDGE not in sys.path:
 
 import ide_handlers_snapshooter as handler  # noqa: E402
 
+# Every path crossing the pipe must be absolute: the daemon opens these
+# files inside the CODESYS process.  The handler refuses a relative one.
+_ABS_IN = os.path.join(os.sep, "work", "preset.json")
+_ABS_OUT = os.path.join(os.sep, "work", "saved.json")
+
 
 class DummyProject(object):
     pass
@@ -120,12 +125,12 @@ def test_take_normalizes_paths_and_saves_when_out_is_given(monkeypatch, project)
     _patch(monkeypatch, "_vars_from_data", lambda data: list(data.get("variables", [])))
 
     result = handler._cmd_snapshooter(
-        {"action": "take", "paths": "GVL.a,\nGVL.b\n", "out": "preset.json"}
+        {"action": "take", "paths": "GVL.a,\nGVL.b\n", "out": _ABS_OUT}
     )
 
     assert seen["paths"] == ["GVL.a", "GVL.b"]
-    assert seen["save"] == (result["data"]["document"], "preset.json")
-    assert result["data"]["saved_to"] == "preset.json"
+    assert seen["save"] == (result["data"]["document"], _ABS_OUT)
+    assert result["data"]["saved_to"] == _ABS_OUT
 
 
 def test_diff_loads_the_input_and_compares_against_the_live_values(monkeypatch, project):
@@ -147,7 +152,7 @@ def test_diff_loads_the_input_and_compares_against_the_live_values(monkeypatch, 
     _patch(monkeypatch, "take", fake_take)
     _patch(monkeypatch, "compare", fake_compare)
 
-    result = handler._cmd_snapshooter({"action": "diff", "input": "preset.json"})
+    result = handler._cmd_snapshooter({"action": "diff", "input": _ABS_IN})
 
     assert seen["paths"] == ["GVL.a"]
     assert seen["compare"] == (preset, current)
@@ -185,7 +190,7 @@ def test_restore_is_a_dry_run_unless_apply(monkeypatch, project):
 
     _patch(monkeypatch, "restore", fake_restore)
 
-    result = handler._cmd_snapshooter({"action": "restore", "input": "p.json"})
+    result = handler._cmd_snapshooter({"action": "restore", "input": _ABS_IN})
 
     assert seen["apply"] is False
     assert result["data"]["applied"] is False
@@ -202,7 +207,7 @@ def test_restore_applies_when_asked(monkeypatch, project):
         or {"written": 1},
     )
 
-    result = handler._cmd_snapshooter({"action": "restore", "input": "p.json", "apply": True})
+    result = handler._cmd_snapshooter({"action": "restore", "input": _ABS_IN, "apply": True})
 
     assert seen["apply"] is True
     assert result["data"]["applied"] is True
@@ -250,7 +255,7 @@ def test_online_guard_on_apply_is_surfaced(monkeypatch, project):
 
     _patch(monkeypatch, "restore", refuse)
 
-    result = handler._cmd_snapshooter({"action": "restore", "input": "p.json", "apply": "yes"})
+    result = handler._cmd_snapshooter({"action": "restore", "input": _ABS_IN, "apply": "yes"})
 
     assert result["ok"] is False
     assert "online" in result["error"]
@@ -343,3 +348,81 @@ def test_take_fills_meta_project_from_the_project_file_path(monkeypatch):
     document = result["data"]["document"]
     assert document["meta"]["project"] == "VKO-live"
     assert document["variables"][0]["path"] == "GVL.a"
+
+
+# ── Relative file paths are refused with a named error ─────────────────────
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"action": "take", "out": "snap.json"},
+        {"action": "diff", "input": "preset.json"},
+        {"action": "restore", "input": "preset.json"},
+    ],
+)
+def test_a_relative_file_path_is_refused_with_a_named_error(monkeypatch, project, params):
+    """Not an UnauthorizedAccessException from the CODESYS working directory."""
+    _patch(monkeypatch, "take", lambda **kwargs: pytest.fail("must not read"))
+    _patch(monkeypatch, "save", lambda data, path: pytest.fail("must not write"))
+    _patch(monkeypatch, "load", lambda path: pytest.fail("must not read"))
+
+    result = handler._cmd_snapshooter(params)
+
+    assert result["ok"] is False
+    assert result["error"].startswith("path must be absolute: ")
+    assert "snap.json" in result["error"] or "preset.json" in result["error"]
+
+
+def test_the_refusal_names_the_offending_parameter(monkeypatch, project):
+    _patch(monkeypatch, "save", lambda data, path: pytest.fail("must not write"))
+
+    result = handler._cmd_snapshooter({"action": "take", "out": "relative.json"})
+
+    assert result["error"] == "path must be absolute: out relative.json"
+
+
+def test_a_relative_path_is_refused_before_the_project_is_resolved(monkeypatch):
+    """The message must not be buried under "no project open"."""
+    monkeypatch.setattr(
+        handler, "_get_active_project", lambda: pytest.fail("must not be reached")
+    )
+
+    result = handler._cmd_snapshooter({"action": "diff", "input": "preset.json"})
+
+    assert result["ok"] is False
+    assert result["error"] == "path must be absolute: input preset.json"
+
+
+def test_an_absolute_path_still_reaches_the_backend(monkeypatch, project):
+    _patch(monkeypatch, "load", lambda path: {"variables": [{"path": "GVL.a"}]})
+    _patch(monkeypatch, "take", lambda **kwargs: {"variables": []})
+    _patch(monkeypatch, "compare", lambda preset, current=None: {"identical": True})
+    _patch(monkeypatch, "_vars_from_data", lambda data: list(data.get("variables", [])))
+
+    result = handler._cmd_snapshooter({"action": "diff", "input": _ABS_IN})
+
+    assert result["ok"] is True
+
+
+def test_a_preset_sent_inline_needs_no_path(monkeypatch, project):
+    """The inline ``preset`` form has no file for the daemon to open."""
+    _patch(monkeypatch, "take", lambda **kwargs: {"variables": []})
+    _patch(monkeypatch, "compare", lambda preset, current=None: {"identical": True})
+    _patch(monkeypatch, "_vars_from_data", lambda data: list(data.get("variables", [])))
+
+    result = handler._cmd_snapshooter(
+        {"action": "diff", "preset": {"variables": [{"path": "GVL.a"}]}}
+    )
+
+    assert result["ok"] is True
+
+
+def test_an_empty_path_is_not_a_relative_path(monkeypatch, project):
+    """An omitted ``out``/``input`` keeps working (take with no --out)."""
+    _patch(monkeypatch, "take", lambda **kwargs: {"variables": []})
+    _patch(monkeypatch, "_vars_from_data", lambda data: [])
+
+    result = handler._cmd_snapshooter({"action": "take", "out": ""})
+
+    assert result["ok"] is True

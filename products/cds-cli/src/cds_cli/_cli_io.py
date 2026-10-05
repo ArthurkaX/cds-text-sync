@@ -326,6 +326,25 @@ def _apply_profile_defaults(params, profile):
 # -- Reverse-pipe output helpers ----------------------------------------------
 
 
+def _daemon_path(value):
+    """Make a path the daemon will use absolute, or return it unchanged.
+
+    The daemon runs inside CODESYS.exe, whose working directory is the CODESYS
+    installation (``C:\\Program Files (x86)\\...\\Common``), so a relative path
+    a user typed here would be resolved *there* -- writing a preset next to the
+    IDE rather than next to the shell, and failing outright when that directory
+    is not writable.  Absolutising against this process's cwd is what makes
+    ``--out snap.json`` mean what the user typed it to mean.
+
+    Only the CLI can do this: the daemon cannot know where the command was run
+    from.  ``""`` (an unset option) is passed through so callers keep omitting
+    the parameter entirely.
+    """
+    if not value:
+        return value
+    return os.path.abspath(str(value))
+
+
 def _print_rp_error(resp, command):
     """Print reverse-pipe error details."""
     inst = resp.get("instance") or get_last_instance()

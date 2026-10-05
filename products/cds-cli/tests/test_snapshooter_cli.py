@@ -9,6 +9,7 @@ and the CLI's error handling, not the daemon's behaviour.
 """
 
 import json
+import os
 
 import pytest
 
@@ -99,7 +100,8 @@ def test_take_collects_explicit_and_file_paths(pipe, tmp_path):
         "action": "take",
         "paths": ["GVL.a", "GVL.b", "GVL.c"],
         "label": "speed",
-        "out": "preset.json",
+        # Absolutised: the daemon opens this file in the CODESYS process.
+        "out": os.path.abspath("preset.json"),
     }
 
 
@@ -119,21 +121,91 @@ def test_a_missing_paths_file_exits_with_an_error(pipe, capsys):
     assert pipe.calls == []
 
 
+def test_a_relative_paths_file_is_read_from_this_process_cwd(pipe, monkeypatch, tmp_path):
+    """``--paths-file`` is opened here, so the daemon never sees it."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "selected.txt").write_text("GVL.a\n", encoding="utf-8")
+
+    handler.dispatch_snapshooter(
+        _args(["snapshooter", "take", "--paths-file", "selected.txt"])
+    )
+
+    _method, params, _timeout = pipe.calls[0]
+    assert params == {"action": "take", "paths": ["GVL.a"]}
+
+
+# ── Paths the daemon opens must be absolute ─────────────────────────────────
+
+
+def test_a_relative_out_is_absolutised(pipe, tmp_path, monkeypatch):
+    """The daemon's cwd is the CODESYS installation, not the shell's."""
+    monkeypatch.chdir(tmp_path)
+
+    handler.dispatch_snapshooter(_args(["snapshooter", "take", "--out", "snap.json"]))
+
+    _method, params, _timeout = pipe.calls[0]
+    assert params["out"] == os.path.join(str(tmp_path), "snap.json")
+
+
+def test_a_relative_input_is_absolutised_for_both_actions(pipe, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    handler.dispatch_snapshooter(_args(["snapshooter", "diff", "--input", "p.json"]))
+    handler.dispatch_snapshooter(_args(["snapshooter", "restore", "--input", "p.json"]))
+
+    expected = os.path.join(str(tmp_path), "p.json")
+    assert [call[1]["input"] for call in pipe.calls] == [expected, expected]
+
+
+def test_an_already_absolute_path_is_left_alone(pipe, tmp_path):
+    absolute = str(tmp_path / "preset.json")
+
+    handler.dispatch_snapshooter(_args(["snapshooter", "diff", "--input", absolute]))
+    handler.dispatch_snapshooter(_args(["snapshooter", "take", "--out", absolute]))
+
+    assert pipe.calls[0][1]["input"] == absolute
+    assert pipe.calls[1][1]["out"] == absolute
+
+
+def test_a_dotted_relative_path_resolves_against_the_cwd(pipe, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    handler.dispatch_snapshooter(_args(["snapshooter", "take", "--out", "./nested/p.json"]))
+
+    assert pipe.calls[0][1]["out"] == os.path.join(str(tmp_path), "nested", "p.json")
+
+
+def test_ui_check_sends_no_file_path_at_all(pipe):
+    """ui-check uses the daemon's own temp file; there is nothing to absolutise."""
+    handler.dispatch_snapshooter(_args(["snapshooter", "ui-check"]))
+
+    params = pipe.calls[0][1]
+    assert set(params) == {"action", "app"}
+
+
 def test_diff_sends_the_preset_path(pipe):
     handler.dispatch_snapshooter(_args(["snapshooter", "diff", "--input", "preset.json"]))
 
     _method, params, _timeout = pipe.calls[0]
-    assert params == {"action": "diff", "input": "preset.json"}
+    assert params == {"action": "diff", "input": os.path.abspath("preset.json")}
 
 
 def test_restore_is_dry_run_by_default_and_applies_on_flag(pipe):
     handler.dispatch_snapshooter(_args(["snapshooter", "restore", "--input", "p.json"]))
     _method, params, _timeout = pipe.calls[0]
-    assert params == {"action": "restore", "input": "p.json", "apply": False}
+    assert params == {
+        "action": "restore",
+        "input": os.path.abspath("p.json"),
+        "apply": False,
+    }
 
     handler.dispatch_snapshooter(_args(["snapshooter", "restore", "--input", "p.json", "--apply"]))
     _method, params, _timeout = pipe.calls[1]
-    assert params == {"action": "restore", "input": "p.json", "apply": True}
+    assert params == {
+        "action": "restore",
+        "input": os.path.abspath("p.json"),
+        "apply": True,
+    }
 
 
 def test_ui_check_sends_the_app_and_script(pipe):
