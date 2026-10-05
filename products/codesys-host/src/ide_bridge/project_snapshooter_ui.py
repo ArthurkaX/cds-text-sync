@@ -452,25 +452,6 @@ def _set_checked_cascade(node, checked):
     return delta
 
 
-def _update_parent_state(start_node, node_models, leaf_nodes):
-    """Re-derive every ancestor's check state from its direct children."""
-    parent = start_node.Parent
-    while parent is not None:
-        checked_count = 0
-        for i in range(parent.Nodes.Count):
-            if parent.Nodes[i].Checked:
-                checked_count += 1
-        model = node_models.get(parent)
-        total = model.leaf_count if model else len(leaf_nodes)
-        if checked_count == 0:
-            parent.Checked = False
-        elif checked_count == total:
-            parent.Checked = True
-        else:
-            parent.Checked = False
-        parent = parent.Parent
-
-
 def _subtree_leaf_counts(node):
     """``(checked, total)`` leaves in ``node``'s subtree, off the UI tree."""
     checked = 0
@@ -488,20 +469,44 @@ def _subtree_leaf_counts(node):
     return checked, total
 
 
+def _apply_branch_state(branch):
+    """Set ``branch`` to checked exactly when every leaf below it is.
+
+    This is the one rule for a branch box, used by both the click path and
+    Load.  A partly-filled branch is unchecked, never a third state: a WinForms
+    TreeView checkbox has only two.  The counts come from the UI tree rather
+    than ``node_models[...].leaf_count``, so the branch always agrees with the
+    boxes actually on screen.
+    """
+    checked, total = _subtree_leaf_counts(branch)
+    branch.Checked = total > 0 and checked == total
+
+
+def _update_parent_state(start_node):
+    """Re-derive every ancestor of ``start_node``, bottom-up.
+
+    The click path.  Counting *direct children* -- what this used to do, against
+    ``model.leaf_count`` -- disagrees with the leaf rule above as soon as a
+    branch has fewer children than leaves (the root of a two-branch tree with
+    three leaves could never be ticked) and it compares a child count against a
+    leaf count, which are different units.  Reusing ``_apply_branch_state``
+    makes a click and a Load agree on the same set of leaves.
+    """
+    parent = start_node.Parent
+    while parent is not None:
+        _apply_branch_state(parent)
+        parent = parent.Parent
+
+
 def _recompute_parent_states(leaf_nodes):
-    """Re-derive every branch's check state from the leaves beneath it.
+    """The Load path: re-derive every branch that has a leaf under it.
 
     Load writes the leaves and nothing else, so the branches have to be brought
-    back in line afterwards.  A branch is checked exactly when every leaf under
-    it is -- the same rule ``_update_parent_state`` applies while the user
-    clicks -- and unchecked otherwise, including when only some of its leaves
-    are on, because a WinForms TreeView checkbox has no third state.
-
-    The counts come from the UI tree rather than ``node_models[...].leaf_count``:
-    the checkboxes are what the user reads back, so the branch state has to
-    agree with the boxes actually on screen.  (The version this replaced
-    collected ``id(parent)`` ints and sorted them as if they were nodes, so
-    Load died with ``AttributeError: 'int' object has no attribute 'Name'``.)
+    back in line afterwards.  Order does not matter, because a branch's state
+    is derived from the leaves alone rather than from the other branch boxes.
+    (The version this replaced collected ``id(parent)`` ints and sorted them as
+    if they were nodes, so Load died with ``AttributeError: 'int' object has no
+    attribute 'Name'``.)
     """
     branches = []
     seen = set()
@@ -514,8 +519,7 @@ def _recompute_parent_states(leaf_nodes):
             branches.append(node)
             node = node.Parent
     for branch in branches:
-        checked, total = _subtree_leaf_counts(branch)
-        branch.Checked = total > 0 and checked == total
+        _apply_branch_state(branch)
 
 
 def _search_matches(leaf_nodes, node_models, query):
@@ -537,6 +541,20 @@ def _current_match_index(selected, matches):
         if matches[i] is selected:
             return i
     return -1
+
+
+def _loaded_text(selected, missing):
+    """What Load reports: the leaves it ticked, then what it could not find.
+
+    The count is the leaves actually marked in this tree, not the number of
+    entries in the preset: a preset naming a path this project does not have
+    used to read "Loaded 1 variables." with nothing ticked.  Those paths are
+    named separately, because "loaded 0" alone would hide them.
+    """
+    text = "Loaded {0} variables.".format(selected)
+    if missing > 0:
+        text += "\n{0} not found in the tree.".format(missing)
+    return text
 
 
 def _format_diff(report):
@@ -744,7 +762,7 @@ class _FormMethods(object):
                 # old number whenever a single leaf was clicked.
                 delta += 1 if node.Checked else -1
             self._selected_count += delta
-            _update_parent_state(node, self._node_models, self._all_leaf_nodes)
+            _update_parent_state(node)
         finally:
             self._checking = False
         self._update_status()
@@ -854,7 +872,7 @@ class _FormMethods(object):
             self.tree.EndUpdate()
             self._checking = False
         self._update_status()
-        MessageBox.Show("Loaded {0} variables.".format(len(paths)), "Load",
+        MessageBox.Show(_loaded_text(selected, len(paths) - selected), "Load",
                         MessageBoxButtons.OK, MessageBoxIcon.Information)
 
     def _on_diff(self, sender, args):

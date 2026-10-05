@@ -17,10 +17,15 @@ Actions arrive as ``params["action"]``:
     ui_check  -- create the dialog without showing it and drive a scripted run
 
 Every response is ``{"ok": ..., "data": ...}`` or ``{"ok": False, "error": ...}``,
-matching the neighbouring handlers.  This runs in IronPython 2.7.
+matching the neighbouring handlers.  ``params["out"]`` and ``params["input"]``
+name files this process opens, so a relative one is refused outright rather
+than resolved against the CODESYS working directory.  This runs in IronPython
+2.7.
 """
 
 from __future__ import print_function
+
+import os
 
 import project_snapshooter as backend
 from cts_shared.coerce import as_bool
@@ -42,6 +47,25 @@ def _action_app(params):
     return _text(params.get("app", "")) or "Application"
 
 
+def _relative_path_error(params, *names):
+    """An error dict if any named file path is relative, else ``None``.
+
+    This process runs inside CODESYS.exe, so a relative path lands in the IDE's
+    installation directory -- an UnauthorizedAccessException when writing there,
+    or a file nobody looks at.  The CLI absolutises these before sending them;
+    answering with this message rather than a raw OS error says what actually
+    went wrong for any other client.
+    """
+    for name in names:
+        value = _text(params.get(name, ""))
+        if value and not os.path.isabs(value):
+            return {
+                "ok": False,
+                "error": "path must be absolute: {0} {1}".format(name, value),
+            }
+    return None
+
+
 def _cmd_snapshooter(params):
     """Dispatch one ``snapshooter`` action. See the module docstring."""
     action = _text(params.get("action", ""))
@@ -50,6 +74,9 @@ def _cmd_snapshooter(params):
             "ok": False,
             "error": "Unknown snapshooter action: {0}".format(action or "(none)"),
         }
+    refusal = _relative_path_error(params, "out", "input")
+    if refusal is not None:
+        return refusal
     try:
         if action == "ui_check":
             return _snapshooter_ui_check(params)

@@ -264,3 +264,20 @@ def test_a_project_failure_is_reported_as_not_ok(ui_env):
 
     assert report["ok"] is False
     assert "No active CODESYS project" in report["error"]
+
+
+def test_the_load_box_counts_ticked_leaves_and_names_the_missing_ones(ui_env):
+    """What the Load step reports when the preset names unknown paths."""
+    _ui, backend, _dotnet = ui_env
+    backend.load_result = {"paths": ["GVL.a", "Nope.one", "Nope.two"]}
+
+    report = _check(ui_env, script=["load"])
+
+    assert report["steps"][0]["ok"] is True
+    assert [w for w in report["windows"] if w["title"] == "Load"] == [
+        {
+            "title": "Load",
+            "text": "Loaded 1 variables.\n2 not found in the tree.",
+        }
+    ]
+    assert report["checked_leaves"] == 1

@@ -13,6 +13,7 @@ import os
 import sys
 
 from cds_cli._cli_io import (
+    _daemon_path,
     _format_output,
     _print_error,
     _print_info,
@@ -69,7 +70,11 @@ def _note_failed_ui_check_steps(data):
 
 
 def _build_params(args):
-    """Map the parsed sub-action onto the daemon's ``action`` payload."""
+    """Map the parsed sub-action onto the daemon's ``action`` payload.
+
+    ``--out``/``--input`` are absolutised (see ``_daemon_path``); ``--paths-file``
+    is read here, so it needs nothing.
+    """
     action = getattr(args, "snap_action", "")
     if action == "ui-check":
         params = {"action": "ui_check", "app": getattr(args, "app", "") or "Application"}
@@ -88,16 +93,21 @@ def _build_params(args):
         if getattr(args, "label", ""):
             params["label"] = args.label
         if getattr(args, "out", ""):
-            params["out"] = args.out
+            params["out"] = _daemon_path(args.out)
     elif action in ("diff", "restore"):
-        params["input"] = getattr(args, "input", "") or ""
+        params["input"] = _daemon_path(getattr(args, "input", "") or "")
         if action == "restore":
             params["apply"] = bool(getattr(args, "apply", False))
     return params
 
 
 def _collect_paths(args):
-    """Explicit ``--path`` values plus every non-comment line of ``--paths-file``."""
+    """Explicit ``--path`` values plus every non-comment line of ``--paths-file``.
+
+    The file is opened here, so a relative ``--paths-file`` already means "from
+    the shell's cwd" and needs no absolutising -- unlike the paths that go on to
+    the daemon.
+    """
     paths = list(getattr(args, "path", None) or [])
     file_path = getattr(args, "paths_file", "") or ""
     if file_path:
