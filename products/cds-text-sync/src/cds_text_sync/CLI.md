@@ -902,8 +902,11 @@ visualization one — so a single-manager read would silently lose libraries.
 Both kinds of entry count as a reference, and both carry a `kind` in the
 report: a **placeholder** (`placeholder`), and a **concrete** pin
 (`concrete`) written directly with `Name`/`Resolution` instead of a
-placeholder. A declared version of `*` means "newest installed" and is
-resolved against the LibDoc tree, as before.
+placeholder. The `PlaceholderRedirectionTable` is read as well: a placeholder
+it names is referenced (`redirected`) even when it has no `Items` entry -
+`Standard` arrives that way - and when it also has one, the table's version is
+the version actually used. A declared version of `*` means "newest installed"
+and is resolved against the LibDoc tree, as before.
 
 Two failure modes are reported rather than papered over:
 

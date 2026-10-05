@@ -12,6 +12,11 @@ project references:
 
 Both are real references; reading only the placeholder ones leaves a pinned
 library out of the report.
+
+On top of the items sits the ``PlaceholderRedirectionTable``, which points a
+placeholder at the version actually used. ``Standard`` is reached only that
+way - it has no ``Items`` entry at all - so ignoring the table reports a
+referenced library as "not referenced".
 """
 
 import sys
@@ -62,8 +67,23 @@ def _concrete_item(name, version, vendor, namespace, system="False"):
     )
 
 
-def _library_manager_xml(items):
+def _redirection_table(entries):
+    rows = "\n".join(
+        '          <Single Name="{0}" Type="string">{1}</Single>'.format(key, value)
+        for key, value in entries
+    )
+    return (
+        '      <Dictionary Name="PlaceholderRedirectionTable"'
+        ' Type="System.Collections.Hashtable">\n'
+        + rows
+        + "\n      </Dictionary>"
+    )
+
+
+def _library_manager_xml(items, redirections=()):
     body = "\n".join(items)
+    if redirections:
+        body += "\n" + _redirection_table(redirections)
     return (
         "<?xml version='1.0' encoding='utf-8'?>\n"
         '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">\n'
@@ -78,11 +98,11 @@ def _library_manager_xml(items):
 def project_view(tmp_path):
     """A project view with one Library Manager carrying both entry kinds."""
 
-    def _write(items):
+    def _write(items, redirections=()):
         view = tmp_path / "project-view"
         view.mkdir(exist_ok=True)
         (view / "Library Manager.xml").write_text(
-            _library_manager_xml(items), encoding="utf-8"
+            _library_manager_xml(items, redirections), encoding="utf-8"
         )
         return view
 
@@ -139,3 +159,44 @@ def test_a_library_without_a_resolution_keeps_its_version_wildcard(project_view)
 
     assert [ref["name"] for ref in references] == ["BareLib"]
     assert references[0]["version"] == "*"
+
+
+def test_the_redirection_table_adds_an_implicit_reference(project_view):
+    """Standard reaches a project through the table, not through an item."""
+    view = project_view(
+        [_placeholder_item("IoStandard", "*", "CODESYS", "IoStandard")],
+        redirections=[("Standard", "Standard, 3.5.22.0 (System)")],
+    )
+
+    references, _gap = library_refs.explicit_library_references(view)
+
+    standard = _by_name(references)["Standard"]
+    assert standard["kind"] == "redirected"
+    assert (standard["version"], standard["vendor"]) == ("3.5.22.0", "System")
+    assert standard["placeholder"] == "Standard"
+    assert standard["system"] is True
+
+
+def test_the_table_fixes_the_version_of_a_placeholder_in_items(project_view):
+    view = project_view(
+        [_placeholder_item("Standard", "3.5.18.0", "System", "Standard")],
+        redirections=[("Standard", "Standard, 3.5.22.0 (System)")],
+    )
+
+    references, _gap = library_refs.explicit_library_references(view)
+
+    # One entry, not two: the table's version is the one actually used.
+    assert [ref["name"] for ref in references] == ["Standard"]
+    assert references[0]["version"] == "3.5.22.0"
+    assert references[0]["kind"] == "redirected"
+
+
+def test_a_redirect_to_an_already_referenced_version_adds_nothing(project_view):
+    view = project_view(
+        [_placeholder_item("Standard", "3.5.22.0", "System", "Standard")],
+        redirections=[("Standard", "Standard, 3.5.22.0 (System)")],
+    )
+
+    references, _gap = library_refs.explicit_library_references(view)
+
+    assert len(references) == 1

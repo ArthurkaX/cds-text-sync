@@ -610,19 +610,12 @@ def test_known_behaviour_bundle_is_written_inside_the_sync_folder(tmp_path):
     assert (outside / "manifest.json").is_file()
 
 
-def test_known_behaviour_placeholder_redirections_are_ignored(tmp_path):
-    """Known gap: only the Library Manager export is read, never the redirect table.
+def test_known_behaviour_unreferenced_libraries_are_listed(tmp_path):
+    """A library no Library Manager mentions is still reported unreferenced.
 
-    ``explicit_library_references`` reads ``DefaultResolution`` from every
-    Library Manager object.  The project's ``PlaceholderRedirectionTable``
-    (which can point a placeholder at another library) is not consulted, so an
-    installed library that is only reachable through a redirection is reported
-    under ``libraries_not_referenced`` (``Standard`` in a real project) and a
-    redirected reference is resolved against its un-redirected default.
-
-    Reproducing this needs a real CODESYS project settings export, which the
-    fixture does not carry, so the behaviour is asserted only in the negative:
-    a library that no Library Manager mentions is reported unreferenced.
+    The redirect table and concrete items are read now, but that must not turn
+    into "every installed library is referenced": an installed library that
+    nothing points at stays in ``not-referenced.md``.
     """
     workspace = tmp_path / "sync"
     workspace.mkdir()

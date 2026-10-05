@@ -786,3 +786,48 @@ def test_a_concrete_library_reference_is_reported_and_resolved(tmp_path):
     assert symbols[0]["version"] == "2.0.0"
     index = (output / "index.md").read_text(encoding="utf-8")
     assert "| PSVRetain | concrete | 2.0.0 |" in index
+
+
+def _library_manager_with_redirections(entries):
+    rows = "\n".join(
+        '          <Single Name="{0}" Type="string">{1}</Single>'.format(key, value)
+        for key, value in entries
+    )
+    return (
+        '<?xml version=\'1.0\' encoding=\'utf-8\'?>\n'
+        '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">\n'
+        '  <Single Name="Object" Type="{adb5cb65-8e1d-4a00-b70a-375ea27582f3}" Method="IArchivable">\n'
+        '    <List Name="Items" Type="System.Collections.ArrayList">\n'
+        '      <Dictionary Name="PlaceholderRedirectionTable">\n'
+        + rows
+        + "\n      </Dictionary>\n    </List>\n  </Single>\n</Single>\n"
+    )
+
+
+def test_a_redirected_placeholder_is_referenced_with_the_tables_version(tmp_path):
+    """``Standard`` is pulled in by the system, so it has no Items entry.
+
+    Reading only the Items left the resolution table out of the report and put
+    the library into "Not referenced" even though the build resolves it.
+    """
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    (project / "Library Manager.xml").write_text(
+        _library_manager_with_redirections(
+            [("Standard", "Standard, 3.5.22.0 (System)")]
+        ),
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "System", "Standard", "3.5.22.0")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, manifest, _symbols = _read_output(workspace)
+
+    assert manifest["counts"]["libraries_referenced"] == 1
+    assert manifest["counts"]["libraries_not_referenced"] == 0
+    not_referenced = (output / "libraries" / "not-referenced.md").read_text(encoding="utf-8")
+    assert "Standard" not in not_referenced
+    index = (output / "index.md").read_text(encoding="utf-8")
+    assert "| Standard | redirected | 3.5.22.0 | System |" in index

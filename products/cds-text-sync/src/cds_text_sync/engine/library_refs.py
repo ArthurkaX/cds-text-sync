@@ -38,9 +38,15 @@ PLACEHOLDER_ITEM_TYPE_GUID = "4723ebe7-5bfc-43c6-be6b-5097002ef6b4"
 # surfaced this, so the item is matched by prefix.
 CONCRETE_ITEM_TYPE_GUID_PREFIX = "51a11660"
 
+# Name of the dictionary that points a placeholder at the version actually
+# used. ``Standard`` reaches a project only this way: the system pulls it in,
+# so it has no ``Items`` entry at all.
+REDIRECTION_TABLE_NAME = "PlaceholderRedirectionTable"
+
 #: ``kind`` values carried by every reference.
 KIND_PLACEHOLDER = "placeholder"
 KIND_CONCRETE = "concrete"
+KIND_REDIRECTED = "redirected"
 
 # ``name, version (vendor)`` - the full DefaultResolution form. The version is
 # ``*`` or a dotted number; the vendor may contain spaces, hyphens and dots.
@@ -100,12 +106,14 @@ def explicit_library_references(project_view):
 
     ``references`` holds one dict per library entry, deduplicated on
     ``(name.casefold(), version)`` with the first occurrence winning, ordered
-    by file then document order within each file. Keys: ``kind`` (one of
-    ``placeholder``, ``concrete``), ``placeholder``, ``name``, ``version``,
-    ``vendor``, ``namespace``, ``system`` and ``container`` - the owning
-    Library Manager's path relative to ``project_view`` with forward slashes.
-    ``gap`` is ``None`` when at least one manager yielded entries (a partial
-    read is not a failure), or a short human-readable reason. Never raises.
+    by file then document order within each file - plus one reference per
+    ``PlaceholderRedirectionTable`` entry the items do not already carry.
+    Keys: ``kind`` (one of ``placeholder``, ``concrete``, ``redirected``),
+    ``placeholder``, ``name``, ``version``, ``vendor``, ``namespace``,
+    ``system`` and ``container`` - the owning Library Manager's path relative
+    to ``project_view`` with forward slashes. ``gap`` is ``None`` when at
+    least one manager yielded entries (a partial read is not a failure), or a
+    short human-readable reason. Never raises.
     """
     roots = []
     for path in find_library_managers(project_view):
@@ -122,6 +130,7 @@ def explicit_library_references(project_view):
     for path, root in roots:
         container = pathlib.Path(os.path.relpath(os.fspath(path), project_root)).as_posix()
         _collect_item_references(root, container, references, seen)
+        _apply_redirections(root, container, references, seen)
     if not references:
         return [], "Library Manager objects have no library entries"
     return references, None
@@ -193,6 +202,74 @@ def _item_reference(item, kind, container):
         "system": _is_true(item.find("Single[@Name='SystemLibrary']")),
         "container": container,
     }
+
+
+def _apply_redirections(root, container, references, seen):
+    """Point every placeholder in the redirect table at its used version.
+
+    A placeholder that already has an item keeps its place: the table only
+    fixes the version, it does not add a second entry. A placeholder without
+    one becomes a reference of its own - the system pulls it in, so the
+    project does use it.
+    """
+    for placeholder_name, resolution in _redirections(root):
+        name, version, vendor = parse_default_resolution(resolution)
+        if not name:
+            continue
+        _apply_one_redirection(
+            references, seen, placeholder_name, (name, version, vendor), container
+        )
+
+
+def _redirections(root):
+    """Yield ``(placeholder, resolution)`` from every redirect table in *root*."""
+    for table in root.iter("Dictionary"):
+        if (table.get("Name") or "").strip() != REDIRECTION_TABLE_NAME:
+            continue
+        for entry in table:
+            key = (entry.get("Name") or "").strip()
+            if key:
+                yield key, entry.text or ""
+
+
+def _apply_one_redirection(references, seen, placeholder_name, resolved, container):
+    """Apply one table row, replacing a matching item or appending a new one."""
+    name, version, vendor = resolved
+    lowered = placeholder_name.casefold()
+    for reference in references:
+        if lowered in (
+            str(reference.get("placeholder") or "").casefold(),
+            str(reference.get("name") or "").casefold(),
+        ):
+            reference.update(
+                {"kind": KIND_REDIRECTED, "name": name, "version": version, "vendor": vendor}
+            )
+            return
+    _append_redirected(references, seen, placeholder_name, resolved, container)
+
+
+def _append_redirected(references, seen, placeholder_name, resolved, container):
+    """Add a redirect-only reference unless that name/version is already there."""
+    name, version, vendor = resolved
+    key = (name.casefold(), version)
+    if key in seen:
+        return
+    seen.add(key)
+    references.append(
+        {
+            "kind": KIND_REDIRECTED,
+            "placeholder": placeholder_name,
+            "name": name,
+            "version": version,
+            "vendor": vendor,
+            "namespace": "",
+            # The table carries no SystemLibrary flag; the only signal left is
+            # the vendor it resolves to, which is "System" for the libraries
+            # CODESYS pulls in itself.
+            "system": vendor.strip().casefold() == "system",
+            "container": container,
+        }
+    )
 
 
 def _project_root(project_view):
