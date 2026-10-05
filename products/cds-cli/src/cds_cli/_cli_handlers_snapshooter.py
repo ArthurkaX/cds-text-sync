@@ -15,6 +15,7 @@ import sys
 from cds_cli._cli_io import (
     _format_output,
     _print_error,
+    _print_info,
     _print_rp_error,
     send_command_reverse,
 )
@@ -42,7 +43,29 @@ def dispatch_snapshooter(args, output_fmt="json"):
 
     data = response.get("data", {}) or {}
     print(_format_output(data, fmt=output_fmt, title="snapshooter"))
+    _note_failed_ui_check_steps(data)
     return True
+
+
+def _note_failed_ui_check_steps(data):
+    """Name the ui-check steps that failed, on stderr.
+
+    The exit code stays 0: the command answered and delivered the report, and
+    a failed step is the *finding* -- a headless run exists to say which
+    dialog handlers break -- not a failure of the command.  ``all_steps_ok``
+    and ``failed_steps`` in the data are the machine-readable signal; this
+    line is for whoever only reads the terminal (``cts verify`` reports
+    incomplete stages the same way).
+    """
+    report = data.get("report") if isinstance(data, dict) else None
+    if not isinstance(report, dict) or report.get("all_steps_ok", True):
+        return
+    failed = ", ".join(report.get("failed_steps") or []) or "?"
+    _print_info(
+        "ui-check: {0} of {1} steps failed: {2}".format(
+            len(report.get("failed_steps") or []), len(report.get("steps") or []), failed
+        )
+    )
 
 
 def _build_params(args):

@@ -82,6 +82,25 @@ def test_every_default_step_succeeds(ui_env):
 
     for step in report["steps"]:
         assert step["ok"] is True, (step["name"], step["error"])
+    assert report["failed_steps"] == []
+    assert report["all_steps_ok"] is True
+
+
+def test_failed_steps_names_every_step_that_raised(ui_env):
+    ui, _backend, _dotnet = ui_env
+
+    def boom(_state):
+        raise RuntimeError("step is broken")
+
+    ui._CHECK_STEPS["load"] = boom
+    ui._CHECK_STEPS["diff"] = boom
+
+    report = _check(ui_env)
+
+    assert report["failed_steps"] == ["load", "diff"]
+    assert report["all_steps_ok"] is False
+    # ``ok`` keeps meaning "the window was built", so old callers are unaffected.
+    assert report["ok"] is True
 
 
 def test_the_form_is_built_but_never_shown_or_pumped(ui_env):
@@ -225,6 +244,9 @@ def test_a_tree_failure_is_reported_as_not_ok(ui_env):
     assert report["ok"] is False
     assert "the variable tree could not be built" in report["error"]
     assert report["steps"] == []
+    # Nothing ran, so nothing is known to be ok -- and nothing "failed" either.
+    assert report["failed_steps"] == []
+    assert report["all_steps_ok"] is False
     # The tree error box was recorded even on the failure path.
     assert any("cds-sync-folder" in w["text"] for w in report["windows"])
 

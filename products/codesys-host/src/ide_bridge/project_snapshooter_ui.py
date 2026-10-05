@@ -246,6 +246,9 @@ _CHECK_STEPS = {
 def _check_failure(report, error, windows=None):
     report["ok"] = False
     report["error"] = error
+    # Nothing ran, so nothing is known to be ok -- ``all_steps_ok`` keeps its
+    # initial False and ``failed_steps`` stays empty (they did not fail: they
+    # never started).
     if windows is not None:
         report["windows"] = list(windows.shown)
     return report
@@ -270,6 +273,10 @@ def _new_check_report(app):
         "app": app,
         "project": "",
         "steps": [],
+        "failed_steps": [],
+        # False until the steps have run: "nothing failed" is not yet known,
+        # and a report that never got that far must not read as a clean one.
+        "all_steps_ok": False,
         "windows": [],
         "files": [],
         "checked_leaves": 0,
@@ -277,6 +284,19 @@ def _new_check_report(app):
         "parents": {},
         "preset_file": "",
     }
+
+
+def _summarize_check_steps(report):
+    """Roll the per-step outcomes into ``failed_steps`` / ``all_steps_ok``.
+
+    ``ok`` stays what it was -- false only when the window itself could not be
+    built -- so a caller that only branches on it is unaffected.  These two
+    fields are what tells a failed *step* from a failed *run*.
+    """
+    report["failed_steps"] = [
+        step["name"] for step in report["steps"] if not step["ok"]
+    ]
+    report["all_steps_ok"] = not report["failed_steps"]
 
 
 def _install_check_fakes(preset_path):
@@ -317,11 +337,12 @@ def check(backend, app="Application", script=None):
     """Build the dialog without showing it and run a scripted scenario.
 
     Returns a structural report: ``ok`` (false only when the window itself
-    could not be built), ``windows`` (title/text of every MessageBox shown),
-    ``files`` (which file dialog was used with which path), ``steps`` (one
-    ``{name, ok, error}`` per scenario step, an exception recorded rather than
-    raised), ``checked_leaves``, ``leaf_count`` and the check state of each
-    branch in ``parents``.
+    could not be built), ``failed_steps`` (names of the steps that raised) and
+    ``all_steps_ok`` (true only when every step ran clean), ``windows``
+    (title/text of every MessageBox shown), ``files`` (which file dialog was
+    used with which path), ``steps`` (one ``{name, ok, error}`` per scenario
+    step, an exception recorded rather than raised), ``checked_leaves``,
+    ``leaf_count`` and the check state of each branch in ``parents``.
 
     ``script`` overrides the default step list (see ``_DEFAULT_CHECK_STEPS``);
     an unknown step name is recorded as a failed step.  The substitutions are
@@ -362,6 +383,7 @@ def check(backend, app="Application", script=None):
     _run_check_steps(
         report, state, _DEFAULT_CHECK_STEPS if script is None else list(script)
     )
+    _summarize_check_steps(report)
     _record_check_state(report, form)
     report["windows"] = list(windows.shown)
     report["files"] = list(dialogs.calls)
