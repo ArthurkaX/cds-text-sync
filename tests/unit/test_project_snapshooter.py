@@ -249,6 +249,79 @@ def test_build_tree_uses_exported_snapshooter_json(monkeypatch, tmp_path):
     assert os.path.exists(os.path.join(str(tmp_path), ".dump", "snapshots", "variable_tree.json"))
 
 
+def _tree_project(monkeypatch, tmp_path):
+    """A project whose tree build is faked; returns (project, engine_runs)."""
+    ps._SNAPSHOOTER_ROWS_BY_PATH = {}
+    monkeypatch.setattr(ps, "_sync_folder", lambda _project: str(tmp_path))
+    textual = DummyObject("GVL_Routing", "VAR_GLOBAL\n    speed : INT;\nEND_VAR\n")
+    project = DummyProjectWithChildren([textual])
+    runs = []
+
+    def fake_export(_project, objects, output_path):
+        with open(output_path, "w", encoding="utf-8") as handle:
+            handle.write("<IDE />")
+        return True
+
+    def fake_engine(args, project_root=None, dump_root=None, warning_fn=None):
+        runs.append(args[0])
+        output_path = args[args.index("--output") + 1]
+        data = {
+            "rows": [
+                {"path": "GVL_Routing.speed", "type": "INT", "leaf": True},
+            ],
+            "stats": {"owners": 1, "leaves": 1, "readable": 1},
+        }
+        with open(output_path, "w", encoding="utf-8") as handle:
+            import json
+            json.dump(data, handle)
+        return True
+
+    monkeypatch.setattr(ps.ide_export_snapshot, "export_selected_snapshot", fake_export)
+    monkeypatch.setattr(ps.ide_runtime_common, "run_external_engine", fake_engine)
+    return project, runs
+
+
+def test_a_project_edit_rebuilds_the_tree_then_the_cache_is_reused(monkeypatch, tmp_path):
+    project, runs = _tree_project(monkeypatch, tmp_path)
+
+    ps.build_tree(project=project)
+    assert runs == ["snapshooter-map"]
+    assert ps.tree_build_info()["source"] == "rebuilt"
+
+    ps.ide_tree_cache.mark_project_edited(str(tmp_path))
+    ps.build_tree(project=project)
+    assert runs == ["snapshooter-map", "snapshooter-map"]
+    assert ps.tree_build_info()["source"] == "rebuilt"
+
+    # Nothing edited since the rebuild: the cache is served, not rebuilt.
+    ps.build_tree(project=project)
+    assert runs == ["snapshooter-map", "snapshooter-map"]
+    assert ps.tree_build_info()["source"] == "cache"
+    assert ps.tree_build_info()["built_at"]
+
+
+def test_invalidate_tree_cache_removes_the_cached_files(monkeypatch, tmp_path):
+    project, _runs = _tree_project(monkeypatch, tmp_path)
+    ps.build_tree(project=project)
+    tree_json = os.path.join(str(tmp_path), ".dump", "snapshots", "variable_tree.json")
+    assert os.path.exists(tree_json)
+
+    assert ps.invalidate_tree_cache(project) is True
+
+    assert not os.path.exists(tree_json)
+    assert not os.path.exists(ps._pickle_path(tree_json))
+
+
+def test_invalidate_tree_cache_without_a_sync_folder_is_not_an_error(monkeypatch):
+    monkeypatch.setattr(ps, "_sync_folder", lambda _project: "")
+    monkeypatch.setattr(ps, "_snapshot_tree_paths", _raise_no_sync_folder)
+    assert ps.invalidate_tree_cache(DummyProject()) is False
+
+
+def _raise_no_sync_folder(_project):
+    raise RuntimeError("Snapshooter requires project property cds-sync-folder.")
+
+
 def test_build_tree_requires_sync_folder(monkeypatch):
     ps._SNAPSHOOTER_ROWS_BY_PATH = {}
     monkeypatch.setattr(ps, "_sync_folder", lambda _project: "")

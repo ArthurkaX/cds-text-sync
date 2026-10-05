@@ -86,6 +86,8 @@ def _build_params(args):
     params = {"action": action}
     if action == "tree":
         params["path"] = getattr(args, "path", "") or ""
+        if getattr(args, "refresh", False):
+            params["refresh"] = True
     elif action == "take":
         paths = _collect_paths(args)
         if paths:

@@ -17,6 +17,7 @@ import time
 
 import ide_online_guard
 import ide_runtime_common as _common
+import ide_tree_cache
 
 from ide_daemon_state import (
     _log,
@@ -35,6 +36,22 @@ from ide_daemon_helpers import (
 from ide_snapshot_objects import snapshot_objects
 from ide_st_text import split_st_text
 from ide_xml import parse_xml_file
+
+
+def _mark_project_edited(sync_folder=""):
+    """Note that the IDE project changed, so the Snapshooter tree is stale.
+
+    The tree cache cannot see an in-memory edit through a file mtime (an
+    import without --save touches nothing on disk), so the daemon records the
+    edit itself. Best-effort: a failure only leaves a stale tree, which
+    ``cts snapshooter tree --refresh`` clears.
+    """
+    if not sync_folder:
+        try:
+            sync_folder, _err = _get_sync_folder()
+        except Exception:
+            sync_folder = ""
+    ide_tree_cache.mark_project_edited(sync_folder)
 
 
 def _write_import_attestation(sync_folder, project, saved=False):
@@ -333,6 +350,7 @@ def _cmd_sync_import(params):
 
         # CODESYS API: project.import_native(path) — single arg only
         project.import_native(in_path)
+        _mark_project_edited()
 
         return {"ok": True, "data": {"path": in_path, "size": size}}
     except Exception as e:
@@ -1169,6 +1187,7 @@ def _cmd_sync_import_text(params):
         _import_text_refresh_manifest(context)
         _import_text_add_note(context)
         _import_text_write_attestation(context)
+        _mark_project_edited(context.sync_folder)
         return _import_text_finish(context)
     except Exception as e:
         return {"ok": False, "error": "Sync import error: {0}".format(e)}
@@ -1580,6 +1599,7 @@ def _cmd_update_pou(params):
         result["data"]["decl_skipped"] = decl_skipped
     if impl_skipped:
         result["data"]["impl_skipped"] = impl_skipped
+    _mark_project_edited()
     return result
 
 
@@ -1621,6 +1641,7 @@ def _cmd_delete_pou(params):
         if hasattr(target, "remove"):
             target.remove()
             _invalidate_device_cache()
+            _mark_project_edited()
             _log(
                 "Deleted object: {0} (type={1}, app={2})".format(
                     obj_name, target_type, app_name

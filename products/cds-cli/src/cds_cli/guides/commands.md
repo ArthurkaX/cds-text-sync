@@ -169,6 +169,14 @@ string prefix, **not a segment boundary**: `--path GVL` matches both `GVL.a` and
 `GVL_HMI.x`. To pin one GVL, include the dot: `--path 'GVL.'`. It is not a glob
 (no `*`/`?` expansion). `--path` on `take` is an exact path and is repeatable.
 
+`snapshooter tree` caches the variable tree under `.dump/snapshots/`. The daemon
+rebuilds it automatically after any project edit it performs (`import`,
+`update-pou`, `delete-pou`): an unsaved import changes nothing on disk, so the
+daemon records the edit itself rather than trusting file timestamps. Use
+`--refresh` to force a rebuild after an edit made directly in the CODESYS IDE.
+The response's `tree_source` says `cache` or `rebuilt`, and `tree_built_at` is
+when the served tree was built.
+
 **File paths.** `--out` and `--input` may be relative; they resolve against the
 directory you ran `cts` in, because the CLI makes them absolute before sending
 them. That is not cosmetic: the daemon opens these files inside CODESYS.exe,

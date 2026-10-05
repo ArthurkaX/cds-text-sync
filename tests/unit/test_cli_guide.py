@@ -153,6 +153,14 @@ def test_commands_guide_states_the_online_edit_refusal():
     assert "There is no override flag" in text
 
 
+def test_commands_guide_documents_the_tree_cache_refresh():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "rebuilds it automatically after any project edit" in text
+    assert "`--refresh` to force a rebuild" in text
+    assert "`tree_source` says `cache` or `rebuilt`" in text
+
+
 def test_workflow_guide_states_the_online_edit_refusal():
     text = " ".join(read_topic("workflow")["text"].split())
 

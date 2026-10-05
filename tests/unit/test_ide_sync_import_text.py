@@ -360,6 +360,14 @@ def test_the_online_refusal_names_the_command_to_repeat(bridge):
     assert bridge.run()["error"].endswith("repeat sync_import_text.")
 
 
+def test_a_successful_import_marks_the_project_edited(bridge):
+    """The Snapshooter tree cache cannot see an unsaved import; the marker is
+    how the daemon records it, so the next `tree` rebuilds."""
+    bridge.write_import_xml(text_creates=[_fb()])
+    bridge.run()
+    assert os.path.exists(os.path.join(bridge.sync_dir, ".dump", "project_edited"))
+
+
 # ── 2. the export baseline is a precondition ───────────────────────────────
 
 

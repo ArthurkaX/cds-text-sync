@@ -222,6 +222,21 @@ def test_a_read_only_sync_command_does_not_ask_the_guard(monkeypatch):
     assert recorded == []
 
 
+def test_a_successful_sync_import_marks_the_project_edited(monkeypatch, tmp_path):
+    source = tmp_path / "IDE.xml"
+    source.write_text("<Project/>")
+    project = _Project()
+    sync = _load_sync()
+    monkeypatch.setattr(sync.ide_online_guard, "project_edit_refusal", lambda *a: None)
+    monkeypatch.setattr(sync, "_get_active_project", lambda: (project, None))
+    monkeypatch.setattr(sync, "_get_sync_folder", lambda: (str(tmp_path), None))
+
+    result = sync._cmd_sync_import({"input": str(source)})
+
+    assert result["ok"] is True
+    assert os.path.exists(os.path.join(str(tmp_path), ".dump", "project_edited"))
+
+
 # ── the project-editing handlers ────────────────────────────────────────────
 
 

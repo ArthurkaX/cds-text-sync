@@ -21,6 +21,7 @@ import time
 import ide_export_snapshot
 import ide_online_helpers as _helpers
 import ide_runtime_common
+import ide_tree_cache
 from codesys_utils import project_file_path, resolve_sync_folder
 from cts_shared.coerce import as_bool
 
@@ -157,6 +158,11 @@ FORMAT_VERSION = 1
 TUI_WIDTH = 63
 TUI_BODY_HEIGHT = 12
 _SNAPSHOOTER_ROWS_BY_PATH = {}
+
+# How the variable tree was last produced: "cache" (the cached files were
+# reused) or "rebuilt" (the project was re-exported). Reported by the tree
+# action so a caller can tell whether the answer reflects the live project.
+_LAST_TREE_BUILD = {"source": "", "built_at": ""}
 
 
 class TuiNode(object):
@@ -539,12 +545,16 @@ def _build_available_rows(project):
     _log("tree_json_path={0}".format(tree_json_path))
 
     pkl_path = _pickle_path(tree_json_path)
+    # A project edit the daemon cannot see in any mtime (an unsaved import)
+    # bumps the edit marker; treat a marker newer than the cache as a miss.
+    marker_mtime = ide_tree_cache.marker_mtime(sync_folder)
     cache_valid = (
         os.path.exists(pkl_path)
         and os.path.exists(tree_json_path)
         and os.path.exists(ide_xml_path)
         and os.path.getmtime(pkl_path) >= os.path.getmtime(tree_json_path)
         and os.path.getmtime(pkl_path) >= os.path.getmtime(ide_xml_path)
+        and os.path.getmtime(pkl_path) >= marker_mtime
     )
     if cache_valid:
         _log("tree + IDE.xml + pickle all present, skipping export and engine")
@@ -554,7 +564,10 @@ def _build_available_rows(project):
         _SNAPSHOOTER_ROWS_BY_PATH = dict((r.get("path"), r) for r in rows if r.get("path"))
         if not rows:
             raise RuntimeError("Snapshooter variable tree is empty: {0}".format(tree_json_path))
+        _set_last_tree_build("cache", tree_json_path)
         return rows, stats
+    if marker_mtime > 0.0:
+        _log("tree cache stale: the project was edited after it was built")
 
     _log("cache miss, calling _snapshooter_export_objects...")
     t0 = time.time()
@@ -592,6 +605,7 @@ def _build_available_rows(project):
     _SNAPSHOOTER_ROWS_BY_PATH = dict((r.get("path"), r) for r in rows if r.get("path"))
     if not rows:
         raise RuntimeError("Snapshooter variable tree is empty: {0}".format(tree_json_path))
+    _set_last_tree_build("rebuilt", tree_json_path)
     return rows, stats
 
 
@@ -621,6 +635,48 @@ def build_tree(app="Application", project=None):
     """Return variable-map rows. UI layers can group these into a tree."""
     project = _get_active_project(project)
     return _rows_for_paths(project, [])
+
+
+def _set_last_tree_build(source, tree_json_path):
+    built_at = ""
+    try:
+        built_at = time.strftime(
+            "%Y-%m-%dT%H:%M:%S", time.localtime(os.path.getmtime(tree_json_path))
+        )
+    except Exception:
+        pass
+    _LAST_TREE_BUILD["source"] = source
+    _LAST_TREE_BUILD["built_at"] = built_at
+
+
+def tree_build_info():
+    """A copy of the last build's ``{source, built_at}`` for the response."""
+    return {"source": _LAST_TREE_BUILD["source"],
+            "built_at": _LAST_TREE_BUILD["built_at"]}
+
+
+def invalidate_tree_cache(project):
+    """Drop the cached variable tree so the next build re-reads the project.
+
+    Used by ``tree --refresh`` and by any caller that cannot rely on the edit
+    marker alone. Best-effort: a missing file is not an error.
+    """
+    try:
+        _snapshot_dir, _ide_xml, tree_json_path = _snapshot_tree_paths(project)
+    except Exception as error:
+        _log("tree cache invalidation skipped: {0}".format(error))
+        return False
+    removed = False
+    for path in (tree_json_path, _pickle_path(tree_json_path)):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                removed = True
+        except Exception as error:
+            _log("could not remove tree cache {0}: {1}".format(path, error))
+    if removed:
+        _log("snapshooter tree cache invalidated: {0}".format(tree_json_path))
+    return removed
 
 
 def _read_rows(project, rows):

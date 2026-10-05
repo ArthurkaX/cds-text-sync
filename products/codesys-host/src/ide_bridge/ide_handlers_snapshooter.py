@@ -97,12 +97,15 @@ def _cmd_snapshooter(params):
 
 def _snapshooter_tree(params, project, app):
     prefix = _text(params.get("path", ""))
+    if as_bool(params.get("refresh", False)):
+        backend.invalidate_tree_cache(project)
     leaves = []
     for row in backend.build_tree(app=app, project=project):
         path = _text(row.get("path", ""))
         if prefix and not path.startswith(prefix):
             continue
         leaves.append({"path": path, "type": _text(row.get("type", ""))})
+    build = backend.tree_build_info()
     return {
         "ok": True,
         "data": {
@@ -110,6 +113,8 @@ def _snapshooter_tree(params, project, app):
             "app": app,
             "path": prefix or None,
             "count": len(leaves),
+            "tree_source": build["source"],
+            "tree_built_at": build["built_at"],
             "leaves": leaves,
         },
     }
