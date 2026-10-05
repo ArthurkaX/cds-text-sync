@@ -100,8 +100,24 @@ not compiled into the PLC) comes back `read_ok: false` with *"is not exported to
 the online application"* in `read_error` — that is a per-variable result, not a
 command failure.
 
-`--path` on `tree` is a **case-sensitive prefix** of the leaf path (not an exact
-path, not a glob); `--path` on `take` is an exact path and is repeatable.
+`--path` on `tree` is a **case-sensitive prefix** of the leaf path — a plain
+string prefix, **not a segment boundary**: `--path GVL` matches both `GVL.a` and
+`GVL_HMI.x`. To pin one GVL, include the dot: `--path 'GVL.'`. It is not a glob
+(no `*`/`?` expansion). `--path` on `take` is an exact path and is repeatable.
+
+**File paths.** `--out` and `--input` may be relative; they resolve against the
+directory you ran `cts` in, because the CLI makes them absolute before sending
+them. That is not cosmetic: the daemon opens these files inside CODESYS.exe,
+whose working directory is the IDE installation
+(`C:\Program Files (x86)\...\Common`) — a relative path used to be created
+there, or fail with `UnauthorizedAccessException` when that directory is not
+writable. `--paths-file` is opened by `cts` itself, so it is relative to the
+same place. A relative `--out`/`--input` that reaches the daemon anyway is
+refused with `path must be absolute: <param> <value>` instead of an OS error.
+
+`ui-check` has no `--out`: its Save and Load steps use a temporary preset the
+daemon picks itself (reported as `report.preset_file`, under the daemon's TEMP
+directory), so that action cannot be pointed at a preset of your own.
 
 Every action's `--timeout` defaults to 300 s. The first call on a project also
 exports `.dump/IDE.xml` and builds `.dump/snapshots/variable_tree.json` through

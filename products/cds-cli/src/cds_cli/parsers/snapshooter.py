@@ -59,15 +59,26 @@ _DESCRIPTION = (
 _EPILOG = (
     "Examples:\n"
     "  cts snapshooter tree --path GVL_HMI --pretty\n"
+    "  cts snapshooter tree --path 'GVL_HMI.'          # only that GVL's own leaves\n"
     "  cts snapshooter take --paths-file selected.txt --label speed --out preset.json\n"
-    "  cts snapshooter diff --input preset.json\n"
+    "  cts snapshooter take --path GVL_HMI.xStart --path GVL_HMI.xStop --out start.json\n"
+    "  cts snapshooter diff --input presets/before.json\n"
     "  cts snapshooter restore --input preset.json            # dry-run\n"
     "  cts snapshooter restore --input preset.json --apply\n"
     "  cts snapshooter ui-check\n"
     "\n"
     "--path on tree is a PREFIX match on the leaf path and is case-sensitive\n"
-    "(CODESYS paths are); it is not an exact path and not a glob. --path on\n"
-    "take is an exact path and is repeatable."
+    "(CODESYS paths are). It is a plain string prefix, NOT a segment boundary:\n"
+    "--path GVL matches GVL.a AND GVL_HMI.x. To pin one GVL, include the dot:\n"
+    "--path 'GVL.'. It is not a glob -- no * or ? is expanded.\n"
+    "--path on take is an exact path and is repeatable.\n"
+    "\n"
+    "File paths: --out and --input may be relative and are read from the\n"
+    "directory you ran cts in (they are made absolute before they are sent:\n"
+    "the daemon opens them inside CODESYS, whose working directory is the IDE\n"
+    "installation). --paths-file is opened by cts itself, so it is relative to\n"
+    "the same place. A relative --out/--input reaching the daemon is refused\n"
+    "with \"path must be absolute\"."
 )
 
 
@@ -96,7 +107,11 @@ def _add_tree(actions):
     tree.add_argument(
         "--path",
         default="",
-        help="Only variables whose path starts with this prefix (case-sensitive)",
+        help=(
+            "Only variables whose path starts with this prefix (case-sensitive, "
+            "a plain string prefix and not a segment boundary: GVL also matches "
+            "GVL_HMI.x; use 'GVL.' to pin one GVL)"
+        ),
     )
     add_timeout(tree, DEFAULT_TIMEOUT)
 
@@ -129,7 +144,11 @@ def _add_take(actions):
         help="Read paths from a file (one per line, # comments skipped)",
     )
     take.add_argument("--label", default="", help="Preset label stored in the document meta")
-    take.add_argument("--out", default="", help="Also save the preset to this .json path")
+    take.add_argument(
+        "--out",
+        default="",
+        help="Also save the preset to this .json path (relative resolves against cwd)",
+    )
     add_timeout(take, DEFAULT_TIMEOUT)
 
 
@@ -144,7 +163,12 @@ def _add_diff(actions):
             "writes anything to the PLC."
         ),
     )
-    diff.add_argument("--input", default="", required=True, help="Preset .json produced by take")
+    diff.add_argument(
+        "--input",
+        default="",
+        required=True,
+        help="Preset .json produced by take (relative resolves against cwd)",
+    )
     add_timeout(diff, DEFAULT_TIMEOUT)
 
 
@@ -193,7 +217,11 @@ def _add_ui_check(actions):
             "not exercised; MessageBox and the file dialogs are answering "
             "fakes, so their real appearance and the values a person would "
             "type are not covered; and a step that fails is reported, not "
-            "treated as a command failure (exit code stays 0)."
+            "treated as a command failure (exit code stays 0).\n\n"
+            "There is no --out here: the Save and Load steps use a temporary "
+            "preset file the daemon picks itself (reported as preset_file, "
+            "under the daemon's TEMP directory), so this action cannot be "
+            "pointed at a preset of your own."
         ),
     )
     ui_check.add_argument("--app", default="Application", help="Application name (default: Application)")

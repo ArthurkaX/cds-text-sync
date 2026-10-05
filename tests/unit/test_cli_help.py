@@ -270,9 +270,11 @@ def test_snapshooter_help_places_the_diagnostic_log(monkeypatch):
 def test_snapshooter_tree_help_says_path_is_a_case_sensitive_prefix(monkeypatch):
     help_text = _snapshooter_help(monkeypatch, "tree")
 
-    assert "starts with this prefix (case-sensitive)" in help_text
-    # The action help carries the rule; the root epilog spells out that it is
-    # neither an exact path nor a glob.
+    assert "starts with this prefix (case-sensitive" in help_text
+    # The action help carries the rule (including the segment-boundary trap);
+    # the root epilog spells out that it is neither an exact path nor a glob.
+    assert "a plain string prefix and not a segment boundary" in help_text
+    assert "use 'GVL.' to pin one GVL" in help_text
     assert "PREFIX match on the leaf path and is case-sensitive" in _snapshooter_help(monkeypatch)
 
 
@@ -296,3 +298,39 @@ def test_snapshooter_ui_check_help_says_what_it_does_not_check(monkeypatch):
     assert "the form is never shown" in help_text
     assert "answering fakes" in help_text
     assert "exit code stays 0" in help_text
+
+
+def test_snapshooter_help_explains_that_the_prefix_is_not_a_segment_boundary(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch)
+
+    assert "--path on tree is a PREFIX match on the leaf path and is case-sensitive" in help_text
+    assert "NOT a segment boundary" in help_text
+    assert "--path GVL matches GVL.a AND GVL_HMI.x" in help_text
+    assert "--path 'GVL.'" in help_text
+    assert "not a glob -- no * or ? is expanded" in help_text
+
+
+def test_snapshooter_help_says_where_file_paths_are_resolved(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch)
+
+    assert "--out and --input may be relative and are read from the" in help_text
+    assert "the daemon opens them inside CODESYS" in help_text
+    assert "--paths-file is opened by cts itself" in help_text
+    assert 'with "path must be absolute"' in help_text
+
+
+def test_snapshooter_help_examples_cover_every_action(monkeypatch):
+    """The examples are the part people copy; each action needs one."""
+    help_text = _snapshooter_help(monkeypatch)
+
+    for action in ("tree", "take", "diff", "restore", "ui-check"):
+        assert "cts snapshooter {0}".format(action) in help_text, action
+    assert "cts snapshooter restore --input preset.json --apply" in help_text
+
+
+def test_snapshooter_ui_check_help_says_there_is_no_out_option(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch, "ui-check")
+
+    assert "There is no --out here" in help_text
+    assert "temporary preset file the daemon picks itself" in help_text
+    assert "under the daemon's TEMP directory" in help_text
