@@ -2,6 +2,8 @@
 
 Use this reference as a routing guide. Confirm exact syntax with the installed `cts --help` and `cts <command> --help`.
 
+Global flags (`--pretty`/`-p`, `--output`, `--target`, `--expect-project`) go **before** the command: `cts --pretty ping`, not `cts ping --pretty` (that is "unrecognized arguments"; a few subcommands reuse `--output` for a folder of their own, so the globals are not accepted after the command).
+
 ## Guides
 
 | Goal | Command |

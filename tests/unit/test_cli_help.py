@@ -38,6 +38,24 @@ def test_connect_help_warns_about_modal_ide_questions():
     assert "complete Online -> Login before starting the daemon" in help_text
 
 
+def test_root_help_says_global_flags_come_before_the_command():
+    help_text = " ".join(build_parser().format_help().split())
+
+    assert "Global flags:" in help_text
+    assert "go BEFORE the command" in help_text
+    assert "cts --pretty ping" in help_text
+    assert "cts ping --pretty" in help_text
+
+
+def test_a_global_flag_after_the_command_is_rejected():
+    """The documented behaviour: argparse stops at the subcommand."""
+    import pytest
+
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ping", "--pretty"])
+
+
 def test_root_help_mentions_the_context_block():
     help_text = " ".join(build_parser().format_help().split())
 

@@ -206,6 +206,14 @@ def test_commands_guide_documents_reading_the_context():
     assert "edits=unknown" in text
 
 
+def test_commands_guide_places_the_global_flags_before_the_command():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "go **before** the command" in text
+    assert "`cts --pretty ping`" in text
+    assert "not `cts ping --pretty`" in text
+
+
 def test_workflow_guide_points_at_the_context():
     text = " ".join(read_topic("workflow")["text"].split())
 
