@@ -1214,6 +1214,13 @@ def _split_st_update_content(content):
 
 
 def _replace_text_document(doc, text):
+    """Replace a document's text, via its ``text`` property or the replace API.
+
+    Some document types (e.g. MAIN's) expose ``text`` as read-only, and
+    assigning it raises; that is expected, not a failure -- the replace API is
+    the real path. The log says which path was taken so a fallback does not
+    read as a broken import.
+    """
     if doc is None:
         return False
     if hasattr(doc, "text"):
@@ -1221,7 +1228,10 @@ def _replace_text_document(doc, text):
             doc.text = text
             return True
         except Exception as error:
-            _log("Could not replace text document through its text property: {0}".format(error))
+            _log(
+                "Text document does not accept its text property ({0}); "
+                "using the replace API".format(error)
+            )
     if hasattr(doc, "replace"):
         doc.replace(text)
         return True

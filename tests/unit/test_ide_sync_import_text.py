@@ -816,3 +816,46 @@ def test_side_effect_order_on_a_full_run(bridge):
     assert bridge.calls[1] == ("engine", "compare")
     assert len(bridge.project.import_native_calls) == 1
     assert result["data"]["saved"] is True
+
+
+# ── the read-only text property is a fallback, not a failure ───────────────
+
+
+def test_a_read_only_text_property_reports_the_fallback(monkeypatch):
+    """Live, importing MAIN logged "Could not replace text document ..." twice
+    before succeeding through the replace API -- it read as a broken import."""
+    logged = []
+    monkeypatch.setattr(sync, "_log", logged.append)
+
+    class _Doc(object):
+        @property
+        def text(self):
+            return "old"
+
+        @text.setter
+        def text(self, value):
+            raise AttributeError("can't assign to read-only property text")
+
+        def replace(self, value):
+            self.replaced = value
+
+    doc = _Doc()
+    assert sync._replace_text_document(doc, "new") is True
+    assert doc.replaced == "new"
+    assert len(logged) == 1
+    assert "using the replace API" in logged[0]
+    assert "Could not replace" not in logged[0]
+
+
+def test_a_writable_text_property_logs_nothing(monkeypatch):
+    logged = []
+    monkeypatch.setattr(sync, "_log", logged.append)
+
+    class _Doc(object):
+        def __init__(self):
+            self.text = "old"
+
+    doc = _Doc()
+    assert sync._replace_text_document(doc, "new") is True
+    assert doc.text == "new"
+    assert logged == []
