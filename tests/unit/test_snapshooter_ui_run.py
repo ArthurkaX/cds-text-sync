@@ -979,13 +979,12 @@ def test_unchecking_a_branch_subtracts_its_selected_leaves(scenario):
     assert form.status.Text == "Selected: 1/3 leaves"
 
 
-def test_unchecking_a_leaf_leaves_the_count_stale(scenario):
-    """Known quirk: a leaf's own checkbox never moves ``_selected_count``.
+def test_unchecking_a_leaf_subtracts_it_from_the_count(scenario):
+    """The old pin: clicking one leaf used to leave the label stale.
 
-    ``_on_after_check`` folds in ``_set_children_checked``'s delta, which only
-    counts *descendant* leaves -- a leaf has none, so unchecking one updates the
-    branch tri-state but leaves the "Selected: n/m leaves" label stale.  Pinned
-    as-is; the decomposition must not "fix" it.
+    ``_set_checked_cascade`` counted only *descendant* leaves, and a leaf has
+    none, so the box and the branch state moved while "Selected: n/m leaves"
+    kept the old number.  Deliberately replaced: the clicked leaf now counts.
     """
     _run(scenario)
     form = scenario.form()
@@ -999,12 +998,41 @@ def test_unchecking_a_leaf_leaves_the_count_stale(scenario):
     form._on_after_check(None, types.SimpleNamespace(Node=leaf))
 
     assert leaf.Checked is False
-    assert form._selected_count == 3
-    assert form.status.Text == "Selected: 3/3 leaves"
-    # The parent tri-state, however, is recomputed and does see the change.
+    assert form._selected_count == 2
+    assert form.status.Text == "Selected: 2/3 leaves"
+    # The branch states are recomputed and see the change too.
     gvl_ui = form.tree.Nodes[0].Nodes[0]
     assert gvl_ui.Checked is False
     assert form.tree.Nodes[0].Checked is False
+
+
+def test_checking_a_single_leaf_counts_it(scenario):
+    _run(scenario)
+    form = scenario.form()
+    leaf = [n for n in form._all_leaf_nodes if n.Name == "App.x"][0]
+
+    leaf.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf))
+
+    assert form._selected_count == 1
+    assert form.status.Text == "Selected: 1/3 leaves"
+
+
+def test_a_leaf_click_cannot_double_count_through_its_parent(scenario):
+    """Only the clicked node's own subtree is walked, so the delta is exact."""
+    _run(scenario)
+    form = scenario.form()
+    gvl_ui = form.tree.Nodes[0].Nodes[0]
+
+    gvl_ui.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=gvl_ui))
+    assert form._selected_count == 2
+
+    gvl_ui.Checked = False
+    form._on_after_check(None, types.SimpleNamespace(Node=gvl_ui))
+
+    assert form._selected_count == 0
+    assert form.status.Text == "Selected: 0/3 leaves"
 
 
 def test_reentrant_check_is_ignored(scenario):

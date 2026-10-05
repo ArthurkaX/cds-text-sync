@@ -411,11 +411,13 @@ def _first_checked_name(nodes):
 
 
 def _set_checked_cascade(node, checked):
-    """Check or uncheck ``node``'s descendants; return the selected delta.
+    """Push ``checked`` down onto ``node``'s descendants; return the delta.
 
-    Only *descendant* leaves move the delta -- a leaf has none, which is why
-    clicking a single leaf never updates ``_selected_count``.  The grid pins
-    that quirk; do not "fix" it here.
+    Only *descendants* move the delta, and each is counted from the state it
+    had before the push -- a partly-filled branch must hand back exactly the
+    leaves that changed.  The node itself is not counted here because WinForms
+    has already flipped its box by the time the event arrives, so its previous
+    state is not visible; the handler adds that one back.
     """
     delta = 0
     for i in range(node.Nodes.Count):
@@ -711,9 +713,16 @@ class _FormMethods(object):
             return
         self._checking = True
         try:
-            delta = _set_checked_cascade(args.Node, args.Node.Checked)
+            node = args.Node
+            delta = _set_checked_cascade(node, node.Checked)
+            if node.Tag == 1:
+                # The clicked leaf's own box: WinForms flipped it before this
+                # event, so the cascade sees it as already at its new state and
+                # does not count it.  Without this the status label kept the
+                # old number whenever a single leaf was clicked.
+                delta += 1 if node.Checked else -1
             self._selected_count += delta
-            _update_parent_state(args.Node, self._node_models, self._all_leaf_nodes)
+            _update_parent_state(node, self._node_models, self._all_leaf_nodes)
         finally:
             self._checking = False
         self._update_status()
