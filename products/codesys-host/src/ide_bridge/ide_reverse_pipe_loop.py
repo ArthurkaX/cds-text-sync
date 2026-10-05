@@ -143,6 +143,8 @@ from ide_handlers_sync import (
 
 from ide_handlers_cicd import _cmd_cicd
 
+from ide_handlers_snapshooter import _cmd_snapshooter
+
 # ── UI Dashboard (WinForms) ────────────────────────────────────────────────
 
 _DASHBOARD = None

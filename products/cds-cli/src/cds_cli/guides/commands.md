@@ -73,8 +73,18 @@ Check the installed command help for whether download also starts the applicatio
 | Build an offline variable map | `cts variable-map` |
 | Capture online values | `cts variable-snapshot` |
 | Preview or apply a restore | `cts variable-restore` |
+| List preset leaves | `cts snapshooter tree [--path PREFIX]` |
+| Read a JSON preset | `cts snapshooter take [--path P] [--paths-file F] [--label L] [--out FILE]` |
+| Diff a preset against the PLC | `cts snapshooter diff --input PRESET.json` |
+| Restore a preset (dry-run unless `--apply`) | `cts snapshooter restore --input PRESET.json [--apply]` |
+| Smoke-test the dialog headlessly | `cts snapshooter ui-check` |
 
 Keep restore in dry-run mode unless the user explicitly requests application.
+
+`variable-snapshot`/`variable-restore` move values as CSV through the offline
+engine; `snapshooter` uses the dialog's own JSON preset format (`take` writes a
+document of `{path, type, value, read_ok}` with a `meta` block, `diff`/`restore`
+read it back) and needs a project open in the IDE.
 
 ## Static Analysis
 

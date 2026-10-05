@@ -106,6 +106,268 @@ def run(backend, app="Application", save_to=""):
     return _pump_form(form_class(project, app, project_name, root_model))
 
 
+# ── Headless check (no Show/DoEvents) ──────────────────────────────────────
+#
+# ``check`` is the dialog without the person: it builds the same form the way
+# ``run`` does, but never shows it or pumps messages, and swaps MessageBox and
+# the file dialogs for recording fakes so the handlers can be driven by a
+# script.  It is the backend of the daemon's ``snapshooter ui_check`` action.
+
+
+_DEFAULT_CHECK_STEPS = (
+    "check_first_leaf",
+    "search_next",
+    "search_prev",
+    "save",
+    "load",
+    "diff",
+    "restore",
+)
+
+
+class _CheckWindows(object):
+    """Stand-in for MessageBox: records each Show and returns scripted answers.
+
+    Answers are consumed in order.  A Yes/No prompt with no scripted answer is
+    answered No, so a ``restore`` step stays a dry-run by default.
+    """
+
+    def __init__(self, answers=None):
+        self.shown = []
+        self._answers = list(answers or [])
+
+    def Show(self, message, caption, buttons=None, icon=None):
+        self.shown.append({"title": _text(caption), "text": _text(message)})
+        if self._answers:
+            return self._answers.pop(0)
+        if buttons == MessageBoxButtons.YesNo:
+            return DialogResult.No
+        return DialogResult.OK
+
+
+class _CheckFileDialog(object):
+    """A SaveFileDialog/OpenFileDialog that always yields the scripted path."""
+
+    def __init__(self, owner, kind, path):
+        self._owner = owner
+        self._kind = kind
+        self.Filter = ""
+        self.FileName = path
+        self.InitialDirectory = ""
+
+    def ShowDialog(self, parent=None):
+        # The handler sets FileName to a basename before the dialog opens; the
+        # scripted choice is the full path the dialog would return to it.
+        self.FileName = self._owner.preset_path
+        self._owner.calls.append((self._kind, self.FileName))
+        return DialogResult.OK
+
+
+class _CheckFileDialogs(object):
+    """Factory for the two dialogs; records which was used and with what path."""
+
+    def __init__(self, preset_path):
+        self.preset_path = preset_path
+        self.calls = []
+
+    def SaveFileDialog(self):
+        return _CheckFileDialog(self, "SaveFileDialog", self.preset_path)
+
+    def OpenFileDialog(self):
+        return _CheckFileDialog(self, "OpenFileDialog", self.preset_path)
+
+
+class _CheckArgs(object):
+    """The event-args stand-in ``_on_after_check`` reads ``.Node`` from."""
+
+    def __init__(self, node):
+        self.Node = node
+
+
+def _step_check_first_leaf(state):
+    form = state["form"]
+    if not form._all_leaf_nodes:
+        raise RuntimeError("the tree has no leaf variables to check")
+    node = form._all_leaf_nodes[0]
+    node.Checked = True
+    form._on_after_check(form.tree, _CheckArgs(node))
+
+
+def _search(state, direction):
+    form = state["form"]
+    if not form.search_box.Text:
+        leaves = form._all_leaf_nodes
+        form.search_box.Text = leaves[0].Name if leaves else ""
+    if direction > 0:
+        form._on_search_next(None, None)
+    else:
+        form._on_search_prev(None, None)
+
+
+def _step_search_next(state):
+    _search(state, 1)
+
+
+def _step_search_prev(state):
+    _search(state, -1)
+
+
+def _step_save(state):
+    form = state["form"]
+    form._on_save(form.save_btn, None)
+
+
+def _step_load(state):
+    form = state["form"]
+    form._on_load(form.load_btn, None)
+
+
+def _step_diff(state):
+    form = state["form"]
+    form._on_diff(form.diff_btn, None)
+
+
+def _step_restore(state):
+    form = state["form"]
+    form._on_restore(form.restore_btn, None)
+
+
+_CHECK_STEPS = {
+    "check_first_leaf": _step_check_first_leaf,
+    "search_next": _step_search_next,
+    "search_prev": _step_search_prev,
+    "save": _step_save,
+    "load": _step_load,
+    "diff": _step_diff,
+    "restore": _step_restore,
+}
+
+
+def _check_failure(report, error, windows=None):
+    report["ok"] = False
+    report["error"] = error
+    if windows is not None:
+        report["windows"] = list(windows.shown)
+    return report
+
+
+def _record_check_state(report, form):
+    report["checked_leaves"] = len([n for n in form._all_leaf_nodes if n.Checked])
+    report["leaf_count"] = form._leaf_count
+    parents = {}
+    for ui_node, model in form._node_models.items():
+        if getattr(model, "leaf", False):
+            continue
+        parents[getattr(model, "path", "") or getattr(model, "name", "")] = bool(
+            ui_node.Checked
+        )
+    report["parents"] = parents
+
+
+def _new_check_report(app):
+    return {
+        "ok": True,
+        "app": app,
+        "project": "",
+        "steps": [],
+        "windows": [],
+        "files": [],
+        "checked_leaves": 0,
+        "leaf_count": 0,
+        "parents": {},
+        "preset_file": "",
+    }
+
+
+def _install_check_fakes(preset_path):
+    """Swap MessageBox and the file dialogs for the recording stand-ins."""
+    windows = _CheckWindows()
+    dialogs = _CheckFileDialogs(preset_path)
+    globals()["MessageBox"] = windows
+    globals()["SaveFileDialog"] = dialogs.SaveFileDialog
+    globals()["OpenFileDialog"] = dialogs.OpenFileDialog
+    return windows, dialogs
+
+
+def _build_check_form(app):
+    """The form ``run`` would build, without showing or pumping it."""
+    project, project_name = _prepare_project(app)
+    root_model = _build_variable_tree(app=app, project=project)
+    if root_model is None:
+        raise RuntimeError("the variable tree could not be built")
+    return _build_form_class()(project, app, project_name, root_model), project_name
+
+
+def _run_check_steps(report, state, steps):
+    """Run each named step; an exception is recorded, never propagated."""
+    for name in steps:
+        entry = {"name": name, "ok": True, "error": ""}
+        handler = _CHECK_STEPS.get(name)
+        try:
+            if handler is None:
+                raise ValueError("unknown ui_check step: {0}".format(name))
+            handler(state)
+        except Exception as exc:
+            entry["ok"] = False
+            entry["error"] = "{0}: {1}".format(type(exc).__name__, exc)
+        report["steps"].append(entry)
+
+
+def check(backend, app="Application", script=None):
+    """Build the dialog without showing it and run a scripted scenario.
+
+    Returns a structural report: ``ok`` (false only when the window itself
+    could not be built), ``windows`` (title/text of every MessageBox shown),
+    ``files`` (which file dialog was used with which path), ``steps`` (one
+    ``{name, ok, error}`` per scenario step, an exception recorded rather than
+    raised), ``checked_leaves``, ``leaf_count`` and the check state of each
+    branch in ``parents``.
+
+    ``script`` overrides the default step list (see ``_DEFAULT_CHECK_STEPS``);
+    an unknown step name is recorded as a failed step.  The substitutions are
+    left in this module's globals -- ``check`` is a one-shot headless entry.
+    """
+    report = _new_check_report(app)
+    globals().update(backend)
+    try:
+        globals().update(_load_winforms())
+    except Exception as exc:
+        return _check_failure(
+            report, "cannot load the WinForms surface: {0}".format(exc)
+        )
+
+    import tempfile
+
+    preset_path = os.path.join(
+        tempfile.gettempdir(), "snapshooter-check-{0}.json".format(os.getpid())
+    )
+    windows, dialogs = _install_check_fakes(preset_path)
+
+    try:
+        form, project_name = _build_check_form(app)
+    except Exception as exc:
+        return _check_failure(
+            report,
+            "cannot create the Snapshooter window: {0}: {1}".format(
+                type(exc).__name__, exc
+            ),
+            windows,
+        )
+
+    report["project"] = project_name
+    report["leaf_count"] = form._leaf_count
+    report["preset_file"] = preset_path
+
+    state = {"form": form, "save_path": preset_path}
+    _run_check_steps(
+        report, state, _DEFAULT_CHECK_STEPS if script is None else list(script)
+    )
+    _record_check_state(report, form)
+    report["windows"] = list(windows.shown)
+    report["files"] = list(dialogs.calls)
+    return report
+
+
 # ── Tree-model arithmetic (no WinForms) ────────────────────────────────────
 
 

@@ -51,6 +51,7 @@ class _Harness(object):
         "cmd_variable_map",
         "cmd_variable_snapshot",
         "cmd_variable_restore",
+        "dispatch_snapshooter",
         "dispatch_visu",
     )
 
@@ -459,6 +460,15 @@ def test_visu_dispatches_to_dispatch_visu(cli):
     cli.run(["cts", "visu", "types"])
 
     assert cli.last("dispatch_visu")[0][0].visu_action == "types"
+
+
+def test_snapshooter_dispatches_to_dispatch_snapshooter(cli):
+    cli.run(["cts", "snapshooter", "tree", "--path", "GVL"])
+
+    args, kwargs = cli.last("dispatch_snapshooter")
+    assert args[0].snap_action == "tree"
+    assert args[0].path == "GVL"
+    assert args[1] == "json"
 
 
 def test_visu_command_error_becomes_diagnostics_and_exit_code(cli, capsys):
