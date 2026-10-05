@@ -426,5 +426,8 @@ def test_daemon_full_download_uses_never_without_deleting_foreign_apps(monkeypat
     online = Online()
     monkeypatch.setattr(helpers, "ensure_online_connection", lambda project: (online, SimpleNamespace(get_name=lambda: "Application")))
     result = helpers.download_impl(object(), start=False)
-    assert result["option"] == "Never"
+    # The field names the login mode, not a question anyone answered; the
+    # bare "option" read as a prompt the agent had missed.
+    assert result["online_change_option"] == "Never"
+    assert "option" not in result
     assert online.calls == [("logout",), (OnlineChangeOption.Never, False)]

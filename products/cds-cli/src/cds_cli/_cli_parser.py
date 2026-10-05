@@ -308,11 +308,12 @@ Examples:
         "Download performs its own login with CODESYS OnlineChangeOption.Never "
         "-- the only mode that forces a full download rather than an online "
         "change -- and reports that mode back as the response field "
-        "option: \"Never\". It does not need an online session first, but the "
-        "active application must have a reachable PLC gateway or simulation "
-        "mode. Build first: download pushes the last built code, and after "
-        "adding a GVL/DUT/POU a full download is what makes its symbols "
-        "readable."
+        "online_change_option: \"Never\" (the login mode used, not a question "
+        "the user answered; it is why the download was full). It does not need "
+        "an online session first, but the active application must have a "
+        "reachable PLC gateway or simulation mode. Build first: download "
+        "pushes the last built code, and after adding a GVL/DUT/POU a full "
+        "download is what makes its symbols readable."
     )
     p_download.add_argument(
         "--start",

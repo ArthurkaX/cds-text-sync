@@ -181,7 +181,8 @@ def test_commands_guide_explains_the_download_never_option():
     text = " ".join(read_topic("commands")["text"].split())
 
     assert "OnlineChangeOption.Never" in text
-    assert 'option: "Never"' in text
+    assert 'online_change_option: "Never"' in text
+    assert "not a question anyone answered" in text
 
 
 def test_commands_guide_documents_reachability_before_download():
