@@ -304,6 +304,20 @@ def clear_cached_online_app():
     state["online_target_app"] = None
 
 
+def cache_if_live(online_app, target_app):
+    """Cache the wrapper only when it really holds a session.
+
+    ``create_online_application`` builds a handle; it does not log in. Live,
+    ``cts app-state`` against an unreachable PLC cached such a handle and the
+    context block then reported ``online: true`` from it, so every later edit
+    looked online and was refused. Returns whether it was cached.
+    """
+    if not _online_app_is_live(online_app):
+        return False
+    cache_online_app(online_app, target_app)
+    return True
+
+
 def adopt_existing_online_session(project):
     """Cache a session which is already online in the CODESYS UI.
 

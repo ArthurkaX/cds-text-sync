@@ -3,6 +3,7 @@ name = "codesys-host"
 runtime = "codesys-ironpython"
 artifact = "flat-deployment-tree"
 test_paths = [
+  "../../tests/unit/test_app_state_cache.py",
   "../../tests/unit/test_apply_patch_guid_identity.py",
   "../../tests/unit/test_apply_patch_persistent_guard.py",
   "../../tests/unit/test_apply_patch_text_create_reporting.py",
