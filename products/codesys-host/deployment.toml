@@ -30,6 +30,7 @@ test_paths = [
   "../../tests/unit/test_ide_sync_apply.py",
   "../../tests/unit/test_ide_sync_compare.py",
   "../../tests/unit/test_ide_sync_import_refresh.py",
+  "../../tests/unit/test_ide_sync_import_text.py",
   "../../tests/unit/test_ide_xml.py",
   "../../tests/unit/test_object_selector_precedence.py",
   "../../tests/unit/test_online_diagnose_reporting.py",
