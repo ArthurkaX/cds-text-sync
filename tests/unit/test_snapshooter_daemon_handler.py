@@ -297,3 +297,49 @@ def _patch_check(monkeypatch, fake):
     import project_snapshooter_ui
 
     monkeypatch.setattr(project_snapshooter_ui, "check", fake)
+
+
+# ── The document's meta comes from the real backend ─────────────────────────
+
+
+class NamedPathProject(object):
+    """A project that only exposes the ScriptEngine ``path`` attribute."""
+
+    def __init__(self, path):
+        self.path = path
+
+
+def test_take_fills_meta_project_from_the_project_file_path(monkeypatch):
+    """End to end through the handler, the backend and snapshot_model.
+
+    ``backend.take`` is deliberately NOT faked here: the reported empty
+    ``meta.project`` came from the real document builder, so the fix is only
+    proved by running it.  Only the two CODESYS boundaries (the declaration
+    rows and the value read) are substituted.
+    """
+    project = NamedPathProject(r"C:\work\VKO-live.project")
+    monkeypatch.setattr(handler, "_get_active_project", lambda: (project, None))
+    monkeypatch.setattr(
+        handler.backend,
+        "_rows_for_paths",
+        lambda _project, paths: [
+            {"path": "GVL.a", "type": "INT", "leaf": True, "value": "1"}
+        ],
+    )
+    monkeypatch.setattr(
+        handler.backend._helpers,
+        "read_variables_impl",
+        lambda _project, names: {
+            "results": [
+                {"name": name, "value": "1", "read_ok": True} for name in names
+            ]
+        },
+    )
+    monkeypatch.setattr(handler.backend, "_SNAPSHOOTER_ROWS_BY_PATH", {})
+
+    result = handler._cmd_snapshooter({"action": "take"})
+
+    assert result["ok"] is True
+    document = result["data"]["document"]
+    assert document["meta"]["project"] == "VKO-live"
+    assert document["variables"][0]["path"] == "GVL.a"
