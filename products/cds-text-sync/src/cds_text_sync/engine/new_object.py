@@ -323,12 +323,14 @@ def _write_new_file(full_path, body):
 
 
 def _next_steps(kind):
-    """The ordered next steps. A GVL/POU must be referenced to reach the PLC.
+    """The ordered next steps. A new object must be referenced to reach the PLC.
 
     CODESYS loads only objects reachable from a task's call tree, so a new
-    executable object that nothing calls is compiled out: a full download alone
-    is not enough. A full download is still needed *after* it is referenced, or
-    the PLC's symbol table stays stale.
+    object that nothing uses is compiled out: a full download alone is not
+    enough. A GVL or POU is reached by a call; a DUT is reached only through a
+    variable that uses the type, in code the task calls. A full download is
+    still needed *after* it is referenced, or the PLC's symbol table stays
+    stale.
     """
     steps = ["cts compare", "cts import"]
     if kind in ("gvl", "pou"):
@@ -336,6 +338,12 @@ def _next_steps(kind):
             "Reference it from a POU the task calls, or the PLC never gets it: "
             "CODESYS loads only objects reachable from a task's call tree "
             "(for a GVL, add e.g. `GVL.x;` to MAIN)."
+        )
+    elif kind == "dut":
+        steps.append(
+            "Reference it from a variable in code the task calls, or the PLC "
+            "never gets it: CODESYS loads a type only through a variable that "
+            "uses it, in code reachable from a task's call tree."
         )
     steps.append(
         "cts download  # full download, after the object is referenced, before "
