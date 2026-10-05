@@ -176,16 +176,8 @@ def _format_output(data, fmt="json", title=None):
     last_ctx = get_last_context()
 
     if fmt != "text":
-        if isinstance(data, dict):
-            extra = {}
-            if "instance" not in data and last_inst is not None:
-                extra["instance"] = last_inst
-            if "context" not in data and last_ctx is not None:
-                extra["context"] = last_ctx
-            if extra:
-                data = dict(data)
-                data.update(extra)
-        return json.dumps(data, indent=2, ensure_ascii=False)
+        merged = _hoist_envelope(data, last_inst, last_ctx)
+        return json.dumps(merged, indent=2, ensure_ascii=False)
 
     if data is None:
         return "None"
@@ -205,19 +197,41 @@ def _format_output(data, fmt="json", title=None):
     if renderer.elided:
         lines.append("… shortened for reading; use --output json for all of it")
 
+    lines.extend(_footer_lines(last_inst, last_ctx))
+    return "\n".join(lines)
+
+
+def _hoist_envelope(data, last_inst, last_ctx):
+    """Add ``instance``/``context`` to a dict payload for the printed JSON.
+
+    Only when the payload does not already carry the key, so a caller that
+    built its own block is not overwritten.
+    """
+    if not isinstance(data, dict):
+        return data
+    extra = {}
+    if "instance" not in data and last_inst is not None:
+        extra["instance"] = last_inst
+    if "context" not in data and last_ctx is not None:
+        extra["context"] = last_ctx
+    if not extra:
+        return data
+    merged = dict(data)
+    merged.update(extra)
+    return merged
+
+
+def _footer_lines(last_inst, last_ctx):
+    """The trailing line(s): the ``[ctx]`` line, or the legacy instance line."""
     context_line = _context_line(last_ctx)
     if context_line:
-        lines.append(context_line)
-    elif last_inst is not None:
-        inst_id = last_inst.get("id", "")
-        prj = last_inst.get("project")
-        prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
-        if prj_name:
-            lines.append(f"{inst_id} · {prj_name}")
-        else:
-            lines.append(f"{inst_id} · no project")
-
-    return "\n".join(lines)
+        return [context_line]
+    if last_inst is None:
+        return []
+    inst_id = last_inst.get("id", "")
+    prj = last_inst.get("project")
+    prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
+    return [f"{inst_id} · {prj_name}" if prj_name else f"{inst_id} · no project"]
 
 
 def _context_line(context):
