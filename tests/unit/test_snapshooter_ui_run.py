@@ -72,6 +72,29 @@ class _Sink(object):
         return self
 
 
+# WinForms event members the form subscribes to.  ``widget.Click += handler``
+# has to be observable: a decomposition of ``_build_ui`` can silently attach
+# the wrong handler to a button, which no other scenario would notice.
+_EVENT_NAMES = frozenset([
+    "Click", "KeyDown", "AfterCheck", "FormClosed", "FormClosing",
+])
+
+
+class _Event(object):
+    """A WinForms event: ``+=`` records the handler, ``()`` fires them."""
+
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def __call__(self, *args, **kwargs):
+        for handler in self.handlers:
+            handler(*args, **kwargs)
+
+
 class _Controls(object):
     def __init__(self):
         self.items = []
@@ -196,6 +219,11 @@ class _Widget(object):
     def __getattr__(self, name):
         if name.startswith("__"):
             raise AttributeError(name)
+        if name in _EVENT_NAMES:
+            events = self.__dict__.setdefault("_events", {})
+            if name not in events:
+                events[name] = _Event()
+            return events[name]
         return _Sink()
 
 
@@ -660,6 +688,23 @@ def _run(scenario, app="Application", save_to="", backend=None):
     )
 
 
+def _button_host(form):
+    """The panel that holds the form's buttons (the title/content hold none)."""
+    for control in form.Controls.items:
+        if any(isinstance(item, _Button) for item in control.Controls.items):
+            return control
+    raise AssertionError("no button host panel found")
+
+
+def _buttons_by_text(form):
+    """Map each button's caption to the button control."""
+    return dict(
+        (item.Text, item)
+        for item in _button_host(form).Controls.items
+        if isinstance(item, _Button)
+    )
+
+
 # ── Startup: side-effect order and the RuntimeError path ───────────────────
 
 
@@ -836,6 +881,33 @@ def test_title_uses_project_and_app(scenario):
     assert title.Text == "Snapshooter :: MyProject :: MyApp"
 
 
+def test_build_ui_wires_every_button_to_its_handler(scenario):
+    """Every control/event subscription ``_build_ui`` sets up, by handler.
+
+    ``_build_ui`` is pure widget wiring, so mistaking ``_on_load`` for
+    ``_on_save`` on a button is invisible to every other scenario -- those call
+    the handlers directly.  This pins the wiring itself.
+    """
+    _run(scenario)
+    form = scenario.form()
+
+    buttons = _buttons_by_text(form)
+    assert set(buttons) == {
+        "Prev", "Next", "Save", "Load", "Diff", "Restore...", "Close",
+    }
+    assert buttons["Prev"].Click.handlers == [form._on_search_prev]
+    assert buttons["Next"].Click.handlers == [form._on_search_next]
+    assert buttons["Save"].Click.handlers == [form._on_save]
+    assert buttons["Load"].Click.handlers == [form._on_load]
+    assert buttons["Diff"].Click.handlers == [form._on_diff]
+    assert buttons["Restore..."].Click.handlers == [form._on_restore]
+    assert buttons["Close"].Click.handlers == [form._on_close]
+
+    assert form.tree.AfterCheck.handlers == [form._on_after_check]
+    assert form.search_box.KeyDown.handlers == [form._on_search_key]
+    assert form.FormClosed.handlers == [form._on_closed]
+
+
 # ── Check cascade ──────────────────────────────────────────────────────────
 
 
@@ -850,6 +922,61 @@ def test_checking_the_root_cascades_to_leaves(scenario):
     assert form._selected_count == 3
     assert all(node.Checked for node in form._all_leaf_nodes)
     assert form.status.Text == "Selected: 3/3 leaves"
+
+
+def test_branch_tristate_follows_partial_selection(scenario):
+    """A branch checks only once every direct child is checked.
+
+    ``_update_parent_state`` walks the ancestor chain on every check event: a
+    partly-filled branch must end up *unchecked*, a full one checked, and the
+    root stays unchecked while ``App.x`` is not.  The decomposition moves this
+    walk into a free function, so its thresholds are pinned here.
+    """
+    _run(scenario)
+    form = scenario.form()
+    root_ui = form.tree.Nodes[0]
+    gvl_ui = root_ui.Nodes[0]
+    leaf_a = [n for n in form._all_leaf_nodes if n.Name == "GVL.a"][0]
+    leaf_b = [n for n in form._all_leaf_nodes if n.Name == "GVL.b"][0]
+
+    leaf_a.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf_a))
+
+    assert gvl_ui.Checked is False
+    assert root_ui.Checked is False
+
+    leaf_b.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf_b))
+
+    assert gvl_ui.Checked is True
+    assert root_ui.Checked is False
+
+
+def test_unchecking_a_branch_subtracts_its_selected_leaves(scenario):
+    """Unticking a branch takes its descendants back out of the count.
+
+    ``_set_checked_cascade`` returns a signed delta: checking the root selects
+    three leaves, unticking ``GVL`` must hand two of them back.  The single-leaf
+    scenario cannot reach that subtraction -- a leaf has no descendants -- so
+    the negative branch is pinned here.
+    """
+    _run(scenario)
+    form = scenario.form()
+    root_ui = form.tree.Nodes[0]
+    gvl_ui = root_ui.Nodes[0]
+
+    root_ui.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=root_ui))
+    assert form._selected_count == 3
+
+    gvl_ui.Checked = False
+    form._on_after_check(None, types.SimpleNamespace(Node=gvl_ui))
+
+    assert form._selected_count == 1
+    assert [n.Name for n in form._all_leaf_nodes if n.Checked] == ["App.x"]
+    assert gvl_ui.Checked is False
+    assert root_ui.Checked is False
+    assert form.status.Text == "Selected: 1/3 leaves"
 
 
 def test_unchecking_a_leaf_leaves_the_count_stale(scenario):
@@ -989,8 +1116,12 @@ def test_load_crashes_after_checking_matching_leaves(scenario, tmp_path):
     _run(scenario)
     form = scenario.form()
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError) as excinfo:
         form._on_load(None, None)
+    # The failure is the id() int being sorted as if it were a node: the sort
+    # key reads ``n.Name`` off an int.  Pin the message, not just the type, so
+    # a different AttributeError further down cannot stand in for this one.
+    assert "'int' object has no attribute 'Name'" in str(excinfo.value)
 
     checked = sorted(node.Name for node in form._all_leaf_nodes if node.Checked)
     assert checked == ["App.x", "GVL.a"]
