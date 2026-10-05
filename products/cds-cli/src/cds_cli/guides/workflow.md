@@ -33,11 +33,13 @@ Run `cts guide commands` when selecting commands or diagnosing a workflow. Treat
 Every daemon response carries a `context` block (and `--pretty` prints it as a
 trailing `[ctx] ...` line) telling you where you are: the open project, the IDE
 id, the cached PLC state, and `edits_allowed`. The state is cached — `age_s` is
-how old it is. When `edits_allowed` is `false` the IDE is online with the PLC:
-run `cts disconnect`, then repeat the command; do not edit online. A `null`
-`edits_allowed` (with `plc.online: null`) means the state is unknown, not that
-editing is allowed — the daemon has no cached session, so the IDE may still be
-online and refuse the edit; ask before editing, do not edit. See
+how old it is — and when the cache is empty the daemon asks the IDE once
+whether a session already exists (no login): `plc.online` is `true`/`false`
+whenever that answers, `null` only when it cannot. When `edits_allowed` is
+`false` the IDE is online with the PLC: run `cts disconnect`, then repeat the
+command; do not edit online. A `null` `edits_allowed` (with `plc.online:
+null`) means the state is unknown, not that editing is allowed — the IDE may
+still be online and refuse the edit; ask before editing, do not edit. See
 `cts guide commands`, "Reading the context", for the field list.
 
 ## Apply Folder Changes

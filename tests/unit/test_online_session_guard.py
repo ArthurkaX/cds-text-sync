@@ -110,6 +110,18 @@ def test_connect_may_still_open_a_session(helpers):
     )
 
 
+def test_the_context_probe_never_opens_a_session(helpers, monkeypatch):
+    """The context block's blind-cache probe asks; it must not connect."""
+    reached = _global_names(helpers.probe_online_state)
+    assert "ensure_online_connection" not in reached
+    assert "login" not in reached
+
+    setattr(sys, STATE_KEY, {})
+    monkeypatch.setattr(helpers, "get_active_application", lambda project: None)
+    monkeypatch.setitem(sys.modules, "scriptengine", SimpleNamespace())
+    assert helpers.probe_online_state(project=object()) == (None, False)
+
+
 # ---------------------------------------------------------------------------
 # Behaviour of the guard itself
 # ---------------------------------------------------------------------------

@@ -213,6 +213,67 @@ def test_the_context_builder_never_opens_a_session(name):
     assert not (reached & set(_OPENERS))
 
 
+# ── a blind cache asks the IDE once, the guard's question ──────────────────
+
+
+def test_refresh_online_reports_offline_from_the_ide(monkeypatch):
+    monkeypatch.setattr(ctx, "_active_project", lambda: object())
+    monkeypatch.setattr(
+        ctx.ide_online_helpers, "probe_online_state", lambda project: (False, True)
+    )
+    assert ctx._refresh_online({"online": None})["online"] is False
+
+
+def test_refresh_online_keeps_null_when_the_probe_cannot_tell(monkeypatch):
+    monkeypatch.setattr(ctx, "_active_project", lambda: object())
+    monkeypatch.setattr(
+        ctx.ide_online_helpers, "probe_online_state", lambda project: (None, False)
+    )
+    assert ctx._refresh_online({"online": None})["online"] is None
+
+
+def test_refresh_online_without_a_project_stays_null(monkeypatch):
+    monkeypatch.setattr(ctx, "_active_project", lambda: None)
+    assert ctx._refresh_online({"online": None})["online"] is None
+
+
+def test_refresh_online_rereads_the_snapshot_after_a_live_probe(monkeypatch):
+    """A found session is cached, so the full snapshot becomes readable."""
+    monkeypatch.setattr(ctx, "_active_project", lambda: object())
+    monkeypatch.setattr(
+        ctx.ide_online_helpers, "probe_online_state", lambda project: (True, True)
+    )
+    returns = [{"online": True, "application_state": "run"}]
+    monkeypatch.setattr(ctx, "_get_plc_status_snapshot", lambda: returns.pop(0))
+    out = ctx._refresh_online({"online": None})
+    assert out["online"] is True
+    assert out["application_state"] == "run"
+
+
+def test_a_blind_cache_reaches_the_ide_without_a_login(monkeypatch):
+    _install(monkeypatch, online=None, project=PROJECT, started_ts=1000.0)
+    monkeypatch.setattr(ctx, "_active_project", lambda: object())
+    monkeypatch.setattr(
+        ctx.ide_online_helpers, "probe_online_state", lambda project: (False, True)
+    )
+    block = ctx.build_context()
+    assert block["plc"]["online"] is False
+    assert block["edits_allowed"] is True
+    assert "hint" not in block
+
+
+def test_a_known_cache_never_probes_the_ide(monkeypatch):
+    _install(monkeypatch, online="run", project=PROJECT)
+    called = []
+    monkeypatch.setattr(
+        ctx.ide_online_helpers, "probe_online_state",
+        lambda project: called.append(project) or (True, True),
+    )
+    monkeypatch.setattr(ctx, "_active_project", lambda: object())
+    ctx.build_context()
+    assert called == []
+
+
 def test_cost_of_a_context_block_is_small(monkeypatch):
     """A guard, not a benchmark: the block stays a few hundred bytes."""
     _install(monkeypatch, online="run", project=PROJECT)

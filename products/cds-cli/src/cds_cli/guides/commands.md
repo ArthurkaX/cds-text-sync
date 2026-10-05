@@ -58,7 +58,7 @@ Every daemon response carries a `context` block, beside `instance`. It answers
 |---|---|
 | `project` | Project name open in that IDE, or `null` when none is open |
 | `ide` | Daemon instance id (`ide-<pid>`), the same value `--target` takes |
-| `plc.online` | Cached session state: `true`, `false`, or `null` when the daemon has not seen a session |
+| `plc.online` | Session state: `true`, `false`, or `null` when it cannot be determined. When the cache is empty the daemon asks the IDE whether a session already exists — no login, no connection — so `null` means even that was impossible |
 | `plc.state` | Application state from the cache (`run`, `stop`, or empty when unknown) |
 | `plc.application` | Name of the cached online application |
 | `edits_allowed` | `true` when offline, `false` while the IDE is online with the PLC (editing is then refused), and `null` when the state is unknown |
@@ -66,11 +66,14 @@ Every daemon response carries a `context` block, beside `instance`. It answers
 | `hint_short` | The action from `hint`, short (e.g. `cts disconnect`) |
 | `age_s` | Age in seconds of the cached PLC view; large means stale |
 
-The state is **cached** — it is the daemon's last-known PLC view, not a fresh
-probe, and `age_s` says how old it is. `plc.online: null` means unknown, not
-offline, and then `edits_allowed` is `null` too: an edit may still be refused,
-because the daemon is blind rather than sure. Treat `null` as "ask before
-editing", never as permission. When `edits_allowed` is `false`, run
+The state is **cached** — it is the daemon's last-known PLC view, and `age_s`
+says how old it is. When the cache is empty the daemon makes one cheap probe:
+it asks the IDE whether a session already exists, the same question the edit
+guard asks, with no login and no connection. So `plc.online` is `true`/`false`
+whenever that can be answered, and `plc.online: null` is the honest fallback
+when it cannot. When it is `null`, `edits_allowed` is `null` too: an edit may
+still be refused, because the daemon is blind rather than sure. Treat `null`
+as "ask before editing", never as permission. When `edits_allowed` is `false`, run
 `cts disconnect` (and, if the state does not clear, end the online session in
 the CODESYS IDE), then repeat the command.
 
