@@ -284,119 +284,170 @@ def _daemon_call(ctx, method, params, timeout, stage_name):
         )
 
 
-def stage_build(ctx):
-    """Compile the active application through the IDE. Needs the daemon."""
+class _BuildEvidence:
+    """The daemon's build payload, as the stage validates and reads it.
+
+    ``_build_payload`` hands over a payload that is already an object; the
+    check functions below record what it says into this object, and the
+    composer at the end turns it into one stage result. Keeping it in one
+    place is what lets each check be a small, separately testable step.
+    """
+
+    def __init__(
+        self, data, resp, ctx, fingerprint_complete, fingerprint_errors, expected_fingerprint
+    ):
+        self.data = data
+        self.response_ok = wire.response_ok(resp)
+        self.sync_folder = ctx.sync_folder
+        # The local scan: whether it succeeded, and what it could not read.
+        self.fingerprint_complete = fingerprint_complete
+        self.fingerprint_errors = fingerprint_errors or []
+        self.expected_fingerprint = expected_fingerprint
+        # What the daemon reports back about itself.
+        self.reported_fingerprint = data.get("workspace_fingerprint")
+        self.import_freshness = data.get("import_freshness")
+        # Filled in by _read_build_counts / _read_build_messages.
+        self.errors = 0
+        self.warnings = 0
+        self.problems = []
+        self.malformed_messages = 0
+        self.diagnostics_complete = True
+
+
+def _build_fingerprint(ctx):
+    """Fingerprint the workspace this build is supposed to describe."""
     from cds_cli.verify.fingerprint import workspace_fingerprint
 
-    expected_fingerprint, fingerprint_complete, fingerprint_errors = (
-        workspace_fingerprint(ctx.sync_folder)
-    )
-    params = {}
-    if fingerprint_complete:
-        params["workspace_fingerprint"] = expected_fingerprint
-    resp, skipped = _daemon_call(
-        ctx, "build", params, ctx.build_timeout or 120, "build"
-    )
-    if skipped is not None:
-        return skipped
+    return workspace_fingerprint(ctx.sync_folder)
 
+
+def _build_payload(resp):
+    """The daemon's build payload, or the stage result that replaces the run.
+
+    A refusal can arrive with ``ok`` false and a real payload: the build
+    report itself carries compiler errors. Only a refusal with no payload is
+    the daemon saying it never got to compile anything.
+    """
     if not isinstance(resp, dict):
-        return StageResult.errored("build", "daemon returned a non-object response")
+        return None, StageResult.errored("build", "daemon returned a non-object response")
 
     data = resp.get("data")
-    # A refusal can arrive with ok False and a real payload: the build report
-    # itself carries compiler errors. Only a refusal with no payload is the
-    # daemon saying it never got to compile anything.
     if not wire.response_ok(resp) and not isinstance(data, dict):
-        return StageResult.errored(
+        return None, StageResult.errored(
             "build",
             wire.response_error(resp, "build refused"),
             reason_code="daemon_refused",
         )
     if not isinstance(data, dict):
-        return StageResult.errored(
+        return None, StageResult.errored(
             "build", "daemon returned no build payload", reason_code="invalid_payload"
         )
+    return data, None
 
-    # Newer daemons report the sync root used by the active IDE project. A
-    # mismatch means the compiler answered for another checkout; do not turn
-    # that answer into evidence about this workspace. Older daemons omit the
-    # field and remain compatible until the full import-freshness handshake lands.
-    reported_sync = data.get("sync_folder")
-    if reported_sync:
-        expected = os.path.normcase(os.path.normpath(os.path.abspath(ctx.sync_folder)))
-        actual = os.path.normcase(os.path.normpath(os.path.abspath(str(reported_sync))))
-        if expected != actual:
-            return StageResult.skipped(
-                "build",
-                "IDE sync-folder does not match the requested workspace",
-                reason_code="stale_ide",
-            )
 
-    # Newer daemons echo a content fingerprint computed from their configured
-    # sync folder.  A mismatch means the IDE built a different snapshot (or
-    # the files changed while the request was in flight), so its success is
-    # not evidence about this workspace.  Omitted fields remain compatible
-    # with older daemons until the full import-freshness handshake lands.
-    reported_fingerprint = data.get("workspace_fingerprint")
-    reported_fingerprint_complete = data.get("workspace_fingerprint_complete")
-    if reported_fingerprint_complete is not None and not isinstance(
-        reported_fingerprint_complete, bool
-    ):
+def _check_build_sync_folder(evidence):
+    """Whether the daemon's answer came from the checkout we asked about.
+
+    Newer daemons report the sync root used by the active IDE project. A
+    mismatch means the compiler answered for another checkout, so its success
+    is not evidence about this workspace. Older daemons omit the field and
+    stay compatible.
+    """
+    reported_sync = evidence.data.get("sync_folder")
+    if not reported_sync:
+        return None
+    expected = os.path.normcase(os.path.normpath(os.path.abspath(evidence.sync_folder)))
+    actual = os.path.normcase(os.path.normpath(os.path.abspath(str(reported_sync))))
+    if expected == actual:
+        return None
+    return StageResult.skipped(
+        "build",
+        "IDE sync-folder does not match the requested workspace",
+        reason_code="stale_ide",
+    )
+
+
+def _check_build_fingerprint(evidence):
+    """Whether the IDE is on the same revision of that checkout as we are.
+
+    A content fingerprint that disagrees with our scan -- or a daemon that
+    cannot compute one at all while ours succeeded -- means the answer is
+    about a snapshot the files have moved past. Omitted fields stay
+    compatible with older daemons until the full import-freshness handshake
+    lands.
+    """
+    reported_complete = evidence.data.get("workspace_fingerprint_complete")
+    if reported_complete is not None and not isinstance(reported_complete, bool):
         return StageResult.errored(
             "build",
             "invalid build payload: workspace_fingerprint_complete must be boolean",
             reason_code="invalid_payload",
         )
-    if fingerprint_complete and reported_fingerprint_complete is False:
+    if evidence.fingerprint_complete and reported_complete is False:
         return StageResult.skipped(
             "build",
             "IDE could not compute a complete workspace fingerprint",
             reason_code="identity_unknown",
         )
-    if reported_fingerprint:
-        if not isinstance(reported_fingerprint, str) or len(reported_fingerprint) != 64:
-            return StageResult.errored(
-                "build",
-                "invalid build payload: workspace_fingerprint must be SHA-256",
-                reason_code="invalid_payload",
-            )
-        if fingerprint_complete and reported_fingerprint.lower() != expected_fingerprint:
-            return StageResult.skipped(
-                "build",
-                "IDE workspace fingerprint does not match the requested workspace",
-                reason_code="stale_ide",
-            )
+    if not evidence.reported_fingerprint:
+        return None
+    if (
+        not isinstance(evidence.reported_fingerprint, str)
+        or len(evidence.reported_fingerprint) != 64
+    ):
+        return StageResult.errored(
+            "build",
+            "invalid build payload: workspace_fingerprint must be SHA-256",
+            reason_code="invalid_payload",
+        )
+    if (
+        evidence.fingerprint_complete
+        and evidence.reported_fingerprint.lower() != evidence.expected_fingerprint
+    ):
+        return StageResult.skipped(
+            "build",
+            "IDE workspace fingerprint does not match the requested workspace",
+            reason_code="stale_ide",
+        )
+    return None
 
-    import_freshness = data.get("import_freshness")
-    if import_freshness is not None:
-        if import_freshness not in ("verified", "stale", "unknown"):
-            return StageResult.errored(
-                "build",
-                "invalid build payload: import_freshness must be verified, stale, or unknown",
-                reason_code="invalid_payload",
-            )
-        if import_freshness == "stale":
-            return StageResult(
-                "build",
-                STATUS_SKIPPED,
-                reason="workspace has changed since the last successful IDE import",
-                reason_code="stale_ide",
-                summary={"import_freshness": import_freshness},
-                complete=False,
-            )
-        if import_freshness == "unknown":
-            return StageResult(
-                "build",
-                STATUS_SKIPPED,
-                reason="IDE import freshness could not be confirmed",
-                reason_code="identity_unknown",
-                summary={"import_freshness": import_freshness},
-                complete=False,
-            )
 
-    errors = data.get("errors", 0)
-    warnings = data.get("warnings", 0)
+def _check_import_freshness(evidence):
+    """Whether the IDE has imported the current workspace, as far as it knows."""
+    freshness = evidence.import_freshness
+    if freshness is None:
+        return None
+    if freshness not in ("verified", "stale", "unknown"):
+        return StageResult.errored(
+            "build",
+            "invalid build payload: import_freshness must be verified, stale, or unknown",
+            reason_code="invalid_payload",
+        )
+    if freshness == "stale":
+        return StageResult(
+            "build",
+            STATUS_SKIPPED,
+            reason="workspace has changed since the last successful IDE import",
+            reason_code="stale_ide",
+            summary={"import_freshness": freshness},
+            complete=False,
+        )
+    if freshness == "unknown":
+        return StageResult(
+            "build",
+            STATUS_SKIPPED,
+            reason="IDE import freshness could not be confirmed",
+            reason_code="identity_unknown",
+            summary={"import_freshness": freshness},
+            complete=False,
+        )
+    return None
+
+
+def _read_build_counts(evidence):
+    """Validate and normalise the error and warning counts."""
+    errors = evidence.data.get("errors", 0)
+    warnings = evidence.data.get("warnings", 0)
     for field, value in (("errors", errors), ("warnings", warnings)):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             return StageResult.errored(
@@ -404,25 +455,34 @@ def stage_build(ctx):
                 f"invalid build payload: {field} must be a non-negative number",
                 reason_code="invalid_payload",
             )
-    errors = int(errors)
-    warnings = int(warnings)
+    evidence.errors = int(errors)
+    evidence.warnings = int(warnings)
+    return None
 
-    messages = data.get("messages") or []
+
+def _read_build_messages(evidence):
+    """Turn the compiler's message list into normalised problems.
+
+    Only a severity containing the word ``Error`` counts: the daemon's own
+    capitalisation is the contract. A message that is not an object is counted
+    as malformed rather than reported, but it does make the diagnostics
+    incomplete.
+    """
+    messages = evidence.data.get("messages") or []
     if not isinstance(messages, list):
         return StageResult.errored(
-            "build", "invalid build payload: messages must be a list", reason_code="invalid_payload"
+            "build",
+            "invalid build payload: messages must be a list",
+            reason_code="invalid_payload",
         )
-
-    problems = []
-    malformed_messages = 0
     for message in messages:
         if not isinstance(message, dict):
-            malformed_messages += 1
+            evidence.malformed_messages += 1
             continue
         severity = str(message.get("severity", ""))
         if "Error" not in severity:
             continue
-        problems.append(
+        evidence.problems.append(
             Problem(
                 message=str(message.get("text", "")),
                 severity="error",
@@ -430,48 +490,71 @@ def stage_build(ctx):
                 where=str(message.get("object", "")),
             )
         )
+    return None
 
+
+def _build_summary(evidence):
+    """What the report says: the app, the counts, and how complete each part is.
+
+    A positive error count is taken at face value; a zero one is corrected
+    against the error messages we could actually read, so a daemon that
+    under-reports still cannot produce a passing build.
+    """
     summary = {
-        "application": data.get("application", ""),
-        "errors": errors,
-        "warnings": warnings,
+        "application": evidence.data.get("application", ""),
+        "errors": evidence.errors,
+        "warnings": evidence.warnings,
     }
-    if reported_fingerprint:
-        summary["workspace_fingerprint"] = reported_fingerprint
-    if import_freshness is not None:
-        summary["import_freshness"] = import_freshness
-    if not fingerprint_complete:
+    if evidence.reported_fingerprint:
+        summary["workspace_fingerprint"] = evidence.reported_fingerprint
+    if evidence.import_freshness is not None:
+        summary["import_freshness"] = evidence.import_freshness
+    if not evidence.fingerprint_complete:
         summary["workspace_fingerprint_complete"] = False
-        if fingerprint_errors:
-            summary["workspace_fingerprint_errors"] = len(fingerprint_errors)
-    diagnostics_complete = bool(data.get("diagnostics_complete", True)) and not malformed_messages
-    if not diagnostics_complete:
+        if evidence.fingerprint_errors:
+            summary["workspace_fingerprint_errors"] = len(evidence.fingerprint_errors)
+    evidence.diagnostics_complete = (
+        bool(evidence.data.get("diagnostics_complete", True))
+        and not evidence.malformed_messages
+    )
+    if not evidence.diagnostics_complete:
         summary["diagnostics_complete"] = False
-    elapsed = data.get("elapsed_seconds")
+    elapsed = evidence.data.get("elapsed_seconds")
     if elapsed is not None:
         summary["elapsed_seconds"] = elapsed
+    if evidence.errors == 0 and evidence.problems:
+        evidence.errors = len(evidence.problems)
+        summary["errors"] = evidence.errors
+    return summary
 
-    if errors == 0 and problems:
-        errors = len(problems)
-        summary["errors"] = errors
-    if not wire.response_ok(resp) and errors == 0 and not problems:
+
+def _build_result(evidence):
+    """Compose the stage result, unless the payload contradicts itself."""
+    summary = _build_summary(evidence)
+    if not evidence.response_ok and evidence.errors == 0 and not evidence.problems:
         return StageResult.errored(
             "build",
             "daemon returned ok=false without compiler diagnostics",
             reason_code="invalid_payload",
         )
+    return _build_verdict(evidence, summary)
 
+
+def _build_verdict(evidence, summary):
+    """A compiler error is a confirmed failure; missing diagnostics are not.
+
+    Missing diagnostics are reported as incomplete even when the daemon's
+    top-level flag says ok.
+    """
     reason = ""
     reason_code = ""
-    if not diagnostics_complete:
+    if not evidence.diagnostics_complete:
         reason = "compiler diagnostics are incomplete"
         reason_code = "tool_error"
 
-    # A compiler error is a confirmed project failure. Missing diagnostics are
-    # reported as incomplete even when the daemon's top-level flag says ok.
-    build_failed = errors > 0 or bool(problems) or not wire.response_ok(resp)
-    status = STATUS_FAIL if build_failed else STATUS_PASS
-    if not diagnostics_complete and not build_failed:
+    failed = evidence.errors > 0 or bool(evidence.problems) or not evidence.response_ok
+    status = STATUS_FAIL if failed else STATUS_PASS
+    if not evidence.diagnostics_complete and not failed:
         status = STATUS_ERROR
     return StageResult(
         "build",
@@ -479,10 +562,46 @@ def stage_build(ctx):
         reason=reason,
         reason_code=reason_code,
         summary=summary,
-        problems=problems,
-        complete=diagnostics_complete,
+        problems=evidence.problems,
+        complete=evidence.diagnostics_complete,
     )
 
+
+def stage_build(ctx):
+    """Compile the active application through the IDE. Needs the daemon.
+
+    The daemon's answer is only credited if it is *about this workspace*: the
+    payload must be present, well-formed, for this sync folder and this
+    revision, and its diagnostics complete. Anything else is a skip or an
+    error, never evidence that the project is fine.
+    """
+    expected_fingerprint, fingerprint_complete, fingerprint_errors = _build_fingerprint(ctx)
+
+    params = {}
+    if fingerprint_complete:
+        params["workspace_fingerprint"] = expected_fingerprint
+    resp, skipped = _daemon_call(ctx, "build", params, ctx.build_timeout or 120, "build")
+    if skipped is not None:
+        return skipped
+
+    data, failure = _build_payload(resp)
+    if failure is not None:
+        return failure
+
+    evidence = _BuildEvidence(
+        data, resp, ctx, fingerprint_complete, fingerprint_errors, expected_fingerprint
+    )
+    for check in (
+        _check_build_sync_folder,
+        _check_build_fingerprint,
+        _check_import_freshness,
+        _read_build_counts,
+        _read_build_messages,
+    ):
+        failure = check(evidence)
+        if failure is not None:
+            return failure
+    return _build_result(evidence)
 
 # -- test ---------------------------------------------------------------------
 
