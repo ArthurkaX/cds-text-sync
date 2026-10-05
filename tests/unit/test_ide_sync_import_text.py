@@ -758,7 +758,8 @@ def test_complete_attestation_records_the_fingerprint(bridge):
     bridge.write_import_xml(text_creates=[_fb()])
     entry = bridge.run()["data"]["verify_import_attestation"]
     assert entry["workspace_fingerprint"] == "fp-1"
-    assert isinstance(entry["imported_at"], str) and entry["imported_at"]
+    # UTC with a zone, so the host clock and the daemon clock agree.
+    assert entry["imported_at"].endswith("Z")
 
 
 def test_incomplete_attestation_records_the_reason(bridge):

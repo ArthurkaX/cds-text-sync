@@ -21,6 +21,7 @@ import time
 import ide_export_snapshot
 import ide_online_helpers as _helpers
 import ide_runtime_common
+import ide_time
 import ide_tree_cache
 from codesys_utils import project_file_path, resolve_sync_folder
 from cts_shared.coerce import as_bool
@@ -213,7 +214,7 @@ class TuiNode(object):
 
 
 def _now_text():
-    return time.strftime("%Y-%m-%dT%H:%M")
+    return ide_time.iso_utc()
 
 
 def _text(value):
@@ -650,9 +651,7 @@ def build_tree(app="Application", project=None):
 def _set_last_tree_build(source, tree_json_path):
     built_at = ""
     try:
-        built_at = time.strftime(
-            "%Y-%m-%dT%H:%M:%S", time.localtime(os.path.getmtime(tree_json_path))
-        )
+        built_at = ide_time.iso_utc(os.path.getmtime(tree_json_path))
     except Exception:
         pass
     _LAST_TREE_BUILD["source"] = source

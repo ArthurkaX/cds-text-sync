@@ -13,8 +13,8 @@ import base64
 import os
 import sys
 import tempfile
-import time
 
+import ide_time
 from ide_daemon_state import (
     _CONFIG_INVALID,
     _log,
@@ -330,7 +330,7 @@ def _append_app_history(crc_data, app_name=""):
         import json as _json
 
         entry = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "timestamp": ide_time.iso_utc(),
             "crc_file_base64": crc_data,
             "app_name": app_name,
         }

@@ -89,6 +89,15 @@ The context is added to every daemon command; commands that run without a
 daemon (`cts new`, `cts guide`, `cts where`, `cts analyze`, `cts fsm`) have no
 context — there is no daemon state to report.
 
+## Timestamps
+
+Every timestamp a daemon response carries (`tree_built_at`, `imported_at` in
+the verify attestation, `started_at`, `recorded_at`, the CRC history stamp) is
+UTC, ISO-8601, with a trailing `Z` — `2026-10-05T20:45:12Z` — so it always
+compares against another clock. Older values without a `Z` are read as they
+are. Only the daemon's own debug log keeps local time: it is read on the
+machine that wrote it.
+
 ## Project Inspection and Object Changes
 
 | Goal | Command |

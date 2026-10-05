@@ -17,6 +17,7 @@ import time
 
 import ide_online_guard
 import ide_runtime_common as _common
+import ide_time
 import ide_tree_cache
 
 from ide_daemon_state import (
@@ -94,7 +95,7 @@ def _write_import_attestation(sync_folder, project, saved=False):
             "project_path": project_path,
             "daemon_pid": os.getpid(),
             "saved": bool(saved),
-            "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "imported_at": ide_time.iso_utc(),
         }
         dump_dir = os.path.join(sync_folder, ".dump")
         if not os.path.isdir(dump_dir):
@@ -1128,7 +1129,7 @@ def _import_text_write_attestation(context):
     if attestation.get("complete"):
         context.return_data["verify_import_attestation"] = {
             "workspace_fingerprint": attestation.get("fingerprint"),
-            "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "imported_at": ide_time.iso_utc(),
         }
     else:
         context.return_data["verify_import_attestation"] = {

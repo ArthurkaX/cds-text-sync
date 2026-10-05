@@ -206,6 +206,15 @@ def test_commands_guide_documents_reading_the_context():
     assert "edits=unknown" in text
 
 
+def test_commands_guide_states_the_timestamp_zone():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "## Timestamps" in text
+    assert "ISO-8601, with a trailing `Z`" in text
+    assert "2026-10-05T20:45:12Z" in text
+    assert "Older values without a `Z` are read as they are" in text
+
+
 def test_commands_guide_places_the_global_flags_before_the_command():
     text = " ".join(read_topic("commands")["text"].split())
 
