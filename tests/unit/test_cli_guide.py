@@ -200,6 +200,10 @@ def test_commands_guide_documents_reading_the_context():
     assert "`edits_allowed`" in text
     assert "cts disconnect`" in text
     assert "is **cached**" in text
+    # The tri-state: unknown must not read as permission.
+    assert "and `null` when the state is unknown" in text
+    assert "never as permission" in text
+    assert "edits=unknown" in text
 
 
 def test_workflow_guide_points_at_the_context():

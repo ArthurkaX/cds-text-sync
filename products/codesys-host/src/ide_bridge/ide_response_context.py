@@ -80,6 +80,21 @@ def _age_seconds(online_app, now):
     return None
 
 
+def _edits_allowed(online):
+    """Tri-state: True/False when the PLC state is known, else None.
+
+    ``None`` is not "no": live, the daemon reported ``edits_allowed: true``
+    with ``plc.online: null`` while an edit was refused, because the IDE was
+    online and the daemon simply had no cached handle. "Unknown" is the honest
+    answer, so an agent does not read permission into a blind spot.
+    """
+    if online is True:
+        return False
+    if online is False:
+        return True
+    return None
+
+
 def _hint(project_name, online):
     """``(hint, hint_short)`` for the one thing worth saying, else (None, None)."""
     if not project_name:
@@ -117,7 +132,7 @@ def build_context(instance_info=None):
     context["project"] = project_name
     context["ide"] = instance_info.get("id") if isinstance(instance_info, dict) else None
     context["plc"] = _plc_block(snapshot)
-    context["edits_allowed"] = online is not True
+    context["edits_allowed"] = _edits_allowed(online)
     if hint:
         context["hint"] = hint
         context["hint_short"] = hint_short

@@ -46,7 +46,7 @@ UNKNOWN = {
     "project": None,
     "ide": "ide-3444",
     "plc": {"online": None, "state": "", "application": ""},
-    "edits_allowed": True,
+    "edits_allowed": None,
     "hint": "The daemon holds no cached PLC session; the IDE may still be online.",
     "hint_short": "cts disconnect",
     "age_s": 900,
@@ -87,7 +87,9 @@ def test_unknown_plc_is_spelled_unknown(with_context):
     with_context(UNKNOWN)
     line = _format_output({"x": 1}, "text").splitlines()[-1]
     assert "plc=unknown" in line
-    assert "project=? " in line + " "
+    # Unknown edits must not read as permission: live, "edits=allowed" was
+    # printed while the next edit was refused.
+    assert "edits=unknown" in line
 
 
 def test_a_missing_context_keeps_the_legacy_instance_line(monkeypatch, with_context):
@@ -103,7 +105,7 @@ def test_a_missing_context_keeps_the_legacy_instance_line(monkeypatch, with_cont
 def test_a_partial_context_does_not_crash(with_context):
     with_context({"project": "P", "ide": "ide-1"})
     line = _context_line({"project": "P", "ide": "ide-1"})
-    assert line == "[ctx] project=P ide=ide-1 plc=unknown edits=allowed"
+    assert line == "[ctx] project=P ide=ide-1 plc=unknown edits=unknown"
 
 
 def test_context_line_is_empty_without_a_context():

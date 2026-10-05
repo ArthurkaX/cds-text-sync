@@ -234,6 +234,25 @@ def _footer_lines(last_inst, last_ctx):
     return [f"{inst_id} · {prj_name}" if prj_name else f"{inst_id} · no project"]
 
 
+def _plc_text(plc):
+    """``online`` / ``offline`` / ``unknown`` for the ``plc`` block."""
+    online = plc.get("online")
+    if online is True:
+        return "online"
+    if online is False:
+        return "offline"
+    return "unknown"
+
+
+def _edits_text(value):
+    """``blocked`` / ``allowed`` / ``unknown`` for ``edits_allowed``."""
+    if value is False:
+        return "blocked"
+    if value is True:
+        return "allowed"
+    return "unknown"
+
+
 def _context_line(context):
     """The one-line ``[ctx] ...`` footer, or "" when there is no context.
 
@@ -244,17 +263,11 @@ def _context_line(context):
     if not isinstance(context, dict):
         return ""
     plc = context.get("plc") if isinstance(context.get("plc"), dict) else {}
-    online = plc.get("online")
-    if online is True:
-        plc_text = "online"
-    elif online is False:
-        plc_text = "offline"
-    else:
-        plc_text = "unknown"
+    plc_text = _plc_text(plc)
     state = plc.get("state")
     if state:
         plc_text = f"{plc_text}/{state}"
-    edits = "blocked" if context.get("edits_allowed") is False else "allowed"
+    edits = _edits_text(context.get("edits_allowed"))
     line = "[ctx] project={0} ide={1} plc={2} edits={3}".format(
         context.get("project") or "?", context.get("ide") or "?", plc_text, edits
     )

@@ -111,10 +111,21 @@ def test_unknown_state_is_null_not_a_wait(monkeypatch):
     _install(monkeypatch, online=None, project=PROJECT, started_ts=1000.0)
     block = ctx.build_context()
     assert block["plc"]["online"] is None
-    assert block["edits_allowed"] is True
+    # Unknown is neither permission nor refusal: live, edits_allowed was true
+    # here while an edit was refused, which read as "go ahead".
+    assert block["edits_allowed"] is None
     assert "hint" in block
     # The age is how long we have run without a session -- not omitted.
     assert block["age_s"] >= 1_000_000
+
+
+def test_edits_allowed_is_the_tri_state_of_online(monkeypatch):
+    _install(monkeypatch, online="run", project=PROJECT)
+    assert ctx.build_context()["edits_allowed"] is False
+    _install(monkeypatch, online="stop", connected=False, project=PROJECT)
+    assert ctx.build_context()["edits_allowed"] is True
+    _install(monkeypatch, online=None, project=PROJECT)
+    assert ctx.build_context()["edits_allowed"] is None
 
 
 def test_no_project_is_called_out(monkeypatch):
