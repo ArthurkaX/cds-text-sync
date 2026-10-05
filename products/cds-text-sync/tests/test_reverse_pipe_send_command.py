@@ -518,6 +518,25 @@ class TestHelloExchange:
         # the wait is capped by the window rather than the 1.0s deadline.
         assert harness.listeners[1].wait_timeouts[0] == pytest.approx(0.25)
 
+    def test_the_window_alone_can_end_discovery_before_the_deadline(self, harness):
+        harness.monkeypatch.setenv("CTS_DISCOVERY_MS", "250")
+        harness.listener_waits = [[True]]
+        harness.replies[100] = [hello_reply(1234)]
+        harness.decide_default = Decision(kind="wait")
+
+        with pytest.raises(RuntimeError):
+            harness.run()
+
+        # The hello opens a 0.25s window while the deadline is a whole second
+        # away, so decide sees window_over flip to True on the window alone,
+        # right after the second wait burns the rest of it.
+        assert [call["window_over"] for call in harness.decide_calls[:4]] == [
+            False,
+            False,
+            True,
+            True,
+        ]
+
     def test_a_later_hello_is_added_while_an_earlier_one_is_still_held(self, harness):
         harness.listener_waits = [[True], [True]]
         harness.replies[100] = [hello_reply(1234)]
