@@ -6,6 +6,7 @@ artifact = "wheel"
 test_paths = [
   "tests/test_*.py",
   "../../tests/unit/test_action_round_trip.py",
+  "../../tests/unit/test_blanking_equivalence.py",
   "../../tests/unit/test_call_tree.py",
   "../../tests/unit/test_changeset.py",
   "../../tests/unit/test_coerce_bool.py",

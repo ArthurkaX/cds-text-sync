@@ -56,3 +56,10 @@ def test_trim_strings_preserves_length_after_blanking():
     assert len(double) == len(text)
     assert double.startswith("msg := '") and double.endswith("';\n")
     assert "//" not in double and "(*" not in double
+
+
+def test_trim_strings_keeps_length_across_doubled_quote():
+    """A doubled quote is two consumed characters, so it leaves two spaces."""
+    text = "msg := 'a''b';\n"
+    assert trim_strings(text) == "msg := '    ';\n"
+    assert len(trim_strings(text)) == len(text)

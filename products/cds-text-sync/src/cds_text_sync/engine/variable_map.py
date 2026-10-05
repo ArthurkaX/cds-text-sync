@@ -46,6 +46,7 @@ except ImportError:
         sys.path.insert(0, _SHARED_SRC)
     from cts_shared.st import declarations as _shared_declarations
 
+from cts_shared.st.blanking import blank_noise as _blank_noise
 from cts_shared.st.projection import (
     IMPLEMENTATION_MARKER as ST_IMPLEMENTATION_MARKER,  # noqa: F401 - re-exported
     find_implementation_split,
@@ -74,58 +75,8 @@ _VAR_OPENERS = [
 # Text normalisation
 # ---------------------------------------------------------------------------
 
-def _blank_noise(text):
-    """Blank comments, strings, and nested pragmas without changing offsets."""
-    out = []
-    i = 0
-    n = len(text)
-    while i < n:
-        c = text[i]
-        nxt = text[i + 1] if i + 1 < n else ""
-        if c in ("'", '"'):
-            quote = c
-            out.append(c)
-            i += 1
-            while i < n:
-                d = text[i]
-                out.append(d)
-                if d == quote:
-                    if i + 1 < n and text[i + 1] == quote:
-                        out.append(text[i + 1])
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                i += 1
-            continue
-        if c == "/" and nxt == "/":
-            while i < n and text[i] != "\n":
-                out.append(" ")
-                i += 1
-            continue
-        if c == "(" and nxt == "*":
-            while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == ")"):
-                out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            if i < n:
-                out.append("  ")
-                i += 2
-            continue
-        if c == "{":
-            depth = 1
-            out.append(" ")
-            i += 1
-            while i < n and depth > 0:
-                if text[i] == "{":
-                    depth += 1
-                elif text[i] == "}":
-                    depth -= 1
-                out.append("\n" if text[i] == "\n" else " ")
-                i += 1
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+# ``_blank_noise`` is the shared lexer, imported at the top of the module; the
+# name is kept so this module and ``call_tree`` keep their existing call sites.
 
 def split_decl_impl(text):
     """Split a .st blob into (declaration, implementation).

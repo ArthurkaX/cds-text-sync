@@ -2977,6 +2977,21 @@ def test_cts0033_ignores_existing_constant_and_at_declarations():
     assert run_rule("CTS0033", ProjectSnapshot(".", [unit])) == []
 
 
+def test_cts0033_result_unchanged_by_doubled_quote_in_initializer():
+    """A ``''`` escape in a string initializer must not shift the rule's view.
+
+    ``trim_strings`` used to drop a byte per doubled quote; the initializer
+    still blanks its string contents and the identifiers it sees are the same.
+    """
+    unit = _st_unit(
+        "FUNCTION Calculate : INT\nVAR\n"
+        "    Label : STRING := 'it''s';\n    N : INT := 3;\nEND_VAR\n"
+        "IMPLEMENTATION\nCalculate := N;\n"
+    )
+    findings = run_rule("CTS0033", ProjectSnapshot(".", [unit]))
+    assert [finding.anchor for finding in findings] == ["Label", "N"]
+
+
 # ---------------------------------------------------------------------------
 # CTS0034 - ignored function return value
 # ---------------------------------------------------------------------------

@@ -1,16 +1,36 @@
 """
 blanking.py - Comment/string blanking helpers for the analyzer.
 
-The shared implementation lives in :mod:`st_text.blanking` so the analyzer
-and the CPython engine use the same lexical behavior without depending on one
-another.
+This is the single implementation of the "blind" ST lexer: it blanks comments,
+pragmas and (on request) string contents while preserving offsets and line
+breaks. The analyzer and the CPython engine both import from here, so the two
+see identical text without depending on one another.
+
+The module runs on IronPython 2.7 inside the CODESYS host, so it stays plain
+Python 2: no f-strings, no annotations, no ``pathlib`` and no
+``from __future__ import annotations``.
 """
 
 from __future__ import print_function
 
 import re
 
-__all__ = ["blank_noise", "trim_strings", "comment_spans"]
+__all__ = [
+    "blank_noise",
+    "trim_strings",
+    "comment_spans",
+    "blanked",
+    "has_intentional_noop_comment",
+]
+
+
+# A comment that documents a deliberate empty branch (see
+# ``has_intentional_noop_comment``).
+_INTENTIONAL_NOOP_COMMENT = re.compile(
+    r"\b(?:wait|waiting|reset|intentionally|reserved|not\s+applicable|"
+    r"no[-\s]?op|nothing\s+to\s+do)\b",
+    re.IGNORECASE,
+)
 
 
 # Regex to find the next special character that starts a comment, string, or
@@ -199,3 +219,17 @@ def comment_spans(text):
             continue
         i += 1
     return out
+
+
+def has_intentional_noop_comment(text, position):
+    """Return whether a nearby comment documents a deliberate no-op.
+
+    Only comments immediately preceding *position* are considered. This is
+    intentionally narrow so a stray comment elsewhere cannot hide a blank
+    branch.
+    """
+    for _start, end, content in reversed(comment_spans(text[:position])):
+        if text[end:position].strip():
+            break
+        return bool(_INTENTIONAL_NOOP_COMMENT.search(content))
+    return False
