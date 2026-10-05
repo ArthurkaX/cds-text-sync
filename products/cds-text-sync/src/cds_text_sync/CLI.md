@@ -899,6 +899,12 @@ read and the entries are merged, deduplicated on name and version. A project
 commonly has more than one — for example an application-level manager plus a
 visualization one — so a single-manager read would silently lose libraries.
 
+Both kinds of entry count as a reference, and both carry a `kind` in the
+report: a **placeholder** (`placeholder`), and a **concrete** pin
+(`concrete`) written directly with `Name`/`Resolution` instead of a
+placeholder. A declared version of `*` means "newest installed" and is
+resolved against the LibDoc tree, as before.
+
 Two failure modes are reported rather than papered over:
 
 - **Missing LibDoc** — the library is referenced but no documentation is

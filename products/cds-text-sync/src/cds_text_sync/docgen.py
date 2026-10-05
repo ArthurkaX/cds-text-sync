@@ -958,6 +958,7 @@ def _build_manifest(context):
                 "version": ref["version"],
                 "vendor": ref["vendor"],
                 "placeholder": ref["placeholder"],
+                "kind": ref.get("kind") or "placeholder",
                 "reason": ref.get("reason", "documentation_package_absent"),
             }
             for ref in context.missing
@@ -1017,6 +1018,7 @@ def _write_library_docs(context):
             "",
             f"- Vendor: `{ref['vendor'] or 'unknown'}`",
             f"- Namespace: `{ref['namespace'] or '-'}`",
+            f"- Reference: `{ref.get('kind') or 'placeholder'}`",
             f"- Placeholder: `{ref['placeholder'] or '-'}`",
             f"- Kind: `{'system library' if ref['system'] else 'application library'}`",
             f"- LibDoc: `{libdoc['path']}`",
@@ -1088,15 +1090,16 @@ def _write_index(context, manifest):
         "",
         "## Libraries",
         "",
-        "| Library | Version | Vendor | Namespace | System | POUs | Document |",
-        "|---|---|---|---|---|---:|---|",
+        "| Library | Kind | Version | Vendor | Namespace | System | POUs | Document |",
+        "|---|---|---|---|---|---|---:|---|",
         ]
     )
     for entry in context.documented:
         ref = entry["ref"]
         file_name = f"{_slug(ref['name'])}-{_slug(entry['libdoc']['version'])}.md"
         lines.append(
-            f"| {ref['name']} | {entry['libdoc']['version']} | {ref['vendor'] or 'unknown'} "
+            f"| {ref['name']} | {ref.get('kind') or 'placeholder'} "
+            f"| {entry['libdoc']['version']} | {ref['vendor'] or 'unknown'} "
             f"| {ref['namespace'] or '-'} | {'yes' if ref['system'] else 'no'} "
             f"| {len(entry['symbols'])} | [libraries/{file_name}](libraries/{file_name}) |"
         )
@@ -1109,14 +1112,15 @@ def _write_index(context, manifest):
             "this machine. Install the library documentation or ask the user to resolve the",
             "reference — the generator does not substitute another version.",
             "",
-            "| Library | Version | Vendor | Placeholder | Reason |",
-            "|---|---|---|---|---|",
+            "| Library | Kind | Version | Vendor | Placeholder | Reason |",
+            "|---|---|---|---|---|---|",
         ]
     )
     if context.missing:
         for ref in context.missing:
             lines.append(
-                f"| {ref['name']} | {ref['version']} | {ref['vendor'] or '-'} "
+                f"| {ref['name']} | {ref.get('kind') or 'placeholder'} "
+                f"| {ref['version']} | {ref['vendor'] or '-'} "
                 f"| {ref['placeholder'] or '-'} | {ref.get('reason', '-')} |"
             )
     else:

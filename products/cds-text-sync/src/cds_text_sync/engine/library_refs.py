@@ -31,6 +31,17 @@ LIBRARY_MANAGER_TYPE_GUID = "adb5cb65-8e1d-4a00-b70a-375ea27582f3"
 # Type GUID of one per-library item element inside the Library Manager.
 PLACEHOLDER_ITEM_TYPE_GUID = "4723ebe7-5bfc-43c6-be6b-5097002ef6b4"
 
+# Type GUID of a *concrete* library item - a library pinned directly by the
+# project instead of named through a placeholder. Its fields differ: ``Name``
+# and ``Resolution`` replace ``PlaceholderName`` and ``DefaultResolution``.
+# Only the leading segment of the GUID was readable in the export that
+# surfaced this, so the item is matched by prefix.
+CONCRETE_ITEM_TYPE_GUID_PREFIX = "51a11660"
+
+#: ``kind`` values carried by every reference.
+KIND_PLACEHOLDER = "placeholder"
+KIND_CONCRETE = "concrete"
+
 # ``name, version (vendor)`` - the full DefaultResolution form. The version is
 # ``*`` or a dotted number; the vendor may contain spaces, hyphens and dots.
 _DEFAULT_RESOLUTION_RE = re.compile(
@@ -89,12 +100,12 @@ def explicit_library_references(project_view):
 
     ``references`` holds one dict per library entry, deduplicated on
     ``(name.casefold(), version)`` with the first occurrence winning, ordered
-    by file then document order within each file. Keys: ``placeholder``,
-    ``name``, ``version``, ``vendor``, ``namespace``, ``system`` and
-    ``container`` - the owning Library Manager's path relative to
-    ``project_view`` with forward slashes. ``gap`` is ``None`` when at least
-    one manager yielded entries (a partial read is not a failure), or a short
-    human-readable reason. Never raises.
+    by file then document order within each file. Keys: ``kind`` (one of
+    ``placeholder``, ``concrete``), ``placeholder``, ``name``, ``version``,
+    ``vendor``, ``namespace``, ``system`` and ``container`` - the owning
+    Library Manager's path relative to ``project_view`` with forward slashes.
+    ``gap`` is ``None`` when at least one manager yielded entries (a partial
+    read is not a failure), or a short human-readable reason. Never raises.
     """
     roots = []
     for path in find_library_managers(project_view):
@@ -110,35 +121,78 @@ def explicit_library_references(project_view):
     seen = set()
     for path, root in roots:
         container = pathlib.Path(os.path.relpath(os.fspath(path), project_root)).as_posix()
-        for item in root.iter("Single"):
-            if _normalise_guid(item.get("Type")) != PLACEHOLDER_ITEM_TYPE_GUID:
-                continue
-            placeholder = _single_text(item, "PlaceholderName")
-            resolution = item.find("Single[@Name='DefaultResolution']")
-            if resolution is None:
-                name, version, vendor = placeholder, "*", ""
-            else:
-                name, version, vendor = parse_default_resolution(resolution.text)
-            if not name:
-                continue
-            key = (name.casefold(), version)
-            if key in seen:
-                continue
-            seen.add(key)
-            references.append(
-                {
-                    "placeholder": placeholder,
-                    "name": name,
-                    "version": version,
-                    "vendor": vendor,
-                    "namespace": _single_text(item, "Namespace"),
-                    "system": _is_true(item.find("Single[@Name='SystemLibrary']")),
-                    "container": container,
-                }
-            )
+        _collect_item_references(root, container, references, seen)
     if not references:
         return [], "Library Manager objects have no library entries"
     return references, None
+
+
+def _collect_item_references(root, container, references, seen):
+    """Append the deduplicated library references of one Library Manager."""
+    for item in root.iter("Single"):
+        kind = _item_kind(item)
+        if not kind:
+            continue
+        reference = _item_reference(item, kind, container)
+        if reference is None:
+            continue
+        key = (reference["name"].casefold(), reference["version"])
+        if key in seen:
+            continue
+        seen.add(key)
+        references.append(reference)
+
+
+def _item_kind(item):
+    """The reference kind of one ``Items`` element, or "" when it is neither."""
+    guid = _normalise_guid(item.get("Type"))
+    if guid == PLACEHOLDER_ITEM_TYPE_GUID:
+        return KIND_PLACEHOLDER
+    if guid.startswith(CONCRETE_ITEM_TYPE_GUID_PREFIX):
+        return KIND_CONCRETE
+    return ""
+
+
+def _resolution_text(item):
+    """The declared ``name, version (vendor)`` string of one item, or None.
+
+    A placeholder declares it as ``DefaultResolution``; a concrete item as
+    ``Resolution``. Both forms are accepted for either kind, because the two
+    differ only in which one CODESYS writes.
+    """
+    for name in ("DefaultResolution", "Resolution"):
+        element = item.find("Single[@Name='{0}']".format(name))
+        if element is not None and (element.text or "").strip():
+            return element.text
+    return None
+
+
+def _item_reference(item, kind, container):
+    """Build one reference dict from an ``Items`` element, or None if unnamed.
+
+    ``parse_default_resolution`` supplies version and vendor; a missing
+    resolution leaves the wildcard version and an empty vendor, exactly as for
+    a placeholder named without one.
+    """
+    declared = _single_text(item, "Name")
+    placeholder = _single_text(item, "PlaceholderName")
+    name, version, vendor = parse_default_resolution(_resolution_text(item))
+    if kind == KIND_PLACEHOLDER:
+        resolved_name = name or placeholder or declared
+    else:
+        resolved_name = declared or name
+    if not resolved_name:
+        return None
+    return {
+        "kind": kind,
+        "placeholder": placeholder,
+        "name": resolved_name,
+        "version": version,
+        "vendor": vendor,
+        "namespace": _single_text(item, "Namespace"),
+        "system": _is_true(item.find("Single[@Name='SystemLibrary']")),
+        "container": container,
+    }
 
 
 def _project_root(project_view):

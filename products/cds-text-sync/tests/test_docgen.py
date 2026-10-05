@@ -431,6 +431,7 @@ def test_unresolved_reference_is_reported_not_substituted(tmp_path):
             "version": "4.9.1.0",
             "vendor": "System",
             "placeholder": "System_VisuElems",
+            "kind": "placeholder",
             "reason": "documentation_package_absent",
         }
     ]
@@ -732,3 +733,56 @@ def test_project_cards_are_written_once(tmp_path, monkeypatch):
     docgen.generate_docs(project_view, library_path=libraries)
 
     assert rendered == ["FB_Sensor"]
+
+
+CONCRETE_ITEM_GUID = "51a11660-2362-4f77-9ad0-7f11f8a5b001"
+
+
+def _concrete_item_xml(name, resolution, namespace, system):
+    return (
+        '\n        <Single Type="{{{0}}}" Method="IArchivable">\n'
+        '          <Single Name="Name" Type="string">{1}</Single>\n'
+        '          <Single Name="Resolution" Type="string">{2}</Single>\n'
+        '          <Single Name="Namespace" Type="string">{3}</Single>\n'
+        '          <Single Name="SystemLibrary" Type="bool">{4}</Single>\n'
+        "        </Single>"
+    ).format(CONCRETE_ITEM_GUID, name, resolution, namespace, system)
+
+
+def test_a_concrete_library_reference_is_reported_and_resolved(tmp_path):
+    """A pinned library is a reference even when it names no placeholder.
+
+    Real Library Managers carry both kinds of entry. Reading only the
+    placeholder ones dropped ``PSVRetain``/``PSVLeds`` from a project whose
+    build succeeded with zero errors, so the report disagreed with CODESYS.
+    The ``*`` version resolves to the newest installed LibDoc, exactly as for
+    a placeholder.
+    """
+    workspace = tmp_path / "sync"
+    project = workspace / "project-view"
+    project.mkdir(parents=True)
+    items = _concrete_item_xml(
+        "PSVRetain", "PSVRetain, * (PSV Electro)", "PSVRetain", "True"
+    )
+    (project / "Library Manager.xml").write_text(
+        '<?xml version=\'1.0\' encoding=\'utf-8\'?>\n'
+        '<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">\n'
+        '  <Single Name="Object" Type="{adb5cb65-8e1d-4a00-b70a-375ea27582f3}" Method="IArchivable">\n'
+        '    <List Name="Items" Type="System.Collections.ArrayList">'
+        + items
+        + "\n    </List>\n  </Single>\n</Single>\n",
+        encoding="utf-8",
+    )
+    libraries = tmp_path / "codesys"
+    _make_libdoc(libraries, "PSV Electro", "PSVRetain", "1.0.0")
+    _make_libdoc(libraries, "PSV Electro", "PSVRetain", "2.0.0")
+
+    docgen.generate_docs(workspace, library_path=libraries)
+    output, manifest, symbols = _read_output(workspace)
+
+    assert manifest["counts"]["libraries_referenced"] == 1
+    assert manifest["counts"]["libraries_documented"] == 1
+    # ``*`` means "newest installed", numerically - not 1.0.0 by string order.
+    assert symbols[0]["version"] == "2.0.0"
+    index = (output / "index.md").read_text(encoding="utf-8")
+    assert "| PSVRetain | concrete | 2.0.0 |" in index
