@@ -21,7 +21,7 @@ import time
 import ide_export_snapshot
 import ide_online_helpers as _helpers
 import ide_runtime_common
-from codesys_utils import resolve_sync_folder
+from codesys_utils import project_file_path, resolve_sync_folder
 from cts_shared.coerce import as_bool
 
 
@@ -249,15 +249,38 @@ def _get_active_project(project=None):
 
 
 def _project_name(project):
-    for attr in ("name", "title", "filename"):
+    """The project's name for a preset's ``meta.project``, or "".
+
+    A ScriptEngine project exposes neither ``Name`` nor ``Title`` -- the same
+    finding that made ``project_tree`` emit no names until ``_obj_name`` grew
+    its fallbacks -- so those two attributes only ever answer for the fakes in
+    tests and for wrapper objects.  The real identity is the ``.project`` file
+    path, which is what ``_instance_info`` reports to the CLI as
+    ``instance.project.name``; deriving it here the same way keeps a preset's
+    meta.project equal to the project the command ran against instead of the
+    empty string (or the ui-check placeholder "project") it used to carry.
+    """
+    for attr in ("name", "title"):
         try:
             value = getattr(project, attr)
             if value:
-                if attr == "filename":
-                    return os.path.splitext(os.path.basename(_text(value)))[0]
                 return _text(value)
         except Exception:
             pass
+    try:
+        getter = getattr(project, "get_name", None)
+        if callable(getter):
+            value = getter()
+            if value:
+                return _text(value)
+    except Exception:
+        pass
+    path = project_file_path(project)
+    if path:
+        # Split on "/" after normalising: the same rule _instance_info uses, so
+        # a Windows path resolves identically when the tests run elsewhere.
+        leaf = _text(path).replace("\\", "/").split("/")[-1]
+        return os.path.splitext(leaf)[0]
     return ""
 
 

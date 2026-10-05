@@ -215,3 +215,84 @@ def test_main_module_does_not_re_export_handler_helpers():
     assert not hasattr(cli_main, "DAEMON_SCRIPT")
     # Still a module global: test_cli_handlers_daemon patches it by name here.
     assert callable(cli_main.send_command_reverse)
+
+
+# -- snapshooter ---------------------------------------------------------------
+
+
+def _snapshooter_help(monkeypatch, action=""):
+    """Snapshooter help with a wide terminal, so prose is not line-wrapped."""
+    monkeypatch.setenv("COLUMNS", "240")
+    parser = build_parser()._subparsers._group_actions[0].choices["snapshooter"]
+    if action:
+        parser = parser._subparsers._group_actions[0].choices[action]
+    return " ".join(parser.format_help().split())
+
+
+def test_snapshooter_help_states_which_actions_need_an_online_session(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch)
+
+    assert "no PLC session: reads the exported declarations only" in help_text
+    assert "take/diff/restore all read live values" in help_text
+    assert 'they answer "Not connected"' in help_text
+    assert "the daemon adopts a session but never logs in itself" in help_text
+    assert "all_steps_ok=false" in help_text
+
+
+def test_snapshooter_help_lists_the_output_envelopes(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch)
+
+    for envelope in (
+        "document{meta,variables}",
+        "report{same,missing,type_changed,value_changed}",
+        "result{written,skipped,warnings,would_write,details}",
+        "report{ok,failed_steps,all_steps_ok,steps,",
+    ):
+        assert envelope in help_text, envelope
+
+
+def test_snapshooter_help_warns_about_the_first_call_and_the_timeout(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch)
+
+    assert "every action defaults to --timeout 300" in help_text
+    assert "tens of thousands of leaves" in help_text
+    assert ".dump/snapshots/variable_tree.json" in help_text
+
+
+def test_snapshooter_help_places_the_diagnostic_log(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch)
+
+    assert ".dump/snapshooter.log" in help_text
+    assert "Save detailed engine logs in .dump" in help_text
+    assert "the file is empty or absent" in help_text
+
+
+def test_snapshooter_tree_help_says_path_is_a_case_sensitive_prefix(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch, "tree")
+
+    assert "starts with this prefix (case-sensitive)" in help_text
+    # The action help carries the rule; the root epilog spells out that it is
+    # neither an exact path nor a glob.
+    assert "PREFIX match on the leaf path and is case-sensitive" in _snapshooter_help(monkeypatch)
+
+
+def test_snapshooter_take_help_says_path_is_exact(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch, "take")
+
+    assert "An exact variable path to include (repeatable)" in help_text
+
+
+def test_snapshooter_restore_help_names_the_online_contradiction(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch, "restore")
+
+    assert "Snapshot import is disabled while CODESYS is online" in help_text
+    assert "Not connected" in help_text
+    assert "Not repaired here" in help_text
+
+
+def test_snapshooter_ui_check_help_says_what_it_does_not_check(monkeypatch):
+    help_text = _snapshooter_help(monkeypatch, "ui-check")
+
+    assert "the form is never shown" in help_text
+    assert "answering fakes" in help_text
+    assert "exit code stays 0" in help_text

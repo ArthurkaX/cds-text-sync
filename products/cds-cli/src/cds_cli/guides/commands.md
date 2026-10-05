@@ -86,6 +86,78 @@ engine; `snapshooter` uses the dialog's own JSON preset format (`take` writes a
 document of `{path, type, value, read_ok}` with a `meta` block, `diff`/`restore`
 read it back) and needs a project open in the IDE.
 
+### What each snapshooter action needs
+
+| Action | Needs | Notes |
+|---|---|---|
+| `tree` | a project and `cds-sync-folder`; **no** PLC session | reads the exported declarations; no value is read |
+| `take`, `diff`, `restore` | an existing **online session**, even in dry-run | they read live values; without a session the daemon answers `Not connected` — run `cts connect`, or log in in the CODESYS UI first (the daemon adopts a session but never logs in itself) |
+| `ui-check` | a session where WinForms can be created | the form needs no online session; its `save`/`diff`/`restore` steps read live values, so without one they land in `failed_steps` |
+
+Values are read through the online application's **symbols**, so a leaf that is
+not exported (a struct/array member, an object not declared as a symbol, or code
+not compiled into the PLC) comes back `read_ok: false` with *"is not exported to
+the online application"* in `read_error` — that is a per-variable result, not a
+command failure.
+
+`--path` on `tree` is a **case-sensitive prefix** of the leaf path (not an exact
+path, not a glob); `--path` on `take` is an exact path and is repeatable.
+
+Every action's `--timeout` defaults to 300 s. The first call on a project also
+exports `.dump/IDE.xml` and builds `.dump/snapshots/variable_tree.json` through
+the CPython engine, which on a project with tens of thousands of leaves can take
+over a minute on its own.
+
+Output is one JSON object per action (`--pretty` renders it as text):
+
+| Action | Envelope |
+|---|---|
+| `tree` | `{action, app, path, count, leaves[{path,type}]}` |
+| `take` | `{action, app, label, count, document{meta,variables}, saved_to?}` |
+| `diff` | `{action, app, count, report{same,missing,type_changed,value_changed}}` |
+| `restore` | `{action, app, applied, result{written,skipped,warnings,would_write,details}}` |
+| `ui-check` | `{action, report{ok,failed_steps,all_steps_ok,steps,windows,files,checked_leaves,leaf_count,parents}}` |
+
+`ui-check` keeps exit code 0 when the report is delivered, including when steps
+failed: a failed step is the finding it exists to report. Branch on
+`report.all_steps_ok` / `report.failed_steps`; stderr echoes the failing names.
+It does **not** check the window itself — the form is never shown, so layout,
+fonts, resizing, focus and mouse behaviour are untested, and `MessageBox` and
+the file dialogs are answering fakes.
+
+### restore and the online session
+
+`restore --apply` is caught between two gates that contradict each other:
+
+* writing is refused while a session is cached — `restore(apply=True)` calls
+  `ensure_snapshot_import_allowed` (`project_snapshooter.py`), which raises
+  `Snapshot import is disabled while CODESYS is online` when
+  `is_online_session_active()` sees a cached session;
+* reading is refused without one — `restore` reads live values through `take`,
+  and `read_variables_impl` calls `require_online_session`
+  (`ide_online_helpers.py`), which raises `Not connected` when no cached or
+  IDE-online session exists.
+
+`--apply` therefore only gets through in the narrow window where the IDE is
+online but the daemon has not cached the session yet (`is_online_session_active`
+deliberately does not adopt a session; `require_online_session` does). The
+daemon adopts an existing IDE session at startup, so in the ordinary case
+`--apply` is blocked, and offline it fails on the read. This is reported, not
+repaired.
+
+To probe the guard and the write path without changing PLC state, restore a
+preset whose entries all carry `read_ok: false`: `restore` skips every one with
+`reason: source read_ok=false`, so `eligible` is empty and nothing is written
+even with `--apply` — only the gate and the read are exercised.
+
+### The diagnostic log
+
+`<sync-folder>/.dump/snapshooter.log` receives lines only while the project
+option **"Save detailed engine logs in .dump"** (`verbose_logging`) is enabled;
+with it off the file stays empty or is not created at all (matching lines are
+still echoed to the CODESYS scripting console). When no sync folder can be
+resolved, the lines go to the system temp directory instead.
+
 ## Static Analysis
 
 | Goal | Command |

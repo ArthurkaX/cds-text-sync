@@ -979,13 +979,12 @@ def test_unchecking_a_branch_subtracts_its_selected_leaves(scenario):
     assert form.status.Text == "Selected: 1/3 leaves"
 
 
-def test_unchecking_a_leaf_leaves_the_count_stale(scenario):
-    """Known quirk: a leaf's own checkbox never moves ``_selected_count``.
+def test_unchecking_a_leaf_subtracts_it_from_the_count(scenario):
+    """The old pin: clicking one leaf used to leave the label stale.
 
-    ``_on_after_check`` folds in ``_set_children_checked``'s delta, which only
-    counts *descendant* leaves -- a leaf has none, so unchecking one updates the
-    branch tri-state but leaves the "Selected: n/m leaves" label stale.  Pinned
-    as-is; the decomposition must not "fix" it.
+    ``_set_checked_cascade`` counted only *descendant* leaves, and a leaf has
+    none, so the box and the branch state moved while "Selected: n/m leaves"
+    kept the old number.  Deliberately replaced: the clicked leaf now counts.
     """
     _run(scenario)
     form = scenario.form()
@@ -999,12 +998,41 @@ def test_unchecking_a_leaf_leaves_the_count_stale(scenario):
     form._on_after_check(None, types.SimpleNamespace(Node=leaf))
 
     assert leaf.Checked is False
-    assert form._selected_count == 3
-    assert form.status.Text == "Selected: 3/3 leaves"
-    # The parent tri-state, however, is recomputed and does see the change.
+    assert form._selected_count == 2
+    assert form.status.Text == "Selected: 2/3 leaves"
+    # The branch states are recomputed and see the change too.
     gvl_ui = form.tree.Nodes[0].Nodes[0]
     assert gvl_ui.Checked is False
     assert form.tree.Nodes[0].Checked is False
+
+
+def test_checking_a_single_leaf_counts_it(scenario):
+    _run(scenario)
+    form = scenario.form()
+    leaf = [n for n in form._all_leaf_nodes if n.Name == "App.x"][0]
+
+    leaf.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf))
+
+    assert form._selected_count == 1
+    assert form.status.Text == "Selected: 1/3 leaves"
+
+
+def test_a_leaf_click_cannot_double_count_through_its_parent(scenario):
+    """Only the clicked node's own subtree is walked, so the delta is exact."""
+    _run(scenario)
+    form = scenario.form()
+    gvl_ui = form.tree.Nodes[0].Nodes[0]
+
+    gvl_ui.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=gvl_ui))
+    assert form._selected_count == 2
+
+    gvl_ui.Checked = False
+    form._on_after_check(None, types.SimpleNamespace(Node=gvl_ui))
+
+    assert form._selected_count == 0
+    assert form.status.Text == "Selected: 0/3 leaves"
 
 
 def test_reentrant_check_is_ignored(scenario):
@@ -1100,28 +1128,26 @@ def test_save_dialog_cancel_is_a_noop(scenario):
 # ── Load ───────────────────────────────────────────────────────────────────
 
 
-def test_load_crashes_after_checking_matching_leaves(scenario, tmp_path):
-    """Known defect: ``_on_load`` always raises ``_recompute_parent_states``.
-
-    ``_recompute_parent_states`` collects ``id(parent)`` ints into ``seen`` and
-    then sorts ``seen`` as if it held nodes (``str(n.Name)``), so the Load button
-    dies with ``AttributeError: 'int' object has no attribute 'Name'`` on any
-    non-empty tree.  The checkboxes and ``_last_data`` are already updated by
-    then, but the status label and the "Loaded N variables." box never happen.
-    Pinned as-is; the decomposition must not silently repair it.
-    """
-    scenario.backend.load_result = {"paths": ["GVL.a", "App.x"]}
+def _load(scenario, tmp_path, paths, filename="p.json"):
+    """Drive the Load button with a preset naming *paths*."""
+    scenario.backend.load_result = {"paths": list(paths)}
     scenario.dotnet.open_dialog_result = _DialogResult.OK
-    scenario.dotnet.open_dialog_chosen = os.path.join(str(tmp_path), "p.json")
+    scenario.dotnet.open_dialog_chosen = os.path.join(str(tmp_path), filename)
     _run(scenario)
     form = scenario.form()
+    form._on_load(None, None)
+    return form
 
-    with pytest.raises(AttributeError) as excinfo:
-        form._on_load(None, None)
-    # The failure is the id() int being sorted as if it were a node: the sort
-    # key reads ``n.Name`` off an int.  Pin the message, not just the type, so
-    # a different AttributeError further down cannot stand in for this one.
-    assert "'int' object has no attribute 'Name'" in str(excinfo.value)
+
+def test_load_checks_exactly_the_leaves_the_preset_names(scenario, tmp_path):
+    """The old pin: ``_on_load`` used to die in ``_recompute_parent_states``.
+
+    That version sorted ``id(parent)`` ints as if they were nodes, so any
+    non-empty tree raised ``AttributeError: 'int' object has no attribute
+    'Name'`` before the status label or the completion box.  The pin is
+    deliberately replaced: Load now checks the preset's leaves and finishes.
+    """
+    form = _load(scenario, tmp_path, ["GVL.a", "App.x"])
 
     checked = sorted(node.Name for node in form._all_leaf_nodes if node.Checked)
     assert checked == ["App.x", "GVL.a"]
@@ -1129,9 +1155,77 @@ def test_load_crashes_after_checking_matching_leaves(scenario, tmp_path):
     assert form._last_data == {"paths": ["GVL.a", "App.x"]}
     load_event = [e for e in scenario.events if e[0] == "load"][0]
     assert load_event[1] == os.path.join(str(tmp_path), "p.json")
-    # The status label and the completion MessageBox are never reached.
+    assert form.status.Text == "Selected: 2/3 leaves"
+    assert scenario.messages()[-1][:2] == ("Loaded 2 variables.", "Load")
+
+
+def test_load_unchecks_leaves_the_previous_selection_had(scenario, tmp_path):
+    """Load replaces the selection; it does not add to it."""
+    _run(scenario)
+    form = scenario.form()
+    for node in form._all_leaf_nodes:
+        node.Checked = True
+    form._selected_count = 3
+    scenario.backend.load_result = {"paths": ["GVL.b"]}
+    scenario.dotnet.open_dialog_result = _DialogResult.OK
+    scenario.dotnet.open_dialog_chosen = os.path.join(str(tmp_path), "p.json")
+
+    form._on_load(None, None)
+
+    assert [n.Name for n in form._all_leaf_nodes if n.Checked] == ["GVL.b"]
+    assert form._selected_count == 1
+    assert form.status.Text == "Selected: 1/3 leaves"
+
+
+def test_load_sets_each_parent_from_its_own_leaves(scenario, tmp_path):
+    """GVL is checked only when both its leaves are; the root only at 3/3."""
+    form = _load(scenario, tmp_path, ["GVL.a", "GVL.b", "App.x"])
+
+    root_ui = form.tree.Nodes[0]
+    assert form.tree.Nodes[0].Nodes[0].Checked is True  # GVL: 2 of 2
+    assert root_ui.Checked is True  # Application: 3 of 3
+
+
+def test_load_leaves_a_partly_covered_branch_unchecked(scenario, tmp_path):
+    form = _load(scenario, tmp_path, ["GVL.a"])
+
+    assert form.tree.Nodes[0].Checked is False
+    assert form.tree.Nodes[0].Nodes[0].Checked is False  # GVL: 1 of 2
+
+
+def test_an_empty_preset_clears_every_checkbox(scenario, tmp_path):
+    form = _load(scenario, tmp_path, [])
+
+    assert not any(node.Checked for node in form._all_leaf_nodes)
+    assert form.tree.Nodes[0].Checked is False
+    assert form.tree.Nodes[0].Nodes[0].Checked is False
+    assert form._selected_count == 0
     assert form.status.Text == "Selected: 0/3 leaves"
-    assert scenario.messages() == []
+    assert scenario.messages()[-1][:2] == ("Loaded 0 variables.", "Load")
+
+
+def test_load_ignores_paths_the_tree_does_not_have(scenario, tmp_path):
+    """A preset from another project still loads the leaves that do exist."""
+    form = _load(scenario, tmp_path, ["Nope.missing", "GVL.b"])
+
+    assert [n.Name for n in form._all_leaf_nodes if n.Checked] == ["GVL.b"]
+    assert form._selected_count == 1
+    assert form.tree.Nodes[0].Nodes[0].Checked is False  # GVL: 1 of 2
+
+
+def test_load_checks_the_root_from_descendant_leaves_not_direct_children(scenario, tmp_path):
+    """The root has two child nodes but three leaves below them.
+
+    Counting direct children (what ``_update_parent_state`` does) can never
+    mark this root checked, because ``GVL`` and ``App.x`` are only two boxes
+    against three leaves.  Load counts the leaves underneath instead.
+    """
+    form = _load(scenario, tmp_path, ["GVL.a", "GVL.b", "App.x"])
+
+    root_ui = form.tree.Nodes[0]
+    assert root_ui.Nodes.Count == 2
+    assert [n.Name for n in form._all_leaf_nodes if n.Checked] == ["GVL.a", "GVL.b", "App.x"]
+    assert root_ui.Checked is True
 
 
 def test_load_dialog_cancel_is_a_noop(scenario):
@@ -1347,3 +1441,27 @@ def test_form_closed_handler_marks_closed(scenario):
     form._on_closed(None, None)
 
     assert form._closed is True
+
+
+def test_recomputed_parents_read_their_own_leaves_not_other_boxes(scenario):
+    """A branch's state comes from the leaves below it, not from sibling boxes.
+
+    ``_recompute_parent_states`` visits the branches in leaf order, so a parent
+    can be reached before its child -- and a branch box it reads may still hold
+    a stale value.  Counting the descendant leaves instead makes the result
+    independent of both the order and the other boxes' state.
+    """
+    _run(scenario)
+    form = scenario.form()
+    for node in form._all_leaf_nodes:
+        node.Checked = True
+    root_ui = form.tree.Nodes[0]
+    gvl_ui = root_ui.Nodes[0]
+    root_ui.Checked = False
+    gvl_ui.Checked = False  # stale: every leaf below it is checked
+
+    # Reversed order reaches the root first, while GVL still reads False.
+    scenario.ui._recompute_parent_states(list(reversed(form._all_leaf_nodes)))
+
+    assert root_ui.Checked is True
+    assert gvl_ui.Checked is True

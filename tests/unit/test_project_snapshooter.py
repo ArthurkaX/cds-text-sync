@@ -369,3 +369,59 @@ def test_build_tui_tree_marks_excluded_leaf():
     leaves = {leaf.path: leaf for leaf in root.leaves()}
     assert leaves["GVL_Included.a"].excluded_from_build is False
     assert leaves["GVL_Excluded.b"].excluded_from_build is True
+
+
+# -- the project name in a preset's meta ---------------------------------------
+
+
+class PathProject(object):
+    """A project that exposes only the ScriptEngine ``path`` attribute.
+
+    That is the shape a real ``IScriptProject`` has: no ``name`` and no
+    ``title``, which is why ``meta.project`` came out empty.
+    """
+
+    def __init__(self, path):
+        self.path = path
+
+
+def test_project_name_getter_wins_when_the_wrapper_has_one():
+    class Named(object):
+        def get_name(self):
+            return "WrappedProject"
+
+    assert ps._project_name(Named()) == "WrappedProject"
+
+
+def test_project_name_attribute_wins_over_the_file_path():
+    class Named(object):
+        name = "FromAttribute"
+        path = "/tmp/FromPath.project"
+
+    assert ps._project_name(Named()) == "FromAttribute"
+
+
+def test_project_name_comes_from_the_project_file_path():
+    assert ps._project_name(PathProject(r"C:\work\VKO-live.project")) == "VKO-live"
+
+
+def test_project_name_is_empty_without_a_path_or_a_name():
+    assert ps._project_name(DummyProject()) == ""
+
+
+def test_take_records_the_project_name_in_the_document_meta(monkeypatch):
+    """The field ``cts snapshooter take`` was reporting as an empty string."""
+    rows = [{"path": "GVL.a", "type": "INT", "leaf": True}]
+    monkeypatch.setattr(ps, "_SNAPSHOOTER_ROWS_BY_PATH", {})
+    monkeypatch.setattr(ps, "_rows_for_paths", lambda _project, paths: [dict(r) for r in rows])
+    monkeypatch.setattr(
+        ps._helpers,
+        "read_variables_impl",
+        lambda _project, names: {
+            "results": [{"name": name, "value": "1", "read_ok": True} for name in names]
+        },
+    )
+
+    doc = ps.take(project=PathProject(r"C:\work\VKO-live.project"))
+
+    assert doc["meta"]["project"] == "VKO-live"

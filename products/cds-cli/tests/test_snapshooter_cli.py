@@ -192,3 +192,51 @@ def test_a_pipe_failure_exits_one(pipe, capsys):
 
     assert exc.value.code == 1
     assert "no IDE answered" in capsys.readouterr().err
+
+
+# ── Handler: the ui-check summary ───────────────────────────────────────────
+
+
+def _ui_check_response(steps, failed):
+    return {
+        "ok": True,
+        "data": {
+            "action": "ui_check",
+            "report": {
+                "ok": True,
+                "steps": [{"name": name, "ok": name not in failed, "error": ""} for name in steps],
+                "failed_steps": list(failed),
+                "all_steps_ok": not failed,
+            },
+        },
+    }
+
+
+def test_a_clean_ui_check_prints_no_note(pipe, capsys):
+    pipe.response = _ui_check_response(["save", "load"], [])
+
+    handler.dispatch_snapshooter(_args(["snapshooter", "ui-check"]))
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out)["report"]["all_steps_ok"] is True
+
+
+def test_a_failed_ui_check_step_is_named_on_stderr(pipe, capsys):
+    pipe.response = _ui_check_response(["save", "load", "diff"], ["load"])
+
+    # Delivered, not raised: a failed step is the finding the command reports,
+    # so the exit code stays 0 and the report still reaches stdout.
+    assert handler.dispatch_snapshooter(_args(["snapshooter", "ui-check"])) is True
+
+    captured = capsys.readouterr()
+    assert "[INFO] ui-check: 1 of 3 steps failed: load" in captured.err
+    assert json.loads(captured.out)["report"]["failed_steps"] == ["load"]
+
+
+def test_the_note_is_quiet_for_the_other_actions(pipe, capsys):
+    pipe.response = {"ok": True, "data": {"action": "tree", "count": 0}}
+
+    handler.dispatch_snapshooter(_args(["snapshooter", "tree"]))
+
+    assert capsys.readouterr().err == ""

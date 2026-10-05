@@ -246,6 +246,9 @@ _CHECK_STEPS = {
 def _check_failure(report, error, windows=None):
     report["ok"] = False
     report["error"] = error
+    # Nothing ran, so nothing is known to be ok -- ``all_steps_ok`` keeps its
+    # initial False and ``failed_steps`` stays empty (they did not fail: they
+    # never started).
     if windows is not None:
         report["windows"] = list(windows.shown)
     return report
@@ -270,6 +273,10 @@ def _new_check_report(app):
         "app": app,
         "project": "",
         "steps": [],
+        "failed_steps": [],
+        # False until the steps have run: "nothing failed" is not yet known,
+        # and a report that never got that far must not read as a clean one.
+        "all_steps_ok": False,
         "windows": [],
         "files": [],
         "checked_leaves": 0,
@@ -277,6 +284,19 @@ def _new_check_report(app):
         "parents": {},
         "preset_file": "",
     }
+
+
+def _summarize_check_steps(report):
+    """Roll the per-step outcomes into ``failed_steps`` / ``all_steps_ok``.
+
+    ``ok`` stays what it was -- false only when the window itself could not be
+    built -- so a caller that only branches on it is unaffected.  These two
+    fields are what tells a failed *step* from a failed *run*.
+    """
+    report["failed_steps"] = [
+        step["name"] for step in report["steps"] if not step["ok"]
+    ]
+    report["all_steps_ok"] = not report["failed_steps"]
 
 
 def _install_check_fakes(preset_path):
@@ -317,11 +337,12 @@ def check(backend, app="Application", script=None):
     """Build the dialog without showing it and run a scripted scenario.
 
     Returns a structural report: ``ok`` (false only when the window itself
-    could not be built), ``windows`` (title/text of every MessageBox shown),
-    ``files`` (which file dialog was used with which path), ``steps`` (one
-    ``{name, ok, error}`` per scenario step, an exception recorded rather than
-    raised), ``checked_leaves``, ``leaf_count`` and the check state of each
-    branch in ``parents``.
+    could not be built), ``failed_steps`` (names of the steps that raised) and
+    ``all_steps_ok`` (true only when every step ran clean), ``windows``
+    (title/text of every MessageBox shown), ``files`` (which file dialog was
+    used with which path), ``steps`` (one ``{name, ok, error}`` per scenario
+    step, an exception recorded rather than raised), ``checked_leaves``,
+    ``leaf_count`` and the check state of each branch in ``parents``.
 
     ``script`` overrides the default step list (see ``_DEFAULT_CHECK_STEPS``);
     an unknown step name is recorded as a failed step.  The substitutions are
@@ -362,6 +383,7 @@ def check(backend, app="Application", script=None):
     _run_check_steps(
         report, state, _DEFAULT_CHECK_STEPS if script is None else list(script)
     )
+    _summarize_check_steps(report)
     _record_check_state(report, form)
     report["windows"] = list(windows.shown)
     report["files"] = list(dialogs.calls)
@@ -411,11 +433,13 @@ def _first_checked_name(nodes):
 
 
 def _set_checked_cascade(node, checked):
-    """Check or uncheck ``node``'s descendants; return the selected delta.
+    """Push ``checked`` down onto ``node``'s descendants; return the delta.
 
-    Only *descendant* leaves move the delta -- a leaf has none, which is why
-    clicking a single leaf never updates ``_selected_count``.  The grid pins
-    that quirk; do not "fix" it here.
+    Only *descendants* move the delta, and each is counted from the state it
+    had before the push -- a partly-filled branch must hand back exactly the
+    leaves that changed.  The node itself is not counted here because WinForms
+    has already flipped its box by the time the event arrives, so its previous
+    state is not visible; the handler adds that one back.
     """
     delta = 0
     for i in range(node.Nodes.Count):
@@ -447,36 +471,51 @@ def _update_parent_state(start_node, node_models, leaf_nodes):
         parent = parent.Parent
 
 
-def _recompute_parent_states(leaf_nodes, node_models):
-    """Known-broken: collects ``id(parent)`` ints, then sorts them as nodes.
+def _subtree_leaf_counts(node):
+    """``(checked, total)`` leaves in ``node``'s subtree, off the UI tree."""
+    checked = 0
+    total = 0
+    for i in range(node.Nodes.Count):
+        child = node.Nodes[i]
+        if child.Tag == 1:
+            total += 1
+            if child.Checked:
+                checked += 1
+        else:
+            child_checked, child_total = _subtree_leaf_counts(child)
+            checked += child_checked
+            total += child_total
+    return checked, total
 
-    The Load handler always dies here with ``AttributeError: 'int' object has
-    no attribute 'Name'`` on a non-empty tree.  The grid pins that crash; it is
-    preserved verbatim on purpose and must not be silently repaired.
+
+def _recompute_parent_states(leaf_nodes):
+    """Re-derive every branch's check state from the leaves beneath it.
+
+    Load writes the leaves and nothing else, so the branches have to be brought
+    back in line afterwards.  A branch is checked exactly when every leaf under
+    it is -- the same rule ``_update_parent_state`` applies while the user
+    clicks -- and unchecked otherwise, including when only some of its leaves
+    are on, because a WinForms TreeView checkbox has no third state.
+
+    The counts come from the UI tree rather than ``node_models[...].leaf_count``:
+    the checkboxes are what the user reads back, so the branch state has to
+    agree with the boxes actually on screen.  (The version this replaced
+    collected ``id(parent)`` ints and sorted them as if they were nodes, so
+    Load died with ``AttributeError: 'int' object has no attribute 'Name'``.)
     """
+    branches = []
     seen = set()
     for leaf in leaf_nodes:
-        parent = leaf.Parent
-        while parent is not None and id(parent) not in seen:
-            seen.add(id(parent))
-            parent = parent.Parent
-    # Process deepest first by sorting on path depth (Name dots).
-    parents = list(seen)
-    parents.sort(key=lambda n: str(n.Name).count("."), reverse=True)
-    for parent in parents:
-        model = node_models.get(parent)
-        total = model.leaf_count if model else 0
-        if total == 0:
-            parent.Checked = False
-            continue
-        checked_count = 0
-        for i in range(parent.Nodes.Count):
-            if parent.Nodes[i].Checked:
-                checked_count += 1
-        # For a branch, checked_count is the number of *direct* children
-        # whose Checked box is on. With full parent tri-state that only
-        # happens when every descendant leaf is selected.
-        parent.Checked = checked_count == parent.Nodes.Count
+        node = leaf.Parent
+        while node is not None:
+            if id(node) in seen:
+                break
+            seen.add(id(node))
+            branches.append(node)
+            node = node.Parent
+    for branch in branches:
+        checked, total = _subtree_leaf_counts(branch)
+        branch.Checked = total > 0 and checked == total
 
 
 def _search_matches(leaf_nodes, node_models, query):
@@ -696,9 +735,16 @@ class _FormMethods(object):
             return
         self._checking = True
         try:
-            delta = _set_checked_cascade(args.Node, args.Node.Checked)
+            node = args.Node
+            delta = _set_checked_cascade(node, node.Checked)
+            if node.Tag == 1:
+                # The clicked leaf's own box: WinForms flipped it before this
+                # event, so the cascade sees it as already at its new state and
+                # does not count it.  Without this the status label kept the
+                # old number whenever a single leaf was clicked.
+                delta += 1 if node.Checked else -1
             self._selected_count += delta
-            _update_parent_state(args.Node, self._node_models, self._all_leaf_nodes)
+            _update_parent_state(node, self._node_models, self._all_leaf_nodes)
         finally:
             self._checking = False
         self._update_status()
@@ -803,7 +849,7 @@ class _FormMethods(object):
                 if checked:
                     selected += 1
             self._selected_count = selected
-            _recompute_parent_states(self._all_leaf_nodes, self._node_models)
+            _recompute_parent_states(self._all_leaf_nodes)
         finally:
             self.tree.EndUpdate()
             self._checking = False
