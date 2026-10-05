@@ -43,10 +43,74 @@ Import applies to the in-memory project and does not save — saving commits eve
 | Read project metadata | `cts project-info` |
 | Read the object tree | `cts project-tree` |
 | Read an object | `cts read-object` |
+| Create a GVL, POU or DUT | `cts new gvl\|pou\|dut <Name> [...]` |
 | Update one POU from Structured Text | `cts update-pou` |
 | Delete a POU, function, or function block | `cts delete-pou` |
 
 Prefer full folder import for coordinated source changes. Use object-level mutation only when its narrower scope is intentional.
+
+## Creating objects
+
+`cts new` writes a new object into the project view. It is **offline** — it
+needs no daemon and no IDE, because it edits the disk copy of the project and
+the existing sync steps carry it into CODESYS:
+
+```
+cts new gvl GVL_HMI --text 'xStart : BOOL;'   # 1. author on disk
+cts compare                                   # 2. reports added=1
+cts import                                    # 3. CODESYS creates it
+cts download                                  # 4. FULL download (see below)
+```
+
+Step 3 asks the user first when it would save the IDE project — `cts import`
+applies to the in-memory project, and saving commits everything else that is
+open. Step 4 is only needed when something must *read* the new object back
+from the PLC; skip it if the object is not going to be read.
+
+```
+cts new gvl <Name> [--text T | --text-file F] [--parent PATH]
+cts new pou <Name> --kind program|function|function-block [--return-type T]
+cts new dut <Name> --kind struct|enum|union|alias [--base-type T]
+```
+
+| What | Supported |
+|---|---|
+| `gvl` — global variable list | yes |
+| `pou` — `PROGRAM`, `FUNCTION`, `FUNCTION_BLOCK` | yes |
+| `dut` — `STRUCT`, `UNION`, `ENUM`, `ALIAS` | yes |
+| methods, actions, properties | use the `--parent <POU>` option with a `<POU>.<Member>` name — the same file convention the export uses |
+| SFC / FBD / LD (graphical) POUs | **no** — only textual (Structured Text) objects can be created |
+| visualizations, devices, tasks, alarm configs | **no** — export them from the IDE and edit them; `cts new` only authors textual objects |
+
+`--parent` is a project-tree path under `project-view/`, the same spelling
+`cts visu --folder` takes. It defaults to the active application folder,
+recovered from the manifest; pass it explicitly when a project has several
+applications.
+
+**No manifest entry is written, and none is needed.** An unmanaged `.st` under
+the view root is discovered by the reader from its own declaration keyword
+(`VAR_GLOBAL`, `PROGRAM`, `FUNCTION_BLOCK`, `FUNCTION`, `TYPE`), so
+`cts compare` sees it as `added` and `cts import` creates it. Do **not** add a
+sibling `.xml` next to a new `.st`: a `.st` with a sibling `.xml` is read as an
+externalized-text projection by the ST pass and skipped, and the XML pass skips
+the pair from the other side too — a `Name.st` + `Name.xml` pair is discovered
+by nothing, which is why the old hand-written workflow needed a hand-written
+manifest entry to become visible at all.
+
+**After adding a GVL, POU or DUT, reading it from the PLC needs a full
+`cts download`.** An import alone (or an online change) leaves the PLC's symbol
+table stale, and every read of a variable in the new object fails with:
+
+```
+Invalid expression: 'GVL_HMI.xStart' is not exported to the online
+application. It may be a struct/array, not declared as a symbol, or not
+compiled into the PLC.
+```
+
+An existing name is refused rather than overwritten, checked against both the
+files on disk and the manifest. This is deliberate: CODESYS answers a duplicate
+create with a modal dialog that the single-threaded daemon cannot dismiss, so
+the collision has to be caught here.
 
 ## PLC Lifecycle
 

@@ -334,3 +334,65 @@ def test_snapshooter_ui_check_help_says_there_is_no_out_option(monkeypatch):
     assert "There is no --out" in help_text
     assert "temporary preset the daemon picks" in help_text
     assert "report.preset_file, under its TEMP directory" in help_text
+
+
+def _new_help(monkeypatch, kind=""):
+    monkeypatch.setenv("COLUMNS", "240")
+    parser = build_parser()._subparsers._group_actions[0].choices["new"]
+    if kind:
+        parser = parser._subparsers._group_actions[0].choices[kind]
+    return " ".join(parser.format_help().split())
+
+
+def test_new_help_gives_the_order_of_commands(monkeypatch):
+    help_text = _new_help(monkeypatch)
+
+    assert "cts new gvl GVL_HMI" in help_text
+    assert "cts compare" in help_text
+    assert "cts import" in help_text
+    assert "cts download" in help_text
+
+
+def test_new_help_warns_that_a_full_download_is_needed_to_read_the_object(
+    monkeypatch,
+):
+    help_text = _new_help(monkeypatch)
+
+    assert "needs a FULL download" in help_text
+    assert "is not exported to the online application" in help_text
+
+
+def test_new_help_says_no_manifest_entry_is_needed(monkeypatch):
+    help_text = _new_help(monkeypatch)
+
+    assert "No manifest entry is written, and none is needed" in help_text
+    assert "VAR_GLOBAL / PROGRAM / FUNCTION_BLOCK / FUNCTION / TYPE" in help_text
+
+
+def test_new_help_lists_what_it_cannot_create(monkeypatch):
+    help_text = _new_help(monkeypatch)
+
+    assert "SFC/FBD/LD (graphical) POUs" in help_text
+    assert "visualizations, devices, tasks, alarms" in help_text
+    assert "methods, actions, properties" in help_text
+
+
+def test_the_gvl_help_states_offline_and_the_body_convention(monkeypatch):
+    help_text = _new_help(monkeypatch, "gvl")
+
+    assert "VAR_GLOBAL block" in help_text
+    assert "Project-tree folder for the object" in help_text
+
+
+def test_the_pou_help_requires_a_kind(monkeypatch):
+    help_text = _new_help(monkeypatch, "pou")
+
+    assert "--kind {program,function,function-block}" in help_text
+    assert "Only 'st' is supported" in help_text
+
+
+def test_the_dut_help_names_the_alias_base_type(monkeypatch):
+    help_text = _new_help(monkeypatch, "dut")
+
+    assert "--kind {struct,enum,union,alias}" in help_text
+    assert "Target type for --kind alias" in help_text

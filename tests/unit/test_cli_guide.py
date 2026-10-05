@@ -116,3 +116,30 @@ def test_guide_needs_no_ide_and_prints_no_daemon_note(monkeypatch, capsys):
 
     assert "no IDE answered" not in out + err
     assert out.startswith("# Operate CODESYS Text Sync")
+
+
+def test_commands_guide_documents_creating_objects():
+    """The section an agent needs before it tries to hand-write a GVL."""
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "## Creating objects" in text
+    assert "cts new gvl GVL_HMI" in text
+    assert "needs no daemon and no IDE" in text
+    assert "No manifest entry is written, and none is needed" in text
+    assert "reading it from the PLC needs a full" in text
+    assert "is not exported to the online" in text
+
+
+def test_commands_guide_warns_against_a_sibling_xml():
+    # Markdown wraps mid-sentence, so compare on collapsed whitespace.
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "Do **not** add a sibling `.xml`" in text
+    assert "is discovered by nothing" in text
+
+
+def test_commands_guide_lists_what_new_cannot_create():
+    text = " ".join(read_topic("commands")["text"].split())
+
+    assert "graphical) POUs" in text
+    assert "visualizations, devices, tasks, alarm configs" in text

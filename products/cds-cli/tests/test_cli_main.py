@@ -46,6 +46,7 @@ class _Harness(object):
         "cmd_rp_command",
         "dispatch_project",
         "dispatch_pou",
+        "dispatch_new_object",
         "cmd_discover",
         "cmd_read_vars",
         "cmd_variable_map",
