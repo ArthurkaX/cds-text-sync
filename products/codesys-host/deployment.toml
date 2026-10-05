@@ -40,6 +40,7 @@ test_paths = [
   "../../tests/unit/test_project_snapshooter.py",
   "../../tests/unit/test_require_online_device.py",
   "../../tests/unit/test_snapshooter_map.py",
+  "../../tests/unit/test_snapshooter_ui_run.py",
   "../../tests/unit/test_snapshot_reader.py",
   "../../tests/unit/test_snapshot_reader_locale.py",
   "../../tests/unit/test_command_registry.py",
