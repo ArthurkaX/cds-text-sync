@@ -1441,3 +1441,27 @@ def test_form_closed_handler_marks_closed(scenario):
     form._on_closed(None, None)
 
     assert form._closed is True
+
+
+def test_recomputed_parents_read_their_own_leaves_not_other_boxes(scenario):
+    """A branch's state comes from the leaves below it, not from sibling boxes.
+
+    ``_recompute_parent_states`` visits the branches in leaf order, so a parent
+    can be reached before its child -- and a branch box it reads may still hold
+    a stale value.  Counting the descendant leaves instead makes the result
+    independent of both the order and the other boxes' state.
+    """
+    _run(scenario)
+    form = scenario.form()
+    for node in form._all_leaf_nodes:
+        node.Checked = True
+    root_ui = form.tree.Nodes[0]
+    gvl_ui = root_ui.Nodes[0]
+    root_ui.Checked = False
+    gvl_ui.Checked = False  # stale: every leaf below it is checked
+
+    # Reversed order reaches the root first, while GVL still reads False.
+    scenario.ui._recompute_parent_states(list(reversed(form._all_leaf_nodes)))
+
+    assert root_ui.Checked is True
+    assert gvl_ui.Checked is True
