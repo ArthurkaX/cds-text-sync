@@ -281,7 +281,7 @@ def test_snapshooter_tree_help_says_path_is_a_case_sensitive_prefix(monkeypatch)
 def test_snapshooter_take_help_says_path_is_exact(monkeypatch):
     help_text = _snapshooter_help(monkeypatch, "take")
 
-    assert "An exact variable path to include (repeatable)" in help_text
+    assert "An exact variable path (repeatable" in help_text
 
 
 def test_snapshooter_restore_help_names_the_online_contradiction(monkeypatch):
@@ -331,6 +331,6 @@ def test_snapshooter_help_examples_cover_every_action(monkeypatch):
 def test_snapshooter_ui_check_help_says_there_is_no_out_option(monkeypatch):
     help_text = _snapshooter_help(monkeypatch, "ui-check")
 
-    assert "There is no --out here" in help_text
-    assert "temporary preset file the daemon picks itself" in help_text
-    assert "under the daemon's TEMP directory" in help_text
+    assert "There is no --out" in help_text
+    assert "temporary preset the daemon picks" in help_text
+    assert "report.preset_file, under its TEMP directory" in help_text

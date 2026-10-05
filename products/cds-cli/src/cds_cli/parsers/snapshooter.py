@@ -132,10 +132,7 @@ def _add_take(actions):
         action="append",
         default=[],
         metavar="PATH",
-        help=(
-            "An exact variable path to include (repeatable). A path the tree "
-            "does not know is still attempted and reported read_ok=false"
-        ),
+        help="An exact variable path (repeatable; an unknown one is attempted anyway)",
     )
     take.add_argument(
         "--paths-file",
@@ -144,11 +141,7 @@ def _add_take(actions):
         help="Read paths from a file (one per line, # comments skipped)",
     )
     take.add_argument("--label", default="", help="Preset label stored in the document meta")
-    take.add_argument(
-        "--out",
-        default="",
-        help="Also save the preset to this .json path (relative resolves against cwd)",
-    )
+    take.add_argument("--out", default="", help="Also save the preset to this .json path")
     add_timeout(take, DEFAULT_TIMEOUT)
 
 
@@ -163,12 +156,7 @@ def _add_diff(actions):
             "writes anything to the PLC."
         ),
     )
-    diff.add_argument(
-        "--input",
-        default="",
-        required=True,
-        help="Preset .json produced by take (relative resolves against cwd)",
-    )
+    diff.add_argument("--input", default="", required=True, help="Preset .json produced by take")
     add_timeout(diff, DEFAULT_TIMEOUT)
 
 
@@ -218,10 +206,9 @@ def _add_ui_check(actions):
             "fakes, so their real appearance and the values a person would "
             "type are not covered; and a step that fails is reported, not "
             "treated as a command failure (exit code stays 0).\n\n"
-            "There is no --out here: the Save and Load steps use a temporary "
-            "preset file the daemon picks itself (reported as preset_file, "
-            "under the daemon's TEMP directory), so this action cannot be "
-            "pointed at a preset of your own."
+            "There is no --out: the Save and Load steps use a temporary "
+            "preset the daemon picks (report.preset_file, under its TEMP "
+            "directory), so this action cannot be pointed at your own preset."
         ),
     )
     ui_check.add_argument("--app", default="Application", help="Application name (default: Application)")

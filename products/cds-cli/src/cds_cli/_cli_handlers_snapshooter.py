@@ -72,11 +72,8 @@ def _note_failed_ui_check_steps(data):
 def _build_params(args):
     """Map the parsed sub-action onto the daemon's ``action`` payload.
 
-    File paths (``--out``, ``--input``) are absolutised here: both name a file
-    the *daemon* opens, in the CODESYS process, whose working directory is the
-    IDE installation.  A relative path would be resolved there -- see
-    ``_daemon_path``.  ``--paths-file`` needs no such treatment: it is read
-    here, in this process (``_collect_paths``).
+    ``--out``/``--input`` are absolutised (see ``_daemon_path``); ``--paths-file``
+    is read here, so it needs nothing.
     """
     action = getattr(args, "snap_action", "")
     if action == "ui-check":
