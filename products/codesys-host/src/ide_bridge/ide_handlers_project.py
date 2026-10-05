@@ -817,6 +817,58 @@ def _open_projects(projects):
     return [primary] if primary is not None else []
 
 
+def _inside_or_beside(path, folder):
+    """Whether *path* is *folder*, sits under it, or is its sibling folder."""
+    target = os.path.normcase(os.path.normpath(path))
+    base = os.path.normcase(os.path.normpath(folder))
+    if target == base or target.startswith(base + os.sep):
+        return True
+    return os.path.dirname(target) == os.path.dirname(base)
+
+
+def _sync_folder_copy_warning(project):
+    """Warn when a copied project still points at another project's folder.
+
+    ``cds-sync-folder`` lives *in* the ``.project`` file, so copying that file
+    to start a new project copies the setting with it. An absolute value then
+    keeps ``import``/``export`` writing into the original's folder, with
+    nothing on screen to say so. A relative value is anchored to the copy's
+    own directory and is always right, and a folder inside the project tree or
+    beside it is the documented layout -- only a clearly foreign absolute path
+    is worth a warning.
+    """
+    try:
+        errors = []
+        proj_info = _get_project_info_object(project, errors)
+        props = _project_info_properties(proj_info, errors) if proj_info else {}
+        configured = str(props.get("cds-sync-folder", "") or "")
+    except Exception as error:
+        _log("Could not read project sync-folder property: {0}".format(error))
+        return ""
+    project_dir = os.path.dirname(os.path.normpath(_project_path(project) or ""))
+    if not configured or not os.path.isabs(configured) or not project_dir:
+        return ""
+    if _inside_or_beside(configured, project_dir):
+        return ""
+    return (
+        "sync folder is {0}, an absolute path outside this project's folder "
+        "({1}). A copied .project keeps the original's setting; point it here "
+        "with `cts set-sync-folder <path> --save`.".format(configured, project_dir)
+    )
+
+
+def _opened_payload(project, path, already_open=False):
+    """The success payload of ``project open``, plus the copy warning."""
+    data = {"opened": path}
+    if already_open:
+        data["already_open"] = True
+    data["name"] = _project_display_name(project) if project is not None else ""
+    warning = _sync_folder_copy_warning(project) if project is not None else ""
+    if warning:
+        data["sync_folder_warning"] = warning
+    return {"ok": True, "data": data}
+
+
 def _cmd_project_open(params):
     refusal = ide_path_guards.host_path_error(params, "path")
     if refusal is not None:
@@ -833,17 +885,8 @@ def _cmd_project_open(params):
         norm = os.path.normcase(os.path.normpath(path))
         for prj in _open_projects(projects):
             if os.path.normcase(os.path.normpath(_project_path(prj))) == norm:
-                return {
-                    "ok": True,
-                    "data": {
-                        "opened": path,
-                        "already_open": True,
-                        "name": _project_display_name(prj),
-                    },
-                }
-        project = projects.open(path)
-        name = _project_display_name(project) if project is not None else ""
-        return {"ok": True, "data": {"opened": path, "name": name}}
+                return _opened_payload(prj, path, already_open=True)
+        return _opened_payload(projects.open(path), path)
     except Exception as e:
         return {"ok": False, "error": "Project open error: {0}".format(e)}
 

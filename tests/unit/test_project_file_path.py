@@ -149,3 +149,62 @@ def test_ambiguous_windows_roots_are_rejected(configured):
 
     with pytest.raises(ValueError, match="fully qualified"):
         codesys_utils.resolve_sync_folder(configured, _LowerPathProject())
+
+
+# ── a copied .project inherits the original's absolute sync folder ──────────
+
+
+def _project_open_payload(monkeypatch, tmp_path, configured):
+    """Open a copy of a project whose ``cds-sync-folder`` is *configured*."""
+    import ide_handlers_project as handlers
+
+    project_dir = tmp_path / "copy"
+    project_dir.mkdir()
+    project_path = project_dir / "Demo.project"
+    info = SimpleNamespace(values={"cds-sync-folder": configured})
+    project = SimpleNamespace(
+        path=str(project_path), get_project_info=lambda: info
+    )
+    projects = SimpleNamespace(primary=None, open=lambda _path: project)
+    monkeypatch.setattr(sys, "_codesys_daemon_loop", {"projects": projects}, raising=False)
+    return handlers._cmd_project_open({"path": str(project_path)})
+
+
+def test_a_copy_pointing_at_a_foreign_folder_is_warned_about(monkeypatch, tmp_path):
+    original = tmp_path / "elsewhere" / "Demo-cts"
+    original.mkdir(parents=True)
+
+    result = _project_open_payload(monkeypatch, tmp_path, str(original))
+
+    assert result["ok"] is True
+    warning = result["data"]["sync_folder_warning"]
+    assert str(original) in warning
+    assert "cts set-sync-folder" in warning
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "Demo-cts",          # relative: anchored to the copy's own folder
+        "views/st",          # relative, inside the project
+    ],
+)
+def test_a_relative_sync_folder_is_never_warned_about(monkeypatch, tmp_path, configured):
+    result = _project_open_payload(monkeypatch, tmp_path, configured)
+
+    assert "sync_folder_warning" not in result["data"]
+
+
+def test_a_sibling_sync_folder_needs_no_warning(monkeypatch, tmp_path):
+    """``<project>-cts`` beside the ``.project`` is the documented layout."""
+    result = _project_open_payload(monkeypatch, tmp_path, str(tmp_path / "copy-cts"))
+
+    assert "sync_folder_warning" not in result["data"]
+
+
+def test_an_absolute_folder_inside_the_project_needs_no_warning(monkeypatch, tmp_path):
+    inside = tmp_path / "copy" / "views" / "st"
+
+    result = _project_open_payload(monkeypatch, tmp_path, str(inside))
+
+    assert "sync_folder_warning" not in result["data"]
