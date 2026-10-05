@@ -92,6 +92,24 @@ def _select_stages(only, with_test):
     return [s for s in STAGES if not s.opt_in or (with_test and s.name == "test")]
 
 
+def _advice_for_a_skipped_build(build):
+    """What to do about a build stage that delivered no verdict.
+
+    A stale handshake is not necessarily a change on disk: the IDE can be
+    unable to describe the workspace it just imported. So the advice separates
+    the two readings instead of sending the agent to ``cts import --save`` to
+    re-apply edits it may not have made.
+    """
+    if build.reason_code in ("stale_ide", "identity_unknown"):
+        return [
+            "cts compare             # clean means the workspace fingerprint "
+            "is stale or non-deterministic, not the disk content",
+            "cts import              # re-import project-view/ so the IDE "
+            "re-attests the workspace; add --save to keep the IDE project",
+        ]
+    return ["open the project in CODESYS and re-run  # for a compiler verdict"]
+
+
 def _next_steps(report, selected, with_test):
     """Concrete commands to run next. The gate advises, not just judges."""
     steps = []
@@ -113,14 +131,7 @@ def _next_steps(report, selected, with_test):
 
     build = by_name.get("build")
     if build is not None and build.status == STATUS_SKIPPED:
-        if build.reason_code in ("stale_ide", "identity_unknown"):
-            steps.append(
-                "cts import --save  # apply current project-view/ to the IDE, then re-run verify"
-            )
-        else:
-            steps.append(
-                "open the project in CODESYS and re-run  # for a compiler verdict"
-            )
+        steps.extend(_advice_for_a_skipped_build(build))
 
     ran_test = any(s.name == "test" for s in selected)
     if not ran_test and not with_test and report.verdict != STATUS_FAIL:

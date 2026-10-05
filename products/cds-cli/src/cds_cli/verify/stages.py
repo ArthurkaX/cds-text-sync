@@ -48,6 +48,16 @@ def _brief(exc):
     return head
 
 
+def _short(digest):
+    """The first 12 hex of a fingerprint: enough to compare, short enough to read.
+
+    A stale handshake is only actionable if the two values can be seen to
+    differ; without them the agent has to go to ``cts last-result`` for
+    something the reason line could have carried.
+    """
+    return str(digest or "")[:12]
+
+
 class VerifyContext:
     """Everything a stage needs, resolved once."""
 
@@ -406,10 +416,32 @@ def _check_build_fingerprint(evidence):
     ):
         return StageResult.skipped(
             "build",
-            "IDE workspace fingerprint does not match the requested workspace",
+            "IDE workspace fingerprint does not match the requested workspace "
+            "(ide={0} cli={1})".format(
+                _short(evidence.reported_fingerprint),
+                _short(evidence.expected_fingerprint),
+            ),
             reason_code="stale_ide",
         )
     return None
+
+
+def _stale_import_reason(evidence):
+    """Name the change: the fingerprint the import attested against, and today's.
+
+    Without the pair, ``stale`` reads as "you edited something" even when the
+    disk has not moved at all, which is exactly what a non-deterministic or
+    unavailable scan looks like from here.
+    """
+    details = evidence.data.get("import_freshness_details")
+    imported = ""
+    if isinstance(details, dict):
+        imported = details.get("imported_fingerprint") or ""
+    current = evidence.reported_fingerprint or ""
+    reason = "workspace has changed since the last successful IDE import"
+    if imported or current:
+        reason += " (imported={0} current={1})".format(_short(imported), _short(current))
+    return reason
 
 
 def _check_import_freshness(evidence):
@@ -427,7 +459,7 @@ def _check_import_freshness(evidence):
         return StageResult(
             "build",
             STATUS_SKIPPED,
-            reason="workspace has changed since the last successful IDE import",
+            reason=_stale_import_reason(evidence),
             reason_code="stale_ide",
             summary={"import_freshness": freshness},
             complete=False,

@@ -449,6 +449,78 @@ def test_stale_import_attestation_is_not_credited(workspace, monkeypatch):
     assert code == 0
 
 
+def test_a_stale_handshake_shows_both_fingerprints(workspace, monkeypatch):
+    """The agent can see the divergence in the report, not just be told of it."""
+    from cds_cli.verify.fingerprint import workspace_fingerprint
+
+    # The IDE agrees with our scan about the *current* files, but the import it
+    # attested against was of a different revision -- the case the reason has
+    # to distinguish from "you edited something".
+    current = workspace_fingerprint(workspace)[0]
+    _fake_daemon(
+        monkeypatch,
+        {
+            "build": {
+                "ok": True,
+                "data": {
+                    "sync_folder": workspace,
+                    "import_freshness": "stale",
+                    "workspace_fingerprint": current,
+                    "import_freshness_details": {"imported_fingerprint": "c" * 64},
+                    "errors": 0,
+                    "warnings": 0,
+                    "messages": [],
+                },
+            }
+        },
+    )
+
+    _code, doc, _err = _verify_json(workspace, ["--only", "build"])
+    build = _stage(doc, "build")
+
+    assert build["reason"].startswith(
+        "workspace has changed since the last successful IDE import"
+    )
+    assert "(imported=cccccccccccc current={0})".format(current[:12]) in build["reason"]
+
+
+def test_the_advice_for_a_stale_handshake_does_not_send_us_to_reimport_blindly(
+    workspace, monkeypatch
+):
+    """A clean disk reads as ``stale`` too, so the advice has to say how to tell."""
+    _fake_daemon(
+        monkeypatch,
+        {
+            "build": {
+                "ok": True,
+                "data": {
+                    "sync_folder": workspace,
+                    "import_freshness": "stale",
+                    "errors": 0,
+                    "warnings": 0,
+                    "messages": [],
+                },
+            }
+        },
+    )
+
+    _code, doc, _err = _verify_json(workspace, ["--only", "build"])
+
+    steps = "\n".join(doc["next"])
+    assert "cts compare" in steps
+    assert "not the disk content" in steps
+    assert "cts import" in steps
+    assert "cts import --save" not in steps
+
+
+def test_the_human_report_names_the_stage_that_did_not_run(workspace, dead_daemon):
+    """``incomplete`` alone leaves the reader to guess which verdict is missing."""
+    _code, out, _err = _verify(workspace, ["--only", "analyze,build"], pretty=True)
+
+    assert "[SKIPPED] build" in out
+    assert "no verdict from: build" in out
+
+
 def test_daemon_is_probed_once_for_two_stages(workspace, monkeypatch):
     seen = _fake_daemon(
         monkeypatch,

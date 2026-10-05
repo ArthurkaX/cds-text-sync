@@ -12,7 +12,6 @@ import os
 import re
 import sys
 import time
-import hashlib
 
 from ide_daemon_state import (
     _log,
@@ -36,37 +35,26 @@ import ide_runtime_common  # noqa: F401
 
 from cts_shared.coerce import as_bool
 
+from cds_text_sync.engine._workspace_fingerprint import (
+    workspace_fingerprint as _workspace_scan,
+)
+
 
 def _workspace_fingerprint(root):
-    """Compute the same content fingerprint as the CLI (IronPython-safe)."""
-    excluded = (".git", ".dump")
-    digest = hashlib.sha256()
+    """The CLI's workspace fingerprint, as this side has to report it.
+
+    Imported from the engine rather than reimplemented: the two copies had
+    already drifted, and a fingerprint that disagrees with the CLI's only ever
+    reads as ``stale_ide``, masking the compiler's verdict. The response shape
+    has room for "incomplete" but not for the per-file reasons, so a scan that
+    fails outright answers ``("", False)`` -- which the CLI reports as
+    ``identity_unknown`` rather than crediting the build.
+    """
     try:
-        root = os.path.abspath(str(root))
+        digest, complete, _errors = _workspace_scan(root)
     except Exception:
         return "", False
-    try:
-        files = []
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = sorted(name for name in dirnames if name not in excluded)
-            for name in sorted(filenames):
-                path = os.path.join(dirpath, name)
-                if os.path.islink(path) or not os.path.isfile(path):
-                    continue
-                files.append((os.path.relpath(path, root).replace(os.sep, "/"), path))
-        for rel, path in files:
-            digest.update(rel.encode("utf-8"))
-            digest.update(b"\0")
-            with open(path, "rb") as handle:
-                while True:
-                    chunk = handle.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    digest.update(chunk)
-            digest.update(b"\0")
-    except (IOError, OSError):
-        return "", False
-    return digest.hexdigest(), True
+    return digest, complete
 
 
 def _import_freshness(sync_folder, fingerprint, app_name, project_path):

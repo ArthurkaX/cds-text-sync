@@ -224,7 +224,12 @@ class VerifyReport:
         lines.append("")
         verdict = f"verdict: {self.verdict}"
         if not self.complete:
-            verdict += " (incomplete -- some stages did not run)"
+            # Name the stages: "some stages did not run" leaves the reader to
+            # guess whether the missing verdict was the compiler's.
+            missing = [s.stage for s in self.stages if s.incomplete] or ["nothing"]
+            verdict += " (incomplete -- no verdict from: {0})".format(
+                ", ".join(missing)
+            )
         lines.append(verdict)
         if self.next_steps:
             lines.append("next:")
