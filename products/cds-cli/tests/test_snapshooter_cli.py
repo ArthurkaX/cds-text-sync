@@ -79,6 +79,20 @@ def test_tree_sends_the_prefix_and_timeout(pipe):
     assert timeout == 42.0
 
 
+def test_tree_refresh_flag_is_forwarded(pipe):
+    handler.dispatch_snapshooter(_args(["snapshooter", "tree", "--refresh"]))
+
+    _method, params, _timeout = pipe.calls[0]
+    assert params == {"action": "tree", "path": "", "refresh": True}
+
+
+def test_tree_omits_refresh_when_not_asked(pipe):
+    handler.dispatch_snapshooter(_args(["snapshooter", "tree"]))
+
+    _method, params, _timeout = pipe.calls[0]
+    assert params == {"action": "tree", "path": ""}
+
+
 def test_take_collects_explicit_and_file_paths(pipe, tmp_path):
     paths_file = tmp_path / "selected.txt"
     paths_file.write_text("# comment\nGVL.b\n\n  GVL.c  \n", encoding="utf-8")

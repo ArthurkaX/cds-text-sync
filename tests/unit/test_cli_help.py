@@ -46,6 +46,23 @@ def test_download_help_warns_about_modal_ide_questions():
     assert "open CODESYS and approve or cancel the dialog" in help_text
 
 
+def test_import_help_states_the_online_refusal():
+    parser = build_parser()._subparsers._group_actions[0].choices["import"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "refused while the IDE is online with the PLC" in help_text
+    assert "There is no override flag" in help_text
+    assert "cts disconnect" in help_text
+
+
+def test_update_pou_help_states_the_online_refusal():
+    parser = build_parser()._subparsers._group_actions[0].choices["update-pou"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "Refused while the IDE is online with the PLC" in help_text
+    assert "cts disconnect" in help_text
+
+
 def test_top_level_help_includes_target_and_expect_project():
     help_text = build_parser().format_help()
     assert "--target ID" in help_text
@@ -360,6 +377,35 @@ def test_new_help_warns_that_a_full_download_is_needed_to_read_the_object(
 
     assert "needs a FULL download" in help_text
     assert "is not exported to the online application" in help_text
+
+
+def test_new_help_says_text_is_verbatim(monkeypatch):
+    help_text = _new_help(monkeypatch)
+
+    assert "--text is used verbatim" in help_text
+    assert "A literal \\n" in help_text
+    assert "does" in help_text and "not a line break" in help_text
+    # The multi-line examples use ANSI-C quoting, not a literal \n.
+    assert "$'xStart : BOOL;\\nxStop : BOOL;'" in help_text
+
+
+def test_download_help_explains_its_own_login_and_the_never_option():
+    parser = build_parser()._subparsers._group_actions[0].choices["download"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "OnlineChangeOption.Never" in help_text
+    assert 'option: "Never"' in help_text
+    assert "does not need an online session first" in help_text
+
+
+def test_delete_pou_help_mentions_the_deny_list():
+    parser = build_parser()._subparsers._group_actions[0].choices["delete-pou"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "deny list" in help_text
+    assert "cts permissions" in help_text
+    assert "delete the object in the CODESYS IDE instead" in help_text
+    assert "cts disconnect" in help_text
 
 
 def test_new_help_says_no_manifest_entry_is_needed(monkeypatch):

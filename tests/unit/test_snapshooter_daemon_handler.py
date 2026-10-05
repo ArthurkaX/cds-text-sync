@@ -73,6 +73,41 @@ def test_tree_returns_leaf_paths_and_types(monkeypatch, project):
     assert isinstance(seen["project"], DummyProject)
 
 
+def test_tree_reports_whether_it_used_the_cache(monkeypatch, project):
+    _patch(monkeypatch, "build_tree", lambda app="Application", project=None: [])
+    _patch(monkeypatch, "tree_build_info",
+           lambda: {"source": "cache", "built_at": "2026-10-05T11:00:00"})
+
+    result = handler._cmd_snapshooter({"action": "tree"})
+
+    assert result["data"]["tree_source"] == "cache"
+    assert result["data"]["tree_built_at"] == "2026-10-05T11:00:00"
+
+
+def test_tree_refresh_invalidates_before_building(monkeypatch, project):
+    order = []
+    _patch(monkeypatch, "invalidate_tree_cache",
+           lambda proj: order.append("invalidate"))
+    _patch(monkeypatch, "build_tree",
+           lambda app="Application", project=None: order.append("build") or [])
+    _patch(monkeypatch, "tree_build_info",
+           lambda: {"source": "rebuilt", "built_at": "2026-10-05T12:00:00"})
+
+    result = handler._cmd_snapshooter({"action": "tree", "refresh": True})
+
+    assert order == ["invalidate", "build"]
+    assert result["data"]["tree_source"] == "rebuilt"
+
+
+def test_tree_without_refresh_never_invalidates(monkeypatch, project):
+    _patch(monkeypatch, "invalidate_tree_cache",
+           lambda proj: pytest.fail("tree without --refresh must not invalidate"))
+    _patch(monkeypatch, "build_tree", lambda app="Application", project=None: [])
+    _patch(monkeypatch, "tree_build_info", lambda: {"source": "cache", "built_at": ""})
+
+    handler._cmd_snapshooter({"action": "tree"})
+
+
 def test_tree_filters_by_path_prefix(monkeypatch, project):
     rows = [
         {"path": "GVL_HMI.a", "type": "INT"},

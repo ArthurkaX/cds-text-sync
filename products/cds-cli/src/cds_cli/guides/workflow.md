@@ -43,7 +43,7 @@ Use this sequence for normal source changes:
 9. Run `cts download` only when the user requested deployment to the PLC.
 10. Verify application state after deployment.
 
-There is no flag to import while the IDE is online. If the import preflight reports an online application, disconnect; if that does not clear it, end the online session in the CODESYS IDE before retrying.
+There is no flag to edit the project while the IDE is online. The refusal covers every project edit: import, one-object updates, deletion, `set-sync-folder`, and simulation mode. It answers *"The IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat <command>."* — disconnect and repeat the command. If disconnecting does not clear it, end the online session in the CODESYS IDE before retrying. An edit applied online leaves the new objects half-applied: their symbols are never exported to the running application, so later reads fail with *"is not exported to the online application"* even after a full download.
 
 `cts import` applies to the in-memory project and does **not** save it: saving also commits whatever else is open in the IDE, so it stays the user's decision. The response carries an `unsaved` warning — pass it on, and tell the user the import is lost if the project is closed or reloaded before they save. Use `--save` only when the user asked for it.
 
@@ -57,7 +57,7 @@ Classify commands before running them:
 
 - Read-only: help, ping, status, compare, project inspection, log reads, variable reads, and dry runs.
 - Folder-writing: export and offline projection generation.
-- IDE-writing: import, POU updates, and POU deletion.
+- IDE-writing: import, POU updates and deletion, sync-folder changes, and simulation mode. All are refused while the IDE is online with the PLC — disconnect first.
 - PLC-affecting: connect, disconnect, download, start, stop, variable writes, and restore with apply.
 
 Read-only diagnostics are safe defaults. Require a clear user request before exporting over files, deleting objects, downloading to a PLC, writing variables, restoring values, or changing PLC run state.

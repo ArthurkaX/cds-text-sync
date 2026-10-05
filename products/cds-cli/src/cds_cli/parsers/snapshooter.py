@@ -113,6 +113,16 @@ def _add_tree(actions):
             "GVL_HMI.x; use 'GVL.' to pin one GVL)"
         ),
     )
+    tree.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Rebuild the variable tree instead of reusing the cache. The tree "
+            "is rebuilt automatically after any project edit the daemon "
+            "performs (import, update-pou, delete-pou); use --refresh to force "
+            "it after an edit made directly in the CODESYS IDE"
+        ),
+    )
     add_timeout(tree, DEFAULT_TIMEOUT)
 
 

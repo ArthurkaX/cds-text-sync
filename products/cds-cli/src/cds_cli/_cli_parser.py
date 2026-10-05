@@ -204,7 +204,12 @@ Examples:
         "CODESYS window and look for the dialog. Killing the CLI does not "
         "cancel the import: the daemon finishes it anyway, so check with cts "
         "status and cts compare before re-running. Keep the CODESYS window "
-        "reachable during import instead of assuming it runs unattended."
+        "reachable during import instead of assuming it runs unattended.\n\n"
+        "Import is refused while the IDE is online with the PLC: editing a "
+        "project online is not supported and leaves the new objects "
+        "half-applied. There is no override flag -- run `cts disconnect`, then "
+        "repeat the import. The same rule applies to every project edit "
+        "(update-pou, delete-pou, set-sync-folder, simulation mode)."
     )
     p_import.formatter_class = argparse.RawDescriptionHelpFormatter
     p_import.add_argument(
@@ -288,7 +293,15 @@ Examples:
         "Force a full download to the PLC. CODESYS may open a modal Download, "
         "Online Change, Login, or safety confirmation. The CLI cannot answer "
         "IDE questions: if this command waits, open CODESYS and approve or "
-        "cancel the dialog."
+        "cancel the dialog.\n\n"
+        "Download performs its own login with CODESYS OnlineChangeOption.Never "
+        "-- the only mode that forces a full download rather than an online "
+        "change -- and reports that mode back as the response field "
+        "option: \"Never\". It does not need an online session first, but the "
+        "active application must have a reachable PLC gateway or simulation "
+        "mode. Build first: download pushes the last built code, and after "
+        "adding a GVL/DUT/POU a full download is what makes its symbols "
+        "readable."
     )
     p_download.add_argument(
         "--start",
@@ -431,6 +444,14 @@ Examples:
         "--guid", default="", help="Object GUID (rarely matches IDE GUID)"
     )
     p_upou = add_daemon_parser(subparsers, "update-pou", "Update one POU from an .st file", None)
+    p_upou.description = (
+        "Update one object's text in the IDE from an .st file. Prefer the "
+        "normal `cts import` flow; this is for a single object.\n\n"
+        "Refused while the IDE is online with the PLC (run `cts disconnect` "
+        "first): it is a project edit. The daemon deny list (`cts permissions`) "
+        "may also forbid it."
+    )
+    p_upou.formatter_class = argparse.RawDescriptionHelpFormatter
     p_upou.add_argument("--name", required=True, help="Object name")
     p_upou.add_argument(
         "--st-path", dest="st_path", required=True, help="Path to .st file"
@@ -439,6 +460,14 @@ Examples:
         "--app", default="", help="Application name (default: active application)"
     )
     p_dpou = add_daemon_parser(subparsers, "delete-pou", "Delete a POU/Function/FunctionBlock", None)
+    p_dpou.description = (
+        "Delete one object from the project. Refused while the IDE is online "
+        "with the PLC (run `cts disconnect` first): deleting is a project edit.\n\n"
+        "The daemon may also forbid this command through its deny list -- see "
+        "`cts permissions`. When it is denied there is no override: delete the "
+        "object in the CODESYS IDE instead, then `cts export`."
+    )
+    p_dpou.formatter_class = argparse.RawDescriptionHelpFormatter
     p_dpou.add_argument("name", help="Object name")
     p_dpou.add_argument(
         "--app", default="", help="Application name (default: active application)"

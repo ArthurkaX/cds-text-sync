@@ -15,7 +15,9 @@ import os
 import tempfile
 import time
 
+import ide_online_guard
 import ide_runtime_common as _common
+import ide_tree_cache
 
 from ide_daemon_state import (
     _log,
@@ -24,7 +26,6 @@ from ide_daemon_state import (
 )
 
 from ide_daemon_helpers import (
-    _active_app_online_state,
     _active_application_name,
     _find_object_by_selector,
     _find_object_in_project,
@@ -35,6 +36,22 @@ from ide_daemon_helpers import (
 from ide_snapshot_objects import snapshot_objects
 from ide_st_text import split_st_text
 from ide_xml import parse_xml_file
+
+
+def _mark_project_edited(sync_folder=""):
+    """Note that the IDE project changed, so the Snapshooter tree is stale.
+
+    The tree cache cannot see an in-memory edit through a file mtime (an
+    import without --save touches nothing on disk), so the daemon records the
+    edit itself. Best-effort: a failure only leaves a stale tree, which
+    ``cts snapshooter tree --refresh`` clears.
+    """
+    if not sync_folder:
+        try:
+            sync_folder, _err = _get_sync_folder()
+        except Exception:
+            sync_folder = ""
+    ide_tree_cache.mark_project_edited(sync_folder)
 
 
 def _write_import_attestation(sync_folder, project, saved=False):
@@ -303,6 +320,10 @@ def _cmd_sync_import(params):
     if err:
         return err
 
+    refusal = ide_online_guard.project_edit_refusal(project, "sync_import")
+    if refusal is not None:
+        return refusal
+
     in_path = params.get("input", "")
     if not in_path:
         sync_dir, sf_err = _get_sync_folder()
@@ -329,6 +350,7 @@ def _cmd_sync_import(params):
 
         # CODESYS API: project.import_native(path) — single arg only
         project.import_native(in_path)
+        _mark_project_edited()
 
         return {"ok": True, "data": {"path": in_path, "size": size}}
     except Exception as e:
@@ -654,27 +676,6 @@ class _ImportTextContext(object):
         self.return_data = {}
 
 
-def _import_text_online_refusal():
-    """Refuse before any export when a live session would swallow the creates.
-
-    Creating/adding POU/GVL/DUT is an offline operation.  If a live online
-    session is active the new objects silently won't be created, so fail early
-    with a clear instruction to disconnect first.  Returns the refusal dict, or
-    None when the import may proceed.
-    """
-    online, state = _active_app_online_state()
-    if not online:
-        return None
-    return {
-        "ok": False,
-        "error": (
-            "Active application is online (state: {0}). Adding/creating "
-            "objects is an offline operation. Run disconnect_from_device "
-            "first, then retry sync_import_text."
-        ).format(state or "connected"),
-    }
-
-
 def _import_text_export_baseline(context):
     """Export the live IDE state and record the patch paths on the context.
 
@@ -727,15 +728,6 @@ def _import_text_build_import_patch(context):
         "--include-objects",
     ]
     _common.run_external_engine(compare_args)
-    return None
-
-
-def _import_text_resolve_project(context):
-    """Resolve the active CODESYS project onto the context, or return its error."""
-    project, error = _get_active_project()
-    if error:
-        return error
-    context.project = project
     return None
 
 
@@ -1151,6 +1143,21 @@ def _import_text_finish(context):
     return {"ok": True, "data": context.return_data}
 
 
+def _import_text_guard():
+    """``(project, error)`` before any side effect: resolve and refuse online.
+
+    Both must happen before the baseline export and everything after it, so
+    the online refusal leaves the project, the manifest and the disk untouched.
+    """
+    project, error = _get_active_project()
+    if error is not None:
+        return None, error
+    refusal = ide_online_guard.project_edit_refusal(project, "sync_import_text")
+    if refusal is not None:
+        return None, refusal
+    return project, None
+
+
 def _cmd_sync_import_text(params):
     """Apply an on-disk patch to the running IDE, then re-baseline the manifest.
 
@@ -1161,20 +1168,17 @@ def _cmd_sync_import_text(params):
     Each stage is a named helper over a shared :class:`_ImportTextContext`;
     only the create/apply loop and the save are allowed to fail softly.
     """
-    refusal = _import_text_online_refusal()
-    if refusal is not None:
-        return refusal
+    project, error = _import_text_guard()
+    if error is not None:
+        return error
 
     context = _ImportTextContext(params)
+    context.project = project
     error = _import_text_export_baseline(context)
     if error is not None:
         return error
 
     error = _import_text_build_import_patch(context)
-    if error is not None:
-        return error
-
-    error = _import_text_resolve_project(context)
     if error is not None:
         return error
 
@@ -1194,6 +1198,7 @@ def _cmd_sync_import_text(params):
         _import_text_refresh_manifest(context)
         _import_text_add_note(context)
         _import_text_write_attestation(context)
+        _mark_project_edited(context.sync_folder)
         return _import_text_finish(context)
     except Exception as e:
         return {"ok": False, "error": "Sync import error: {0}".format(e)}
@@ -1488,6 +1493,10 @@ def _cmd_update_pou(params):
     if err:
         return err
 
+    refusal = ide_online_guard.project_edit_refusal(project, "update_pou")
+    if refusal is not None:
+        return refusal
+
     pou_name = params.get("name", "")
     app_name = params.get("app") or _active_application_name(project)
     st_path = params.get("st_path", "")
@@ -1601,6 +1610,7 @@ def _cmd_update_pou(params):
         result["data"]["decl_skipped"] = decl_skipped
     if impl_skipped:
         result["data"]["impl_skipped"] = impl_skipped
+    _mark_project_edited()
     return result
 
 
@@ -1614,6 +1624,10 @@ def _cmd_delete_pou(params):
     project, err = _get_active_project()
     if err:
         return err
+
+    refusal = ide_online_guard.project_edit_refusal(project, "delete_pou")
+    if refusal is not None:
+        return refusal
 
     obj_name = params.get("name", "")
     app_name = params.get("app") or _active_application_name(project)
@@ -1638,6 +1652,7 @@ def _cmd_delete_pou(params):
         if hasattr(target, "remove"):
             target.remove()
             _invalidate_device_cache()
+            _mark_project_edited()
             _log(
                 "Deleted object: {0} (type={1}, app={2})".format(
                     obj_name, target_type, app_name
