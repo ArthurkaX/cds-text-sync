@@ -25,6 +25,7 @@ _ENGINE_DIR = (
     / "engine"
 )
 from cds_text_sync.engine.reverse_pipe_client import (
+    get_last_context,
     get_last_instance,
     send_command_reverse,
 )
@@ -85,6 +86,15 @@ def _print_error(msg):
 
 def _print_warn(msg):
     print(f"[WARN] {msg}", file=sys.stderr)
+
+
+#: One extra line after a reverse-pipe failure. It says only what is true of
+#: every such failure -- the daemon/IDE did not answer -- without guessing why.
+_DAEMON_UNREACHABLE = "The IDE/daemon is not answering (is CODESYS running with the daemon started?)."
+
+
+def _print_daemon_unreachable():
+    _print_info(_DAEMON_UNREACHABLE)
 
 
 # Text mode is for a person reading a terminal, so it has to stay readable
@@ -163,11 +173,18 @@ def _empty_marker(value):
 def _format_output(data, fmt="json", title=None):
     """Format output as JSON (machine) or text (human)."""
     last_inst = get_last_instance()
+    last_ctx = get_last_context()
 
     if fmt != "text":
-        if isinstance(data, dict) and "instance" not in data and last_inst is not None:
-            data = dict(data)
-            data["instance"] = last_inst
+        if isinstance(data, dict):
+            extra = {}
+            if "instance" not in data and last_inst is not None:
+                extra["instance"] = last_inst
+            if "context" not in data and last_ctx is not None:
+                extra["context"] = last_ctx
+            if extra:
+                data = dict(data)
+                data.update(extra)
         return json.dumps(data, indent=2, ensure_ascii=False)
 
     if data is None:
@@ -188,7 +205,10 @@ def _format_output(data, fmt="json", title=None):
     if renderer.elided:
         lines.append("… shortened for reading; use --output json for all of it")
 
-    if last_inst is not None:
+    context_line = _context_line(last_ctx)
+    if context_line:
+        lines.append(context_line)
+    elif last_inst is not None:
         inst_id = last_inst.get("id", "")
         prj = last_inst.get("project")
         prj_name = prj.get("name") if (prj and isinstance(prj, dict)) else None
@@ -198,6 +218,36 @@ def _format_output(data, fmt="json", title=None):
             lines.append(f"{inst_id} · no project")
 
     return "\n".join(lines)
+
+
+def _context_line(context):
+    """The one-line ``[ctx] ...`` footer, or "" when there is no context.
+
+    Built only from the block the daemon sent; a missing field degrades to a
+    placeholder rather than inventing a value. An older daemon sends no
+    context, and then the legacy ``ide · project`` line still renders.
+    """
+    if not isinstance(context, dict):
+        return ""
+    plc = context.get("plc") if isinstance(context.get("plc"), dict) else {}
+    online = plc.get("online")
+    if online is True:
+        plc_text = "online"
+    elif online is False:
+        plc_text = "offline"
+    else:
+        plc_text = "unknown"
+    state = plc.get("state")
+    if state:
+        plc_text = f"{plc_text}/{state}"
+    edits = "blocked" if context.get("edits_allowed") is False else "allowed"
+    line = "[ctx] project={0} ide={1} plc={2} edits={3}".format(
+        context.get("project") or "?", context.get("ide") or "?", plc_text, edits
+    )
+    hint_short = context.get("hint_short")
+    if hint_short and edits == "blocked":
+        line += f" ({hint_short})"
+    return line
 
 
 # -- CODESYS launcher --------------------------------------------------------
@@ -451,6 +501,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         resp = send_command_reverse(command, params, timeout=timeout)
     except RuntimeError as e:
         _print_error("Reverse pipe error: {0}".format(e))
+        _print_daemon_unreachable()
         sys.exit(1)
 
     if wire.response_ok(resp):
@@ -479,6 +530,7 @@ def cmd_daemon(
         resp = send_command_reverse(method, params, timeout=timeout)
     except RuntimeError as e:
         _print_error("Reverse pipe error: {0}".format(e))
+        _print_daemon_unreachable()
         sys.exit(1)
 
     if wire.response_ok(resp):
@@ -501,9 +553,11 @@ def _project_command(method, params=None, timeout=30):
         resp = send_command_reverse(method, params or {}, timeout=timeout)
     except ConnectionError as e:
         _print_error("Cannot connect to daemon: {0}".format(e))
+        _print_daemon_unreachable()
         sys.exit(1)
     except RuntimeError as e:
         _print_error("Command error: {0}".format(e))
+        _print_daemon_unreachable()
         sys.exit(1)
 
     if wire.response_ok(resp):

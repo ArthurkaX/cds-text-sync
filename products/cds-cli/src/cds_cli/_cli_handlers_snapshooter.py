@@ -15,6 +15,7 @@ import sys
 from cds_cli._cli_io import (
     _daemon_path,
     _format_output,
+    _print_daemon_unreachable,
     _print_error,
     _print_info,
     _print_rp_error,
@@ -36,6 +37,7 @@ def dispatch_snapshooter(args, output_fmt="json"):
         response = send_command_reverse("snapshooter", params, timeout=timeout)
     except RuntimeError as exc:
         _print_error("Reverse pipe error: {0}".format(exc))
+        _print_daemon_unreachable()
         sys.exit(1)
 
     if not wire.response_ok(response):
