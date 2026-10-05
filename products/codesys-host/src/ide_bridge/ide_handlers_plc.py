@@ -31,6 +31,20 @@ def _plc_path_refusal(params, name):
     """A refusal when a PLC-path parameter is really an MSYS-rewritten host path."""
     return plc_path_error(name, params.get(name, ""))
 
+
+def _local_scratch_file(suffix):
+    """A concrete local path to download a PLC file into.
+
+    ``tempfile.mktemp`` only *names* a file: the path it returns need not
+    exist, and the PLC download was handed one the device API rejected with
+    "Value cannot be null. Parameter name: path."  ``mkstemp`` creates the
+    file and returns a path that exists in a writable directory, so the call
+    never receives an empty or imaginary destination.
+    """
+    handle, path = tempfile.mkstemp(prefix="cds-plc-", suffix=suffix)
+    os.close(handle)
+    return path
+
 # Imported for its side effect: puts shared/src on sys.path so this module can be
 # imported cold, without depending on some earlier bridge module having done it.
 import ide_runtime_common  # noqa: F401
@@ -533,7 +547,11 @@ def _cmd_plc_log(params):
         if err:
             return err
 
-        log_file = params.get("file", "codesyscontrol.log")
+        # ``or``, not a ``get`` default: a client that sends ``file: null``
+        # (or "") must fall back to the default, not hand the device API a
+        # null path -- which is exactly the "Value cannot be null. Parameter
+        # name: path." the upload reported.
+        log_file = params.get("file") or "codesyscontrol.log"
         tail_n = None
         output_path = params.get("output", "")
 
@@ -586,7 +604,7 @@ def _cmd_plc_log(params):
         if not hasattr(online_dev, "upload_file"):
             return {"ok": False, "error": "Online device has no upload_file method"}
 
-        tmp = tempfile.mktemp(suffix=".log")
+        tmp = _local_scratch_file(".log")
         try:
             online_dev.upload_file(log_file, tmp, True)
         except Exception as e:

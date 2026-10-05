@@ -40,6 +40,7 @@ test_paths = [
   "../../tests/unit/test_online_diagnose_reporting.py",
   "../../tests/unit/test_online_edit_guard.py",
   "../../tests/unit/test_plc_paths.py",
+  "../../tests/unit/test_plc_log_download.py",
   "../../tests/unit/test_online_session_guard.py",
   "../../tests/unit/test_options_locked_hover.py",
   "../../tests/unit/test_project_file_path.py",
