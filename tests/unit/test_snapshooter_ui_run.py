@@ -925,12 +925,13 @@ def test_checking_the_root_cascades_to_leaves(scenario):
 
 
 def test_branch_tristate_follows_partial_selection(scenario):
-    """A branch checks only once every direct child is checked.
+    """A branch checks only once every leaf below it is checked.
 
     ``_update_parent_state`` walks the ancestor chain on every check event: a
     partly-filled branch must end up *unchecked*, a full one checked, and the
-    root stays unchecked while ``App.x`` is not.  The decomposition moves this
-    walk into a free function, so its thresholds are pinned here.
+    root stays unchecked while ``App.x`` is not.  The rule is the same one Load
+    applies (``_apply_branch_state``), counted over leaves rather than direct
+    children.
     """
     _run(scenario)
     form = scenario.form()
@@ -1216,9 +1217,10 @@ def test_load_ignores_paths_the_tree_does_not_have(scenario, tmp_path):
 def test_load_checks_the_root_from_descendant_leaves_not_direct_children(scenario, tmp_path):
     """The root has two child nodes but three leaves below them.
 
-    Counting direct children (what ``_update_parent_state`` does) can never
-    mark this root checked, because ``GVL`` and ``App.x`` are only two boxes
-    against three leaves.  Load counts the leaves underneath instead.
+    Counting direct children can never mark this root checked -- ``GVL`` and
+    ``App.x`` are only two boxes against three leaves -- and comparing a child
+    count against a leaf count mixes units.  The leaves underneath decide it,
+    on the Load path and (see the click tests below) on the click path too.
     """
     form = _load(scenario, tmp_path, ["GVL.a", "GVL.b", "App.x"])
 
@@ -1465,3 +1467,95 @@ def test_recomputed_parents_read_their_own_leaves_not_other_boxes(scenario):
 
     assert root_ui.Checked is True
     assert gvl_ui.Checked is True
+
+
+# -- Click and Load agree on the parent state ----------------------------------
+
+
+def _click_all(form, names):
+    """Tick *names* one at a time, through the real event handler."""
+    for name in names:
+        node = [n for n in form._all_leaf_nodes if n.Name == name][0]
+        node.Checked = True
+        form._on_after_check(None, types.SimpleNamespace(Node=node))
+
+
+def _parent_state(form):
+    """``{path: Checked}`` for every branch in the tree."""
+    return {
+        getattr(model, "path", ""): ui.Checked
+        for ui, model in form._node_models.items()
+        if not getattr(model, "leaf", False)
+    }
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        [],
+        ["GVL.a"],
+        ["GVL.b"],
+        ["App.x"],
+        ["GVL.a", "GVL.b"],
+        ["GVL.a", "App.x"],
+        ["GVL.a", "GVL.b", "App.x"],
+    ],
+)
+def test_clicking_and_loading_agree_on_the_parent_state(scenario, tmp_path, names):
+    """The two ways of selecting leaves must leave the branches identical.
+
+    Clicking used to count *direct children* against ``model.leaf_count`` while
+    Load counted leaves; on this tree (root: two children, three leaves) they
+    disagreed for every partial selection.
+    """
+    _run(scenario)
+    clicked = scenario.form()
+    _click_all(clicked, names)
+
+    form = _load(scenario, tmp_path, names)
+
+    assert _parent_state(form) == _parent_state(clicked)
+
+
+def test_clicking_every_leaf_checks_the_root(scenario):
+    """The regression: the root has two children but three leaves below them.
+
+    Counting direct children can never tick it (2 boxes against the branch's
+    ``leaf_count`` of 3); counting the leaves underneath can.
+    """
+    _run(scenario)
+    form = scenario.form()
+
+    _click_all(form, ["GVL.a", "GVL.b", "App.x"])
+
+    assert form.tree.Nodes[0].Checked is True
+    assert form.tree.Nodes[0].Nodes[0].Checked is True
+
+
+def test_unchecking_one_leaf_unchecks_the_whole_chain(scenario):
+    _run(scenario)
+    form = scenario.form()
+    _click_all(form, ["GVL.a", "GVL.b", "App.x"])
+    assert form.tree.Nodes[0].Checked is True
+
+    leaf = [n for n in form._all_leaf_nodes if n.Name == "GVL.a"][0]
+    leaf.Checked = False
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf))
+
+    assert form.tree.Nodes[0].Nodes[0].Checked is False  # GVL: 1 of 2
+    assert form.tree.Nodes[0].Checked is False  # root: 2 of 3
+
+
+def test_rechecking_the_leaf_checks_the_chain_back(scenario):
+    _run(scenario)
+    form = scenario.form()
+    _click_all(form, ["GVL.a", "GVL.b", "App.x"])
+    leaf = [n for n in form._all_leaf_nodes if n.Name == "GVL.a"][0]
+    leaf.Checked = False
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf))
+
+    leaf.Checked = True
+    form._on_after_check(None, types.SimpleNamespace(Node=leaf))
+
+    assert form.tree.Nodes[0].Nodes[0].Checked is True
+    assert form.tree.Nodes[0].Checked is True
