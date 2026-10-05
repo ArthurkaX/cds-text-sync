@@ -286,6 +286,40 @@ def test_daemon_refusal_is_error_not_fail(workspace, monkeypatch):
     assert code == 0
 
 
+_CTX = {
+    "project": "cts-reference-project",
+    "ide": "ide-3444",
+    "plc": {"online": True, "state": "run"},
+    "edits_allowed": False,
+    "hint_short": "cts disconnect",
+}
+
+
+def test_a_daemon_refusal_prints_the_context_on_stderr(workspace, monkeypatch):
+    """A refused stage is a failed command: the same [ctx] line, on stderr."""
+    _fake_daemon(
+        monkeypatch,
+        {"build": {"ok": False, "error": "no project open", "context": _CTX}},
+    )
+
+    code, doc, err = _verify_json(workspace, ["--only", "build"])
+
+    assert "[ctx] project=cts-reference-project ide=ide-3444" in err
+    assert "edits=blocked" in err
+    # The report itself is unchanged and carries no context line.
+    assert _stage(doc, "build")["status"] == "error"
+    assert code == 0
+
+
+def test_a_refusal_without_context_adds_no_line(workspace, monkeypatch):
+    """An older daemon sends no context; then nothing is printed."""
+    _fake_daemon(monkeypatch, {"build": {"ok": False, "error": "no project open"}})
+
+    _code, _doc, err = _verify_json(workspace, ["--only", "build"])
+
+    assert "[ctx]" not in err
+
+
 def test_clean_build_passes(workspace, monkeypatch):
     _fake_daemon(
         monkeypatch,

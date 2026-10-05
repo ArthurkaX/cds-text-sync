@@ -22,6 +22,7 @@ import sys
 from cds_cli._cli_io import (
     _format_output,
     _print_error,
+    _print_error_context,
     _print_info,
     _print_rp_error,
     cmd_daemon,
@@ -226,20 +227,7 @@ def _handle_write(args, output_fmt):
         if not wire.response_ok(wr):
             _print_rp_error(wr, "write_variable")
             sys.exit(1)
-        rb = send_command_reverse(
-            "read_variable", {"name": args.name}, timeout=timeout
-        )
-        if wire.response_ok(rb):
-            read_back = rb.get("data", {})
-        else:
-            # The write happened; the read-back did not. Saying so is the point:
-            # reporting an empty read_back as if the variable were empty would
-            # turn a failed verification into a wrong fact about the PLC.
-            read_back = {
-                "unavailable": wire.response_error(
-                    rb, "read-back failed (no error reported)"
-                )
-            }
+        read_back = _read_back(args.name, timeout)
         print(
             _format_output(
                 {"written": True, "read_back": read_back},
@@ -250,3 +238,21 @@ def _handle_write(args, output_fmt):
     except RuntimeError as e:
         _print_error("Write failed: {0}".format(e))
         sys.exit(1)
+
+
+def _read_back(name, timeout):
+    """Read a variable back after a write. The value, or why it is unavailable.
+
+    A failed read-back is a daemon response like any other: its ``[ctx]`` line
+    goes to stderr, the same one ``_print_rp_error`` would print. Reporting an
+    empty read-back as if the variable were empty would turn a failed
+    verification into a wrong fact about the PLC, so it is an explicit
+    ``unavailable`` instead.
+    """
+    rb = send_command_reverse("read_variable", {"name": name}, timeout=timeout)
+    if wire.response_ok(rb):
+        return rb.get("data", {})
+    _print_error_context(rb)
+    return {
+        "unavailable": wire.response_error(rb, "read-back failed (no error reported)")
+    }
