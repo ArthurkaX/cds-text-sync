@@ -32,7 +32,7 @@ Use this reference as a routing guide. Confirm exact syntax with the installed `
 | Apply without re-baselining the disk | `cts import --no-refresh` |
 | Compile the active application | `cts build` |
 
-Disconnect before import when the IDE is online with the PLC. Import has no online override flag; it is refused until the IDE is offline.
+Disconnect before any project edit when the IDE is online with the PLC. Import, one-object updates (`update-pou`), deletion (`delete-pou`), `set-sync-folder` and simulation mode are all refused while online, with one message: the IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat the command. There is no override flag. An edit that slips through online leaves the new objects half-applied — their symbols are never exported to the running application, so every later read fails with *"is not exported to the online application"* even after a full download.
 
 Import applies to the in-memory project and does not save — saving commits everything else open in the IDE, so it is the user's call. Report the `unsaved` warning when it appears; use `--save` only when the user asked for it. Import does re-baseline `project-view/` and `manifest.json` from the IDE, so the next compare is clean. When it withholds that refresh it says why in `manifest_refresh_skipped` — always because an edit did not reach the IDE and the disk still holds the only copy.
 

@@ -46,6 +46,23 @@ def test_download_help_warns_about_modal_ide_questions():
     assert "open CODESYS and approve or cancel the dialog" in help_text
 
 
+def test_import_help_states_the_online_refusal():
+    parser = build_parser()._subparsers._group_actions[0].choices["import"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "refused while the IDE is online with the PLC" in help_text
+    assert "There is no override flag" in help_text
+    assert "cts disconnect" in help_text
+
+
+def test_update_pou_help_states_the_online_refusal():
+    parser = build_parser()._subparsers._group_actions[0].choices["update-pou"]
+    help_text = " ".join(parser.format_help().split())
+
+    assert "Refused while the IDE is online with the PLC" in help_text
+    assert "cts disconnect" in help_text
+
+
 def test_top_level_help_includes_target_and_expect_project():
     help_text = build_parser().format_help()
     assert "--target ID" in help_text

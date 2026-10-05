@@ -204,7 +204,12 @@ Examples:
         "CODESYS window and look for the dialog. Killing the CLI does not "
         "cancel the import: the daemon finishes it anyway, so check with cts "
         "status and cts compare before re-running. Keep the CODESYS window "
-        "reachable during import instead of assuming it runs unattended."
+        "reachable during import instead of assuming it runs unattended.\n\n"
+        "Import is refused while the IDE is online with the PLC: editing a "
+        "project online is not supported and leaves the new objects "
+        "half-applied. There is no override flag -- run `cts disconnect`, then "
+        "repeat the import. The same rule applies to every project edit "
+        "(update-pou, delete-pou, set-sync-folder, simulation mode)."
     )
     p_import.formatter_class = argparse.RawDescriptionHelpFormatter
     p_import.add_argument(
@@ -431,6 +436,14 @@ Examples:
         "--guid", default="", help="Object GUID (rarely matches IDE GUID)"
     )
     p_upou = add_daemon_parser(subparsers, "update-pou", "Update one POU from an .st file", None)
+    p_upou.description = (
+        "Update one object's text in the IDE from an .st file. Prefer the "
+        "normal `cts import` flow; this is for a single object.\n\n"
+        "Refused while the IDE is online with the PLC (run `cts disconnect` "
+        "first): it is a project edit. The daemon deny list (`cts permissions`) "
+        "may also forbid it."
+    )
+    p_upou.formatter_class = argparse.RawDescriptionHelpFormatter
     p_upou.add_argument("--name", required=True, help="Object name")
     p_upou.add_argument(
         "--st-path", dest="st_path", required=True, help="Path to .st file"
