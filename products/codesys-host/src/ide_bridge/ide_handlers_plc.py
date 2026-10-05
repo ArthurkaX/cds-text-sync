@@ -24,7 +24,12 @@ from ide_daemon_helpers import (
     _require_online_device,
 )
 
-from ide_path_guards import host_path_error
+from ide_path_guards import host_path_error, plc_path_error, plc_root_path
+
+
+def _plc_path_refusal(params, name):
+    """A refusal when a PLC-path parameter is really an MSYS-rewritten host path."""
+    return plc_path_error(name, params.get(name, ""))
 
 # Imported for its side effect: puts shared/src on sys.path so this module can be
 # imported cold, without depending on some earlier bridge module having done it.
@@ -268,6 +273,10 @@ def _cmd_source_download(params):
 
 def _cmd_plc_files(params):
     """List files on the PLC via get_online_device().get_file_list_of_directory()."""
+    refusal = _plc_path_refusal(params, "path")
+    if refusal is not None:
+        return refusal
+    path = plc_root_path(params.get("path", ""))
     try:
         _oa, online_dev, err = _require_online_device()
         if err:
@@ -309,14 +318,14 @@ def _cmd_plc_files(params):
             except Exception as e:
                 diag["connect_error"] = str(e)[:200]
 
-        path = params.get("path", "/")
-
-        # Try common paths if the requested path fails
+        # Try common roots when the whole device was asked for.  The root is
+        # the empty string, not "/": Git Bash rewrites a "/" argument into a
+        # Windows path before cts sees it, so "/" never arrives as typed.
         paths_to_try = [path]
-        if path == "/":
+        if not path:
             paths_to_try = [
-                "/",
                 "",
+                "/",
                 "/usr/",
                 "/home/",
                 "/var/",
@@ -401,7 +410,7 @@ def _cmd_plc_files(params):
 
 def _cmd_plc_download(params):
     """Download a file from PLC to the local filesystem."""
-    refusal = host_path_error(params, "dest")
+    refusal = _plc_path_refusal(params, "src") or host_path_error(params, "dest")
     if refusal is not None:
         return refusal
     try:
@@ -462,7 +471,7 @@ def _cmd_plc_upload(params):
         --dest PATH: destination path on PLC (e.g. PlcLogic/Application/myfile.bin)
         --overwrite 0|1: overwrite if exists (default: 1)
     """
-    refusal = host_path_error(params, "src")
+    refusal = _plc_path_refusal(params, "dest") or host_path_error(params, "src")
     if refusal is not None:
         return refusal
     try:
@@ -516,7 +525,7 @@ def _cmd_plc_log(params):
         --output PATH: save full log to file/directory
         If neither --tail nor --output: list available log files.
     """
-    refusal = host_path_error(params, "output")
+    refusal = _plc_path_refusal(params, "file") or host_path_error(params, "output")
     if refusal is not None:
         return refusal
     try:

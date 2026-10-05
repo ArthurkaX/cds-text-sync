@@ -215,6 +215,8 @@ Check the installed command help for whether download also starts the applicatio
 
 `cts download` performs its own full-download login — CODESYS `OnlineChangeOption.Never`, the only mode that forces a full download rather than an online change — so it does not need an online session first. The active application still needs a reachable PLC gateway (or simulation mode). The response field `option: "Never"` names that mode; `started` says whether the app was started again.
 
+PLC paths (`cts plc-log --file`, `cts raw plc_files --path`) name files on the device, not on this PC, and are sent exactly as typed: a leading `/` does not survive Git Bash, whose MSYS layer rewrites it into a Windows path before `cts` even runs (the daemon then refuses it with that hint). Pass `.` — or omit the option — for the PLC root, or set `MSYS_NO_PATHCONV=1`. Host paths are the opposite: `--output` is a path on this PC and is made absolute before it is sent.
+
 ## Variables
 
 | Goal | Command |
