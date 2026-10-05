@@ -259,10 +259,18 @@ def _cmd_disconnect_from_device():
         return err
     try:
         result = _helpers.disconnect_from_device_impl(project)
+        if result.get("online_after"):
+            # Do not claim success: the IDE still holds the session, so the
+            # next edit would be refused. Fail loudly with the fix instead.
+            return {
+                "ok": False,
+                "error": result.get("warning", _helpers.STILL_ONLINE),
+                "data": result,
+            }
         return {"ok": True, "data": result}
     except Exception as e:
         _log("Disconnect warning: {0}".format(e))
-        return {"ok": True, "data": {"state": "disconnected", "warning": str(e)}}
+        return {"ok": False, "error": "Disconnect error: {0}".format(e)}
 
 
 def _cmd_download(params):

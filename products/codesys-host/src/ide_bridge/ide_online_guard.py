@@ -30,11 +30,12 @@ _REFUSAL = (
 def _live_session(project):
     """The session the IDE already holds -- cached or not -- else ``None``.
 
-    ``require_online_session`` returns the daemon's cached handle and, when
-    there is none, *adopts* the session already online in the IDE UI. Adopting
-    only creates a wrapper around the session the user already has; it never
-    calls ``login()`` and never opens a connection (see
-    ``ide_online_helpers.require_online_session``).
+    ``live_online_session`` returns the daemon's cached handle and, when there
+    is none, *adopts* the session already online in the IDE UI. Adopting only
+    creates a wrapper around the session the user already has; it never calls
+    ``login()`` and never opens a connection (see
+    ``ide_online_helpers.live_online_session``). ``disconnect`` checks the
+    same predicate, so "edits are allowed" and "the session is gone" agree.
 
     This is deliberately not ``is_online_session_active``: that one reads only
     the daemon's cache, so it answers "offline" whenever the daemon started
@@ -43,7 +44,7 @@ def _live_session(project):
     project modification (see command_registry.NO_PERMISSION).
     """
     try:
-        return ide_online_helpers.require_online_session(project)
+        return ide_online_helpers.live_online_session(project)
     except Exception:
         return None
 

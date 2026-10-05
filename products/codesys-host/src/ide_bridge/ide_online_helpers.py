@@ -286,6 +286,24 @@ def ensure_online_connection(project, prefer_device=False):
     )
 
 
+def cache_online_app(online_app, target_app):
+    """Remember a live wrapper for later commands. Best-effort."""
+    state = _get_daemon_state()
+    if state is None or online_app is None:
+        return
+    state["online_app"] = online_app
+    state["online_target_app"] = target_app
+
+
+def clear_cached_online_app():
+    """Forget the cached wrapper (after a logout, or when it is known dead)."""
+    state = _get_daemon_state()
+    if state is None:
+        return
+    state["online_app"] = None
+    state["online_target_app"] = None
+
+
 def adopt_existing_online_session(project):
     """Cache a session which is already online in the CODESYS UI.
 
@@ -307,13 +325,24 @@ def adopt_existing_online_session(project):
         online_app = se.online.create_online_application(target_app)
         if not _online_app_is_live(online_app):
             return None, None
-        state = _get_daemon_state()
-        if state is not None:
-            state["online_app"] = online_app
-            state["online_target_app"] = target_app
+        cache_online_app(online_app, target_app)
         return online_app, target_app
     except Exception:
         return None, None
+
+
+def live_online_session(project):
+    """The IDE's live online session -- cached or adopted -- else ``None``.
+
+    The one predicate behind both the edit guard and ``disconnect``, so
+    "edits are refused" and "the session is really gone" mean the same thing.
+    Adopting only wraps a session the IDE UI already holds; it never logs in
+    and never opens a connection.
+    """
+    online_app, _target = _get_cached_online_app()
+    if online_app is None:
+        online_app, _target = adopt_existing_online_session(project)
+    return online_app
 
 
 def require_online_session(project):
@@ -334,9 +363,7 @@ def require_online_session(project):
     Raises:
         RuntimeError telling the caller to connect first.
     """
-    online_app, _ = _get_cached_online_app()
-    if online_app is None:
-        online_app, _ = adopt_existing_online_session(project)
+    online_app = live_online_session(project)
     if online_app is None:
         raise RuntimeError(
             "Not connected. No cached or IDE-online session is available; "
@@ -492,52 +519,94 @@ def _online_app_is_live(online_app):
     return False
 
 
-def disconnect_from_device_impl(project):
-    """Disconnect from a PLC device.
+def _new_online_handle(project):
+    """``(handle, target)`` for the active application, or ``(None, None)``.
 
-    Logs out and clears cached online_app.
-    Next read/write will create a fresh connection with auto-login.
-    Safe to call when not connected — reports was_connected=False instead of
-    claiming it logged something out.
-
-    Returns:
-        dict with state info
+    Builds a ScriptEngine wrapper only -- this never logs in and never touches
+    the gateway. ``(None, None)`` means the question cannot be asked, not that
+    the answer is no.
     """
-    import scriptengine as se
     try:
-        # Use cached online_app if available
-        online_app, _ = _get_cached_online_app()
-        was_connected = _online_app_is_live(online_app)
-        if online_app is None:
-            target_app = get_active_application(project)
-            if target_app is not None:
-                # create_online_application only builds a handle; it does not
-                # log in. Probe it before logout so an idle IDE is reported as
-                # "nothing to disconnect" rather than a successful logout.
-                online_app = se.online.create_online_application(target_app)
-                was_connected = _online_app_is_live(online_app)
-        if online_app is not None:
-            try:
-                online_app.logout()
-            except Exception:
-                pass
-        # Clear cache so next call creates fresh connection
-        try:
-            daemon_state = _get_daemon_state()
-            if daemon_state is not None:
-                daemon_state['online_app'] = None
-                daemon_state['online_target_app'] = None
-        except Exception:
-            pass
-        result = {"state": "disconnected", "was_connected": was_connected}
-        if not was_connected:
-            result["note"] = (
-                "No live online session was found: nothing to disconnect. "
-                "The IDE was already offline."
-            )
+        import scriptengine as se
+
+        target_app = get_active_application(project)
+        if target_app is None:
+            return None, None
+        return se.online.create_online_application(target_app), target_app
+    except Exception:
+        return None, None
+
+
+def probe_online_state(project):
+    """Is the IDE online *right now*? Returns ``(online, known)``.
+
+    ``known`` is False only when the question could not be asked at all -- no
+    active application, no ScriptEngine, the wrapper raised -- and the caller
+    must then report "unknown" instead of guessing. A found session is cached,
+    so the expensive answer is paid once. Never logs in and never connects.
+    """
+    online_app, _target = _get_cached_online_app()
+    if online_app is not None:
+        return True, True
+    online_app, target_app = _new_online_handle(project)
+    if online_app is None:
+        return None, False
+    if _online_app_is_live(online_app):
+        cache_online_app(online_app, target_app)
+        return True, True
+    return False, True
+
+
+#: Said when a logout did not end the IDE's session. The user has to finish
+#: it in the IDE, because a ScriptEngine logout of a session the UI owns can
+#: be refused while CODESYS keeps the connection.
+STILL_ONLINE = (
+    "The IDE is still online with the PLC; the session was not ended. "
+    "Log out in CODESYS: Online -> Logout, then repeat the command."
+)
+
+
+def _end_online_session(online_app):
+    """Log the app out once. Return the error text, or "" on success."""
+    if online_app is None:
+        return ""
+    try:
+        online_app.logout()
+        return ""
+    except Exception as error:
+        return str(error)
+
+
+def disconnect_from_device_impl(project):
+    """End the IDE's online session and report whether it really ended.
+
+    ``logout`` runs on the adopted or opened session, then ``online_after`` is
+    re-checked with the guard's own predicate: a session that survived makes
+    the result say ``still_online`` and carry a warning, never "disconnected".
+    The logout is called once, guarded, and its error is reported rather than
+    swallowed. Returns a dict that always carries ``online_after``.
+    """
+    online_app = live_online_session(project)
+    was_connected = _online_app_is_live(online_app)
+    logout_error = _end_online_session(online_app)
+    clear_cached_online_app()
+    still_online = live_online_session(project) is not None
+    result = {
+        "state": "still_online" if still_online else "disconnected",
+        "was_connected": was_connected,
+        "online_after": still_online,
+    }
+    if logout_error:
+        result["logout_error"] = logout_error
+    if still_online:
+        result["warning"] = STILL_ONLINE
         return result
-    except Exception as e:
-        return {"state": "disconnected", "note": str(e)}
+    if not was_connected:
+        result["note"] = (
+            "No live online session was found: nothing to disconnect. "
+            "The IDE was already offline."
+        )
+    return result
 
 
 def download_impl(project, start=True):

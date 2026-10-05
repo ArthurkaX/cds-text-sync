@@ -9,11 +9,11 @@ and the old preflight (``is_online_session_active``) only ever looked at that
 cache. The import silently created half-applied objects, and their symbols were
 never exported to the running application.
 
-The guard therefore asks ``require_online_session`` -- the same detection the
-data plane uses -- which adopts the session already online in the IDE UI
-(a wrapper only, never a login). One helper answers for every project-editing
-command; this module pins the helper, the detection it must use, and that the
-guarded handlers refuse before touching anything.
+The guard therefore asks ``live_online_session`` -- the same detection the data
+plane and ``disconnect`` use -- which adopts the session already online in the
+IDE UI (a wrapper only, never a login). One helper answers for every
+project-editing command; this module pins the helper, the detection it must
+use, and that the guarded handlers refuse before touching anything.
 """
 
 from __future__ import print_function
