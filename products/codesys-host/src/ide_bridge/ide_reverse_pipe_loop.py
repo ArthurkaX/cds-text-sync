@@ -177,20 +177,26 @@ except Exception:
     _ui = None
 
 # ── Global state ──────────────────────────────────────────────────────────
+#
+# The state lives in the AppDomain, not in ``sys``: each Execute Script gets a
+# fresh IronPython runtime (and so a fresh ``sys``), which is how three daemons
+# ended up polling one pipe.  ``sys._codesys_daemon_loop`` is kept as an alias
+# for the same dict, because the rest of this module -- and the dashboard UI --
+# read it there.
 
-if not hasattr(sys, "_codesys_daemon_loop"):
-    sys._codesys_daemon_loop = {
-        "running": False,
-        "started": False,
-        "projects": None,
-        "system": None,
-        "started_at": None,
-        "command_count": 0,
-        "last_command": None,
-        "online_app": None,
-        "online_target_app": None,
-        "timeout_profile": None,
-    }
+import ide_daemon_anchor as _anchor
+
+sys._codesys_daemon_loop = _anchor.load_state()
+
+#: Generation of the timer *this* run of the script created.  A module global
+#: is enough: the launcher exec()s this file into a fresh namespace per run, so
+#: a stale instance keeps its own copy while sharing the anchor's dict.  A tick
+#: whose generation is no longer current is a leftover and disposes itself.
+_TIMER_GENERATION = 0
+
+#: The dashboard window *this* run created.  A stale instance closes only its
+#: own window, never the current generation's.
+_OWN_DASHBOARD = None
 
 
 # ── Capture globals ───────────────────────────────────────────────────────
@@ -636,6 +642,7 @@ def _log_startup():
 
 def _ensure_timer():
     """Create, hook and start the service timer.  There is never more than one."""
+    global _TIMER_GENERATION
     state = sys._codesys_daemon_loop
     stale = state.get("timer")
     if stale is not None:
@@ -643,6 +650,10 @@ def _ensure_timer():
         # would poll the same pipe twice and fight over one connection.
         state["timer"] = None
         _dispose_timer(stale)
+
+    # A new generation: any tick still carrying the old number belongs to an
+    # instance that lost the anchor race and must put itself out.
+    _TIMER_GENERATION = _anchor.next_generation(state)
 
     timer = _make_timer()
     timer.Interval = _poll_interval_ms()
@@ -652,6 +663,7 @@ def _ensure_timer():
     state["started"] = True
     state["started_at"] = ide_time.iso_utc()
     state["started_ts"] = time.time()
+    state["pid"] = os.getpid()
     state["_shutdown_done"] = False
     # From here the marker exists and says "idle", so a CLI that timed out on a
     # later command knows the daemon was up and simply did not take the request.
@@ -671,9 +683,11 @@ def start_daemon():
     nothing here may block, or the script would hold the UI exactly as the old
     ``while`` loop did.
     """
+    global _OWN_DASHBOARD
     if clr is None:
         raise RuntimeError("The reverse-pipe loop must run inside CODESYS.")
-    sys._codesys_daemon_loop["dashboard"] = _log_startup()
+    _OWN_DASHBOARD = _log_startup()
+    sys._codesys_daemon_loop["dashboard"] = _OWN_DASHBOARD
     _ensure_timer()
 
 
@@ -682,34 +696,97 @@ def stop_daemon():
     state = sys._codesys_daemon_loop
     _log("stop_daemon requested")
     state["running"] = False
+    state["stop"] = True
     timer = state.get("timer")
     state["timer"] = None
     _dispose_timer(timer)
     _request_shutdown()
 
 
+def _confirm_stop_running_daemon(state):
+    """Ask in the IDE whether to stop the daemon that is already running.
+
+    Only the user can answer, and saying "no" leaves the running daemon alone:
+    a second run of Project_daemon.py never starts a competitor.  With no
+    dialog available (headless, tests) the old toggle behaviour wins and the
+    answer is yes, so Stop still works there.
+    """
+    pid = state.get("pid") or os.getpid()
+    started = state.get("started_at") or "unknown"
+    message = (
+        "The daemon is already running (pid {0}, since {1}).\n\n"
+        "Stop it? Yes stops it; No leaves it running.\n"
+        "A second daemon is never started."
+    ).format(pid, started)
+    try:
+        from System.Windows.Forms import MessageBox, MessageBoxButtons, DialogResult
+
+        answer = MessageBox.Show(message, "cds-text-sync daemon", MessageBoxButtons.YesNo)
+        return answer == DialogResult.Yes
+    except Exception:
+        _log("No confirmation dialog available; treating the second start as Stop")
+        return True
+
+
 def run_loop():
     """Entry point: start the daemon, or stop it if it is already running.
 
-    Running Project_daemon.py again is the start/stop toggle the 1.x daemon
-    had: with a live timer the second run stops it.  Returns as soon as the
-    timer is armed -- see ``start_daemon``.
+    Running Project_daemon.py again no longer starts a second daemon: it offers
+    to stop the one that is running and starts nothing itself.  The anchor
+    makes the running daemon visible across script runs -- see
+    ``ide_daemon_anchor`` -- and the named mutex extends that to a second
+    CODESYS process.  Returns as soon as the timer is armed -- see
+    ``start_daemon``.
     """
-    if sys._codesys_daemon_loop.get("timer") is not None:
-        stop_daemon()
+    state = sys._codesys_daemon_loop
+    if state.get("timer") is not None:
+        if _confirm_stop_running_daemon(state):
+            stop_daemon()
+        else:
+            _log("Second start declined: the running daemon was left alone")
         return
+
+    handle, error = _anchor.acquire_pipe_mutex(PIPE_NAME)
+    if error:
+        _log("Refusing to start: {0}".format(error))
+        _notify_user(error, is_error=True)
+        return
+    state["mutex"] = handle
     start_daemon()
+
+
+def _notify_user(message, is_error=False):
+    """Say something to the user in CODESYS, falling back to the log."""
+    try:
+        import __main__
+
+        host = getattr(__main__, "system", None) or sys._codesys_daemon_loop.get("system")
+        if is_error:
+            host.ui.error(message)
+        else:
+            host.ui.info(message)
+        return
+    except Exception:
+        pass
+    _log(message)
 
 
 def _request_shutdown():
     """Tear the daemon down once, whoever asked: Stop, stop_daemon, a tick."""
     state = sys._codesys_daemon_loop
     state["running"] = False
+    state["stop"] = True
     if state.get("_shutdown_done"):
         return
     state["_shutdown_done"] = True
     _log("Reverse Pipe Daemon loop ended.")
     clear_daemon_status()
+    # The pipe mutex goes with the daemon: the next start must be able to take
+    # it, and a released mutex is also how the next CODESYS process learns the
+    # pipe is free.
+    mutex = state.get("mutex")
+    state["mutex"] = None
+    _anchor.release_mutex(mutex)
     dash = state.get("dashboard")
     state["dashboard"] = None
     if dash is not None and _ui is not None:
@@ -810,6 +887,20 @@ def _heartbeat_idle():
     write_daemon_status("idle")
 
 
+def _retire_stale_timer(state, timer):
+    """Dispose a leftover timer and close the window its own run created."""
+    if state.get("timer") is timer:
+        state["timer"] = None
+    _dispose_timer(timer)
+    _log("A stale daemon generation retired its own timer")
+    dash = _OWN_DASHBOARD
+    if dash is not None and _ui is not None:
+        try:
+            dash.close_window()
+        except Exception:
+            pass
+
+
 def _on_tick(sender, args):
     """One timer tick: serve at most one client, then re-arm the timer.
 
@@ -822,6 +913,12 @@ def _on_tick(sender, args):
     state = sys._codesys_daemon_loop
     timer = state.get("timer")
     if timer is None:
+        return
+    if not _anchor.is_current(state, _TIMER_GENERATION):
+        # A newer generation took the anchor: this timer is a leftover whose
+        # run of the script is long gone.  It puts itself out, and only its own
+        # window, so a lost instance stops polling the shared pipe.
+        _retire_stale_timer(state, timer)
         return
     if state.get(_TICK_BUSY_KEY) or state.get("ui_busy"):
         return

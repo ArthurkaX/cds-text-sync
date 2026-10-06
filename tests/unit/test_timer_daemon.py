@@ -445,3 +445,169 @@ def test_the_poll_connect_does_not_wait(monkeypatch):
     assert rpl._service_one_client() is False
     assert waits == [rpl.CONNECT_TIMEOUT_MS]
     assert rpl.CONNECT_TIMEOUT_MS == 0
+
+
+# ── One daemon per pipe: the AppDomain anchor and the named mutex ─────────
+#
+# Every Execute Script gets a fresh IronPython runtime, so a daemon that kept
+# its state in ``sys`` was invisible to the next run of Project_daemon.py --
+# three runs, three daemons.  The state now lives in the AppDomain (see
+# ide_daemon_anchor) and a named mutex covers a second CODESYS process.
+
+
+class FakeMutex:
+    def __init__(self):
+        self.released = 0
+        self.closed = 0
+
+    def ReleaseMutex(self):
+        self.released += 1
+
+    def Close(self):
+        self.closed += 1
+
+
+def test_a_second_start_asks_and_starts_nothing_when_declined(monkeypatch):
+    """Answering "No" to the confirm dialog leaves the running daemon alone."""
+    timers = []
+    _install(monkeypatch, timers)
+    _fresh_state()
+    monkeypatch.setattr(rpl, "_confirm_stop_running_daemon", lambda state: False)
+    rpl.start_daemon()
+    timer = timers[0]
+    starts_before = timer.starts
+
+    rpl.run_loop()
+
+    assert len(timers) == 1  # no competitor was created
+    assert timer.disposals == 0
+    assert timer.running is True
+    assert timer.starts == starts_before
+    assert sys._codesys_daemon_loop["timer"] is timer
+
+
+def test_a_second_start_stops_the_daemon_when_confirmed(monkeypatch):
+    timers = []
+    _install(monkeypatch, timers)
+    _fresh_state()
+    monkeypatch.setattr(rpl, "_confirm_stop_running_daemon", lambda state: True)
+    rpl.start_daemon()
+    timer = timers[0]
+
+    rpl.run_loop()
+
+    assert timer.disposals == 1
+    assert sys._codesys_daemon_loop["timer"] is None
+
+
+def test_the_confirm_text_names_the_running_daemon(monkeypatch):
+    """The dialog says which pid and since when, so the user can decide."""
+    shown = []
+
+    class _MessageBox:
+        @staticmethod
+        def Show(message, caption, buttons):
+            shown.append(message)
+            return "yes"
+
+    class _Result:
+        Yes = "yes"
+
+    class _Buttons:
+        YesNo = "yes-no"
+
+    monkeypatch.setitem(
+        sys.modules,
+        "System.Windows.Forms",
+        type(
+            "M",
+            (),
+            {"MessageBox": _MessageBox, "MessageBoxButtons": _Buttons, "DialogResult": _Result},
+        ),
+    )
+    # The parent packages must be importable too: ``from System.Windows.Forms
+    # import MessageBox`` imports the dotted chain, not just the leaf.
+    for parent in ("System", "System.Windows"):
+        monkeypatch.setitem(sys.modules, parent, ModuleType(parent))
+    state = {"pid": 4242, "started_at": "2026-10-06T10:00:00Z"}
+
+    assert rpl._confirm_stop_running_daemon(state) is True
+    assert "4242" in shown[0]
+    assert "2026-10-06T10:00:00Z" in shown[0]
+
+
+def test_a_busy_pipe_mutex_refuses_the_start_and_says_which_pid(monkeypatch):
+    """A second CODESYS process must not serve the same pipe."""
+    timers = []
+    _install(monkeypatch, timers)
+    _fresh_state()
+    told = []
+    error = "Daemon is already running in another CODESYS process (pid 4242). Stop it there first."
+    monkeypatch.setattr(
+        rpl._anchor, "acquire_pipe_mutex", lambda pipe: (None, error)
+    )
+    monkeypatch.setattr(
+        rpl, "_notify_user", lambda message, is_error=False: told.append(message)
+    )
+
+    rpl.run_loop()
+
+    assert timers == []  # nothing started
+    assert sys._codesys_daemon_loop.get("timer") is None
+    assert told == [error]
+    assert "4242" in told[0]
+
+
+def test_the_pipe_mutex_is_taken_at_start_and_released_on_shutdown(monkeypatch):
+    timers = []
+    _install(monkeypatch, timers)
+    _fresh_state()
+    mutex = FakeMutex()
+    monkeypatch.setattr(
+        rpl._anchor, "acquire_pipe_mutex", lambda pipe: (mutex, None)
+    )
+
+    rpl.run_loop()
+    assert sys._codesys_daemon_loop["mutex"] is mutex
+
+    rpl.stop_daemon()
+
+    assert mutex.released == 1
+    assert mutex.closed == 1
+    assert sys._codesys_daemon_loop["mutex"] is None
+
+
+def test_a_tick_from_an_older_generation_retires_its_own_timer(monkeypatch):
+    """A leftover instance puts itself out instead of polling the shared pipe."""
+    timers = []
+    _install(monkeypatch, timers)
+    _fresh_state()
+    served = []
+    monkeypatch.setattr(
+        rpl, "_serve_connection", lambda pipe, dash=None: served.append(1) or False
+    )
+    rpl.start_daemon()
+    timer = timers[0]
+    # A newer run took the anchor: this run's generation is no longer current.
+    sys._codesys_daemon_loop["generation"] += 1
+
+    rpl._on_tick(None, None)
+
+    assert served == []
+    assert timer.disposals == 1
+    assert timer.running is False
+    assert sys._codesys_daemon_loop["timer"] is None
+
+
+def test_a_stopped_generation_is_retired_too(monkeypatch):
+    timers = []
+    _install(monkeypatch, timers)
+    _fresh_state()
+    rpl.start_daemon()
+    timer = timers[0]
+    sys._codesys_daemon_loop["stop"] = True
+
+    rpl._on_tick(None, None)
+
+    assert timer.disposals == 1
+    assert sys._codesys_daemon_loop["timer"] is None
