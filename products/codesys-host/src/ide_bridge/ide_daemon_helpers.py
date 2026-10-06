@@ -618,7 +618,7 @@ def _active_app_online_state():
         app = projects.primary.active_application
         if app is None:
             return (False, "")
-        oa = se.online.create_online_application(app)
+        oa = _helpers.create_online_wrapper(app)
         if oa is None:
             return (False, "disconnected")
         state = ""

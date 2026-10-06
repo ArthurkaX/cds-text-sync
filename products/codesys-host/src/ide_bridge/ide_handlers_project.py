@@ -237,7 +237,7 @@ def _cmd_application_state():
                     "note": "No active application",
                 },
             }
-        oa = se.online.create_online_application(app)
+        oa = _helpers.create_online_wrapper(app)
         if oa is None:
             return {"ok": True, "data": {"application_state": "disconnected"}}
         # Cache only a handle that is really logged in. Caching an unlogged
@@ -465,7 +465,7 @@ def _cmd_test_online(params):
         tb.append("app: " + str(app)[:80])
         if app is None:
             return {"ok": True, "data": {"state": "no app", "log": tb}}
-        oa = se.online.create_online_application(app)
+        oa = _helpers.create_online_wrapper(app)
         tb.append("oa: " + str(oa)[:80])
         if oa is not None:
             state = str(oa.application_state)
@@ -489,7 +489,7 @@ def _cmd_explore_api():
             return {"ok": False, "error": "projects not captured"}
         prj = prj.primary
         app = prj.active_application
-        oa = se.online.create_online_application(app)
+        oa = _helpers.create_online_wrapper(app)
 
         # 1. OnlineApplication methods
         result["oa_methods"] = [m for m in dir(oa) if not m.startswith("_")]

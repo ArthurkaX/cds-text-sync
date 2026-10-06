@@ -187,6 +187,65 @@ def get_active_application(project):
     return target_app
 
 
+#: The wrapper the daemon built while its start script was still running.
+#: CODESYS refuses ``create_online_application`` outside a running script
+#: ("Stack empty"), and the daemon's timer ticks run after the script returned.
+#: A wrapper built in the script survives and keeps answering -- login state,
+#: login, logout, read -- so it is kept for the daemon's whole life and is
+#: never dropped by a logout.
+_SCRIPT_HANDLE_KEY = "script_online_handle"
+
+
+def _same_application(left, right):
+    if left is None or right is None:
+        return False
+    if left is right:
+        return True
+    try:
+        if left == right:
+            return True
+    except Exception:
+        pass
+    try:
+        return left.get_name() == right.get_name()
+    except Exception:
+        return False
+
+
+def remember_script_online_handle(project):
+    """Build and keep one online wrapper. Call while a script is running."""
+    import scriptengine as se
+
+    state = _get_daemon_state()
+    if state is None or project is None:
+        return None
+    target_app = get_active_application(project)
+    if target_app is None:
+        return None
+    online_app = se.online.create_online_application(target_app)
+    if online_app is not None:
+        state[_SCRIPT_HANDLE_KEY] = (online_app, target_app)
+    return online_app
+
+
+def create_online_wrapper(target_app):
+    """``create_online_application``, or the kept wrapper when CODESYS refuses.
+
+    Outside a running script CODESYS raises "Stack empty"; the wrapper kept by
+    :func:`remember_script_online_handle` is then the only one there is.
+    """
+    import scriptengine as se
+
+    try:
+        return se.online.create_online_application(target_app)
+    except Exception:
+        state = _get_daemon_state()
+        handle = state.get(_SCRIPT_HANDLE_KEY) if state is not None else None
+        if handle is not None and _same_application(handle[1], target_app):
+            return handle[0]
+        raise
+
+
 def ensure_online_connection(project, prefer_device=False):
     """Create an online application connection for the given project.
     
@@ -235,7 +294,7 @@ def ensure_online_connection(project, prefer_device=False):
                         if hasattr(child, 'is_application'):
                             try:
                                 if child.is_application:
-                                    online_app = se.online.create_online_application(child)
+                                    online_app = create_online_wrapper(child)
                                     if online_app is not None:
                                         try:
                                             state = _get_daemon_state()
@@ -262,7 +321,7 @@ def ensure_online_connection(project, prefer_device=False):
     app_name = getattr(target_app, 'get_name', lambda: '?')()
     
     try:
-        online_app = se.online.create_online_application(target_app)
+        online_app = create_online_wrapper(target_app)
         if online_app is not None:
             # Creating this wrapper must be side-effect free.  In particular,
             # do not login here: connect_to_device_impl owns that explicit
@@ -358,7 +417,7 @@ def adopt_existing_online_session(project):
         target_app = get_active_application(project)
         if target_app is None:
             return None, None
-        online_app = se.online.create_online_application(target_app)
+        online_app = create_online_wrapper(target_app)
         if not _online_app_is_live(online_app):
             return None, None
         cache_online_app(online_app, target_app)
@@ -751,7 +810,7 @@ def _new_online_handle(project):
         target_app = get_active_application(project)
         if target_app is None:
             return None, None
-        return se.online.create_online_application(target_app), target_app
+        return create_online_wrapper(target_app), target_app
     except Exception:
         return None, None
 
@@ -1083,78 +1142,139 @@ def _require_existing_login(online_app):
     )
 
 
+#: CODESYS caches compiled expressions in the online wrapper, keyed by the
+#: exact text.  A download invalidates every entry: an expression read before
+#: it answers "Invalid expression" afterwards, while the same name spelled
+#: differently reads fine (seen live on SP22).  The daemon cannot build a fresh
+#: wrapper from a timer tick, so it retries with another letter case -- IEC
+#: names are case-insensitive, the cache is not -- and remembers the spelling
+#: that worked.
+_SPELLING_KEY = "expr_spelling"
+_MAX_SPELLINGS = 12
+
+
+def _case_spellings(name):
+    """The name as given, then case variants of it (distinct, bounded)."""
+    out = [name, name.lower(), name.upper()]
+    letters = [i for i, ch in enumerate(name) if ch.isalpha()]
+    for run in range(1, 10):
+        chars = list(name.lower())
+        for n, index in enumerate(letters):
+            if (n // run) % 2 == 0:
+                chars[index] = chars[index].upper()
+        out.append("".join(chars))
+    seen = set()
+    unique = []
+    for item in out:
+        if item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
+
+
+def _spellings_to_try(name):
+    state = _get_daemon_state()
+    memo = state.get(_SPELLING_KEY) if state is not None else None
+    first = memo.get(name.lower()) if memo else None
+    ordered = ([first] if first else []) + _case_spellings(name)
+    seen = set()
+    result = []
+    for item in ordered:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    result = result[:_MAX_SPELLINGS]
+    # Some projects only resolve the application-qualified form.
+    if not name.lower().startswith("application."):
+        result.append("Application." + name)
+    return result
+
+
+def _remember_spelling(name, spelling):
+    state = _get_daemon_state()
+    if state is None:
+        return
+    memo = state.get(_SPELLING_KEY)
+    if memo is None:
+        memo = {}
+        state[_SPELLING_KEY] = memo
+    memo[name.lower()] = spelling
+
+
+def _is_invalid_expression(text):
+    low = (text or "").lower()
+    return "invalid expression" in low or "not exported" in low
+
+
+def _not_exported(name):
+    return RuntimeError(
+        "Invalid expression: '{0}' is not exported to the online application. "
+        "It may be a struct/array, not declared as a symbol, or not compiled into the PLC."
+        .format(name))
+
+
 def read_variable_impl(project, variable_name):
     """Read a variable value from an online PLC connection.
-    
+
+    Retries an "Invalid expression" answer with other letter cases of the
+    same name (see ``_SPELLING_KEY``); the reply always carries the name as
+    the caller wrote it.
     """
     if not variable_name:
         raise ValueError("Variable name is required")
-    
+
     online_app = require_online_session(project)
 
     _require_existing_login(online_app)
-    
-    candidates = [variable_name]
-    if not variable_name.startswith("Application."):
-        candidates.append("Application." + variable_name)
+
     last_error = None
-    for candidate in candidates:
+    for spelling in _spellings_to_try(variable_name):
         try:
-            val = _call_online_app(
-                online_app,
-                ('read_value', 'read_values'),
-                candidate,
-            )
-            str_val = str(val)
-            res = _mk_read_result(candidate, str_val)
-            if not res["read_ok"]:
-                raise RuntimeError(
-                    "Invalid expression: '{0}' is not exported to the online application. "
-                    "It may be a struct/array, not declared as a symbol, or not compiled into the PLC."
-                    .format(candidate))
-            return {"name": candidate, "value": str_val}
+            str_val = str(_call_online_app(
+                online_app, ('read_value', 'read_values'), spelling))
         except Exception as e:
-            # Check if the exception itself is about invalid expression
-            e_msg = str(e)
-            if "Invalid expression" in e_msg or "invalid expression" in e_msg.lower():
-                if "not exported" not in e_msg:
-                    last_error = RuntimeError(
-                        "Invalid expression: '{0}' is not exported to the online application. "
-                        "It may be a struct/array, not declared as a symbol, or not compiled into the PLC."
-                        .format(candidate))
-                else:
-                    last_error = e
-            else:
-                last_error = e
+            if not _is_invalid_expression(str(e)):
+                raise
+            last_error = _not_exported(variable_name)
+            continue
+        if _is_invalid_expression(str_val):
+            last_error = _not_exported(variable_name)
+            continue
+        _remember_spelling(variable_name, spelling)
+        return {"name": variable_name, "value": str_val}
     raise last_error if last_error is not None else RuntimeError("Read failed")
 
 
 def write_variable_impl(project, variable_name, value):
     """Write a value to a PLC variable via online connection.
-    
+
+    Retries an "Invalid expression" refusal with other letter cases of the
+    name, like ``read_variable_impl``.
     """
     if not variable_name:
         raise ValueError("Variable name is required")
     if value is None:
         raise ValueError("Value is required")
-    
+
     online_app = require_online_session(project)
 
     _require_existing_login(online_app)
-    
+
     value = normalize_write_value(value)
-    candidates = [variable_name]
-    if not variable_name.startswith("Application."):
-        candidates.append("Application." + variable_name)
-    last_error = None
-    for candidate in candidates:
+    first_error = None
+    for spelling in _spellings_to_try(variable_name):
         try:
-            _call_online_app(online_app, ('set_prepared_value',), candidate, value)
+            _call_online_app(online_app, ('set_prepared_value',), spelling, value)
             _call_online_app(online_app, ('write_prepared_values',),)
-            return {"name": candidate, "written": True, "value": str(value)}
         except Exception as e:
-            last_error = e
-    raise last_error if last_error is not None else RuntimeError("Write failed")
+            if first_error is None:
+                first_error = e
+            if not _is_invalid_expression(str(e)):
+                raise
+            continue
+        _remember_spelling(variable_name, spelling)
+        return {"name": variable_name, "written": True, "value": str(value)}
+    raise first_error if first_error is not None else RuntimeError("Write failed")
 
 
 # Qualified enumerator as returned by read_value, e.g. "COLOR.green".
@@ -1467,7 +1587,7 @@ def get_application_state_impl(project):
                                 try:
                                     if child.is_application:
                                         target_app = child
-                                        online_app = se.online.create_online_application(child)
+                                        online_app = create_online_wrapper(child)
                                         break
                                 except Exception:
                                     pass
@@ -1484,7 +1604,7 @@ def get_application_state_impl(project):
                     info["device_attempt_error"] = device_error
                 return info
 
-            online_app = se.online.create_online_application(target_app)
+            online_app = create_online_wrapper(target_app)
             if online_app is None:
                 info = {"state": "disconnected"}
                 if device_error:

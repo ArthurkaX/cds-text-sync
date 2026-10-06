@@ -83,7 +83,7 @@ import ide_response_context
 import ide_time
 from ide_last_result import _cmd_last_result, record_last_result
 from ide_timeout_profile import count_st_blocks, make_timeout_profile
-from ide_online_helpers import adopt_existing_online_session
+from ide_online_helpers import adopt_existing_online_session, remember_script_online_handle
 
 from ide_handlers_plc import (
     _cmd_start_plc,
@@ -570,6 +570,13 @@ def _log_startup():
     # calls login or changes the PLC connection.
     try:
         project, _error = _get_active_project()
+        # Built now, while the start script still runs: from a timer tick
+        # CODESYS refuses to create one ("Stack empty").
+        try:
+            if remember_script_online_handle(project) is not None:
+                _log("Kept an online wrapper for the timer ticks")
+        except Exception as error:
+            _log("Could not build the online wrapper: {0}".format(error))
         online_app, _target_app = adopt_existing_online_session(project)
         if online_app is not None:
             _log("Adopted existing IDE online session")
