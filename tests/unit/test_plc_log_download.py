@@ -149,4 +149,8 @@ def test_a_device_failure_names_the_error_without_a_null_path():
     result = plc_handlers._cmd_plc_log({"file": "codesyscontrol.log", "tail": "2"})
 
     assert result["ok"] is False
-    assert result["error"] == "Upload file error: device refused"
+    # Reading *from* the PLC, and the path it was reading, not the device's
+    # "upload" vocabulary.
+    assert result["error"] == (
+        "Reading codesyscontrol.log from the PLC failed: device refused"
+    )
