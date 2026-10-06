@@ -55,6 +55,7 @@ test_paths = [
   "../../tests/unit/test_pipe_write_after_disconnect.py",
   "../../tests/unit/test_project_file_path.py",
   "../../tests/unit/test_project_snapshooter.py",
+  "../../tests/unit/test_read_log_categories.py",
   "../../tests/unit/test_require_online_device.py",
   "../../tests/unit/test_response_context.py",
   "../../tests/unit/test_snapshooter_map.py",

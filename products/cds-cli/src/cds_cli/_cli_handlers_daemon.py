@@ -255,6 +255,8 @@ def dispatch_daemon(args, output_fmt="json"):
             params["last"] = args.last
         if args.clear:
             params["clear"] = True
+        if getattr(args, "category", ""):
+            params["category"] = args.category
         cmd_daemon("read_log", params, timeout=_daemon_timeout("read_log", args.timeout, 10), output_fmt=output_fmt)
         return True
 

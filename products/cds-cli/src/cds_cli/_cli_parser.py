@@ -556,9 +556,24 @@ Examples:
     p_dpou.add_argument(
         "--app", default="", help="Application name (default: active application)"
     )
-    p_log = add_daemon_parser(subparsers, "read-log", "Read CODESYS IDE messages", None)
+    p_log = add_daemon_parser(
+        subparsers,
+        "read-log",
+        "Read CODESYS IDE messages of one category (default: Build)",
+        None,
+    )
     p_log.add_argument("--last", default="", help="Maximum messages to read")
     p_log.add_argument("--clear", action="store_true", help="Clear log after read")
+    p_log.add_argument(
+        "--category",
+        default="",
+        help=(
+            "Message category: a GUID or one of the descriptions the IDE "
+            "reports (e.g. Build, Export/Import). Default: Build, the "
+            "compiler's messages. An unknown category fails and lists the "
+            "available ones."
+        ),
+    )
     add_daemon_parser(subparsers, "permissions", "Show daemon permissions", None)
     # Fixed 10s: this only reads a small JSON file the daemon already wrote, so
     # the daemon's timeout-profile preflight would be pure overhead.

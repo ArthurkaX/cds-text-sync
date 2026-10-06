@@ -73,7 +73,15 @@ from cts_shared.coerce import as_bool
 
 
 def _cmd_read_log(params):
-    """Read system/PLC log messages."""
+    """Read IDE messages of one category.
+
+    The category matters: ``get_message_objects`` does not guard a GUID the
+    message storage does not know -- ``GetCategory`` returns null for it and
+    the call throws "Value cannot be null. Parameter name: category" (the
+    no-argument form of the old code hit the same guard from the other side).
+    So the category is resolved against ``get_message_categories()`` first and
+    an unknown one is an error that lists what is available, never a crash.
+    """
     try:
         system = sys._codesys_daemon_loop.get("system")
         if system is None:
@@ -87,30 +95,129 @@ def _cmd_read_log(params):
 
         do_clear = as_bool(params.get("clear", ""))
 
-        messages = []
-        if hasattr(system, "get_messages"):
-            raw = system.get_messages()
-            if raw is not None:
-                for msg in raw:
-                    messages.append(str(msg))
-        elif hasattr(system, "get_message_objects"):
-            raw = system.get_message_objects()
-            if raw is not None:
-                for msg_obj in raw:
-                    messages.append(str(msg_obj))
+        requested = str(params.get("category") or "").strip()
+        available = _message_categories(system)
+        if requested:
+            chosen = _match_message_category(requested, available)
+            if chosen is None:
+                return {
+                    "ok": False,
+                    "error": (
+                        "Unknown message category '{0}'. Available categories: "
+                        "{1}"
+                    ).format(requested, _describe_categories(available)),
+                }
+        else:
+            # Default: the compiler's own messages.  Resolve it against the
+            # IDE list when it is there so the description is real, and fall
+            # back to the constant when the list is empty (an early tick).
+            chosen = _match_message_category(BUILD_CATEGORY_GUID, available) or {
+                "guid": BUILD_CATEGORY_GUID,
+                "description": "Build",
+            }
+
+        messages = _read_message_texts(system, chosen["guid"])
 
         if last_n is not None and last_n > 0 and len(messages) > last_n:
             messages = messages[-last_n:]
 
         if do_clear and hasattr(system, "clear_messages"):
             try:
-                system.clear_messages()
-            except Exception:
-                pass
+                system.clear_messages(_as_guid(chosen["guid"]))
+            except Exception as error:
+                _log("Could not clear message category {0}: {1}".format(
+                    chosen["guid"], error
+                ))
 
-        return {"ok": True, "data": {"count": len(messages), "messages": messages}}
+        return {
+            "ok": True,
+            "data": {
+                "category": chosen,
+                "count": len(messages),
+                "messages": messages,
+                "available_categories": available,
+            },
+        }
     except Exception as e:
         return {"ok": False, "error": "Read log error: {0}".format(e)}
+
+
+#: The compiler's message category (``Build``).  Kept as a constant because it
+#: is the sensible default even when the IDE category list is unavailable.
+BUILD_CATEGORY_GUID = "97F48D64-A2A3-4856-B640-75C046E37EA9"
+
+
+def _norm_guid(text):
+    return str(text or "").strip().strip("{}").lower()
+
+
+def _message_categories(system):
+    """``[{guid, description}]`` of the categories the message storage knows.
+
+    Empty when the IDE cannot answer: an empty list must not stop the default
+    category from working, it only means an unknown category cannot be
+    resolved or described.
+    """
+    getter = getattr(system, "get_message_categories", None)
+    if getter is None:
+        return []
+    try:
+        raw = getter()
+    except Exception as error:
+        _log("Could not list message categories: {0}".format(error))
+        return []
+    categories = []
+    for guid in raw or []:
+        text = str(guid)
+        try:
+            description = str(system.get_message_category_description(guid))
+        except Exception:
+            description = ""
+        categories.append({"guid": text, "description": description})
+    return categories
+
+
+def _match_message_category(requested, available):
+    """The available category the request names, or None.
+
+    Accepts a GUID (with or without braces, any case) or the description, so
+    both ``--category 97F48D64-...`` and ``--category Build`` work.
+    """
+    key = _norm_guid(requested)
+    wanted_description = str(requested).strip().lower()
+    for entry in available:
+        if _norm_guid(entry.get("guid")) == key:
+            return entry
+    for entry in available:
+        if entry.get("description", "").strip().lower() == wanted_description:
+            return entry
+    return None
+
+
+def _describe_categories(available):
+    if not available:
+        return "(the IDE listed none)"
+    return ", ".join(
+        "{0} ({1})".format(e.get("description") or "?", e.get("guid"))
+        for e in available
+    )
+
+
+def _read_message_texts(system, guid_text):
+    """Message texts of one category; the GUID is already known to be real."""
+    raw = None
+    if hasattr(system, "get_messages"):
+        raw = system.get_messages(guid_text)
+    if raw is None and hasattr(system, "get_message_objects"):
+        raw = system.get_message_objects(guid_text)
+    return [str(message) for message in (raw or [])]
+
+
+def _as_guid(guid_text):
+    """A System.Guid for the APIs that take one (clear_messages)."""
+    import System
+
+    return System.Guid(str(guid_text))
 
 
 
