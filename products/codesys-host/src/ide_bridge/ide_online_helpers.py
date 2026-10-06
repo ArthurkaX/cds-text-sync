@@ -11,6 +11,8 @@ import re
 import sys
 import time
 
+import ide_online_address as _online_address
+
 
 # ── Atomic file write using .NET System.IO.File.Replace ────────────────────
 
@@ -446,34 +448,23 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     Returns:
         dict with state info
     """
+    # A remembered IP lets a later `cts connect` (no --ip) reuse the last one
+    # that worked.  Kept in the daemon's own state, never in the project: it
+    # describes this machine's network, not the project.
+    daemon_state = _get_daemon_state()
+    if not ip_address and daemon_state is not None:
+        ip_address = daemon_state.get("last_connect_ip") or ""
+
     if ip_address:
-        candidates = []
-        main_device = _find_main_device(project)
-        if main_device is not None:
-            candidates.append(main_device)
-        for child in project.get_children(True):
-            if hasattr(child, 'set_gateway_and_address'):
-                candidates.append(child)
-        seen = set()
-        device = None
-        device_errors = []
-        for cand in candidates:
-            key = str(getattr(cand, 'Guid', id(cand)))
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                cand.set_gateway_and_address(gateway_name, ip_address)
-                device = cand
-                break
-            except Exception as e:
-                device_errors.append(str(e))
+        device = _set_device_address(project, gateway_name, ip_address)
         if device is None:
             raise RuntimeError(
-                "No writable device in the project supports set_gateway_and_address. "
-                "Errors: " + "; ".join(device_errors[-5:])
+                "No writable device in the project supports "
+                "set_gateway_and_address, or the address could not be set."
             )
-    
+        if daemon_state is not None:
+            daemon_state["last_connect_ip"] = str(ip_address)
+
     online_app, target_app = ensure_online_connection(project)
     app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
 
@@ -484,7 +475,7 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     cache_online_app(
         online_app, target_app, owner=(session_owner() if reused_session else None) or "ide"
     )
-    
+
     # ``login`` takes (OnlineChangeOption, delete_foreign_apps).  A CRC probe
     # must never turn a project mismatch into an online change or a download.
     # In particular, ``Never`` *forces* a full download and ``Try`` falls back
@@ -503,13 +494,7 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
                 "not expose OnlineChangeOption.Keep. Refusing options that may "
                 "perform an online change or full download."
             )
-        try:
-            online_app.login(keep, False)
-        except Exception as e:
-            raise RuntimeError(
-                "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
-                "was requested: {0}".format(e)
-            )
+        _login_keep(online_app, keep, project, gateway_name, ip_address)
         # This daemon opened the session; the context line can now say so.
         cache_online_app(online_app, target_app, owner="cts")
 
@@ -519,7 +504,7 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
             state = str(online_app.application_state)
         except Exception:
             pass
-    
+
     return {
         "state": state,
         "application": app_name,
@@ -527,6 +512,123 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
         "reused_session": reused_session,
         "session_cached": True,
     }
+
+
+def _set_device_address(project, gateway_name, ip_address):
+    """Set the PLC address on the first writable device; return it or ``None``.
+
+    Prefers a CODESYS *router address* from a targeted lookup
+    (``ide_online_address.resolve_router_address``) over handing the raw IP to
+    a parameter that wants an address -- the mistake behind "No connection to
+    the device. Please rescan your network."  Falls back to the old
+    ``(gateway_name, ip_address)`` string form so a build without the lookup
+    still tries instead of failing outright.
+    """
+    gateway = None
+    router = None
+    try:
+        import scriptengine as se
+
+        gateway = _online_address.find_gateway(se.online, gateway_name)
+        router = _online_address.resolve_router_address(gateway, ip_address)
+    except Exception:
+        gateway = None
+        router = None
+
+    attempts = []
+    if router is not None and gateway is not None:
+        attempts.append((gateway, router))
+    attempts.append((gateway_name, ip_address))
+
+    candidates = []
+    main_device = _find_main_device(project)
+    if main_device is not None and hasattr(main_device, 'set_gateway_and_address'):
+        candidates.append(main_device)
+    try:
+        children = project.get_children(True)
+    except Exception:
+        children = []
+    for child in children:
+        if hasattr(child, 'set_gateway_and_address'):
+            candidates.append(child)
+
+    seen = set()
+    errors = []
+    for cand in candidates:
+        key = str(getattr(cand, 'Guid', id(cand)))
+        if key in seen:
+            continue
+        seen.add(key)
+        for first, second in attempts:
+            try:
+                cand.set_gateway_and_address(first, second)
+                return cand
+            except Exception as error:
+                errors.append(str(error))
+    if errors:
+        _log_address_failure(errors)
+    return None
+
+
+def _log_address_failure(errors):
+    """One line to the daemon log; the caller raises the user-facing error."""
+    try:
+        from ide_daemon_state import _log
+
+        _log("connect: set_gateway_and_address failed: {0}".format("; ".join(errors[-3:])))
+    except Exception:
+        pass
+
+
+def _login_keep(online_app, keep, project, gateway_name, ip_address):
+    """Login with ``Keep``, retrying once when the address went stale.
+
+    ``find_address_by_ip`` can resolve an address that the gateway later drops
+    (the PLC re-registered).  One re-resolve-and-retry covers that; every other
+    failure is classified for the user and raised at once.
+    """
+    try:
+        online_app.login(keep, False)
+        return
+    except Exception as error:
+        first = error
+
+    if ip_address and _online_address.unreachable_error(first):
+        _set_device_address(project, gateway_name, ip_address)
+        try:
+            online_app.login(keep, False)
+            return
+        except Exception as error:
+            first = error
+
+    raise RuntimeError(_login_error_text(ip_address, first))
+
+
+def _login_error_text(ip_address, error):
+    """Name the real cause: unreachable, login refused, or anything else.
+
+    The old message always said "No connection to the device. Please rescan
+    your network." even when the PLC answered and only refused the login --
+    sending the user to rescan a network that was fine.
+    """
+    where = str(ip_address) if ip_address else "the device"
+    if _online_address.unreachable_error(error):
+        return (
+            "PLC unreachable: the gateway could not reach {0}; no download was "
+            "requested. Check the network and that the PLC is powered, then "
+            "retry. If it answers ping/ssh but CODESYS still cannot reach it, "
+            "log in once by hand in the IDE: Online -> Login.".format(where)
+        )
+    if _online_address.login_refused_error(error):
+        return (
+            "PLC reachable, but the login was refused (credentials or a user "
+            "management prompt); no download was requested: {0}. Set them with "
+            "`cts set-credentials`, or answer the prompt in the IDE.".format(error)
+        )
+    return (
+        "Safe PLC login (OnlineChangeOption.Keep) failed; no download was "
+        "requested: {0}".format(error)
+    )
 
 
 #: Values that mean "this wrapper holds a session" / "it does not".
