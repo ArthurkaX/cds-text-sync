@@ -102,6 +102,43 @@ def test_a_stale_cache_is_dropped_when_the_ide_logged_out(helpers, monkeypatch):
     assert sys._codesys_daemon_loop["online_app"] is None
 
 
+class _Sp22AfterLogout(object):
+    """What SP22 really returned on the bench after Online -> Logout."""
+
+    is_logged_in = False
+    application_state = "run"
+    operation_state = 4097
+
+
+def test_logged_out_flag_beats_a_stale_run_state(helpers, monkeypatch):
+    app = object()
+    sys._codesys_daemon_loop = {
+        "online_app": _Sp22AfterLogout(),
+        "online_target_app": app,
+        "projects": SimpleNamespace(primary=_project(app)),
+    }
+    _install_scriptengine(monkeypatch, _Sp22AfterLogout())
+
+    state = helpers.live_online_state(_project(app))
+
+    assert state["online"] is False
+    assert state["known"] is True
+    assert sys._codesys_daemon_loop["online_app"] is None
+
+
+def test_the_edit_guard_allows_edits_after_logout(monkeypatch):
+    guard = importlib.import_module("ide_online_guard")
+    _install_scriptengine(monkeypatch, _Sp22AfterLogout())
+    sys._codesys_daemon_loop = {}
+
+    assert guard.project_is_online(_project(object())) is False
+
+
+def test_run_state_still_counts_when_no_flag_is_readable(helpers):
+    assert helpers._online_app_liveness(_Wrapper(app_state="run")) is True
+    assert helpers._online_app_liveness(_Wrapper(app_state="none")) is None
+
+
 # ── the slipped-through case: a UI session the daemon never cached ─────────
 
 

@@ -665,8 +665,11 @@ def _online_app_liveness(online_app):
     as "possibly online", the way the old boolean could not.
 
     ``is_logged_in`` is asked first -- it is the ScriptEngine's own answer to
-    exactly this question.  ``application_state`` is the SP22 fallback for
-    wrappers that expose neither connection flag but still report ``run``.
+    exactly this question.  ``application_state`` is the fallback for wrappers
+    that expose no readable flag at all; it never overrules a flag.  On SP22 a
+    fresh wrapper after Online -> Logout reads ``is_logged_in=False`` yet keeps
+    ``application_state="run"`` from the last session -- trusting the state
+    over the flag is what kept asking the user to log out of an offline IDE.
     """
     if online_app is None:
         return False
@@ -689,6 +692,8 @@ def _online_app_liveness(online_app):
         saw_answer = True
         if answer:
             return True
+    if saw_answer:
+        return False
     try:
         state = getattr(online_app, "application_state")
         if callable(state):
@@ -703,7 +708,7 @@ def _online_app_liveness(online_app):
         # the unknown path so the guard fails closed.
     except Exception:
         pass
-    return False if saw_answer else None
+    return None
 
 
 def _online_app_is_live(online_app):

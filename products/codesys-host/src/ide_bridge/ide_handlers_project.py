@@ -212,7 +212,7 @@ def _online_attr(oa, attr):
 def _online_attr_info(oa):
     """String values of the online-application properties we can read."""
     info = {}
-    for attr in ["application_state", "is_connected", "is_running", "is_online"]:
+    for attr in ["is_logged_in", "application_state", "is_connected", "is_running", "is_online"]:
         value, error = _online_attr(oa, attr)
         if error is not None:
             info[attr + "_error"] = error
