@@ -161,12 +161,21 @@ class SettingsForm(Form):
                 return {"poll_ms": 200, "deny": []}
 
     def _save_config(self, config):
-        """Save config to the daemon's storage."""
+        """Save config; return ``(ok, reason)`` -- reason is "" on success."""
         try:
-            from ide_daemon_state import _save_daemon_config
-            return _save_daemon_config(config)
-        except Exception:
-            return False
+            from ide_daemon_state import (
+                _save_daemon_config,
+                daemon_config_online_refusal,
+            )
+
+            refusal = daemon_config_online_refusal()
+            if refusal is not None:
+                return False, refusal
+            if _save_daemon_config(config):
+                return True, ""
+            return False, "see the daemon log for the reason"
+        except Exception as exc:
+            return False, str(exc)
 
     def _build_ui(self):
         # Tab control
@@ -368,7 +377,7 @@ class SettingsForm(Form):
             )
             return
         config = self._collect_config()
-        ok = self._save_config(config)
+        ok, reason = self._save_config(config)
         if ok:
             self._config = config
             self._changed = False
@@ -378,10 +387,15 @@ class SettingsForm(Form):
                     sys._codesys_daemon_loop["config"] = config
             except Exception:
                 pass
-            MessageBox.Show("Settings saved.", "Daemon Settings",
-                          MessageBoxButtons.OK, MessageBoxIcon.Information)
+            MessageBox.Show(
+                "Settings saved into the project (Project Information). "
+                "Save the project in the IDE to keep them.",
+                "Daemon Settings",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information,
+            )
         else:
-            MessageBox.Show("Failed to save settings.", "Error",
+            MessageBox.Show("Failed to save settings: {0}".format(reason), "Error",
                           MessageBoxButtons.OK, MessageBoxIcon.Warning)
 
     def _on_ok(self, sender, args):

@@ -23,6 +23,8 @@ Global flags (`--pretty`/`-p`, `--output`, `--target`, `--expect-project`) go **
 | Inspect daemon permissions | `cts permissions` |
 | Read back the outcome of a command you interrupted | `cts last-result` |
 
+Daemon permissions (the deny list and poll interval) are stored **inside the project**, on the Project Information object as the `cds-daemon-config` property — they travel with the `.project` and survive a restart, but only once the project is saved in the IDE; an edit while the IDE is online changes memory only and is refused. `cts permissions` reports this, and the daemon compares ignore the property so a settings change does not show up as a modified object.
+
 ## Folder and IDE Synchronization
 
 | Goal | Command |

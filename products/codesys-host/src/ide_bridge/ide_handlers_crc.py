@@ -17,6 +17,8 @@ import tempfile
 import ide_time
 from ide_daemon_state import (
     _CONFIG_INVALID,
+    CONFIG_PERSISTENCE,
+    CONFIG_STORAGE,
     _log,
     _get_active_project,
     _project_file_path,
@@ -513,9 +515,14 @@ def _cmd_compare_crc(params):
 
 
 def _cmd_permissions():
-    """Return current daemon security settings."""
+    """Return current daemon security settings, and where they are kept."""
     config, status = _read_daemon_config()
     data = dict(config)
+    # Say where these live and how durable it is: the setting is a project
+    # property, so the honest answer to "did it stick?" is "it does, once the
+    # project is saved".
+    data["stored_in"] = CONFIG_STORAGE
+    data["persistence"] = CONFIG_PERSISTENCE
     if status == _CONFIG_INVALID:
         # The deny list shown is the built-in default, not the user's; say so
         # rather than letting the listing imply everything is permitted.

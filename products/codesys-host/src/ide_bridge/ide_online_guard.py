@@ -72,6 +72,17 @@ def _live_session(project):
         return None
 
 
+def project_is_online(project):
+    """True when the IDE currently holds a PLC session.
+
+    The same predicate ``project_edit_refusal`` uses, exposed for edits that
+    are not ``cts`` commands (the Settings window writing the daemon config):
+    they still must not touch the project while online, and the answer has to
+    come from one place or the two disagree.
+    """
+    return _live_session(project) is not None
+
+
 def project_edit_refusal(project, command):
     """The refusal dict when the IDE is online and ``command`` would edit.
 
@@ -79,10 +90,15 @@ def project_edit_refusal(project, command):
     method name; the message names the CLI command it stands for, so the
     caller is told exactly what to repeat after ``cts disconnect``.
     """
-    if _live_session(project) is None:
+    if not project_is_online(project):
         return None
     _log("edit refused: IDE online ({0})".format(command))
     return {"ok": False, "error": _REFUSAL.format(cli_command(command))}
 
 
-__all__ = ["project_edit_refusal", "cli_command", "CLI_COMMANDS"]
+__all__ = [
+    "project_edit_refusal",
+    "project_is_online",
+    "cli_command",
+    "CLI_COMMANDS",
+]
