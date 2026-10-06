@@ -335,11 +335,29 @@ def test_import_does_not_announce_a_timeout_before_it_is_refused(
 
 
 def test_build_still_announces_the_resolved_timeout(monkeypatch, capsys, daemon_calls):
+    """A person reading text output still gets told what timeout was picked."""
     monkeypatch.setattr(d, "send_command_reverse", _profile_reply({"build": 180}))
 
-    d.dispatch_daemon(_args(command="build", timeout=None))
+    d.dispatch_daemon(_args(command="build", timeout=None), output_fmt="text")
 
-    assert "Timeout: 180s" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "Timeout: 180s" in captured.err
+    assert captured.out == ""
+
+
+def test_the_timeout_is_not_announced_in_json_mode(monkeypatch, capsys, daemon_calls):
+    """json is the default and for machines: not even stderr gets the line.
+
+    A caller that captures both streams (2>&1) would otherwise read it ahead of
+    the payload and see a malformed reply.
+    """
+    monkeypatch.setattr(d, "send_command_reverse", _profile_reply({"build": 180}))
+
+    d.dispatch_daemon(_args(command="build", timeout=None), output_fmt="json")
+
+    captured = capsys.readouterr()
+    assert "Timeout:" not in captured.err
+    assert captured.out == ""
 
 
 def test_connect_maps_ip_and_gateway(daemon_calls):

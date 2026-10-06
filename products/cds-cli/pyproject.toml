@@ -42,6 +42,7 @@ test_paths = [
   "../../tests/unit/test_cli_handlers_patch.py",
   "../../tests/unit/test_cli_handlers_project.py",
   "../../tests/unit/test_cli_handlers_visu.py",
+  "../../tests/unit/test_json_stdout_purity.py",
   "../../tests/unit/test_cli_plc_log.py",
   "../../tests/unit/test_cli_response_context.py",
   "../../tests/unit/test_cli_help.py",

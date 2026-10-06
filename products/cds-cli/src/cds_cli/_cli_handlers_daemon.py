@@ -99,18 +99,25 @@ def _timeout_profile():
     return _TIMEOUT_PROFILE_CACHE["value"]
 
 
-def _daemon_timeout(method, requested_timeout=None, fallback=30, announce=None):
+def _daemon_timeout(
+    method, requested_timeout=None, fallback=30, announce=None, output_fmt=None
+):
     """Resolve a daemon-owned automatic timeout; explicit values win.
 
     ``timeout_profile`` is intentionally a short, read-only preflight which
     does not inspect the PLC connection. The daemon has already counted blocks
     at startup, so this never rescans the project or invalidates online state.
     Older daemons simply lack the profile and retain the conservative fallback.
+
+    The announcement is a line for a person, so it is written to stderr and
+    silenced entirely in JSON mode: a caller that captures both streams
+    (``2>&1``) would otherwise read it ahead of the payload and see the reply
+    as malformed, which is exactly what it is not.
     """
     if requested_timeout is not None:
         return requested_timeout
     if announce is None:
-        announce = method not in _NO_TIMEOUT_ANNOUNCE
+        announce = method not in _NO_TIMEOUT_ANNOUNCE and (output_fmt or "text") != "json"
     profile = _timeout_profile()
     if profile:
         value = profile.get("timeouts", {}).get(method, profile.get("default"))
@@ -149,8 +156,8 @@ def dispatch_daemon(args, output_fmt="json"):
                     "sync_compare_text",
                     {},
                     timeout=_daemon_timeout(
-                        "sync_compare_text", getattr(args, "timeout", None), 60
-                    ),
+                        "sync_compare_text", getattr(args, "timeout", None), 60,
+            output_fmt=output_fmt),
                     output_fmt=output_fmt,
                 )
                 return True
@@ -166,12 +173,12 @@ def dispatch_daemon(args, output_fmt="json"):
             cmd_daemon(
                 "build",
                 {},
-                timeout=_daemon_timeout("build", getattr(args, "timeout", None)),
+                timeout=_daemon_timeout("build", getattr(args, "timeout", None), output_fmt=output_fmt),
                 output_fmt=output_fmt,
             )
         timeout = _daemon_timeout(
-            _DAEMON_METHODS[command], getattr(args, "timeout", None), 30
-        )
+            _DAEMON_METHODS[command], getattr(args, "timeout", None), 30,
+            output_fmt=output_fmt)
         cmd_daemon(
             _DAEMON_METHODS[command],
             params,
@@ -188,7 +195,7 @@ def dispatch_daemon(args, output_fmt="json"):
         if args.gateway:
             params["gatewayName"] = args.gateway
         cmd_daemon(
-            "connect_to_device", params, timeout=_daemon_timeout("connect_to_device", args.timeout, 60), output_fmt=output_fmt
+            "connect_to_device", params, timeout=_daemon_timeout("connect_to_device", args.timeout, 60, output_fmt=output_fmt), output_fmt=output_fmt
         )
         return True
 
@@ -196,7 +203,7 @@ def dispatch_daemon(args, output_fmt="json"):
         cmd_daemon(
             "read_variable",
             {"name": args.name},
-            timeout=_daemon_timeout("read_variable", args.timeout, 25),
+            timeout=_daemon_timeout("read_variable", args.timeout, 25, output_fmt=output_fmt),
             output_fmt=output_fmt,
         )
         return True
@@ -209,14 +216,14 @@ def dispatch_daemon(args, output_fmt="json"):
         params = {}
         if args.file:
             params["file"] = args.file
-        cmd_daemon("cicd", params, timeout=_daemon_timeout("cicd", args.timeout, 120), output_fmt=output_fmt)
+        cmd_daemon("cicd", params, timeout=_daemon_timeout("cicd", args.timeout, 120, output_fmt=output_fmt), output_fmt=output_fmt)
         return True
 
     if command == "project-tree":
         cmd_daemon(
             "project_tree",
             {"depth": args.depth},
-            timeout=_daemon_timeout("project_tree", args.timeout, 30),
+            timeout=_daemon_timeout("project_tree", args.timeout, 30, output_fmt=output_fmt),
             output_fmt=output_fmt,
         )
         return True
@@ -229,7 +236,7 @@ def dispatch_daemon(args, output_fmt="json"):
             params["name"] = args.name
         if args.guid:
             params["guid"] = args.guid
-        cmd_daemon("read_object", params, timeout=_daemon_timeout("read_object", args.timeout, 30), output_fmt=output_fmt)
+        cmd_daemon("read_object", params, timeout=_daemon_timeout("read_object", args.timeout, 30, output_fmt=output_fmt), output_fmt=output_fmt)
         return True
 
     if command == "update-pou":
@@ -239,14 +246,14 @@ def dispatch_daemon(args, output_fmt="json"):
         }
         if args.app:
             params["app"] = args.app
-        cmd_daemon("update_pou", params, timeout=_daemon_timeout("update_pou", args.timeout, 25), output_fmt=output_fmt)
+        cmd_daemon("update_pou", params, timeout=_daemon_timeout("update_pou", args.timeout, 25, output_fmt=output_fmt), output_fmt=output_fmt)
         return True
 
     if command == "delete-pou":
         params = {"name": args.name}
         if args.app:
             params["app"] = args.app
-        cmd_daemon("delete_pou", params, timeout=_daemon_timeout("delete_pou", args.timeout, 10), output_fmt=output_fmt)
+        cmd_daemon("delete_pou", params, timeout=_daemon_timeout("delete_pou", args.timeout, 10, output_fmt=output_fmt), output_fmt=output_fmt)
         return True
 
     if command == "read-log":
@@ -257,7 +264,7 @@ def dispatch_daemon(args, output_fmt="json"):
             params["clear"] = True
         if getattr(args, "category", ""):
             params["category"] = args.category
-        cmd_daemon("read_log", params, timeout=_daemon_timeout("read_log", args.timeout, 10), output_fmt=output_fmt)
+        cmd_daemon("read_log", params, timeout=_daemon_timeout("read_log", args.timeout, 10, output_fmt=output_fmt), output_fmt=output_fmt)
         return True
 
     return False
@@ -281,7 +288,7 @@ def _handle_write(args, output_fmt):
     of printing the write as if it had been verified.
     """
     try:
-        timeout = _daemon_timeout("write_variable", args.timeout, 25)
+        timeout = _daemon_timeout("write_variable", args.timeout, 25, output_fmt=output_fmt)
         wr = send_command_reverse(
             "write_variable",
             {"name": args.name, "value": args.value},
@@ -403,7 +410,7 @@ def _handle_download(args, output_fmt):
     params = {}
     if getattr(args, "start", None) is not None:
         params["start"] = args.start
-    timeout = _daemon_timeout("download", getattr(args, "timeout", None), 30)
+    timeout = _daemon_timeout("download", getattr(args, "timeout", None), 30, output_fmt=output_fmt)
     try:
         response = _send_daemon("download", params, timeout=timeout)
     except RuntimeError as e:
