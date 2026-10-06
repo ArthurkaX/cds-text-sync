@@ -343,6 +343,61 @@ def _dashboard_log_response(dash, method, response):
         pass
 
 
+def _close_connection(pipe):
+    """Drop one pipe instance at once; a close that fails is not fatal.
+
+    Both spellings are accepted: the .NET stream has ``Close``, and the fakes
+    the offline tests drive the loop with expose the lowercase one.
+    """
+    if pipe is None:
+        return
+    close = getattr(pipe, "Close", None) or getattr(pipe, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception:
+        pass
+
+
+def _deliver_response(pipe, method, request_id, response, command_seconds=0.0):
+    """Write the reply; when the client has gone, end the connection here.
+
+    A CLI that timed out, was killed or was Ctrl+C'd stops reading, so the
+    write fails with Errno 232 ("Pipe is broken"). That is a normal end of a
+    connection, not an error to wait out: one line naming the command, this
+    instance dropped at once, and the loop goes straight to the next client --
+    the outcome survives in ``record_last_result`` for ``cts last-result``.
+    The line carries both timings, which tell the two possible causes apart on
+    a live IDE (see the note on the log line below). True = delivered.
+    """
+    started = time.time()
+    failure = None
+    delivered = False
+    try:
+        # The helper returns False as well as raising; both mean the same thing
+        # here, and both must end the connection rather than be recorded as a
+        # delivered reply.
+        delivered = _write_json_to_pipe(pipe, response, raise_on_error=True)
+    except Exception as exc:
+        failure = exc
+    if delivered:
+        return True
+
+    _close_connection(pipe)
+    _log(
+        "client left before the reply was written ({0}{1}): command ran "
+        "{2:.1f}s, write failed after {3:.1f}s: {4}".format(
+            method,
+            " [{0}]".format(request_id) if request_id else "",
+            command_seconds,
+            time.time() - started,
+            failure if failure is not None else "the write reported failure",
+        )
+    )
+    return False
+
+
 def _serve_connection(pipe, dash=None):
     """Serve a single connected pipe connection.
 
@@ -353,6 +408,10 @@ def _serve_connection(pipe, dash=None):
 
     Returns True if daemon stop was requested, False otherwise.
     """
+    # Logged here on purpose: it is the line whose *absence* of a successor in
+    # the daemon log proves the loop is stuck in the first read of a
+    # connection that never sent anything, as opposed to never connecting.
+    _log("Client connected; waiting for the first message")
     first_msg = _read_json_from_pipe(pipe)
     if first_msg is None:
         return False
@@ -365,6 +424,10 @@ def _serve_connection(pipe, dash=None):
         # Send H2
         h2 = wire.hello_reply(_hello_info())
         if not _write_json_to_pipe(pipe, h2):
+            # Same outcome as a lost reply, same one-line report and the same
+            # immediate drop: the probe is answered into a pipe nobody reads.
+            _log("client left before the hello reply was written")
+            _close_connection(pipe)
             return False
 
         # Read next message (C command, R release, or EOF)
@@ -399,7 +462,9 @@ def _serve_connection(pipe, dash=None):
             pass
 
     # Execute command in main script context
+    command_started = time.time()
     response = handle_command(method, params, request_id=request_id)
+    command_seconds = time.time() - command_started
 
     # Attach instance and the "where am I" context (computed after command
     # execution; cached state only, never a new PLC/IDE call).
@@ -408,22 +473,18 @@ def _serve_connection(pipe, dash=None):
     if dash is not None:
         _dashboard_log_response(dash, method, response)
 
-    # Write response back
-    ok = _write_json_to_pipe(pipe, response)
-    if not ok:
-        # Name the request id so the CLI's timeout message and this line can be
-        # matched to each other.
-        _log(
-            "Failed to write response for {0}{1}".format(
-                method, " [{0}]".format(request_id) if request_id else ""
-            )
-        )
+    # Write the response back. On a failed write the connection is dropped here
+    # and now -- the client is gone, and this instance must not be held while
+    # the result is recorded and the next client waits.
+    delivered = _deliver_response(
+        pipe, method, request_id, response, command_seconds
+    )
 
     # Record the outcome. On a failed write -- the CLI gave up on a long command
     # and closed its end -- this file is the only place the result still exists;
     # for the sync commands it is recorded even when the write worked, so the
     # result of the last import can always be looked up afterwards.
-    record_last_result(method, response, request_id, write_failed=not ok)
+    record_last_result(method, response, request_id, write_failed=not delivered)
 
     # Canonical name: the protocol's legacy "stop" alias must still stop the
     # daemon, while `cts stop` (stop_plc) must not. handle_command has already
@@ -526,10 +587,7 @@ def run_loop():
             # Connected! Serve the connection
             stop_requested = _serve_connection(pipe, _dash)
 
-            try:
-                pipe.Close()
-            except Exception:
-                pass
+            _close_connection(pipe)
 
             if stop_requested:
                 break
@@ -546,11 +604,7 @@ def run_loop():
                 pass
             else:
                 _log("Pipe poll error: {0}".format(e))
-            if pipe is not None:
-                try:
-                    pipe.Close()
-                except Exception:
-                    pass
+            _close_connection(pipe)
 
         time.sleep(_get_poll_interval())
 

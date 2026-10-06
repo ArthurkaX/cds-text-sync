@@ -125,8 +125,25 @@ def _read_json_from_pipe(pipe):
         return None
 
 
-def _write_json_to_pipe(pipe, data):
-    """Write a length-prefixed JSON message to pipe (byte-mode)."""
+def _write_json_to_pipe(pipe, data, raise_on_error=False):
+    """Write a length-prefixed JSON message to pipe (byte-mode).
+
+    Returns False when the write failed. A failure usually means the peer is
+    gone: a CLI that timed out, was killed or was interrupted stops reading.
+    The caller is the one that knows what was being written and how long the
+    command took, so it can pass ``raise_on_error=True`` and name the reason
+    in a single line of its own instead of getting a bare ``False`` plus the
+    generic line below.
+
+    **The daemon's pipe is not flushed.** ``PipeStream.Flush`` is a deliberate
+    no-op in .NET -- its own source says calling ``FlushFileBuffers`` there
+    "would deadlock if the other end of the pipe is no longer interested in
+    reading" -- and ``Write`` already puts byte-mode data on the wire. Asking
+    for one only made the code look like it drained something; the call that
+    really drains is ``WaitForPipeDrain`` (``FlushFileBuffers``), which this
+    file never makes. The ``flush`` below is on the other branch, for a
+    Python-style stream that may buffer, where a fake or wrapper can need it.
+    """
     try:
         if hasattr(pipe, "write_msg"):
             return pipe.write_msg(data)
@@ -150,9 +167,10 @@ def _write_json_to_pipe(pipe, data):
         # Write body as array — one syscall instead of N
         arr = System.Array[System.Byte](list(bytearray(msg_bytes)))
         pipe.Write(arr, 0, len(arr))
-        pipe.Flush()
         return True
     except Exception as e:
+        if raise_on_error:
+            raise
         _log("Write error: {0}".format(e))
         return False
 
