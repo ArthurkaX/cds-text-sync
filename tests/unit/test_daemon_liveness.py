@@ -121,6 +121,27 @@ def test_no_marker_means_nothing_to_say(tmp_path, monkeypatch):
     assert client.daemon_activity_hint() is None
 
 
+def test_a_busy_daemon_leads_the_timeout_message(tmp_path, monkeypatch):
+    """The verdict is the first line, then the one action to take."""
+    _write_status(
+        tmp_path, monkeypatch, pid=1, state="busy", method="build",
+        started_ts=999.0, updated=999.0,
+    )
+    session = client._CommandSession(
+        pipe_path=r"\\.\pipe\x", method="ping", params={}, request_id="r",
+        timeout=5, deadline=0.0, target_pid=None, codesys_pids=None,
+        discovery_budget_s=0.4,
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        client.ReversePipeClient(timeout=5)._raise_connect_timeout(session)
+
+    message = str(excinfo.value)
+    assert message.splitlines()[0].startswith("The daemon is alive but busy with build")
+    assert "Retry once that command finishes" in message
+    assert "Timeout (5s) waiting for IDE to connect" in message
+
+
 def test_a_corrupt_marker_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv("TEMP", str(tmp_path))
     (tmp_path / client.DAEMON_STATUS_FILE).write_text("{not json", encoding="utf-8")

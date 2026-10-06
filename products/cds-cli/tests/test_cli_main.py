@@ -196,6 +196,27 @@ def test_a_missing_required_option_is_a_parse_error(cli, capsys):
     cli.assert_not_called("configure")
 
 
+def test_a_global_flag_after_the_command_is_a_clear_error(cli, capsys):
+    """`cts status --pretty`: say where the flag belongs, not just "unrecognized"."""
+    with pytest.raises(SystemExit) as exc:
+        cli.run(["cts", "status", "--pretty"])
+
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "global flag" in err
+    assert "BEFORE the command" in err
+    assert "cts --pretty status" in err
+    cli.assert_not_called("configure")
+
+
+def test_an_unknown_trailing_token_keeps_argparses_error(cli, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.run(["cts", "status", "--nonsense"])
+
+    assert exc.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------
 # Target validation / configure
 # ---------------------------------------------------------------------------

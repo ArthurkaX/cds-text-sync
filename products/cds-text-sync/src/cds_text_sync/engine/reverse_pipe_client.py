@@ -1309,12 +1309,15 @@ class ReversePipeClient:
 
         # The daemon's own liveness marker, when it is there, names the real
         # case ("alive but busy with build for 42s") instead of the two-way
-        # guess the old message had to make.
+        # guess the old message had to make.  It leads the message, and one
+        # action follows it: the verdict on the first line, the details after.
         activity = daemon_activity_hint()
         if activity:
             raise RuntimeError(
+                f"{activity}\n"
                 f"Timeout ({session.timeout}s) waiting for IDE to connect to "
-                f"{session.pipe_path}. {activity}"
+                f"{session.pipe_path}. Retry once that command finishes, or "
+                f"raise --timeout if it is genuinely a long one."
             )
 
         hint = ssh_dacl_hint() or self._diagnose_ide_timeout(target_pid=session.target_pid)

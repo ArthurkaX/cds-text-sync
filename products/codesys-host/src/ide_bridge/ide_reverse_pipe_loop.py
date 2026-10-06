@@ -534,7 +534,6 @@ def run_loop():
             VERSION, PIPE_NAME, os.getpid(), PROTOCOL
         )
     )
-    _log("Waiting for CLI commands...  cds-text-sync --help")
 
     # Warn if sync folder not configured
     sf, sf_err = _get_sync_folder()

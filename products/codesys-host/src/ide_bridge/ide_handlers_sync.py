@@ -16,6 +16,7 @@ import tempfile
 import time
 
 import ide_online_guard
+import ide_last_result
 import ide_path_guards
 import ide_runtime_common as _common
 import ide_time
@@ -324,6 +325,7 @@ def _cmd_sync_import(params):
 
     refusal = ide_online_guard.project_edit_refusal(project, "sync_import")
     if refusal is not None:
+        ide_last_result.record_import_refusal(refusal.get("error", ""), "sync_import")
         return refusal
 
     in_path = params.get("input", "")
@@ -1063,6 +1065,16 @@ def _import_text_build_result(context):
         )
         if context.save_error:
             return_data["save_error"] = context.save_error
+    elif not context.saved and _save_requested(context.params):
+        # `saved: false` with --save used to arrive bare: say there was
+        # nothing to save instead of leaving the caller to guess.
+        return_data["save_note"] = (
+            "saved: false -- the import made no changes, so there was nothing "
+            "to save; the project on disk already matches."
+        )
+    # A landed import clears any earlier refusal marker: a later build must not
+    # blame a refusal that this import has since superseded.
+    ide_last_result.clear_import_refusal()
     context.return_data = return_data
 
 
@@ -1170,6 +1182,11 @@ def _import_text_guard():
         return None, error
     refusal = ide_online_guard.project_edit_refusal(project, "sync_import_text")
     if refusal is not None:
+        # Leave a marker so a later `cts build` -- which compiles the unchanged
+        # IDE and reports "up to date" -- can say the disk changes never landed.
+        ide_last_result.record_import_refusal(
+            refusal.get("error", ""), "sync_import_text"
+        )
         return None, refusal
     return project, None
 
