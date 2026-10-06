@@ -422,3 +422,26 @@ def test_the_first_read_of_a_connection_is_bounded(monkeypatch):
 
     assert applied == [rpl.READ_TIMEOUT_MS]
     assert rpl.READ_TIMEOUT_MS > 0
+
+
+def test_the_poll_connect_does_not_wait(monkeypatch):
+    """Connect(0) is one immediate attempt in .NET; anything > 0 blocks the UI
+    thread for that long on every tick, and -1 would block forever."""
+    waits = []
+
+    class _Pipe:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def Connect(self, timeout_ms):
+            waits.append(timeout_ms)
+            raise RuntimeError("Could not connect to pipe")
+
+        def Close(self):
+            pass
+
+    monkeypatch.setattr(rpl, "NamedPipeClientStream", _Pipe)
+
+    assert rpl._service_one_client() is False
+    assert waits == [rpl.CONNECT_TIMEOUT_MS]
+    assert rpl.CONNECT_TIMEOUT_MS == 0

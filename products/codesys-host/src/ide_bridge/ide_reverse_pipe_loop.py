@@ -738,8 +738,8 @@ def _service_one_client():
     pipe = None
     try:
         pipe = NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut)
-        # A short timeout, not 0: .NET's Connect(0) waits forever, and that would
-        # freeze the UI thread -- the one thing this design must not do.
+        # 0 = one immediate attempt, no waiting (see CONNECT_TIMEOUT_MS): a tick
+        # must never block the IDE's UI thread. Only -1 waits forever.
         pipe.Connect(CONNECT_TIMEOUT_MS)
     except Exception as error:
         _log_pipe_poll_error(error)

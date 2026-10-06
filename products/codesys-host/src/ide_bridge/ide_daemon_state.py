@@ -38,7 +38,14 @@ VERSION = "3.3.0"
 PROTOCOL = wire.PROTOCOL
 
 POLL_INTERVAL = 0.2  # seconds between poll attempts
-CONNECT_TIMEOUT_MS = 20  # ms to wait for pipe connection (short = non-blocking)
+
+#: Connect timeout for the daemon's pipe poll. Where a timeout of 20 ms used to
+#: sit, 0 is the right value: in .NET, ``Connect(0)`` is one immediate,
+#: non-blocking attempt that throws TimeoutException when no server is
+#: listening -- only ``Timeout.Infinite`` (-1) waits forever, and the documented
+#: ArgumentOutOfRangeException covers negative values other than Infinite. A
+#: tick must never wait: it runs on the IDE's UI thread.
+CONNECT_TIMEOUT_MS = 0
 
 LOG_FILE = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "cds-daemon-debug.log")
 
