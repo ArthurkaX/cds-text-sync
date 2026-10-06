@@ -903,13 +903,20 @@ def _cmd_project_close():
         return err
     try:
         name = _project_display_name(project)
-        if hasattr(project, "close"):
-            project.close()
-        else:
-            projects = sys._codesys_daemon_loop.get("projects")
-            if projects is None:
-                return {"ok": False, "error": "projects not captured"}
-            projects.close(project)
+        # close() belongs to IScriptProject, not to IScriptProjects (which has
+        # only all/convert/create/get_by_path/open/open_archive/primary -- see
+        # the API snapshot). The old fallback called projects.close(project),
+        # a method that does not exist: unreachable behind the hasattr above,
+        # and an AttributeError the moment it was.
+        if not hasattr(project, "close"):
+            return {
+                "ok": False,
+                "error": (
+                    "The active project object has no close(); the scripting "
+                    "API exposes close() on IScriptProject only."
+                ),
+            }
+        project.close()
         return {"ok": True, "data": {"closed": name}}
     except Exception as e:
         return {"ok": False, "error": "Project close error: {0}".format(e)}

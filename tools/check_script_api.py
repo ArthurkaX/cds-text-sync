@@ -56,13 +56,9 @@ OBJECT_MEMBERS = frozenset(
 
 #: Calls this tool knows are not in the API, with the reason they are still there.
 #: Every entry is a bug the snapshot caught; fixing one means deleting its line.
-KNOWN_MISMATCHES = {
-    ("projects", "close"): (
-        "ide_handlers_project._cmd_project_close falls back to projects.close(prj); "
-        "IScriptProjects has no close(), only IScriptProject does. The fallback is "
-        "dead code the hasattr() above it never lets run."
-    ),
-}
+#: Empty on purpose: ``projects.close(prj)`` was the one entry, and the product
+#: fix replaced it (IScriptProject has close(), IScriptProjects does not).
+KNOWN_MISMATCHES = {}
 
 
 def _variants(member):

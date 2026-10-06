@@ -186,12 +186,18 @@ def test_the_checker_ignores_system_object_members(tmp_path):
     assert module.check([str(source)], str(path)) == []
 
 
-def test_the_known_mismatches_are_reviewed_and_the_ratchet_holds():
+def test_the_known_mismatches_are_empty_and_the_ratchet_holds():
+    """The one entry was a real bug, and the product fix removed it.
+
+    ``projects.close(prj)`` in _cmd_project_close called a method
+    IScriptProjects does not have; the handler now says so instead. The map
+    stays as the escape hatch -- if a call must stay for a reason, it goes here
+    with that reason, and this test is what makes deleting the entry the last
+    step of fixing it.
+    """
     module = _checker()
-    # Every entry carries the reason it is still in the tree.
-    assert module.KNOWN_MISMATCHES
+    assert module.KNOWN_MISMATCHES == {}
     for key, reason in module.KNOWN_MISMATCHES.items():
-        assert key in {("projects", "close")}, key
         assert len(reason) > 40, key
     # The bridge today has no unreviewed call; a new one would show up here.
     assert module.check([]) == []
@@ -203,3 +209,16 @@ def test_the_receiver_map_only_names_unambiguous_variables():
     for receiver, families in module.RECEIVERS.items():
         assert receiver.isidentifier(), receiver
         assert families and all(f.startswith("I") for f in families)
+
+
+def test_ci_product_checks_runs_the_scripting_api_check(monkeypatch, capsys):
+    """`all` must run it: 0.2 s, and the alternative is a failure at the stand."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(_ROOT / "tools"))
+    import ci_product_checks
+
+    monkeypatch.setattr(_sys, "argv", ["ci_product_checks.py", "scriptapi"])
+    ci_product_checks.main()
+
+    assert "script API check" in capsys.readouterr().out
