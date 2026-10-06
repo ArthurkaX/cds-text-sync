@@ -381,13 +381,14 @@ def _load_online_helpers_module():
     return module
 
 
-def test_daemon_login_uses_keep_without_deleting_foreign_apps(monkeypatch):
+def test_the_data_plane_never_logs_in_implicitly(monkeypatch):
+    """The 610-second `cts write`: a read/write must not call login().
+
+    Against an unreachable PLC, ``online_app.login()`` blocked inside the IDE
+    for minutes and the daemon served nothing meanwhile.  A not-logged-in
+    session is now an immediate, honest error naming `cts connect`.
+    """
     helpers = _load_online_helpers_module()
-
-    class OnlineChangeOption:
-        Keep = object()
-
-    monkeypatch.setitem(sys.modules, "scriptengine", SimpleNamespace(OnlineChangeOption=OnlineChangeOption))
 
     class Online:
         is_logged_in = False
@@ -399,8 +400,22 @@ def test_daemon_login_uses_keep_without_deleting_foreign_apps(monkeypatch):
             self.calls.append((option, delete_foreign_apps))
 
     online = Online()
-    helpers._ensure_logged_in(online)
-    assert online.calls == [(OnlineChangeOption.Keep, False)]
+    with pytest.raises(RuntimeError) as excinfo:
+        helpers._require_existing_login(online)
+    assert "cts connect" in str(excinfo.value)
+    assert online.calls == []
+
+
+def test_a_logged_in_session_is_accepted_without_login(monkeypatch):
+    helpers = _load_online_helpers_module()
+
+    class Online:
+        is_logged_in = True
+
+        def login(self, option, delete_foreign_apps):
+            raise AssertionError("a logged-in session must not log in again")
+
+    helpers._require_existing_login(Online())
 
 
 def test_daemon_full_download_uses_never_without_deleting_foreign_apps(monkeypatch):

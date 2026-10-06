@@ -11,8 +11,6 @@ import re
 import sys
 import time
 
-import ide_online_address as _online_address
-
 
 # ── Atomic file write using .NET System.IO.File.Replace ────────────────────
 
@@ -395,13 +393,14 @@ def require_online_session(project):
     """Return a cached or already-IDE-online application without logging in.
 
     For read/write of PLC data, never build a session implicitly. Creating one
-    means create_online_application plus _ensure_logged_in, and the latter walks
-    a list of login candidates calling online_app.login() on each. When the PLC
-    is unreachable — or the project simply has compile errors — every candidate
-    has to fail before the call returns, and the single-threaded daemon loop
-    serves nothing meanwhile. Measured at ~145 s against a project that would
-    not compile, after which the read failed anyway. Issue a second command
-    inside that window and the daemon looks dead rather than busy.
+    means create_online_application plus a login; ``online_app.login()`` blocks
+    inside the IDE until it succeeds or the PLC is ruled out, and the
+    single-threaded daemon loop serves nothing meanwhile. Measured at ~145 s
+    against a project that would not compile, and ~610 s against an
+    unreachable PLC on ``cts write``, after which the command failed anyway.
+    Issue a second command inside that window and the daemon looks dead rather
+    than busy. The data plane therefore only ever *uses* a session; when there
+    is none logged in it says so at once (``_require_existing_login``).
 
     Connecting is what connect_to_device is for. There the user asked for it and
     the wait is the point; here it was a side effect of `cts read`.
@@ -529,8 +528,10 @@ def _set_device_address(project, gateway_name, ip_address):
     try:
         import scriptengine as se
 
-        gateway = _online_address.find_gateway(se.online, gateway_name)
-        router = _online_address.resolve_router_address(gateway, ip_address)
+        import ide_online_address as address
+
+        gateway = address.find_gateway(se.online, gateway_name)
+        router = address.resolve_router_address(gateway, ip_address)
     except Exception:
         gateway = None
         router = None
@@ -593,7 +594,9 @@ def _login_keep(online_app, keep, project, gateway_name, ip_address):
     except Exception as error:
         first = error
 
-    if ip_address and _online_address.unreachable_error(first):
+    import ide_online_address as address
+
+    if ip_address and address.unreachable_error(first):
         _set_device_address(project, gateway_name, ip_address)
         try:
             online_app.login(keep, False)
@@ -612,14 +615,17 @@ def _login_error_text(ip_address, error):
     sending the user to rescan a network that was fine.
     """
     where = str(ip_address) if ip_address else "the device"
-    if _online_address.unreachable_error(error):
+
+    import ide_online_address as address
+
+    if address.unreachable_error(error):
         return (
             "PLC unreachable: the gateway could not reach {0}; no download was "
             "requested. Check the network and that the PLC is powered, then "
             "retry. If it answers ping/ssh but CODESYS still cannot reach it, "
             "log in once by hand in the IDE: Online -> Login.".format(where)
         )
-    if _online_address.login_refused_error(error):
+    if address.login_refused_error(error):
         return (
             "PLC reachable, but the login was refused (credentials or a user "
             "management prompt); no download was requested: {0}. Set them with "
@@ -1027,61 +1033,58 @@ def _call_online_app(io_obj, names, *args):
     raise AttributeError("None of these methods exist: {0}".format(", ".join(names)))
 
 
-def _ensure_logged_in(online_app):
-    """Ensure a session exists without permitting an update or download."""
-    # Check if already logged in via is_logged_in
-    logged_in = False
+def _session_is_logged_in(online_app):
+    """Whether the wrapper holds a logged-in session; never opens one.
+
+    ``is_logged_in`` is asked first.  When it is absent (some SP22 builds),
+    a readable ``application_state`` counts as logged in -- the same fallback
+    the old helper used -- and a wrapper that can answer neither is treated as
+    not logged in.
+    """
     if hasattr(online_app, 'is_logged_in'):
         try:
             val = online_app.is_logged_in
             if callable(val):
                 val = val()
-            logged_in = bool(val)
+            return bool(val)
         except Exception:
             pass
-    else:
-        # Fallback: try application_state (some SP22 versions lack is_logged_in)
-        try:
-            online_app.application_state
-            logged_in = True
-        except Exception:
-            pass
-    
-    if logged_in:
-        return
-    if not hasattr(online_app, 'login'):
-        raise TypeError("Online application does not support login().")
-
-    import scriptengine as se
     try:
-        keep = se.OnlineChangeOption.Keep
+        online_app.application_state
+        return True
     except Exception:
-        raise RuntimeError(
-            "Safe PLC login is unavailable: this CODESYS ScriptEngine does "
-            "not expose OnlineChangeOption.Keep. Refusing options that may "
-            "perform an online change or full download."
-        )
-    try:
-        online_app.login(keep, False)
-    except Exception as error:
-        raise RuntimeError(
-            "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
-            "was requested: {0}".format(error)
-        )
+        return False
+
+
+def _require_existing_login(online_app):
+    """Refuse (fast) when there is no logged-in session to use.
+
+    The data plane may *use* a session, never open one.  This used to call
+    ``online_app.login(Keep, False)`` when the session was not logged in, and
+    against an unreachable PLC that blocked inside the single-threaded daemon
+    loop for ~610 s: ``cts write`` looked like a hang and its reply was lost.
+    Opening a session is what ``connect_to_device`` is for, where the wait is
+    the point; here a fast, honest error is the right answer.
+    """
+    if _session_is_logged_in(online_app):
+        return
+    raise RuntimeError(
+        "Not connected: the PLC session is not logged in. Run 'cts connect' "
+        "first. A read/write never opens a session itself -- an implicit login "
+        "against an unreachable PLC blocks the daemon for minutes."
+    )
 
 
 def read_variable_impl(project, variable_name):
     """Read a variable value from an online PLC connection.
     
-    Auto-connects if online_app is cached but not logged in.
     """
     if not variable_name:
         raise ValueError("Variable name is required")
     
     online_app = require_online_session(project)
 
-    # Auto-login if needed
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
     
     candidates = [variable_name]
     if not variable_name.startswith("Application."):
@@ -1121,7 +1124,6 @@ def read_variable_impl(project, variable_name):
 def write_variable_impl(project, variable_name, value):
     """Write a value to a PLC variable via online connection.
     
-    Auto-connects if online_app is cached but not logged in.
     """
     if not variable_name:
         raise ValueError("Variable name is required")
@@ -1130,8 +1132,7 @@ def write_variable_impl(project, variable_name, value):
     
     online_app = require_online_session(project)
 
-    # Auto-login if needed
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
     
     value = normalize_write_value(value)
     candidates = [variable_name]
@@ -1236,7 +1237,7 @@ def read_variables_impl(project, names):
         return {"results": [], "count": 0}
 
     online_app = require_online_session(project)
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
 
     results = _bisect_read_variable(names, online_app)
     return {"results": results, "count": len(results)}
@@ -1257,7 +1258,7 @@ def write_variables_impl(project, items, raw_value=False):
         return {"results": [], "written": 0}
 
     online_app = require_online_session(project)
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
 
     results = []
     prepared = 0
