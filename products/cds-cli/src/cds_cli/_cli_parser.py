@@ -313,13 +313,73 @@ Examples:
         "an online session first, but the active application must have a "
         "reachable PLC gateway or simulation mode. Build first: download "
         "pushes the last built code, and after adding a GVL/DUT/POU a full "
-        "download is what makes its symbols readable."
+        "download is what makes its symbols readable.\n\n"
+        "The download being finished is not the application being ready: after "
+        "it, the CLI waits until the application is in run (up to "
+        "--ready-timeout, default 30s) rather than letting the next read race "
+        "the runtime. With --ready-var NAME it also requires that variable to "
+        "change between two reads, which proves the task is actually cycling. "
+        "The response says ready, ready_after_s and, when the wait failed, why; "
+        "the command then exits non-zero. --no-wait skips the wait."
     )
     p_download.add_argument(
         "--start",
         choices=["0", "1"],
         default=None,
         help="Start after download: 1 yes, 0 no",
+    )
+    p_download.add_argument(
+        "--ready-var",
+        dest="ready_var",
+        default="",
+        help=(
+            "Variable that must change between two reads before the PLC counts "
+            "as ready (proves the task is cycling). Example: GVL_Bench.nHeartbeat"
+        ),
+    )
+    p_download.add_argument(
+        "--ready-timeout",
+        dest="ready_timeout",
+        type=float,
+        default=None,
+        help="Seconds to wait for readiness after the download (default: 30)",
+    )
+    p_download.add_argument(
+        "--no-wait",
+        dest="no_wait",
+        action="store_true",
+        help=(
+            "Do not wait for the application to be running. The next read may "
+            "race the runtime -- use it only when you know the caller waits."
+        ),
+    )
+    p_wait_ready = subparsers.add_parser(
+        "wait-ready",
+        help="Wait until the PLC application is running (after Login/Download)",
+        description=(
+            "Wait until the application is in run. Use it after a Login/Download "
+            "done by hand in the CODESYS IDE, instead of reading variables "
+            "immediately and racing the runtime.\n\n"
+            "Readiness is polled with separate short requests, so the IDE stays "
+            "free between them. With --var NAME, the wait also requires that "
+            "variable to change between two reads, which proves the task is "
+            "cycling. Exits non-zero when the wait fails; the output says why "
+            "(the last application state, or the last value of the variable)."
+        ),
+    )
+    p_wait_ready.add_argument(
+        "--var",
+        default="",
+        help=(
+            "Variable that must change between two reads before the PLC counts "
+            "as ready (proves the task is cycling). Example: GVL_Bench.nHeartbeat"
+        ),
+    )
+    p_wait_ready.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Seconds to wait for readiness (default: 30)",
     )
     add_daemon_parser(subparsers, "disconnect", "Logout from PLC", None)
     add_daemon_parser(subparsers, "start", "Start PLC application", None)

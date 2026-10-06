@@ -603,6 +603,28 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         sys.exit(1)
 
 
+def _send_daemon(
+    method: str,
+    params: dict | None = None,
+    timeout: float = 15,
+):
+    """Send one daemon command with the project profile's defaults applied.
+
+    The same path as ``cmd_daemon``, minus the printing: callers that need the
+    response themselves (``download``, which then waits for PLC readiness) must
+    still get the profile's application defaults, or they would quietly send
+    less than every other command does. Raises RuntimeError like
+    ``send_command_reverse``.
+    """
+    params = params if params is not None else {}
+    try:
+        _config, profile = _load_project_config()
+        _apply_profile_defaults(params, profile)
+    except Exception as e:
+        _print_info("Warning: could not load profile: {0}".format(e))
+    return send_command_reverse(method, params, timeout=timeout)
+
+
 def cmd_daemon(
     method: str,
     params: dict | None = None,
@@ -610,15 +632,8 @@ def cmd_daemon(
     output_fmt: str = "json",
 ):
     """Send one structured command to the CODESYS daemon."""
-    params = params or {}
     try:
-        _config, profile = _load_project_config()
-        _apply_profile_defaults(params, profile)
-    except Exception as e:
-        _print_info("Warning: could not load profile: {0}".format(e))
-
-    try:
-        resp = send_command_reverse(method, params, timeout=timeout)
+        resp = _send_daemon(method, params, timeout=timeout)
     except RuntimeError as e:
         _print_error("Reverse pipe error: {0}".format(e))
         _print_daemon_unreachable(str(e))

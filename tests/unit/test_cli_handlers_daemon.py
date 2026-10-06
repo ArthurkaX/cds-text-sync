@@ -205,9 +205,99 @@ def test_explicit_build_timeout_is_not_recalculated(monkeypatch):
     assert calls == [("build", {}, 42)]
 
 
-def test_download_start_passthrough(daemon_calls):
-    d.dispatch_daemon(_args(command="download", start=True))
-    assert daemon_calls == [("download", {"start": True})]
+def _download_args(**kwargs):
+    kwargs.setdefault("command", "download")
+    kwargs.setdefault("start", True)
+    kwargs.setdefault("timeout", 15)
+    kwargs.setdefault("no_wait", False)
+    kwargs.setdefault("ready_var", "")
+    kwargs.setdefault("ready_timeout", None)
+    return _args(**kwargs)
+
+
+def test_download_start_passthrough_and_readiness_wait(monkeypatch, capsys):
+    """The download itself goes through, then readiness is polled separately."""
+    sent = []
+
+    def _fake_send(method, params=None, timeout=15):
+        sent.append((method, params or {}))
+        if method == "status":
+            return {
+                "ok": True,
+                "data": {"plc": {"running": True, "application_state": "run"}},
+            }
+        return {"ok": True, "data": {"downloaded": True, "online_change_option": "Never"}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    monkeypatch.setattr("cds_cli._cli_io.send_command_reverse", _fake_send)
+    monkeypatch.setattr(d._cli_ready, "_sleep", lambda _s: None)
+
+    d.dispatch_daemon(_download_args(), output_fmt="json")
+
+    methods = [method for method, _ in sent]
+    assert "download" in methods
+    assert "status" in methods
+    assert ("download", {"start": True}) in sent
+    out = capsys.readouterr().out
+    assert '"ready": true' in out
+    assert '"downloaded": true' in out
+
+
+def test_download_no_wait_does_not_poll(monkeypatch, capsys):
+    sent = []
+
+    def _fake_send(method, params=None, timeout=15):
+        sent.append(method)
+        return {"ok": True, "data": {"downloaded": True}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    monkeypatch.setattr("cds_cli._cli_io.send_command_reverse", _fake_send)
+
+    d.dispatch_daemon(_download_args(no_wait=True), output_fmt="json")
+
+    assert "status" not in sent
+    out = capsys.readouterr().out
+    assert "--no-wait" in out
+
+
+def test_download_that_never_becomes_ready_exits_nonzero(monkeypatch, capsys):
+    """A download the runtime never picked up must not read as success."""
+    def _fake_send(method, params=None, timeout=15):
+        if method == "status":
+            return {
+                "ok": True,
+                "data": {"plc": {"running": False, "application_state": "stop"}},
+            }
+        return {"ok": True, "data": {"downloaded": True}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    monkeypatch.setattr("cds_cli._cli_io.send_command_reverse", _fake_send)
+    monkeypatch.setattr(d._cli_ready, "_sleep", lambda _s: None)
+
+    with pytest.raises(SystemExit) as exc:
+        d.dispatch_daemon(_download_args(ready_timeout=0.0), output_fmt="json")
+
+    assert exc.value.code == 1
+    assert "not ready" in capsys.readouterr().err.lower()
+
+
+def test_wait_ready_uses_its_own_timeout(monkeypatch, capsys):
+    seen = {}
+
+    def _fake_wait(send, timeout=None, ready_var=""):
+        seen["timeout"] = timeout
+        seen["ready_var"] = ready_var
+        return {"ready": True, "ready_after_s": 0.1, "checks": 1}
+
+    monkeypatch.setattr(d._cli_ready, "wait_for_ready", _fake_wait)
+
+    d.dispatch_daemon(
+        _args(command="wait-ready", var="GVL_Bench.nHeartbeat", timeout=7.5),
+        output_fmt="json",
+    )
+
+    assert seen == {"timeout": 7.5, "ready_var": "GVL_Bench.nHeartbeat"}
+    assert '"ready": true' in capsys.readouterr().out
 
 
 def _profile_reply(timeouts, blocks=3):

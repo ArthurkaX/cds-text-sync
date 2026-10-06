@@ -10,7 +10,8 @@ read-log. Extracted from the main() dispatcher.
 
 Unlike the pure project/pou/visu routers, a few of these carry logic:
   * import   -> --dry-run previews via sync_compare_text; online imports are rejected
-  * download -> optional --start passthrough
+  * download -> --start passthrough, then a client-side wait for PLC readiness
+  * wait-ready -> the same readiness wait on its own (the user pressed Login)
   * plc-crc  -> optional build first
   * write    -> write_variable then read_variable read-back in one response
 """
@@ -20,12 +21,14 @@ from __future__ import annotations
 import sys
 import time
 
+from cds_cli import _cli_ready
 from cds_cli._cli_io import (
     _format_output,
     _print_error,
     _print_error_context,
     _print_info,
     _print_rp_error,
+    _send_daemon,
     cmd_daemon,
     send_command_reverse,
 )
@@ -43,7 +46,6 @@ _DAEMON_METHODS = {
     "compare": "sync_compare_text",
     "build": "build",
     "disconnect": "disconnect_from_device",
-    "download": "download",
     "start": "start_plc",
     "stop": "stop_plc",
     "app-state": "application_state",
@@ -125,6 +127,14 @@ def dispatch_daemon(args, output_fmt="json"):
     """Handle a top-level daemon command. Return True if handled, else False."""
     command = args.command
 
+    if command == "download":
+        _handle_download(args, output_fmt)
+        return True
+
+    if command == "wait-ready":
+        _handle_wait_ready(args, output_fmt)
+        return True
+
     if command in _DAEMON_METHODS:
         params = {}
         if command == "set-sync-folder":
@@ -150,8 +160,6 @@ def dispatch_daemon(args, output_fmt="json"):
                 params["refresh"] = False
         if command == "build" and getattr(args, "install", False):
             params["install"] = True
-        if command == "download" and getattr(args, "start", None) is not None:
-            params["start"] = args.start
         if command == "plc-crc" and getattr(args, "build", False):
             cmd_daemon(
                 "build",
@@ -347,3 +355,88 @@ def _read_back(name, timeout):
     return {
         "unavailable": wire.response_error(rb, "read-back failed (no error reported)")
     }
+
+
+# ── download / wait-ready: wait for the PLC application, from the client ───
+
+
+def _ready_send(method, params):
+    """One short readiness request. Separate calls are the point: the IDE is
+    idle between them, and a wait inside the daemon would freeze it."""
+    if method == "read_variable":
+        timeout = _cli_ready.READ_REQUEST_TIMEOUT_S
+    else:
+        timeout = _cli_ready.STATUS_REQUEST_TIMEOUT_S
+    return send_command_reverse(method, params or {}, timeout=timeout)
+
+
+def _wait_for_ready(args):
+    """Shared by ``cts download`` and ``cts wait-ready``.
+
+    ``download`` has its own ``--ready-timeout`` and must not inherit
+    ``--timeout``, which bounds the daemon call and may be raised for a long
+    download; ``wait-ready`` has nothing else to bound, so its ``--timeout`` is
+    the readiness budget.
+    """
+    if hasattr(args, "ready_timeout"):
+        budget = args.ready_timeout
+    else:
+        budget = getattr(args, "timeout", None)
+    ready_var = getattr(args, "ready_var", "") or getattr(args, "var", "") or ""
+    return _cli_ready.wait_for_ready(
+        _ready_send, timeout=budget, ready_var=ready_var
+    )
+
+
+def _handle_download(args, output_fmt):
+    """Download, then (unless --no-wait) wait for the application to be ready.
+
+    The daemon returns as soon as the download and its login(Never) are done;
+    it must not wait inside the command. Readiness is polled here, so the CLI
+    does not hand the user a "downloaded" that reads variables too early.
+    """
+    params = {}
+    if getattr(args, "start", None) is not None:
+        params["start"] = args.start
+    timeout = _daemon_timeout("download", getattr(args, "timeout", None), 30)
+    try:
+        response = _send_daemon("download", params, timeout=timeout)
+    except RuntimeError as e:
+        _print_error("Download failed: {0}".format(e))
+        sys.exit(1)
+    if not wire.response_ok(response):
+        _print_rp_error(response, "download")
+        sys.exit(1)
+
+    payload = dict(response.get("data", {}))
+    if getattr(args, "no_wait", False):
+        payload["ready"] = None
+        payload["note"] = (
+            "readiness was not waited for (--no-wait); the application may not "
+            "be running yet"
+        )
+        print(_format_output(payload, fmt=output_fmt, title="download"))
+        return
+
+    payload.update(_wait_for_ready(args))
+    print(_format_output(payload, fmt=output_fmt, title="download"))
+    if not payload.get("ready"):
+        _print_error(
+            "Download finished, but the application is not ready: {0}".format(
+                payload.get("reason", "unknown reason")
+            )
+        )
+        sys.exit(1)
+
+
+def _handle_wait_ready(args, output_fmt):
+    """Wait for the application to be running, without downloading.
+
+    For the case where the user pressed Login/Download in the IDE themselves:
+    the agent then waits for ready instead of reading variables immediately.
+    """
+    payload = _wait_for_ready(args)
+    print(_format_output(payload, fmt=output_fmt, title="wait-ready"))
+    if not payload.get("ready"):
+        _print_error("Not ready: {0}".format(payload.get("reason", "unknown reason")))
+        sys.exit(1)

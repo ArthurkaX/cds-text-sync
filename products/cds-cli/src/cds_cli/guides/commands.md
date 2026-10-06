@@ -226,6 +226,10 @@ Check the installed command help for whether download also starts the applicatio
 
 `cts download` performs its own full-download login — CODESYS `OnlineChangeOption.Never`, the only mode that forces a full download rather than an online change — so it does not need an online session first. The active application still needs a reachable PLC gateway (or simulation mode). The response field `online_change_option: "Never"` names that login mode — it is not a question anyone answered, and it is why the download was full rather than an online change; `started` says whether the app was started again.
 
+**Download finished is not application ready.** After the download the runtime needs another moment before the program runs, so `cts download` waits for that itself (default 30 s) before it returns, polling with separate short requests — the IDE stays free between them. The response adds `ready` and `ready_after_s`; when the wait failed it adds a `reason` and the command exits non-zero, so a "downloaded" that never started must not read as success. Pass `--ready-var GVL_Bench.nHeartbeat` (or any counter the task increments) to also require that variable to change between two reads — that is what proves the task is actually cycling, not just labelled run. `--no-wait` skips the wait; use it only when the caller waits itself.
+
+When the login or download was done by hand in the IDE — or after `cts connect` — use `cts wait-ready [--var NAME] [--timeout N]` before reading variables, instead of reading immediately and racing the runtime. Do not treat a successful download or login as "the PLC is now running the new code"; wait for ready first, then read.
+
 PLC paths (`cts plc-log --file`, `cts raw plc_files --path`) name files on the device, not on this PC, and are sent exactly as typed: a leading `/` does not survive Git Bash, whose MSYS layer rewrites it into a Windows path before `cts` even runs (the daemon then refuses it with that hint). Pass `.` — or omit the option — for the PLC root, or set `MSYS_NO_PATHCONV=1`. Host paths are the opposite: `--output` is a path on this PC and is made absolute before it is sent.
 
 ## Variables

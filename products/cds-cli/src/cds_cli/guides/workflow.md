@@ -55,7 +55,12 @@ Use this sequence for normal source changes:
 7. Inspect build output and stop on errors.
 8. Connect only when needed with `cts connect`.
 9. Run `cts download` only when the user requested deployment to the PLC.
-10. Verify application state after deployment.
+10. Verify application state after deployment — do not read variables, or report
+    the deployment as working, just because the download returned. `cts
+    download` waits for the application to be running before it returns
+    (`ready`, `ready_after_s`); when the login was done by hand in the IDE, run
+    `cts wait-ready [--var NAME]` first. A download that never became ready
+    exits non-zero and says why.
 
 There is no flag to edit the project while the IDE is online. The refusal covers every project edit: import, one-object updates, deletion, `set-sync-folder`, and simulation mode. It answers *"The IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat `cts import`."* — the message names the command to repeat (`cts import`, `cts update-pou`, `cts delete-pou`, `cts set-sync-folder`, `cts project simulate on`). If disconnecting does not clear it, end the online session in the CODESYS IDE before retrying. An edit applied online leaves the new objects half-applied: their symbols are never exported to the running application, so later reads fail with *"is not exported to the online application"* even after a full download.
 
