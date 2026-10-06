@@ -25,7 +25,7 @@ def register(subparsers):
         help="Path to snapshot for compare (default: latest in .dump/)",
     )
     project.add_argument("--device", default="", help="Device name filter (for device-status)")
-    project.add_argument("--ip", default="", help="PLC IP address (for connect)")
+    project.add_argument("--ip", default="", help="PLC IP address (for connect). connect by IP works when a network scan cannot see the PLC")
     project.add_argument("--gateway", default="Gateway-1", help="Gateway name (for connect, default: Gateway-1)")
     project.add_argument("--value", default=None, help="Value to write (for write-var)")
     project.add_argument("--username", default="", help="Username (for set-credentials)")

@@ -50,37 +50,36 @@ def cli_command(method):
     return "`cts {0}`".format(CLI_COMMANDS.get(method, method))
 
 
-def _live_session(project):
-    """The session the IDE already holds -- cached or not -- else ``None``.
+def _live_state(project):
+    """``(online, known)`` for the IDE right now, never touching the PLC.
 
-    ``live_online_session`` returns the daemon's cached handle and, when there
-    is none, *adopts* the session already online in the IDE UI. Adopting only
-    creates a wrapper around the session the user already has; it never calls
-    ``login()`` and never opens a connection (see
-    ``ide_online_helpers.live_online_session``). ``disconnect`` checks the
-    same predicate, so "edits are allowed" and "the session is gone" agree.
-
-    This is deliberately not ``is_online_session_active``: that one reads only
-    the daemon's cache, so it answers "offline" whenever the daemon started
-    before the user logged in -- exactly how an online import slipped through
-    while the IDE was logged in. Caching a handle it already had is not a
-    project modification (see command_registry.NO_PERMISSION).
+    ``ide_online_helpers.live_online_state`` builds a fresh wrapper and reads
+    it -- it never logs in and never opens a connection. ``known`` is False
+    when the question could not be asked at all; the guard then fails closed.
     """
     try:
-        return ide_online_helpers.live_online_session(project)
+        state = ide_online_helpers.live_online_state(project)
     except Exception:
-        return None
+        return None, False
+    return state.get("online"), bool(state.get("known"))
 
 
 def project_is_online(project):
-    """True when the IDE currently holds a PLC session.
+    """True when the IDE holds a session -- or when that cannot be ruled out.
 
-    The same predicate ``project_edit_refusal`` uses, exposed for edits that
-    are not ``cts`` commands (the Settings window writing the daemon config):
-    they still must not touch the project while online, and the answer has to
-    come from one place or the two disagree.
+    The live answer, not the daemon's cache. Two live failures came from the
+    cache: a wrapper the user had already logged out kept reporting online
+    (endless "run cts disconnect"), and an empty cache reported "offline"
+    while the IDE was online, so two imports slipped through. Unknown is
+    treated as online, because a blind spot must not read as permission.
+
+    Also the predicate the Settings window uses before writing the daemon
+    config, so "edits are refused" and "the config may not be saved" agree.
     """
-    return _live_session(project) is not None
+    online, known = _live_state(project)
+    if known and online is False:
+        return False
+    return True
 
 
 def project_edit_refusal(project, command):

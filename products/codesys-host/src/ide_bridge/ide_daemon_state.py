@@ -691,20 +691,56 @@ def _bool_or_none(value):
     return None
 
 
+#: How long the live PLC answer in a status/context snapshot may be reused.
+#: Short on purpose: the whole complaint was a status that lagged minutes
+#: behind the IDE.  The edit guard does not use this memo at all.
+_SNAPSHOT_MAX_AGE_S = 5.0
+
+
 def _get_plc_status_snapshot():
-    """Return cached PLC/online state without initiating a new login."""
+    """The PLC/online state, answered live (with a short memo) not from cache.
+
+    ``online`` now comes from ``ide_online_helpers.live_online_state``: a
+    fresh wrapper written from the IDE's current session.  The old version read
+    only the cached handle, so ``cts status`` and ``cts ping`` kept reporting
+    "online / run" minutes after the user did Online -> Logout.  ``source`` and
+    ``age_s`` say how fresh the answer is; ``owner`` names who opened the
+    session when that is distinguishable.  Never logs in and never connects.
+    """
     state = sys._codesys_daemon_loop
-    online_app = state.get("online_app")
-    target_app = state.get("online_target_app")
     result = {
-        "known": online_app is not None,
+        "known": False,
         "connected": False,
         "online": None,
         "running": None,
         "application_state": "",
         "application": "",
         "path": "",
+        "source": "unknown",
+        "age_s": None,
+        "owner": None,
+        "adopted": False,
     }
+
+    # Live truth first: it may adopt a session the daemon had not cached, or
+    # drop a stale one, and the detail reads below must see that outcome.
+    try:
+        import ide_online_helpers as _helpers
+
+        projects = state.get("projects")
+        project = getattr(projects, "primary", None) if projects is not None else None
+        live = _helpers.live_online_state(project, max_age_s=_SNAPSHOT_MAX_AGE_S)
+        result["online"] = live.get("online")
+        result["known"] = bool(live.get("known"))
+        result["source"] = live.get("source", "unknown")
+        result["age_s"] = live.get("age_s")
+        result["owner"] = live.get("owner")
+        result["adopted"] = bool(live.get("adopted"))
+    except Exception as exc:
+        result["live_error"] = str(exc)
+
+    online_app = state.get("online_app")
+    target_app = state.get("online_target_app")
     if target_app is not None:
         result["application"] = _obj_name(target_app)
         result["path"] = _build_path(target_app)
@@ -712,7 +748,6 @@ def _get_plc_status_snapshot():
         return result
 
     is_connected = _read_online_attr(online_app, "is_connected")
-    is_online = _read_online_attr(online_app, "is_online")
     is_running = _read_online_attr(online_app, "is_running")
     app_state = _read_online_attr(online_app, "application_state")
 
@@ -721,22 +756,20 @@ def _get_plc_status_snapshot():
         # Status is diagnostic only. CODESYS may transiently reject this
         # property while the existing wrapper remains usable for read/write;
         # never destroy a live session cache from an observation failure.
-        result["connected"] = False
+        result["connected"] = bool(result["online"])
         return result
 
     connected = _bool_or_none(is_connected)
-    result["online"] = _bool_or_none(is_online)
+    if connected is not None:
+        result["connected"] = bool(connected)
+    else:
+        result["connected"] = bool(result["online"])
     result["running"] = _bool_or_none(is_running)
     if app_state is not None and not isinstance(app_state, dict):
         result["application_state"] = str(app_state)
         state_running = _bool_or_none(app_state)
         if result["running"] is None and state_running is not None:
             result["running"] = state_running
-    if connected is None:
-        connected = True
     elif isinstance(app_state, dict):
         result["application_state_error"] = app_state.get("error", "")
-    result["connected"] = bool(connected)
-    if result["online"] is None:
-        result["online"] = result["connected"]
     return result

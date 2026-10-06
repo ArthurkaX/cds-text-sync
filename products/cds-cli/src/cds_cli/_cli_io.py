@@ -261,6 +261,33 @@ def _edits_text(value):
     return "unknown"
 
 
+def _plc_provenance(plc):
+    """`` (live, 0.2s)`` / `` (cached, 140s ago)`` / `` (…, adopted)``, or "".
+
+    The daemon now answers the PLC question live; the suffix is how a reader
+    tells a fresh reading from a memoised one without opening the JSON. Older
+    daemons send no ``source``, and then nothing is appended.
+    """
+    source = plc.get("source")
+    age = plc.get("age_s")
+    if source == "live":
+        bits = ["live"]
+        if isinstance(age, (int, float)):
+            bits.append("{0:g}s".format(age))
+    elif source == "cached":
+        bits = ["cached"]
+        if isinstance(age, (int, float)):
+            bits.append("{0:g}s ago".format(age))
+    else:
+        return ""
+    if plc.get("adopted"):
+        bits.append("adopted")
+        owner = plc.get("owner")
+        if owner:
+            bits.append(str(owner))
+    return " (" + ", ".join(bits) + ")"
+
+
 def _context_line(context):
     """The one-line ``[ctx] ...`` footer, or "" when there is no context.
 
@@ -275,6 +302,7 @@ def _context_line(context):
     state = plc.get("state")
     if state:
         plc_text = f"{plc_text}/{state}"
+    plc_text += _plc_provenance(plc)
     edits = _edits_text(context.get("edits_allowed"))
     line = "[ctx] project={0} ide={1} plc={2} edits={3}".format(
         context.get("project") or "?", context.get("ide") or "?", plc_text, edits

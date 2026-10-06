@@ -103,6 +103,33 @@ def test_data_plane_requires_an_existing_session(helpers, name):
     assert "require_online_session" in _global_names(getattr(helpers, name))
 
 
+@pytest.mark.parametrize("name", DATA_PLANE)
+def test_data_plane_never_logs_in(helpers, name):
+    """Login is what blocked the daemon ~610 s on an unreachable PLC.
+
+    The data-plane functions must reach an existing logged-in session, not
+    create one: ``login`` must not appear in their globals at all.
+    """
+    reached = _global_names(getattr(helpers, name))
+    assert "login" not in reached
+    assert "_require_existing_login" in reached
+
+
+def test_write_variable_refuses_a_not_logged_in_session_without_login(helpers, monkeypatch):
+    class _OnlineApp:
+        is_logged_in = False
+
+        def login(self, *args):
+            raise AssertionError("a not-logged-in data session must not login")
+
+    monkeypatch.setattr(helpers, "require_online_session", lambda project: _OnlineApp())
+
+    with pytest.raises(RuntimeError) as excinfo:
+        helpers.write_variable_impl(object(), "GVL.x", "1")
+
+    assert "cts connect" in str(excinfo.value)
+
+
 def test_connect_may_still_open_a_session(helpers):
     """The guard must not have been applied so widely that connecting broke."""
     assert "ensure_online_connection" in _global_names(
@@ -116,8 +143,10 @@ def test_the_context_probe_never_opens_a_session(helpers, monkeypatch):
     assert "ensure_online_connection" not in reached
     assert "login" not in reached
 
+    # An application exists but no wrapper can be built for it: the probe must
+    # answer "unknown", not guess.
     setattr(sys, STATE_KEY, {})
-    monkeypatch.setattr(helpers, "get_active_application", lambda project: None)
+    monkeypatch.setattr(helpers, "get_active_application", lambda project: object())
     monkeypatch.setitem(sys.modules, "scriptengine", SimpleNamespace())
     assert helpers.probe_online_state(project=object()) == (None, False)
 

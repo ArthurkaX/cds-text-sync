@@ -9,6 +9,7 @@ from __future__ import print_function
 import os
 import re
 import sys
+import time
 
 
 # ── Atomic file write using .NET System.IO.File.Replace ────────────────────
@@ -286,13 +287,30 @@ def ensure_online_connection(project, prefer_device=False):
     )
 
 
-def cache_online_app(online_app, target_app):
-    """Remember a live wrapper for later commands. Best-effort."""
+def cache_online_app(online_app, target_app, owner=None):
+    """Remember a live wrapper for later commands. Best-effort.
+
+    ``owner`` records *who* opened the session -- ``"cts"`` when this daemon
+    called ``login`` itself, ``"ide"`` when we merely wrapped a session the
+    user's IDE UI already holds.  It is best-effort provenance for the context
+    line, never a safety input: a session adopted from the UI and one this
+    daemon logged in are equally real.
+    """
     state = _get_daemon_state()
     if state is None or online_app is None:
         return
     state["online_app"] = online_app
     state["online_target_app"] = target_app
+    if owner:
+        state["session_owner"] = owner
+
+
+def session_owner():
+    """Who opened the cached session -- ``"cts"`` / ``"ide"`` -- or ``None``."""
+    state = _get_daemon_state()
+    if state is None:
+        return None
+    return state.get("session_owner")
 
 
 def clear_cached_online_app():
@@ -302,6 +320,7 @@ def clear_cached_online_app():
         return
     state["online_app"] = None
     state["online_target_app"] = None
+    state.pop("session_owner", None)
 
 
 def cache_if_live(online_app, target_app):
@@ -348,28 +367,40 @@ def adopt_existing_online_session(project):
 def live_online_session(project):
     """The IDE's live online session -- cached or adopted -- else ``None``.
 
-    The one predicate behind both the edit guard and ``disconnect``, so
-    "edits are refused" and "the session is really gone" mean the same thing.
-    Adopting only wraps a session the IDE UI already holds; it never logs in
-    and never opens a connection.
+    The data plane and ``disconnect`` use this: they may *use* a session, never
+    open one.  A cached wrapper is returned as-is, even when its properties
+    cannot be read -- CODESYS can reject ``is_connected`` while that same
+    wrapper is still able to read and write, and dropping it would strand a
+    usable session.  Adopting wraps a session the IDE UI already holds; it
+    never logs in and never opens a connection.
+
+    This is deliberately not the edit guard's predicate any more.  The guard
+    needs the strict tri-state from :func:`live_online_state`, because a
+    trusted-but-stale cache is exactly how an online import once slipped
+    through.  Here, a cache that is merely unreadable must not block a read.
     """
     online_app, _target = _get_cached_online_app()
-    if online_app is None:
-        online_app, _target = adopt_existing_online_session(project)
-    return online_app
+    if online_app is not None:
+        return online_app
+    online, _known, _adopted = _probe_online_now(project)
+    if online:
+        online_app, _target = _get_cached_online_app()
+        return online_app
+    return None
 
 
 def require_online_session(project):
     """Return a cached or already-IDE-online application without logging in.
 
     For read/write of PLC data, never build a session implicitly. Creating one
-    means create_online_application plus _ensure_logged_in, and the latter walks
-    a list of login candidates calling online_app.login() on each. When the PLC
-    is unreachable — or the project simply has compile errors — every candidate
-    has to fail before the call returns, and the single-threaded daemon loop
-    serves nothing meanwhile. Measured at ~145 s against a project that would
-    not compile, after which the read failed anyway. Issue a second command
-    inside that window and the daemon looks dead rather than busy.
+    means create_online_application plus a login; ``online_app.login()`` blocks
+    inside the IDE until it succeeds or the PLC is ruled out, and the
+    single-threaded daemon loop serves nothing meanwhile. Measured at ~145 s
+    against a project that would not compile, and ~610 s against an
+    unreachable PLC on ``cts write``, after which the command failed anyway.
+    Issue a second command inside that window and the daemon looks dead rather
+    than busy. The data plane therefore only ever *uses* a session; when there
+    is none logged in it says so at once (``_require_existing_login``).
 
     Connecting is what connect_to_device is for. There the user asked for it and
     the wait is the point; here it was a side effect of `cts read`.
@@ -416,50 +447,34 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     Returns:
         dict with state info
     """
+    # A remembered IP lets a later `cts connect` (no --ip) reuse the last one
+    # that worked.  Kept in the daemon's own state, never in the project: it
+    # describes this machine's network, not the project.
+    daemon_state = _get_daemon_state()
+    if not ip_address and daemon_state is not None:
+        ip_address = daemon_state.get("last_connect_ip") or ""
+
     if ip_address:
-        candidates = []
-        main_device = _find_main_device(project)
-        if main_device is not None:
-            candidates.append(main_device)
-        for child in project.get_children(True):
-            if hasattr(child, 'set_gateway_and_address'):
-                candidates.append(child)
-        seen = set()
-        device = None
-        device_errors = []
-        for cand in candidates:
-            key = str(getattr(cand, 'Guid', id(cand)))
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                cand.set_gateway_and_address(gateway_name, ip_address)
-                device = cand
-                break
-            except Exception as e:
-                device_errors.append(str(e))
+        device = _set_device_address(project, gateway_name, ip_address)
         if device is None:
             raise RuntimeError(
-                "No writable device in the project supports set_gateway_and_address. "
-                "Errors: " + "; ".join(device_errors[-5:])
+                "No writable device in the project supports "
+                "set_gateway_and_address, or the address could not be set."
             )
-    
+        if daemon_state is not None:
+            daemon_state["last_connect_ip"] = str(ip_address)
+
     online_app, target_app = ensure_online_connection(project)
     app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
 
     # Cache immediately.  A manually-opened IDE online session can be wrapped
     # by this call; subsequent read/write commands must use that same handle
     # even when there is nothing for ``cts connect`` to do.
-    try:
-        daemon_state = _get_daemon_state()
-        if daemon_state is not None:
-            daemon_state['online_app'] = online_app
-            daemon_state['online_target_app'] = target_app
-    except Exception:
-        pass
-
     reused_session = _online_app_is_live(online_app)
-    
+    cache_online_app(
+        online_app, target_app, owner=(session_owner() if reused_session else None) or "ide"
+    )
+
     # ``login`` takes (OnlineChangeOption, delete_foreign_apps).  A CRC probe
     # must never turn a project mismatch into an online change or a download.
     # In particular, ``Never`` *forces* a full download and ``Try`` falls back
@@ -478,21 +493,17 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
                 "not expose OnlineChangeOption.Keep. Refusing options that may "
                 "perform an online change or full download."
             )
-        try:
-            online_app.login(keep, False)
-        except Exception as e:
-            raise RuntimeError(
-                "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
-                "was requested: {0}".format(e)
-            )
-    
+        _login_keep(online_app, keep, project, gateway_name, ip_address)
+        # This daemon opened the session; the context line can now say so.
+        cache_online_app(online_app, target_app, owner="cts")
+
     state = "connected"
     if hasattr(online_app, 'application_state'):
         try:
             state = str(online_app.application_state)
         except Exception:
             pass
-    
+
     return {
         "state": state,
         "application": app_name,
@@ -502,35 +513,221 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     }
 
 
-def _online_app_is_live(online_app):
-    """Best-effort: does this online application currently hold a session?
+def _set_device_address(project, gateway_name, ip_address):
+    """Set the PLC address on the first writable device; return it or ``None``.
 
-    Mirrors the probing in _active_app_online_state so "connected" means the
-    same thing to disconnect as it does to the import preflight.
+    Prefers a CODESYS *router address* from a targeted lookup
+    (``ide_online_address.resolve_router_address``) over handing the raw IP to
+    a parameter that wants an address -- the mistake behind "No connection to
+    the device. Please rescan your network."  Falls back to the old
+    ``(gateway_name, ip_address)`` string form so a build without the lookup
+    still tries instead of failing outright.
+    """
+    gateway = None
+    router = None
+    try:
+        import scriptengine as se
+
+        import ide_online_address as address
+
+        gateway = address.find_gateway(se.online, gateway_name)
+        router = address.resolve_router_address(gateway, ip_address)
+    except Exception:
+        gateway = None
+        router = None
+
+    attempts = []
+    if router is not None and gateway is not None:
+        attempts.append((gateway, router))
+    attempts.append((gateway_name, ip_address))
+
+    candidates = []
+    main_device = _find_main_device(project)
+    if main_device is not None and hasattr(main_device, 'set_gateway_and_address'):
+        candidates.append(main_device)
+    try:
+        children = project.get_children(True)
+    except Exception:
+        children = []
+    for child in children:
+        if hasattr(child, 'set_gateway_and_address'):
+            candidates.append(child)
+
+    seen = set()
+    errors = []
+    for cand in candidates:
+        key = str(getattr(cand, 'Guid', id(cand)))
+        if key in seen:
+            continue
+        seen.add(key)
+        for first, second in attempts:
+            try:
+                cand.set_gateway_and_address(first, second)
+                return cand
+            except Exception as error:
+                errors.append(str(error))
+    if errors:
+        _log_address_failure(errors)
+    return None
+
+
+def _log_address_failure(errors):
+    """One line to the daemon log; the caller raises the user-facing error."""
+    try:
+        from ide_daemon_state import _log
+
+        _log("connect: set_gateway_and_address failed: {0}".format("; ".join(errors[-3:])))
+    except Exception:
+        pass
+
+
+def _login_keep(online_app, keep, project, gateway_name, ip_address):
+    """Login with ``Keep``, retrying once when the address went stale.
+
+    ``find_address_by_ip`` can resolve an address that the gateway later drops
+    (the PLC re-registered).  One re-resolve-and-retry covers that; every other
+    failure is classified for the user and raised at once.
+    """
+    try:
+        online_app.login(keep, False)
+        return
+    except Exception as error:
+        first = error
+
+    import ide_online_address as address
+
+    if ip_address and address.unreachable_error(first):
+        _set_device_address(project, gateway_name, ip_address)
+        try:
+            online_app.login(keep, False)
+            return
+        except Exception as error:
+            first = error
+
+    raise RuntimeError(_login_error_text(ip_address, first))
+
+
+def _login_error_text(ip_address, error):
+    """Name the real cause: unreachable, login refused, or anything else.
+
+    The old message always said "No connection to the device. Please rescan
+    your network." even when the PLC answered and only refused the login --
+    sending the user to rescan a network that was fine.
+    """
+    where = str(ip_address) if ip_address else "the device"
+
+    import ide_online_address as address
+
+    if address.unreachable_error(error):
+        return (
+            "PLC unreachable: the gateway could not reach {0}; no download was "
+            "requested. Check the network and that the PLC is powered, then "
+            "retry. If it answers ping/ssh but CODESYS still cannot reach it, "
+            "log in once by hand in the IDE: Online -> Login.".format(where)
+        )
+    if address.login_refused_error(error):
+        return (
+            "PLC reachable, but the login was refused (credentials or a user "
+            "management prompt); no download was requested: {0}. Set them with "
+            "`cts set-credentials`, or answer the prompt in the IDE.".format(error)
+        )
+    return (
+        "Safe PLC login (OnlineChangeOption.Keep) failed; no download was "
+        "requested: {0}".format(error)
+    )
+
+
+#: Values that mean "this wrapper holds a session" / "it does not".
+_ONLINE_STATES = frozenset(["true", "1", "yes", "run", "running", "online", "connected"])
+_OFFLINE_STATES = frozenset(
+    ["false", "0", "no", "stop", "stopped", "offline", "disconnected"]
+)
+
+
+def _truthy(value):
+    """True / False for a flag CODESYS rendered as a bool or a string, else None."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in _ONLINE_STATES:
+        return True
+    if text in _OFFLINE_STATES:
+        return False
+    return None
+
+
+def _online_app_liveness(online_app):
+    """True / False / None: does this wrapper hold a session *right now*?
+
+    ``None`` is the third answer, and the edit guard depends on it: it means
+    the wrapper exposes none of the properties, or every read raised, so the
+    question could not be asked.  Callers that must fail closed treat ``None``
+    as "possibly online", the way the old boolean could not.
+
+    ``is_logged_in`` is asked first -- it is the ScriptEngine's own answer to
+    exactly this question.  ``application_state`` is the SP22 fallback for
+    wrappers that expose neither connection flag but still report ``run``.
     """
     if online_app is None:
         return False
-    for attr in ("is_connected", "is_online"):
-        if hasattr(online_app, attr):
-            try:
-                value = getattr(online_app, attr)
-                if callable(value):
-                    value = value()
-                if value:
-                    return True
-            except Exception:
-                pass
-    # Some SP22 OnlineApplication wrappers expose neither connection flag
-    # reliably, while application_state remains available and reports run.
+    saw_answer = False
+    for attr in ("is_logged_in", "is_connected", "is_online"):
+        try:
+            value = getattr(online_app, attr)
+        except AttributeError:
+            continue
+        except Exception:
+            continue
+        try:
+            if callable(value):
+                value = value()
+        except Exception:
+            continue
+        answer = _truthy(value)
+        if answer is None:
+            continue
+        saw_answer = True
+        if answer:
+            return True
     try:
         state = getattr(online_app, "application_state")
-        state = state() if callable(state) else state
-        return str(state).strip().lower() in (
-            "run", "running", "online", "connected"
-        )
+        if callable(state):
+            state = state()
+        text = str(state).strip().lower()
+        if text in _ONLINE_STATES:
+            return True
+        if text in _OFFLINE_STATES:
+            return False
+        # An unrecognised state (e.g. "none" on an unreachable PLC) is not an
+        # answer: calling it "offline" would let an edit through.  Leave it to
+        # the unknown path so the guard fails closed.
     except Exception:
         pass
-    return False
+    return False if saw_answer else None
+
+
+def _online_app_is_live(online_app):
+    """Best-effort boolean: does this online application hold a session?
+
+    True only when a probe positively read a live session.  An unreadable
+    wrapper answers False here; code that must fail closed uses
+    :func:`_online_app_liveness` and treats the ``None`` it produced as
+    "possibly online" instead.
+    """
+    return _online_app_liveness(online_app) is True
+
+
+def _active_application(project):
+    """The active application, or ``None`` -- never raises.
+
+    ``get_active_application`` can raise on a project whose API this build does
+    not expose.  For the live probe that is the same fact as "no active
+    application": nothing to be logged in to.
+    """
+    try:
+        return get_active_application(project)
+    except Exception:
+        return None
 
 
 def _new_online_handle(project):
@@ -551,24 +748,150 @@ def _new_online_handle(project):
         return None, None
 
 
+def _probe_online_now(project):
+    """Ask the IDE itself, via a fresh wrapper: ``(online, known, adopted)``.
+
+    A fresh ``create_online_application`` wrapper reflects the session the IDE
+    holds *now*, not the daemon's cache -- which is the whole point.  Reading a
+    cached wrapper after the user did Online -> Logout kept reporting the old
+    answer.  The wrapper is never logged in; building it is what the old
+    ``adopt_existing_online_session`` already did.
+
+    ``known`` is False only when no answer could be had at all (no active
+    application, no ScriptEngine).  The fresh answer is trusted over the cache;
+    the cache is the fallback only when a fresh wrapper cannot be built.
+    """
+    cached, _cached_target = _get_cached_online_app()
+    fresh, fresh_target = (None, None)
+    if project is not None:
+        fresh, fresh_target = _new_online_handle(project)
+    if fresh is not None:
+        answer = _online_app_liveness(fresh)
+        if answer is True:
+            adopted = cached is not fresh
+            owner = session_owner() if (cached is not None and cached is not fresh) else "ide"
+            cache_online_app(fresh, fresh_target, owner=owner)
+            return True, True, adopted
+        if answer is False:
+            # The IDE says the session is gone: drop a stale cache so status
+            # and the guard stop reporting the old session.
+            clear_cached_online_app()
+            return False, True, False
+        # answer is None: the fresh wrapper could not be read.  Fall through and
+        # try the cache rather than claim an answer we do not have.
+    # No fresh wrapper.  If the project has no active application at all, no
+    # session can exist: that is a definite offline, not an unknown -- the old
+    # adopt path answered the same way, and calling it unknown would refuse
+    # every edit on an offline project that simply has no active application.
+    if project is not None and _active_application(project) is None:
+        if cached is not None:
+            cached_answer = _online_app_liveness(cached)
+            if cached_answer is True:
+                return True, True, False
+            if cached_answer is None:
+                # A cached handle we cannot read might still be live: refuse
+                # rather than declare the project offline and allow an edit.
+                return None, False, False
+        clear_cached_online_app()
+        return False, True, False
+    if cached is not None:
+        answer = _online_app_liveness(cached)
+        if answer is True:
+            return True, True, False
+        if answer is False:
+            return False, True, False
+    return None, False, False
+
+
+#: Short memo so a burst of responses (each carries a context block) does not
+#: build a fresh wrapper every time.  The edit guard bypasses it: an edit must
+#: see the state at the moment it runs, not a five-second-old one.
+_LIVE_MEMO = {
+    "at": 0.0,
+    "online": None,
+    "known": False,
+    "owner": None,
+    "adopted": False,
+    "pid": 0,
+    "project_id": None,
+}
+
+
+def live_online_state(project, max_age_s=0.0):
+    """The live PLC session question, with provenance.
+
+    Returns ``{online, known, source, age_s, owner, adopted}``:
+
+    * ``online`` is True/False/None; ``None`` with ``known`` False means the
+      question could not be asked (the edit guard then refuses).
+    * ``source`` is ``"live"`` (just probed), ``"cached"`` (a memo within
+      ``max_age_s``) or ``"unknown"``.
+    * ``age_s`` is the probe's own duration for a live answer, or the memo's
+      age for a cached one -- what the ``[ctx]`` line prints.
+    * ``owner`` is ``"cts"`` / ``"ide"`` when distinguishable.
+    * ``adopted`` is True when this probe found a session the daemon had not
+      cached (a UI session it wrapped for the first time).
+    """
+    now = time.time()
+    pid = os.getpid()
+    project_id = id(project) if project is not None else None
+    memo = _LIVE_MEMO
+    if (
+        max_age_s > 0
+        and memo["pid"] == pid
+        and memo["project_id"] == project_id
+        and (now - memo["at"]) <= max_age_s
+    ):
+        return {
+            "online": memo["online"],
+            "known": memo["known"],
+            "source": "cached",
+            "age_s": int(max(0.0, now - memo["at"])),
+            "owner": memo["owner"],
+            "adopted": False,
+        }
+    started = time.time()
+    online, known, adopted = _probe_online_now(project)
+    elapsed = max(0.0, time.time() - started)
+    memo.update({
+        "at": time.time(),
+        "online": online,
+        "known": known,
+        "owner": session_owner(),
+        "adopted": adopted,
+        "pid": pid,
+        "project_id": project_id,
+    })
+    if not known:
+        return {
+            "online": None,
+            "known": False,
+            "source": "unknown",
+            "age_s": None,
+            "owner": None,
+            "adopted": False,
+        }
+    return {
+        "online": online,
+        "known": True,
+        "source": "live",
+        "age_s": round(elapsed, 1),
+        "owner": session_owner(),
+        "adopted": adopted,
+    }
+
+
 def probe_online_state(project):
     """Is the IDE online *right now*? Returns ``(online, known)``.
 
     ``known`` is False only when the question could not be asked at all -- no
     active application, no ScriptEngine, the wrapper raised -- and the caller
-    must then report "unknown" instead of guessing. A found session is cached,
-    so the expensive answer is paid once. Never logs in and never connects.
+    must then report "unknown" instead of guessing. Never logs in and never
+    connects. Thin wrapper over :func:`live_online_state` so the cache-blinding
+    probe and the edit guard ask one question, not two.
     """
-    online_app, _target = _get_cached_online_app()
-    if online_app is not None:
-        return True, True
-    online_app, target_app = _new_online_handle(project)
-    if online_app is None:
-        return None, False
-    if _online_app_is_live(online_app):
-        cache_online_app(online_app, target_app)
-        return True, True
-    return False, True
+    state = live_online_state(project)
+    return state["online"], state["known"]
 
 
 #: Said when a logout did not end the IDE's session. The user has to finish
@@ -683,13 +1006,8 @@ def download_impl(project, start=True):
             pass
 
     # Refresh the cached online_app so later reads/writes reuse this session.
-    try:
-        daemon_state = _get_daemon_state()
-        if daemon_state is not None:
-            daemon_state['online_app'] = online_app
-            daemon_state['online_target_app'] = target_app
-    except Exception:
-        pass
+    # This daemon logged in for the download, so it owns the session.
+    cache_online_app(online_app, target_app, owner="cts")
 
     app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
     # ``online_change_option`` names the CODESYS login mode: "Never" is what
@@ -715,61 +1033,58 @@ def _call_online_app(io_obj, names, *args):
     raise AttributeError("None of these methods exist: {0}".format(", ".join(names)))
 
 
-def _ensure_logged_in(online_app):
-    """Ensure a session exists without permitting an update or download."""
-    # Check if already logged in via is_logged_in
-    logged_in = False
+def _session_is_logged_in(online_app):
+    """Whether the wrapper holds a logged-in session; never opens one.
+
+    ``is_logged_in`` is asked first.  When it is absent (some SP22 builds),
+    a readable ``application_state`` counts as logged in -- the same fallback
+    the old helper used -- and a wrapper that can answer neither is treated as
+    not logged in.
+    """
     if hasattr(online_app, 'is_logged_in'):
         try:
             val = online_app.is_logged_in
             if callable(val):
                 val = val()
-            logged_in = bool(val)
+            return bool(val)
         except Exception:
             pass
-    else:
-        # Fallback: try application_state (some SP22 versions lack is_logged_in)
-        try:
-            online_app.application_state
-            logged_in = True
-        except Exception:
-            pass
-    
-    if logged_in:
-        return
-    if not hasattr(online_app, 'login'):
-        raise TypeError("Online application does not support login().")
-
-    import scriptengine as se
     try:
-        keep = se.OnlineChangeOption.Keep
+        online_app.application_state
+        return True
     except Exception:
-        raise RuntimeError(
-            "Safe PLC login is unavailable: this CODESYS ScriptEngine does "
-            "not expose OnlineChangeOption.Keep. Refusing options that may "
-            "perform an online change or full download."
-        )
-    try:
-        online_app.login(keep, False)
-    except Exception as error:
-        raise RuntimeError(
-            "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
-            "was requested: {0}".format(error)
-        )
+        return False
+
+
+def _require_existing_login(online_app):
+    """Refuse (fast) when there is no logged-in session to use.
+
+    The data plane may *use* a session, never open one.  This used to call
+    ``online_app.login(Keep, False)`` when the session was not logged in, and
+    against an unreachable PLC that blocked inside the single-threaded daemon
+    loop for ~610 s: ``cts write`` looked like a hang and its reply was lost.
+    Opening a session is what ``connect_to_device`` is for, where the wait is
+    the point; here a fast, honest error is the right answer.
+    """
+    if _session_is_logged_in(online_app):
+        return
+    raise RuntimeError(
+        "Not connected: the PLC session is not logged in. Run 'cts connect' "
+        "first. A read/write never opens a session itself -- an implicit login "
+        "against an unreachable PLC blocks the daemon for minutes."
+    )
 
 
 def read_variable_impl(project, variable_name):
     """Read a variable value from an online PLC connection.
     
-    Auto-connects if online_app is cached but not logged in.
     """
     if not variable_name:
         raise ValueError("Variable name is required")
     
     online_app = require_online_session(project)
 
-    # Auto-login if needed
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
     
     candidates = [variable_name]
     if not variable_name.startswith("Application."):
@@ -809,7 +1124,6 @@ def read_variable_impl(project, variable_name):
 def write_variable_impl(project, variable_name, value):
     """Write a value to a PLC variable via online connection.
     
-    Auto-connects if online_app is cached but not logged in.
     """
     if not variable_name:
         raise ValueError("Variable name is required")
@@ -818,8 +1132,7 @@ def write_variable_impl(project, variable_name, value):
     
     online_app = require_online_session(project)
 
-    # Auto-login if needed
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
     
     value = normalize_write_value(value)
     candidates = [variable_name]
@@ -924,7 +1237,7 @@ def read_variables_impl(project, names):
         return {"results": [], "count": 0}
 
     online_app = require_online_session(project)
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
 
     results = _bisect_read_variable(names, online_app)
     return {"results": results, "count": len(results)}
@@ -945,7 +1258,7 @@ def write_variables_impl(project, items, raw_value=False):
         return {"results": [], "written": 0}
 
     online_app = require_online_session(project)
-    _ensure_logged_in(online_app)
+    _require_existing_login(online_app)
 
     results = []
     prepared = 0
