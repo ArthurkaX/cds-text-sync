@@ -131,7 +131,8 @@ def test_help_header_single_instance_no_target(monkeypatch, capsys):
     cli_main._print_help_header(target=None)
     out = capsys.readouterr().out
     assert "Target: ide-3684  project VKO" in out
-    assert "Pass --target ide-3684 on every command." in out
+    # One IDE: nothing to choose between, so no --target advice.
+    assert "Pass --target" not in out
 
 
 def test_help_header_multiple_instances_ambiguous(monkeypatch, capsys):

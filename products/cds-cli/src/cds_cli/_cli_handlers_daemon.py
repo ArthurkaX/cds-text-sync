@@ -57,8 +57,14 @@ _DAEMON_METHODS = {
 
 _PROFILE_LOOKUP_TIMEOUT = 10
 
+#: Methods whose *refusal* is routine (an online import is refused at once),
+#: so announcing "Timeout: 180s ..." before the call is noise: the command
+#: never starts, and the line reads as if it had. The timeout is still used;
+#: only the announcement is suppressed.
+_NO_TIMEOUT_ANNOUNCE = frozenset(["sync_import_text"])
 
-def _daemon_timeout(method, requested_timeout=None, fallback=30):
+
+def _daemon_timeout(method, requested_timeout=None, fallback=30, announce=None):
     """Resolve a daemon-owned automatic timeout; explicit values win.
 
     ``timeout_profile`` is intentionally a short, read-only preflight which
@@ -68,6 +74,8 @@ def _daemon_timeout(method, requested_timeout=None, fallback=30):
     """
     if requested_timeout is not None:
         return requested_timeout
+    if announce is None:
+        announce = method not in _NO_TIMEOUT_ANNOUNCE
     try:
         response = send_command_reverse(
             "timeout_profile", {}, timeout=_PROFILE_LOOKUP_TIMEOUT
@@ -77,7 +85,8 @@ def _daemon_timeout(method, requested_timeout=None, fallback=30):
         if value is not None:
             blocks = profile.get("block_count")
             label = "unknown size" if blocks is None else "{0} ST block(s)".format(blocks)
-            _print_info("Timeout: {0}s for {1}".format(value, label))
+            if announce:
+                _print_info("Timeout: {0}s for {1}".format(value, label))
             return float(value)
     except (RuntimeError, TypeError, ValueError, AttributeError):
         pass

@@ -85,7 +85,14 @@ _BATCH_SIZE = 500
 # -- Help Header & Target Discovery ------------------------------------------
 
 
-def _format_target_help_header(hello: Hello) -> str:
+def _format_target_help_header(hello: Hello, advise: bool = True) -> str:
+    """The "which IDE am I talking to" header.
+
+    ``advise`` adds "Pass --target ... on every command." It is dropped when
+    there is only one IDE: with nothing to choose between, telling the user to
+    pass --target for the sole instance is advice they do not need (and the
+    `cts raw` escape hatch repeated it on every help call).
+    """
     prj = hello.project
     if prj and prj.get("name"):
         details = []
@@ -94,9 +101,11 @@ def _format_target_help_header(hello: Hello) -> str:
         if prj.get("sync_folder"):
             details.append(f"sync: {prj['sync_folder']}")
         details_str = f" ({', '.join(details)})" if details else ""
-        header = f"Target: {hello.id}  project {prj['name']}{details_str}\nPass --target {hello.id} on every command."
+        header = f"Target: {hello.id}  project {prj['name']}{details_str}"
     else:
-        header = f"Target: {hello.id}  (no project open)\nPass --target {hello.id} on every command."
+        header = f"Target: {hello.id}  (no project open)"
+    if advise:
+        header += f"\nPass --target {hello.id} on every command."
     return header
 
 
@@ -129,7 +138,8 @@ def _print_help_header(target: str | int | None = None) -> None:
             print(f"Note: target ide-{target_pid} not found among running IDEs.{_ssh_hint_suffix(discovered)}\n")
     else:
         if len(discovered) == 1:
-            print(_format_target_help_header(discovered[0]) + "\n")
+            # One IDE: there is nothing to disambiguate, so no --target advice.
+            print(_format_target_help_header(discovered[0], advise=False) + "\n")
         elif len(discovered) > 1:
             print(format_ambiguous(discovered) + "\n")
         else:

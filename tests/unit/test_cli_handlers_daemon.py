@@ -178,6 +178,38 @@ def test_download_start_passthrough(daemon_calls):
     assert daemon_calls == [("download", {"start": True})]
 
 
+def _profile_reply(timeouts, blocks=3):
+    def _fake_send(method, params=None, timeout=15):
+        return {
+            "ok": True,
+            "data": {"timeouts": timeouts, "block_count": blocks},
+        }
+
+    return _fake_send
+
+
+def test_import_does_not_announce_a_timeout_before_it_is_refused(
+    monkeypatch, capsys, daemon_calls
+):
+    """An online import is refused at once; "[INFO] Timeout: 180s" then reads
+    as if something had started."""
+    monkeypatch.setattr(
+        d, "send_command_reverse", _profile_reply({"sync_import_text": 180})
+    )
+
+    d.dispatch_daemon(_args(command="import", timeout=None))
+
+    assert "Timeout:" not in capsys.readouterr().err
+
+
+def test_build_still_announces_the_resolved_timeout(monkeypatch, capsys, daemon_calls):
+    monkeypatch.setattr(d, "send_command_reverse", _profile_reply({"build": 180}))
+
+    d.dispatch_daemon(_args(command="build", timeout=None))
+
+    assert "Timeout: 180s" in capsys.readouterr().err
+
+
 def test_connect_maps_ip_and_gateway(daemon_calls):
     d.dispatch_daemon(_args(command="connect", ip="1.2.3.4", gateway="GW"))
     assert daemon_calls == [

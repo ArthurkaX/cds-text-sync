@@ -25,6 +25,8 @@ Global flags (`--pretty`/`-p`, `--output`, `--target`, `--expect-project`) go **
 
 Daemon permissions (the deny list and poll interval) are stored **inside the project**, on the Project Information object as the `cds-daemon-config` property — they travel with the `.project` and survive a restart, but only once the project is saved in the IDE; an edit while the IDE is online changes memory only and is refused. `cts permissions` reports this, and the daemon compares ignore the property so a settings change does not show up as a modified object.
 
+The daemon is not a background service: it is a script (`Project_daemon.py`) that runs **inside** CODESYS. Start the IDE, open the project, and run that script (from the `cds-text-sync` menu; `cts install-menu` writes the menu stubs). To restart the daemon, stop the running script and run `Project_daemon.py` again. Its log goes to the IDE message list — read it with `cts read-log` — and to the file `%TEMP%\cds-daemon-debug.log`. `cts status` or `cts ping` tells you whether it is answering; when a command times out, the CLI now says whether the daemon is busy or not running.
+
 ## Folder and IDE Synchronization
 
 | Goal | Command |
