@@ -9,6 +9,7 @@ from __future__ import print_function
 import os
 import re
 import sys
+import time
 
 
 # ── Atomic file write using .NET System.IO.File.Replace ────────────────────
@@ -286,13 +287,30 @@ def ensure_online_connection(project, prefer_device=False):
     )
 
 
-def cache_online_app(online_app, target_app):
-    """Remember a live wrapper for later commands. Best-effort."""
+def cache_online_app(online_app, target_app, owner=None):
+    """Remember a live wrapper for later commands. Best-effort.
+
+    ``owner`` records *who* opened the session -- ``"cts"`` when this daemon
+    called ``login`` itself, ``"ide"`` when we merely wrapped a session the
+    user's IDE UI already holds.  It is best-effort provenance for the context
+    line, never a safety input: a session adopted from the UI and one this
+    daemon logged in are equally real.
+    """
     state = _get_daemon_state()
     if state is None or online_app is None:
         return
     state["online_app"] = online_app
     state["online_target_app"] = target_app
+    if owner:
+        state["session_owner"] = owner
+
+
+def session_owner():
+    """Who opened the cached session -- ``"cts"`` / ``"ide"`` -- or ``None``."""
+    state = _get_daemon_state()
+    if state is None:
+        return None
+    return state.get("session_owner")
 
 
 def clear_cached_online_app():
@@ -302,6 +320,7 @@ def clear_cached_online_app():
         return
     state["online_app"] = None
     state["online_target_app"] = None
+    state.pop("session_owner", None)
 
 
 def cache_if_live(online_app, target_app):
@@ -348,15 +367,26 @@ def adopt_existing_online_session(project):
 def live_online_session(project):
     """The IDE's live online session -- cached or adopted -- else ``None``.
 
-    The one predicate behind both the edit guard and ``disconnect``, so
-    "edits are refused" and "the session is really gone" mean the same thing.
-    Adopting only wraps a session the IDE UI already holds; it never logs in
-    and never opens a connection.
+    The data plane and ``disconnect`` use this: they may *use* a session, never
+    open one.  A cached wrapper is returned as-is, even when its properties
+    cannot be read -- CODESYS can reject ``is_connected`` while that same
+    wrapper is still able to read and write, and dropping it would strand a
+    usable session.  Adopting wraps a session the IDE UI already holds; it
+    never logs in and never opens a connection.
+
+    This is deliberately not the edit guard's predicate any more.  The guard
+    needs the strict tri-state from :func:`live_online_state`, because a
+    trusted-but-stale cache is exactly how an online import once slipped
+    through.  Here, a cache that is merely unreadable must not block a read.
     """
     online_app, _target = _get_cached_online_app()
-    if online_app is None:
-        online_app, _target = adopt_existing_online_session(project)
-    return online_app
+    if online_app is not None:
+        return online_app
+    online, _known, _adopted = _probe_online_now(project)
+    if online:
+        online_app, _target = _get_cached_online_app()
+        return online_app
+    return None
 
 
 def require_online_session(project):
@@ -450,15 +480,10 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     # Cache immediately.  A manually-opened IDE online session can be wrapped
     # by this call; subsequent read/write commands must use that same handle
     # even when there is nothing for ``cts connect`` to do.
-    try:
-        daemon_state = _get_daemon_state()
-        if daemon_state is not None:
-            daemon_state['online_app'] = online_app
-            daemon_state['online_target_app'] = target_app
-    except Exception:
-        pass
-
     reused_session = _online_app_is_live(online_app)
+    cache_online_app(
+        online_app, target_app, owner=(session_owner() if reused_session else None) or "ide"
+    )
     
     # ``login`` takes (OnlineChangeOption, delete_foreign_apps).  A CRC probe
     # must never turn a project mismatch into an online change or a download.
@@ -485,7 +510,9 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
                 "Safe PLC login (OnlineChangeOption.Keep) failed; no download "
                 "was requested: {0}".format(e)
             )
-    
+        # This daemon opened the session; the context line can now say so.
+        cache_online_app(online_app, target_app, owner="cts")
+
     state = "connected"
     if hasattr(online_app, 'application_state'):
         try:
@@ -502,35 +529,97 @@ def connect_to_device_impl(project, ip_address="", gateway_name="Gateway-1"):
     }
 
 
-def _online_app_is_live(online_app):
-    """Best-effort: does this online application currently hold a session?
+#: Values that mean "this wrapper holds a session" / "it does not".
+_ONLINE_STATES = frozenset(["true", "1", "yes", "run", "running", "online", "connected"])
+_OFFLINE_STATES = frozenset(
+    ["false", "0", "no", "stop", "stopped", "offline", "disconnected"]
+)
 
-    Mirrors the probing in _active_app_online_state so "connected" means the
-    same thing to disconnect as it does to the import preflight.
+
+def _truthy(value):
+    """True / False for a flag CODESYS rendered as a bool or a string, else None."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in _ONLINE_STATES:
+        return True
+    if text in _OFFLINE_STATES:
+        return False
+    return None
+
+
+def _online_app_liveness(online_app):
+    """True / False / None: does this wrapper hold a session *right now*?
+
+    ``None`` is the third answer, and the edit guard depends on it: it means
+    the wrapper exposes none of the properties, or every read raised, so the
+    question could not be asked.  Callers that must fail closed treat ``None``
+    as "possibly online", the way the old boolean could not.
+
+    ``is_logged_in`` is asked first -- it is the ScriptEngine's own answer to
+    exactly this question.  ``application_state`` is the SP22 fallback for
+    wrappers that expose neither connection flag but still report ``run``.
     """
     if online_app is None:
         return False
-    for attr in ("is_connected", "is_online"):
-        if hasattr(online_app, attr):
-            try:
-                value = getattr(online_app, attr)
-                if callable(value):
-                    value = value()
-                if value:
-                    return True
-            except Exception:
-                pass
-    # Some SP22 OnlineApplication wrappers expose neither connection flag
-    # reliably, while application_state remains available and reports run.
+    saw_answer = False
+    for attr in ("is_logged_in", "is_connected", "is_online"):
+        try:
+            value = getattr(online_app, attr)
+        except AttributeError:
+            continue
+        except Exception:
+            continue
+        try:
+            if callable(value):
+                value = value()
+        except Exception:
+            continue
+        answer = _truthy(value)
+        if answer is None:
+            continue
+        saw_answer = True
+        if answer:
+            return True
     try:
         state = getattr(online_app, "application_state")
-        state = state() if callable(state) else state
-        return str(state).strip().lower() in (
-            "run", "running", "online", "connected"
-        )
+        if callable(state):
+            state = state()
+        text = str(state).strip().lower()
+        if text in _ONLINE_STATES:
+            return True
+        if text in _OFFLINE_STATES:
+            return False
+        # An unrecognised state (e.g. "none" on an unreachable PLC) is not an
+        # answer: calling it "offline" would let an edit through.  Leave it to
+        # the unknown path so the guard fails closed.
     except Exception:
         pass
-    return False
+    return False if saw_answer else None
+
+
+def _online_app_is_live(online_app):
+    """Best-effort boolean: does this online application hold a session?
+
+    True only when a probe positively read a live session.  An unreadable
+    wrapper answers False here; code that must fail closed uses
+    :func:`_online_app_liveness` and treats the ``None`` it produced as
+    "possibly online" instead.
+    """
+    return _online_app_liveness(online_app) is True
+
+
+def _active_application(project):
+    """The active application, or ``None`` -- never raises.
+
+    ``get_active_application`` can raise on a project whose API this build does
+    not expose.  For the live probe that is the same fact as "no active
+    application": nothing to be logged in to.
+    """
+    try:
+        return get_active_application(project)
+    except Exception:
+        return None
 
 
 def _new_online_handle(project):
@@ -551,24 +640,150 @@ def _new_online_handle(project):
         return None, None
 
 
+def _probe_online_now(project):
+    """Ask the IDE itself, via a fresh wrapper: ``(online, known, adopted)``.
+
+    A fresh ``create_online_application`` wrapper reflects the session the IDE
+    holds *now*, not the daemon's cache -- which is the whole point.  Reading a
+    cached wrapper after the user did Online -> Logout kept reporting the old
+    answer.  The wrapper is never logged in; building it is what the old
+    ``adopt_existing_online_session`` already did.
+
+    ``known`` is False only when no answer could be had at all (no active
+    application, no ScriptEngine).  The fresh answer is trusted over the cache;
+    the cache is the fallback only when a fresh wrapper cannot be built.
+    """
+    cached, _cached_target = _get_cached_online_app()
+    fresh, fresh_target = (None, None)
+    if project is not None:
+        fresh, fresh_target = _new_online_handle(project)
+    if fresh is not None:
+        answer = _online_app_liveness(fresh)
+        if answer is True:
+            adopted = cached is not fresh
+            owner = session_owner() if (cached is not None and cached is not fresh) else "ide"
+            cache_online_app(fresh, fresh_target, owner=owner)
+            return True, True, adopted
+        if answer is False:
+            # The IDE says the session is gone: drop a stale cache so status
+            # and the guard stop reporting the old session.
+            clear_cached_online_app()
+            return False, True, False
+        # answer is None: the fresh wrapper could not be read.  Fall through and
+        # try the cache rather than claim an answer we do not have.
+    # No fresh wrapper.  If the project has no active application at all, no
+    # session can exist: that is a definite offline, not an unknown -- the old
+    # adopt path answered the same way, and calling it unknown would refuse
+    # every edit on an offline project that simply has no active application.
+    if project is not None and _active_application(project) is None:
+        if cached is not None:
+            cached_answer = _online_app_liveness(cached)
+            if cached_answer is True:
+                return True, True, False
+            if cached_answer is None:
+                # A cached handle we cannot read might still be live: refuse
+                # rather than declare the project offline and allow an edit.
+                return None, False, False
+        clear_cached_online_app()
+        return False, True, False
+    if cached is not None:
+        answer = _online_app_liveness(cached)
+        if answer is True:
+            return True, True, False
+        if answer is False:
+            return False, True, False
+    return None, False, False
+
+
+#: Short memo so a burst of responses (each carries a context block) does not
+#: build a fresh wrapper every time.  The edit guard bypasses it: an edit must
+#: see the state at the moment it runs, not a five-second-old one.
+_LIVE_MEMO = {
+    "at": 0.0,
+    "online": None,
+    "known": False,
+    "owner": None,
+    "adopted": False,
+    "pid": 0,
+    "project_id": None,
+}
+
+
+def live_online_state(project, max_age_s=0.0):
+    """The live PLC session question, with provenance.
+
+    Returns ``{online, known, source, age_s, owner, adopted}``:
+
+    * ``online`` is True/False/None; ``None`` with ``known`` False means the
+      question could not be asked (the edit guard then refuses).
+    * ``source`` is ``"live"`` (just probed), ``"cached"`` (a memo within
+      ``max_age_s``) or ``"unknown"``.
+    * ``age_s`` is the probe's own duration for a live answer, or the memo's
+      age for a cached one -- what the ``[ctx]`` line prints.
+    * ``owner`` is ``"cts"`` / ``"ide"`` when distinguishable.
+    * ``adopted`` is True when this probe found a session the daemon had not
+      cached (a UI session it wrapped for the first time).
+    """
+    now = time.time()
+    pid = os.getpid()
+    project_id = id(project) if project is not None else None
+    memo = _LIVE_MEMO
+    if (
+        max_age_s > 0
+        and memo["pid"] == pid
+        and memo["project_id"] == project_id
+        and (now - memo["at"]) <= max_age_s
+    ):
+        return {
+            "online": memo["online"],
+            "known": memo["known"],
+            "source": "cached",
+            "age_s": int(max(0.0, now - memo["at"])),
+            "owner": memo["owner"],
+            "adopted": False,
+        }
+    started = time.time()
+    online, known, adopted = _probe_online_now(project)
+    elapsed = max(0.0, time.time() - started)
+    memo.update({
+        "at": time.time(),
+        "online": online,
+        "known": known,
+        "owner": session_owner(),
+        "adopted": adopted,
+        "pid": pid,
+        "project_id": project_id,
+    })
+    if not known:
+        return {
+            "online": None,
+            "known": False,
+            "source": "unknown",
+            "age_s": None,
+            "owner": None,
+            "adopted": False,
+        }
+    return {
+        "online": online,
+        "known": True,
+        "source": "live",
+        "age_s": round(elapsed, 1),
+        "owner": session_owner(),
+        "adopted": adopted,
+    }
+
+
 def probe_online_state(project):
     """Is the IDE online *right now*? Returns ``(online, known)``.
 
     ``known`` is False only when the question could not be asked at all -- no
     active application, no ScriptEngine, the wrapper raised -- and the caller
-    must then report "unknown" instead of guessing. A found session is cached,
-    so the expensive answer is paid once. Never logs in and never connects.
+    must then report "unknown" instead of guessing. Never logs in and never
+    connects. Thin wrapper over :func:`live_online_state` so the cache-blinding
+    probe and the edit guard ask one question, not two.
     """
-    online_app, _target = _get_cached_online_app()
-    if online_app is not None:
-        return True, True
-    online_app, target_app = _new_online_handle(project)
-    if online_app is None:
-        return None, False
-    if _online_app_is_live(online_app):
-        cache_online_app(online_app, target_app)
-        return True, True
-    return False, True
+    state = live_online_state(project)
+    return state["online"], state["known"]
 
 
 #: Said when a logout did not end the IDE's session. The user has to finish
@@ -683,13 +898,8 @@ def download_impl(project, start=True):
             pass
 
     # Refresh the cached online_app so later reads/writes reuse this session.
-    try:
-        daemon_state = _get_daemon_state()
-        if daemon_state is not None:
-            daemon_state['online_app'] = online_app
-            daemon_state['online_target_app'] = target_app
-    except Exception:
-        pass
+    # This daemon logged in for the download, so it owns the session.
+    cache_online_app(online_app, target_app, owner="cts")
 
     app_name = getattr(target_app, 'get_name', lambda: "Unknown")()
     # ``online_change_option`` names the CODESYS login mode: "Never" is what

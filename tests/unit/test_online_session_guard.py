@@ -116,8 +116,10 @@ def test_the_context_probe_never_opens_a_session(helpers, monkeypatch):
     assert "ensure_online_connection" not in reached
     assert "login" not in reached
 
+    # An application exists but no wrapper can be built for it: the probe must
+    # answer "unknown", not guess.
     setattr(sys, STATE_KEY, {})
-    monkeypatch.setattr(helpers, "get_active_application", lambda project: None)
+    monkeypatch.setattr(helpers, "get_active_application", lambda project: object())
     monkeypatch.setitem(sys.modules, "scriptengine", SimpleNamespace())
     assert helpers.probe_online_state(project=object()) == (None, False)
 

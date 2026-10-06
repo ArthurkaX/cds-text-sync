@@ -61,8 +61,32 @@ def _clean_daemon_state():
 
 def test_offline_lets_the_edit_through(monkeypatch):
     guard = _load("ide_online_guard")
-    monkeypatch.setattr(guard, "_live_session", lambda project: None)
+    monkeypatch.setattr(guard, "_live_state", lambda project: (False, True))
     assert guard.project_edit_refusal(object(), "sync_import_text") is None
+
+
+def test_an_unreadable_state_refuses_the_edit(monkeypatch):
+    """A blind spot must not read as permission.
+
+    Live, the daemon had no cached handle while the IDE was online, reported
+    "offline", and two ``cts import --save`` slipped through. When the question
+    cannot be asked (``known`` is False) the edit is refused, not allowed.
+    """
+    guard = _load("ide_online_guard")
+    monkeypatch.setattr(guard, "_live_state", lambda project: (None, False))
+
+    refusal = guard.project_edit_refusal(object(), "sync_import_text")
+
+    assert refusal is not None
+    assert refusal["ok"] is False
+    assert "cts disconnect" in refusal["error"]
+
+
+def test_unknown_online_is_treated_as_online(monkeypatch):
+    """``(None, True)`` -- the IDE answered but not clearly -- also refuses."""
+    guard = _load("ide_online_guard")
+    monkeypatch.setattr(guard, "_live_state", lambda project: (None, True))
+    assert guard.project_is_online(object()) is True
 
 
 def test_online_refuses_and_names_the_command():
@@ -358,7 +382,7 @@ def test_a_refusal_is_written_to_the_daemon_log(monkeypatch):
     guard = _load("ide_online_guard")
     logged = []
     monkeypatch.setattr(guard, "_log", lambda msg: logged.append(msg))
-    monkeypatch.setattr(guard, "_live_session", lambda project: object())
+    monkeypatch.setattr(guard, "_live_state", lambda project: (True, True))
 
     guard.project_edit_refusal(object(), "sync_import_text")
 
@@ -369,7 +393,7 @@ def test_no_log_line_when_the_edit_is_allowed(monkeypatch):
     guard = _load("ide_online_guard")
     logged = []
     monkeypatch.setattr(guard, "_log", lambda msg: logged.append(msg))
-    monkeypatch.setattr(guard, "_live_session", lambda project: None)
+    monkeypatch.setattr(guard, "_live_state", lambda project: (False, True))
 
     assert guard.project_edit_refusal(object(), "sync_import_text") is None
     assert logged == []

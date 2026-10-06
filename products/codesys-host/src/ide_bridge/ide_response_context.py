@@ -8,12 +8,13 @@ builds a small ``context`` block -- project, IDE id, PLC state, whether edits
 are allowed -- and the reverse-pipe loop attaches it to every command response
 next to the existing ``instance``.
 
-Cheap by construction: it reads the daemon's cached state (the same snapshot
-``cts ping`` reports), and it never logs in, never opens a connection and
-never waits. The one probe it may make is the guard's own -- asking the IDE
-whether a session already exists -- and only when the cache is blind, because
-``null`` alone could not tell "the IDE is offline" from "the daemon has not
-looked". When even that cannot be answered, it says so: ``online: null``.
+The PLC state comes from the same live snapshot ``cts ping`` reports, which
+builds a fresh wrapper from the IDE's current session -- never a login, never
+an opened connection, never a wait -- so ``plc: null`` no longer lagged behind
+an Online -> Logout.  ``plc.source`` / ``plc.age_s`` say whether the reading is
+live or a short-lived memo, and ``plc.owner`` / ``plc.adopted`` name who holds
+the session when that is distinguishable.  When even the live probe cannot be
+answered, it says so: ``online: null``.
 
 IronPython 2.7: no f-strings, no annotations, no pathlib.
 """
@@ -49,7 +50,13 @@ def _project_block(instance_info):
 
 
 def _plc_block(snapshot):
-    """``{online, state, application}`` from the cached PLC snapshot."""
+    """The PLC block for the context: state plus how the answer was obtained.
+
+    ``source`` / ``age_s`` let a reader tell a live reading from a stale one
+    (``plc=offline (live, 0.2s)`` vs ``plc=online (cached, 140s ago)``);
+    ``owner`` names who opened the session when it is distinguishable, and
+    ``adopted`` says this reading wrapped a UI session for the first time.
+    """
     online = snapshot.get("online")
     state = snapshot.get("application_state") or ""
     if not state:
@@ -62,6 +69,10 @@ def _plc_block(snapshot):
         "online": online,
         "state": state,
         "application": snapshot.get("application", "") or "",
+        "source": snapshot.get("source", "unknown"),
+        "age_s": snapshot.get("age_s"),
+        "owner": snapshot.get("owner"),
+        "adopted": bool(snapshot.get("adopted")),
     }
 
 
@@ -113,8 +124,9 @@ def _hint(project_name, online):
         )
     if online is None:
         return (
-            "The daemon holds no cached PLC session; the IDE may still be "
-            "online. An edit can still be refused.",
+            "The PLC state could not be read, so project edits are refused "
+            "(a blind spot must not read as permission). Check the IDE: if it "
+            "is logged in, run Online -> Logout, then repeat the command.",
             "cts disconnect",
         )
     return None, None
