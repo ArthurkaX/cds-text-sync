@@ -1,0 +1,3225 @@
+{
+ "families": {
+  "IDeviceId": {
+   "members": {
+    "id": [
+     "string id { get; }"
+    ],
+    "type": [
+     "int type { get; }"
+    ],
+    "version": [
+     "string version { get; }"
+    ]
+   },
+   "types": [
+    "IDeviceId"
+   ]
+  },
+  "IExportReporter": {
+   "members": {
+    "aborting": [
+     "bool aborting { get; }"
+    ],
+    "error": [
+     "void error(IExtendedObject<IScriptObject> obj, string message);"
+    ],
+    "nonexportable": [
+     "void nonexportable(IExtendedObject<IScriptObject> obj);"
+    ],
+    "warning": [
+     "void warning(IExtendedObject<IScriptObject> obj, string message);"
+    ]
+   },
+   "types": [
+    "IExportReporter"
+   ]
+  },
+  "IImportReporter": {
+   "members": {
+    "aborting": [
+     "bool aborting { get; }"
+    ],
+    "added": [
+     "void added(IExtendedObject<IScriptObject> obj);"
+    ],
+    "error": [
+     "void error(string message);"
+    ],
+    "replaced": [
+     "void replaced(IExtendedObject<IScriptObject> obj);"
+    ],
+    "resolve_conflict": [
+     "ConflictResolve resolve_conflict(IExtendedObject<IScriptObject> obj);"
+    ],
+    "skipped": [
+     "void skipped(string objectname);"
+    ],
+    "warning": [
+     "void warning(string message);"
+    ]
+   },
+   "types": [
+    "IImportReporter"
+   ]
+  },
+  "ILibCategory": {
+   "members": {
+    "default_name": [
+     "string default_name { get; }"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "localized_name": [
+     "string localized_name { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "parent": [
+     "ILibCategory parent { get; }"
+    ],
+    "version": [
+     "Version version { get; }"
+    ]
+   },
+   "types": [
+    "ILibCategory"
+   ]
+  },
+  "ILibManager": {
+   "members": {
+    "categories": [
+     "IList<object> categories { get; }"
+    ],
+    "find_library": [
+     "IList<object> find_library(string display_name);"
+    ],
+    "get_all_libraries": [
+     "IList<object> get_all_libraries(ILibRepository repository);",
+     "IList<object> get_all_libraries(bool exclude_shadowed_libs = true);"
+    ],
+    "get_category": [
+     "ILibCategory get_category(Guid guid);"
+    ],
+    "get_file_path": [
+     "string get_file_path(IManagedLib library);"
+    ],
+    "get_library": [
+     "IManagedLib get_library(string name, [Optional] ILibRepository repository);"
+    ],
+    "insert_repository": [
+     "ILibRepository insert_repository(string rootfolder, string name, int index = -1);"
+    ],
+    "install_library": [
+     "IManagedLib install_library(string filepath, [Optional] ILibRepository repository, bool overwrite = false);"
+    ],
+    "move_repository": [
+     "void move_repository(ILibRepository repository, int new_index);"
+    ],
+    "remove_repository": [
+     "void remove_repository(ILibRepository repository, bool delete_on_disk = false);"
+    ],
+    "repositories": [
+     "IList<object> repositories { get; }"
+    ],
+    "top_level_categories": [
+     "IList<object> top_level_categories { get; }"
+    ],
+    "uninstall_library": [
+     "void uninstall_library(ILibRepository repository, IManagedLib library);"
+    ],
+    "update_repository": [
+     "void update_repository(ILibRepository repository, [Optional] string new_name, [Optional] string new_location, bool copy_libraries = false);"
+    ]
+   },
+   "types": [
+    "ILibManager"
+   ]
+  },
+  "ILibRepository": {
+   "members": {
+    "editable": [
+     "bool editable { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "root_folder": [
+     "string root_folder { get; }"
+    ]
+   },
+   "types": [
+    "ILibRepository"
+   ]
+  },
+  "IManagedLib": {
+   "members": {
+    "categories": [
+     "IList<object> categories { get; }"
+    ],
+    "company": [
+     "string company { get; }"
+    ],
+    "default_namespace": [
+     "string default_namespace { get; }"
+    ],
+    "dependencies": [
+     "IList<object> dependencies { get; }"
+    ],
+    "displayname": [
+     "string displayname { get; }"
+    ],
+    "title": [
+     "string title { get; }"
+    ],
+    "version": [
+     "Version version { get; }"
+    ]
+   },
+   "types": [
+    "IManagedLib"
+   ]
+  },
+  "IModuleId": {
+   "members": {
+    "module_id": [
+     "string module_id { get; }"
+    ]
+   },
+   "types": [
+    "IModuleId"
+   ]
+  },
+  "INativeExportReporter": {
+   "members": {
+    "cancel": [
+     "void cancel(string message);"
+    ],
+    "skipped": [
+     "void skipped(string type_name, string serializable_value_name);"
+    ],
+    "warn": [
+     "void warn(string message);"
+    ]
+   },
+   "types": [
+    "INativeExportReporter"
+   ]
+  },
+  "INativeImportHandler": {
+   "members": {
+    "conflict": [
+     "NativeImportResolve conflict(string name, IExtendedObject<IScriptObject> existingObject, Guid newguid);"
+    ],
+    "progress": [
+     "void progress(string name, IExtendedObject<IScriptObject> pastedObject, Exception exception);"
+    ],
+    "skipped": [
+     "void skipped(IList<object> name);"
+    ]
+   },
+   "types": [
+    "INativeImportHandler"
+   ]
+  },
+  "IScriptApplication": {
+   "members": {
+    "build": [
+     "void build();"
+    ],
+    "clean": [
+     "void clean();"
+    ],
+    "create_boot_application": [
+     "void create_boot_application(string output_filename);",
+     "void create_boot_application(string output_filename, bool update_compile_info = false, bool write_visu_files = false);"
+    ],
+    "create_task_configuration": [
+     "IExtendedObject<IScriptObject> create_task_configuration();"
+    ],
+    "generate_code": [
+     "void generate_code();"
+    ],
+    "is_active_application": [
+     "bool is_active_application { get; }"
+    ],
+    "is_online_change_possible": [
+     "bool is_online_change_possible { get; }"
+    ],
+    "is_uptodate": [
+     "bool is_uptodate { get; }"
+    ],
+    "rebuild": [
+     "void rebuild();"
+    ]
+   },
+   "types": [
+    "IScriptApplication",
+    "IScriptApplication2",
+    "IScriptApplication3",
+    "IScriptApplication4"
+   ]
+  },
+  "IScriptApplicationMarker": {
+   "members": {
+    "is_application": [
+     "bool is_application { get; }"
+    ]
+   },
+   "types": [
+    "IScriptApplicationMarker"
+   ]
+  },
+  "IScriptBuildProperties": {
+   "members": {
+    "compiler_defines": [
+     "string compiler_defines { get; set; }"
+    ],
+    "compiler_defines_is_valid": [
+     "bool compiler_defines_is_valid { get; }"
+    ],
+    "enable_system_call": [
+     "bool enable_system_call { get; set; }"
+    ],
+    "enable_system_call_is_valid": [
+     "bool enable_system_call_is_valid { get; }"
+    ],
+    "exclude_from_build": [
+     "bool exclude_from_build { get; set; }"
+    ],
+    "exclude_from_build_is_valid": [
+     "bool exclude_from_build_is_valid { get; }"
+    ],
+    "external": [
+     "bool external { get; set; }"
+    ],
+    "external_is_valid": [
+     "bool external_is_valid { get; }"
+    ],
+    "link_always": [
+     "bool link_always { get; set; }"
+    ],
+    "link_always_is_valid": [
+     "bool link_always_is_valid { get; }"
+    ]
+   },
+   "types": [
+    "IScriptBuildProperties"
+   ]
+  },
+  "IScriptCommand": {
+   "members": {
+    "description": [
+     "string description { get; }"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "tokens": [
+     "string[] tokens { get; }"
+    ]
+   },
+   "types": [
+    "IScriptCommand"
+   ]
+  },
+  "IScriptCommandPermission": {
+   "members": {
+    "command_guid": [
+     "Guid command_guid { get; }"
+    ]
+   },
+   "types": [
+    "IScriptCommandPermission"
+   ]
+  },
+  "IScriptCommunicationSettings": {
+   "members": {
+    "TrackingMode": [
+     "DeviceTrackingMode TrackingMode { get; }"
+    ],
+    "device_address": [
+     "string device_address { get; }"
+    ],
+    "device_name": [
+     "string device_name { get; }"
+    ],
+    "gateway_guid": [
+     "Guid gateway_guid { get; }"
+    ],
+    "is_communication_encrypted": [
+     "bool is_communication_encrypted { get; set; }"
+    ],
+    "monitoring_interval": [
+     "TimeSpan monitoring_interval { get; }"
+    ],
+    "monitoring_interval_msec": [
+     "int monitoring_interval_msec { get; }"
+    ],
+    "prompt_at_login": [
+     "bool prompt_at_login { get; }"
+    ],
+    "scanned_device_name": [
+     "string scanned_device_name { get; }"
+    ],
+    "scanned_ip_address_and_port": [
+     "string scanned_ip_address_and_port { get; }"
+    ],
+    "scanned_target_id": [
+     "string scanned_target_id { get; }"
+    ],
+    "scanned_target_name": [
+     "string scanned_target_name { get; }"
+    ],
+    "scanned_target_type": [
+     "string scanned_target_type { get; }"
+    ],
+    "scanned_target_vendor": [
+     "string scanned_target_vendor { get; }"
+    ],
+    "scanned_target_version": [
+     "string scanned_target_version { get; }"
+    ],
+    "secure_online_mode": [
+     "bool secure_online_mode { get; }"
+    ]
+   },
+   "types": [
+    "IScriptCommunicationSettings",
+    "IScriptCommunicationSettings2"
+   ]
+  },
+  "IScriptComparedObject": {
+   "members": {
+    "differences": [
+     "ObjectDifferences differences { get; }"
+    ],
+    "left_object": [
+     "IExtendedObject<IScriptObject> left_object { get; }"
+    ],
+    "right_object": [
+     "IExtendedObject<IScriptObject> right_object { get; }"
+    ]
+   },
+   "types": [
+    "IScriptComparedObject"
+   ]
+  },
+  "IScriptComparisonResult": {
+   "members": {
+    "get_changed_objects": [
+     "IEnumerable<IScriptComparedObject> get_changed_objects(ObjectDifferences state = ObjectDifferences.ANY_CHANGES);"
+    ],
+    "get_diff_state": [
+     "IScriptComparedObject get_diff_state(IExtendedObject<IScriptObject> script_object);"
+    ],
+    "left_project": [
+     "IExtendedObject<IScriptProject> left_project { get; }"
+    ],
+    "right_project": [
+     "IExtendedObject<IScriptProject> right_project { get; }"
+    ]
+   },
+   "types": [
+    "IScriptComparisonResult"
+   ]
+  },
+  "IScriptCompoundDataElement": {
+   "members": {
+    "contains": [
+     "bool contains(IScriptDataElement sub_element);",
+     "bool contains(string stIdentifier);"
+    ]
+   },
+   "types": [
+    "IScriptCompoundDataElement"
+   ]
+  },
+  "IScriptConnector": {
+   "members": {
+    "additional_interfaces": [
+     "IList<object> additional_interfaces { get; }"
+    ],
+    "connector_id": [
+     "int connector_id { get; }"
+    ],
+    "connector_role": [
+     "ConnectorRole connector_role { get; }"
+    ],
+    "get_device_object": [
+     "IExtendedObject<IScriptObject> get_device_object();"
+    ],
+    "host_parameters": [
+     "IScriptDeviceParameterSet host_parameters { get; }"
+    ],
+    "host_path": [
+     "int host_path { get; }"
+    ],
+    "interface_name": [
+     "string interface_name { get; }"
+    ],
+    "is_explicit": [
+     "bool is_explicit { get; }"
+    ],
+    "module_type": [
+     "int module_type { get; }"
+    ]
+   },
+   "types": [
+    "IScriptConnector",
+    "IScriptConnector2"
+   ]
+  },
+  "IScriptDataElement": {
+   "members": {
+    "io_mapping": [
+     "IScriptIoMapping io_mapping { get; }"
+    ],
+    "is_mappable_io": [
+     "bool is_mappable_io { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDataElement2"
+   ]
+  },
+  "IScriptDeviceCategory": {
+   "members": {
+    "category_id": [
+     "int category_id { get; }"
+    ],
+    "description": [
+     "string description { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "parent_category": [
+     "Guid parent_category { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceCategory"
+   ]
+  },
+  "IScriptDeviceCollection": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ],
+    "get_devices_of_vendor": [
+     "IScriptDeviceCollection get_devices_of_vendor(string vendor);"
+    ],
+    "vendors": [
+     "IList<object> vendors { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceCollection"
+   ]
+  },
+  "IScriptDeviceConnector": {
+   "members": {
+    "driver_info": [
+     "IScriptDriverInfo driver_info { get; }"
+    ],
+    "io_always_mapping": [
+     "bool io_always_mapping { get; set; }"
+    ],
+    "parent": [
+     "IScriptDeviceConnectorSet parent { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceConnector",
+    "IScriptDeviceConnector2",
+    "IScriptDeviceConnector3"
+   ]
+  },
+  "IScriptDeviceConnectorSet": {
+   "members": {
+    "by_id": [
+     "IScriptDeviceConnector by_id(int id);"
+    ],
+    "contains": [
+     "bool contains(IScriptDeviceConnector element);",
+     "bool contains(int id);",
+     "bool contains(string visible_name);"
+    ],
+    "get_device_object": [
+     "IExtendedObject<IScriptObject> get_device_object();"
+    ]
+   },
+   "types": [
+    "IScriptDeviceConnectorSet"
+   ]
+  },
+  "IScriptDeviceDescription": {
+   "members": {
+    "connectors": [
+     "IScriptDeviceConnectorSet connectors { get; }"
+    ],
+    "device_id": [
+     "IDeviceId device_id { get; }"
+    ],
+    "device_info": [
+     "IScriptDeviceInfo device_info { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceDescription",
+    "IScriptDeviceDescription2"
+   ]
+  },
+  "IScriptDeviceFamily": {
+   "members": {
+    "description": [
+     "string description { get; }"
+    ],
+    "family_id": [
+     "int family_id { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "parent_family": [
+     "string parent_family { get; }"
+    ],
+    "sub_families": [
+     "IList<object> sub_families { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceFamily"
+   ]
+  },
+  "IScriptDeviceGroup": {
+   "members": {
+    "check_cyclic_membership": [
+     "bool check_cyclic_membership(string new_group_member);"
+    ],
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ],
+    "group_members": [
+     "IList<string> group_members { get; }"
+    ],
+    "name": [
+     "string name { get; set; }"
+    ],
+    "user_members": [
+     "IList<string> user_members { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceGroup"
+   ]
+  },
+  "IScriptDeviceGroupList": {
+   "members": {
+    "__len__": [
+     "int __len__ { get; }"
+    ],
+    "add": [
+     "IScriptDeviceGroup add(string name);"
+    ],
+    "clear": [
+     "void clear();"
+    ],
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ],
+    "remove": [
+     "bool remove(string name);"
+    ]
+   },
+   "types": [
+    "IScriptDeviceGroupList"
+   ]
+  },
+  "IScriptDeviceInfo": {
+   "members": {
+    "categories": [
+     "IList<object> categories { get; }"
+    ],
+    "custom": [
+     "string custom { get; }"
+    ],
+    "default_instance_name": [
+     "string default_instance_name { get; }"
+    ],
+    "description": [
+     "string description { get; }"
+    ],
+    "families": [
+     "IList<object> families { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "order_number": [
+     "string order_number { get; }"
+    ],
+    "vendor": [
+     "string vendor { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceInfo",
+    "IScriptDeviceInfo2"
+   ]
+  },
+  "IScriptDeviceInstance": {
+   "members": {
+    "BaseName": [
+     "string BaseName { get; set; }"
+    ],
+    "FbName": [
+     "string FbName { get; }"
+    ],
+    "FbNameDiag": [
+     "string FbNameDiag { get; set; }"
+    ],
+    "InitMethodName": [
+     "string InitMethodName { get; set; }"
+    ],
+    "Instance": [
+     "IScriptIoVariableMapping Instance { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceInstance"
+   ]
+  },
+  "IScriptDeviceObject": {
+   "members": {
+    "add": [
+     "void add(string name, IDeviceId device, [Optional] string module);",
+     "void add(string name, int type, string id, string version, [Optional] string module);"
+    ],
+    "allow_symbolic_var_access_in_sync_with_iec_cycle": [
+     "bool allow_symbolic_var_access_in_sync_with_iec_cycle { get; set; }"
+    ],
+    "allowed_interfaces_at": [
+     "IList<string> allowed_interfaces_at(int index);"
+    ],
+    "connectors": [
+     "IScriptDeviceConnectorSet connectors { get; }"
+    ],
+    "device_parameters": [
+     "IScriptDeviceParameterSet device_parameters { get; }"
+    ],
+    "disable": [
+     "void disable();"
+    ],
+    "driver_info": [
+     "IScriptDriverInfo driver_info { get; }"
+    ],
+    "enable": [
+     "void enable();"
+    ],
+    "export_io_mappings_as_csv": [
+     "void export_io_mappings_as_csv(string file_path);"
+    ],
+    "get_address": [
+     "string get_address();"
+    ],
+    "get_device_communication_settings": [
+     "IScriptCommunicationSettings get_device_communication_settings();"
+    ],
+    "get_device_identification": [
+     "IDeviceId get_device_identification();"
+    ],
+    "get_gateway": [
+     "Guid get_gateway();"
+    ],
+    "get_module_identification": [
+     "string get_module_identification();"
+    ],
+    "get_simulation_mode": [
+     "bool get_simulation_mode();"
+    ],
+    "import_io_mappings_from_csv": [
+     "void import_io_mappings_from_csv(string file_path);"
+    ],
+    "insert": [
+     "void insert(string name, int index, IDeviceId device, [Optional] string module);",
+     "void insert(string name, int index, int type, string id, string version, [Optional] string module);"
+    ],
+    "is_enabled": [
+     "bool is_enabled();"
+    ],
+    "plug": [
+     "void plug(string name, IDeviceId device, [Optional] string module);",
+     "void plug(string name, int type, string id, string version, [Optional] string module);"
+    ],
+    "set_gateway_and_address": [
+     "void set_gateway_and_address(Guid gateway, string address);",
+     "void set_gateway_and_address(string stGateway, string address);",
+     "void set_gateway_and_address(IScriptGateway gateway, string address);"
+    ],
+    "set_gateway_and_device_name": [
+     "void set_gateway_and_device_name(Guid gateway_guid, string device_name);",
+     "void set_gateway_and_device_name(IScriptGateway gateway, string device_name);",
+     "void set_gateway_and_device_name(string gateway, string device_name);"
+    ],
+    "set_gateway_and_ip_address": [
+     "void set_gateway_and_ip_address(Guid gateway_guid, IPAddress ip_address, ushort port = 11740);",
+     "void set_gateway_and_ip_address(Guid gateway_guid, string ip_address);",
+     "void set_gateway_and_ip_address(Guid gateway_guid, string ip_address, ushort port);",
+     "void set_gateway_and_ip_address(IScriptGateway gateway, IPAddress ip_address, ushort port = 11740);",
+     "void set_gateway_and_ip_address(IScriptGateway gateway, string ip_address);",
+     "void set_gateway_and_ip_address(IScriptGateway gateway, string ip_address, ushort port);",
+     "void set_gateway_and_ip_address(string gateway, IPAddress ip_address, ushort port = 11740);",
+     "void set_gateway_and_ip_address(string gateway, string ip_address);",
+     "void set_gateway_and_ip_address(string gateway, string ip_address, ushort port);"
+    ],
+    "set_simulation_mode": [
+     "void set_simulation_mode(bool simulation);"
+    ],
+    "unplug": [
+     "void unplug();"
+    ],
+    "update": [
+     "void update(IDeviceId device, [Optional] string module);",
+     "void update(int type, string id, string version, [Optional] string module);"
+    ]
+   },
+   "types": [
+    "IScriptDeviceObject",
+    "IScriptDeviceObject2",
+    "IScriptDeviceObject3",
+    "IScriptDeviceObject4",
+    "IScriptDeviceObject5",
+    "IScriptDeviceObject6"
+   ]
+  },
+  "IScriptDeviceObjectMarker": {
+   "members": {
+    "is_device": [
+     "bool is_device { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceObjectMarker"
+   ]
+  },
+  "IScriptDeviceParameter": {
+   "members": {
+    "channel_type": [
+     "ChannelType channel_type { get; }"
+    ],
+    "diagnostic_type": [
+     "DiagType diagnostic_type { get; }"
+    ],
+    "disable_mapping": [
+     "bool disable_mapping { get; }"
+    ],
+    "downloaded_with_ioconfig": [
+     "bool downloaded_with_ioconfig { get; }"
+    ],
+    "get_device_object": [
+     "IExtendedObject<IScriptObject> get_device_object();"
+    ],
+    "id": [
+     "long id { get; }"
+    ],
+    "iec_type": [
+     "string iec_type { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "offline_access_rights": [
+     "AccessRight offline_access_rights { get; }"
+    ],
+    "online_access_rights": [
+     "AccessRight online_access_rights { get; }"
+    ],
+    "param_type": [
+     "string param_type { get; }"
+    ],
+    "section": [
+     "string section { get; }"
+    ],
+    "type_string": [
+     "string type_string { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceParameter",
+    "IScriptDeviceParameter2"
+   ]
+  },
+  "IScriptDeviceRepository": {
+   "members": {
+    "create_device_identification": [
+     "IDeviceId create_device_identification(int type, string id, string version);"
+    ],
+    "create_module_identification": [
+     "IModuleId create_module_identification(int type, string id, string version, string module_id);"
+    ],
+    "get_all_devices": [
+     "IList<object> get_all_devices(string name, IScriptRepositorySource source = null);",
+     "IScriptDeviceCollection get_all_devices();",
+     "IScriptDeviceCollection get_all_devices(IDeviceId device_id);",
+     "IScriptDeviceCollection get_all_devices(IDeviceId device_id, IScriptRepositorySource source);",
+     "IScriptDeviceCollection get_all_devices(IScriptRepositorySource source);"
+    ],
+    "get_all_vendor_descriptions": [
+     "IList<object> get_all_vendor_descriptions();",
+     "IList<object> get_all_vendor_descriptions(IScriptRepositorySource source);"
+    ],
+    "get_device": [
+     "IScriptDeviceDescription get_device(IDeviceId device_id);"
+    ],
+    "get_device_category": [
+     "IScriptDeviceCategory get_device_category(Guid category);",
+     "IScriptDeviceCategory get_device_category(int category_id);"
+    ],
+    "get_device_family": [
+     "IScriptDeviceFamily get_device_family(string family);"
+    ],
+    "get_vendor_description": [
+     "IScriptVendorDescription get_vendor_description(int vendor_id);"
+    ],
+    "import_device": [
+     "IDeviceId import_device(Stream stream, IScriptRepositorySource source, string source_path, bool save_device_cache = true);",
+     "IDeviceId import_device(string path, IScriptRepositorySource source, bool save_device_cache = true);",
+     "IDeviceId import_device(string path, IScriptRepositorySource source, Guid converter_factory_guid, bool save_device_cache = true);"
+    ],
+    "import_vendor_description": [
+     "IScriptVendorDescription import_vendor_description(Stream stream, IScriptRepositorySource source, string source_path);",
+     "IScriptVendorDescription import_vendor_description(string path, IScriptRepositorySource source);"
+    ],
+    "rebuild_device_cache": [
+     "void rebuild_device_cache();"
+    ],
+    "remove_device": [
+     "void remove_device(IDeviceId device_id, IScriptRepositorySource source, bool save_device_cache = true);"
+    ],
+    "remove_vendor_description": [
+     "void remove_vendor_description(int vendor_id, IScriptRepositorySource source);"
+    ],
+    "save_device_cache": [
+     "void save_device_cache();"
+    ],
+    "sources": [
+     "IScriptRepositorySourceList sources { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceRepository",
+    "IScriptDeviceRepository2"
+   ]
+  },
+  "IScriptDeviceRequiredLib": {
+   "members": {
+    "Client": [
+     "string Client { get; }"
+    ],
+    "FbInstances": [
+     "IList<IScriptDeviceInstance> FbInstances { get; }"
+    ],
+    "Identifier": [
+     "string Identifier { get; set; }"
+    ],
+    "LibName": [
+     "string LibName { get; set; }"
+    ],
+    "PlaceHolderLib": [
+     "string PlaceHolderLib { get; }"
+    ],
+    "Vendor": [
+     "string Vendor { get; set; }"
+    ],
+    "Version": [
+     "string Version { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceRequiredLib"
+   ]
+  },
+  "IScriptDeviceUser": {
+   "members": {
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ],
+    "name": [
+     "string name { get; set; }"
+    ],
+    "password_hash": [
+     "string password_hash { get; set; }"
+    ],
+    "set_password": [
+     "void set_password(string password);"
+    ],
+    "set_user_flags": [
+     "void set_user_flags(DeviceUserManagementFlags flags);"
+    ]
+   },
+   "types": [
+    "IScriptDeviceUser",
+    "IScriptDeviceUser2"
+   ]
+  },
+  "IScriptDeviceUserList": {
+   "members": {
+    "__len__": [
+     "int __len__ { get; }"
+    ],
+    "add": [
+     "IScriptDeviceUser add(string name);"
+    ],
+    "clear": [
+     "void clear();"
+    ],
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ],
+    "remove": [
+     "bool remove(string name);"
+    ]
+   },
+   "types": [
+    "IScriptDeviceUserList"
+   ]
+  },
+  "IScriptDeviceUserManagement": {
+   "members": {
+    "download": [
+     "void download();"
+    ],
+    "groups": [
+     "IScriptDeviceGroupList groups { get; }"
+    ],
+    "load": [
+     "void load(XmlElement element);",
+     "void load(string xml_or_file_name);"
+    ],
+    "online_device": [
+     "IScriptOnlineDevice online_device { get; }"
+    ],
+    "reload_from_project": [
+     "void reload_from_project();"
+    ],
+    "save": [
+     "string save();",
+     "void save(XmlWriter writer);",
+     "void save(string file_name);"
+    ],
+    "store_to_project": [
+     "void store_to_project();"
+    ],
+    "upload": [
+     "void upload();"
+    ],
+    "users": [
+     "IScriptDeviceUserList users { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDeviceUserManagement"
+   ]
+  },
+  "IScriptDirectoryInfo": {
+   "members": {
+    "additional_dir_info": [
+     "AdditionalDirInfo additional_dir_info { get; }"
+    ],
+    "creation_time": [
+     "DateTime creation_time { get; }"
+    ],
+    "is_directory": [
+     "bool is_directory { get; }"
+    ],
+    "is_file": [
+     "bool is_file { get; }"
+    ],
+    "last_access_time": [
+     "DateTime last_access_time { get; }"
+    ],
+    "last_modification_time": [
+     "DateTime last_modification_time { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "size": [
+     "uint size { get; }"
+    ]
+   },
+   "types": [
+    "IScriptDirectoryInfo"
+   ]
+  },
+  "IScriptDriverInfo": {
+   "members": {
+    "RequiredLibs": [
+     "IList<IScriptDeviceRequiredLib> RequiredLibs { get; }"
+    ],
+    "always_update_variables": [
+     "AlwaysUpdateVariablesMode always_update_variables { get; set; }"
+    ],
+    "behaviour_for_outputs_on_stop": [
+     "StopResetBehaviour behaviour_for_outputs_on_stop { get; set; }"
+    ],
+    "bus_cycle_task_by_guid": [
+     "Guid bus_cycle_task_by_guid { get; }"
+    ],
+    "bus_cycle_task_by_name": [
+     "string bus_cycle_task_by_name { get; }"
+    ],
+    "can_set_io_application": [
+     "bool can_set_io_application { get; }"
+    ],
+    "enable_diagnosis": [
+     "bool enable_diagnosis { get; set; }"
+    ],
+    "generate_force_variables": [
+     "bool generate_force_variables { get; set; }"
+    ],
+    "io_application": [
+     "Guid io_application { get; set; }"
+    ],
+    "set_bus_cycle_task": [
+     "void set_bus_cycle_task(Guid object_guid);",
+     "void set_bus_cycle_task(IExtendedObject<IScriptObject> task);",
+     "void set_bus_cycle_task(string name);"
+    ],
+    "set_io_application": [
+     "void set_io_application([TypeHint(new Type[] { typeof(IScriptApplication) })] IExtendedObject<IScriptObject> application);"
+    ],
+    "show_io_warnings_as_errors": [
+     "bool show_io_warnings_as_errors { get; set; }"
+    ],
+    "update_ios_while_in_stop": [
+     "bool update_ios_while_in_stop { get; set; }"
+    ],
+    "user_program_for_stop_reset_behaviour": [
+     "string user_program_for_stop_reset_behaviour { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptDriverInfo",
+    "IScriptDriverInfo2"
+   ]
+  },
+  "IScriptEnumerationDataElement": {
+   "members": {
+    "allowed_values": [
+     "IEnumerable<IScriptEnumerationValue> allowed_values { get; }"
+    ],
+    "enum_value": [
+     "IScriptEnumerationValue enum_value { get; set; }"
+    ],
+    "read_online_enum_value": [
+     "IScriptEnumerationValue read_online_enum_value(int nTimeout = 1000);"
+    ],
+    "value_index": [
+     "int value_index { get; set; }"
+    ],
+    "write_online_value": [
+     "void write_online_value(IScriptEnumerationValue value);"
+    ]
+   },
+   "types": [
+    "IScriptEnumerationDataElement"
+   ]
+  },
+  "IScriptEnumerationValue": {
+   "members": {
+    "description": [
+     "string description { get; }"
+    ],
+    "identifier": [
+     "string identifier { get; }"
+    ],
+    "index": [
+     "int index { get; }"
+    ],
+    "parent": [
+     "IScriptEnumerationDataElement parent { get; }"
+    ],
+    "value": [
+     "string value { get; }"
+    ],
+    "visible_name": [
+     "string visible_name { get; }"
+    ]
+   },
+   "types": [
+    "IScriptEnumerationValue"
+   ]
+  },
+  "IScriptExplicitConnectorObject": {
+   "members": {
+    "add": [
+     "void add(string name, IDeviceId device, [Optional] string module);",
+     "void add(string name, int type, string id, string version, [Optional] string module);"
+    ],
+    "allowed_interfaces_at": [
+     "IList<string> allowed_interfaces_at(int index);"
+    ],
+    "driver_info": [
+     "IScriptDriverInfo driver_info { get; }"
+    ],
+    "export_io_mappings_as_csv": [
+     "void export_io_mappings_as_csv(string file_path);"
+    ],
+    "import_io_mappings_from_csv": [
+     "void import_io_mappings_from_csv(string file_path);"
+    ],
+    "insert": [
+     "void insert(string name, int index, IDeviceId device, [Optional] string module);",
+     "void insert(string name, int index, int type, string id, string version, [Optional] string module);"
+    ]
+   },
+   "types": [
+    "IScriptExplicitConnectorObject",
+    "IScriptExplicitConnectorObject2",
+    "IScriptExplicitConnectorObject3"
+   ]
+  },
+  "IScriptExplicitConnectorObjectMarker": {
+   "members": {
+    "is_explicit_connector": [
+     "bool is_explicit_connector { get; }"
+    ]
+   },
+   "types": [
+    "IScriptExplicitConnectorObjectMarker"
+   ]
+  },
+  "IScriptExternalFileObject": {
+   "members": {
+    "auto_update_mode": [
+     "AutoUpdateMode auto_update_mode { get; }"
+    ],
+    "calculate_checksum": [
+     "long calculate_checksum();"
+    ],
+    "change_modes": [
+     "void change_modes(ReferenceMode reference_mode, AutoUpdateMode auto_update_mode = AutoUpdateMode.Never);"
+    ],
+    "create_edit_path": [
+     "string create_edit_path();"
+    ],
+    "file_path": [
+     "string file_path { get; }"
+    ],
+    "get_data": [
+     "byte[] get_data();",
+     "void get_data(Stream stream);",
+     "void get_data(string filename);"
+    ],
+    "last_modification": [
+     "DateTime last_modification { get; }"
+    ],
+    "length": [
+     "long length { get; }"
+    ],
+    "reference_mode": [
+     "ReferenceMode reference_mode { get; }"
+    ],
+    "update": [
+     "void update();"
+    ]
+   },
+   "types": [
+    "IScriptExternalFileObject"
+   ]
+  },
+  "IScriptExternalFileObjectContainer": {
+   "members": {
+    "create_external_file_object": [
+     "IExtendedObject<IScriptObject> create_external_file_object(string file_path, string name = null, ReferenceMode reference_mode = ReferenceMode.Embed, AutoUpdateMode auto_update_mode = AutoUpdateMode.Never);"
+    ]
+   },
+   "types": [
+    "IScriptExternalFileObjectContainer"
+   ]
+  },
+  "IScriptExternalFileObjectMarker": {
+   "members": {
+    "is_external_file_object": [
+     "bool is_external_file_object { get; }"
+    ],
+    "may_contain_external_file_objects": [
+     "bool may_contain_external_file_objects { get; }"
+    ]
+   },
+   "types": [
+    "IScriptExternalFileObjectMarker"
+   ]
+  },
+  "IScriptFactoryPermission": {
+   "members": {
+    "factory_guid": [
+     "Guid factory_guid { get; }"
+    ]
+   },
+   "types": [
+    "IScriptFactoryPermission"
+   ]
+  },
+  "IScriptGateway": {
+   "members": {
+    "config_params": [
+     "object config_params { get; }"
+    ],
+    "find_address_by_ip": [
+     "string find_address_by_ip(IPAddress address, ushort port = 11740);",
+     "string find_address_by_ip(string ip_or_name, ushort port = 11740);"
+    ],
+    "gateway_driver": [
+     "IScriptGatewayDriver gateway_driver { get; }"
+    ],
+    "get_cached_network_scan_result": [
+     "IEnumerable<IScriptScanTargetDescription> get_cached_network_scan_result();"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "perform_network_scan": [
+     "IEnumerable<IScriptScanTargetDescription> perform_network_scan();"
+    ]
+   },
+   "types": [
+    "IScriptGateway"
+   ]
+  },
+  "IScriptGatewayDriver": {
+   "members": {
+    "gateway_parameters": [
+     "IScriptGatewayParameterDescriptions gateway_parameters { get; }"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ]
+   },
+   "types": [
+    "IScriptGatewayDriver"
+   ]
+  },
+  "IScriptGatewayDrivers": {
+   "members": {
+    "default_driver": [
+     "IScriptGatewayDriver default_driver { get; }"
+    ],
+    "find_with_name": [
+     "IEnumerable<IScriptGatewayDriver> find_with_name(string name);"
+    ]
+   },
+   "types": [
+    "IScriptGatewayDrivers"
+   ]
+  },
+  "IScriptGatewayParameterDescription": {
+   "members": {
+    "default_value": [
+     "object default_value { get; }"
+    ],
+    "description": [
+     "string description { get; }"
+    ],
+    "id": [
+     "long id { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "parameter_type": [
+     "ParamType parameter_type { get; }"
+    ],
+    "validate": [
+     "void validate(object value);"
+    ]
+   },
+   "types": [
+    "IScriptGatewayParameterDescription"
+   ]
+  },
+  "IScriptGateways": {
+   "members": {
+    "add_new_gateway": [
+     "IScriptGateway add_new_gateway(string name, [TypeHint(\"Dict[Union(int, str, IScriptGatewayParameterDescription), object)\", TypingImports = \"Dict, Union, Any\")] IDictionary<object, object> parameters, IScriptGatewayDriver driver = null, Guid? gateway_guid = null);"
+    ],
+    "convert_gateway_parameter": [
+     "object convert_gateway_parameter(object parameter, ParamType paramType);"
+    ],
+    "find_with_name": [
+     "IEnumerable<IScriptGateway> find_with_name(string name);"
+    ],
+    "remove_gateway": [
+     "void remove_gateway(Guid guid);",
+     "void remove_gateway(IScriptGateway gateway);"
+    ]
+   },
+   "types": [
+    "IScriptGateways"
+   ]
+  },
+  "IScriptGroup": {
+   "members": {
+    "add_member": [
+     "void add_member(IScriptUserOrGroup member);"
+    ],
+    "get_group_members": [
+     "IList<object> get_group_members();"
+    ],
+    "get_user_members": [
+     "IList<object> get_user_members(bool recursive);"
+    ],
+    "grouplist": [
+     "IScriptGroupList grouplist { get; }"
+    ],
+    "has_member": [
+     "bool has_member(IScriptUserOrGroup member);"
+    ],
+    "is_everyone_group": [
+     "bool is_everyone_group { get; }"
+    ],
+    "is_owner_group": [
+     "bool is_owner_group { get; }"
+    ],
+    "remove": [
+     "void remove();"
+    ],
+    "remove_member": [
+     "void remove_member(IScriptUserOrGroup member);"
+    ],
+    "rename": [
+     "void rename(string newname);"
+    ]
+   },
+   "types": [
+    "IScriptGroup"
+   ]
+  },
+  "IScriptGroupList": {
+   "members": {
+    "create": [
+     "IScriptGroup create(string name);"
+    ],
+    "everyone_group": [
+     "IScriptGroup everyone_group { get; }"
+    ],
+    "owner_group": [
+     "IScriptGroup owner_group { get; }"
+    ],
+    "project": [
+     "IExtendedObject<IScriptProject> project { get; }"
+    ],
+    "user_management": [
+     "IScriptUserManagement user_management { get; }"
+    ]
+   },
+   "types": [
+    "IScriptGroupList"
+   ]
+  },
+  "IScriptIecLanguageMemberContainer": {
+   "members": {
+    "create_action": [
+     "IExtendedObject<IScriptObject> create_action(string name, Guid? language = null);"
+    ],
+    "create_method": [
+     "IExtendedObject<IScriptObject> create_method(string name, string return_type = null, Guid? language = null);"
+    ],
+    "create_property": [
+     "IExtendedObject<IScriptObject> create_property(string name, string return_type = \"int\", Guid? language = null);"
+    ],
+    "create_transition": [
+     "IExtendedObject<IScriptObject> create_transition(string name, Guid? language = null);"
+    ]
+   },
+   "types": [
+    "IScriptIecLanguageMemberContainer"
+   ]
+  },
+  "IScriptIecLanguageObjectContainer": {
+   "members": {
+    "create_dut": [
+     "IExtendedObject<IScriptObject> create_dut(string name, DutType type = DutType.Structure, string baseType = null);"
+    ],
+    "create_function": [
+     "IExtendedObject<IScriptObject> create_function(string name, string return_type, Guid? language = null);"
+    ],
+    "create_function_block": [
+     "IExtendedObject<IScriptObject> create_function_block(string name, Guid? language = null, string base_type = null, string interfaces = null);"
+    ],
+    "create_gvl": [
+     "IExtendedObject<IScriptObject> create_gvl(string name);"
+    ],
+    "create_interface": [
+     "IExtendedObject<IScriptObject> create_interface(string name, string baseInterfaces = \"__System.IQueryInterface\");"
+    ],
+    "create_persistentvars": [
+     "IExtendedObject<IScriptObject> create_persistentvars(string name);"
+    ],
+    "create_pou": [
+     "IExtendedObject<IScriptObject> create_pou(string name, PouType type = PouType.FunctionBlock, Guid? language = null, string return_type = null, string base_type = null, string interfaces = null);",
+     "IExtendedObject<IScriptObject> create_pou(SpecialPouType type);"
+    ],
+    "create_program": [
+     "IExtendedObject<IScriptObject> create_program(string name, Guid? language = null);"
+    ]
+   },
+   "types": [
+    "IScriptIecLanguageObjectContainer",
+    "IScriptIecLanguageObjectContainer2",
+    "IScriptIecLanguageObjectContainer3",
+    "IScriptIecLanguageObjectContainer4"
+   ]
+  },
+  "IScriptImplementationLanguages": {
+   "members": {
+    "cfc": [
+     "Guid cfc { get; }"
+    ],
+    "fbd": [
+     "Guid fbd { get; }"
+    ],
+    "instruction_list": [
+     "Guid instruction_list { get; }"
+    ],
+    "ladder": [
+     "Guid ladder { get; }"
+    ],
+    "page_oriented_cfc": [
+     "Guid page_oriented_cfc { get; }"
+    ],
+    "sfc": [
+     "Guid sfc { get; }"
+    ],
+    "st": [
+     "Guid st { get; }"
+    ],
+    "uml_statechart": [
+     "Guid uml_statechart { get; }"
+    ]
+   },
+   "types": [
+    "IScriptImplementationLanguages"
+   ]
+  },
+  "IScriptIoMapping": {
+   "members": {
+    "automatic_iec_address": [
+     "bool automatic_iec_address { get; set; }"
+    ],
+    "manual_iec_address": [
+     "string manual_iec_address { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptIoMapping"
+   ]
+  },
+  "IScriptIoVariableMapping": {
+   "members": {
+    "Id": [
+     "long Id { get; }"
+    ],
+    "default_variable": [
+     "string default_variable { get; }"
+    ],
+    "mapping_creates_variable": [
+     "bool mapping_creates_variable { get; }"
+    ],
+    "maps_to_existing_variable": [
+     "bool maps_to_existing_variable { get; }"
+    ],
+    "variable": [
+     "string variable { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptIoVariableMapping"
+   ]
+  },
+  "IScriptLibManObject": {
+   "members": {
+    "add_library": [
+     "void add_library(string name);",
+     "void add_library(IManagedLib library);"
+    ],
+    "add_placeholder": [
+     "void add_placeholder(string name, string default_resolution);",
+     "void add_placeholder(string name, IManagedLib default_resolution);"
+    ],
+    "download_missing_libraries": [
+     "void download_missing_libraries();"
+    ],
+    "get_libraries": [
+     "IList<string> get_libraries([Optional] bool recursive);"
+    ],
+    "references": [
+     "IScriptLibraryReferences references { get; }"
+    ],
+    "remove_library": [
+     "void remove_library(string name);"
+    ]
+   },
+   "types": [
+    "IScriptLibManObject",
+    "IScriptLibManObject2",
+    "IScriptLibManObject3"
+   ]
+  },
+  "IScriptLibManObjectContainer": {
+   "members": {
+    "get_library_manager": [
+     "IExtendedObject<IScriptObject> get_library_manager();"
+    ],
+    "has_library_manager": [
+     "bool has_library_manager { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLibManObjectContainer"
+   ]
+  },
+  "IScriptLibManObjectMarker": {
+   "members": {
+    "is_libman": [
+     "bool is_libman { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLibManObjectMarker"
+   ]
+  },
+  "IScriptLibraryParameters": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ]
+   },
+   "types": [
+    "IScriptLibraryParameters"
+   ]
+  },
+  "IScriptLibraryReference": {
+   "members": {
+    "get_dependencies": [
+     "IList<IScriptLibraryReference> get_dependencies();"
+    ],
+    "hide_when_referenced_as_depencency": [
+     "bool hide_when_referenced_as_depencency { get; set; }"
+    ],
+    "id": [
+     "long id { get; }"
+    ],
+    "is_managed": [
+     "bool is_managed { get; }"
+    ],
+    "is_placeholder": [
+     "bool is_placeholder { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "optional": [
+     "bool optional { get; set; }"
+    ],
+    "parameters": [
+     "IScriptLibraryParameters parameters { get; }"
+    ],
+    "publish_symbols_in_container": [
+     "bool publish_symbols_in_container { get; set; }"
+    ],
+    "qualified_only": [
+     "bool qualified_only { get; set; }"
+    ],
+    "system_library": [
+     "bool system_library { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLibraryReference"
+   ]
+  },
+  "IScriptLibraryReferences": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ]
+   },
+   "types": [
+    "IScriptLibraryReferences"
+   ]
+  },
+  "IScriptLiveDeviceGroup": {
+   "members": {
+    "check_cyclic_membership": [
+     "bool check_cyclic_membership(string new_group_member);"
+    ],
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ],
+    "group_members": [
+     "IEnumerable<string> group_members { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "user_members": [
+     "IEnumerable<string> user_members { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLiveDeviceGroup"
+   ]
+  },
+  "IScriptLiveDeviceGroupList": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ],
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLiveDeviceGroupList"
+   ]
+  },
+  "IScriptLiveDeviceUser": {
+   "members": {
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLiveDeviceUser"
+   ]
+  },
+  "IScriptLiveDeviceUserList": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ],
+    "flags": [
+     "DeviceUserManagementFlags flags { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLiveDeviceUserList"
+   ]
+  },
+  "IScriptLiveDeviceUserManagement": {
+   "members": {
+    "add_group": [
+     "void add_group(string name, IList<string> group_members, IList<string> user_members);"
+    ],
+    "add_user": [
+     "void add_user(string name, string password, bool can_change_password = true, bool must_change_password = false);"
+    ],
+    "backup": [
+     "string backup(string directory, string password);"
+    ],
+    "groups": [
+     "IScriptLiveDeviceGroupList groups { get; }"
+    ],
+    "online_device": [
+     "IScriptOnlineDevice online_device { get; }"
+    ],
+    "remove_group": [
+     "void remove_group(string name);"
+    ],
+    "remove_user": [
+     "void remove_user(string name);"
+    ],
+    "restore": [
+     "void restore(string path, string password);"
+    ],
+    "set_members_of_group": [
+     "void set_members_of_group(string name, IList<string> group_members, IList<string> user_members);"
+    ],
+    "set_user_flags": [
+     "void set_user_flags(string name, DeviceUserManagementFlags flags);"
+    ],
+    "set_user_password": [
+     "void set_user_password(string name, string password);"
+    ],
+    "upload": [
+     "void upload();"
+    ],
+    "users": [
+     "IScriptLiveDeviceUserList users { get; }"
+    ]
+   },
+   "types": [
+    "IScriptLiveDeviceUserManagement"
+   ]
+  },
+  "IScriptManagedLibraryReference": {
+   "members": {
+    "managed_library": [
+     "IManagedLib managed_library { get; }"
+    ]
+   },
+   "types": [
+    "IScriptManagedLibraryReference"
+   ]
+  },
+  "IScriptMappableDeviceParameterSet": {
+   "members": {
+    "io_always_mapping": [
+     "bool io_always_mapping { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptMappableDeviceParameterSet"
+   ]
+  },
+  "IScriptMessage": {
+   "members": {
+    "FontColor": [
+     "Color FontColor { get; }"
+    ],
+    "call_details_handler": [
+     "void call_details_handler();"
+    ],
+    "has_details_handler": [
+     "bool has_details_handler { get; }"
+    ],
+    "icon": [
+     "Icon icon { get; }"
+    ],
+    "length": [
+     "short length { get; }"
+    ],
+    "number": [
+     "uint? number { get; }"
+    ],
+    "position": [
+     "long position { get; }"
+    ],
+    "position_offset": [
+     "short position_offset { get; }"
+    ],
+    "position_text": [
+     "string position_text { get; }"
+    ],
+    "prefix": [
+     "string prefix { get; }"
+    ],
+    "project": [
+     "IExtendedObject<IScriptProject> project { get; }"
+    ],
+    "severity": [
+     "Severity severity { get; }"
+    ],
+    "text": [
+     "string text { get; }"
+    ]
+   },
+   "types": [
+    "IScriptMessage"
+   ]
+  },
+  "IScriptObject": {
+   "members": {
+    "build_properties": [
+     "IScriptBuildProperties build_properties { get; }"
+    ],
+    "create_folder": [
+     "void create_folder(string foldername);"
+    ],
+    "effectively_excluded_from_build": [
+     "bool effectively_excluded_from_build { get; }"
+    ],
+    "embedded_object_types": [
+     "IList<Guid> embedded_object_types { get; }"
+    ],
+    "exclusion_from_build_is_inherited": [
+     "bool exclusion_from_build_is_inherited { get; }"
+    ],
+    "export_native": [
+     "void export_native(string destination, [DefaultParameterValue(true)] bool recursive, [DefaultParameterValue(null)] string profile_name, [DefaultParameterValue(null)] INativeExportReporter reporter);"
+    ],
+    "export_xml": [
+     "string export_xml(IExportReporter reporter, [Optional] string path, [Optional] bool recursive);",
+     "string export_xml(IExportReporter reporter, [DefaultParameterValue(null)] string path, [DefaultParameterValue(false)] bool recursive, bool export_folder_structure);",
+     "string export_xml(IExportReporter reporter, [DefaultParameterValue(null)] string path, [DefaultParameterValue(false)] bool recursive, [DefaultParameterValue(false)] bool export_folder_structure, bool declarations_as_plaintext);"
+    ],
+    "find_ignore_transient_objects": [
+     "IList<IExtendedObject<IScriptObject>> find_ignore_transient_objects(string name, bool recursive = false);"
+    ],
+    "get_name": [
+     "string get_name([Optional] bool resolve_localized_display_name);"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "import_native": [
+     "NativeImportResult import_native(IEnumerable<string> filenames, [DefaultParameterValue(null)] NativeImportFilter filter, [DefaultParameterValue(null)] INativeImportHandler handler);",
+     "NativeImportResult import_native(string filename, [DefaultParameterValue(null)] NativeImportFilter filter, [DefaultParameterValue(null)] INativeImportHandler handler);"
+    ],
+    "import_xml": [
+     "void import_xml(IImportReporter reporter, string dataOrPath);",
+     "void import_xml(IImportReporter reporter, string dataOrPath, bool import_folder_structure);"
+    ],
+    "index": [
+     "int index { get; }"
+    ],
+    "is_folder": [
+     "bool is_folder { get; }"
+    ],
+    "move": [
+     "void move(IExtendedObject<IScriptObject> new_parent, int new_index = -1);",
+     "void move(IExtendedObject<IScriptProject> new_parent, int new_index = -1);"
+    ],
+    "parent": [
+     "object parent { get; }"
+    ],
+    "remove": [
+     "void remove();"
+    ],
+    "rename": [
+     "void rename(string stNewName);"
+    ],
+    "type": [
+     "Guid type { get; }"
+    ]
+   },
+   "types": [
+    "IScriptObject",
+    "IScriptObject2",
+    "IScriptObject3",
+    "IScriptObject4",
+    "IScriptObject6",
+    "IScriptObject7"
+   ]
+  },
+  "IScriptObjectFactories": {
+   "members": {
+    "search_factories_for": [
+     "IEnumerable<IScriptObjectFactory> search_factories_for(Guid typeguid);"
+    ]
+   },
+   "types": [
+    "IScriptObjectFactories"
+   ]
+  },
+  "IScriptObjectFactory": {
+   "members": {
+    "description": [
+     "string description { get; }"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "object_namespace": [
+     "Guid object_namespace { get; }"
+    ],
+    "object_type": [
+     "Guid object_type { get; }"
+    ]
+   },
+   "types": [
+    "IScriptObjectFactory"
+   ]
+  },
+  "IScriptObjectPermission": {
+   "members": {
+    "access_kind": [
+     "ObjectPermissionKind access_kind { get; }"
+    ],
+    "check_permission_extended": [
+     "Exception check_permission_extended();"
+    ],
+    "target_object": [
+     "IExtendedObject<IScriptObject> target_object { get; }"
+    ]
+   },
+   "types": [
+    "IScriptObjectPermission"
+   ]
+  },
+  "IScriptObjectWithTextualDeclaration": {
+   "members": {
+    "textual_declaration": [
+     "IScriptTextDocument textual_declaration { get; }"
+    ]
+   },
+   "types": [
+    "IScriptObjectWithTextualDeclaration"
+   ]
+  },
+  "IScriptObjectWithTextualImplementation": {
+   "members": {
+    "textual_implementation": [
+     "IScriptTextDocument textual_implementation { get; }"
+    ]
+   },
+   "types": [
+    "IScriptObjectWithTextualImplementation"
+   ]
+  },
+  "IScriptOnline": {
+   "members": {
+    "UNFORCE": [
+     "string UNFORCE { get; }"
+    ],
+    "UNFORCE_RESTORE": [
+     "string UNFORCE_RESTORE { get; }"
+    ],
+    "auth_fallback_modes": [
+     "CredentialSourceKind auth_fallback_modes { get; set; }"
+    ],
+    "clear_all_credentials": [
+     "void clear_all_credentials();"
+    ],
+    "create_online_application": [
+     "IScriptOnlineApplication create_online_application([Optional] IExtendedObject<IScriptObject> application);"
+    ],
+    "create_online_device": [
+     "IScriptOnlineDevice create_online_device([Optional] IExtendedObject<IScriptObject> device);"
+    ],
+    "gateway_drivers": [
+     "IScriptGatewayDrivers gateway_drivers { get; }"
+    ],
+    "gateways": [
+     "IScriptGateways gateways { get; }"
+    ],
+    "register_trusts_certificate": [
+     "void register_trusts_certificate(IExtendedObject<IScriptObject> device_object, TrustsCertificateCallback callback, string current_node_name = null);"
+    ],
+    "set_default_credentials": [
+     "void set_default_credentials(string username, [Optional] string password);"
+    ],
+    "set_specific_credentials": [
+     "void set_specific_credentials(object target, string username, [Optional] string password);"
+    ],
+    "unregister_all_trusts_certificate": [
+     "void unregister_all_trusts_certificate();"
+    ],
+    "unregister_trusts_certificate": [
+     "void unregister_trusts_certificate(IExtendedObject<IScriptObject> device_object, string current_node_name = null);"
+    ]
+   },
+   "types": [
+    "IScriptOnline",
+    "IScriptOnline2",
+    "IScriptOnline3",
+    "IScriptOnline4",
+    "IScriptOnline5"
+   ]
+  },
+  "IScriptOnlineApplication": {
+   "members": {
+    "application": [
+     "IExtendedObject<IScriptObject> application { get; }"
+    ],
+    "application_state": [
+     "ApplicationState application_state { get; }"
+    ],
+    "create_boot_application": [
+     "void create_boot_application();"
+    ],
+    "force_prepared_values": [
+     "void force_prepared_values();"
+    ],
+    "get_forced_expressions": [
+     "IList<string> get_forced_expressions();"
+    ],
+    "get_online_device": [
+     "IScriptOnlineDevice get_online_device();"
+    ],
+    "get_prepared_expressions": [
+     "IList<string> get_prepared_expressions();"
+    ],
+    "get_prepared_value": [
+     "string get_prepared_value(string expression);"
+    ],
+    "is_logged_in": [
+     "bool is_logged_in { get; }"
+    ],
+    "login": [
+     "void login(OnlineChangeOption change_option, bool delete_foreign_apps);"
+    ],
+    "logout": [
+     "void logout();"
+    ],
+    "operation_state": [
+     "OperatingState operation_state { get; }"
+    ],
+    "read_value": [
+     "string read_value(string expression);"
+    ],
+    "read_values": [
+     "IList<string> read_values(IEnumerable<string> expressions);",
+     "IList<string> read_values(params string[] expressions);"
+    ],
+    "reset": [
+     "void reset(ResetOption reset_option = ResetOption.Warm, bool force_kill = false);"
+    ],
+    "set_prepared_value": [
+     "void set_prepared_value(string expression, string value);"
+    ],
+    "set_unforce_value": [
+     "void set_unforce_value(string expression, [Optional] bool restore);"
+    ],
+    "source_download": [
+     "void source_download();"
+    ],
+    "start": [
+     "void start();"
+    ],
+    "stop": [
+     "void stop();"
+    ],
+    "timeout": [
+     "int timeout { get; set; }"
+    ],
+    "unforce_all_values": [
+     "void unforce_all_values();"
+    ],
+    "write_prepared_values": [
+     "void write_prepared_values();"
+    ]
+   },
+   "types": [
+    "IScriptOnlineApplication",
+    "IScriptOnlineApplication2"
+   ]
+  },
+  "IScriptOnlineDevice": {
+   "members": {
+    "activate_license": [
+     "void activate_license(string ticket, string url = null, params string[] license_names);"
+    ],
+    "change_user_password": [
+     "void change_user_password(string user, string oldPassword, string newPassword);"
+    ],
+    "connect": [
+     "void connect();"
+    ],
+    "connected": [
+     "bool connected { get; }"
+    ],
+    "create_directory": [
+     "void create_directory(string remote_directory);"
+    ],
+    "create_live_user_management": [
+     "IScriptLiveDeviceUserManagement create_live_user_management();"
+    ],
+    "create_user_management": [
+     "IScriptDeviceUserManagement create_user_management(bool load_from_project = true);"
+    ],
+    "current_logged_on_username": [
+     "string current_logged_on_username { get; }"
+    ],
+    "delete_directory": [
+     "void delete_directory(string remote_directory, bool recursive = false);"
+    ],
+    "delete_file": [
+     "void delete_file(string remote_file);"
+    ],
+    "device": [
+     "IExtendedObject<IScriptObject> device { get; }"
+    ],
+    "disconnect": [
+     "void disconnect();"
+    ],
+    "download_file": [
+     "void download_file(string local_file, string remote_file, bool force_overwrite);"
+    ],
+    "download_source": [
+     "void download_source(IEnumerable<IScriptProjectArchiveCategory> additional_items);",
+     "void download_source(bool bCompact, IEnumerable<IScriptProjectArchiveCategory> additional_items);",
+     "void download_source(bool bCompact, params IScriptProjectArchiveCategory[] additional_items);",
+     "void download_source(params IScriptProjectArchiveCategory[] additional_items);"
+    ],
+    "forced_disconnect": [
+     "void forced_disconnect();"
+    ],
+    "get_file_list_of_directory": [
+     "IScriptDirectoryInfo[] get_file_list_of_directory(string remote_directory);"
+    ],
+    "rename_directory": [
+     "void rename_directory(string old_name, string new_name);"
+    ],
+    "rename_file": [
+     "void rename_file(string old_name, string new_name);"
+    ],
+    "reset_origin": [
+     "void reset_origin();"
+    ],
+    "set_credentials_for_initial_user": [
+     "void set_credentials_for_initial_user(string username, string password, bool can_change_password = true, bool must_change_password = false);"
+    ],
+    "shared_connected": [
+     "bool shared_connected { get; }"
+    ],
+    "upload_file": [
+     "void upload_file(string remote_file, string local_file, bool force_overwrite);"
+    ],
+    "upload_source": [
+     "void upload_source(string archive_path);"
+    ]
+   },
+   "types": [
+    "IScriptOnlineDevice",
+    "IScriptOnlineDevice2",
+    "IScriptOnlineDevice3",
+    "IScriptOnlineDevice4",
+    "IScriptOnlineDevice5",
+    "IScriptOnlineDevice6",
+    "IScriptOnlineDevice7"
+   ]
+  },
+  "IScriptPermission": {
+   "members": {
+    "check_permission": [
+     "bool check_permission(IScriptGroup group);",
+     "bool check_permission(bool silent);"
+    ],
+    "check_set_permission_state": [
+     "bool check_set_permission_state(IScriptGroup group, PermissionState state, bool silent = true);"
+    ],
+    "get_permission_state": [
+     "PermissionState get_permission_state(IScriptGroup group, bool resolve_effective = true, bool resolve_inherited = false);"
+    ],
+    "set_permission_state": [
+     "void set_permission_state(IScriptGroup group, PermissionState state);"
+    ],
+    "type": [
+     "Guid type { get; }"
+    ]
+   },
+   "types": [
+    "IScriptPermission"
+   ]
+  },
+  "IScriptPermissionTypes": {
+   "members": {
+    "commandexecution": [
+     "Guid commandexecution { get; }"
+    ],
+    "objectaccess": [
+     "Guid objectaccess { get; }"
+    ],
+    "objectfactory": [
+     "Guid objectfactory { get; }"
+    ],
+    "usermanagement": [
+     "Guid usermanagement { get; }"
+    ]
+   },
+   "types": [
+    "IScriptPermissionTypes"
+   ]
+  },
+  "IScriptPlaceholderReference": {
+   "members": {
+    "default_resolution": [
+     "string default_resolution { get; set; }"
+    ],
+    "effective_resolution": [
+     "string effective_resolution { get; }"
+    ],
+    "get_redirection": [
+     "string get_redirection();"
+    ],
+    "is_redirected": [
+     "bool is_redirected { get; }"
+    ],
+    "placeholder_name": [
+     "string placeholder_name { get; }"
+    ],
+    "resolution_info": [
+     "string resolution_info { get; }"
+    ],
+    "resolver_guid": [
+     "Guid resolver_guid { get; }"
+    ],
+    "set_redirection": [
+     "void set_redirection(string fixed_resolution = \"\");"
+    ]
+   },
+   "types": [
+    "IScriptPlaceholderReference"
+   ]
+  },
+  "IScriptPouObjectCollection": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ],
+    "add": [
+     "void add(string pou_name, string comment = null);"
+    ],
+    "insert": [
+     "void insert(int index, string pou_name, string comment = null);"
+    ],
+    "remove": [
+     "void remove(int index);",
+     "void remove(string pou_name);"
+    ],
+    "replace": [
+     "void replace(int index, string pou_name, string comment = null);"
+    ]
+   },
+   "types": [
+    "IScriptPouObjectCollection"
+   ]
+  },
+  "IScriptProject": {
+   "members": {
+    "active_application": [
+     "IExtendedObject<IScriptObject> active_application { get; set; }"
+    ],
+    "check_all_pool_objects": [
+     "void check_all_pool_objects();"
+    ],
+    "clean_all": [
+     "void clean_all();"
+    ],
+    "close": [
+     "void close();"
+    ],
+    "compare_to": [
+     "IScriptComparisonResult compare_to(IExtendedObject<IScriptProject> right_project, ComparisonFlags flags = ComparisonFlags.NONE);"
+    ],
+    "create_folder": [
+     "void create_folder(string foldername);",
+     "void create_folder(string foldername, Guid structured_view);"
+    ],
+    "dirty": [
+     "bool dirty { get; }"
+    ],
+    "disable_encryption": [
+     "void disable_encryption();"
+    ],
+    "document": [
+     "void document(IEnumerable<IExtendedObject<IScriptObject>> objects);",
+     "void document(params IExtendedObject<IScriptObject>[] objects);"
+    ],
+    "enable_integrity_check": [
+     "void enable_integrity_check();"
+    ],
+    "export_doc": [
+     "string export_doc([Optional] string path, [Optional] string ext_path, Formatting formatting = Formatting.Indented);"
+    ],
+    "export_native": [
+     "void export_native(IEnumerable<IExtendedObject<IScriptObject>> objects, string destination, [DefaultParameterValue(false)] bool recursive, [DefaultParameterValue(false)] bool one_file_per_subtree, [DefaultParameterValue(null)] string profile_name, [DefaultParameterValue(null)] INativeExportReporter reporter);"
+    ],
+    "export_xml": [
+     "string export_xml(IExportReporter reporter, IEnumerable<IExtendedObject<IScriptObject>> objects, [Optional] string path, [Optional] bool recursive);",
+     "string export_xml(IExportReporter reporter, IEnumerable<IExtendedObject<IScriptObject>> objects, [DefaultParameterValue(null)] string path, [DefaultParameterValue(false)] bool recursive, bool export_folder_structure);",
+     "string export_xml(IExportReporter reporter, IEnumerable<IExtendedObject<IScriptObject>> objects, [DefaultParameterValue(null)] string path, [DefaultParameterValue(false)] bool recursive, [DefaultParameterValue(false)] bool export_folder_structure, bool declarations_as_plaintext);",
+     "string export_xml(IEnumerable<IExtendedObject<IScriptObject>> objects, string path = null, bool recursive = false, bool export_folder_structure = false, bool declarations_as_plaintext = false);"
+    ],
+    "find_ignore_transient_objects": [
+     "IList<IExtendedObject<IScriptObject>> find_ignore_transient_objects(string name, bool recursive = false);"
+    ],
+    "finish_load_project": [
+     "void finish_load_project();"
+    ],
+    "generate_runtime_system_files": [
+     "void generate_runtime_system_files(string destination_directory, bool generate_m4 = true, bool generate_c = false);"
+    ],
+    "get_project_info": [
+     "IExtendedObject<IScriptObject> get_project_info();"
+    ],
+    "has_project_info": [
+     "bool has_project_info { get; }"
+    ],
+    "import_native": [
+     "NativeImportResult import_native(IEnumerable<string> filenames, [DefaultParameterValue(null)] NativeImportFilter filter, [DefaultParameterValue(null)] INativeImportHandler handler);",
+     "NativeImportResult import_native(string filename, [DefaultParameterValue(null)] NativeImportFilter filter, [DefaultParameterValue(null)] INativeImportHandler handler);"
+    ],
+    "import_xml": [
+     "void import_xml(IImportReporter reporter, string dataOrPath);",
+     "void import_xml(IImportReporter reporter, string dataOrPath, bool import_folder_structure);",
+     "void import_xml(ConflictResolve conflictResolve, string dataOrPath, bool import_folder_structure = false);",
+     "void import_xml(string dataOrPath, bool import_folder_structure);"
+    ],
+    "is_integrity_check_enabled": [
+     "bool is_integrity_check_enabled();"
+    ],
+    "library": [
+     "bool library { get; }"
+    ],
+    "login": [
+     "void login(string username, string password);"
+    ],
+    "logout": [
+     "void logout();"
+    ],
+    "path": [
+     "string path { get; }"
+    ],
+    "primary": [
+     "bool primary { get; }"
+    ],
+    "project_settings": [
+     "IScriptProjectSettings project_settings { get; }"
+    ],
+    "save": [
+     "void save();"
+    ],
+    "save_archive": [
+     "void save_archive(string path);",
+     "void save_archive(string path, IEnumerable<IScriptProjectArchiveCategory> additional_categories);",
+     "void save_archive(string path, IEnumerable<string> additional_files, params IScriptProjectArchiveCategory[] additional_categories);",
+     "void save_archive(string path, params IScriptProjectArchiveCategory[] additional_categories);",
+     "void save_archive(string path, string comment, IEnumerable<string> additional_files, params IScriptProjectArchiveCategory[] additional_categories);",
+     "void save_archive(string path, string comment, params IScriptProjectArchiveCategory[] additional_categories);",
+     "void save_archive(string path, string comment, string[] additional_files, IEnumerable<IScriptProjectArchiveCategory> additional_categories);",
+     "void save_archive(string path, string[] additional_files, IEnumerable<IScriptProjectArchiveCategory> additional_categories);",
+     "void save_archive(string path, string comment, IEnumerable<string> additional_files, IEnumerable<IScriptProjectArchiveCategory> additional_categories);"
+    ],
+    "save_as": [
+     "void save_as(string path, [Optional] string password);"
+    ],
+    "save_as_compiled_library": [
+     "void save_as_compiled_library([Optional] string destination_name);"
+    ],
+    "user_management": [
+     "IScriptUserManagement user_management { get; }"
+    ]
+   },
+   "types": [
+    "IScriptProject",
+    "IScriptProject2",
+    "IScriptProject3",
+    "IScriptProject4",
+    "IScriptProject5",
+    "IScriptProject6",
+    "IScriptProject7",
+    "IScriptProject8",
+    "IScriptProject9",
+    "IScriptProject10",
+    "IScriptProject11",
+    "IScriptProject12",
+    "IScriptProject13"
+   ]
+  },
+  "IScriptProjectArchiveCategories": {
+   "members": {
+    "all": [
+     "IList<IScriptProjectArchiveCategory> all { get; }"
+    ],
+    "bootproject": [
+     "IScriptProjectArchiveCategory bootproject { get; }"
+    ],
+    "compileinfo": [
+     "IScriptProjectArchiveCategory compileinfo { get; }"
+    ],
+    "devices": [
+     "IScriptProjectArchiveCategory devices { get; }"
+    ],
+    "fdt": [
+     "IScriptProjectArchiveCategory fdt { get; }"
+    ],
+    "images": [
+     "IScriptProjectArchiveCategory images { get; }"
+    ],
+    "libraries": [
+     "IScriptProjectArchiveCategory libraries { get; }"
+    ],
+    "libraryprofile": [
+     "IScriptProjectArchiveCategory libraryprofile { get; }"
+    ],
+    "none": [
+     "IList<IScriptProjectArchiveCategory> none { get; }"
+    ],
+    "options": [
+     "IScriptProjectArchiveCategory options { get; }"
+    ],
+    "visualprofile": [
+     "IScriptProjectArchiveCategory visualprofile { get; }"
+    ],
+    "visualstyles": [
+     "IScriptProjectArchiveCategory visualstyles { get; }"
+    ],
+    "visuextensions": [
+     "IScriptProjectArchiveCategory visuextensions { get; }"
+    ]
+   },
+   "types": [
+    "IScriptProjectArchiveCategories"
+   ]
+  },
+  "IScriptProjectArchiveCategory": {
+   "members": {
+    "description": [
+     "string description { get; }"
+    ],
+    "guid": [
+     "Guid guid { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "selected_by_default": [
+     "bool selected_by_default { get; }"
+    ]
+   },
+   "types": [
+    "IScriptProjectArchiveCategory"
+   ]
+  },
+  "IScriptProjectDeviceExtension": {
+   "members": {
+    "add": [
+     "void add(string name, IDeviceId device, [Optional] string module);",
+     "void add(string name, int type, string id, string version, [Optional] string module);"
+    ]
+   },
+   "types": [
+    "IScriptProjectDeviceExtension"
+   ]
+  },
+  "IScriptProjectInfoMarker": {
+   "members": {
+    "is_project_info": [
+     "bool is_project_info { get; }"
+    ]
+   },
+   "types": [
+    "IScriptProjectInfoMarker"
+   ]
+  },
+  "IScriptProjectInfoObject": {
+   "members": {
+    "author": [
+     "string author { get; set; }"
+    ],
+    "categories": [
+     "IList<ILibCategory> categories { get; }"
+    ],
+    "change_accessor_generation": [
+     "void change_accessor_generation(bool generate_accessors);"
+    ],
+    "company": [
+     "string company { get; set; }"
+    ],
+    "default_namespace": [
+     "string default_namespace { get; set; }"
+    ],
+    "description": [
+     "string description { get; set; }"
+    ],
+    "dongle_licencing_active": [
+     "bool dongle_licencing_active { get; set; }"
+    ],
+    "dongle_licensing_activation_mail": [
+     "string dongle_licensing_activation_mail { get; set; }"
+    ],
+    "dongle_licensing_activation_url": [
+     "string dongle_licensing_activation_url { get; set; }"
+    ],
+    "dongle_licensing_firm_code": [
+     "int? dongle_licensing_firm_code { get; set; }"
+    ],
+    "dongle_licensing_product_code": [
+     "int? dongle_licensing_product_code { get; set; }"
+    ],
+    "generate_accessors": [
+     "bool generate_accessors { get; }"
+    ],
+    "released": [
+     "bool released { get; set; }"
+    ],
+    "title": [
+     "string title { get; set; }"
+    ],
+    "version": [
+     "object version { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptProjectInfoObject"
+   ]
+  },
+  "IScriptProjectSettings": {
+   "members": {
+    "available_download_content": [
+     "IEnumerable<IScriptProjectArchiveCategory> available_download_content { get; }"
+    ],
+    "get_compilerversion": [
+     "string get_compilerversion();"
+    ],
+    "project_defines": [
+     "string project_defines { get; set; }"
+    ],
+    "set_compilerversion_to_newest": [
+     "void set_compilerversion_to_newest();"
+    ],
+    "set_sourcedownload": [
+     "void set_sourcedownload(int timing, IEnumerable<IScriptProjectArchiveCategory> content, bool compact, IExtendedObject<IScriptObject> device);"
+    ]
+   },
+   "types": [
+    "IScriptProjectSettings",
+    "IScriptProjectSettings2"
+   ]
+  },
+  "IScriptProjects": {
+   "members": {
+    "all": [
+     "IList<IExtendedObject<IScriptProject>> all { get; }"
+    ],
+    "convert": [
+     "IExtendedObject<IScriptProject> convert(string path, string output_path = null, Guid converter, bool primary = true);",
+     "IExtendedObject<IScriptProject> convert(string path, string output_path = null, string converter = null, bool primary = true);"
+    ],
+    "create": [
+     "IExtendedObject<IScriptProject> create(string path, bool primary = true);"
+    ],
+    "get_by_path": [
+     "IExtendedObject<IScriptProject> get_by_path(string path);"
+    ],
+    "open": [
+     "IExtendedObject<IScriptProject> open(string path, string password = null, bool primary = true);",
+     "IExtendedObject<IScriptProject> open(string path, string encryption_password = null, string session_user = null, string session_password = null, bool primary = true);",
+     "IExtendedObject<IScriptProject> open(string path, string encryption_password = null, string session_user = null, string session_password = null, bool primary = true, VersionUpdateFlags update_flags = VersionUpdateFlags.NoUpdates, bool allow_readonly = false);"
+    ],
+    "open_archive": [
+     "IExtendedObject<IScriptProject> open_archive(string archivefile, string projectpath, bool overwrite = false, [Optional] string password);",
+     "IExtendedObject<IScriptProject> open_archive(string archivefile, string projectpath, bool overwrite = false, string encryption_password = null, string session_user = null, string session_password = null);",
+     "IExtendedObject<IScriptProject> open_archive(string archivefile, string projectpath, bool overwrite = false, string encryption_password = null, string session_user = null, string session_password = null, VersionUpdateFlags update_flags = VersionUpdateFlags.NoUpdates);",
+     "IExtendedObject<IScriptProject> open_archive(string archivefile, string projectpath, bool overwrite = false, string encryption_password = null, string session_user = null, string session_password = null, VersionUpdateFlags update_flags = VersionUpdateFlags.NoUpdates, PromptAbsolutePath prompt_absolute_path = null);",
+     "IExtendedObject<IScriptProject> open_archive(string archivefile, string projectpath, bool overwrite = false, string encryption_password = null, string session_user = null, string session_password = null, VersionUpdateFlags update_flags = VersionUpdateFlags.NoUpdates, PromptAbsolutePath prompt_absolute_path = null, IEnumerable<IScriptProjectArchiveCategory> categories_to_extract = null);"
+    ],
+    "primary": [
+     "IExtendedObject<IScriptProject> primary { get; }"
+    ]
+   },
+   "types": [
+    "IScriptProjects",
+    "IScriptProjects2",
+    "IScriptProjects3",
+    "IScriptProjects4",
+    "IScriptProjects5",
+    "IScriptProjects6"
+   ]
+  },
+  "IScriptRangeDataElement": {
+   "members": {
+    "max_value": [
+     "string max_value { get; }"
+    ],
+    "min_value": [
+     "string min_value { get; }"
+    ]
+   },
+   "types": [
+    "IScriptRangeDataElement"
+   ]
+  },
+  "IScriptRepositorySource": {
+   "members": {
+    "is_internal": [
+     "bool is_internal { get; }"
+    ],
+    "location_url": [
+     "string location_url { get; set; }"
+    ],
+    "name": [
+     "string name { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptRepositorySource"
+   ]
+  },
+  "IScriptRepositorySourceList": {
+   "members": {
+    "__len__": [
+     "int __len__();"
+    ],
+    "add": [
+     "IScriptRepositorySource add(string name, string location_url);"
+    ],
+    "move": [
+     "void move(IScriptRepositorySource source, int index);"
+    ],
+    "remove": [
+     "void remove(IScriptRepositorySource source);"
+    ]
+   },
+   "types": [
+    "IScriptRepositorySourceList"
+   ]
+  },
+  "IScriptScanTargetDescription": {
+   "members": {
+    "address": [
+     "string address { get; }"
+    ],
+    "block_driver": [
+     "BlockDriverType block_driver { get; }"
+    ],
+    "block_driver_address": [
+     "string block_driver_address { get; }"
+    ],
+    "device_id": [
+     "IDeviceId device_id { get; }"
+    ],
+    "device_name": [
+     "string device_name { get; }"
+    ],
+    "locked_in_cache": [
+     "bool locked_in_cache { get; }"
+    ],
+    "parent_address": [
+     "string parent_address { get; }"
+    ],
+    "type_name": [
+     "string type_name { get; }"
+    ],
+    "vendor_name": [
+     "string vendor_name { get; }"
+    ]
+   },
+   "types": [
+    "IScriptScanTargetDescription"
+   ]
+  },
+  "IScriptTaskConfigObject": {
+   "members": {
+    "create_task": [
+     "IExtendedObject<IScriptObject> create_task(string name);"
+    ]
+   },
+   "types": [
+    "IScriptTaskConfigObject"
+   ]
+  },
+  "IScriptTaskConfigObjectMarker": {
+   "members": {
+    "is_task_configuration": [
+     "bool is_task_configuration { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTaskConfigObjectMarker"
+   ]
+  },
+  "IScriptTaskObject": {
+   "members": {
+    "core_binding": [
+     "int core_binding { get; set; }"
+    ],
+    "event_pou_guid": [
+     "Guid event_pou_guid { get; }"
+    ],
+    "external_event": [
+     "string external_event { get; set; }"
+    ],
+    "interval": [
+     "string interval { get; set; }"
+    ],
+    "interval_unit": [
+     "string interval_unit { get; set; }"
+    ],
+    "kind_of_task": [
+     "KindOfTask kind_of_task { get; set; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "parent_synchron_task": [
+     "string parent_synchron_task { get; set; }"
+    ],
+    "pous": [
+     "IScriptPouObjectCollection pous { get; }"
+    ],
+    "priority": [
+     "string priority { get; set; }"
+    ],
+    "watchdog": [
+     "IScriptWatchdog watchdog { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTaskObject"
+   ]
+  },
+  "IScriptTaskObjectMarker": {
+   "members": {
+    "is_task": [
+     "bool is_task { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTaskObjectMarker"
+   ]
+  },
+  "IScriptTextDocument": {
+   "members": {
+    "append": [
+     "void append(string text);"
+    ],
+    "get_line": [
+     "string get_line(int lineno);"
+    ],
+    "get_text": [
+     "string get_text(int lineno, int lineoffset, int length);",
+     "string get_text(int offset, int length);"
+    ],
+    "insert": [
+     "void insert(int lineno, int lineoffset, string text);",
+     "void insert(int offset, string text);"
+    ],
+    "length": [
+     "int length { get; }"
+    ],
+    "linecount": [
+     "int linecount { get; }"
+    ],
+    "remove": [
+     "void remove(int lineno, int lineoffset, int length);",
+     "void remove(int offset, int length);"
+    ],
+    "replace": [
+     "void replace(int lineno, int lineoffset, int length, string newtext);",
+     "void replace(int offset, int length, string newtext);",
+     "void replace(string new_text);"
+    ],
+    "replace_line": [
+     "void replace_line(int lineno, string line);"
+    ],
+    "text": [
+     "string text { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTextDocument"
+   ]
+  },
+  "IScriptTextualObjectMarker": {
+   "members": {
+    "has_textual_declaration": [
+     "bool has_textual_declaration { get; }"
+    ],
+    "has_textual_implementation": [
+     "bool has_textual_implementation { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTextualObjectMarker"
+   ]
+  },
+  "IScriptTransientObjectMarker": {
+   "members": {
+    "is_transient_object": [
+     "bool is_transient_object { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTransientObjectMarker"
+   ]
+  },
+  "IScriptTreeObject": {
+   "members": {
+    "find": [
+     "IList<IExtendedObject<IScriptObject>> find(params string[] names);",
+     "IList<IExtendedObject<IScriptObject>> find(string name, bool recursive = false);"
+    ],
+    "get_children": [
+     "IList<IExtendedObject<IScriptObject>> get_children(bool recursive = false);"
+    ],
+    "handle": [
+     "int handle { get; }"
+    ],
+    "is_root": [
+     "bool is_root { get; }"
+    ],
+    "project": [
+     "IExtendedObject<IScriptProject> project { get; }"
+    ]
+   },
+   "types": [
+    "IScriptTreeObject"
+   ]
+  },
+  "IScriptUI": {
+   "members": {
+    "browse_directory_dialog": [
+     "string browse_directory_dialog(string message, string path = \"\", Environment.SpecialFolder root_folder = Environment.SpecialFolder.MyComputer, bool new_folder_button = true);"
+    ],
+    "choose": [
+     "IList<object> choose(string message, IList<object> options, int initial_selection = 0, bool cancellable = true, string message_key = \"ScriptMessage\", params object[] arguments);"
+    ],
+    "error": [
+     "void error(string message, string message_key = \"ScriptMessage\", params object[] arguments);"
+    ],
+    "info": [
+     "void info(string message, string message_key = \"ScriptMessage\", params object[] arguments);"
+    ],
+    "open_file_dialog": [
+     "object open_file_dialog([Optional] string title, [Optional] string filename, [Optional] string directory, [Optional] string filter, [Optional] int? filter_index, [Optional] string default_extension, [Optional] Guid? stateguid, [Optional] bool multiselect, bool check_file_exists = true, bool check_path_exists = true);"
+    ],
+    "prompt": [
+     "PromptResult prompt(string message, PromptChoice choice, PromptResult default_result, [Optional] string store_description, [Optional] string store_key, string message_key = \"ScriptMessage\", params object[] arguments);"
+    ],
+    "query_credentials": [
+     "IList<object> query_credentials(string message = \"\", string username = \"\", string password = \"\", [Optional] bool cancellable);"
+    ],
+    "query_password": [
+     "string query_password(string message = \"\", string password = \"\", [Optional] bool cancellable);"
+    ],
+    "query_string": [
+     "string query_string(string message = \"\", string text = \"\", [Optional] bool multi_line, [Optional] bool cancellable);"
+    ],
+    "reset_stored_result": [
+     "void reset_stored_result(string store_key);"
+    ],
+    "save_file_dialog": [
+     "string save_file_dialog([Optional] string title, [Optional] string filename, [Optional] string directory, [Optional] string filter, [Optional] int? filter_index, [Optional] string default_extension, [Optional] Guid? stateguid, bool check_file_exists = true, [Optional] bool check_path_exists, bool check_overwrite = true, [Optional] bool check_create);"
+    ],
+    "select_many": [
+     "IList<object> select_many(string message, PromptChoice choice, PromptResult result, IList<object> items, string message_key = \"ScriptMessage\", params object[] arguments);"
+    ],
+    "warning": [
+     "void warning(string message, string message_key = \"ScriptMessage\", params object[] arguments);"
+    ]
+   },
+   "types": [
+    "IScriptUI"
+   ]
+  },
+  "IScriptUser": {
+   "members": {
+    "active": [
+     "bool active { get; set; }"
+    ],
+    "change_password": [
+     "void change_password(string old_password, string new_password);"
+    ],
+    "check_password": [
+     "bool check_password(string password);"
+    ],
+    "fullname": [
+     "string fullname { get; set; }"
+    ],
+    "groups": [
+     "IList<object> groups { get; }"
+    ],
+    "remove": [
+     "void remove();"
+    ],
+    "rename": [
+     "void rename(string newname);"
+    ],
+    "userlist": [
+     "IScriptUserList userlist { get; }"
+    ]
+   },
+   "types": [
+    "IScriptUser"
+   ]
+  },
+  "IScriptUserList": {
+   "members": {
+    "create": [
+     "IScriptUser create(string name);"
+    ],
+    "project": [
+     "IExtendedObject<IScriptProject> project { get; }"
+    ],
+    "user_management": [
+     "IScriptUserManagement user_management { get; }"
+    ]
+   },
+   "types": [
+    "IScriptUserList"
+   ]
+  },
+  "IScriptUserManagement": {
+   "members": {
+    "check_available": [
+     "bool check_available(Guid type);"
+    ],
+    "get_command_permission": [
+     "IScriptCommandPermission get_command_permission(Guid commandguid);",
+     "IScriptCommandPermission get_command_permission(IScriptCommand command);"
+    ],
+    "get_factory_permission": [
+     "IScriptFactoryPermission get_factory_permission(Guid factoryguid);",
+     "IScriptFactoryPermission get_factory_permission(IScriptObjectFactory factory);"
+    ],
+    "get_object_permission": [
+     "IScriptObjectPermission get_object_permission(IExtendedObject<IScriptObject> obj, ObjectPermissionKind kind);"
+    ],
+    "get_user_management_permission": [
+     "IScriptPermission get_user_management_permission();"
+    ],
+    "groups": [
+     "IScriptGroupList groups { get; }"
+    ],
+    "logged_on_user": [
+     "IScriptUser logged_on_user { get; }"
+    ],
+    "login": [
+     "void login(string username, string password);"
+    ],
+    "login_time": [
+     "DateTime login_time { get; }"
+    ],
+    "logout": [
+     "void logout();"
+    ],
+    "project": [
+     "IExtendedObject<IScriptProject> project { get; }"
+    ],
+    "types": [
+     "IExtendedObject<IScriptPermissionTypes> types { get; }"
+    ],
+    "users": [
+     "IScriptUserList users { get; }"
+    ]
+   },
+   "types": [
+    "IScriptUserManagement"
+   ]
+  },
+  "IScriptUserOrGroup": {
+   "members": {
+    "add_to": [
+     "void add_to(IScriptGroup parent);"
+    ],
+    "description": [
+     "string description { get; set; }"
+    ],
+    "id": [
+     "Guid id { get; }"
+    ],
+    "is_group": [
+     "bool is_group { get; }"
+    ],
+    "is_user": [
+     "bool is_user { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "project": [
+     "IExtendedObject<IScriptProject> project { get; }"
+    ],
+    "remove_from": [
+     "void remove_from(IScriptGroup parent);"
+    ],
+    "user_management": [
+     "IScriptUserManagement user_management { get; }"
+    ]
+   },
+   "types": [
+    "IScriptUserOrGroup"
+   ]
+  },
+  "IScriptValueDataElement": {
+   "members": {
+    "base_type": [
+     "string base_type { get; }"
+    ],
+    "default_value": [
+     "string default_value { get; }"
+    ],
+    "read_online_value": [
+     "string read_online_value(int nTimeOut = 1000);"
+    ],
+    "value": [
+     "string value { get; set; }"
+    ],
+    "write_online_value": [
+     "void write_online_value(string value);"
+    ]
+   },
+   "types": [
+    "IScriptValueDataElement"
+   ]
+  },
+  "IScriptVendorDescription": {
+   "members": {
+    "families": [
+     "IList<object> families { get; }"
+    ],
+    "get_family": [
+     "IScriptDeviceFamily get_family(int family_id);"
+    ],
+    "vendor_id": [
+     "int vendor_id { get; }"
+    ],
+    "vendor_info": [
+     "IScriptVendorInfo vendor_info { get; }"
+    ],
+    "version": [
+     "string version { get; }"
+    ]
+   },
+   "types": [
+    "IScriptVendorDescription"
+   ]
+  },
+  "IScriptVendorInfo": {
+   "members": {
+    "addresses": [
+     "IList<object> addresses { get; }"
+    ],
+    "faxes": [
+     "IList<object> faxes { get; }"
+    ],
+    "mail_addresses": [
+     "IList<object> mail_addresses { get; }"
+    ],
+    "name": [
+     "string name { get; }"
+    ],
+    "phones": [
+     "IList<object> phones { get; }"
+    ],
+    "web_addresses": [
+     "IList<object> web_addresses { get; }"
+    ]
+   },
+   "types": [
+    "IScriptVendorInfo"
+   ]
+  },
+  "IScriptWatchdog": {
+   "members": {
+    "enabled": [
+     "bool enabled { get; set; }"
+    ],
+    "sensitivity": [
+     "string sensitivity { get; set; }"
+    ],
+    "time": [
+     "string time { get; set; }"
+    ],
+    "time_unit": [
+     "string time_unit { get; set; }"
+    ]
+   },
+   "types": [
+    "IScriptWatchdog"
+   ]
+  },
+  "ISystem": {
+   "members": {
+    "abort_autocheck": [
+     "bool abort_autocheck { get; set; }"
+    ],
+    "abortable": [
+     "bool abortable { get; set; }"
+    ],
+    "aborting": [
+     "bool aborting { get; }"
+    ],
+    "background_loading_of_libraries_finished": [
+     "bool background_loading_of_libraries_finished { get; }"
+    ],
+    "clear_messages": [
+     "void clear_messages(Guid category);"
+    ],
+    "commands": [
+     "IScriptCommands commands { get; }"
+    ],
+    "delay": [
+     "void delay(int milliseconds);"
+    ],
+    "executable_filename": [
+     "string executable_filename { get; }"
+    ],
+    "execute_on_primary_thread": [
+     "void execute_on_primary_thread(PieceOfCode code, [Optional] bool async);"
+    ],
+    "exit": [
+     "void exit([Optional] int exitcode);"
+    ],
+    "factories": [
+     "IScriptObjectFactories factories { get; }"
+    ],
+    "get_message_categories": [
+     "IList<Guid> get_message_categories(bool bActive = true);"
+    ],
+    "get_message_category_description": [
+     "string get_message_category_description(Guid category);"
+    ],
+    "get_message_objects": [
+     "IList<IScriptMessage> get_message_objects(Guid category, Severity severities = (Severity)4294967295u);",
+     "IList<IScriptMessage> get_message_objects(string category = null, Severity severities = (Severity)4294967295u);"
+    ],
+    "get_messages": [
+     "IList<string> get_messages(Guid category);",
+     "IList<string> get_messages([Optional] string category);"
+    ],
+    "log_prompt_details": [
+     "bool log_prompt_details { get; set; }"
+    ],
+    "process_messageloop": [
+     "void process_messageloop();"
+    ],
+    "process_script_prompts": [
+     "bool process_script_prompts { get; set; }"
+    ],
+    "progress_absolute": [
+     "void progress_absolute(string item, int absolute_progress);"
+    ],
+    "progress_start": [
+     "void progress_start(string description, int items = -1, string unit = \"\");"
+    ],
+    "progress_step": [
+     "void progress_step(string item, int completed = 1);"
+    ],
+    "prompt_handling": [
+     "PromptHandling prompt_handling { get; set; }"
+    ],
+    "script_prompt_handling": [
+     "ScriptPromptHandling script_prompt_handling { get; set; }"
+    ],
+    "trace": [
+     "bool trace { get; set; }"
+    ],
+    "ui": [
+     "IScriptUI ui { get; }"
+    ],
+    "ui_present": [
+     "bool ui_present { get; }"
+    ],
+    "write_message": [
+     "void write_message(Severity severity, string stMessage, [Optional] IScriptTreeObject obj, long position = -1L, [Optional] short length);",
+     "void write_message(Severity severity, string stMessage, IExtendedObject<IScriptObject> obj, long position = -1L, [Optional] short length);",
+     "void write_message(Severity severity, string stMessage, IExtendedObject<IScriptProject> obj);"
+    ]
+   },
+   "types": [
+    "ISystem",
+    "ISystem2",
+    "ISystem3",
+    "ISystem4",
+    "ISystem5",
+    "ISystem6"
+   ]
+  }
+ },
+ "note": "Names and declarations of the CODESYS scripting API, extracted from decompiled ScriptEngine3.dll. No method bodies, no CODESYS code. Regenerate with tools/script_api_snapshot.py."
+}
