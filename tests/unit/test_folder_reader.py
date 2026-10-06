@@ -151,6 +151,62 @@ class TestFolderReaderManifest:
         assert node is not None
         assert node.code == code
 
+    def test_a_deleted_projection_file_marks_the_entry_missing(self, tmp_path):
+        """The .st is gone from project-view/ but its manifest line and xml
+        baseline remain; the entry must not read as unchanged."""
+        xml_content = "<Root><Single Name='Data'>hello</Single></Root>"
+        st_path = "Folder/Obj.st"
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "Obj",
+                        "type_guid": "",
+                        "parent_guid": None,
+                        "xml_path": "Folder/Obj.xml",
+                        "hash": sha1_hex(xml_content),
+                        "projection_paths": [st_path],
+                        "projection_hashes": {st_path: "deadbeef"},
+                    }
+                ],
+            },
+        )
+        _write_file(views, "Folder/Obj.xml", xml_content)
+        # Folder/Obj.st deliberately not written: the user deleted it.
+
+        node = reader.read().get_node("g1")
+
+        assert node.metadata.get("files_missing") is True
+
+    def test_a_present_projection_file_is_not_marked_missing(self, tmp_path):
+        xml_content = "<Root><Single Name='Data'>hello</Single></Root>"
+        st_path = "Folder/Obj.st"
+        reader, views, dump = self._make_reader(
+            tmp_path,
+            {
+                "entries": [
+                    {
+                        "guid": "g1",
+                        "name": "Obj",
+                        "type_guid": "",
+                        "parent_guid": None,
+                        "xml_path": "Folder/Obj.xml",
+                        "hash": sha1_hex(xml_content),
+                        "projection_paths": [st_path],
+                        "projection_hashes": {st_path: sha1_hex("x := 1;")},
+                    }
+                ],
+            },
+        )
+        _write_file(views, "Folder/Obj.xml", xml_content)
+        _write_file(views, st_path, "x := 1;")
+
+        node = reader.read().get_node("g1")
+
+        assert not node.metadata.get("files_missing")
+
     def test_changed_xml_sets_xml_changed_metadata(self, tmp_path):
         xml_content = "<Root><Data>new</Data></Root>"
         old_hash = "deadbeef"

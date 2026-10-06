@@ -674,6 +674,7 @@ class _ImportTextContext(object):
         self.updated_text = []
         self.skipped_projection_objects = []
         self.ide_only_count = 0
+        self.library_changes = {}
         self.structured_view_applied = False
         self.mutated = False
         self.saved = False
@@ -916,6 +917,7 @@ def _import_text_fold_compare_report(context):
     updated_text = []
     skipped_projection_objects = []
     ide_only_count = 0
+    library_changes = {}
     if os.path.exists(context.compare_report_path):
         updated_text = _apply_modified_st_objects(
             context.project, context.compare_report_path
@@ -930,6 +932,10 @@ def _import_text_fold_compare_report(context):
             _report = _json.loads(_read_text_utf8(context.compare_report_path))
             _updated_names = set(updated_text)
             ide_only_count = len((_report.get("objects") or {}).get("deleted") or [])
+            # A Library Manager edit is export_only: import cannot carry it.
+            # The report says so; pass it on so the user is not left believing
+            # the import applied a library change.
+            library_changes = _report.get("library_manager_changes") or {}
             for obj in (_report.get("objects") or {}).get("modified") or []:
                 _name = obj.get("name") or obj.get("guid") or "?"
                 if _name in _updated_names:
@@ -963,6 +969,7 @@ def _import_text_fold_compare_report(context):
     context.updated_text = updated_text
     context.skipped_projection_objects = skipped_projection_objects
     context.ide_only_count = ide_only_count
+    context.library_changes = library_changes
 
 
 def _import_text_apply_structured_view(context, root):
@@ -1042,6 +1049,10 @@ def _import_text_build_result(context):
         "failed_native_objects": context.failed_native,
         "saved": context.saved,
     }
+    if context.library_changes:
+        # The Library Manager is export_only: import cannot add or remove a
+        # library.  Say it, and say what to do instead.
+        return_data["library_changes"] = context.library_changes
     if context.mutated and not context.saved:
         return_data["unsaved"] = (
             "The project was changed in memory but NOT saved{0}. Save it in "

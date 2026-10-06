@@ -243,6 +243,24 @@ def _log_library_drift(diff_result):
         _log("Hint: " + hint)
 
 
+def _warn_library_manager_changes(diff_result):
+    """Announce a Library Manager edit, which import will not apply.
+
+    It is ``export_only`` in the profile, so it is demoted to "unchanged";
+    without this the user is told nothing and believes the import carried it.
+    """
+    info = diff_result.get("library_manager_changes") or {}
+    objects = info.get("objects") or []
+    if not objects:
+        return
+    print(
+        "Warning: the Library Manager differs between the IDE and "
+        "project-view/ ({0} object(s)), and {1}.".format(
+            len(objects), info.get("hint", "")
+        )
+    )
+
+
 def _log_compare_details(diff_result, ide_model, folder_model):
     _log(
         "Compare model sizes: ide={0}, disk={1}".format(
@@ -264,6 +282,7 @@ def _log_compare_details(diff_result, ide_model, folder_model):
         summary_parts.append("{0}={1}".format(key, len(value)))
     _log("Compare summary: " + ", ".join(summary_parts))
     _log_library_drift(diff_result)
+    _warn_library_manager_changes(diff_result)
 
     for category in ("modified", "added", "deleted", "projection_conflicts"):
         for guid in diff_result.get(category, []):
