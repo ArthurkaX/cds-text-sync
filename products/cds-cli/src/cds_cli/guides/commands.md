@@ -21,6 +21,7 @@ Global flags (`--pretty`/`-p`, `--output`, `--target`, `--expect-project`) go **
 | Configure the project sync folder through the daemon | `cts set-sync-folder [PATH] [--save]` |
 | Read CODESYS IDE messages | `cts read-log` |
 | Inspect daemon permissions | `cts permissions` |
+| Read back the outcome of a command you interrupted | `cts last-result` |
 
 ## Folder and IDE Synchronization
 
@@ -41,6 +42,8 @@ A `.project` file carries its own sync-folder setting (`cds-sync-folder`). Copyi
 Disconnect before any project edit when the IDE is online with the PLC. Import, one-object updates (`update-pou`), deletion (`delete-pou`), `set-sync-folder` and simulation mode are all refused while online, with one message: the IDE is online with the PLC; editing the project while online is not supported. Run `cts disconnect`, then repeat the command — the refusal names the exact `cts` command to retype (`cts import`, `cts update-pou`, `cts delete-pou`, `cts set-sync-folder`, `cts project simulate on`). There is no override flag. An edit that slips through online leaves the new objects half-applied — their symbols are never exported to the running application, so every later read fails with *"is not exported to the online application"* even after a full download.
 
 Import applies to the in-memory project and does not save — saving commits everything else open in the IDE, so it is the user's call. Report the `unsaved` warning when it appears; use `--save` only when the user asked for it. Import does re-baseline `project-view/` and `manifest.json` from the IDE, so the next compare is clean. When it withholds that refresh it says why in `manifest_refresh_skipped` — always because an edit did not reach the IDE and the disk still holds the only copy.
+
+A `cts` that times out or is interrupted (Ctrl+C, killed) stops listening, but the daemon does not stop working: the command runs to the end. Its outcome is not lost — read it with `cts last-result`. Never blind-retry an import after a timeout; check `cts status` and `cts last-result` first.
 
 ## Reading the context
 
