@@ -57,6 +57,54 @@ def _log(msg):
         pass
 
 
+#: Liveness marker for a client that timed out waiting for the single-threaded
+#: command loop.  Written next to the log (same TEMP), so a CLI that had to
+#: give up can tell "the daemon is not running at all" from "the daemon is
+#: alive but busy with a long command", instead of printing one guess for both.
+STATUS_FILE = os.path.join(
+    os.environ.get("TEMP", "C:\\Temp"), "cds-daemon-status.json"
+)
+
+
+def write_daemon_status(state, method="", started_ts=None):
+    """Best-effort liveness marker; never raises into the command loop.
+
+    ``state`` is ``"idle"`` or ``"busy"``; when busy, ``method`` and
+    ``started_ts`` (epoch) name the command being run.  A reader that catches a
+    partial file treats it as absent, so a plain write is safe enough.
+    """
+    try:
+        payload = {
+            "pid": os.getpid(),
+            "state": state,
+            "method": method,
+            "started_ts": started_ts,
+            "updated": time.time(),
+        }
+        tmp = STATUS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(json.dumps(payload))
+        try:
+            os.remove(STATUS_FILE)
+        except OSError:
+            pass
+        os.rename(tmp, STATUS_FILE)
+    except Exception:
+        pass
+
+
+def clear_daemon_status():
+    """Remove the liveness marker when the loop stops running.
+
+    Its absence is how a CLI tells "the daemon is not running" from a marker
+    that is simply stale.
+    """
+    try:
+        os.remove(STATUS_FILE)
+    except Exception:
+        pass
+
+
 def _read_text_utf8(path):
     """Read UTF-8 text as unicode for IronPython/.NET text APIs."""
     with io.open(path, "r", encoding="utf-8-sig") as handle:
@@ -393,6 +441,48 @@ _DEFAULT_CONFIG = {
     ],
 }
 
+#: Where the daemon keeps its settings, and how durable that is.  Reported by
+#: ``cts permissions`` so the answer to "where do these live, and will they
+#: survive?" is not a guess: the property is part of the .project, so it is
+#: saved *with the project* by the IDE, and an edit made while the IDE is
+#: online changes only memory until the project is saved.
+CONFIG_STORAGE = (
+    "the CODESYS project - Project Information, property 'cds-daemon-config'"
+)
+CONFIG_PERSISTENCE = (
+    "Saved with the .project file, so it travels with the project and survives "
+    "a restart -- once the project is saved in the IDE. The IDE must be "
+    "offline to change it; while online the edit is refused."
+)
+
+#: The refusal for an edit that must not touch the project while online.
+ONLINE_SAVE_REFUSAL = (
+    "The IDE is online with the PLC, and the daemon settings live inside the "
+    "project: editing it while online would change only the in-memory project "
+    "and would be lost when the IDE is closed without saving. Run "
+    "`cts disconnect`, change the settings, then save the project."
+)
+
+
+def daemon_config_online_refusal():
+    """The refusal message when the config may not be saved now, else ``None``.
+
+    Returns a string (the reason) rather than a response dict: the only caller
+    is the Settings window, which shows it in a message box.
+    """
+    try:
+        projects = sys._codesys_daemon_loop.get("projects")
+        prj = projects.primary if projects is not None else None
+        if prj is None:
+            return None
+        from ide_online_guard import project_is_online
+
+        if project_is_online(prj):
+            return ONLINE_SAVE_REFUSAL
+    except Exception:
+        return None
+    return None
+
 
 def _read_daemon_config():
     """Read 'cds-daemon-config' and say whether the stored value was usable.
@@ -483,6 +573,10 @@ def _save_daemon_config(config):
     caller (the Settings window) shows the failure, and a silently lost
     deny-list edit is exactly the outcome to avoid.
     """
+    refusal = daemon_config_online_refusal()
+    if refusal is not None:
+        _log("cannot save daemon config: the IDE is online; refusing to edit the project")
+        return False
     raw = json.dumps(config, ensure_ascii=False)
     try:
         projects = sys._codesys_daemon_loop.get("projects")

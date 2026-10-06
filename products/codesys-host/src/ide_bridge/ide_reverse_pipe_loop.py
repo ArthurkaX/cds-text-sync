@@ -62,6 +62,8 @@ from ide_daemon_state import (
     _get_plc_status_snapshot,
     _instance_info,
     _hello_info,
+    write_daemon_status,
+    clear_daemon_status,
 )
 
 from ide_daemon_helpers import (
@@ -463,33 +465,44 @@ def _serve_connection(pipe, dash=None):
 
     # Execute command in main script context
     command_started = time.time()
-    response = handle_command(method, params, request_id=request_id)
-    command_seconds = time.time() - command_started
+    # Mark the loop busy before the handler runs: while a long command is in
+    # flight the CLI's own timeout can fire, and this is what its message reads
+    # to say "alive but busy with <method> for Ns" instead of "not running".
+    # The marker stays busy through the reply write too -- a write blocked on a
+    # gone reader is exactly the state the CLI must not mistake for idle.
+    write_daemon_status("busy", method, command_started)
+    try:
+        response = handle_command(method, params, request_id=request_id)
+        command_seconds = time.time() - command_started
 
-    # Attach instance and the "where am I" context (computed after command
-    # execution; cached state only, never a new PLC/IDE call).
-    ide_response_context.attach_response_metadata(response, request_id)
+        # Attach instance and the "where am I" context (computed after command
+        # execution; cached state only, never a new PLC/IDE call).
+        ide_response_context.attach_response_metadata(response, request_id)
 
-    if dash is not None:
-        _dashboard_log_response(dash, method, response)
+        if dash is not None:
+            _dashboard_log_response(dash, method, response)
 
-    # Write the response back. On a failed write the connection is dropped here
-    # and now -- the client is gone, and this instance must not be held while
-    # the result is recorded and the next client waits.
-    delivered = _deliver_response(
-        pipe, method, request_id, response, command_seconds
-    )
+        # Write the response back. On a failed write the connection is dropped
+        # here and now -- the client is gone, and this instance must not be held
+        # while the result is recorded and the next client waits.
+        delivered = _deliver_response(
+            pipe, method, request_id, response, command_seconds
+        )
 
-    # Record the outcome. On a failed write -- the CLI gave up on a long command
-    # and closed its end -- this file is the only place the result still exists;
-    # for the sync commands it is recorded even when the write worked, so the
-    # result of the last import can always be looked up afterwards.
-    record_last_result(method, response, request_id, write_failed=not delivered)
+        # Record the outcome. On a failed write -- the CLI gave up on a long
+        # command and closed its end -- this file is the only place the result
+        # still exists; for the sync commands it is recorded even when the write
+        # worked, so the result of the last import can always be looked up
+        # afterwards.
+        record_last_result(method, response, request_id, write_failed=not delivered)
 
-    # Canonical name: the protocol's legacy "stop" alias must still stop the
-    # daemon, while `cts stop` (stop_plc) must not. handle_command has already
-    # resolved the alias for dispatch; this repeats it for the shutdown test.
-    return _registry.canonical_name(method) == "stop_daemon"
+        # Canonical name: the protocol's legacy "stop" alias must still stop the
+        # daemon, while `cts stop` (stop_plc) must not. handle_command has
+        # already resolved the alias for dispatch; this repeats it for the
+        # shutdown test.
+        return _registry.canonical_name(method) == "stop_daemon"
+    finally:
+        write_daemon_status("idle")
 
 
 def run_loop():
@@ -501,6 +514,9 @@ def run_loop():
     sys._codesys_daemon_loop["started_at"] = ide_time.iso_utc()
     sys._codesys_daemon_loop["started_ts"] = time.time()
     sys._codesys_daemon_loop["started"] = True
+    # From here the marker exists and says "idle", so a CLI that timed out on a
+    # later command knows the daemon was up and simply did not take the request.
+    write_daemon_status("idle")
 
     # The supported operating order is IDE Online/Login first, daemon second.
     # Capture that existing session now; this creates only a wrapper and never
@@ -610,6 +626,7 @@ def run_loop():
 
     _log("Reverse Pipe Daemon loop ended.")
     sys._codesys_daemon_loop["running"] = False
+    clear_daemon_status()
 
     # Close UI dashboard
     if _dash is not None and _ui is not None:

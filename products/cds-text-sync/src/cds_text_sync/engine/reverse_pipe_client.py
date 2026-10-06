@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import json
 import os
 import random
 import sys
@@ -894,6 +895,65 @@ def _close_session(session):
     session.lock.close()
 
 
+#: The daemon writes this next to its log (same TEMP) around every command --
+#: see ``ide_daemon_state.write_daemon_status``.  Its absence means the daemon
+#: is not running; its contents say whether it is busy or merely idle.
+DAEMON_STATUS_FILE = "cds-daemon-status.json"
+
+
+def _daemon_status_path() -> str:
+    return os.path.join(os.environ.get("TEMP", "C:\\Temp"), DAEMON_STATUS_FILE)
+
+
+def daemon_activity_hint(now: float | None = None) -> str | None:
+    """One honest sentence about what the daemon is doing, or ``None``.
+
+    The command loop is single-threaded, so a slow command makes every other
+    one time out at the CLI.  The status file tells "alive but busy with
+    <method> for Ns" from "not running" -- without it, both printed the same
+    "the daemon never picked up this request".  ``None`` means there is nothing
+    to read, and the caller keeps its own wording rather than guess.
+    """
+    try:
+        with open(_daemon_status_path(), encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    now = time.time() if now is None else now
+    pid = data.get("pid")
+    state = str(data.get("state") or "")
+    method = str(data.get("method") or "") or "a command"
+
+    if state == "busy":
+        started = data.get("started_ts")
+        if isinstance(started, (int, float)):
+            running = max(0.0, now - started)
+            return (
+                f"The daemon is alive but busy with {method} for {running:.0f}s "
+                f"(pid {pid}); the command loop is single-threaded, so it will "
+                f"answer when that command finishes."
+            )
+        return f"The daemon is alive but busy with {method} (pid {pid})."
+
+    if state == "idle":
+        updated = data.get("updated")
+        if isinstance(updated, (int, float)) and now - updated > 30:
+            return (
+                f"The daemon is alive (pid {pid}) but its last activity was "
+                f"{now - updated:.0f}s ago -- it may be stuck inside the IDE "
+                f"rather than idle."
+            )
+        return (
+            f"The daemon is alive and idle (pid {pid}) but did not take this "
+            f"request: it may have just started, or the request reached the "
+            f"wrong pipe."
+        )
+    return None
+
+
 class ReversePipeClient:
     """CLI creates a pipe server, IDE connects as client.
 
@@ -1246,6 +1306,16 @@ class ReversePipeClient:
             )
             if final_dec.kind == "error":
                 raise _with_ssh_hint(final_dec.error, session.hellos)
+
+        # The daemon's own liveness marker, when it is there, names the real
+        # case ("alive but busy with build for 42s") instead of the two-way
+        # guess the old message had to make.
+        activity = daemon_activity_hint()
+        if activity:
+            raise RuntimeError(
+                f"Timeout ({session.timeout}s) waiting for IDE to connect to "
+                f"{session.pipe_path}. {activity}"
+            )
 
         hint = ssh_dacl_hint() or self._diagnose_ide_timeout(target_pid=session.target_pid)
         raise RuntimeError(

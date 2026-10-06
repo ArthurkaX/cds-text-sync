@@ -67,6 +67,15 @@ VOLATILE_XML_NAMES = set(
     ]
 )
 
+#: Custom project properties cts writes for its own bookkeeping, not project
+#: content. ``cds-daemon-config`` (the daemon's permission/deny list, see
+#: ``ide_daemon_state``) lives on the Project Information object, so changing a
+#: setting made that object show up as ``modified`` in ``cts compare`` even
+#: though nothing a user authored had changed. They are ignored on both sides:
+#: the setting travels with the .project and is not an object to sync.
+SERVICE_XML_NAMES = set(["cds-daemon-config"])
+
+
 # Element names a fresh CODESYS session is free to rewrite on an otherwise
 # unchanged object. The writer uses this (through write_equivalent_xml_text) to
 # decide whether a view file must be rewritten at all; it is deliberately a
@@ -996,9 +1005,9 @@ def normalized_xml_text(value, extra_ignore_names=None):
         root = ET.fromstring(value)
     except Exception:
         return value
-    ignore_names = VOLATILE_XML_NAMES
+    ignore_names = VOLATILE_XML_NAMES | SERVICE_XML_NAMES
     if extra_ignore_names:
-        ignore_names = VOLATILE_XML_NAMES | set(extra_ignore_names)
+        ignore_names = ignore_names | set(extra_ignore_names)
     normalize_xml_element(root, ignore_names)
     data = ET.tostring(root, encoding="utf-8")
     if isinstance(data, bytes):

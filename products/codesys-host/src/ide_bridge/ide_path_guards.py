@@ -24,9 +24,12 @@ from __future__ import print_function
 import os
 
 #: What a caller may pass to mean "the device's root directory".  Git Bash
-#: rewrites a leading ``/`` into a Windows path, so the root cannot be spelled
-#: ``/`` from that shell; ``.`` and "" are what survive.
-PLC_ROOT_TOKENS = (".", "")
+#: rewrites a leading ``/`` into a Windows path, so ``/`` usually does not
+#: reach the daemon as typed; ``.`` and "" are what survive.  With
+#: ``MSYS_NO_PATHCONV=1`` the ``/`` *does* survive, and the device API takes
+#: the root as the empty string only -- handed ``/`` it answers "Get directory
+#: entries failed" -- so the slash spellings are normalised the same way.
+PLC_ROOT_TOKENS = (".", "", "/", "\\", "/.", ".\\")
 
 
 def as_text(value):

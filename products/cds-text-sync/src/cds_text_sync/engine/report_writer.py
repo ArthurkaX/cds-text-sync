@@ -161,6 +161,9 @@ class ReportWriter:
         if diff_result.get("library_resolution"):
             report["library_resolution"] = diff_result["library_resolution"]
 
+        if diff_result.get("library_manager_changes"):
+            report["library_manager_changes"] = diff_result["library_manager_changes"]
+
         if include_objects:
             objects = {}
             for key in ("modified", "added", "deleted"):

@@ -26,6 +26,8 @@ from ide_daemon_helpers import (
 
 from ide_path_guards import host_path_error, plc_path_error, plc_root_path
 
+import ide_plc_files as plc_files
+
 
 def _plc_path_refusal(params, name):
     """A refusal when a PLC-path parameter is really an MSYS-rewritten host path."""
@@ -44,6 +46,24 @@ def _local_scratch_file(suffix):
     handle, path = tempfile.mkstemp(prefix="cds-plc-", suffix=suffix)
     os.close(handle)
     return path
+
+
+def _discard_empty(path):
+    """Remove a destination a failed download left behind empty.
+
+    A path the CLI then reads or stats would otherwise look like a download
+    that produced an empty file, instead of one that failed.
+    """
+    try:
+        if os.path.exists(path) and os.path.getsize(path) == 0:
+            os.remove(path)
+    except Exception:
+        pass
+
+
+def _plc_suffix(path):
+    """A plausible local suffix for a downloaded PLC file."""
+    return os.path.splitext(path)[1] or ".bin"
 
 # Imported for its side effect: puts shared/src on sys.path so this module can be
 # imported cold, without depending on some earlier bridge module having done it.
@@ -333,39 +353,34 @@ def _cmd_plc_files(params):
                 diag["connect_error"] = str(e)[:200]
 
         # Try common roots when the whole device was asked for.  The root is
-        # the empty string, not "/": Git Bash rewrites a "/" argument into a
-        # Windows path before cts sees it, so "/" never arrives as typed.
+        # the empty string; the POSIX spellings catch a runtime (a Linux CODESYS
+        # Control, say) whose log and mount points sit under /var, /tmp or
+        # /usr rather than under the application's PlcLogic tree.
         paths_to_try = [path]
         if not path:
-            paths_to_try = [
-                "",
-                "/",
-                "/usr/",
-                "/home/",
-                "/var/",
-                "/tmp/",
-                "/log/",
-                "/logs/",
-            ]
+            paths_to_try = ["", "/usr/", "/home/", "/var/", "/tmp/", "/log/", "/logs/"]
 
-        result_files = None
+        files = None
         last_error = None
         for p in paths_to_try:
-            try:
-                result_files = online_dev.get_file_list_of_directory(p)
-                if result_files is not None:
-                    path = p
-                    break
-            except Exception as e:
-                last_error = str(e)[:200]
-                continue
+            entries, list_error = plc_files.list_directory(online_dev, p)
+            if entries is not None:
+                files = entries
+                path = p
+                break
+            last_error = list_error
 
-        if result_files is None:
+        if files is None:
             # Show diagnostic info
             diag["paths_tried"] = paths_to_try
             diag["last_error"] = last_error or "unknown"
             diag["note"] = (
                 "PLC file system may be disabled or device not fully connected"
+            )
+            _log(
+                "plc_files: {0} (paths tried: {1})".format(
+                    diag["last_error"], paths_to_try
+                )
             )
             return {
                 "ok": False,
@@ -373,57 +388,22 @@ def _cmd_plc_files(params):
                 "diagnostics": diag,
             }
 
-        files = []
-        for f in result_files:
-            try:
-                info = {}
-                for attr in [
-                    "name",
-                    "Name",
-                    "length",
-                    "Length",
-                    "size",
-                    "Size",
-                    "is_directory",
-                    "IsDirectory",
-                    "creation_time",
-                    "CreationTime",
-                    "last_write_time",
-                    "LastWriteTime",
-                ]:
-                    if hasattr(f, attr):
-                        try:
-                            val = getattr(f, attr)
-                            if callable(val):
-                                val = val()
-                            if val is not None:
-                                info[attr.lower()] = str(val)[:100]
-                        except Exception:
-                            pass
-                if not info:
-                    for attr in dir(f):
-                        if not attr.startswith("_"):
-                            try:
-                                val = getattr(f, attr)
-                                if not callable(val) and val is not None:
-                                    info[attr.lower()] = str(val)[:100]
-                            except Exception:
-                                pass
-                if not info:
-                    info["_raw"] = str(f)[:200]
-                files.append(info)
-            except Exception:
-                pass
-
         return {"ok": True, "data": {"path": path, "files": files, "count": len(files)}}
     except Exception as e:
+        _log("plc_files error: {0}".format(e))
         return {"ok": False, "error": "PLC files error: {0}".format(e)}
 
 
 
 
 def _cmd_plc_download(params):
-    """Download a file from PLC to the local filesystem."""
+    """Download a file from PLC to the local filesystem.
+
+    A file that is not on the device is answered before the read is attempted:
+    the device API's own answer to a missing path ("Value cannot be null.
+    Parameter name: path.") reads as a bug in the path handling, not as "that
+    file is not there", and sent the reader hunting the wrong problem.
+    """
     refusal = _plc_path_refusal(params, "src") or host_path_error(params, "dest")
     if refusal is not None:
         return refusal
@@ -438,26 +418,45 @@ def _cmd_plc_download(params):
 
         dest = params.get("dest", "")
         if not dest:
-            dest = tempfile.mktemp(
-                prefix="plc_", suffix=os.path.splitext(src)[1] or ".bin"
+            dest = _local_scratch_file(_plc_suffix(src))
+        else:
+            # Ensure dest directory exists
+            dest_dir = os.path.dirname(dest)
+            if dest_dir and not os.path.exists(dest_dir):
+                os.makedirs(dest_dir)
+
+        present, entries, parent, lookup_error = plc_files.lookup(online_dev, src)
+        if present is False:
+            _log("plc_download: {0} not found on the PLC file system".format(src))
+            return plc_files.missing_file_error(src, entries, parent)
+        if present is None:
+            # Could not list the directory: let the read itself report the
+            # device's own failure rather than invent "not found".
+            _log(
+                "plc_download: could not list {0}: {1}".format(
+                    parent or "the PLC root", lookup_error
+                )
             )
 
         overwrite = as_bool(params.get("overwrite", "1"))
 
-        # Ensure dest directory exists
-        dest_dir = os.path.dirname(dest)
-        if dest_dir and not os.path.exists(dest_dir):
-            os.makedirs(dest_dir)
-
-        if hasattr(online_dev, "upload_file"):
-            online_dev.upload_file(src, dest, overwrite)
-        elif hasattr(online_dev, "download_file"):
-            # fallback: some CODESYS versions swap the direction
-            online_dev.download_file(src, dest, overwrite)
-        else:
+        try:
+            if hasattr(online_dev, "upload_file"):
+                online_dev.upload_file(src, dest, overwrite)
+            elif hasattr(online_dev, "download_file"):
+                # fallback: some CODESYS versions swap the direction
+                online_dev.download_file(src, dest, overwrite)
+            else:
+                return {
+                    "ok": False,
+                    "error": "Online device has no upload_file or download_file method",
+                }
+        except Exception as e:
+            _discard_empty(dest)
+            _log("plc_download: reading {0} failed: {1}".format(src, e))
             return {
                 "ok": False,
-                "error": "Online device has no upload_file or download_file method",
+                "error": "Reading {0} from the PLC failed: {1}".format(src, e),
             }
 
         size = os.path.getsize(dest) if os.path.exists(dest) else -1
@@ -470,6 +469,7 @@ def _cmd_plc_download(params):
             },
         }
     except Exception as e:
+        _log("plc_download error: {0}".format(e))
         return {"ok": False, "error": "PLC download error: {0}".format(e)}
 
 
@@ -562,57 +562,53 @@ def _cmd_plc_log(params):
 
         # No file operation: list log files
         if not tail_n and not output_path:
-            try:
-                files = online_dev.get_file_list_of_directory("")
-                log_files = []
-                if files is not None:
-                    for f in files:
-                        try:
-                            name = str(getattr(f, "name", "?"))
-                            if "log" in name.lower() or ".log" in name.lower():
-                                info = {"name": name}
-                                for attr in [
-                                    "length",
-                                    "Length",
-                                    "size",
-                                    "Size",
-                                    "creation_time",
-                                    "CreationTime",
-                                    "last_write_time",
-                                    "LastWriteTime",
-                                ]:
-                                    if hasattr(f, attr):
-                                        try:
-                                            val = getattr(f, attr)
-                                            if callable(val):
-                                                val = val()
-                                            if val is not None:
-                                                info[attr.lower()] = str(val)
-                                        except Exception:
-                                            pass
-                                log_files.append(info)
-                        except Exception:
-                            pass
-                return {
-                    "ok": True,
-                    "data": {"log_files": log_files, "count": len(log_files)},
-                }
-            except Exception as e:
-                return {"ok": False, "error": "List log files error: {0}".format(e)}
+            entries, list_error = plc_files.list_directory(online_dev, "")
+            if entries is None:
+                _log("plc_log: listing the log directory failed: {0}".format(list_error))
+                return {"ok": False, "error": "List log files error: {0}".format(list_error)}
+
+            log_files = []
+            for entry in entries:
+                name = entry.get("name", "")
+                # A directory is not a log, however it is named.
+                if entry.get("is_directory"):
+                    continue
+                if "log" in name.lower() or ".log" in name.lower():
+                    log_files.append(entry)
+
+            data = {"log_files": log_files, "count": len(log_files), "path": ""}
+            if not log_files:
+                data["note"] = (
+                    "no log files in the PLC root; the runtime log may live "
+                    "outside the file system the online device exposes"
+                )
+            return {"ok": True, "data": data}
 
         # Download the file from PLC
         if not hasattr(online_dev, "upload_file"):
             return {"ok": False, "error": "Online device has no upload_file method"}
 
+        present, entries, parent, lookup_error = plc_files.lookup(online_dev, log_file)
+        if present is False:
+            _log("plc_log: {0} not found on the PLC file system".format(log_file))
+            return plc_files.missing_file_error(log_file, entries, parent)
+        if present is None:
+            _log(
+                "plc_log: could not list {0}: {1}".format(
+                    parent or "the PLC root", lookup_error
+                )
+            )
+
         tmp = _local_scratch_file(".log")
         try:
             online_dev.upload_file(log_file, tmp, True)
         except Exception as e:
-            try:
-                os.remove(tmp)
-            except Exception:
-                pass
-            return {"ok": False, "error": "Upload file error: {0}".format(e)}
+            _discard_empty(tmp)
+            _log("plc_log: reading {0} failed: {1}".format(log_file, e))
+            return {
+                "ok": False,
+                "error": "Reading {0} from the PLC failed: {1}".format(log_file, e),
+            }
 
         result = {"file": log_file}
 
@@ -635,6 +631,7 @@ def _cmd_plc_log(params):
                 result["saved_to"] = dest
                 result["saved_size"] = os.path.getsize(dest)
             except Exception as e:
+                _log("plc_log: saving the log to {0} failed: {1}".format(output_path, e))
                 result["save_error"] = str(e)[:200]
 
         # Read tail lines if requested
@@ -652,10 +649,12 @@ def _cmd_plc_log(params):
                     result["tail_count"] = len(tail_lines)
                     result["total_lines"] = len(lines)
             except Exception as e:
+                _log("plc_log: reading the tail failed: {0}".format(e))
                 result["tail_error"] = str(e)[:200]
 
         return {"ok": True, "data": result}
     except Exception as e:
+        _log("plc_log error: {0}".format(e))
         return {"ok": False, "error": "PLC log error: {0}".format(e)}
 
 

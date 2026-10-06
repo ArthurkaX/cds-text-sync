@@ -43,6 +43,17 @@ def read(reader):
                     projection_paths.append(candidate)
                     managed_paths.add(str(candidate).replace("\\", "/"))
 
+            # Every projection file this entry names has been deleted from
+            # project-view/.  The manifest still lists the entry and the xml
+            # baseline (usually a tool-owned .dump mirror) is still there, so
+            # without this the object compared as "unchanged" and deleting a
+            # .st was invisible -- it must surface as "only in the IDE".
+            if projection_paths and not any(
+                os.path.exists(self._projection_full_path(path))
+                for path in projection_paths
+            ):
+                node.metadata["files_missing"] = True
+
             full_path = self._xml_full_path(entry)
             xml_exists = bool(full_path) and os.path.exists(full_path)
             if xml_exists:

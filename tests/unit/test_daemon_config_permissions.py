@@ -245,3 +245,53 @@ def test_save_returns_false_when_the_write_raises():
 def test_save_returns_false_without_a_project():
     sys._codesys_daemon_loop = {"projects": None}
     assert ds._save_daemon_config({"poll_ms": 300, "deny": []}) is False
+
+
+# -- the settings live in the project, so an online edit must not be made -----
+
+
+def test_the_online_predicate_is_the_edit_guard_s(monkeypatch):
+    """One predicate for "the IDE is online", not a second copy that drifts."""
+    import ide_online_guard
+
+    _configure()
+    monkeypatch.setattr(ide_online_guard, "project_is_online", lambda project: True)
+    assert ds.daemon_config_online_refusal() == ds.ONLINE_SAVE_REFUSAL
+
+
+def test_saving_while_online_does_not_touch_the_project(monkeypatch):
+    """Writing the property while online changed only memory -- and vanished."""
+    import ide_online_guard
+
+    props = _configure()
+    monkeypatch.setattr(ide_online_guard, "project_is_online", lambda project: True)
+
+    assert ds._save_daemon_config({"poll_ms": 300, "deny": []}) is False
+    assert props.stored is None
+
+
+def test_offline_saving_is_untouched(monkeypatch):
+    import ide_online_guard
+
+    props = _configure()
+    monkeypatch.setattr(ide_online_guard, "project_is_online", lambda project: False)
+
+    assert ds._save_daemon_config({"poll_ms": 300, "deny": []}) is True
+    assert '"poll_ms": 300' in props.stored
+
+
+def test_no_project_means_no_refusal():
+    sys._codesys_daemon_loop = {"projects": None}
+    assert ds.daemon_config_online_refusal() is None
+
+
+# -- permissions says where the settings are kept ----------------------------
+
+
+def test_permissions_reports_the_storage_and_its_persistence():
+    _configure(stored='{"deny": []}')
+    data = ide_handlers_crc._cmd_permissions()["data"]
+
+    assert "Project Information" in data["stored_in"]
+    assert "cds-daemon-config" in data["stored_in"]
+    assert "once the project is saved" in data["persistence"]

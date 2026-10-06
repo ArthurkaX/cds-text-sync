@@ -18,6 +18,7 @@ Unlike the pure project/pou/visu routers, a few of these carry logic:
 from __future__ import annotations
 
 import sys
+import time
 
 from cds_cli._cli_io import (
     _format_output,
@@ -56,8 +57,14 @@ _DAEMON_METHODS = {
 
 _PROFILE_LOOKUP_TIMEOUT = 10
 
+#: Methods whose *refusal* is routine (an online import is refused at once),
+#: so announcing "Timeout: 180s ..." before the call is noise: the command
+#: never starts, and the line reads as if it had. The timeout is still used;
+#: only the announcement is suppressed.
+_NO_TIMEOUT_ANNOUNCE = frozenset(["sync_import_text"])
 
-def _daemon_timeout(method, requested_timeout=None, fallback=30):
+
+def _daemon_timeout(method, requested_timeout=None, fallback=30, announce=None):
     """Resolve a daemon-owned automatic timeout; explicit values win.
 
     ``timeout_profile`` is intentionally a short, read-only preflight which
@@ -67,6 +74,8 @@ def _daemon_timeout(method, requested_timeout=None, fallback=30):
     """
     if requested_timeout is not None:
         return requested_timeout
+    if announce is None:
+        announce = method not in _NO_TIMEOUT_ANNOUNCE
     try:
         response = send_command_reverse(
             "timeout_profile", {}, timeout=_PROFILE_LOOKUP_TIMEOUT
@@ -76,7 +85,8 @@ def _daemon_timeout(method, requested_timeout=None, fallback=30):
         if value is not None:
             blocks = profile.get("block_count")
             label = "unknown size" if blocks is None else "{0} ST block(s)".format(blocks)
-            _print_info("Timeout: {0}s for {1}".format(value, label))
+            if announce:
+                _print_info("Timeout: {0}s for {1}".format(value, label))
             return float(value)
     except (RuntimeError, TypeError, ValueError, AttributeError):
         pass
@@ -212,10 +222,22 @@ def dispatch_daemon(args, output_fmt="json"):
     return False
 
 
-def _handle_write(args, output_fmt):
-    """Write a variable then read it back so callers can verify the value.
+#: How long the read-back waits for the PLC to show the value that was
+#: written. A prepared write is applied by the runtime, not by the read: live,
+#: writing FALSE read back TRUE because the read raced the next task cycle.
+#: The budget is wall-clock, and deliberately short -- a value the program
+#: overwrites every cycle will never match, and the CLI must still return.
+_READ_BACK_BUDGET_S = 2.0
+_READ_BACK_POLL_S = 0.2
 
-    Both the write and the read-back are returned in one response.
+
+def _handle_write(args, output_fmt):
+    """Write a variable, then read it back and confirm it took effect.
+
+    The read-back polls for up to ``_READ_BACK_BUDGET_S`` because the PLC
+    applies the write on a task cycle. When the value still differs, the
+    response says so explicitly (``confirmed: false`` and a ``note``) instead
+    of printing the write as if it had been verified.
     """
     try:
         timeout = _daemon_timeout("write_variable", args.timeout, 25)
@@ -227,17 +249,58 @@ def _handle_write(args, output_fmt):
         if not wire.response_ok(wr):
             _print_rp_error(wr, "write_variable")
             sys.exit(1)
-        read_back = _read_back(args.name, timeout)
-        print(
-            _format_output(
-                {"written": True, "read_back": read_back},
-                fmt=output_fmt,
-                title="write",
+        read_back, confirmed = _confirm_write(args.name, args.value, timeout)
+        payload = {"written": True, "read_back": read_back, "confirmed": confirmed}
+        if not confirmed and not read_back.get("unavailable"):
+            payload["note"] = (
+                "the PLC still reports {0!r} after writing {1!r} and waiting "
+                "{2:g}s; the program may overwrite it every cycle, or the "
+                "write may not have taken effect. Not confirmed.".format(
+                    read_back.get("value"), args.value, _READ_BACK_BUDGET_S
+                )
             )
-        )
+        print(_format_output(payload, fmt=output_fmt, title="write"))
     except RuntimeError as e:
         _print_error("Write failed: {0}".format(e))
         sys.exit(1)
+
+
+def _confirm_write(name, value, timeout):
+    """Read *name* back until it shows *value*. Return ``(read_back, confirmed)``.
+
+    An unavailable read-back stops the poll at once (the value is unknown, not
+    stale); so does budget exhaustion. What is returned is the last read-back
+    seen, so the caller can show what the PLC actually said.
+    """
+    deadline = time.monotonic() + _READ_BACK_BUDGET_S
+    while True:
+        read_back = _read_back(name, timeout)
+        if read_back.get("unavailable"):
+            return read_back, False
+        if _values_agree(value, read_back.get("value")):
+            return read_back, True
+        if time.monotonic() >= deadline:
+            return read_back, False
+        time.sleep(_READ_BACK_POLL_S)
+
+
+def _values_agree(written, read):
+    """Whether the PLC's rendering of a variable matches what was written.
+
+    Case and whitespace are ignored, and two spellings of the same number
+    compare equal; anything else is a mismatch -- an unconfirmed write must
+    not be reported as verified on a guess.
+    """
+    if read is None:
+        return False
+    left = "{0}".format(written).strip()
+    right = "{0}".format(read).strip()
+    if left.upper() == right.upper():
+        return True
+    try:
+        return abs(float(left) - float(right)) <= 1e-9 * max(1.0, abs(float(left)))
+    except (TypeError, ValueError):
+        return False
 
 
 def _read_back(name, timeout):

@@ -76,9 +76,19 @@ def test_the_refusal_explains_the_root_and_the_escape():
     assert "MSYS_NO_PATHCONV=1" in error["error"]
 
 
-@pytest.mark.parametrize("value", [".", ""])
+@pytest.mark.parametrize("value", [".", "", "/", "\\", "/."])
 def test_the_root_tokens_become_the_device_root(value):
     assert guards.plc_root_path(value) == ""
+
+
+def test_the_slash_root_is_normalised_like_the_dot():
+    """With MSYS_NO_PATHCONV=1 the '/" argument survives Git Bash.
+
+    The device API takes the root as the empty string; handed "/" it answers
+    "Get directory entries failed", so "/" must be normalised exactly as "."
+    already is.
+    """
+    assert guards.plc_root_path("/") == ""
 
 
 def test_a_named_plc_path_is_not_touched():

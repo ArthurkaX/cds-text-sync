@@ -93,7 +93,15 @@ def _print_warn(msg):
 _DAEMON_UNREACHABLE = "The IDE/daemon is not answering (is CODESYS running with the daemon started?)."
 
 
-def _print_daemon_unreachable():
+def _print_daemon_unreachable(error_text=""):
+    """One extra line after a reverse-pipe failure.
+
+    The failure message often already carries the daemon's own status ("alive
+    but busy with build for 42s"); printing the generic line on top of it would
+    tell the user two different things at once, so it is skipped then.
+    """
+    if "The daemon is " in (error_text or ""):
+        return
     _print_info(_DAEMON_UNREACHABLE)
 
 
@@ -556,7 +564,7 @@ def cmd_rp_command(args: list[str], timeout: float = 15, output_fmt: str = "json
         resp = send_command_reverse(command, params, timeout=timeout)
     except RuntimeError as e:
         _print_error("Reverse pipe error: {0}".format(e))
-        _print_daemon_unreachable()
+        _print_daemon_unreachable(str(e))
         sys.exit(1)
 
     if wire.response_ok(resp):
@@ -585,7 +593,7 @@ def cmd_daemon(
         resp = send_command_reverse(method, params, timeout=timeout)
     except RuntimeError as e:
         _print_error("Reverse pipe error: {0}".format(e))
-        _print_daemon_unreachable()
+        _print_daemon_unreachable(str(e))
         sys.exit(1)
 
     if wire.response_ok(resp):
@@ -608,11 +616,11 @@ def _project_command(method, params=None, timeout=30):
         resp = send_command_reverse(method, params or {}, timeout=timeout)
     except ConnectionError as e:
         _print_error("Cannot connect to daemon: {0}".format(e))
-        _print_daemon_unreachable()
+        _print_daemon_unreachable(str(e))
         sys.exit(1)
     except RuntimeError as e:
         _print_error("Command error: {0}".format(e))
-        _print_daemon_unreachable()
+        _print_daemon_unreachable(str(e))
         sys.exit(1)
 
     if wire.response_ok(resp):

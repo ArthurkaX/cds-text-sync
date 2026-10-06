@@ -20,6 +20,16 @@ LIBRARY_DRIFT_HINT = (
     "library resolution"
 )
 
+#: The Library Manager is ``export_only`` in the default profile: it exports
+#: and is compared, but is never patched back into the IDE.  A change to its
+#: XML therefore has to be announced -- otherwise it is silently demoted to
+#: "unchanged" and the user is left believing the import applied it.
+LIBRARY_MANAGER_KIND = "library_manager"
+LIBRARY_MANAGER_HINT = (
+    "library changes are not applied by import; add or remove the library in "
+    "CODESYS (Library Manager -> Add Library), then re-export"
+)
+
 
 def _sync_direction(profile, kind):
     """Return the sync direction override for a given kind, or empty string if none."""
@@ -107,6 +117,11 @@ class DiffEngine:
             return False
         return _sync_direction(self.profile, kind) == "export_only"
 
+    def _is_library_manager(self, guid):
+        """True when the object is the project's Library Manager."""
+        node = self.folder_model.get_node(guid) or self.ide_model.get_node(guid)
+        return _kind_for_node(self.profile, node) == LIBRARY_MANAGER_KIND
+
     def _is_export_only(self, guid):
         """Check if an object's kind is marked export_only in the profile."""
         node = self.folder_model.get_node(guid) or self.ide_model.get_node(guid)
@@ -171,7 +186,14 @@ class DiffEngine:
         )
         drift_only_guids = []
 
-        folder_guids = set(self.folder_model.nodes.keys())
+        # An entry whose projection files were all deleted from project-view/
+        # is not on disk any more, even though its manifest line survives: it
+        # belongs in "only in the IDE" (deleted), not in the intersection.
+        folder_guids = set(
+            guid
+            for guid, node in self.folder_model.nodes.items()
+            if not node.metadata.get("files_missing")
+        )
         ide_guids = set(
             guid
             for guid, node in self.ide_model.nodes.items()
@@ -296,6 +318,9 @@ class DiffEngine:
         # Filter out import-blocked objects from import-direction changes.
         # export_only kinds and import_inert entries must not be patched back
         # into the IDE, so we demote them from modified/added to unchanged.
+        # A demoted Library Manager is collected separately: the user edited a
+        # library and import will not carry it, which must be said, not hidden.
+        ignored_library_changes = []
         if self.profile or any(
             node.metadata.get("import_inert")
             for node in self.folder_model.nodes.values()
@@ -304,6 +329,8 @@ class DiffEngine:
             for guid in diff_result["modified"]:
                 if self._is_import_blocked(guid):
                     diff_result["unchanged"].append(guid)
+                    if self._is_library_manager(guid):
+                        ignored_library_changes.append(guid)
                 else:
                     modified_only.append(guid)
             diff_result["modified"] = modified_only
@@ -312,6 +339,8 @@ class DiffEngine:
             for guid in diff_result["added"]:
                 if self._is_import_blocked(guid):
                     diff_result["unchanged"].append(guid)
+                    if self._is_library_manager(guid):
+                        ignored_library_changes.append(guid)
                 else:
                     added_only.append(guid)
             diff_result["added"] = added_only
@@ -321,9 +350,17 @@ class DiffEngine:
             for guid in diff_result["deleted"]:
                 if self._is_import_blocked(guid):
                     diff_result["unchanged"].append(guid)
+                    if self._is_library_manager(guid):
+                        ignored_library_changes.append(guid)
                 else:
                     deleted_only.append(guid)
             diff_result["deleted"] = deleted_only
+
+        if ignored_library_changes:
+            diff_result["library_manager_changes"] = {
+                "objects": ignored_library_changes,
+                "hint": LIBRARY_MANAGER_HINT,
+            }
 
         if projection_conflicts:
             diff_result["projection_conflicts"] = projection_conflicts

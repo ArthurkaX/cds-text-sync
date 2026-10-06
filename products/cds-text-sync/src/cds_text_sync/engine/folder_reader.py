@@ -426,6 +426,11 @@ class FolderReader:
         full_path = join_view_path(self.views_path, view_path)
         if os.path.exists(full_path):
             node.code = read_view_text(full_path)
+        else:
+            # The only file this entry had is gone: the object exists in the
+            # IDE alone and must show as such, not as an unchanged entry whose
+            # manifest line outlived its file.
+            node.metadata["files_missing"] = True
 
     @staticmethod
     def _read_xml_file(path):

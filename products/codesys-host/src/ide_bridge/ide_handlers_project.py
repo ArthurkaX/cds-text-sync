@@ -277,6 +277,11 @@ def _cmd_disconnect_from_device():
         if result.get("online_after"):
             # Do not claim success: the IDE still holds the session, so the
             # next edit would be refused. Fail loudly with the fix instead.
+            _log(
+                "Disconnect failed: the IDE is still online ({0})".format(
+                    result.get("warning", _helpers.STILL_ONLINE)
+                )
+            )
             return {
                 "ok": False,
                 "error": result.get("warning", _helpers.STILL_ONLINE),

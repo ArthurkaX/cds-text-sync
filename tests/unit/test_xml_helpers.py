@@ -207,6 +207,23 @@ class TestNormalizedXmlText:
         xml_b = template.format("00000000-1111-2222-3333-444444444444")
         assert normalized_xml_text(xml_a) == normalized_xml_text(xml_b)
 
+    def test_ignores_the_cds_daemon_config_service_property(self):
+        """Changing permissions made Project Information count as modified."""
+        xml_a = (
+            "<Root><Single Name='cds-daemon-config'>{\"deny\": []}</Single>"
+            "<Single Name='Data'>x</Single></Root>"
+        )
+        xml_b = (
+            "<Root><Single Name='cds-daemon-config'>{\"deny\": [\"delete_pou\"]}</Single>"
+            "<Single Name='Data'>x</Single></Root>"
+        )
+        assert normalized_xml_text(xml_a) == normalized_xml_text(xml_b)
+
+    def test_a_real_content_change_is_still_seen(self):
+        xml_a = "<Root><Single Name='Data'>x</Single></Root>"
+        xml_b = "<Root><Single Name='Data'>y</Single></Root>"
+        assert normalized_xml_text(xml_a) != normalized_xml_text(xml_b)
+
     def test_keeps_comparing_user_image_paths_verbatim(self):
         template = "<Root><Single Name='FileID'>C:\\images\\{0}.png</Single></Root>"
         assert normalized_xml_text(

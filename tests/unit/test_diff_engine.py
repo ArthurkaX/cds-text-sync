@@ -59,6 +59,72 @@ _PROFILE_EXPORT_ONLY = {
     },
 }
 
+LIBRARY_MANAGER_TYPE = "00000000-0000-0000-0000-0000000000ab"
+
+_PROFILE_LIBRARY = {
+    "guid_aliases": {"library_manager": [LIBRARY_MANAGER_TYPE]},
+    "sync_direction_overrides": {"library_manager": "export_only"},
+}
+
+
+# ===================================================================
+# Library Manager changes are announced, not silently ignored
+# ===================================================================
+
+
+class TestLibraryManagerChanges:
+    def test_an_ignored_library_edit_is_announced(self):
+        """Import never applies a library change; say so instead of "unchanged"."""
+        ide = model_with(
+            _make_node("g1", node_type=LIBRARY_MANAGER_TYPE, code="old")
+        )
+        folder = model_with(
+            _make_node("g1", node_type=LIBRARY_MANAGER_TYPE, code="new")
+        )
+
+        result = DiffEngine(ide, folder, profile=_PROFILE_LIBRARY).compare()
+
+        assert result["modified"] == []
+        assert "g1" in result["library_manager_changes"]["objects"]
+        assert "Add Library" in result["library_manager_changes"]["hint"]
+
+    def test_an_ignored_export_only_object_is_not_announced(self):
+        """Only the Library Manager gets the warning; other export_only kinds
+        (gvl, device) are simply not imported."""
+        ide = model_with(
+            _make_node("g1", node_type="00000000-0000-0000-0000-000000000001", code="old")
+        )
+        folder = model_with(
+            _make_node("g1", node_type="00000000-0000-0000-0000-000000000001", code="new")
+        )
+
+        result = DiffEngine(ide, folder, profile=_PROFILE_EXPORT_ONLY).compare()
+
+        assert "library_manager_changes" not in result
+
+    def test_the_warning_is_printed_for_a_compare_run(self, capsys):
+        from cds_text_sync.engine.engine_cli import _warn_library_manager_changes
+
+        _warn_library_manager_changes(
+            {
+                "library_manager_changes": {
+                    "objects": ["g1"],
+                    "hint": "library changes are not applied by import",
+                }
+            }
+        )
+
+        out = capsys.readouterr().out
+        assert "Warning:" in out
+        assert "not applied by import" in out
+
+    def test_no_warning_without_a_library_change(self, capsys):
+        from cds_text_sync.engine.engine_cli import _warn_library_manager_changes
+
+        _warn_library_manager_changes({})
+
+        assert capsys.readouterr().out == ""
+
 
 # ===================================================================
 # Unchanged / modified / added / deleted
@@ -101,6 +167,18 @@ class TestDiffEngineBasic:
         folder = model_with()
         result = DiffEngine(ide, folder).compare()
         assert "g1" in result["deleted"]
+
+    def test_an_entry_whose_files_are_gone_is_only_in_the_ide(self):
+        """Deleting the .st out of project-view/ left the manifest entry behind,
+        and the object was compared as unchanged -- invisible.  It is not on
+        disk any more, so it must be reported as IDE-only."""
+        ide = model_with(_make_node("g1", code="code"))
+        folder = model_with(
+            _make_node("g1", code="code", files_missing=True)
+        )
+        result = DiffEngine(ide, folder).compare()
+        assert "g1" in result["deleted"]
+        assert "g1" not in result["unchanged"]
 
 
 # ===================================================================

@@ -178,6 +178,38 @@ def test_download_start_passthrough(daemon_calls):
     assert daemon_calls == [("download", {"start": True})]
 
 
+def _profile_reply(timeouts, blocks=3):
+    def _fake_send(method, params=None, timeout=15):
+        return {
+            "ok": True,
+            "data": {"timeouts": timeouts, "block_count": blocks},
+        }
+
+    return _fake_send
+
+
+def test_import_does_not_announce_a_timeout_before_it_is_refused(
+    monkeypatch, capsys, daemon_calls
+):
+    """An online import is refused at once; "[INFO] Timeout: 180s" then reads
+    as if something had started."""
+    monkeypatch.setattr(
+        d, "send_command_reverse", _profile_reply({"sync_import_text": 180})
+    )
+
+    d.dispatch_daemon(_args(command="import", timeout=None))
+
+    assert "Timeout:" not in capsys.readouterr().err
+
+
+def test_build_still_announces_the_resolved_timeout(monkeypatch, capsys, daemon_calls):
+    monkeypatch.setattr(d, "send_command_reverse", _profile_reply({"build": 180}))
+
+    d.dispatch_daemon(_args(command="build", timeout=None))
+
+    assert "Timeout: 180s" in capsys.readouterr().err
+
+
 def test_connect_maps_ip_and_gateway(daemon_calls):
     d.dispatch_daemon(_args(command="connect", ip="1.2.3.4", gateway="GW"))
     assert daemon_calls == [
@@ -248,6 +280,85 @@ def test_write_adds_no_context_line_without_one(monkeypatch, capsys):
     d.dispatch_daemon(_args(command="write", name="MyVar", value="42"))
 
     assert "[ctx]" not in capsys.readouterr().err
+
+
+def test_write_reads_back_until_the_plc_shows_the_value(monkeypatch, capsys):
+    """The runtime applies a prepared write on a task cycle.
+
+    Live, writing FALSE read back TRUE: the single read-back raced the cycle.
+    The read-back now polls, so the confirmed value is the one that was set.
+    """
+    replies = iter(["TRUE", "TRUE", "FALSE"])
+    reads = []
+
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            reads.append(params)
+            return {"ok": True, "data": {"value": next(replies)}}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    monkeypatch.setattr(d.time, "sleep", lambda _seconds: None)
+
+    d.dispatch_daemon(_args(command="write", name="MyVar", value="FALSE"))
+
+    assert len(reads) == 3
+    out = capsys.readouterr().out
+    assert '"confirmed": true' in out
+    assert "FALSE" in out
+
+
+def test_a_write_that_never_takes_is_not_reported_as_verified(monkeypatch, capsys):
+    """A value the program overwrites every cycle must not read as verified."""
+    monkeypatch.setattr(d, "_READ_BACK_BUDGET_S", 0.0)
+
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            return {"ok": True, "data": {"value": "TRUE"}}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+
+    d.dispatch_daemon(_args(command="write", name="MyVar", value="FALSE"))
+
+    out = capsys.readouterr().out
+    assert '"confirmed": false' in out
+    assert "TRUE" in out
+    assert "Not confirmed" in out
+
+
+def test_an_unavailable_read_back_is_not_polled(monkeypatch, capsys):
+    """The value is unknown, not stale: one read is enough to say so."""
+    reads = []
+
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            reads.append(1)
+            return {"ok": False, "error": "boom"}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+
+    d.dispatch_daemon(_args(command="write", name="X", value="1"))
+
+    assert len(reads) == 1
+    assert "unavailable" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "written,read,expected",
+    [
+        ("42", "42", True),
+        ("FALSE", "false", True),
+        ("1.0", "1", True),
+        ("abc", " abc ", True),
+        ("FALSE", "TRUE", False),
+        ("TRUE", None, False),
+        ("TRUE", "1", False),
+    ],
+)
+def test_the_value_comparison_does_not_guess(written, read, expected):
+    assert d._values_agree(written, read) is expected
 
 
 def test_write_failure_exits_nonzero(monkeypatch):
