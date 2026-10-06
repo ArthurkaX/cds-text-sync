@@ -724,7 +724,13 @@ def show_daemon_ui():
 
 
 def pump_events(form):
-    """Call from the main loop to keep UI responsive."""
+    """Pump pending WinForms messages for ``form``, if it exists.
+
+    The daemon no longer calls this: its ticks come from a WinForms timer in
+    the IDE's own message loop, which pumps the form for us. It is kept for
+    callers that still run code inside a script and need the window to paint
+    while they do.
+    """
     if form is not None:
         try:
             Application.DoEvents()
