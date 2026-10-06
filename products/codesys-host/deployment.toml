@@ -75,6 +75,7 @@ test_paths = [
   "../../tests/unit/test_timer_daemon.py",
   "../../tests/unit/test_ui_attribute_initialization.py",
   "../../tests/unit/test_workspace_fingerprint_twin.py",
+  "../../tests/unit/test_write_string_literal.py",
   "../../tests/regression/ide_apply_patch_regression.py",
   "../../tests/regression/ide_backup_regression.py",
 ]

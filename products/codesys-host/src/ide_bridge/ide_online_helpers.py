@@ -1336,19 +1336,76 @@ def write_variable_impl(project, variable_name, value):
     first_error = None
     try:
         for candidate in _expression_candidates(variable_name):
+            used = value
+            quoted = False
             try:
-                _call_online_app(online_app, ('set_prepared_value',), candidate, value)
+                _call_online_app(online_app, ('set_prepared_value',), candidate, used)
                 _call_online_app(online_app, ('write_prepared_values',),)
             except Exception as e:
-                if first_error is None:
-                    first_error = e
-                if not _is_invalid_expression(str(e)):
-                    raise
-                continue
-            return {"name": variable_name, "written": True, "value": str(value)}
+                if _is_not_a_literal(e) and not _is_quoted_string(used):
+                    # A bare STRING value: CODESYS wants the ST literal.  Only
+                    # this answer triggers the retry, so it cannot turn a wrong
+                    # value for a non-string variable into a silent success.
+                    used = _st_string_literal(used)
+                    quoted = True
+                    try:
+                        _call_online_app(
+                            online_app, ('set_prepared_value',), candidate, used
+                        )
+                        _call_online_app(online_app, ('write_prepared_values',),)
+                    except Exception as retry_error:
+                        if first_error is None:
+                            first_error = e
+                        if _is_invalid_expression(str(retry_error)):
+                            continue
+                        raise RuntimeError(
+                            "{0} (the value was retried as the ST string "
+                            "literal {1} and that failed too)".format(
+                                retry_error, used
+                            )
+                        )
+                else:
+                    if first_error is None:
+                        first_error = e
+                    if not _is_invalid_expression(str(e)):
+                        raise
+                    continue
+            result = {"name": variable_name, "written": True, "value": str(used)}
+            if quoted:
+                result["string_literal"] = True
+                result["note"] = (
+                    "written as the ST string literal {0} -- CODESYS wants a "
+                    "STRING value quoted, not bare".format(used)
+                )
+            return result
     finally:
         release_watches(online_app)
     raise first_error if first_error is not None else RuntimeError("Write failed")
+
+
+#: CODESYS refuses a bare STRING value: set_prepared_value wants an ST literal
+#: ("'text'") and answers "'text' is not a literal." for the unquoted form.
+_NOT_A_LITERAL = "is not a literal"
+
+
+def _is_not_a_literal(error):
+    return _NOT_A_LITERAL in str(error)
+
+
+def _is_quoted_string(value):
+    """True for a value already written as an ST string literal."""
+    text = str(value).strip()
+    return len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"')
+
+
+def _st_string_literal(value):
+    """``text`` -> ``'text'``, escaping what ST escapes inside a STRING.
+
+    ``$`` is the ST escape character: a literal quote is ``$'`` and a literal
+    ``$`` is ``$$``.
+    """
+    text = str(value).replace("$", "$$").replace("'", "$'")
+    return "'" + text + "'"
 
 
 # Qualified enumerator as returned by read_value, e.g. "COLOR.green".
@@ -1481,6 +1538,26 @@ def write_variables_impl(project, items, raw_value=False):
                 wrote = True
                 break
             except Exception as e:
+                # Same STRING rule as write_variable_impl: a bare value for a
+                # STRING variable needs the ST literal form, and CODESYS says
+                # so itself.  A snapshot keeps the value it read back, which is
+                # exactly the bare form.
+                if _is_not_a_literal(e) and not _is_quoted_string(val):
+                    literal = _st_string_literal(val)
+                    try:
+                        _call_online_app(
+                            online_app, ('set_prepared_value',), candidate, literal
+                        )
+                    except Exception:
+                        last_write_err = e
+                        continue
+                    results.append({
+                        "name": nm, "prepared": True, "write_error": "",
+                        "string_literal": True, "value": literal,
+                    })
+                    prepared += 1
+                    wrote = True
+                    break
                 last_write_err = e
         if not wrote:
             results.append({"name": nm, "prepared": False,

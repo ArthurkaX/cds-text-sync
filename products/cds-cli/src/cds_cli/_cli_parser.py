@@ -465,9 +465,30 @@ Examples:
     # -- variables ----------------------------------------------------------
     p_read = add_daemon_parser(subparsers, "read", "Read one PLC variable/expression", None)
     p_read.add_argument("name", help="Variable/expression name")
-    p_write = add_daemon_parser(subparsers, "write", "Write one PLC variable/expression", None)
+    p_write = add_daemon_parser(
+        subparsers,
+        "write",
+        "Write one PLC variable/expression",
+        None,
+    )
+    p_write.description = (
+        "Write one PLC variable/expression.\n\n"
+        "Values are ST expressions. A STRING/WSTRING value is an ST string\n"
+        "literal, so quote it: cts write GVL.sName \"'hello'\" (the shell eats\n"
+        "unquoted quotes). A bare value -- cts write GVL.sName hello -- is\n"
+        "what CODESYS answers with \"'hello' is not a literal.\"; the daemon\n"
+        "retries such a value as a quoted literal and says so in the reply\n"
+        "(string_literal: true)."
+    )
+    p_write.formatter_class = argparse.RawDescriptionHelpFormatter
     p_write.add_argument("name", help="Variable/expression name")
-    p_write.add_argument("value", help="Value to write")
+    p_write.add_argument(
+        "value",
+        help=(
+            "Value to write (ST expression; STRING values quoted, e.g. "
+            "\"'text'\")"
+        ),
+    )
 
     # -- tests --------------------------------------------------------------
     p_test = add_daemon_parser(
