@@ -57,6 +57,54 @@ def _log(msg):
         pass
 
 
+#: Liveness marker for a client that timed out waiting for the single-threaded
+#: command loop.  Written next to the log (same TEMP), so a CLI that had to
+#: give up can tell "the daemon is not running at all" from "the daemon is
+#: alive but busy with a long command", instead of printing one guess for both.
+STATUS_FILE = os.path.join(
+    os.environ.get("TEMP", "C:\\Temp"), "cds-daemon-status.json"
+)
+
+
+def write_daemon_status(state, method="", started_ts=None):
+    """Best-effort liveness marker; never raises into the command loop.
+
+    ``state`` is ``"idle"`` or ``"busy"``; when busy, ``method`` and
+    ``started_ts`` (epoch) name the command being run.  A reader that catches a
+    partial file treats it as absent, so a plain write is safe enough.
+    """
+    try:
+        payload = {
+            "pid": os.getpid(),
+            "state": state,
+            "method": method,
+            "started_ts": started_ts,
+            "updated": time.time(),
+        }
+        tmp = STATUS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(json.dumps(payload))
+        try:
+            os.remove(STATUS_FILE)
+        except OSError:
+            pass
+        os.rename(tmp, STATUS_FILE)
+    except Exception:
+        pass
+
+
+def clear_daemon_status():
+    """Remove the liveness marker when the loop stops running.
+
+    Its absence is how a CLI tells "the daemon is not running" from a marker
+    that is simply stale.
+    """
+    try:
+        os.remove(STATUS_FILE)
+    except Exception:
+        pass
+
+
 def _read_text_utf8(path):
     """Read UTF-8 text as unicode for IronPython/.NET text APIs."""
     with io.open(path, "r", encoding="utf-8-sig") as handle:

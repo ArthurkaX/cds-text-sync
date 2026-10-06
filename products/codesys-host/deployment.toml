@@ -25,6 +25,7 @@ test_paths = [
   "../../tests/unit/test_daemon_handshake.py",
   "../../tests/unit/test_daemon_host_paths.py",
   "../../tests/unit/test_daemon_name_resolution.py",
+  "../../tests/unit/test_daemon_liveness.py",
   "../../tests/unit/test_daemon_partial_reads.py",
   "../../tests/unit/test_daemon_ui.py",
   "../../tests/unit/test_disconnect_session.py",
