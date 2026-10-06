@@ -169,6 +169,11 @@ def _read_json_from_pipe(pipe):
         _log("Invalid message length: {0}".format(e))
         return None
     except Exception as e:
+        if "timed out" in str(e).lower():
+            # The pipe read timeout fired: a client connected and sent nothing.
+            # That is an ordinary end of a connection, not an error to log --
+            # the tick must return so the IDE's message loop stays alive.
+            return None
         _log("Read error: {0}".format(e))
         return None
 

@@ -69,6 +69,15 @@ def _parse_codesys_value(raw):
     return s
 
 
+#: The one deliberate pause in the cold-reset sequence: after a cold reset the
+#: controller reboots, and a login that starts before it is back fails. This is
+#: part of an explicit, long `cts test` reset (seconds on the PLC side), so half
+#: a second is not what makes that command slow. Every other fixed sleep in this
+#: handler was removed: `stop()`, `login()` and `build()` are synchronous .NET
+#: calls, and waiting again after them only froze the IDE for no verified gain.
+_COLD_RESET_SETTLE_S = 0.5
+
+
 def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
     """Perform full cold reset cycle for CI/CD: stop PLC → cold reset → reconnect → build → start."""
     import time as _time
@@ -81,7 +90,6 @@ def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
         if oa is not None and hasattr(oa, "stop"):
             _log("CICD: Stopping PLC")
             oa.stop()
-            _time.sleep(0.3)
     except Exception as e:
         _log("CICD: Stop PLC (non-fatal): {0}".format(e))
 
@@ -93,7 +101,7 @@ def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
             "CICD cold reset failed: {0}".format(reset_result.get("error", ""))
         )
 
-    _time.sleep(0.5)
+    _time.sleep(_COLD_RESET_SETTLE_S)
 
     # 3. Clear cached online_app
     sys._codesys_daemon_loop["online_app"] = None
@@ -105,8 +113,6 @@ def _cicd_cold_reset(project, ip_address="", gateway_name="Gateway-1"):
     from ide_online_helpers import connect_to_device_impl
 
     connect_to_device_impl(project, ip_address, gateway_name)
-
-    _time.sleep(0.3)
 
     # 5. Build → online change (re-download application to PLC)
     _log("CICD: Building after cold reset")
@@ -438,6 +444,10 @@ def _run_test_plan(project, plan):
                     _log("cicd write {0} = {1}".format(var_name, value_str))
 
                 elif action == "wait":
+                    # Deliberately kept: this is not the daemon waiting on its
+                    # own, it is the test plan asking for a wait. It is bounded
+                    # by the plan's own timeout, and moving it out would mean
+                    # splitting the plan across client round-trips.
                     ms = int(step.get("ms", 100))
                     _time.sleep(ms / 1000.0)
 

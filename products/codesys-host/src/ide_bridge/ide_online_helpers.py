@@ -48,8 +48,11 @@ def atomic_write(file_path, content):
         else:
             NetFile.Move(tmp_path, file_path)
     except Exception:
-        # Fallback: retry-based remove + rename
-        # Antivirus / Defender scanning .tmp can hold transient lock
+        # Fallback: retry-based remove + rename.
+        # Antivirus / Defender scanning .tmp can hold a transient lock. Bounded
+        # and short on purpose: this runs on the daemon's tick thread, so the
+        # backoff is capped at 0.2s total, and the .NET File.Replace path above
+        # is the normal one.
         for attempt in range(5):
             try:
                 if os.path.exists(file_path):
@@ -59,7 +62,7 @@ def atomic_write(file_path, content):
             except OSError:
                 if attempt == 4:
                     raise
-                time.sleep(0.05 * (attempt + 1))
+                time.sleep(0.02 * (attempt + 1))
 
 
 # ── Output capture for script execution ────────────────────────────────────

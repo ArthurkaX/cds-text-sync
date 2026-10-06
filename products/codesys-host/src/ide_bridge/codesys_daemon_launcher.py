@@ -5,16 +5,22 @@ codesys_daemon_launcher.py - Starts the reverse-pipe daemon loop.
 Loaded by cds_bootstrap.launch() for the Project_daemon entry point.
 
 The loop module is *executed*, not imported: it expects to run as __main__ with
-the CODESYS-injected globals of the calling script, and it must keep the script
-context alive for as long as the daemon runs. That is also why this does not go
-through codesys_runtime.run_operation -- that path clears the loaded modules and
-is built for short operations, whereas the daemon holds the context for hours.
+the CODESYS-injected globals of the calling script. Since the daemon moved to a
+WinForms timer (1.x method), the executed script starts the timer and returns;
+the IDE's own message loop then drives the ticks. This launcher must therefore
+NOT hold the script open -- a keep-alive loop here was what pinned the IDE in
+"Executing script ... CANCEL" for the daemon's whole lifetime. The timer object
+lives in ``sys._codesys_daemon_loop``, which outlives the script, and the Tick
+delegate keeps this module's namespace alive.
+
+This does not go through codesys_runtime.run_operation -- that path clears the
+loaded modules and is built for short operations, whereas the daemon holds the
+context for hours.
 """
 from __future__ import print_function
 
 import os
 import sys
-import time
 
 _BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -94,10 +100,8 @@ def run(params=None, caller_globals=None):
         _notify(caller_globals, "Reverse pipe daemon failed to start.", is_error=True)
         return
 
-    # Keep the script context alive while the daemon runs. When the user clicks
-    # Stop, running=False and this exits naturally.
-    try:
-        while sys._codesys_daemon_loop.get("running", False):
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        pass
+    # Return at once. The daemon now lives in the IDE's message loop: the timer
+    # created by the loop script is pumped there, and a second run of
+    # Project_daemon.py stops and disposes it (see run_loop). Blocking here
+    # would fix the IDE in "Executing script ... CANCEL" for as long as the
+    # daemon runs -- the freeze this design removes.

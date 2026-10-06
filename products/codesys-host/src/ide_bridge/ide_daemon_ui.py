@@ -641,8 +641,15 @@ class DaemonForm(Form):
         self._request_stop("window close")
 
     def _on_run_tests_click(self, sender, args):
-        """Handle Run Tests button click — execute all tests from .test/."""
+        """Handle Run Tests button click — execute all tests from .test/.
+
+        ``ui_busy`` keeps the service timer out for the duration: this handler
+        pumps messages (``Application.DoEvents``) so the window keeps painting
+        during a long run, and a timer tick delivered inside that pump would
+        re-enter the CODESYS API from under the test run.
+        """
         self.log_command("Run tests: all")
+        _set_ui_busy(True)
         Application.DoEvents()
         try:
             # Execute tests via the daemon's command handler
@@ -687,6 +694,8 @@ class DaemonForm(Form):
             MessageBox.Show("Exception running tests:\n" + str(e), "CI/CD Error",
                           MessageBoxButtons.OK, MessageBoxIcon.Error)
             self.log_command("CI/CD exception: " + str(e))
+        finally:
+            _set_ui_busy(False)
         Application.DoEvents()
 
     def _on_settings_click(self, sender, args):
@@ -721,3 +730,14 @@ def pump_events(form):
             Application.DoEvents()
         except Exception:
             pass
+
+
+def _set_ui_busy(busy):
+    """Tell the daemon's service timer that a UI handler owns the IDE for now.
+
+    The timer skips its ticks while this is set, so a message pumped from the
+    handler cannot deliver a tick that re-enters the CODESYS API.
+    """
+    state = getattr(sys, "_codesys_daemon_loop", None)
+    if isinstance(state, dict):
+        state["ui_busy"] = bool(busy)

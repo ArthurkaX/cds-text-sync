@@ -2,15 +2,25 @@
 """
 ide_reverse_pipe_loop.py — CODESYS-side reverse pipe daemon.
 
-This module runs inside CODESYS as a polling loop.
-It connects to a CLI-created named pipe server, reads one command,
-executes it in the main script context, and writes back the result.
+This module runs inside CODESYS as a service loop driven by a WinForms Timer
+(the method the 1.x daemon used).  It connects to a CLI-created named pipe
+server, reads one command, executes it in the main script context, and writes
+back the result.
 
 Architecture (reverse pipe):
   1. CLI creates \named pipecds-cli-<user> as server, writes command, waits
-  2. CODESYS loop (every 200ms) tries to connect as client
-  3. If pipe exists: read command, execute CODESYS API, write response, close
-  4. If pipe does not exist: sleep and continue
+  2. CODESYS timer tick tries to connect as client (one poll per tick)
+  3. If a pipe exists: read command, execute CODESYS API, write response, close
+  4. If no pipe exists: the tick does nothing and returns
+
+Why a timer and not a ``while`` loop: a loop *inside the running script* holds
+the IDE in "Executing script ... Click here to CANCEL" for the daemon's whole
+lifetime.  A download's progress never painted, the PLC's stop/start was
+invisible, and the window looked hung.  The timer script creates the timer and
+returns, so the IDE's own message loop drives the ticks and owns the UI between
+them.  CODESYS ScriptEngine is single-threaded, so the command *being executed*
+still runs on the UI thread; what is gone is the permanent "executing script"
+state around it, not the execution itself.
 
 This avoids calling CODESYS APIs from a background thread.
 """
@@ -289,16 +299,23 @@ def handle_command(method, params, request_id=None):
 
 
 
-# ── Main polling loop ─────────────────────────────────────────────────────
+# ── Timer-driven service loop ─────────────────────────────────────────────
 
 
-def _get_poll_interval():
-    """Get current poll interval from config, default 0.2s."""
-    config = sys._codesys_daemon_loop.get("config", {})
+def _poll_interval_ms():
+    """Tick interval in milliseconds, from the daemon config (default 200)."""
+    state = sys._codesys_daemon_loop
+    config = state.get("config")
     if not config:
-        config = _load_daemon_config()
-        sys._codesys_daemon_loop["config"] = config
-    return config.get("poll_ms", 200) / 1000.0
+        try:
+            config = _load_daemon_config()
+        except Exception:
+            config = {}
+        state["config"] = config
+    try:
+        return int(config.get("poll_ms", 200))
+    except Exception:
+        return 200
 
 
 def _dashboard_command_label(method, params):
@@ -505,18 +522,48 @@ def _serve_connection(pipe, dash=None):
         write_daemon_status("idle")
 
 
-def run_loop():
-    """Main polling loop. Runs inside CODESYS script context."""
-    if clr is None:
-        raise RuntimeError("The reverse-pipe loop must run inside CODESYS.")
+#: Re-entrancy latch.  A WinForms timer fires again while its handler is still
+#: running, and ``Application.DoEvents`` in a UI handler (the dashboard's Run
+#: Tests button) can also let a timer message through.  A nested tick must do
+#: nothing at all: the outer tick is on this thread's stack, holding the same
+#: daemon state, and serving a second client from inside it would re-enter the
+#: CODESYS API.
+_TICK_BUSY_KEY = "tick_busy"
+
+
+def _make_timer():
+    """Create the WinForms timer.  Split out so tests can inject a fake."""
+    from System.Windows.Forms import Timer
+
+    return Timer()
+
+
+def _dispose_timer(timer):
+    """Stop, unhook and dispose one timer.  Safe twice, and with ``None``."""
+    if timer is None:
+        return
+    try:
+        timer.Stop()
+    except Exception:
+        pass
+    try:
+        timer.Tick -= _on_tick
+    except Exception:
+        pass
+    try:
+        timer.Dispose()
+    except Exception:
+        pass
+
+
+def _log_startup():
+    """One-time startup: capture the IDE context, report, show the dashboard.
+
+    Split from the timer so a failure here leaves ``started`` False and the
+    launcher can say the daemon did not start, instead of claiming a timer that
+    never ticked.  Returns the dashboard form, or ``None``.
+    """
     capture_codesys_globals()
-    sys._codesys_daemon_loop["running"] = True
-    sys._codesys_daemon_loop["started_at"] = ide_time.iso_utc()
-    sys._codesys_daemon_loop["started_ts"] = time.time()
-    sys._codesys_daemon_loop["started"] = True
-    # From here the marker exists and says "idle", so a CLI that timed out on a
-    # later command knows the daemon was up and simply did not take the request.
-    write_daemon_status("idle")
 
     # The supported operating order is IDE Online/Login first, daemon second.
     # Capture that existing session now; this creates only a wrapper and never
@@ -536,7 +583,7 @@ def run_loop():
     )
 
     # Warn if sync folder not configured
-    sf, sf_err = _get_sync_folder()
+    sf, _sf_err = _get_sync_folder()
     if sf is None:
         _log(
             '[WARN] Sync folder not configured. Set "cds-sync-folder" project property via Project_directory.py'
@@ -552,88 +599,254 @@ def run_loop():
     else:
         _log("Timeout profile: {0} ST block(s) counted at startup".format(block_count))
 
-    # Show UI dashboard (WinForms window)
-    _dash = None
+    # Show UI dashboard (WinForms window).  Both the form and the timer live in
+    # the IDE's own message loop once this script returns -- that loop is what
+    # pumps them, and why nothing here may block.
+    dash = None
     if _ui is not None:
         try:
-            _dash = _ui.show_daemon_ui()
+            dash = _ui.show_daemon_ui()
             # Push startup messages to dashboard
-            if _dash is not None:
-                _dash.log_command("Daemon v{0} started".format(VERSION))
-                _dash.log_command("Waiting for CLI...")
+            if dash is not None:
+                dash.log_command("Daemon v{0} started".format(VERSION))
+                dash.log_command("Waiting for CLI...")
                 if sf is None:
-                    _dash.log_command("[WARN] Sync folder not set")
+                    dash.log_command("[WARN] Sync folder not set")
                 else:
-                    _dash.log_command("Sync folder: {0}".format(os.path.basename(sf)))
+                    dash.log_command("Sync folder: {0}".format(os.path.basename(sf)))
         except Exception:
-            _dash = None
+            dash = None
+    return dash
 
-    _last_instance = None
-    _last_instance_refresh = 0.0
 
-    while sys._codesys_daemon_loop.get("running", False):
-        pipe = None
-        try:
-            # Keep UI responsive
-            if _dash is not None:
-                _ui.pump_events(_dash)
+def _ensure_timer():
+    """Create, hook and start the service timer.  There is never more than one."""
+    state = sys._codesys_daemon_loop
+    stale = state.get("timer")
+    if stale is not None:
+        # Belt for the same braces as the toggle in run_loop(): two live timers
+        # would poll the same pipe twice and fight over one connection.
+        state["timer"] = None
+        _dispose_timer(stale)
 
-            # Refresh target line at most once a second
-            now = time.time()
-            if _dash is not None and (now - _last_instance_refresh >= 1.0):
-                _last_instance_refresh = now
-                curr_inst = _instance_info()
-                if curr_inst != _last_instance:
-                    if hasattr(_dash, "set_instance"):
-                        try:
-                            _dash.set_instance(curr_inst)
-                        except Exception:
-                            pass
-                    _last_instance = curr_inst
+    timer = _make_timer()
+    timer.Interval = _poll_interval_ms()
+    timer.Tick += _on_tick
+    state["timer"] = timer
+    state["running"] = True
+    state["started"] = True
+    state["started_at"] = ide_time.iso_utc()
+    state["started_ts"] = time.time()
+    state["_shutdown_done"] = False
+    # From here the marker exists and says "idle", so a CLI that timed out on a
+    # later command knows the daemon was up and simply did not take the request.
+    write_daemon_status("idle")
+    timer.Start()
+    _log(
+        "Daemon timer started  interval={0} ms  pipe={1}  id=ide-{2}".format(
+            timer.Interval, PIPE_NAME, os.getpid()
+        )
+    )
 
-            # Early exit if stop was requested via UI button
-            if not sys._codesys_daemon_loop.get("running", False):
-                break
 
-            # Try to connect to the CLI's pipe server
-            pipe = NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut)
-            pipe.Connect(CONNECT_TIMEOUT_MS)
+def start_daemon():
+    """Start the timer daemon and return at once.
 
-            # Connected! Serve the connection
-            stop_requested = _serve_connection(pipe, _dash)
+    Returning is the whole point: the IDE's message loop drives the ticks, so
+    nothing here may block, or the script would hold the UI exactly as the old
+    ``while`` loop did.
+    """
+    if clr is None:
+        raise RuntimeError("The reverse-pipe loop must run inside CODESYS.")
+    sys._codesys_daemon_loop["dashboard"] = _log_startup()
+    _ensure_timer()
 
-            _close_connection(pipe)
 
-            if stop_requested:
-                break
+def stop_daemon():
+    """Stop the service timer and tear the daemon down.  Idempotent."""
+    state = sys._codesys_daemon_loop
+    _log("stop_daemon requested")
+    state["running"] = False
+    timer = state.get("timer")
+    state["timer"] = None
+    _dispose_timer(timer)
+    _request_shutdown()
 
-        except Exception as e:
-            # Expected: pipe not found (no CLI waiting)
-            err_str = str(e)
-            if (
-                "timed out" in err_str.lower()
-                or "Could not connect" in err_str
-                or "not found" in err_str.lower()
-            ):
-                # Normal - no CLI pipe available
-                pass
-            else:
-                _log("Pipe poll error: {0}".format(e))
-            _close_connection(pipe)
 
-        time.sleep(_get_poll_interval())
+def run_loop():
+    """Entry point: start the daemon, or stop it if it is already running.
 
+    Running Project_daemon.py again is the start/stop toggle the 1.x daemon
+    had: with a live timer the second run stops it.  Returns as soon as the
+    timer is armed -- see ``start_daemon``.
+    """
+    if sys._codesys_daemon_loop.get("timer") is not None:
+        stop_daemon()
+        return
+    start_daemon()
+
+
+def _request_shutdown():
+    """Tear the daemon down once, whoever asked: Stop, stop_daemon, a tick."""
+    state = sys._codesys_daemon_loop
+    state["running"] = False
+    if state.get("_shutdown_done"):
+        return
+    state["_shutdown_done"] = True
     _log("Reverse Pipe Daemon loop ended.")
-    sys._codesys_daemon_loop["running"] = False
     clear_daemon_status()
-
-    # Close UI dashboard
-    if _dash is not None and _ui is not None:
+    dash = state.get("dashboard")
+    state["dashboard"] = None
+    if dash is not None and _ui is not None:
         try:
-            _dash.close_window()
+            dash.close_window()
         except Exception:
             pass
-    _dash = None
+
+
+def _log_pipe_poll_error(error):
+    """One line for a real pipe failure; a missing CLI is the normal case."""
+    text = str(error)
+    if (
+        "timed out" in text.lower()
+        or "Could not connect" in text
+        or "not found" in text.lower()
+    ):
+        return
+    _log("Pipe poll error: {0}".format(error))
+
+
+#: A CLI writes its first message immediately after it connects. A client that
+#: connects and then sends nothing would otherwise hold this tick -- and with it
+#: the IDE's UI thread -- forever, so the read gives up instead.
+READ_TIMEOUT_MS = 5000
+
+
+def _apply_read_timeout(pipe):
+    """Bound the first read of a connection; not every stream accepts one."""
+    try:
+        pipe.ReadTimeout = READ_TIMEOUT_MS
+    except Exception:
+        pass
+
+
+def _service_one_client():
+    """Poll once: connect only if a CLI is already waiting, else return at once.
+
+    Returns True when the daemon was asked to stop.
+    """
+    pipe = None
+    try:
+        pipe = NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut)
+        # A short timeout, not 0: .NET's Connect(0) waits forever, and that would
+        # freeze the UI thread -- the one thing this design must not do.
+        pipe.Connect(CONNECT_TIMEOUT_MS)
+    except Exception as error:
+        _log_pipe_poll_error(error)
+        _close_connection(pipe)
+        return False
+    try:
+        _apply_read_timeout(pipe)
+        return _serve_connection(pipe, sys._codesys_daemon_loop.get("dashboard"))
+    except Exception as error:
+        _log("Pipe serve error: {0}".format(error))
+        return False
+    finally:
+        _close_connection(pipe)
+
+
+def _refresh_instance_line(dash):
+    """Update the dashboard's target line at most once a second."""
+    state = sys._codesys_daemon_loop
+    now = time.time()
+    if now - state.get("_instance_refresh_ts", 0.0) < 1.0:
+        return
+    state["_instance_refresh_ts"] = now
+    if dash is None:
+        return
+    try:
+        current = _instance_info()
+    except Exception:
+        return
+    if current == state.get("_instance_seen"):
+        return
+    state["_instance_seen"] = current
+    setter = getattr(dash, "set_instance", None)
+    if setter is None:
+        return
+    try:
+        setter(current)
+    except Exception:
+        pass
+
+
+def _heartbeat_idle():
+    """Refresh the idle liveness marker at most once a second.
+
+    The marker's timestamp is how a CLI tells "the daemon is alive and idle"
+    from a marker left behind by a daemon that exited: without a periodic
+    refresh it only moved when a command ran.
+    """
+    state = sys._codesys_daemon_loop
+    now = time.time()
+    if now - state.get("_heartbeat_ts", 0.0) < 1.0:
+        return
+    state["_heartbeat_ts"] = now
+    write_daemon_status("idle")
+
+
+def _on_tick(sender, args):
+    """One timer tick: serve at most one client, then re-arm the timer.
+
+    The timer is stopped first and restarted in ``finally``: a WinForms timer
+    keeps firing while its handler runs, and a nested tick must do nothing.
+    ``tick_busy`` is the second guard for the same job.  A tick that raises is
+    logged and the timer is re-armed -- one bad command must not kill the
+    daemon.
+    """
+    state = sys._codesys_daemon_loop
+    timer = state.get("timer")
+    if timer is None:
+        return
+    if state.get(_TICK_BUSY_KEY) or state.get("ui_busy"):
+        return
+    state[_TICK_BUSY_KEY] = True
+    try:
+        try:
+            timer.Stop()
+        except Exception:
+            pass
+        if not state.get("running"):
+            # Stop was requested between ticks (Stop button, window close).
+            _request_shutdown()
+        else:
+            try:
+                if _service_one_client():
+                    _request_shutdown()
+            except Exception as error:
+                _log(
+                    "Daemon tick error: {0}\n{1}".format(error, traceback.format_exc())
+                )
+            try:
+                _refresh_instance_line(state.get("dashboard"))
+                _heartbeat_idle()
+            except Exception as error:
+                _log("Daemon tick upkeep error: {0}".format(error))
+    finally:
+        state[_TICK_BUSY_KEY] = False
+        if state.get("timer") is timer:
+            if state.get("running"):
+                try:
+                    # Re-read poll_ms: the Settings window can change it while
+                    # the daemon runs, and the timer is the only clock there is.
+                    timer.Interval = _poll_interval_ms()
+                    timer.Start()
+                except Exception as error:
+                    _log("Could not re-arm the daemon timer: {0}".format(error))
+            else:
+                # Shut down: drop the timer so a later run starts a fresh one.
+                state["timer"] = None
+                _dispose_timer(timer)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
