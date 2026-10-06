@@ -138,6 +138,7 @@ def _blockers(**overrides):
         "failed_text": [],
         "failed_native": [],
         "skipped_projection_objects": [],
+        "unapplied_objects": [],
     }
     kwargs.update(overrides)
     return sync._refresh_blockers(**kwargs)
@@ -192,6 +193,28 @@ def test_failure_outranks_a_skipped_projection():
         skipped_projection_objects=[{"name": "GVL_HMI"}],
     )
     assert "failed to be created" in blockers
+
+
+def test_an_unapplied_object_blocks_refresh_even_without_a_mutation():
+    """The t37 case: Task.xml changed on disk, nothing about it was applied.
+
+    The import did mutate the project (the four .st files), but a native/XML
+    object it never touched used to leave no trace at all -- and since the
+    refresh is otherwise safe after an import, it regenerated Task.xml from the
+    IDE and destroyed the only copy of the user's edit.
+    """
+    blockers = _blockers(
+        unapplied_objects=[{"name": "Task Configuration", "format": "native/xml"}]
+    )
+    assert "not applied" in blockers
+    assert "1 object(s)" in blockers
+
+
+def test_an_unapplied_object_blocks_even_when_nothing_was_mutated():
+    """No mutation means the "nothing to do" shortcut used to allow the refresh."""
+    blockers = _blockers(mutated=False, unapplied_objects=[{"name": "Task.xml"}])
+    assert blockers != ""
+    assert "not applied" in blockers
 
 
 # ── a refused import must say why ──────────────────────────────────────────

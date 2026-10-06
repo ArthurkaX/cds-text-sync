@@ -158,6 +158,8 @@ def dispatch_daemon(args, output_fmt="json"):
                 params["save"] = True
             if getattr(args, "no_refresh", False):
                 params["refresh"] = False
+            if getattr(args, "allow_unapplied", False):
+                params["allow_unapplied"] = True
         if command == "build" and getattr(args, "install", False):
             params["install"] = True
         if command == "plc-crc" and getattr(args, "build", False):
@@ -175,6 +177,7 @@ def dispatch_daemon(args, output_fmt="json"):
             params,
             timeout=timeout,
             output_fmt=output_fmt,
+            fail_on_flag="partial" if command == "import" else None,
         )
         return True
 

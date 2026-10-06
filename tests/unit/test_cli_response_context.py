@@ -214,3 +214,43 @@ def test_context_is_not_printed_on_stdout_in_json_mode(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "[ctx]" in captured.err
+
+
+# ── a partial import must not exit 0 ───────────────────────────────────────
+
+
+def test_a_partial_import_prints_the_payload_and_exits_2(monkeypatch, capsys):
+    """The t37 case: an agent that only reads the exit code must not walk past
+    a disk change that never reached the IDE.  The payload still prints first --
+    the caller has to see what did happen."""
+    response = {
+        "ok": True,
+        "data": {
+            "updated_text_objects": ["FB_A"],
+            "unapplied_objects": [{"name": "Task Configuration"}],
+            "partial": True,
+            "partial_reason": "1 changed object(s) were not applied: Task Configuration",
+        },
+    }
+    monkeypatch.setattr(_cli_io, "send_command_reverse", lambda *a, **k: response)
+
+    with pytest.raises(SystemExit) as exc:
+        _cli_io.cmd_daemon(
+            "sync_import_text", {}, output_fmt="json", fail_on_flag="partial"
+        )
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "FB_A" in captured.out  # the successful part is still reported
+    assert "Task Configuration" in captured.err
+
+
+def test_a_clean_import_still_exits_zero(monkeypatch, capsys):
+    response = {"ok": True, "data": {"updated_text_objects": ["FB_A"]}}
+    monkeypatch.setattr(_cli_io, "send_command_reverse", lambda *a, **k: response)
+
+    _cli_io.cmd_daemon(
+        "sync_import_text", {}, output_fmt="json", fail_on_flag="partial"
+    )
+
+    assert "FB_A" in capsys.readouterr().out

@@ -36,6 +36,7 @@ from ide_daemon_helpers import (
     _invalidate_device_cache,
 )
 
+from cts_shared.coerce import as_bool
 from ide_snapshot_objects import snapshot_objects
 from ide_st_text import split_st_text
 from ide_xml import parse_xml_file
@@ -606,18 +607,34 @@ def _refresh_requested(params):
     return bool(value)
 
 
-def _refresh_blockers(mutated, failed_text, failed_native, skipped_projection_objects):
+def _refresh_blockers(
+    mutated,
+    failed_text,
+    failed_native,
+    skipped_projection_objects,
+    unapplied_objects=(),
+):
     """Why the manifest must not be re-baselined, or "" when it is safe.
 
     The refresh regenerates view files from the IDE, so it is only safe once
     every disk edit has actually reached the IDE. Anything left behind -- a
-    failed create, a projection that could not be applied -- still exists on
-    disk alone, and overwriting it would destroy the user's only copy.
+    failed create, a projection that could not be applied, a native/XML object
+    the import did not place -- still exists on disk alone, and overwriting it
+    would destroy the user's only copy.  That last case is why this test can no
+    longer ask only ``mutated``: the disks edits of an object the import never
+    applied leave the mutation flag alone, and the refresh used to run anyway.
 
     Saving is deliberately not part of this test: export reads the live project
     in memory, not the .project file, so an unsaved project is still a faithful
     baseline for as long as the IDE stays open.
     """
+    if unapplied_objects:
+        return (
+            "{0} object(s) changed on disk were not applied to the IDE; their "
+            "files still hold the only copy of those edits".format(
+                len(unapplied_objects)
+            )
+        )
     if not mutated:
         return ""
     if failed_text or failed_native:
@@ -633,6 +650,51 @@ def _refresh_blockers(mutated, failed_text, failed_native, skipped_projection_ob
             )
         )
     return ""
+
+
+def _allow_unapplied(params):
+    """Has the caller accepted that some disk changes will not reach the IDE?
+
+    Only the exit-code contract changes: the objects stay listed and the
+    manifest refresh stays withheld either way -- an edit that never landed
+    must never be overwritten.
+    """
+    return as_bool((params or {}).get("allow_unapplied", False))
+
+
+def _not_applied_summary(context):
+    """Name every disk change that did not reach the IDE, or "" when none did.
+
+    The one sentence the CLI turns into a non-zero exit, so it must be enough
+    on its own: which objects, and what to do about them.
+    """
+    parts = []
+    if context.unapplied_objects:
+        parts.append(
+            "{0} changed object(s) were not applied: {1}".format(
+                len(context.unapplied_objects),
+                ", ".join(
+                    o.get("name") or o.get("guid") or "?"
+                    for o in context.unapplied_objects
+                ),
+            )
+        )
+    if context.skipped_projection_objects:
+        parts.append(
+            "{0} object(s) have projection changes that were not applied: {1}".format(
+                len(context.skipped_projection_objects),
+                ", ".join(
+                    o.get("name") or "?" for o in context.skipped_projection_objects
+                ),
+            )
+        )
+    if not parts:
+        return ""
+    return (
+        "{0}. Their files under project-view/ still hold the only copy of "
+        "those edits; apply them in the CODESYS IDE. Re-run with "
+        "--allow-unapplied to treat this as a warning."
+    ).format("; ".join(parts))
 
 
 def _engine_failure_error(notices):
@@ -675,6 +737,13 @@ class _ImportTextContext(object):
         self.failed_native = []
         self.updated_text = []
         self.skipped_projection_objects = []
+        #: Objects the compare report called modified/added but the text path
+        #: did not apply.  Candidates, not verdicts: the post-import verify pass
+        #: (see _import_text_verify_unapplied) decides which of them the IDE
+        #: still does not match, and only those become ``unapplied_objects``.
+        self.unapplied_candidates = []
+        self.unapplied_objects = []
+        self.verify_report_path = ""
         self.ide_only_count = 0
         self.library_changes = {}
         self.structured_view_applied = False
@@ -918,6 +987,7 @@ def _import_text_fold_compare_report(context):
     """
     updated_text = []
     skipped_projection_objects = []
+    unapplied_candidates = []
     ide_only_count = 0
     library_changes = {}
     if os.path.exists(context.compare_report_path):
@@ -966,12 +1036,43 @@ def _import_text_fold_compare_report(context):
                             "reason": _reason,
                         }
                     )
+                else:
+                    # No projection at all (Task Configuration and other
+                    # native/XML objects) or one with nothing readable on disk.
+                    # The text path never touched it; the structured-view
+                    # payload may or may not place it, and nothing used to say
+                    # which.  The verify pass decides.
+                    unapplied_candidates.append(
+                        _unapplied_candidate(obj, _name, _pd)
+                    )
+            _created = set(context.created_text) | set(context.reused_text) | set(
+                context.created_native
+            )
+            for obj in (_report.get("objects") or {}).get("added") or []:
+                _name = obj.get("name") or obj.get("guid") or "?"
+                if _name in _created:
+                    continue
+                unapplied_candidates.append(
+                    _unapplied_candidate(obj, _name, obj.get("projection_diff") or {})
+                )
         except Exception as error:
             _log("Could not classify pending projection: {0}".format(error))
     context.updated_text = updated_text
     context.skipped_projection_objects = skipped_projection_objects
+    context.unapplied_candidates = unapplied_candidates
     context.ide_only_count = ide_only_count
     context.library_changes = library_changes
+
+
+def _unapplied_candidate(obj, name, projection_diff):
+    """One object the text path did not apply, to be checked after the import."""
+    fmt = str(projection_diff.get("format") or "")
+    return {
+        "name": name,
+        "guid": obj.get("guid", ""),
+        "path": obj.get("path", ""),
+        "format": fmt or "native/xml",
+    }
 
 
 def _import_text_apply_structured_view(context, root):
@@ -1005,6 +1106,87 @@ def _import_text_apply_structured_view(context, root):
             )
         )
     context.structured_view_applied = structured_view_applied
+
+
+def _import_text_verify_unapplied(context):
+    """Check the objects the text path skipped: did the IDE take them anyway?
+
+    The compare report says what the disk-vs-IDE diff looked like *before* the
+    import.  Objects the text path did not apply -- Task Configuration and
+    other native/XML objects, or a projection with nothing readable -- used to
+    vanish from the response entirely, and a silent no-op looked exactly like a
+    success.  They are candidates, not verdicts: the structured-view payload
+    may have placed them.
+
+    One more compare answers which: an object that is no longer modified is in
+    the IDE, one that still is was not applied.  A compare that cannot run
+    leaves every candidate unapplied -- claiming "applied" without evidence is
+    the exact failure this guards against.
+    """
+    if not context.unapplied_candidates:
+        return
+    report_path = os.path.join(
+        context.sync_folder, ".dump", "import_verify_report.json"
+    )
+    args = [
+        "compare",
+        "--project-root",
+        context.sync_folder,
+        "--snapshot",
+        context.out_path,
+        "--report",
+        report_path,
+        "--include-objects",
+    ]
+    if not _common.run_external_engine(args):
+        context.unapplied_objects = list(context.unapplied_candidates)
+        _log(
+            "Verify compare failed; {0} object(s) treated as not applied".format(
+                len(context.unapplied_objects)
+            )
+        )
+        return
+    context.verify_report_path = report_path
+    try:
+        import json as _json
+
+        report = _json.loads(_read_text_utf8(report_path))
+        still_differing = _still_differing_keys(report)
+    except Exception as error:
+        context.unapplied_objects = list(context.unapplied_candidates)
+        _log("Could not read the verify report ({0}); treating {1} object(s) as not applied".format(
+            error, len(context.unapplied_objects)
+        ))
+        return
+
+    unapplied = []
+    for candidate in context.unapplied_candidates:
+        guid = candidate.get("guid") or ""
+        name = candidate.get("name") or ""
+        if (guid and guid in still_differing) or (name and name in still_differing):
+            unapplied.append(candidate)
+    context.unapplied_objects = unapplied
+    if unapplied:
+        _log(
+            "Not applied to the IDE: {0}".format(
+                ", ".join(c.get("name") or c.get("guid") or "?" for c in unapplied)
+            )
+        )
+
+
+def _still_differing_keys(report):
+    """GUIDs and names the post-import compare still reports as different."""
+    keys = set()
+    objects = (report or {}).get("objects") or {}
+    for bucket in ("modified", "added"):
+        for obj in objects.get(bucket) or []:
+            guid = obj.get("guid")
+            name = obj.get("name")
+            if guid:
+                keys.add(guid)
+            if name:
+                keys.add(name)
+    return keys
 
 
 def _import_text_persist(context):
@@ -1048,9 +1230,21 @@ def _import_text_build_result(context):
         "created_native_objects": context.created_native,
         "updated_text_objects": context.updated_text,
         "skipped_projection_objects": context.skipped_projection_objects,
+        "unapplied_objects": context.unapplied_objects,
         "failed_native_objects": context.failed_native,
         "saved": context.saved,
     }
+    not_applied = _not_applied_summary(context)
+    if not_applied:
+        # `ok: true` still means "the import ran"; `partial` means "and some
+        # disk changes did not make it into the IDE".  Without it the CLI
+        # exits 0 and an agent walks straight past a change that only exists
+        # on disk.  --allow-unapplied downgrades it to a warning.
+        return_data["partial"] = True
+        return_data["partial_reason"] = not_applied
+        if _allow_unapplied(context.params):
+            return_data["partial"] = False
+            return_data["partial_acknowledged"] = not_applied
     if context.library_changes:
         # The Library Manager is export_only: import cannot add or remove a
         # library.  Say it, and say what to do instead.
@@ -1102,6 +1296,7 @@ def _import_text_refresh_manifest(context):
         context.failed_text,
         context.failed_native,
         context.skipped_projection_objects,
+        context.unapplied_objects,
     )
     if withheld:
         return_data["manifest_refreshed"] = False
@@ -1135,6 +1330,7 @@ def _import_text_add_note(context):
         and not context.updated_text
         and not context.skipped_projection_objects
         and not context.failed_native
+        and not context.unapplied_objects
     ):
         context.return_data["note"] = (
             "No objects were created, updated, or skipped. "
@@ -1150,6 +1346,17 @@ def _import_text_write_attestation(context):
     This does not import anything itself; it only attests that this daemon
     completed the import against the current disk workspace.
     """
+    if context.unapplied_objects:
+        # The workspace on disk does NOT match the IDE in a way verify/build
+        # would read as imported: do not certify it.  The objects themselves
+        # are named in unapplied_objects / partial_reason.
+        context.return_data["verify_import_attestation"] = {
+            "complete": False,
+            "reason": "{0} object(s) changed on disk were not applied".format(
+                len(context.unapplied_objects)
+            ),
+        }
+        return
     attestation = _write_import_attestation(
         context.sync_folder, context.project, saved=context.saved
     )
@@ -1226,6 +1433,7 @@ def _cmd_sync_import_text(params):
         _import_text_apply_native_creates(context, root)
         _import_text_fold_compare_report(context)
         _import_text_apply_structured_view(context, root)
+        _import_text_verify_unapplied(context)
         _import_text_persist(context)
         _import_text_build_result(context)
         _import_text_refresh_manifest(context)

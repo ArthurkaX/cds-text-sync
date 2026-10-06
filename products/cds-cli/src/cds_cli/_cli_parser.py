@@ -248,6 +248,18 @@ Examples:
             "reporting the changes you just imported."
         ),
     )
+    p_import.add_argument(
+        "--allow-unapplied",
+        dest="allow_unapplied",
+        action="store_true",
+        help=(
+            "Do not fail when an object changed on disk was not applied to "
+            "the IDE (usually a native/XML object such as Task Configuration, "
+            "or a non-ST projection). The objects are still listed, and the "
+            "manifest refresh still refuses to overwrite their files -- this "
+            "only turns the non-zero exit code into a warning."
+        ),
+    )
 
     # -- build / PLC lifecycle ---------------------------------------------
     p_build = subparsers.add_parser(

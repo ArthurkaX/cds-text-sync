@@ -630,8 +630,16 @@ def cmd_daemon(
     params: dict | None = None,
     timeout: float = 15,
     output_fmt: str = "json",
+    fail_on_flag: str | None = None,
 ):
-    """Send one structured command to the CODESYS daemon."""
+    """Send one structured command to the CODESYS daemon.
+
+    ``fail_on_flag`` names a key in the success payload that makes the command
+    exit 2 even though it ran (``cts import`` sets ``partial`` when a disk
+    change did not reach the IDE).  The payload is printed first: the caller
+    still needs to see what did happen, and only the exit code has to be
+    truthful.
+    """
     try:
         resp = _send_daemon(method, params, timeout=timeout)
     except RuntimeError as e:
@@ -640,7 +648,14 @@ def cmd_daemon(
         sys.exit(1)
 
     if wire.response_ok(resp):
-        print(_format_output(resp.get("data", {}), fmt=output_fmt, title=method))
+        data = resp.get("data", {})
+        print(_format_output(data, fmt=output_fmt, title=method))
+        if fail_on_flag and isinstance(data, dict) and data.get(fail_on_flag):
+            reason = data.get(fail_on_flag + "_reason") or (
+                "{0} is set".format(fail_on_flag)
+            )
+            _print_error(reason)
+            sys.exit(2)
     else:
         _print_rp_error(resp, method)
         sys.exit(1)

@@ -27,7 +27,9 @@ def daemon_calls(monkeypatch):
     """Record cmd_daemon(method, params, ...) calls in order."""
     calls = []
 
-    def _fake_cmd_daemon(method, params=None, timeout=15, output_fmt="json"):
+    def _fake_cmd_daemon(
+        method, params=None, timeout=15, output_fmt="json", fail_on_flag=None
+    ):
         calls.append((method, params or {}))
 
     monkeypatch.setattr(d, "cmd_daemon", _fake_cmd_daemon)
@@ -76,6 +78,14 @@ def test_import_dry_run_previews_compare(daemon_calls):
 def test_import_does_not_allow_online_override(daemon_calls):
     d.dispatch_daemon(_args(command="import", dry_run=False, force_online=True))
     assert daemon_calls == [("sync_import_text", {})]
+
+
+def test_import_passes_allow_unapplied_to_the_daemon(daemon_calls):
+    """The flag only changes the exit code; the daemon still does the work."""
+    d.dispatch_daemon(
+        _args(command="import", dry_run=False, allow_unapplied=True)
+    )
+    assert daemon_calls == [("sync_import_text", {"allow_unapplied": True})]
 
 
 def test_the_online_edit_refusal_exits_nonzero_and_names_disconnect(monkeypatch, capsys):
@@ -130,7 +140,7 @@ def test_build_uses_daemon_startup_timeout(monkeypatch):
     monkeypatch.setattr(
         d,
         "cmd_daemon",
-        lambda method, params=None, timeout=15, output_fmt="json": calls.append(
+        lambda method, params=None, timeout=15, output_fmt="json", fail_on_flag=None: calls.append(
             (method, params or {}, timeout)
         ),
     )
@@ -195,7 +205,7 @@ def test_explicit_build_timeout_is_not_recalculated(monkeypatch):
     monkeypatch.setattr(
         d,
         "cmd_daemon",
-        lambda method, params=None, timeout=15, output_fmt="json": calls.append(
+        lambda method, params=None, timeout=15, output_fmt="json", fail_on_flag=None: calls.append(
             (method, params or {}, timeout)
         ),
     )

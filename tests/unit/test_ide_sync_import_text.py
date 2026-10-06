@@ -179,6 +179,11 @@ class _Bridge(object):
         self.project_error = None
         self.import_engine_ok = True
         self.engine_notices = []
+        # The post-import verify compare (see _import_text_verify_unapplied):
+        # ``verify_report`` is what that second compare writes, ``None`` means
+        # the compare ran but produced nothing readable.
+        self.verify_engine_ok = True
+        self.verify_report = None
         self.backup_ok = True
         self.apply_text = None  # callable(project, entry, created) -> reused
         self.apply_modified = None  # callable(project, path) -> [names]
@@ -198,6 +203,11 @@ class _Bridge(object):
 
     def write_compare_report(self, payload):
         with open(self.compare_report, "w") as handle:
+            json.dump(payload, handle)
+
+    def write_verify_report(self, payload):
+        """What the post-import verify compare leaves behind."""
+        with open(os.path.join(self.dump_dir, "import_verify_report.json"), "w") as handle:
             json.dump(payload, handle)
 
     def write_view(self, rel_path, content):
@@ -237,6 +247,11 @@ def bridge(monkeypatch, tmp_path):
             if notices is not None:
                 notices.extend(b.engine_notices)
             return b.import_engine_ok
+        if "import_verify_report.json" in " ".join(str(a) for a in args):
+            record("engine", "verify")
+            if b.verify_report is not None:
+                b.write_verify_report(b.verify_report)
+            return b.verify_engine_ok
         return True
 
     def apply_text_create_entry(project, entry, created_by_name):
@@ -860,3 +875,113 @@ def test_a_writable_text_property_logs_nothing(monkeypatch):
     assert sync._replace_text_document(doc, "new") is True
     assert doc.text == "new"
     assert logged == []
+
+
+# ── the object that changed on disk but never reached the IDE ──────────────
+#
+# The t37 case: compare reported "Task Configuration/Task.xml" as modified,
+# the import applied the four .st files, said nothing about the Task, and the
+# manifest refresh then overwrote the disk file with the IDE's version.  The
+# user's edit existed nowhere afterwards.  These tests pin the three answers:
+# the object is named in the response, the exit code is non-zero, and the
+# refresh does not touch its file.
+
+
+def _modified_without_projection(name="Task Configuration", guid="guid-task"):
+    return {
+        "name": name,
+        "guid": guid,
+        "path": "Application/Task Configuration/Task.xml",
+    }
+
+
+def _report(*modified, added=()):
+    return {
+        "objects": {
+            "modified": list(modified),
+            "added": list(added),
+            "deleted": [],
+        }
+    }
+
+
+def test_a_modified_native_object_is_reported_as_unapplied(bridge):
+    bridge.write_compare_report(_report(_modified_without_projection()))
+
+    result = bridge.run()
+    data = result["data"]
+
+    assert result["ok"] is True
+    assert [o["name"] for o in data["unapplied_objects"]] == ["Task Configuration"]
+    # The verdict comes from a second compare, not from a bookkeeping list.
+    assert ("engine", "verify") in bridge.calls
+    assert data["partial"] is True
+    assert "Task Configuration" in data["partial_reason"]
+    assert data["verify_import_attestation"]["complete"] is False
+
+
+def test_an_unapplied_object_blocks_the_manifest_refresh(bridge):
+    """Its file holds the only copy of the edit; the refresh must not take it."""
+    bridge.write_compare_report(_report(_modified_without_projection()))
+
+    data = bridge.run()["data"]
+
+    assert data["manifest_refreshed"] is False
+    assert "Task Configuration" not in data["manifest_refresh_skipped"]
+    assert "not applied" in data["manifest_refresh_skipped"]
+
+
+def test_an_object_the_ide_caught_up_on_is_not_reported(bridge):
+    """The structured-view payload may have placed it after all: verify says so."""
+    bridge.write_compare_report(_report(_modified_without_projection()))
+    bridge.verify_report = _report()
+
+    data = bridge.run()["data"]
+
+    assert data["unapplied_objects"] == []
+    assert "partial" not in data
+    assert data["manifest_refreshed"] is True
+
+
+def test_a_failed_verify_compare_leaves_the_object_unapplied(bridge):
+    """"Could not check" must not read as "applied"."""
+    bridge.write_compare_report(_report(_modified_without_projection()))
+    bridge.verify_engine_ok = False
+
+    data = bridge.run()["data"]
+
+    assert [o["name"] for o in data["unapplied_objects"]] == ["Task Configuration"]
+    assert data["partial"] is True
+
+
+def test_allow_unapplied_downgrades_the_exit_flag_only(bridge):
+    """The file stays protected; only the non-zero exit goes away."""
+    bridge.write_compare_report(_report(_modified_without_projection()))
+
+    data = bridge.run({"allow_unapplied": True})["data"]
+
+    assert data["partial"] is False
+    assert data["partial_acknowledged"]
+    assert [o["name"] for o in data["unapplied_objects"]] == ["Task Configuration"]
+    assert data["manifest_refreshed"] is False
+
+
+def test_an_applied_text_object_is_not_a_candidate(bridge):
+    """No candidate, no extra compare, no partial: the common case is untouched."""
+    bridge.apply_modified = lambda project, path: ["FB_A"]
+    bridge.write_compare_report(
+        _report(
+            {
+                "name": "FB_A",
+                "guid": "guid-fb",
+                "path": "App/FB_A.st",
+                "projection_diff": {"format": "st", "disk_content": "x"},
+            }
+        )
+    )
+
+    data = bridge.run()["data"]
+
+    assert data["unapplied_objects"] == []
+    assert "partial" not in data
+    assert ("engine", "verify") not in bridge.calls
