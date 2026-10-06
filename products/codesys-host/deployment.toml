@@ -41,6 +41,7 @@ test_paths = [
   "../../tests/unit/test_object_selector_precedence.py",
   "../../tests/unit/test_online_diagnose_reporting.py",
   "../../tests/unit/test_online_edit_guard.py",
+  "../../tests/unit/test_plc_file_listing.py",
   "../../tests/unit/test_plc_paths.py",
   "../../tests/unit/test_plc_log_download.py",
   "../../tests/unit/test_online_session_guard.py",
