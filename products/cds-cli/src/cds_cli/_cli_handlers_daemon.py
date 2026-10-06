@@ -64,6 +64,39 @@ _PROFILE_LOOKUP_TIMEOUT = 10
 _NO_TIMEOUT_ANNOUNCE = frozenset(["sync_import_text"])
 
 
+#: The daemon computes its timeout profile once at startup and it does not
+#: change per command, so one CLI process needs to fetch it at most once.  It
+#: re-asked before almost every command -- 426 lookups in one live daemon log.
+#: Cleared by tests (and by a process that reconnects to a different daemon).
+_TIMEOUT_PROFILE_CACHE = {"fetched": False, "value": None}
+
+
+def _reset_timeout_profile_cache():
+    """Forget the memoised profile. Tests call this between cases."""
+    _TIMEOUT_PROFILE_CACHE["fetched"] = False
+    _TIMEOUT_PROFILE_CACHE["value"] = None
+
+
+def _timeout_profile():
+    """The daemon's timeout profile for this process, fetched at most once.
+
+    ``None`` when the lookup failed; the caller then keeps its fallback.  A
+    failed lookup is remembered too: re-asking per command was the overhead
+    this removes, and a daemon that cannot answer once will not later.
+    """
+    if _TIMEOUT_PROFILE_CACHE["fetched"]:
+        return _TIMEOUT_PROFILE_CACHE["value"]
+    _TIMEOUT_PROFILE_CACHE["fetched"] = True
+    try:
+        response = send_command_reverse(
+            "timeout_profile", {}, timeout=_PROFILE_LOOKUP_TIMEOUT
+        )
+        _TIMEOUT_PROFILE_CACHE["value"] = response.get("data", {})
+    except (RuntimeError, TypeError, ValueError, AttributeError):
+        _TIMEOUT_PROFILE_CACHE["value"] = None
+    return _TIMEOUT_PROFILE_CACHE["value"]
+
+
 def _daemon_timeout(method, requested_timeout=None, fallback=30, announce=None):
     """Resolve a daemon-owned automatic timeout; explicit values win.
 
@@ -76,11 +109,8 @@ def _daemon_timeout(method, requested_timeout=None, fallback=30, announce=None):
         return requested_timeout
     if announce is None:
         announce = method not in _NO_TIMEOUT_ANNOUNCE
-    try:
-        response = send_command_reverse(
-            "timeout_profile", {}, timeout=_PROFILE_LOOKUP_TIMEOUT
-        )
-        profile = response.get("data", {})
+    profile = _timeout_profile()
+    if profile:
         value = profile.get("timeouts", {}).get(method, profile.get("default"))
         if value is not None:
             blocks = profile.get("block_count")
@@ -88,8 +118,6 @@ def _daemon_timeout(method, requested_timeout=None, fallback=30, announce=None):
             if announce:
                 _print_info("Timeout: {0}s for {1}".format(value, label))
             return float(value)
-    except (RuntimeError, TypeError, ValueError, AttributeError):
-        pass
     return fallback
 
 

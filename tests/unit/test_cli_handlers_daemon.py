@@ -153,6 +153,38 @@ def test_timeout_lookup_does_not_call_status(monkeypatch):
     assert methods == ["timeout_profile"]
 
 
+def test_the_timeout_profile_is_fetched_once_per_process(monkeypatch):
+    """The profile is fixed at daemon startup; re-asking per command was the
+    overhead (426 lookups in one live log)."""
+    calls = []
+    monkeypatch.setattr(
+        d,
+        "send_command_reverse",
+        lambda method, params=None, timeout=15: calls.append(method)
+        or {"ok": True, "data": {"timeouts": {"build": 321, "sync_export_text": 60}}},
+    )
+
+    assert d._daemon_timeout("build") == 321
+    assert d._daemon_timeout("sync_export_text") == 60
+
+    assert calls == ["timeout_profile"]
+
+
+def test_a_failed_profile_lookup_falls_back_and_is_not_retried(monkeypatch):
+    calls = []
+
+    def _boom(method, params=None, timeout=15):
+        calls.append(method)
+        raise RuntimeError("no daemon")
+
+    monkeypatch.setattr(d, "send_command_reverse", _boom)
+
+    assert d._daemon_timeout("build", fallback=77) == 77
+    assert d._daemon_timeout("build", fallback=77) == 77
+
+    assert calls == ["timeout_profile"]
+
+
 def test_explicit_build_timeout_is_not_recalculated(monkeypatch):
     calls = []
     monkeypatch.setattr(

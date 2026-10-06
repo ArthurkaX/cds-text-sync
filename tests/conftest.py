@@ -19,3 +19,19 @@ def _isolate_user_defaults(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
     monkeypatch.setenv("APPDATA", str(config_home))
     yield config_home
+
+
+@pytest.fixture(autouse=True)
+def _reset_cli_timeout_cache():
+    """The CLI memoises the daemon's timeout profile per process.
+
+    Tests share the process, so a value fetched in one case would leak into
+    the next. Import is guarded: not every tier has the CLI on its path.
+    """
+    try:
+        from cds_cli import _cli_handlers_daemon as daemon_handlers
+
+        daemon_handlers._reset_timeout_profile_cache()
+    except Exception:
+        pass
+    yield

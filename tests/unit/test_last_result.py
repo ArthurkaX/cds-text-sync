@@ -44,7 +44,7 @@ from cds_text_sync.engine import reverse_pipe_client as rpc  # noqa: E402
 def sync_folder(tmp_path, monkeypatch):
     """Point the recorder's sync-folder lookup at a scratch directory."""
     monkeypatch.setattr(
-        ide_last_result, "_get_sync_folder", lambda: (str(tmp_path), "")
+        ide_last_result, "_sync_folder", lambda: (str(tmp_path), "")
     )
     return tmp_path
 
@@ -133,7 +133,7 @@ def test_a_delivered_sync_command_is_recorded(sync_folder):
 
 
 def test_recording_without_a_sync_folder_does_not_raise(monkeypatch):
-    monkeypatch.setattr(ide_last_result, "_get_sync_folder", lambda: (None, "no project"))
+    monkeypatch.setattr(ide_last_result, "_sync_folder", lambda: (None, "no project"))
     assert ide_last_result.record_last_result("sync_import_text", {"ok": True}, "x", True) is None
 
 
@@ -171,6 +171,57 @@ def test_last_result_reports_an_unreadable_file(sync_folder):
     result = ide_last_result._cmd_last_result({})
     assert result["ok"] is False
     assert result["code"] == "unreadable"
+
+
+# ── The refused-import marker: build must not misread "up to date" ─────────
+
+
+def test_a_refused_import_leaves_a_marker(sync_folder):
+    path = ide_last_result.record_import_refusal(
+        "The IDE is online with the PLC", "sync_import_text"
+    )
+
+    assert path == str(sync_folder / ".dump" / "last-import-refused.json")
+    marker = ide_last_result.read_import_refusal()
+    assert marker["reason"] == "The IDE is online with the PLC"
+    assert marker["command"] == "sync_import_text"
+    assert marker["recorded_at"]
+
+
+def test_a_successful_import_clears_the_marker(sync_folder):
+    ide_last_result.record_import_refusal("nope")
+    assert ide_last_result.read_import_refusal() is not None
+
+    ide_last_result.clear_import_refusal()
+
+    assert ide_last_result.read_import_refusal() is None
+
+
+def test_no_marker_reads_as_none(sync_folder):
+    assert ide_last_result.read_import_refusal() is None
+
+
+def test_a_missing_sync_folder_records_nothing(monkeypatch):
+    monkeypatch.setattr(
+        ide_last_result, "_sync_folder", lambda: (None, "no project")
+    )
+    assert ide_last_result.record_import_refusal("x") is None
+    assert ide_last_result.read_import_refusal() is None
+
+
+def test_build_sees_the_refused_import(sync_folder):
+    """A build compiles the unchanged IDE; the note says why it looks current."""
+    import ide_handlers_build
+
+    ide_last_result.record_import_refusal("The IDE is online with the PLC")
+
+    assert (
+        ide_handlers_build._last_import_refusal_reason()
+        == "The IDE is online with the PLC"
+    )
+
+    ide_last_result.clear_import_refusal()
+    assert ide_handlers_build._last_import_refusal_reason() is None
 
 
 # ── Non-ASCII results survive the round trip (T52) ─────────────────────────

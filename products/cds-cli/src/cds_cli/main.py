@@ -487,6 +487,35 @@ def _dispatch_command(args, output_fmt, parser):
     parser.print_help()
 
 
+#: Flags defined only on the top-level parser.  Deliberately excludes
+#: ``--output``: subcommands reuse that name for their own option (``cts docs
+#: --output DIR`` is a folder), so it is not unambiguous after a command.
+_TOP_LEVEL_ONLY_FLAGS = ("--pretty", "-p", "--target", "--expect-project")
+
+
+def _reject_misplaced_global_flags(extra, parser):
+    """A global flag after the command is a clear error, not a stray token.
+
+    ``cts status --pretty`` is the mistake the epilog warns about, and the
+    default argparse wording ("unrecognized arguments: --pretty") never says
+    where the flag belongs.  A genuinely unknown token still gets argparse's
+    own error.
+    """
+    misplaced = [
+        token for token in extra if token.split("=", 1)[0] in _TOP_LEVEL_ONLY_FLAGS
+    ]
+    if not misplaced:
+        parser.error("unrecognized arguments: {0}".format(" ".join(extra)))
+    command = next(
+        (token for token in sys.argv[1:] if not token.startswith("-")), "<command>"
+    )
+    _print_error(
+        "{0} is a global flag: it goes BEFORE the command, not after. "
+        "Try: cts {1} {2}".format(" ".join(misplaced), " ".join(misplaced), command)
+    )
+    sys.exit(2)
+
+
 def main():
     parser = build_parser()
 
@@ -494,7 +523,9 @@ def main():
     if pre_args.help or len(sys.argv) == 1:
         _print_help_and_exit(parser, pre_args)
 
-    args = parser.parse_args()
+    args, extra = parser.parse_known_args()
+    if extra:
+        _reject_misplaced_global_flags(extra, parser)
 
     _validate_target(args)
 

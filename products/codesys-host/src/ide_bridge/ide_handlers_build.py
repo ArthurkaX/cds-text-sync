@@ -373,6 +373,23 @@ def _build_library(project, system_obj, params):
     return result
 
 
+def _last_import_refusal_reason():
+    """Why the last import was refused, or ``None`` when none was.
+
+    Read from the marker ``ide_last_result`` writes on a refusal and clears on
+    a successful import.
+    """
+    try:
+        import ide_last_result
+
+        refused = ide_last_result.read_import_refusal()
+    except Exception:
+        return None
+    if not refused:
+        return None
+    return refused.get("reason") or "the IDE was online"
+
+
 def _cmd_build(params):
     """Build the active application using app.build().
 
@@ -483,6 +500,19 @@ def _cmd_build(params):
                 "diagnostics_complete": diagnostics_complete,
             },
         }
+        # "The application is up to date" is a CODESYS message about the IDE
+        # project -- but if the last import was refused, the IDE project never
+        # took the disk changes, so the message is true of the wrong thing.
+        # Say so, so it is not read as "the changes landed".
+        refusal_reason = _last_import_refusal_reason()
+        if refusal_reason:
+            result["data"]["import_refused"] = refusal_reason
+            result["data"]["note"] = (
+                "The last import was refused ({0}); the IDE project is "
+                "unchanged since then, so this build compiled what was there "
+                "before it -- the changes in project-view/ are NOT in the IDE. "
+                "Run `cts disconnect`, then `cts import`.".format(refusal_reason)
+            )
         try:
             sync_folder, sync_error = _get_sync_folder()
             # Fingerprinting is requested by ``cts verify`` explicitly.  A

@@ -25,8 +25,21 @@ import json
 import os
 
 import ide_time
-from ide_daemon_helpers import _get_sync_folder
 from ide_daemon_state import _log
+
+
+def _sync_folder():
+    """``(folder, error)`` from the daemon helpers, never raising.
+
+    Imported lazily: this module is imported by handlers that tests load with
+    ``ide_daemon_helpers`` stubbed out, and a hard import would fail there.
+    """
+    try:
+        from ide_daemon_helpers import _get_sync_folder
+
+        return _get_sync_folder()
+    except Exception as exc:
+        return None, str(exc)
 
 #: Commands whose outcome is worth keeping even when it was delivered: they run
 #: for a long time, produce a result the user acts on, and are the ones a CLI
@@ -42,6 +55,11 @@ ALWAYS_RECORD = (
 )
 
 RESULT_FILE_NAME = "last-result.json"
+#: Written when an import is *refused* (the IDE is online), cleared when an
+#: import succeeds.  `cts build` reads it so "The application is up to date"
+#: is not mistaken for "the disk changes reached the IDE": a refused import
+#: leaves the IDE exactly as it was, and the build then compiles that.
+IMPORT_REFUSED_FILE_NAME = "last-import-refused.json"
 SCHEMA_VERSION = 1
 
 
@@ -97,7 +115,7 @@ def record_last_result(method, response, request_id=None, write_failed=False):
     if not write_failed and method not in ALWAYS_RECORD:
         return None
 
-    sync_folder, error = _get_sync_folder()
+    sync_folder, error = _sync_folder()
     path = result_path(sync_folder)
     if path is None:
         _log(
@@ -138,9 +156,68 @@ def record_last_result(method, response, request_id=None, write_failed=False):
     return path
 
 
+def refused_path(sync_folder):
+    """Where the "an import was refused" marker lives, or ``None``."""
+    if not sync_folder:
+        return None
+    return os.path.join(sync_folder, ".dump", IMPORT_REFUSED_FILE_NAME)
+
+
+def record_import_refusal(reason, command="import"):
+    """Remember that an import was refused, so a later build can say so.
+
+    Best effort: a missing marker only costs a note, so a write failure is
+    logged and swallowed rather than failing the refusal itself.
+    """
+    sync_folder, error = _sync_folder()
+    path = refused_path(sync_folder)
+    if path is None:
+        _log("Could not record refused import: {0}".format(error or "no sync folder"))
+        return None
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "recorded_at": ide_time.iso_utc(),
+        "command": command,
+        "reason": reason or "",
+    }
+    try:
+        write_json_atomic(path, payload)
+    except Exception as exc:
+        _log("Could not write refused-import marker to {0}: {1}".format(path, exc))
+        return None
+    return path
+
+
+def clear_import_refusal():
+    """Drop the marker after a successful import."""
+    sync_folder, _error = _sync_folder()
+    path = refused_path(sync_folder)
+    if path is None:
+        return
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception as exc:
+        _log("Could not clear refused-import marker {0}: {1}".format(path, exc))
+
+
+def read_import_refusal():
+    """The refused-import marker as a dict, or ``None`` when there is none."""
+    sync_folder, _error = _sync_folder()
+    path = refused_path(sync_folder)
+    if path is None or not os.path.isfile(path):
+        return None
+    try:
+        with io.open(path, "r", encoding="utf-8-sig") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _cmd_last_result(params=None):
     """Read back the last recorded command result (``cts last-result``)."""
-    sync_folder, error = _get_sync_folder()
+    sync_folder, error = _sync_folder()
     path = result_path(sync_folder)
     if path is None:
         return {
