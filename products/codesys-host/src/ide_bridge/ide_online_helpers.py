@@ -187,12 +187,21 @@ def get_active_application(project):
     return target_app
 
 
-#: The wrapper the daemon built while its start script was still running.
-#: CODESYS refuses ``create_online_application`` outside a running script
-#: ("Stack empty"), and the daemon's timer ticks run after the script returned.
-#: A wrapper built in the script survives and keeps answering -- login state,
-#: login, logout, read -- so it is kept for the daemon's whole life and is
-#: never dropped by a logout.
+#: Why ``create_online_application`` fails from a timer tick (ScriptDriverOnline,
+#: decompiled from SP22): ``ScriptOnline`` keeps a private
+#: ``Stack<ScriptExecutionEventArgs> _executionStack``.  The script executor
+#: pushes the running script's event args on start and pops them on end, and
+#: ``create_online_application`` takes ``_executionStack.Peek()`` -- after the
+#: start script returned the stack is empty: "Stack empty".  The args are only
+#: bookkeeping for the wrapper (which script's end releases its watches); the
+#: online state itself lives in the IDE's online manager.  So the daemon keeps
+#: the start script's args and, in a tick, pushes them for the duration of the
+#: one call and pops them again.  Watches of such a wrapper are released by
+#: the daemon itself (``release_watches``), because no script end does it.
+_SCRIPT_ARGS_KEY = "script_execution_args"
+
+#: Fallback when reflection is unavailable: one wrapper built while the start
+#: script was running.  It keeps answering after the script returned.
 _SCRIPT_HANDLE_KEY = "script_online_handle"
 
 
@@ -212,27 +221,70 @@ def _same_application(left, right):
         return False
 
 
-def remember_script_online_handle(project):
-    """Build and keep one online wrapper. Call while a script is running."""
+def _execution_stack(online):
+    """``ScriptOnline._executionStack`` via reflection, or ``None``."""
+    try:
+        from System.Reflection import BindingFlags
+        field = online.GetType().GetField(
+            "_executionStack", BindingFlags.Instance | BindingFlags.NonPublic)
+        if field is None:
+            return None
+        return field.GetValue(online)
+    except Exception:
+        return None
+
+
+def remember_script_context(project):
+    """Keep what timer ticks need to build online wrappers.
+
+    Call while a script is running.  Keeps the running script's execution
+    args (preferred) and one wrapper as a fallback.  Returns a short text for
+    the daemon log.
+    """
     import scriptengine as se
 
     state = _get_daemon_state()
-    if state is None or project is None:
-        return None
-    target_app = get_active_application(project)
-    if target_app is None:
-        return None
-    online_app = se.online.create_online_application(target_app)
-    if online_app is not None:
-        state[_SCRIPT_HANDLE_KEY] = (online_app, target_app)
-    return online_app
+    if state is None:
+        return "no daemon state"
+    notes = []
+    stack = _execution_stack(se.online)
+    if stack is not None and stack.Count > 0:
+        state[_SCRIPT_ARGS_KEY] = stack.Peek()
+        notes.append("script context kept")
+    else:
+        notes.append("script context not reachable")
+    target_app = get_active_application(project) if project is not None else None
+    if target_app is not None:
+        try:
+            online_app = se.online.create_online_application(target_app)
+            if online_app is not None:
+                state[_SCRIPT_HANDLE_KEY] = (online_app, target_app)
+                notes.append("fallback wrapper kept")
+        except Exception as e:
+            notes.append("fallback wrapper failed: %s" % e)
+    return ", ".join(notes)
+
+
+def _create_in_kept_context(online, target_app, args):
+    from System import Object
+
+    stack = _execution_stack(online)
+    if stack is None:
+        raise RuntimeError("script context not reachable")
+    stack.Push(args)
+    try:
+        return online.create_online_application(target_app)
+    finally:
+        if stack.Count > 0 and Object.ReferenceEquals(stack.Peek(), args):
+            stack.Pop()
 
 
 def create_online_wrapper(target_app):
-    """``create_online_application``, or the kept wrapper when CODESYS refuses.
+    """``create_online_application`` that also works from a timer tick.
 
-    Outside a running script CODESYS raises "Stack empty"; the wrapper kept by
-    :func:`remember_script_online_handle` is then the only one there is.
+    Inside a running script it is the plain call.  From a tick it runs the
+    call inside the kept script context (see ``_SCRIPT_ARGS_KEY``); failing
+    that, it returns the wrapper kept by :func:`remember_script_context`.
     """
     import scriptengine as se
 
@@ -240,10 +292,67 @@ def create_online_wrapper(target_app):
         return se.online.create_online_application(target_app)
     except Exception:
         state = _get_daemon_state()
-        handle = state.get(_SCRIPT_HANDLE_KEY) if state is not None else None
+        if state is None:
+            raise
+        args = state.get(_SCRIPT_ARGS_KEY)
+        if args is not None:
+            try:
+                return _create_in_kept_context(se.online, target_app, args)
+            except Exception:
+                pass
+        handle = state.get(_SCRIPT_HANDLE_KEY)
         if handle is not None and _same_application(handle[1], target_app):
             return handle[0]
         raise
+
+
+def script_context_report(target_app):
+    """Lines for ``test_online``: how a wrapper can be built right now."""
+    import scriptengine as se
+
+    lines = []
+    state = _get_daemon_state() or {}
+    stack = _execution_stack(se.online)
+    lines.append("execution stack: %s" % (
+        "unreachable" if stack is None else "depth %d" % stack.Count))
+    args = state.get(_SCRIPT_ARGS_KEY)
+    lines.append("kept script context: %s" % ("yes" if args is not None else "no"))
+    try:
+        se.online.create_online_application(target_app)
+        lines.append("plain create: ok")
+    except Exception as e:
+        lines.append("plain create: %s" % e)
+    if args is not None:
+        try:
+            fresh = _create_in_kept_context(se.online, target_app, args)
+            handle = state.get(_SCRIPT_HANDLE_KEY)
+            lines.append("create in kept context: ok, logged_in=%s, new object=%s" % (
+                fresh.is_logged_in,
+                handle is None or fresh is not handle[0]))
+            release_watches(fresh)
+        except Exception as e:
+            lines.append("create in kept context: %s" % e)
+    if stack is not None:
+        lines.append("execution stack after: depth %d" % stack.Count)
+    return lines
+
+
+def release_daemon_watches():
+    """Release the watches of every wrapper the daemon keeps. Best-effort.
+
+    Called after each command: no script end ever releases them (see
+    ``release_watches``).
+    """
+    state = _get_daemon_state()
+    if state is None:
+        return
+    seen = []
+    handle = state.get(_SCRIPT_HANDLE_KEY)
+    for online_app in (state.get("online_app"), handle[0] if handle else None):
+        if online_app is None or any(online_app is s for s in seen):
+            continue
+        seen.append(online_app)
+        release_watches(online_app)
 
 
 def ensure_online_connection(project, prefer_device=False):
@@ -1142,63 +1251,26 @@ def _require_existing_login(online_app):
     )
 
 
-#: CODESYS caches compiled expressions in the online wrapper, keyed by the
-#: exact text.  A download invalidates every entry: an expression read before
-#: it answers "Invalid expression" afterwards, while the same name spelled
-#: differently reads fine (seen live on SP22).  The daemon cannot build a fresh
-#: wrapper from a timer tick, so it retries with another letter case -- IEC
-#: names are case-insensitive, the cache is not -- and remembers the spelling
-#: that worked.
-_SPELLING_KEY = "expr_spelling"
-_MAX_SPELLINGS = 12
+#: ``OnlineApplication`` (ScriptDriverOnline) keeps one IDE watch per
+#: expression text in a private ``_onlineVarRefs`` dict and never drops it on
+#: its own.  CODESYS releases those watches when the *script* that built the
+#: wrapper ends; the daemon's wrappers outlive their script, so the watches
+#: stayed -- and after a download every watch from before it answered
+#: "Invalid expression" (seen live on SP22) while a new text read fine.  The
+#: wrapper's public ``Dispose()`` releases its watches and empties the dict;
+#: the wrapper itself stays usable.  So every read/write releases what it
+#: created and the next one starts from a fresh watch.
 
 
-def _case_spellings(name):
-    """The name as given, then case variants of it (distinct, bounded)."""
-    out = [name, name.lower(), name.upper()]
-    letters = [i for i, ch in enumerate(name) if ch.isalpha()]
-    for run in range(1, 10):
-        chars = list(name.lower())
-        for n, index in enumerate(letters):
-            if (n // run) % 2 == 0:
-                chars[index] = chars[index].upper()
-        out.append("".join(chars))
-    seen = set()
-    unique = []
-    for item in out:
-        if item not in seen:
-            seen.add(item)
-            unique.append(item)
-    return unique
-
-
-def _spellings_to_try(name):
-    state = _get_daemon_state()
-    memo = state.get(_SPELLING_KEY) if state is not None else None
-    first = memo.get(name.lower()) if memo else None
-    ordered = ([first] if first else []) + _case_spellings(name)
-    seen = set()
-    result = []
-    for item in ordered:
-        if item not in seen:
-            seen.add(item)
-            result.append(item)
-    result = result[:_MAX_SPELLINGS]
-    # Some projects only resolve the application-qualified form.
-    if not name.lower().startswith("application."):
-        result.append("Application." + name)
-    return result
-
-
-def _remember_spelling(name, spelling):
-    state = _get_daemon_state()
-    if state is None:
+def release_watches(online_app):
+    """Release the IDE watches an online wrapper holds. Best-effort."""
+    dispose = getattr(online_app, "Dispose", None)
+    if dispose is None:
         return
-    memo = state.get(_SPELLING_KEY)
-    if memo is None:
-        memo = {}
-        state[_SPELLING_KEY] = memo
-    memo[name.lower()] = spelling
+    try:
+        dispose()
+    except Exception:
+        pass
 
 
 def _is_invalid_expression(text):
@@ -1213,13 +1285,15 @@ def _not_exported(name):
         .format(name))
 
 
-def read_variable_impl(project, variable_name):
-    """Read a variable value from an online PLC connection.
+def _expression_candidates(name):
+    # Some projects only resolve the application-qualified form.
+    if name.lower().startswith("application."):
+        return [name]
+    return [name, "Application." + name]
 
-    Retries an "Invalid expression" answer with other letter cases of the
-    same name (see ``_SPELLING_KEY``); the reply always carries the name as
-    the caller wrote it.
-    """
+
+def read_variable_impl(project, variable_name):
+    """Read a variable value from an online PLC connection."""
     if not variable_name:
         raise ValueError("Variable name is required")
 
@@ -1228,29 +1302,27 @@ def read_variable_impl(project, variable_name):
     _require_existing_login(online_app)
 
     last_error = None
-    for spelling in _spellings_to_try(variable_name):
-        try:
-            str_val = str(_call_online_app(
-                online_app, ('read_value', 'read_values'), spelling))
-        except Exception as e:
-            if not _is_invalid_expression(str(e)):
-                raise
-            last_error = _not_exported(variable_name)
-            continue
-        if _is_invalid_expression(str_val):
-            last_error = _not_exported(variable_name)
-            continue
-        _remember_spelling(variable_name, spelling)
-        return {"name": variable_name, "value": str_val}
+    try:
+        for candidate in _expression_candidates(variable_name):
+            try:
+                str_val = str(_call_online_app(
+                    online_app, ('read_value', 'read_values'), candidate))
+            except Exception as e:
+                if not _is_invalid_expression(str(e)):
+                    raise
+                last_error = _not_exported(variable_name)
+                continue
+            if _is_invalid_expression(str_val):
+                last_error = _not_exported(variable_name)
+                continue
+            return {"name": variable_name, "value": str_val}
+    finally:
+        release_watches(online_app)
     raise last_error if last_error is not None else RuntimeError("Read failed")
 
 
 def write_variable_impl(project, variable_name, value):
-    """Write a value to a PLC variable via online connection.
-
-    Retries an "Invalid expression" refusal with other letter cases of the
-    name, like ``read_variable_impl``.
-    """
+    """Write a value to a PLC variable via online connection."""
     if not variable_name:
         raise ValueError("Variable name is required")
     if value is None:
@@ -1262,18 +1334,20 @@ def write_variable_impl(project, variable_name, value):
 
     value = normalize_write_value(value)
     first_error = None
-    for spelling in _spellings_to_try(variable_name):
-        try:
-            _call_online_app(online_app, ('set_prepared_value',), spelling, value)
-            _call_online_app(online_app, ('write_prepared_values',),)
-        except Exception as e:
-            if first_error is None:
-                first_error = e
-            if not _is_invalid_expression(str(e)):
-                raise
-            continue
-        _remember_spelling(variable_name, spelling)
-        return {"name": variable_name, "written": True, "value": str(value)}
+    try:
+        for candidate in _expression_candidates(variable_name):
+            try:
+                _call_online_app(online_app, ('set_prepared_value',), candidate, value)
+                _call_online_app(online_app, ('write_prepared_values',),)
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                if not _is_invalid_expression(str(e)):
+                    raise
+                continue
+            return {"name": variable_name, "written": True, "value": str(value)}
+    finally:
+        release_watches(online_app)
     raise first_error if first_error is not None else RuntimeError("Write failed")
 
 

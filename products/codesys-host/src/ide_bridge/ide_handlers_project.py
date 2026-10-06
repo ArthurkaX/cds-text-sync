@@ -465,6 +465,7 @@ def _cmd_test_online(params):
         tb.append("app: " + str(app)[:80])
         if app is None:
             return {"ok": True, "data": {"state": "no app", "log": tb}}
+        tb.extend(_helpers.script_context_report(app))
         oa = _helpers.create_online_wrapper(app)
         tb.append("oa: " + str(oa)[:80])
         if oa is not None:
