@@ -297,20 +297,36 @@ def _handle_write(args, output_fmt):
         if not wire.response_ok(wr):
             _print_rp_error(wr, "write_variable")
             sys.exit(1)
-        read_back, confirmed = _confirm_write(args.name, args.value, timeout)
+        expected = _written_value(wr, args.value)
+        read_back, confirmed = _confirm_write(args.name, expected, timeout)
         payload = {"written": True, "read_back": read_back, "confirmed": confirmed}
+        if expected != args.value:
+            payload["written_as"] = expected
         if not confirmed and not read_back.get("unavailable"):
             payload["note"] = (
                 "the PLC still reports {0!r} after writing {1!r} and waiting "
                 "{2:g}s; the program may overwrite it every cycle, or the "
                 "write may not have taken effect. Not confirmed.".format(
-                    read_back.get("value"), args.value, _READ_BACK_BUDGET_S
+                    read_back.get("value"), expected, _READ_BACK_BUDGET_S
                 )
             )
         print(_format_output(payload, fmt=output_fmt, title="write"))
     except RuntimeError as e:
         _print_error("Write failed: {0}".format(e))
         sys.exit(1)
+
+
+def _written_value(response, typed):
+    """What the PLC should show after the write.
+
+    Normally the value the user typed. When the daemon had to requote a bare
+    STRING value as an ST literal (``string_literal``), the PLC holds the
+    quoted form, so that is what the read-back is compared with.
+    """
+    data = response.get("data") or {}
+    if data.get("string_literal") and data.get("value") is not None:
+        return str(data["value"])
+    return typed
 
 
 def _confirm_write(name, value, timeout):

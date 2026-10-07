@@ -78,7 +78,7 @@ def test_no_module_keeps_a_private_spelling_of_the_true_set():
     pattern = re.compile(r'"1"\s*,\s*"true"')
     offenders = []
     for path in (ROOT / "products").rglob("*.py"):
-        if "__pycache__" in path.parts:
+        if "__pycache__" in path.parts or "build" in path.parts:
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if pattern.search(line):

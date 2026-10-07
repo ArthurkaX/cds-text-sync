@@ -10,6 +10,7 @@ and the "return False for anything I don't handle" contract.
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -390,6 +391,40 @@ def test_write_does_read_back(monkeypatch, capsys):
     assert [m for m, _ in sent] == ["write_variable", "read_variable"]
     out = capsys.readouterr().out
     assert "read_back" in out and "42" in out
+
+
+def test_a_requoted_string_write_is_confirmed_against_the_literal(monkeypatch, capsys):
+    """The daemon wrote 'hello' for a typed ``hello``; the PLC shows 'hello'."""
+
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            return {"ok": True, "data": {"value": "'hello'"}}
+        return {
+            "ok": True,
+            "data": {"written": True, "value": "'hello'", "string_literal": True},
+        }
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    d.dispatch_daemon(
+        _args(command="write", name="GVL.sName", value="hello"), output_fmt="json"
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["confirmed"] is True
+    assert payload["written_as"] == "'hello'"
+    assert "note" not in payload
+
+
+def test_a_typed_value_is_still_the_expectation_without_a_requote(monkeypatch, capsys):
+    def _fake_send(method, params=None, timeout=15):
+        if method == "read_variable":
+            return {"ok": True, "data": {"value": "7"}}
+        return {"ok": True, "data": {"written": True, "value": "7"}}
+
+    monkeypatch.setattr(d, "send_command_reverse", _fake_send)
+    d.dispatch_daemon(_args(command="write", name="n", value="7"), output_fmt="json")
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["confirmed"] is True
+    assert "written_as" not in payload
 
 
 _CTX = {
