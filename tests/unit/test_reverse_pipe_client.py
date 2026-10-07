@@ -510,7 +510,6 @@ class TestSessionLock:
             pipe_path = rpc.reverse_pipe_name(unique_user)
 
             stop_daemons = threading.Event()
-            daemon_errors = []
 
             def fake_daemon(daemon_pid: int):
                 while not stop_daemons.is_set():

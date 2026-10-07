@@ -718,7 +718,6 @@ class TestExportAtomicAndReliability:
         def _mock_named_temp_file(*args, **kwargs):
             tf = original_named_temp_file(*args, **kwargs)
             # Patch file.write on the underlying file object to raise an error
-            original_write = tf.file.write
 
             def _bad_write(s):
                 raise IOError("Disk full simulation")

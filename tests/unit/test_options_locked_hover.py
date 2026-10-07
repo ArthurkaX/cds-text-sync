@@ -10,7 +10,6 @@ it can be checked here.
 import os
 import sys
 
-import pytest
 
 
 _IDE_BRIDGE = os.path.normpath(

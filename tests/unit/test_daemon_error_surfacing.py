@@ -12,7 +12,6 @@ import os
 import sys
 from types import SimpleNamespace
 
-import pytest
 
 
 _IDE_BRIDGE = os.path.normpath(

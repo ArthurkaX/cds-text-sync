@@ -14,7 +14,6 @@ import json
 import os
 
 from cds_text_sync.engine._project_settings import (
-    SETTINGS_INVALID,
     SETTINGS_MISSING,
     SETTINGS_OK,
     SETTINGS_VERSION,

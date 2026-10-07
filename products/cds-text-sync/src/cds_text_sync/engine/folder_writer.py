@@ -3,7 +3,6 @@
 folder_writer.py - Writes the in-memory ProjectModel to a Git-friendly folder structure.
 """
 
-import codecs
 import json
 import os
 import tempfile

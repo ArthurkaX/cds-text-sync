@@ -3,7 +3,6 @@
 not a look-alike ``cds_text_sync`` in the caller's working directory."""
 
 import subprocess
-import sys
 
 import pytest
 

@@ -10,7 +10,6 @@ diffs the sketch file before/after to prove nothing else moved.
 """
 
 import os
-import re
 import sys
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
