@@ -118,7 +118,7 @@ class TestConfigureStdioUtf8:
         legacy = io.TextIOWrapper(
             io.BytesIO(), encoding="cp1252", errors="strict", newline=""
         )
-        cyrillic = "Рабочий стол/пикчи/safety_door.png"
+        cyrillic = "\u0420\u0430\u0431\u043e\u0447\u0438\u0439 \u0441\u0442\u043e\u043b/\u043f\u0438\u043a\u0447\u0438/safety_door.png"
         saved_out, saved_err = sys.stdout, sys.stderr
         try:
             sys.stdout = legacy

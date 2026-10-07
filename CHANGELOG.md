@@ -23,6 +23,14 @@ All notable changes to this project will be documented in this file.
 
 - New `cts guide [TOPIC]` prints the operating guides (`workflow`, `commands`, `visu-svg`), and `cts guide <topic> --file <name>` reads a file shipped with a topic such as an example sketch. The guides are package data, so a pip/irm install now carries them and they always match the installed CLI version; `cts --help` points at `cts guide` as the first step. Unknown topics exit non-zero and list the valid ones. The `skills/` SKILL.md files are now thin wrappers that tell an agent to run `cts guide`, and the reference and example files they used to duplicate moved into the package.
 
+**Working against a live PLC:**
+
+- Project edits are refused while the IDE is online. `cts import`, `update-pou`, `delete-pou` and the sync-folder and simulation-mode changes stop before they touch the project, the manifest or any file. The guard also catches a session the daemon did not open itself (Login pressed in the IDE after the daemon started), which used to let an import through and leave the new objects half-applied.
+- `cts download` waits for the application to run (30 s budget, `--ready-timeout`; `--ready-var NAME` also requires that variable to change between two reads; `--no-wait` skips it). New `cts wait-ready [--var NAME] [--timeout N]` is the same wait for a Login or Download done by hand.
+- Every daemon reply carries a `context` block (project, IDE id, cached PLC state, whether project edits are allowed, an optional hint) built from the cached view, so it costs no IDE call; text output ends with one `[ctx]` line. Response timestamps are ISO-8601 UTC with a trailing `Z`.
+- The daemon is served from a WinForms timer instead of a loop inside the running script, so CODESYS no longer sits in "Executing script ... CANCEL" for the daemon's whole life: a download's progress paints and the PLC's stop/start is visible. A timeout leads with the verdict ("daemon busy with <method> for N s") and one action.
+- New `cts snapshooter` drives the Snapshooter's tree/take/diff/restore from the command line; `restore` is a dry run unless `--apply`, and the command stays behind the daemon's deny list because `take --out` and `restore --apply` write a file and the PLC.
+
 **Reliability and internal cleanup:**
 
 - `cts project compare` works again: it calls the snapshot-compare handler, compares snapshot objects by identity instead of by XML attribute names, and `--against` is optional (the newest snapshot in `.dump` is used). The project-level `__VisualizationStyle` alias is listed under `project_alias_nodes` instead of being reported as missing from the export.

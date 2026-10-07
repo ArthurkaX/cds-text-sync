@@ -51,7 +51,7 @@ def test_manifest_loader_reads_utf8_regardless_of_platform_encoding(tmp_path, mo
 
     monkeypatch.setattr(_manifest_bookkeeper, "open", cp1252_default_open, raising=False)
     path = tmp_path / "manifest.json"
-    manifest = {"entries": [{"xml_path": r"Визуализация\Экран.xml", "hash": "h"}]}
+    manifest = {"entries": [{"xml_path": "\u0412\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f\\\u042d\u043a\u0440\u0430\u043d.xml", "hash": "h"}]}
     path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
 
     assert load(str(path)) == manifest

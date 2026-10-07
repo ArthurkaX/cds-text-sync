@@ -175,8 +175,8 @@ def test_stub_is_py2_safe_and_compiles(spec):
 @pytest.mark.parametrize(
     "path",
     [
-        "C:\\Users\\Пользователь\\cds-text-sync",
-        "C:\\Users\\Пользователь\\cds-text-sync\\",
+        "C:\\Users\\\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\\cds-text-sync",
+        "C:\\Users\\\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\\cds-text-sync\\",
     ],
     ids=["plain", "trailing-backslash"],
 )

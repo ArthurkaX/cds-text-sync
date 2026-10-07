@@ -75,7 +75,7 @@ def test_omitted_path_uses_saved_project_directory_and_can_save(monkeypatch, tmp
 def test_explicit_unicode_absolute_path_is_stored_without_saving(monkeypatch, tmp_path):
     project = _Project(str(tmp_path / "Demo.project"))
     _install_project(monkeypatch, project)
-    sync_folder = os.path.abspath(str(tmp_path / "Синхронизация"))
+    sync_folder = os.path.abspath(str(tmp_path / "\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f"))
 
     result = handlers._cmd_set_sync_folder({"path": sync_folder})
 
@@ -296,7 +296,7 @@ def test_dialog_falls_back_to_a_text_query_without_windows_forms(monkeypatch):
         ("fio-sorting-weight", "fio-sorting-weight-cts"),
         ("My Project", "My-Project-cts"),
         ("a  b", "a-b-cts"),
-        ("Сортировка", "Сортировка-cts"),
+        ("\u0421\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0430", "\u0421\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0430-cts"),
         ("bad<>name", "badname-cts"),
         ("<>", "cts"),
     ],

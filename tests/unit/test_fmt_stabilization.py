@@ -860,7 +860,7 @@ def test_read_document_has_no_debug_print_spam(capsys):
 
 
 def test_default_text_read_preserves_mojibake_without_repair():
-    corrupted = "// Сброс".encode("utf-8").decode("latin-1")
+    corrupted = "// \u0421\u0431\u0440\u043e\u0441".encode("utf-8").decode("latin-1")
     assert st_objects.text_of(corrupted) == corrupted
     assert st_objects.repair_mojibake(corrupted) != corrupted
 

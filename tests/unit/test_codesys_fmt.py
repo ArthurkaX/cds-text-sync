@@ -36,7 +36,7 @@ def test_string_keywords_do_not_change_block_nesting():
 
 
 def test_text_repairs_obvious_russian_mojibake():
-    comment = "// Сброс признака первой циклы"
+    comment = "// \u0421\u0431\u0440\u043e\u0441 \u043f\u0440\u0438\u0437\u043d\u0430\u043a\u0430 \u043f\u0435\u0440\u0432\u043e\u0439 \u0446\u0438\u043a\u043b\u044b"
     corrupted = comment.encode("utf-8").decode("latin-1")
 
     assert fmt._repair_mojibake(corrupted) == comment

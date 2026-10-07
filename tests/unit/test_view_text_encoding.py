@@ -26,8 +26,8 @@ from cds_text_sync.engine._view_text import ViewEncodingError, read_view_text
 from cds_text_sync.engine.folder_reader import FolderReader
 from cds_text_sync.engine.xml_helpers import sha1_hex
 
-CYRILLIC_ST = u"FUNCTION_BLOCK FB_Клапан\n" \
-              u"(* Открытие *)\n"
+CYRILLIC_ST = u"FUNCTION_BLOCK FB_\u041a\u043b\u0430\u043f\u0430\u043d\n" \
+              u"(* \u041e\u0442\u043a\u0440\u044b\u0442\u0438\u0435 *)\n"
 
 
 def _write_bytes(path, data):

@@ -238,8 +238,8 @@ def test_a_cyrillic_result_is_written_and_read_back(sync_folder):
     """
     response = {
         "ok": False,
-        "error": "Не удалось записать объект 'Счётчик'",
-        "data": {"created_text_objects": ["Счётчик", "План"]},
+        "error": "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u043f\u0438\u0441\u0430\u0442\u044c \u043e\u0431\u044a\u0435\u043a\u0442 '\u0421\u0447\u0451\u0442\u0447\u0438\u043a'",
+        "data": {"created_text_objects": ["\u0421\u0447\u0451\u0442\u0447\u0438\u043a", "\u041f\u043b\u0430\u043d"]},
     }
 
     path = ide_last_result.record_last_result(
@@ -249,18 +249,18 @@ def test_a_cyrillic_result_is_written_and_read_back(sync_folder):
     assert path is not None
     # Stored as real utf-8 bytes, not \uXXXX escapes.
     raw = Path(path).read_bytes()
-    assert "Счётчик".encode("utf-8") in raw
+    assert "\u0421\u0447\u0451\u0442\u0447\u0438\u043a".encode("utf-8") in raw
 
     payload = _read(path)
-    assert payload["error"] == "Не удалось записать объект 'Счётчик'"
-    assert payload["result"]["created_text_objects"] == ["Счётчик", "План"]
+    assert payload["error"] == "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u043f\u0438\u0441\u0430\u0442\u044c \u043e\u0431\u044a\u0435\u043a\u0442 '\u0421\u0447\u0451\u0442\u0447\u0438\u043a'"
+    assert payload["result"]["created_text_objects"] == ["\u0421\u0447\u0451\u0442\u0447\u0438\u043a", "\u041f\u043b\u0430\u043d"]
 
 
 def test_a_cyrillic_result_survives_the_daemon_read_path(sync_folder):
     """``cts last-result`` (the daemon side) reads the same utf-8 stream."""
     ide_last_result.record_last_result(
         "sync_import_text",
-        {"ok": True, "data": {"updated_text_objects": ["Счётчик"]}},
+        {"ok": True, "data": {"updated_text_objects": ["\u0421\u0447\u0451\u0442\u0447\u0438\u043a"]}},
         "88-cyr",
         True,
     )
@@ -269,7 +269,7 @@ def test_a_cyrillic_result_survives_the_daemon_read_path(sync_folder):
 
     assert result["ok"] is True
     assert result["data"]["error"] == ""
-    assert result["data"]["result"]["updated_text_objects"] == ["Счётчик"]
+    assert result["data"]["result"]["updated_text_objects"] == ["\u0421\u0447\u0451\u0442\u0447\u0438\u043a"]
 
 
 # ── The daemon loop records on a failed response write ─────────────────────

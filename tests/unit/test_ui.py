@@ -117,7 +117,7 @@ def test_source_context_is_limited_to_st_files_and_project_view(tmp_path):
 
 def test_source_context_repairs_obvious_mojibake_in_exported_comments(tmp_path):
     source = tmp_path / "Main.st"
-    comment = "// Массив данных Расходомеров"
+    comment = "// \u041c\u0430\u0441\u0441\u0438\u0432 \u0434\u0430\u043d\u043d\u044b\u0445 \u0420\u0430\u0441\u0445\u043e\u0434\u043e\u043c\u0435\u0440\u043e\u0432"
     corrupted = comment.encode("utf-8").decode("latin-1")
     corrupted = corrupted.encode("utf-8").decode("utf-8")
     source.write_text("PROGRAM Main\n" + corrupted + "\nEND_PROGRAM\n", encoding="utf-8")

@@ -132,21 +132,21 @@ def test_to_svg_escapes_title():
 def test_to_svg_preserves_non_ascii_text():
     # Rename state "1" everywhere it is referenced so the machine stays
     # connected and every transition is still drawn.
-    cyr_label = "Состояние"
+    cyr_label = "\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435"
     payload = _payload(SAMPLE_ST)
     payload["states"][1]["label"] = cyr_label
     payload["transitions"][0]["target"] = cyr_label        # 0 -> 1
     payload["transitions"][1]["source"] = cyr_label        # 1 -> 2
-    payload["transitions"][1]["guard"] = "завершено И готово"
+    payload["transitions"][1]["guard"] = "\u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e \u0418 \u0433\u043e\u0442\u043e\u0432\u043e"
 
     svg = to_svg(payload)
     assert cyr_label in svg
-    assert "завершено И готово" in svg
+    assert "\u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e \u0418 \u0433\u043e\u0442\u043e\u0432\u043e" in svg
     ET.fromstring(svg)
 
 
 def test_to_svg_preserves_non_ascii_in_data_state():
-    cyr_label = "Состояние"
+    cyr_label = "\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435"
     payload = _payload(SAMPLE_ST)
     payload["states"][1]["label"] = cyr_label
     payload["transitions"][0]["target"] = cyr_label

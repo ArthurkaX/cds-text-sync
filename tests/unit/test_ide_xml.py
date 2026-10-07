@@ -18,13 +18,13 @@ from ide_xml import parse_xml_file  # noqa: E402
 
 
 def test_cyrillic_comment_round_trips(tmp_path):
-    text = "PROGRAM PLC_PRG\n// Комментарий: ёж\nVAR\nEND_VAR\n"
+    text = "PROGRAM PLC_PRG\n// \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439: \u0451\u0436\nVAR\nEND_VAR\n"
     root = ET.Element("Root")
-    ET.SubElement(root, "Single", {"Name": "Имя"}).text = text
+    ET.SubElement(root, "Single", {"Name": "\u0418\u043c\u044f"}).text = text
     path = tmp_path / "IMPORT.xml"
     ET.ElementTree(root).write(str(path), encoding="utf-8", xml_declaration=True)
 
     parsed = parse_xml_file(str(path)).getroot()
 
     assert parsed.find("Single").text == text
-    assert parsed.find("Single").get("Name") == "Имя"
+    assert parsed.find("Single").get("Name") == "\u0418\u043c\u044f"

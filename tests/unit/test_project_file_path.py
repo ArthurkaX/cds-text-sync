@@ -135,7 +135,7 @@ def test_unanchored_sync_folder_never_creates_a_directory(monkeypatch, tmp_path,
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows path semantics")
-@pytest.mark.parametrize("configured", [r"C:\Синхронизация\..\sync", r"\\server\share\sync", r"\\?\C:\sync"])
+@pytest.mark.parametrize("configured", ["C:\\\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f\\..\\sync", r"\\server\share\sync", r"\\?\C:\sync"])
 def test_absolute_windows_paths_do_not_require_saved_project(configured):
     import codesys_utils
 
