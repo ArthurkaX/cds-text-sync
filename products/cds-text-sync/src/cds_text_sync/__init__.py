@@ -5,4 +5,4 @@ The source-checkout ``sys.path`` bootstrapping lives in the root
 side by side, so nothing here needs to touch ``sys.path``.
 """
 
-__version__ = "3.3.0"
+__version__ = "3.4.0"

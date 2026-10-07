@@ -30,7 +30,7 @@ from cts_shared import wire
 PIPE_NAME = "cds-cli-" + os.environ.get("USERNAME", "default")
 
 # Kept in step with cds_text_sync.__version__; the daemon no longer versions separately.
-VERSION = "3.3.0"
+VERSION = "3.4.0"
 
 # The wire format -- framing, size cap, handshake shape -- lives in cts_shared.wire,
 # shared with the CLI. Re-exported here because the bridge's older callers import

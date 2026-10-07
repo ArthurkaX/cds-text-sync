@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cds-cli"
-version = "3.3.0"
+version = "3.4.0"
 description = "Command-line composition layer for cds-text-sync products"
 requires-python = ">=3.11"
 dependencies = [
-  "cds-text-sync==3.3.0",
+  "cds-text-sync==3.4.0",
   "cds-static-analyzer==1.0.0",
-  "visu-lint==3.3.0",
+  "visu-lint==3.4.0",
 ]
 
 [project.scripts]

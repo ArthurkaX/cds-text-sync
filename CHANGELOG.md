@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
+### Version 3.4.0 (2026-10-07)
 
 **PLC runtime log (`cts plc-log`):**
 
