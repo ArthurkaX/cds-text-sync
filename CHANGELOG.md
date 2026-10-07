@@ -43,6 +43,13 @@ All notable changes to this project will be documented in this file.
 **Fixed:**
 
 - The analyzer's string blanker kept one space for an escaped quote (`''`) though it consumed two characters, shortening the text by a byte and shifting every later offset. It now preserves the length, so offsets into a blanked `.st` stay exact.
+- `cts import` no longer loses a disk change it could not apply. A modified object with no text form (a `Task.xml`, for example) used to appear in no result category, and the manifest refresh then overwrote the disk copy with the project's. The import now re-compares afterwards and, if something did not apply, returns `rc=2`, `partial=true` and the `unapplied_objects` list, and leaves the manifest and the disk copies alone.
+- One daemon per CODESYS process. Every Execute Script run builds a fresh IronPython runtime, so a second run used to start a second daemon beside the first. The daemon state now lives in the AppDomain with a generation counter: a re-run asks whether to replace the running daemon, the old generation stops its own timer, and a named mutex on the pipe name refuses a second CODESYS process that would fight for the same pipe.
+- Online commands (`cts read`, `cts write`, watches) no longer fail with `Stack empty`. The scripting engine keeps a private stack of script contexts that only a running script fills; the daemon now keeps its script's context and pushes it for the duration of an online command, and releases the watches it created after each command, so a stale expression cannot poison the next call.
+- `cts read-log` no longer fails with `Value cannot be null. Parameter name: category`. The category is resolved from the IDE's own list (by GUID or description), defaults to Build, and an unknown one is answered with the list of valid categories; `--category` selects it.
+- `cts write NAME text` on a STRING variable is accepted: when CODESYS answers `is not a literal`, the value is requoted as an ST string literal (`$` and `'` escaped), and the reply says so (`string_literal`, `note`). A wrong value for a numeric variable still fails with its own error.
+- `--json` output stays pure: the `[INFO] Timeout: ...` line is printed only in text mode and always to stderr, so stdout carries the payload and nothing else.
+- The scripting-API check (`tools/check_script_api.py`, now part of `ci_product_checks.py`) compares every scripting call the bridge makes with a snapshot of the API generated from the CODESYS assemblies. It found `projects.close`, which does not exist; `cts project close` now reports that instead of raising `AttributeError`.
 
 ---
 
