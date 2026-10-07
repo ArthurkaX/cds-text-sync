@@ -7,6 +7,7 @@ that each product can already be built without absorbing its siblings.
 Usage::
 
     python tools/ci_product_checks.py manifests
+    python tools/ci_product_checks.py scriptapi
     python tools/ci_product_checks.py wheels
     python tools/ci_product_checks.py clean
     python tools/ci_product_checks.py all
@@ -140,6 +141,26 @@ def check_wheels() -> None:
         print("product wheels OK: isolated product wheels and clean root compatibility wheel")
 
 
+def check_script_api() -> None:
+    """Every scripting-API call in the bridge must exist in the snapshot.
+
+    A member CODESYS does not have fails at the stand, in front of a person,
+    with an AttributeError in a log nobody reads (that is how
+    ``projects.close(prj)`` survived). The snapshot is the offline copy of the
+    API's names, so the same mistake fails here instead. 0.2 s, so it rides
+    along with 'all'.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "check_script_api.py"), "--ci"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode:
+        raise SystemExit((proc.stdout or proc.stderr).strip())
+    print((proc.stdout or proc.stderr).strip())
+
+
 def check_clean_tree() -> None:
     proc = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True)
     if proc.returncode:
@@ -153,11 +174,13 @@ def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "all"
     if command in {"manifests", "all"}:
         check_manifests()
+    if command in {"scriptapi", "all"}:
+        check_script_api()
     if command in {"wheels", "all"}:
         check_wheels()
     if command in {"clean", "all"}:
         check_clean_tree()
-    if command not in {"manifests", "wheels", "clean", "all"}:
+    if command not in {"manifests", "scriptapi", "wheels", "clean", "all"}:
         raise SystemExit(f"unknown command: {command}")
 
 
