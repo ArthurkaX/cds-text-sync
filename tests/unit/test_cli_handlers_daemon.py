@@ -540,6 +540,11 @@ def test_an_unavailable_read_back_is_not_polled(monkeypatch, capsys):
         ("FALSE", "TRUE", False),
         ("TRUE", None, False),
         ("TRUE", "1", False),
+        ("0", "INT#0", True),
+        ("1.5", "REAL#1.5", True),
+        ("INT#0", "INT#0", True),
+        ("0", "INT#1", False),
+        ("hello", "'hello'", False),
     ],
 )
 def test_the_value_comparison_does_not_guess(written, read, expected):

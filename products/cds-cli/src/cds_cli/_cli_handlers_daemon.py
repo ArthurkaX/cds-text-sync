@@ -18,6 +18,7 @@ Unlike the pure project/pou/visu routers, a few of these carry logic:
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 
@@ -348,6 +349,15 @@ def _confirm_write(name, value, timeout):
         time.sleep(_READ_BACK_POLL_S)
 
 
+#: ``INT#0``, ``REAL#1.5``, ``T#2s``: the PLC may print a value with its type.
+_TYPE_PREFIX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*#")
+
+
+def _drop_type_prefix(text):
+    """``INT#0`` -> ``0``. A bare value is returned unchanged."""
+    return _TYPE_PREFIX.sub("", text, count=1)
+
+
 def _values_agree(written, read):
     """Whether the PLC's rendering of a variable matches what was written.
 
@@ -357,8 +367,8 @@ def _values_agree(written, read):
     """
     if read is None:
         return False
-    left = "{0}".format(written).strip()
-    right = "{0}".format(read).strip()
+    left = _drop_type_prefix("{0}".format(written).strip())
+    right = _drop_type_prefix("{0}".format(read).strip())
     if left.upper() == right.upper():
         return True
     try:
