@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Version 3.4.1 (2026-10-12)
+### Unreleased
 
 **Import from a fresh clone:**
 
