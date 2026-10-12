@@ -32,6 +32,16 @@ MENU_FOLDER = "cds-text-sync"
 # a Python 3 import of a stub (a test, a diagnostic) is enough to create one.
 _DISPOSABLE_DIRS = frozenset(["__pycache__"])
 
+# Entry points that releases before the generated stubs (v1.x, v2.x) put into
+# this folder as full scripts, without MARKER. They are ours: an update removes
+# them instead of leaving a stale menu item that still reports its old version.
+# Compared lower-case, as the Windows file system does.
+_RETIRED_ENTRYPOINTS = frozenset([
+    "project_compare.py",
+    "project_parameters.py",
+    "project_perf_test.py",
+])
+
 _SENTINEL_DIR = Path("src") / "ide_bridge"
 _HOST_DIR = Path("products") / "codesys-host"
 
@@ -431,6 +441,7 @@ def write_menu(body_root, script_dir, force=False, prune=False, dry_run=False,
             with open(str(target), "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(source)
 
+    expected_by_fold = dict((name.lower(), name) for name in expected_names)
     if menu_dir.is_dir():
         for item in sorted(menu_dir.iterdir()):
             if item.is_dir():
@@ -446,8 +457,21 @@ def write_menu(body_root, script_dir, force=False, prune=False, dry_run=False,
                 continue
             if item.name in expected_names:
                 continue
-            # A stub we generated but no longer ship is ours to clean up.
-            if _has_marker(item) or prune:
+            proper = expected_by_fold.get(item.name.lower())
+            if proper is not None and _same_file(item, menu_dir / proper):
+                # A case-insensitive file system kept an older spelling
+                # (v1.x Project_Build.py) and the stub was written into it:
+                # fix the name, never delete the stub.
+                if not dry_run:
+                    item.rename(menu_dir / proper)
+                continue
+            # A stub we generated but no longer ship is ours to clean up, and
+            # so is a full script an older release installed here.
+            if (
+                _has_marker(item)
+                or prune
+                or item.name.lower() in _RETIRED_ENTRYPOINTS
+            ):
                 removed.append(item.name)
                 if not dry_run:
                     item.unlink()
@@ -469,6 +493,13 @@ def write_menu(body_root, script_dir, force=False, prune=False, dry_run=False,
         "problems": problems,
         "dry_run": bool(dry_run),
     }
+
+
+def _same_file(left, right):
+    try:
+        return os.path.samefile(str(left), str(right))
+    except OSError:
+        return False
 
 
 def _remove_tree(path):

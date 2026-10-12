@@ -309,3 +309,48 @@ def test_verify_menu_catches_corruption(tmp_path):
     assert any("extra.py" in problem for problem in problems)
     assert any("unexpected subdirectory" in problem for problem in problems)
     assert any("not a generated stub" in problem for problem in problems)
+
+
+# ---------------------------------------------------------------------------
+# 11. An update removes full scripts older releases left in the menu folder
+# ---------------------------------------------------------------------------
+
+
+def test_write_menu_removes_retired_entrypoints(tmp_path):
+    body = _make_body(tmp_path)
+    script_dir = tmp_path / "sd"
+    menu_dir = script_dir / install_menu.MENU_FOLDER
+    menu_dir.mkdir(parents=True)
+    # v1.x full scripts: no MARKER, still listed in the CODESYS menu.
+    (menu_dir / "Project_parameters.py").write_text("VERSION = '1.7.3'\n", encoding="utf-8")
+    (menu_dir / "Project_perf_test.py").write_text("pass\n", encoding="utf-8")
+    (menu_dir / "Project_compare.py").write_text("pass\n", encoding="utf-8")
+    (menu_dir / "my_tool.py").write_text("pass\n", encoding="utf-8")
+
+    result = install_menu.write_menu(body, script_dir)
+
+    for name in ("Project_parameters.py", "Project_perf_test.py", "Project_compare.py"):
+        assert not (menu_dir / name).exists()
+        assert name in result["removed"]
+    # A file that is not ours stays, with a warning.
+    assert (menu_dir / "my_tool.py").exists()
+    assert any("my_tool.py" in warning for warning in result["warnings"])
+
+
+def test_write_menu_keeps_a_stub_under_an_older_spelling(tmp_path):
+    body = _make_body(tmp_path)
+    script_dir = tmp_path / "sd"
+    menu_dir = script_dir / install_menu.MENU_FOLDER
+    menu_dir.mkdir(parents=True)
+    old = menu_dir / "Project_Build.py"
+    old.write_text("pass\n", encoding="utf-8")
+    case_insensitive = (menu_dir / "project_build.py").exists()
+
+    install_menu.write_menu(body, script_dir)
+
+    names = {item.name for item in menu_dir.iterdir()}
+    assert "Project_build.py" in names
+    if case_insensitive:
+        # Windows: one file, now under the current name, holding the stub.
+        assert "Project_Build.py" not in names
+        assert install_menu.verify_menu(menu_dir, body.resolve()) == []

@@ -10,6 +10,11 @@ All notable changes to this project will be documented in this file.
 
 - `Project_import.py` (and compare) no longer fails with `Manifest not found` / "External engine failed with return code 1" in a teammate's fresh clone. `.dump/` is git-ignored, so the clone has no `.dump/manifest.json`; the engine now builds it from the open IDE project before the import, in both XML-first and text-first mode, and says so in the Messages window. The view files are not touched: what differs between them and the open project is imported like an ordinary edit, and objects the IDE has but the clone does not are left in place.
 
+**Installer menu cleanup:**
+
+- Updating with `irm …/setup.ps1 | iex` now removes the full scripts that releases before 3.0 left in the `cds-text-sync` menu folder (`Project_parameters.py`, `Project_perf_test.py`, `Project_compare.py`). They carry no stub marker, so the update used to keep them with a warning, and a stale `Project_parameters` kept showing its old version in the CODESYS menu. Other unknown files are still kept unless `--prune` is passed.
+- On Windows, a menu folder that still held the v1.x `Project_Build.py` lost its build entry on update: the new `Project_build.py` stub was written into the old file and then deleted as an unexpected name. The file is now renamed to the current spelling instead.
+
 ### Version 3.4.0 (2026-10-07)
 
 **PLC runtime log (`cts plc-log`):**
