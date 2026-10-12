@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**Import into another project:**
+
+- An import from a sync folder exported from another project is refused before anything is written. Objects copied between two project files get new GUIDs, and the import goes by GUID: it used to add a second copy of each object beside the one the project already had. Now, when an object of `project-view/` has the name and place of an object of the open project but another GUID, the import stops with `Error: … N object(s) of project-view/ have the name and place of an object of the open project but another GUID: …. Nothing was imported.` Open the project the folder was exported from, or export this project into a sync folder of its own.
+- The import's warnings name objects, at most ten, then `and N more`, instead of every GUID. The list of objects the IDE has and the folder lacks used to fill a message box past the bottom of the screen: its OK button was out of reach and CODESYS looked hung in Import behind it. Message boxes from the menu scripts are also cut to 25 lines of at most 300 characters; the full text stays in the sync log.
+
 ### Version 3.4.1 (2026-10-12)
 
 **Import from a fresh clone:**

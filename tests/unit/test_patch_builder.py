@@ -549,3 +549,49 @@ class TestStOverlayFailures:
 
         assert guid in str(raised.value)
         assert "could not be parsed" in str(raised.value)
+
+
+# ===================================================================
+# A sync folder exported from another project
+# ===================================================================
+
+
+def _tree(*rows):
+    """``rows`` of (guid, name, parent_guid) as a model."""
+    model = ProjectModel()
+    for guid, name, parent in rows:
+        node = ProjectNode(guid, name, parent_guid=parent)
+        node.xml_text = NATIVE_XML
+        model.add_node(node)
+    return model
+
+
+def test_an_object_at_the_place_of_an_ide_object_with_another_guid_is_refused(tmp_path):
+    """The folder of another project: the same objects under other GUIDs. The
+    import would add a second copy of each, so it refuses before any write."""
+    ide = _tree(("app", "Application", None), ("ide-fb", "ATR_90_CLASS", "app"))
+    folder = _tree(("app", "Application", None), ("disk-fb", "atr_90_class", "app"))
+    diff = {"modified": [], "added": ["disk-fb"], "deleted": ["ide-fb"], "unchanged": ["app"]}
+    patch = tmp_path / "IMPORT.xml"
+
+    with pytest.raises(UnsupportedPatchError) as error:
+        PatchBuilder(diff, ide, folder).build_patch(str(patch))
+
+    assert "another GUID: atr_90_class" in str(error.value)
+    assert "Nothing was imported" in str(error.value)
+    assert not patch.exists()
+
+
+def test_an_object_only_in_the_ide_is_named_once_in_a_short_list(tmp_path, capsys):
+    """Objects the folder lacks stay in the project; the warning names ten of
+    them and counts the rest, so the IDE's message box fits the screen."""
+    rows = [("app", "Application", None)] + [("g{0}".format(i), "POU_{0}".format(i), "app") for i in range(25)]
+    ide = _tree(*rows)
+    folder = _tree(("app", "Application", None))
+    diff = {"modified": [], "added": [], "deleted": [row[0] for row in rows[1:]], "unchanged": ["app"]}
+
+    PatchBuilder(diff, ide, folder).build_patch(str(tmp_path / "IMPORT.xml"))
+
+    out = capsys.readouterr().out
+    assert "25 object(s) of the IDE are not in project-view/" in out
+    assert "POU_9 and 15 more" in out and "POU_10" not in out

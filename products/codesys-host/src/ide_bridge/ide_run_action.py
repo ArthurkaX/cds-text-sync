@@ -27,6 +27,26 @@ def _selected_guid_args(selected_guids):
     return ["--filter-guids", ",".join(guids)]
 
 
+# A message box grows with its text and has no scroll bar: past the screen
+# its OK button is out of reach and the IDE looks hung behind it.
+_DIALOG_LINES = 25
+_DIALOG_LINE_CHARS = 300
+
+
+def _fit_dialog(message):
+    """``message`` cut to what a message box shows whole; the full text
+    stays in the log and the Messages window."""
+    lines = []
+    for line in (message or "").splitlines():
+        if len(line) > _DIALOG_LINE_CHARS:
+            line = line[:_DIALOG_LINE_CHARS] + " ..."
+        lines.append(line)
+    if len(lines) > _DIALOG_LINES:
+        more = len(lines) - _DIALOG_LINES
+        lines = lines[:_DIALOG_LINES] + ["... {0} more line(s) in the sync log.".format(more)]
+    return "\n".join(lines)
+
+
 def _notify_ui(system, method, message, fallback_method=None, fallback_message=None):
     """Call an optional IDE notification and return whether it succeeded."""
     try:
@@ -49,15 +69,15 @@ def _show_warning(system, message):
     if not _notify_ui(
         system,
         "warning",
-        message,
+        _fit_dialog(message),
         fallback_method="info",
-        fallback_message="Warning:\n" + message,
+        fallback_message="Warning:\n" + _fit_dialog(message),
     ):
         ide_runtime_common.log_error(message)
 
 
 def _show_info(system, message):
-    if not _notify_ui(system, "info", message):
+    if not _notify_ui(system, "info", _fit_dialog(message)):
         ide_runtime_common.log_info(message)
 
 

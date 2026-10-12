@@ -38,6 +38,37 @@ class UnsupportedPatchError(Exception):
     pass
 
 
+# A warning names at most this many objects, then "and N more": a list of
+# every object ran a dialog in the IDE past the screen, its OK button out of
+# reach, and the import looked hung behind it.
+_NAMED_LIMIT = 10
+
+
+def _named(model, guids):
+    """``guids`` as object names (the GUID where the model has no name),
+    at most ``_NAMED_LIMIT`` of them."""
+    names = []
+    for guid in guids[:_NAMED_LIMIT]:
+        node = model.get_node(guid)
+        names.append(node.name if node is not None and node.name else guid)
+    more = len(guids) - len(names)
+    return ", ".join(names) + (" and {0} more".format(more) if more > 0 else "")
+
+
+def _place(model, guid):
+    """The names from the tree root down to ``guid``'s object, lower case
+    (CODESYS names ignore case); None when the model does not have it."""
+    names, seen = [], set()
+    node = model.get_node(guid)
+    if node is None:
+        return None
+    while node is not None and node.guid not in seen:
+        seen.add(node.guid)
+        names.append((node.name or "").lower())
+        node = model.get_node(node.parent_guid) if node.parent_guid else None
+    return tuple(reversed(names))
+
+
 class PatchBuilder:
     def __init__(self, diff_result, ide_model, folder_model):
         self.diff_result = diff_result
@@ -367,6 +398,13 @@ class PatchBuilder:
         native_elem = ET.SubElement(create_elem, "NativeXml")
         native_elem.text = native_xml
 
+    def _same_place_other_guid(self, added_guids, deleted_guids):
+        """The objects the folder adds whose name and place an object of the
+        IDE has under another GUID (one the folder does not have)."""
+        ide_places = set(_place(self.ide_model, guid) for guid in deleted_guids)
+        ide_places.discard(None)
+        return [guid for guid in added_guids if _place(self.folder_model, guid) in ide_places]
+
     def build_patch(self, output_path):
         # Import policy: disk wins, and the .st text is the canonical source of
         # truth. The .st content is already rehydrated into folder_node.xml_text
@@ -379,7 +417,7 @@ class PatchBuilder:
             print(
                 "Warning: projection conflict for {0} -- taking .st text as the "
                 "source of truth (XML projection edits to the same object are "
-                "ignored).".format(", ".join(projection_conflicts))
+                "ignored).".format(_named(self.folder_model, projection_conflicts))
             )
 
         # Non-.st projections (CSV/XML) that were edited on disk but have no
@@ -390,18 +428,29 @@ class PatchBuilder:
         )
         if unsupported_projection_changes:
             changed = []
-            for guid, paths in unsupported_projection_changes.items():
-                changed.append("{0}: {1}".format(guid, ", ".join(paths or [])))
+            for paths in unsupported_projection_changes.values():
+                changed.extend(paths or [])
+            more = len(changed) - _NAMED_LIMIT
             print(
                 "Warning: unsupported (export-only) projection edits skipped -- "
-                "no importer back into the IDE for: {0}".format(
-                    "; ".join(changed)
+                "no importer back into the IDE for: {0}{1}".format(
+                    ", ".join(changed[:_NAMED_LIMIT]),
+                    " and {0} more".format(more) if more > 0 else "",
                 )
             )
 
         modified_guids = self.diff_result.get("modified", [])
         added_guids = self.diff_result.get("added", [])
         deleted_guids = self.diff_result.get("deleted", [])
+        twins = self._same_place_other_guid(added_guids, deleted_guids)
+        if twins:
+            raise UnsupportedPatchError(
+                "{0} object(s) of project-view/ have the name and place of an object of the open "
+                "project but another GUID: {1}. The sync folder was exported from another project "
+                "(or these objects were deleted and made again in the IDE); the import goes by "
+                "GUID and would add a second copy of each. Nothing was imported. Open the project "
+                "the folder was exported from, or export this project into a sync folder of its "
+                "own.".format(len(twins), _named(self.folder_model, twins)))
         create_guids = [guid for guid in added_guids if self._is_pending_create(guid)]
         native_create_guids = [
             guid for guid in create_guids if self._is_native_create(guid)
@@ -442,7 +491,7 @@ class PatchBuilder:
         if skipped_st_only:
             print(
                 "Warning: cannot recreate st-only objects (kind undetectable), "
-                "skipped: {0}".format(", ".join(skipped_st_only))
+                "skipped: {0}".format(_named(self.folder_model, skipped_st_only))
             )
         patch_guids = modified_guids + [
             guid for guid in added_guids
@@ -454,8 +503,9 @@ class PatchBuilder:
 
         if deleted_guids:
             print(
-                "Warning: Deleted objects are ignored because IMPORT.xml deletion is not supported yet: {0}".format(
-                    ", ".join(deleted_guids)
+                "Warning: {0} object(s) of the IDE are not in project-view/ and stay in the "
+                "project (the import does not delete): {1}".format(
+                    len(deleted_guids), _named(self.ide_model, deleted_guids)
                 )
             )
 
