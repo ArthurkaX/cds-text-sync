@@ -94,6 +94,9 @@ its changes.
   (visualizations, hardware config, generated snapshots) aligned with the
   exported disk view you review in Git.
 
+For a team, where one owner commits the `.project` and engineers commit only
+logic, see [Team workflow: one owner, several engineers](workflow.md#2-team-one-owner-several-engineers).
+
 > [!NOTE]
 > Git LFS is **optional** and only needed if you want to version control your
 > `.project` binary files. The `cds-text-sync` tool itself does not require Git to
