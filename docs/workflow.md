@@ -21,6 +21,7 @@ Before the team can start working, the project must be prepared:
 2.  **Choose advanced options if needed**: The options dialog opens by itself the first time a folder is configured — that is the moment to set XML-first/text-first mode, layout, profile, or text-export selection. The mode is fixed once the first export runs; switching later requires a new empty sync folder. `Project_options.py` reopens the dialog for everything but the mode.
 3.  **Extract Project**: The initial state of the CODESYS project is exported using `Project_export.py`. This writes the current native snapshot to `.dump/IDE.xml` and refreshes the editable `project-view/` tree for review.
 4.  **Choose Git Scope**: For team review, track `project-view/` intentionally and ignore volatile `.dump` files such as snapshots, reports, and generated patches.
+    A teammate's fresh clone therefore has no `.dump/manifest.json`. That is expected: on the first `Project_import.py` (or compare) the engine builds the manifest from the project open in CODESYS, then imports whatever the clone's files change — in either sync mode. Open the `.project` that matches the cloned commit (or the closest one you have) before importing.
 5.  **Initialize Repository**: A Git repository is created, and the chosen exported view files (and optionally the `.project` binary using LFS) are pushed to a remote server (e.g., GitHub, GitLab).
 
 ### Text-first projects: what is tracked
@@ -28,7 +29,7 @@ Before the team can start working, the project must be prepared:
 In text-first mode the tracked surface is intentionally text:
 
 - **Tracked**: `project-view/**/*.st` (and `.csv` projections), the native `.xml` of kinds kept in the view via `xml_in_view_kinds` (default: visualizations), and `cds-text-sync.json`.
-- **Not tracked**: everything in `.dump/`, including the tool-owned `.dump/xml/` structural mirror. A teammate's fresh clone has no `.dump/` at all — `Project_import.py` still applies the `.st` files by overlaying them on a fresh IDE baseline, and objects missing from the IDE are recreated from their text.
+- **Not tracked**: everything in `.dump/`, including the tool-owned `.dump/xml/` structural mirror. A teammate's fresh clone has no `.dump/` at all — `Project_import.py` rebuilds the manifest from the open IDE project and applies the `.st` files on top of it, and objects missing from the IDE are recreated from their text.
 - Local `.st` edits are protected: export skips (or, interactively, asks before overwriting) any file changed on disk that has not been imported yet.
 
 ## 2. Team Roles

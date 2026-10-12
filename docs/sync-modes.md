@@ -48,6 +48,14 @@ external-editor or LLM workflows):
 Kinds without an ST form (devices, task configuration, …) become effectively
 export-only in text-first mode unless kept in the view via `xml_in_view_kinds`.
 
+## Fresh clone (both modes)
+
+`.dump/` is git-ignored, so a teammate's clone has no `.dump/manifest.json`.
+`Project_import.py` and compare then build the manifest from the project open
+in CODESYS before they run: the clone's view files are compared against that
+project and their differences are imported as ordinary edits. The view files
+themselves are not changed, and objects that exist only in the IDE are kept.
+
 ## Overwrite protection (both modes)
 
 Export never silently overwrites files you edited on disk but have not imported

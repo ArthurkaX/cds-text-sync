@@ -6,7 +6,9 @@ engine_cli.py - Command Line Interface for the Python 3 External Engine.
 import argparse
 import json
 import os
+import shutil
 import sys
+import tempfile
 import time
 
 from ._dirty_scan import scan_dirty
@@ -145,6 +147,68 @@ def _ensure_sync_mode_consistent(settings, dump_path):
         sys.exit(1)
 
 
+def _bootstrap_manifest(args, project_layout, settings):
+    """Build the missing .dump/manifest.json from the open IDE project.
+
+    A teammate's fresh clone has no .dump/ (it is git-ignored), so nothing maps
+    the view files to objects. Export the IDE snapshot into a scratch folder and
+    keep only its manifest (and the text-first xml mirror): the files on disk
+    then compare against the IDE as ordinary edits, and the view is untouched.
+    """
+    model = SnapshotReader(
+        args.snapshot, project_name=os.path.basename(args.project_root)
+    ).read()
+    if not model:
+        return
+    dump_path = project_layout.dump_root
+    sync_mode = normalize_sync_mode(settings.get("sync_mode"))
+    print(
+        "Notice: {0} is missing (fresh clone?); building the baseline from "
+        "the open IDE project. View files are not changed.".format(
+            os.path.join(dump_path, "manifest.json")
+        )
+    )
+    os.makedirs(dump_path, exist_ok=True)
+    # Short names: the scratch view sits deeper than the real one, and the
+    # engine has no long-path support on Windows (MAX_PATH).
+    scratch_root = tempfile.mkdtemp(prefix="b", dir=dump_path)
+    try:
+        scratch_dump = os.path.join(scratch_root, "d")
+        profile = load_profile(settings.get("profile"))
+        writer = FolderWriter(
+            os.path.join(scratch_root, "v"),
+            scratch_dump,
+            profile=profile,
+            projections=effective_projection_selection(
+                profile,
+                settings.get("projections"),
+                sync_mode,
+            ),
+            sync_mode=sync_mode,
+            xml_in_view_kinds=settings.get("xml_in_view_kinds"),
+        )
+        writer.write(model)
+        manifest = _read_manifest(scratch_dump)
+        if manifest is None:
+            return
+        real_writer = FolderWriter(project_layout.view_root, dump_path)
+        manifest["view_root"] = real_writer._relative_or_absolute_view_root(
+            project_layout.view_root
+        )
+        scratch_mirror = os.path.join(scratch_dump, "xml")
+        if os.path.isdir(scratch_mirror):
+            mirror = os.path.join(dump_path, "xml")
+            if os.path.isdir(mirror):
+                shutil.rmtree(mirror)
+            shutil.copytree(scratch_mirror, mirror)
+        with open(
+            os.path.join(dump_path, "manifest.json"), "w", encoding="utf-8"
+        ) as handle:
+            handle.write(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+    finally:
+        shutil.rmtree(scratch_root, ignore_errors=True)
+
+
 def _load_models(args, context):
     ide_reader = SnapshotReader(
         args.snapshot, project_name=os.path.basename(args.project_root)
@@ -154,6 +218,8 @@ def _load_models(args, context):
     project_layout = _layout(args)
     dump_path = project_layout.dump_root
     settings = _settings(args)
+    if ide_model and not os.path.exists(os.path.join(dump_path, "manifest.json")):
+        _bootstrap_manifest(args, project_layout, settings)
     _ensure_sync_mode_consistent(settings, dump_path)
     profile = load_profile(settings.get("profile"))
     folder_reader = FolderReader(project_layout.view_root, dump_path, profile=profile)

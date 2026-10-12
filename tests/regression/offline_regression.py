@@ -1180,6 +1180,51 @@ def _scenario_alarm_projection(work_dir):
                 raise RegressionFailure("changed Alarm AdditionalMessageIDs error was unexpected")
 
 
+def _scenario_fresh_clone_without_dump(work_dir):
+    """A fresh clone has no .dump/: import rebuilds the manifest from the IDE.
+
+    Both modes: the patch must match the one built with the original
+    manifest, and the view files must stay as the clone has them.
+    """
+    for sync_mode in ("xml_first", "text_first"):
+        root = os.path.join(work_dir, "fresh_clone_" + sync_mode)
+        os.makedirs(root)
+        snapshot = os.path.join(root, "IDE.xml")
+        shutil.copyfile(os.path.join(FIXTURE_DIR, "IDE.xml"), snapshot)
+        _write_json(os.path.join(root, "cds-text-sync.json"), {
+            "version": 1,
+            "layout": "project-view",
+            "profile": "default",
+            "projections": {},
+            "sync_mode": sync_mode,
+        })
+        _run(["export", "--project-root", root, "--snapshot", snapshot])
+        st_path = os.path.join(root, "project-view", "Device", "Application", "PLC_PRG.st")
+        _replace_in_file(st_path, "x := 1;", "x := 2;")
+
+        dump_path = os.path.join(root, ".dump")
+        expected_patch = os.path.join(root, "expected_IMPORT.xml")
+        _run(["import", "--project-root", root, "--snapshot", snapshot, "--patch", expected_patch])
+
+        shutil.rmtree(dump_path)
+        with open(st_path, "r") as handle:
+            st_before = handle.read()
+        patch_path = os.path.join(root, "IMPORT.xml")
+        _run(["import", "--project-root", root, "--snapshot", snapshot, "--patch", patch_path])
+        if not os.path.exists(os.path.join(dump_path, "manifest.json")):
+            raise RegressionFailure(sync_mode + ": fresh-clone import did not rebuild the manifest")
+        if [name for name in os.listdir(dump_path) if name.startswith("b") and os.path.isdir(os.path.join(dump_path, name))]:
+            raise RegressionFailure(sync_mode + ": fresh-clone import left its scratch folder")
+        _assert_equal(
+            _normalize_xml(patch_path),
+            _normalize_xml(expected_patch),
+            sync_mode + " fresh-clone patch",
+        )
+        with open(st_path, "r") as handle:
+            if handle.read() != st_before:
+                raise RegressionFailure(sync_mode + ": fresh-clone import changed the view file")
+
+
 def _scenario_text_first_roundtrip(work_dir):
     """Text-first mode: xml mirrored into .dump, .st drives import, mode locked."""
     text_first_root = os.path.join(work_dir, "text_first")
