@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 3.4.1 (2026-10-12)
+
+**Import from a fresh clone:**
+
+- `Project_import.py` (and compare) no longer fails with `Manifest not found` / "External engine failed with return code 1" in a teammate's fresh clone. `.dump/` is git-ignored, so the clone has no `.dump/manifest.json`; the engine now builds it from the open IDE project before the import, in both XML-first and text-first mode, and says so in the Messages window. The view files are not touched: what differs between them and the open project is imported like an ordinary edit, and objects the IDE has but the clone does not are left in place.
+
 ### Version 3.4.0 (2026-10-07)
 
 **PLC runtime log (`cts plc-log`):**
