@@ -51,6 +51,37 @@ In text-first mode the tracked surface is intentionally text:
   - Develop logic using external editors or CODESYS.
   - Sync changes and submit them for review via Pull Requests.
 
+### Parts only the owner syncs
+
+The owner exports the whole project, so the alarm configuration, the task
+configuration, the libraries and the devices keep their history in Git. An
+engineer who does not change them lists them in the clone's own
+`.git/info/exclude` (same syntax as `.gitignore`, never committed):
+
+```
+**/Alarm Configuration/
+**/Task Configuration/
+**/Library Manager.xml
+**/Ethernet/
+```
+
+cds-text-sync reads Git's ignore rules (`.gitignore`, `.git/info/exclude`, the
+global excludes file) and leaves every object they match alone, even when the
+owner committed its files: export neither writes nor removes them, import does
+not apply them, and compare and the export's dirty check do not report them. The
+sync log names how many objects the rules left out.
+
+- An object is matched by its file in `project-view/`; a folder is matched with
+  everything inside it by a pattern ending in `/`. Folder names are those of the
+  project, so a project made in another IDE language needs its own names
+  (`**/Конфигурация задач/`).
+- A rule that covers the application, or an object but not what is below it, is
+  refused before anything is written.
+- To take the owner's version of an ignored part, remove the line, run
+  `Project_import.py`, and put the line back.
+- Shared rules can go into `.gitignore` instead, but they then apply to the owner
+  as well.
+
 ## 3. The Development Cycle
 
 For every new task (Feature or Bug Fix), developers follow these steps:

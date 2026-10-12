@@ -12,7 +12,9 @@ import tempfile
 import time
 
 from ._dirty_scan import scan_dirty
+from ._git_ignore import ignored_guids, ignored_paths
 from ._library_resolution import describe_drift
+from ._manifest_bookkeeper import entries as manifest_entries
 from ._patch_builder import PatchBuilder, UnsupportedPatchError
 from ._project_layout import (
     LAYOUT_LEGACY_DUMP_VIEWS,
@@ -26,6 +28,7 @@ from ._project_profiles import (
     load_profile,
 )
 from ._project_settings import load_project_settings, normalize_sync_mode
+from ._view_paths import manifest_path
 from ._view_text import ViewEncodingError
 from .call_tree import run_call_tree as _run_call_tree
 from .diff_engine import DiffEngine, EntryXmlError
@@ -59,19 +62,74 @@ def _filter_diff_result(diff_result, selected_guids):
     if not selected_guids:
         return diff_result
     selected = set(selected_guids)
+    return _keep_guids(diff_result, lambda guid: guid in selected)
+
+
+def _drop_ignored(diff_result, ignored):
+    """``diff_result`` without the objects git's ignore rules leave out."""
+    if not ignored:
+        return diff_result
+    return _keep_guids(diff_result, lambda guid: guid not in ignored)
+
+
+def _keep_guids(diff_result, keep):
     filtered = {}
     for key, value in diff_result.items():
         if key in _NON_GUID_DIFF_KEYS:
             filtered[key] = value
+        elif key == "library_manager_changes":
+            objects = [guid for guid in value.get("objects") or [] if keep(guid)]
+            if objects:
+                filtered[key] = dict(value, objects=objects)
         elif isinstance(value, list):
-            filtered[key] = [guid for guid in value if guid in selected]
+            filtered[key] = [guid for guid in value if keep(guid)]
         elif isinstance(value, dict):
             filtered[key] = dict(
-                (guid, data) for guid, data in value.items() if guid in selected
+                (guid, data) for guid, data in value.items() if keep(guid)
             )
         else:
             filtered[key] = value
     return filtered
+
+
+def _ignored_guids(view_root, ide_model, folder_model=None, manifest=None):
+    """The objects git's ignore rules leave out; exits on a rule that would
+    cut the tree (see ``_git_ignore.ignored_guids``)."""
+    try:
+        ignored = ignored_guids(view_root, ide_model, folder_model, manifest)
+    except RuntimeError as error:
+        print("Error:", error)
+        sys.exit(1)
+    if ignored:
+        _log(
+            "git ignore rules leave out {0} object(s); they are not exported, "
+            "imported or compared.".format(len(ignored))
+        )
+    return ignored
+
+
+def _drop_ignored_files(report, view_root, manifest):
+    """The dirty-check ``report`` without the files git's ignore rules leave
+    out, by their own path or their object's xml path."""
+    xml_by_guid = dict(
+        (
+            normalize_guid(entry.get("guid")),
+            manifest_path(entry.get("xml_path") or entry.get("view_path")),
+        )
+        for entry in manifest_entries(manifest)
+    )
+    items = report["dirty"] + report["orphans"]
+    ignored = ignored_paths(
+        view_root,
+        [item["path"] for item in items]
+        + [xml_by_guid.get(item.get("guid")) for item in items],
+    )
+
+    def kept(item):
+        return item["path"] not in ignored and xml_by_guid.get(item.get("guid")) not in ignored
+
+    report["dirty"] = [item for item in report["dirty"] if kept(item)]
+    report["orphans"] = [item for item in report["orphans"] if kept(item)]
 
 
 def _timestamp():
@@ -252,7 +310,8 @@ def _load_diff(args, context):
     except EntryXmlError as error:
         print("Error:", error)
         sys.exit(1)
-    return diff_result, ide_model, folder_model, dump_path
+    ignored = _ignored_guids(_layout(args).view_root, ide_model, folder_model)
+    return _drop_ignored(diff_result, ignored), ide_model, folder_model, dump_path
 
 
 def _node_log_path(node, model):
@@ -399,6 +458,9 @@ def run_export(args):
         remove_orphans=bool(getattr(args, "remove_orphans", False)),
         sync_mode=sync_mode,
         xml_in_view_kinds=settings.get("xml_in_view_kinds"),
+        ignored_guids=_ignored_guids(
+            project_layout.view_root, model, manifest=_read_manifest(dump_path)
+        ),
     )
     try:
         writer.write(model)
@@ -438,6 +500,8 @@ def run_check_dirty(args):
         enabled_extensions=enabled_extensions,
         selected_guids=_filter_guids(args) or None,
     )
+    if manifest:
+        _drop_ignored_files(report, project_layout.view_root, manifest)
     report["generated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     report["view_root"] = project_layout.view_root
     report["sync_mode"] = sync_mode

@@ -25,6 +25,7 @@ test_paths = [
   "../../tests/unit/test_fsm_render.py",
   "../../tests/unit/test_fsm_scanner.py",
   "../../tests/unit/test_fsm_ui_assets.py",
+  "../../tests/unit/test_git_ignore.py",
   "../../tests/unit/test_gvl.py",
   "../../tests/unit/test_integration_smoke.py",
   "../../tests/unit/test_library_resolution.py",

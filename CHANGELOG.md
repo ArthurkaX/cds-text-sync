@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 - An import from a sync folder exported from another project is refused before anything is written. Objects copied between two project files get new GUIDs, and the import goes by GUID: it used to add a second copy of each object beside the one the project already had. Now, when an object of `project-view/` has the name and place of an object of the open project but another GUID, the import stops with `Error: … N object(s) of project-view/ have the name and place of an object of the open project but another GUID: …. Nothing was imported.` Open the project the folder was exported from, or export this project into a sync folder of its own.
 - The import's warnings name objects, at most ten, then `and N more`, instead of every GUID. The list of objects the IDE has and the folder lacks used to fill a message box past the bottom of the screen: its OK button was out of reach and CODESYS looked hung in Import behind it. Message boxes from the menu scripts are also cut to 25 lines of at most 300 characters; the full text stays in the sync log.
 
+**Parts of the project left to the owner:**
+
+- Export, import, compare and the export's dirty check skip every object Git's ignore rules match (`.gitignore`, `.git/info/exclude`, the global excludes file), also when its files are tracked. An engineer who leaves the alarm configuration, the task configuration, the libraries or the devices to the owner lists them in `.git/info/exclude` (for example `**/Task Configuration/`); the owner's files and manifest entries then stay as committed, and the owner's changes to them no longer show up as differences. A rule that covers the application, or an object but not what is below it, is refused before anything is written. Outside a Git work tree, or without `git` on the PATH, nothing changes. A `.gitignore` that already matches files in `project-view/` now leaves those objects out too. See [Workflow: parts only the owner syncs](docs/workflow.md#parts-only-the-owner-syncs).
+
 ### Version 3.4.1 (2026-10-12)
 
 **Import from a fresh clone:**

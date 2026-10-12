@@ -3,12 +3,14 @@
 folder_writer.py - Writes the in-memory ProjectModel to a Git-friendly folder structure.
 """
 
+import collections
 import json
 import os
 import tempfile
 import time
 
 from ._dirty_scan import dirty_view_paths
+from ._git_ignore import ignored_paths
 from ._manifest_bookkeeper import entries as manifest_entries
 from ._manifest_bookkeeper import hash_by_path, load as load_manifest
 from ._path_safety import replace_extension, safe_path_in_root
@@ -17,10 +19,12 @@ from ._project_layout import is_reserved_root_child
 from ._project_profiles import enabled_projection_options, kind_for_type_guid
 from ._project_settings import SYNC_MODE_TEXT_FIRST, normalize_sync_mode
 from ._view_paths import (
+    flat_nested_path,
     managed_relative_paths,
     manifest_path,
     manifest_view_root,
     normalize_fs_path,
+    xml_view_path,
 )
 from .xml_helpers import (
     ensure_dir,
@@ -120,6 +124,10 @@ def _absolute_view_path(path):
     return os.path.abspath(os.path.normpath(path or ""))
 
 
+def _view_relative(path, views_path):
+    return os.path.relpath(path, views_path).replace(os.sep, "/")
+
+
 def _split_path_components(path):
     absolute = _absolute_view_path(path)
     drive, tail = os.path.splitdrive(absolute)
@@ -205,6 +213,7 @@ class FolderWriter:
         remove_orphans=False,
         sync_mode=None,
         xml_in_view_kinds=None,
+        ignored_guids=None,
     ):
         self.views_path = views_path
         self.dump_path = dump_path
@@ -219,6 +228,9 @@ class FolderWriter:
             for guid in (selected_guids or [])
             if normalize_guid(guid)
         )
+        # Objects the user's git ignore rules leave out (``_git_ignore``):
+        # their files and manifest entries stay as they are.
+        self.ignored_guids = set(ignored_guids or ())
         self.overwrite_dirty = bool(overwrite_dirty)
         self.remove_orphans = bool(remove_orphans)
         self.sync_mode = normalize_sync_mode(sync_mode)
@@ -358,10 +370,11 @@ class FolderWriter:
         removed = 0
         seen = set()
         for entry in manifest_entries(manifest):
-            if selected_guids is not None:
-                guid = normalize_guid(entry.get("guid"))
-                if guid not in selected_guids:
-                    continue
+            guid = normalize_guid(entry.get("guid"))
+            if selected_guids is not None and guid not in selected_guids:
+                continue
+            if guid in self.ignored_guids:
+                continue
 
             # Both sides in the portable "/" form: _managed_relative_paths
             # normalizes, so comparing against a raw manifest field would miss
@@ -495,6 +508,30 @@ class FolderWriter:
             return []
         return manifest_entries(manifest)
 
+    def _keep_ignored_entries(self, selected_guids, emitted_paths):
+        """The previous manifest entries of the ignored objects by guid,
+        unchanged; their files join ``emitted_paths`` so no cleanup removes
+        them."""
+        kept = collections.OrderedDict()
+        for entry in self._existing_manifest_entries():
+            guid = normalize_guid(entry.get("guid"))
+            if guid not in self.ignored_guids:
+                continue
+            if selected_guids is not None and guid not in selected_guids:
+                continue
+            kept[guid] = entry
+            xml_path = manifest_path(entry.get("xml_path") or entry.get("view_path"))
+            xml_in_dump = (entry.get("xml_root") or "").lower() == "dump"
+            for relative_path in self._managed_relative_paths(entry):
+                if relative_path == xml_path and xml_in_dump:
+                    root = self._dump_mirror_root()
+                else:
+                    root = self.views_path
+                full_path = self._safe_path_in_root(relative_path, root)
+                if full_path:
+                    emitted_paths.add(full_path)
+        return kept
+
     def _merge_manifest_entries(self, selected_guids, selected_entries):
         if not selected_guids:
             return selected_entries
@@ -521,35 +558,6 @@ class FolderWriter:
 
     def _replace_extension(self, relative_path, extension):
         return replace_extension(relative_path, extension)
-
-    def _flat_nested_path(self, project_model, node, extension):
-        parent = project_model.collapsed_parent_for(node)
-        if parent is None:
-            return None
-
-        parent_parts = parent.get_output_parts(project_model)
-        if not parent_parts:
-            return None
-
-        node_path = [
-            project_model.safe_component(part)
-            for part in (node.display_path or [])
-            if part
-        ]
-        tail_parts = (
-            node_path[len(parent_parts) :]
-            if node_path[: len(parent_parts)] == parent_parts
-            else []
-        )
-        name = project_model.safe_component(node.output_name or node.name)
-        flat_name = ".".join(parent_parts[-1:] + tail_parts + [name])
-        return os.path.join(*(parent_parts[:-1] + [flat_name])) + extension
-
-    def _xml_path_for_node(self, project_model, node):
-        path = self._flat_nested_path(
-            project_model, node, ".xml"
-        ) or node.get_view_path(project_model, extension=".xml")
-        return manifest_path(path) if path else path
 
     def _node_projection_options(self, node):
         kind = kind_for_type_guid(self.profile, node.type)
@@ -616,7 +624,7 @@ class FolderWriter:
                 )
                 continue
             projection_path = manifest_path(
-                self._flat_nested_path(project_model, node, extension)
+                flat_nested_path(project_model, node, extension)
                 or self._replace_extension(xml_path, extension)
             )
             full_path = self._safe_view_path(projection_path)
@@ -705,8 +713,7 @@ class FolderWriter:
 
         view_root = _normalize_fs_path(self.views_path)
         emitted = set(_normalize_fs_path(path) for path in emitted_paths)
-        removed = 0
-        preserved = []
+        orphans = []
         for root, dirs, files in os.walk(self.views_path):
             if _normalize_fs_path(root) == view_root:
                 dirs[:] = [name for name in dirs if not is_reserved_root_child(name)]
@@ -715,29 +722,37 @@ class FolderWriter:
                 if extension not in extensions:
                     continue
                 full_path = _normalize_fs_path(os.path.join(root, filename))
-                if full_path in emitted:
-                    continue
-                if not self.remove_orphans:
-                    # Orphan removal is a separate, opt-in action from
-                    # overwriting dirty files: by default keep unmanaged files
-                    # (they may be hand-authored / pending import) and just
-                    # report them so the caller can choose to clean up.
-                    preserved.append(
-                        os.path.relpath(full_path, self.views_path).replace(
-                            os.sep, "/"
-                        )
-                    )
-                    continue
-                try:
-                    os.remove(full_path)
-                    removed += 1
-                    self._remove_empty_parent_dirs(full_path)
-                except Exception as e:
-                    print(
-                        "Warning: Could not remove orphan projection file:",
-                        full_path,
-                        e,
-                    )
+                if full_path not in emitted:
+                    orphans.append(os.path.join(root, filename))
+        # A file git ignores belongs to an object this user leaves out (one
+        # the IDE does not have yet, say): not an orphan of this export.
+        ignored = ignored_paths(
+            self.views_path,
+            [_view_relative(path, self.views_path) for path in orphans],
+        )
+        removed = 0
+        preserved = []
+        for orphan in orphans:
+            if _view_relative(orphan, self.views_path) in ignored:
+                continue
+            full_path = _normalize_fs_path(orphan)
+            if not self.remove_orphans:
+                # Orphan removal is a separate, opt-in action from
+                # overwriting dirty files: by default keep unmanaged files
+                # (they may be hand-authored / pending import) and just
+                # report them so the caller can choose to clean up.
+                preserved.append(_view_relative(full_path, self.views_path))
+                continue
+            try:
+                os.remove(full_path)
+                removed += 1
+                self._remove_empty_parent_dirs(full_path)
+            except Exception as e:
+                print(
+                    "Warning: Could not remove orphan projection file:",
+                    full_path,
+                    e,
+                )
 
         if removed:
             print("Removed {0} orphan projection files.".format(removed))
@@ -793,7 +808,7 @@ class FolderWriter:
             if node.metadata.get(key):
                 metadata[key] = node.metadata.get(key)
 
-        xml_path = self._xml_path_for_node(project_model, node)
+        xml_path = xml_view_path(project_model, node)
         (
             projection_paths,
             projection_hashes,
@@ -870,12 +885,20 @@ class FolderWriter:
 
         manifest_entries = []
         emitted_paths = set()
+        # In model order, so the manifest of an export over ignored objects
+        # differs from the last one only where something was written.
+        kept = self._keep_ignored_entries(selected_guids, emitted_paths)
         for guid, node in project_model.nodes.items():
             if selected_guids is not None and guid not in selected_guids:
+                continue
+            if guid in self.ignored_guids:
+                if guid in kept:
+                    manifest_entries.append(kept.pop(guid))
                 continue
             metadata = self._write_node(project_model, node, emitted_paths)
             if metadata is not None:
                 manifest_entries.append(metadata)
+        manifest_entries.extend(kept.values())
 
         if selected_guids is None:
             self._remove_orphan_projection_files(emitted_paths)
