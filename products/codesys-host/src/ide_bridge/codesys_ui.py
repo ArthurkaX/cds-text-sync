@@ -1296,13 +1296,14 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.chk_non_owner.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         self.chk_non_owner.Checked = bool(self._base_settings.get("_non_owner"))
         self.chk_non_owner.Enabled = bool(self._base_settings.get("_git_work_tree"))
+        self.chk_non_owner.CheckedChanged += self._on_non_owner_changed
         self._set_tip(
             self.chk_non_owner,
             "Leave the alarm and task configuration, the library managers and "
             "the hardware outside the application to the project owner: "
             "export, import and compare skip them. The rules are written into "
             "this clone's .git/info/exclude and follow the project; needs the "
-            "sync folder in a git repository.")
+            "sync folder in a git repository. Ticks the .gitignore entries too.")
         self.Controls.Add(self.chk_non_owner)
 
         self.btn_reset = Button()
@@ -1335,6 +1336,12 @@ class ProjectOptionsForm(Form if Form is not None else object):
         btn_ok.Click += self._on_save
         self.Controls.Add(btn_ok)
         self.AcceptButton = btn_ok
+
+    def _on_non_owner_changed(self, sender, event):
+        # Not the owner implies the recommended .gitignore: a clone that
+        # leaves parts to the owner must not commit its own .dump/ either.
+        if self.chk_non_owner.Checked:
+            self.chk_gitignore.Checked = True
 
     def _sync_bottom_row(self):
         """Show the bottom-row control that belongs to the selected tab."""

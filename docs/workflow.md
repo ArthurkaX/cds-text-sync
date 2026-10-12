@@ -102,9 +102,13 @@ Plant-cts/
 
 `.dump/` stays out completely: it is each clone's own record of what its IDE
 and its files looked like at the last sync. A fresh clone builds it on the
-first import. (The ".gitignore" option in `Project_options.py` keeps
-`.dump/IDE.xml` and `.dump/manifest.json` tracked; in a team, use the rules
-above instead.)
+first import. The ".gitignore" option of `Project_options.py` writes the sync
+folder's part of these rules into the sync folder's `.gitignore` (ticking "Not
+the project owner" ticks it too); the CODESYS files beside the `.project` need
+the lines above in the repository's own `.gitignore`. A repository made with an
+earlier version may have `.dump/IDE.xml` and `.dump/manifest.json` committed;
+the owner untracks them once with
+`git rm --cached .dump/IDE.xml .dump/manifest.json` in the sync folder.
 
 ### The `.project` file
 

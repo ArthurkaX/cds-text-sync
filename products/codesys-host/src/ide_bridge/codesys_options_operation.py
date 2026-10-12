@@ -10,16 +10,14 @@ import os
 import sys
 import json
 
-import ide_runtime_common
 from codesys_runtime import resolve_runtime
 from codesys_utils import load_base_dir, init_logging, resolve_projects
 
 
 RECOMMENDED_GITIGNORE_ENTRIES = [
-    ".dump/*",
-    "!.dump/",
-    "!.dump/IDE.xml",
-    "!.dump/manifest.json",
+    # The whole folder: each clone's own record of its IDE and files; a fresh
+    # clone builds it on the first import, and tracked copies only conflict.
+    ".dump/",
     ".backup/",
     ".diff/",
     ".visu/",
@@ -31,7 +29,10 @@ RECOMMENDED_GITIGNORE_ENTRIES = [
 ]
 
 LEGACY_GITIGNORE_ENTRIES = [
-    ".dump/",
+    ".dump/*",
+    "!.dump/",
+    "!.dump/IDE.xml",
+    "!.dump/manifest.json",
 ]
 
 
@@ -81,6 +82,8 @@ def _non_owner(base_dir, turn=None, notices=None):
     """The engine's not-the-owner report for the sync folder (``turn`` "on"
     or "off" changes it first), or None when the engine failed; its reason
     goes to ``notices``."""
+    import ide_runtime_common
+
     report_path = os.path.join(base_dir, ".dump", "non_owner.json")
     if not os.path.isdir(os.path.dirname(report_path)):
         os.makedirs(os.path.dirname(report_path))
@@ -344,6 +347,10 @@ def main(params=None, runtime=None):
                     message += "\n.gitignore updated:\n" + gitignore_result.get("path")
                     if gitignore_result.get("migrated"):
                         message += "\nMigrated legacy entries: " + ", ".join(gitignore_result.get("migrated"))
+                        message += (
+                            "\n.dump/ is now ignored as a whole. If .dump/IDE.xml or "
+                            ".dump/manifest.json were committed, untrack them once:"
+                            "\n  git rm --cached .dump/IDE.xml .dump/manifest.json")
                 else:
                     message += "\n.gitignore already contains recommended entries."
             if non_owner_message:

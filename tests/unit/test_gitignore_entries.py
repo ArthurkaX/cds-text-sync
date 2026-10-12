@@ -93,3 +93,25 @@ def test_an_existing_docs_entry_is_left_alone(tmp_path):
 
     assert ".cts-docs/" not in result["added"]
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8").count(".cts-docs/") == 1
+
+
+def test_the_whole_dump_folder_is_ignored(tmp_path):
+    options._ensure_gitignore_entries(str(tmp_path))
+
+    lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ".dump/" in lines
+    assert not [line for line in lines if line.startswith("!.dump/")]
+
+
+def test_entries_that_kept_the_snapshot_and_manifest_tracked_are_migrated(tmp_path):
+    (tmp_path / ".gitignore").write_text(
+        "build/\n.dump/*\n!.dump/\n!.dump/IDE.xml\n!.dump/manifest.json\n",
+        encoding="utf-8",
+    )
+
+    result = options._ensure_gitignore_entries(str(tmp_path))
+
+    lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "build/" in lines and ".dump/" in lines
+    assert not [line for line in lines if line.startswith(("!.dump/", ".dump/*"))]
+    assert "!.dump/IDE.xml" in result["migrated"]
