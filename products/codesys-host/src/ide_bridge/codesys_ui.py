@@ -1279,7 +1279,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         self.chk_gitignore = CheckBox()
         self.chk_gitignore.Text = "Add recommended .gitignore entries"
         self.chk_gitignore.Location = Point(self.MARGIN, row + 3)
-        self.chk_gitignore.Size = Size(320, 22)
+        self.chk_gitignore.Size = Size(230, 22)
         self.chk_gitignore.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
         self.chk_gitignore.Checked = bool(
             self._base_settings.get("_ensure_gitignore", False))
@@ -1288,6 +1288,22 @@ class ProjectOptionsForm(Form if Form is not None else object):
             "Write the recommended .dump and derived-view entries into this "
             "project's .gitignore.")
         self.Controls.Add(self.chk_gitignore)
+
+        self.chk_non_owner = CheckBox()
+        self.chk_non_owner.Text = "Not the project owner"
+        self.chk_non_owner.Location = Point(self.MARGIN + 240, row + 3)
+        self.chk_non_owner.Size = Size(180, 22)
+        self.chk_non_owner.Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+        self.chk_non_owner.Checked = bool(self._base_settings.get("_non_owner"))
+        self.chk_non_owner.Enabled = bool(self._base_settings.get("_git_work_tree"))
+        self._set_tip(
+            self.chk_non_owner,
+            "Leave the alarm and task configuration, the library managers and "
+            "the hardware outside the application to the project owner: "
+            "export, import and compare skip them. The rules are written into "
+            "this clone's .git/info/exclude and follow the project; needs the "
+            "sync folder in a git repository.")
+        self.Controls.Add(self.chk_non_owner)
 
         self.btn_reset = Button()
         self.btn_reset.Text = "Reset to built-in"
@@ -1324,6 +1340,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
         """Show the bottom-row control that belongs to the selected tab."""
         on_project = self.tabs.SelectedIndex == 1
         self.chk_gitignore.Visible = on_project
+        self.chk_non_owner.Visible = on_project
         self.btn_reset.Visible = not on_project
 
     def _on_tab_changed(self, sender, event):
@@ -1678,6 +1695,7 @@ class ProjectOptionsForm(Form if Form is not None else object):
             self._project_behavior_mode(),
         )
         settings["_ensure_gitignore"] = bool(self.chk_gitignore.Checked)
+        settings["_non_owner"] = bool(self.chk_non_owner.Checked)
         settings["_pinned_behavior"] = pinned
         self.result_settings = settings
         self.result_pinned = pinned

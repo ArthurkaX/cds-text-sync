@@ -10,6 +10,7 @@ import os
 import sys
 import json
 
+import ide_runtime_common
 from codesys_runtime import resolve_runtime
 from codesys_utils import load_base_dir, init_logging, resolve_projects
 
@@ -74,6 +75,23 @@ def _ensure_gitignore_entries(project_root):
         for entry in missing:
             handle.write(entry + "\n")
     return {"path": path, "added": missing, "migrated": migrated}
+
+
+def _non_owner(base_dir, turn=None, notices=None):
+    """The engine's not-the-owner report for the sync folder (``turn`` "on"
+    or "off" changes it first), or None when the engine failed; its reason
+    goes to ``notices``."""
+    report_path = os.path.join(base_dir, ".dump", "non_owner.json")
+    if not os.path.isdir(os.path.dirname(report_path)):
+        os.makedirs(os.path.dirname(report_path))
+    args = ["non-owner", "--project-root", base_dir, "--report", report_path]
+    if turn:
+        args += ["--set", turn]
+    if not ide_runtime_common.run_external_engine(
+            args, project_root=base_dir, notices=notices):
+        return None
+    with open(report_path, "r") as handle:
+        return json.load(handle)
 
 
 def _compact_settings(settings):
@@ -192,6 +210,9 @@ def main(params=None, runtime=None):
         settings["_view_root_locked"] = export_lock.get("locked")
         settings["_view_root_lock_path"] = export_lock.get("path")
         settings["_view_root_lock_value"] = export_lock.get("view_root")
+        non_owner = _non_owner(base_dir) or {}
+        settings["_git_work_tree"] = bool(non_owner.get("git_work_tree"))
+        settings["_non_owner"] = bool(non_owner.get("non_owner"))
         settings["_sync_mode_locked"] = export_lock.get("locked")
         settings["_sync_mode_lock_value"] = normalize_sync_mode(
             export_lock.get("sync_mode"), settings.get("sync_mode")
@@ -276,6 +297,7 @@ def main(params=None, runtime=None):
             changed = True
 
         ensure_gitignore = bool(params.get("ensure_gitignore", False))
+        wanted_non_owner = None
         pinned = None
 
         if not has_explicit_params and not runtime.is_headless:
@@ -284,6 +306,7 @@ def main(params=None, runtime=None):
                 runtime.ui.info("Project sync options cancelled.")
                 return {"status": "cancelled", "settings": settings, "path": settings_path(base_dir)}
             ensure_gitignore = bool(selected.pop("_ensure_gitignore", False))
+            wanted_non_owner = bool(selected.pop("_non_owner", False))
             # The Project tab's behavior radio decides the pins: "Own for this
             # project" pins the whole block, "Same as General" pins none and
             # hands back the inherited values so nothing is written.
@@ -293,6 +316,21 @@ def main(params=None, runtime=None):
                 # Belt-and-braces: the mode can never change after initialization.
                 settings["sync_mode"] = settings["_sync_mode_lock_value"]
             changed = True
+
+        non_owner_message = None
+        if wanted_non_owner is not None and wanted_non_owner != settings["_non_owner"]:
+            notices = []
+            non_owner = _non_owner(
+                base_dir, "on" if wanted_non_owner else "off", notices)
+            if non_owner is None:
+                runtime.ui.error(
+                    "Could not change 'Not the project owner'.\n" + "\n".join(notices))
+            elif non_owner.get("non_owner"):
+                non_owner_message = (
+                    "Not the project owner: the owner's parts are left out "
+                    "(.git/info/exclude):\n  " + "\n  ".join(non_owner.get("owner_paths") or []))
+            else:
+                non_owner_message = "Owner's parts are synced again (rules removed from .git/info/exclude)."
 
         gitignore_result = None
         if ensure_gitignore:
@@ -308,6 +346,8 @@ def main(params=None, runtime=None):
                         message += "\nMigrated legacy entries: " + ", ".join(gitignore_result.get("migrated"))
                 else:
                     message += "\n.gitignore already contains recommended entries."
+            if non_owner_message:
+                message += "\n" + non_owner_message
             runtime.ui.info(message)
             return {"status": "success", "settings": settings, "path": settings_path(base_dir), "gitignore": gitignore_result}
 

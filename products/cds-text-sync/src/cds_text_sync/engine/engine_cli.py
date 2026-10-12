@@ -15,6 +15,7 @@ from ._dirty_scan import scan_dirty
 from ._git_ignore import ignored_guids, ignored_paths
 from ._library_resolution import describe_drift
 from ._manifest_bookkeeper import entries as manifest_entries
+from ._non_owner import non_owner_report, refresh_non_owner
 from ._patch_builder import PatchBuilder, UnsupportedPatchError
 from ._project_layout import (
     LAYOUT_LEGACY_DUMP_VIEWS,
@@ -92,11 +93,16 @@ def _keep_guids(diff_result, keep):
     return filtered
 
 
-def _ignored_guids(view_root, ide_model, folder_model=None, manifest=None):
-    """The objects git's ignore rules leave out; exits on a rule that would
-    cut the tree (see ``_git_ignore.ignored_guids``)."""
+def _ignored_guids(args, profile, ide_model, folder_model=None):
+    """The objects git's ignore rules leave out, after the not-the-owner rules
+    are brought up to date; exits on a rule that would cut the tree (see
+    ``_git_ignore.ignored_guids``)."""
+    project_layout = _layout(args)
+    view_root = project_layout.view_root
+    manifest = _read_manifest(project_layout.dump_root)
+    refresh_non_owner(view_root, manifest, profile)
     try:
-        ignored = ignored_guids(view_root, ide_model, folder_model, manifest)
+        ignored = ignored_guids(view_root, profile, ide_model, folder_model, manifest)
     except RuntimeError as error:
         print("Error:", error)
         sys.exit(1)
@@ -310,7 +316,7 @@ def _load_diff(args, context):
     except EntryXmlError as error:
         print("Error:", error)
         sys.exit(1)
-    ignored = _ignored_guids(_layout(args).view_root, ide_model, folder_model)
+    ignored = _ignored_guids(args, profile, ide_model, folder_model)
     return _drop_ignored(diff_result, ignored), ide_model, folder_model, dump_path
 
 
@@ -458,9 +464,7 @@ def run_export(args):
         remove_orphans=bool(getattr(args, "remove_orphans", False)),
         sync_mode=sync_mode,
         xml_in_view_kinds=settings.get("xml_in_view_kinds"),
-        ignored_guids=_ignored_guids(
-            project_layout.view_root, model, manifest=_read_manifest(dump_path)
-        ),
+        ignored_guids=_ignored_guids(args, profile, model),
     )
     try:
         writer.write(model)
@@ -501,6 +505,11 @@ def run_check_dirty(args):
         selected_guids=_filter_guids(args) or None,
     )
     if manifest:
+        refresh_non_owner(
+            project_layout.view_root,
+            manifest,
+            load_profile(settings.get("profile")),
+        )
         _drop_ignored_files(report, project_layout.view_root, manifest)
     report["generated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     report["view_root"] = project_layout.view_root
@@ -520,6 +529,25 @@ def run_check_dirty(args):
         )
     else:
         _log("Dirty check clean: no locally-modified view files.")
+
+
+def run_non_owner(args):
+    """Report whether this clone is not the owner (``_non_owner``), and with
+    ``--set`` turn it on or off first; the report goes to ``--report``."""
+    project_layout = _layout(args)
+    try:
+        report = non_owner_report(
+            project_layout.view_root,
+            _read_manifest(project_layout.dump_root),
+            load_profile(_settings(args).get("profile")),
+            args.set,
+        )
+    except RuntimeError as error:
+        print("Error:", error)
+        sys.exit(1)
+    # ASCII: the IDE side reads it with IronPython's plain open().
+    with open(args.report, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
 
 
 def run_compare(args):
@@ -707,6 +735,26 @@ def main():
         "--report", required=True, help="Path to dirty report JSON"
     )
 
+    parser_non_owner = subparsers.add_parser("non-owner")
+    parser_non_owner.add_argument(
+        "--project-root", required=True, help="Path to project root"
+    )
+    parser_non_owner.add_argument(
+        "--view-root", "--views", dest="view_root", default=None
+    )
+    parser_non_owner.add_argument(
+        "--layout",
+        choices=[LAYOUT_LEGACY_DUMP_VIEWS, LAYOUT_PROJECT_VIEW, LAYOUT_ROOT_VIEW],
+        default=None,
+    )
+    parser_non_owner.add_argument(
+        "--set",
+        choices=["on", "off"],
+        default=None,
+        help="Write (on) or remove (off) the not-the-owner rules in .git/info/exclude",
+    )
+    parser_non_owner.add_argument("--report", required=True, help="Output JSON path")
+
     # compare
     parser_compare = subparsers.add_parser("compare", parents=[parent_parser])
     parser_compare.add_argument("--report", required=True, help="Path to report JSON")
@@ -770,6 +818,8 @@ def main():
         run_export(args)
     elif args.command == "check-dirty":
         run_check_dirty(args)
+    elif args.command == "non-owner":
+        run_non_owner(args)
     elif args.command == "compare":
         run_compare(args)
     elif args.command == "import":

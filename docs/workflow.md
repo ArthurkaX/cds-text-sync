@@ -55,32 +55,29 @@ In text-first mode the tracked surface is intentionally text:
 
 The owner exports the whole project, so the alarm configuration, the task
 configuration, the libraries and the devices keep their history in Git. An
-engineer who does not change them lists them in the clone's own
-`.git/info/exclude` (same syntax as `.gitignore`, never committed):
+engineer who does not change them ticks **Not the project owner** on the
+Project tab of `Project_options.py` (or runs `cts config non-owner on`). From
+then on export, import and compare leave those parts alone, even when the owner
+committed their files: export neither writes nor removes them, import does not
+apply them, and compare and the export's dirty check do not report them. The
+sync log names how many objects were left out.
 
-```
-**/Alarm Configuration/
-**/Task Configuration/
-**/Library Manager.xml
-**/Ethernet/
-```
+- The parts are found by their kind, not by name, so a project made in another
+  IDE language works the same. Hardware that holds the application stays in
+  the sync.
+- The paths go into a marked block of the clone's own `.git/info/exclude`
+  (never committed), and every command rewrites the block from the project, so
+  a device the owner adds later is covered too. The sync folder has to be in a
+  git work tree.
+- To take the owner's version once, untick the box, run `Project_import.py`,
+  and tick it again.
 
-cds-text-sync reads Git's ignore rules (`.gitignore`, `.git/info/exclude`, the
-global excludes file) and leaves every object they match alone, even when the
-owner committed its files: export neither writes nor removes them, import does
-not apply them, and compare and the export's dirty check do not report them. The
-sync log names how many objects the rules left out.
-
-- An object is matched by its file in `project-view/`; a folder is matched with
-  everything inside it by a pattern ending in `/`. Folder names are those of the
-  project, so a project made in another IDE language needs its own names
-  (`**/Конфигурация задач/`).
-- A rule that covers the application, or an object but not what is below it, is
-  refused before anything is written.
-- To take the owner's version of an ignored part, remove the line, run
-  `Project_import.py`, and put the line back.
-- Shared rules can go into `.gitignore` instead, but they then apply to the owner
-  as well.
+The same mechanism reads any Git ignore rule (`.gitignore`, `.git/info/exclude`,
+the global excludes file): an object is matched by its file in `project-view/`,
+and a folder with everything inside it by a pattern ending in `/`. A rule that
+covers the application, or an object but not what is below it, is refused
+before anything is written. A rule in `.gitignore` applies to the owner as
+well.
 
 ## 3. The Development Cycle
 

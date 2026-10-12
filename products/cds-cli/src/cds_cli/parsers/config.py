@@ -77,5 +77,31 @@ def register(subparsers):
             ),
         )
 
+    non_owner = actions.add_parser(
+        "non-owner",
+        help="Show, or turn on/off, leaving the owner's parts out of this clone's sync",
+        description=(
+            "An engineer who is not the project owner leaves the alarm and "
+            "task configuration, the library managers and the hardware outside "
+            "the application to the owner: export, import and compare skip "
+            "them. `on` writes their paths, taken from the project, into this "
+            "clone's .git/info/exclude (kept up to date by every later "
+            "command); `off` removes them. Same as the 'Not the project owner' "
+            "box in Project Options. Without an argument: show the state."
+        ),
+    )
+    non_owner.add_argument(
+        "state", nargs="?", choices=["on", "off"], default=None,
+        help="Turn it on or off (default: show)",
+    )
+    non_owner.add_argument(
+        "--project-root",
+        default="",
+        help=(
+            "Sync folder (default: nearest cds-text-sync.json found from the "
+            "current directory upward)"
+        ),
+    )
+
 
 __all__ = ["register"]

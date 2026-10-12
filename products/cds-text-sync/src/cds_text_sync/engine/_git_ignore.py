@@ -23,14 +23,31 @@ import os
 import subprocess
 
 from ._manifest_bookkeeper import entries as manifest_entries
+from ._project_profiles import kind_for_type_guid
 from ._view_paths import manifest_path, xml_view_path
 from .xml_helpers import normalize_guid
 
-_APPLICATION_TYPE = "639b491f-5557-464c-af91-1471bac9f549"
 _NAMED_LIMIT = 5
 # A git started from the engine, which itself runs without a console on
 # Windows, would otherwise open a console window of its own.
 _CREATE_NO_WINDOW = 0x08000000
+
+
+def run_git(view_root, args, stdin=b""):
+    """``git -C view_root <args>`` as a CompletedProcess, or None without git."""
+    kwargs = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = _CREATE_NO_WINDOW
+    try:
+        return subprocess.run(
+            ["git", "-C", view_root] + list(args),
+            input=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            **kwargs
+        )
+    except OSError:
+        return None
 
 
 def ignored_paths(view_root, relative_paths):
@@ -39,29 +56,21 @@ def ignored_paths(view_root, relative_paths):
     paths = sorted(set(path for path in relative_paths if path))
     if not paths or not os.path.isdir(view_root or ""):
         return set()
-    kwargs = {}
-    if os.name == "nt":
-        kwargs["creationflags"] = _CREATE_NO_WINDOW
-    try:
-        completed = subprocess.run(
-            ["git", "-C", view_root, "check-ignore", "--no-index", "-z", "--stdin"],
-            input="\0".join(paths).encode("utf-8"),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            **kwargs
-        )
-    except OSError:
-        return set()
+    completed = run_git(
+        view_root,
+        ["check-ignore", "--no-index", "-z", "--stdin"],
+        "\0".join(paths).encode("utf-8"),
+    )
     # 0: some paths are ignored, 1: none is; anything else (128: not a work
     # tree) means there are no rules to apply.
-    if completed.returncode not in (0, 1):
+    if completed is None or completed.returncode not in (0, 1):
         return set()
     return set(
         part.decode("utf-8") for part in completed.stdout.split(b"\0") if part
     )
 
 
-def ignored_guids(view_root, ide_model, folder_model=None, manifest=None):
+def ignored_guids(view_root, profile, ide_model, folder_model=None, manifest=None):
     """The guids of the objects git's rules leave out.
 
     The path comes from the IDE when it has the object, else from the folder
@@ -83,14 +92,14 @@ def ignored_guids(view_root, ide_model, folder_model=None, manifest=None):
         )
     ignored = ignored_paths(view_root, path_by_guid.values())
     guids = set(guid for guid, path in path_by_guid.items() if path in ignored)
-    _refuse_holes(ide_model, guids, path_by_guid)
+    _refuse_holes(profile, ide_model, guids, path_by_guid)
     return guids
 
 
-def _refuse_holes(ide_model, guids, path_by_guid):
+def _refuse_holes(profile, ide_model, guids, path_by_guid):
     for guid in sorted(guids):
         node = ide_model.get_node(guid)
-        if node is not None and normalize_guid(node.type) == _APPLICATION_TYPE:
+        if node is not None and kind_for_type_guid(profile, node.type) == "application":
             raise RuntimeError(
                 "the git ignore rules cover the application {0}; nothing was "
                 "done. Ignore the folders inside it instead (alarm configuration, "

@@ -20,6 +20,7 @@ pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 _APPLICATION = "639b491f-5557-464c-af91-1471bac9f549"
 _FOLDER = "738bea1e-99bb-4f04-90bb-a7a567e74e3a"
 _TASK_CONFIG = "Dev/PLC Logic/Application/Task Configuration"
+_PROFILE = {"guid_aliases": {"application": [_APPLICATION]}}
 
 
 def _git(root, *args):
@@ -80,19 +81,19 @@ def test_rules_match_files_git_tracks(tmp_path):
 
 def test_a_folder_rule_takes_the_folder_and_what_is_below_it(tmp_path):
     root = _repo(tmp_path, "Task Configuration/")
-    assert ignored_guids(str(root), _model()) == set(["tc", "task"])
+    assert ignored_guids(str(root), _PROFILE, _model()) == set(["tc", "task"])
 
 
 def test_a_rule_over_the_application_is_refused(tmp_path):
     root = _repo(tmp_path, "Application/")
     with pytest.raises(RuntimeError, match="cover the application"):
-        ignored_guids(str(root), _model())
+        ignored_guids(str(root), _PROFILE, _model())
 
 
 def test_a_rule_that_keeps_what_is_below_an_ignored_object_is_refused(tmp_path):
     root = _repo(tmp_path, "**/Task Configuration/.cds-object.xml")
     with pytest.raises(RuntimeError, match="MainTask.xml"):
-        ignored_guids(str(root), _model())
+        ignored_guids(str(root), _PROFILE, _model())
 
 
 def test_export_leaves_the_files_and_entries_of_ignored_objects(tmp_path):
@@ -114,7 +115,7 @@ def test_export_leaves_the_files_and_entries_of_ignored_objects(tmp_path):
         dump,
         profile={"projections": [{"id": "st", "format": "st"}]},
         remove_orphans=True,
-        ignored_guids=ignored_guids(views, model),
+        ignored_guids=ignored_guids(views, _PROFILE, model),
     ).write(model)
 
     with open(os.path.join(views, task_path), encoding="utf-8") as handle:

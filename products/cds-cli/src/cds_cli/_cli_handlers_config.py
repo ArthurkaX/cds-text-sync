@@ -328,6 +328,37 @@ def cmd_config_unset(key, layer="user", project_root=""):
     print(json.dumps({"layer": "project", "key": key, "removed": True}))
 
 
+def _cmd_config_non_owner(state=None, project_root=""):
+    """Print the not-the-owner state of the sync folder's clone, after
+    ``state`` ("on"/"off") is applied."""
+    from cds_text_sync.engine._non_owner import non_owner_report
+    from cds_text_sync.engine._project_layout import resolve_layout
+    from cds_text_sync.engine._project_profiles import load_profile
+
+    project_settings, _user_defaults = _engine()
+    root = _resolve_project_root(project_root)
+    if not root:
+        _print_error("No cds-text-sync.json found; pass --project-root.")
+        sys.exit(1)
+    settings = project_settings.load_project_settings(root)
+    layout = resolve_layout(
+        root, view_root=settings.get("view_root"), layout_mode=settings.get("layout")
+    )
+    manifest = None
+    manifest_file = os.path.join(layout.dump_root, "manifest.json")
+    if os.path.exists(manifest_file):
+        with open(manifest_file, "r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+    try:
+        report = non_owner_report(
+            layout.view_root, manifest, load_profile(settings.get("profile")), state
+        )
+    except RuntimeError as error:
+        _print_error(str(error))
+        sys.exit(1)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
 def dispatch_config(args, output_fmt="json"):
     """Handle ``cts config <action>``. Returns True when the command was ours."""
     if getattr(args, "command", None) != "config":
@@ -349,6 +380,11 @@ def dispatch_config(args, output_fmt="json"):
         cmd_config_unset(
             getattr(args, "key", ""),
             layer=getattr(args, "config_layer", "user"),
+            project_root=getattr(args, "project_root", ""),
+        )
+    elif action == "non-owner":
+        _cmd_config_non_owner(
+            getattr(args, "state", None),
             project_root=getattr(args, "project_root", ""),
         )
     else:

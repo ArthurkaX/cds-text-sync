@@ -641,6 +641,7 @@ per-user value applies.
 | `config show [--project-root PATH] [--json]` | Print each setting's effective value, where it came from (`code`, `user` or `project`), and its class (`format` or `behavior`), plus both files and their status. Without `--project-root` the nearest `cds-text-sync.json` from the working directory upward is used; with none found, only the code and user layers are shown. |
 | `config set KEY VALUE [--user\|--project] [--project-root PATH]` | Change one setting. `--user` (default) writes the per-user file; a `view_root` there must be relative and without `..`. `--project` requires an existing project file and accepts any non-empty path. `VALUE` is parsed as JSON when it looks like it (`true`, `10`, `[..]`), otherwise taken as a raw string. |
 | `config unset KEY [--user\|--project] [--project-root PATH]` | Remove one setting. `--user` drops the override; `--project` removes the pin of a behavior key. Format keys are always explicit in the project file, so they cannot be unset — use `set`. |
+| `config non-owner [on\|off] [--project-root PATH]` | For an engineer who is not the project owner: `on` leaves the alarm and task configuration, the library managers and the hardware outside the application to the owner, so export, import and compare skip them; `off` syncs them again. The paths come from the project and go into this clone's `.git/info/exclude`, where every later command keeps them up to date. Needs the sync folder in a git work tree and a `.dump/manifest.json`. Without an argument it prints the state and the owner's paths as JSON. Same as the "Not the project owner" box in Project Options. |
 
 `show` creates the per-user file when it is missing — empty apart from its
 `version`, which reads as "no overrides". An unknown key is an error that lists
@@ -655,6 +656,7 @@ cts config set advanced_debug true             # just for me
 cts config set view_root views --user          # new projects start here, relative
 cts config set sync_mode text_first --project  # in the project file
 cts config unset advanced_debug --project      # let it inherit again
+cts config non-owner on                        # the owner's parts stay out of my sync
 ```
 
 ## Visualization (SVG → CODESYS)
@@ -787,7 +789,7 @@ The simplified CLI maps to daemon methods as follows:
 | `verify` | `ping` + `build` (+ `cicd` with `--with-test`); offline stages need no daemon |
 | `fsm scan/show/ui` | offline — no daemon method |
 | `visu-lint` | offline — no daemon method |
-| `config show/set/unset` | offline — no daemon method |
+| `config show/set/unset/non-owner` | offline — no daemon method |
 | `guide [TOPIC]` | offline — no daemon method |
 
 ## Timeouts
