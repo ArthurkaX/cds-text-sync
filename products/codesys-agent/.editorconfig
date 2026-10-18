@@ -1,0 +1,15 @@
+root = false
+
+[*.cs]
+# Unused private member / private member read never / unused parameter.
+dotnet_diagnostic.IDE0051.severity = error
+dotnet_diagnostic.IDE0052.severity = error
+dotnet_diagnostic.IDE0060.severity = error
+# Unnecessary using.
+dotnet_diagnostic.IDE0005.severity = error
+# Internal class never instantiated.
+dotnet_diagnostic.CA1812.severity = error
+# Unused value assignment / unused local.
+dotnet_diagnostic.IDE0059.severity = error
+dotnet_diagnostic.CS0168.severity = error
+dotnet_diagnostic.CS0219.severity = error

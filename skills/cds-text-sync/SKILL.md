@@ -1,6 +1,6 @@
 ---
 name: cds-text-sync
-description: Operate the CODESYS text sync CLI (`cts`) safely across an exported project folder, the CODESYS IDE daemon, and a PLC. Use for `cts` command selection, folder/IDE synchronization, builds and downloads, PLC lifecycle or variable access, offline engine operations, and troubleshooting cds-text-sync workflows.
+description: Operate the CODESYS text sync CLI (`cts`) safely across an exported project folder, the in-IDE agent, and a PLC. Use for `cts` command selection, folder/IDE synchronization, builds and downloads, PLC lifecycle or variable access, offline engine operations, and troubleshooting cds-text-sync workflows.
 disable-model-invocation: true
 ---
 

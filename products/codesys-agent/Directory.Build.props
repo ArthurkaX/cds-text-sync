@@ -1,0 +1,15 @@
+<Project>
+  <!-- Dead code fails the build: unused private members, parameters, locals and
+       usings are errors (rules in .editorconfig).  Reflection-reached members
+       carry a [SuppressMessage] with the reason. -->
+  <PropertyGroup>
+    <!-- The release version, one for cts.exe and the agent: cts prints it
+         when asked for its version, and the top CHANGELOG entry names it. -->
+    <Version>4.0.0-beta.1</Version>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <!-- IDE0005 (unnecessary using) runs in the build only with XML docs on. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573;CS1572;CS1574;CS1584;CS1658;CS1587</NoWarn>
+  </PropertyGroup>
+</Project>

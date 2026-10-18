@@ -5,44 +5,34 @@ start. These pages are the detail.
 
 ## Setting up
 
-- **[Onboarding: your first hour](onboarding.md)** — the whole path once, in
-  order: install, where the commands live, a quick-access toolbar button, first
-  export, first import.
 - **[Installation](install.md)** — requirements, both install methods, installing
   the `cts` CLI, and upgrading from a previous version.
 - **[Alternative installations](alternative-installations.md)** — forks and
   non-standard CODESYS environments (DIAStudio, legacy script paths).
-- **[Sync modes](sync-modes.md)** — XML-first vs text-first, chosen once per sync
-  folder, and how overwrite protection behaves in each.
 
 ## Using it
 
-- **[Script overview](scripts.md)** — what each `Project_*.py` entry point does,
+- **[Script overview](scripts.md)** — how to use the `cds-text-sync` menu entry,
   in the order you use them, plus the default `.st`/`.csv` text exports.
-- **[Project layout](project-layout.md)** — the on-disk structure, what to track
-  and what to ignore, the day-to-day edit cycle, and Git LFS for `.project`.
-- **[CLI reference](../products/cds-text-sync/src/cds_text_sync/CLI.md)** — every `cts` command and flag, the
-  reverse-pipe daemon, timeouts, error modes.
+- **CLI reference** — run `cts --help`, `cts <command> --help`, and `cts guide`
+  for the reference shipped with the installed version.
 - **[HMI screens from SVG](visu.md)** — `cts visu` end to end: prerequisites, the
   chain from sketch to a screen in CODESYS, PLC variable binding, themes and
   schemes, and handing the workflow to an LLM agent.
 
-- **[Static analyzer](../products/cds-static-analyzer/README.md)** — human-facing
-  analysis of exported `.st` files and analyzer product boundaries.
+- **[Static analysis](analyze.md)** — `cts analyze` over the exported `.st`
+  files: rules, settings, baseline and triage, the findings window.
 
 ## Working with others
 
-- **[Team workflow](workflow.md)** — branches and pull requests for HMI/hardware
-  engineers and software developers.
+- **[Upgrading to 4.0 (beta)](upgrade-4.md)** — install, update and go back to 3.4.1; what changes on upgrade, known limits, reporting problems.
+- **[Working as a team](team.md)** — the owner and colleagues on one repository:
+  setting it up, committing, taking the team's work, and same-line edits.
 - **[Releases & rollback](releases.md)** — stable tags, version policy, and how to
   revert safely.
 
 ## Reference
 
-- **[Profiles](../profiles/profiles.md)** — vendor/fork object kinds, projection
-  availability, safety rules.
-- **[Operating guides](../products/cds-cli/src/cds_cli/guides/)** — shipped in the
-  package and read with `cts guide` (workflow, commands, SVG authoring contract);
-  version-matched with the installed CLI. See also
+- **[Operating guides](../products/codesys-agent/src/Cts.Agent.Core/Guides/)** — embedded in cts.exe and served offline with `cts guide` (workflow, commands, SVG authoring contract). See also
   [the skill wrapper](../skills/cds-visu-svg/SKILL.md).
 - **[Changelog](../CHANGELOG.md)**

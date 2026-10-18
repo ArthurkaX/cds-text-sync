@@ -1,0 +1,541 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">True</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">cc3c2efb-b843-472c-89e7-3b5289d35a84</Single>
+        <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="Name" Type="string">Library Manager</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties">
+        </Dictionary>
+        <Single Name="TypeGuid" Type="System.Guid">adb5cb65-8e1d-4a00-b70a-375ea27582f3</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{adb5cb65-8e1d-4a00-b70a-375ea27582f3}" Method="IArchivable">
+        <List2 Name="ParameterTable" />
+        <List Name="Items" Type="System.Collections.ArrayList">
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElems, 4.10.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElems</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">1952453368</Single>
+            <Single Name="Namespace" Type="string">VisuElems</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemMeter, 4.10.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemMeter</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">2729581643</Single>
+            <Single Name="Namespace" Type="string">VisuElemMeter</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemsSpecialControls, 4.7.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemsSpecialControls</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">316457935</Single>
+            <Single Name="Namespace" Type="string">VisuElemsSpecialControls</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemsWinControls, 4.10.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemsWinControls</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">453413434</Single>
+            <Single Name="Namespace" Type="string">VisuElemsWinControls</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemTextEditor, 4.8.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemTextEditor</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">2427175305</Single>
+            <Single Name="Namespace" Type="string">VisuElemTextEditor</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemTrace, 4.10.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemTrace</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">1930239605</Single>
+            <Single Name="Namespace" Type="string">VisuElemTrace</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuNativeControl, 4.9.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuNativeControl</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">717442796</Single>
+            <Single Name="Namespace" Type="string">VisuNativeControl</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemsAlarm, 4.10.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemsAlarm</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">1834570073</Single>
+            <Single Name="Namespace" Type="string">VisuElemsAlarm</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemCamDisplayer, 4.7.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemCamDisplayer</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">3617609373</Single>
+            <Single Name="Namespace" Type="string">VisuElemCamDisplayer</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElem3DPath, 4.7.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElem3DPath</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">122415670</Single>
+            <Single Name="Namespace" Type="string">VisuElem3DPath</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemsDateTime, 4.9.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemsDateTime</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">2652579848</Single>
+            <Single Name="Namespace" Type="string">VisuElemsDateTime</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuElemXYChart, 4.10.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuElemXYChart</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">1694917927</Single>
+            <Single Name="Namespace" Type="string">VisuElemXYChart</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+          <Single Type="{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}" Method="IArchivable">
+            <Single Name="DefaultResolution" Type="string">VisuInputs, 4.7.0.0 (System)</Single>
+            <Single Name="Optional" Type="bool">False</Single>
+            <Null Name="Params" />
+            <Single Name="PlaceholderName" Type="string">System_VisuInputs</Single>
+            <Single Name="ResolverGuid" Type="System.Guid">2717eb6a-dd07-4c66-8d8d-cacebd7b18ae</Single>
+            <Single Name="Id" Type="long">3140296759</Single>
+            <Single Name="Namespace" Type="string">VisuInputs</Single>
+            <Single Name="SystemLibrary" Type="bool">True</Single>
+            <Single Name="HideWhenReferencedAsDependency" Type="bool">False</Single>
+            <Single Name="PublishSymbolsInContainer" Type="bool">False</Single>
+            <Single Name="QualifiedOnly" Type="bool">False</Single>
+            <Single Name="LinkAllContent" Type="bool">False</Single>
+          </Single>
+        </List>
+        <Dictionary Type="System.Collections.Hashtable" Name="PlaceholderRedirectionTable">
+          <Entry>
+            <Key>
+              <Single Type="string">CAA FB Factory</Single>
+            </Key>
+            <Value>
+              <Single Type="string">CAA FB Factory, 3.5.19.0 (CAA Technical Workgroup)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CAA MemBlockMan</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CAA Storage Imp</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CAA Storage</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CAA Types</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpApp</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpBinTagUtilIec</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpBitmapPool</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpCodeMeter</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpCrypto Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpDynamicText</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpEventMgr Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpEventMgr</Single>
+            </Key>
+            <Value>
+              <Single Type="string">CmpEventMgr, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpIecTask</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpLog</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpSchedule</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpSrv</Single>
+            </Key>
+            <Value>
+              <Single Type="string">CmpSrv, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpTraceMgr</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpUserMgr Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpVisuHandler</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">CmpWebServer Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">Collections</Single>
+            </Key>
+            <Value>
+              <Single Type="string">Collections, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">Component Manager</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">Rts Service Handler</Single>
+            </Key>
+            <Value>
+              <Single Type="string">Rts Service Handler, 3.5.17.0 (3S - Smart Software Solutions GmbH)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">Standard64</Single>
+            </Key>
+            <Value>
+              <Single Type="string">Standard64, 3.5.20.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">Standard</Single>
+            </Key>
+            <Value>
+              <Single Type="string">Standard, 3.5.22.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">StringUtils</Single>
+            </Key>
+            <Value>
+              <Single Type="string">StringUtils, 3.5.22.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysCpuHandling</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysFile</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysMem</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysProcess Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysProcess</Single>
+            </Key>
+            <Value>
+              <Single Type="string">SysProcess, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysSem Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysSem</Single>
+            </Key>
+            <Value>
+              <Single Type="string">SysSem, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysShm Implementation</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysShm</Single>
+            </Key>
+            <Value>
+              <Single Type="string">SysShm, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysTarget</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysTask</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysTime</Single>
+            </Key>
+            <Value>
+              <Single Type="string">SysTime, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysTimeCore</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">SysTimeRtc</Single>
+            </Key>
+            <Value>
+              <Single Type="string">NotImplementedByDevice, 3.5.17.0 (System)</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">Util</Single>
+            </Key>
+            <Value>
+              <Single Type="string">Util, 3.5.22.0 (System)</Single>
+            </Value>
+          </Entry>
+        </Dictionary>
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+      <Array Name="Path" Type="string" />
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

@@ -1,0 +1,206 @@
+[
+  {
+    "name": "test_fsm_core.py:39",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : 0\n    s1 : 1\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:76",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : ENUM_X.A\n    s1 : ENUM_X.B\n    s0 --> s1 : c\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:96",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : DOOR_STATE.INIT\n    s1 : DOOR_STATE.LOCKED\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:119",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : 0\n    s1 : 10\n    s2 : 20\n    s0 --> s1\n    s1 --> s2\n    s2 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:139",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : BF_STATE.IDLE\n    s1 : BF_STATE.RUN\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:156",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : 0\n    s1 : 1\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:178",
+    "mermaid": []
+  },
+  {
+    "name": "test_fsm_extract.py:190",
+    "mermaid": []
+  },
+  {
+    "name": "test_fsm_extract.py:207",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : BF_STATE.IDLE\n    s1 : BF_STATE.RUN\n    s0 --> s1\n    s1 --> s0",
+      "stateDiagram-v2\n    s0 : BF_STATE.IDLE\n    s1 : BF_STATE.RUN\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:238",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : ENUM_X.A\n    s1 : ENUM_X.B\n    s2 : ENUM_X.C\n    ANY : (any state)\n    ANY --> s1\n    s0 --> s2\n    s1 --> s0\n    s2 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:258",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : ENUM_X.A\n    s1 : ENUM_X.B\n    s0 --> s1 : a AND b\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:279",
+    "mermaid": []
+  },
+  {
+    "name": "test_fsm_extract.py:291",
+    "mermaid": []
+  },
+  {
+    "name": "test_fsm_extract.py:309",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : ST.A\n    s1 : ST.B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:330",
+    "mermaid": []
+  },
+  {
+    "name": "test_fsm_extract.py:434",
+    "mermaid": []
+  },
+  {
+    "name": "test_fsm_payload_contract.py:209",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : 0\n    s1 : 1\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:enum",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : E.IDLE\n    s1 : E.RUN\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:numeric",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : 0\n    s1 : 1\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:if_chain",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : IDLE\n    s1 : RUN\n    s2 : STOP\n    s0 --> s1 : a\n    s0 --> s2 : NOT a AND b\n    s0 --> s0 : NOT a AND NOT b\n    s1 --> s0\n    s2 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:nested_case",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:and_or",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1 : a OR b\n    s1 --> s0 : c AND d"
+    ]
+  },
+  {
+    "name": "synthetic:comments_strings",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:two_places",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1 : a\n    s0 --> s1 : b\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:no_edges",
+    "mermaid": []
+  },
+  {
+    "name": "synthetic:two_machines",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1\n    s1 --> s0",
+      "stateDiagram-v2\n    s0 : 0\n    s1 : 1\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:deferred",
+    "mermaid": [
+      "stateDiagram-v2\n    %% transitions write the next-state variable; they take effect on the following scan\n    s0 : E.A\n    s1 : E.B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:guard_elsif",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s2 : C\n    s0 --> s1 : a\n    s0 --> s2 : NOT a AND b\n    s0 --> s0 : NOT a AND NOT b\n    s1 --> s0\n    s2 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:guard_nested",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1 : a AND b\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:warnings",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s2 : C\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:enum_alias",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : E.A, E.ALIAS\n    s1 : E.B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:global_edge",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    ANY : (any state)\n    s1 --> s0\n    ANY --> s1"
+    ]
+  },
+  {
+    "name": "synthetic:qualified",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : E.A\n    s1 : E.B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:elsif_or",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s2 : C\n    s0 --> s1 : a OR b\n    s0 --> s2 : NOT (a OR b) AND (c OR d)\n    s1 --> s0\n    s2 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:nested_if_case",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s0 --> s1\n    s1 --> s0"
+    ]
+  },
+  {
+    "name": "synthetic:unhandled",
+    "mermaid": [
+      "stateDiagram-v2\n    s0 : A\n    s1 : B\n    s1 --> s0"
+    ]
+  }
+]

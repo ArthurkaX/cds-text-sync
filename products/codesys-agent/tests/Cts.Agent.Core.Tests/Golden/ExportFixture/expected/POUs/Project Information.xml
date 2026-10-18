@@ -1,0 +1,70 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">True</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">11c0fc3a-9bcf-4dd8-ac38-efb93363e521</Single>
+        <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="Name" Type="string">Project Information</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">085afe48-c5d8-4ea5-ab0d-b35701fa6009</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{085afe48-c5d8-4ea5-ab0d-b35701fa6009}" Method="IArchivable">
+        <Dictionary Type="System.Collections.Hashtable" Name="Properties">
+          <Entry>
+            <Key>
+              <Single Type="string">Project</Single>
+            </Key>
+            <Value>
+              <Single Type="string" />
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">cds-daemon-config</Single>
+            </Key>
+            <Value>
+              <Single Type="string">{"poll_ms": 60, "deny": []}</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">cds-sync-folder</Single>
+            </Key>
+            <Value>
+              <Single Type="string">..</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">cds-sync-pc</Single>
+            </Key>
+            <Value>
+              <Single Type="string">WIN-CODESYS</Single>
+            </Value>
+          </Entry>
+          <Entry>
+            <Key>
+              <Single Type="string">cts-project-id</Single>
+            </Key>
+            <Value>
+              <Single Type="string">374e2afd-b7d6-4447-8bd8-ce8e480d827d</Single>
+            </Value>
+          </Entry>
+        </Dictionary>
+        <Single Name="GetCompanyGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetTitleGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetVersionGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetTextPropertyGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetTextProperty2GUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetNumberPropertyGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetBooleanPropertyGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="GetVersionPropertyGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Null Name="GetLibVersionGUID" />
+        <Null Name="GetLibVersionNumberGUID" />
+        <Null Name="IsLibReleasedGUID" />
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+      <Array Name="Path" Type="string" />
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

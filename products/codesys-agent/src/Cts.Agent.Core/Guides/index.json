@@ -1,0 +1,31 @@
+{
+  "rules": [
+    "Never edit the project while the IDE is online with the PLC (cts status: plc=online); run cts disconnect first.",
+    "A new object must be referenced by a task before downloading.",
+    "Never save over a client project; work on an owned copy.",
+    "Start the in-IDE agent in CODESYS: Tools > Scripting > Scripts > C > cds-text-sync, or from the CLI with 'cts project open --launch' (fresh IDE).",
+    "A modal IDE dialog blocks every command until it is answered. Read it with 'cts dialog' and answer it with 'cts dialog answer --choose ... --press ...' instead of waiting for a person -- see 'cts guide dialog'."
+  ],
+  "jobs": [
+    "Change code: edit the .st files under project-view -> cts compare -> cts import --dry-run -> cts import -> cts build. The IDE then holds the change unsaved: cts save when the engineer wants it saved, cts commit -m MSG to record it in git.",
+    "Rename a variable, input or POU everywhere: grep -rn NAME project-view finds every use (the files are the project's text) -> edit them -> cts import -> cts build --all-objects.",
+  "Find why the build fails: cts build --all-objects names each error and its object (a plain cts build skips objects no task calls).",
+    "Keep an edit made in the IDE: cts compare names it (ide_changed) -> cts sync writes it into its file -> cts commit -m MSG.",
+    "Test logic without a PLC: the POU's .st at the top of project-view, its checks in PRG_Tests.st -> cts import -> cts test (cts guide tests sets the test application up).",
+    "Run ST unit tests: cts test (cts guide tests explains the simulation test application).",
+    "Put it on the PLC: cts build -> cts download; skip cts import when cts compare is clean (cts guide deploy)."
+  ],
+  "topics": [
+    { "topic": "workflow", "summary": "Operating rules: state model, safety, git, mutation scope, reporting." },
+    { "topic": "commands", "summary": "Which command for which job, with edge cases." },
+    { "topic": "visu-svg", "summary": "Author SVG sketches that compile into CODESYS HMI screens." },
+    { "topic": "compare", "summary": "Read folder/IDE differences.", "section": "commands#Folder and IDE Synchronization" },
+    { "topic": "import", "summary": "Apply project-view changes safely." },
+    { "topic": "save", "summary": "Save the open IDE project.", "section": "commands#Saving and shortcuts" },
+    { "topic": "deploy", "summary": "Build, download, start, and check readiness." },
+    { "topic": "tests", "summary": "ST tests of a test application in simulation (cts test), and the JSON test plans verify --with-test runs." },
+    { "topic": "raw", "summary": "Call an agent method directly.", "section": "commands#Tests and Escape Hatch" },
+    { "topic": "status", "summary": "Check the project and PLC state." },
+    { "topic": "dialog", "summary": "Read the modal IDE dialog, and answer it without a click." }
+  ]
+}

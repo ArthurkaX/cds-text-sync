@@ -1,0 +1,6 @@
+TYPE U_Bits8 :
+UNION
+	b : BYTE;
+	bits : ST_Bits8;
+END_UNION
+END_TYPE

@@ -1,0 +1,922 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">9755d5ac-b880-00a8-2356-7993a20ccc19</Single>
+        <Single Name="ParentGuid" Type="System.Guid">32d92914-bcb4-4227-b529-32fd90910eca</Single>
+        <Single Name="Name" Type="string">__VisualizationStyle</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties">
+          <Entry>
+            <Key>
+              <Single Type="System.Guid">a67e96c6-3fd3-4d25-a9ff-723c6b2f78cb</Single>
+            </Key>
+            <Value>
+              <Single Type="{a67e96c6-3fd3-4d25-a9ff-723c6b2f78cb}" Method="IArchivable">
+                <Single Name="DownloadOnlyUsedImages" Type="bool">True</Single>
+                <Single Name="Internal" Type="bool">False</Single>
+                <Null Name="SymbolTextList" />
+                <Single Name="DownloadByVisu" Type="bool">True</Single>
+              </Single>
+            </Value>
+          </Entry>
+        </Dictionary>
+        <Single Name="TypeGuid" Type="System.Guid">8e687a04-7ca7-42d3-be06-fcbda676c5ef</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{8e687a04-7ca7-42d3-be06-fcbda676c5ef}" Method="IArchivable">
+        <Single Name="UniqueIdGenerator" Type="string">177</Single>
+        <List Name="BitmapPool" Type="System.Collections.ArrayList">
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonUnchecked</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonUnchecked.svg</Single>
+            <Single Name="ItemID" Type="int">2</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonChecked</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonChecked.svg</Single>
+            <Single Name="ItemID" Type="int">3</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxUnchecked</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxUnchecked.svg</Single>
+            <Single Name="ItemID" Type="int">4</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxChecked</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxChecked.svg</Single>
+            <Single Name="ItemID" Type="int">5</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Potentiometer-Potentiometer360-Yellow</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Potentiometer-Potentiometer360-Yellow.svg</Single>
+            <Single Name="ItemID" Type="int">6</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Potentiometer-Potentiometer360-Red</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Potentiometer-Potentiometer360-Red.svg</Single>
+            <Single Name="ItemID" Type="int">7</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Potentiometer-Potentiometer360-Green</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Potentiometer-Potentiometer360-Green.svg</Single>
+            <Single Name="ItemID" Type="int">8</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Potentiometer-Potentiometer360-Blue</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Potentiometer-Potentiometer360-Blue.svg</Single>
+            <Single Name="ItemID" Type="int">9</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Potentiometer-Potentiometer360-Gray</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Potentiometer-Potentiometer360-Gray.svg</Single>
+            <Single Name="ItemID" Type="int">10</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter360-Yellow</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter360-Yellow.svg</Single>
+            <Single Name="ItemID" Type="int">11</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter360-Red</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter360-Red.svg</Single>
+            <Single Name="ItemID" Type="int">12</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter360-Green</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter360-Green.svg</Single>
+            <Single Name="ItemID" Type="int">13</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter360-Blue</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter360-Blue.svg</Single>
+            <Single Name="ItemID" Type="int">14</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter360-Gray</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter360-Gray.svg</Single>
+            <Single Name="ItemID" Type="int">15</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Yellow-Top</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Yellow-Top.svg</Single>
+            <Single Name="ItemID" Type="int">16</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Yellow-Bottom</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Yellow-Bottom.svg</Single>
+            <Single Name="ItemID" Type="int">17</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Yellow-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Yellow-Left.svg</Single>
+            <Single Name="ItemID" Type="int">18</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Yellow-Right</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Yellow-Right.svg</Single>
+            <Single Name="ItemID" Type="int">19</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Red-Top</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Red-Top.svg</Single>
+            <Single Name="ItemID" Type="int">20</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Red-Bottom</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Red-Bottom.svg</Single>
+            <Single Name="ItemID" Type="int">21</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Red-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Red-Left.svg</Single>
+            <Single Name="ItemID" Type="int">22</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Red-Right</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Red-Right.svg</Single>
+            <Single Name="ItemID" Type="int">23</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Green-Top</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Green-Top.svg</Single>
+            <Single Name="ItemID" Type="int">24</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Green-Bottom</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Green-Bottom.svg</Single>
+            <Single Name="ItemID" Type="int">25</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Green-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Green-Left.svg</Single>
+            <Single Name="ItemID" Type="int">26</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Green-Right</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Green-Right.svg</Single>
+            <Single Name="ItemID" Type="int">27</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Blue-Top</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Blue-Top.svg</Single>
+            <Single Name="ItemID" Type="int">28</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Blue-Bottom</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Blue-Bottom.svg</Single>
+            <Single Name="ItemID" Type="int">29</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Blue-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Blue-Left.svg</Single>
+            <Single Name="ItemID" Type="int">30</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Blue-Right</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Blue-Right.svg</Single>
+            <Single Name="ItemID" Type="int">31</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Gray-Top</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Gray-Top.svg</Single>
+            <Single Name="ItemID" Type="int">32</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Gray-Bottom</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Gray-Bottom.svg</Single>
+            <Single Name="ItemID" Type="int">33</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Gray-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Gray-Left.svg</Single>
+            <Single Name="ItemID" Type="int">34</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter180-Gray-Right</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter180-Gray-Right.svg</Single>
+            <Single Name="ItemID" Type="int">35</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Yellow-TopRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Yellow-TopRight.svg</Single>
+            <Single Name="ItemID" Type="int">36</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Yellow-TopLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Yellow-TopLeft.svg</Single>
+            <Single Name="ItemID" Type="int">37</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Yellow-BottomLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Yellow-BottomLeft.svg</Single>
+            <Single Name="ItemID" Type="int">38</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Yellow-BottomRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Yellow-BottomRight.svg</Single>
+            <Single Name="ItemID" Type="int">39</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Red-TopRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Red-TopRight.svg</Single>
+            <Single Name="ItemID" Type="int">40</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Red-TopLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Red-TopLeft.svg</Single>
+            <Single Name="ItemID" Type="int">41</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Red-BottomLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Red-BottomLeft.svg</Single>
+            <Single Name="ItemID" Type="int">42</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Red-BottomRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Red-BottomRight.svg</Single>
+            <Single Name="ItemID" Type="int">43</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Green-TopRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Green-TopRight.svg</Single>
+            <Single Name="ItemID" Type="int">44</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Green-TopLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Green-TopLeft.svg</Single>
+            <Single Name="ItemID" Type="int">45</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Green-BottomLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Green-BottomLeft.svg</Single>
+            <Single Name="ItemID" Type="int">46</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Green-BottomRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Green-BottomRight.svg</Single>
+            <Single Name="ItemID" Type="int">47</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Blue-TopRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Blue-TopRight.svg</Single>
+            <Single Name="ItemID" Type="int">48</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Blue-TopLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Blue-TopLeft.svg</Single>
+            <Single Name="ItemID" Type="int">49</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Blue-BottomLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Blue-BottomLeft.svg</Single>
+            <Single Name="ItemID" Type="int">50</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Blue-BottomRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Blue-BottomRight.svg</Single>
+            <Single Name="ItemID" Type="int">51</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Gray-TopRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Gray-TopRight.svg</Single>
+            <Single Name="ItemID" Type="int">52</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Gray-TopLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Gray-TopLeft.svg</Single>
+            <Single Name="ItemID" Type="int">53</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Gray-BottomLeft</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Gray-BottomLeft.svg</Single>
+            <Single Name="ItemID" Type="int">54</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Meter-Meter90-Gray-BottomRight</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Meter-Meter90-Gray-BottomRight.svg</Single>
+            <Single Name="ItemID" Type="int">55</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Blue-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Blue-Off.svg</Single>
+            <Single Name="ItemID" Type="int">56</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Blue-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Blue-On.svg</Single>
+            <Single Name="ItemID" Type="int">57</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Green-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Green-Off.svg</Single>
+            <Single Name="ItemID" Type="int">58</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Green-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Green-On.svg</Single>
+            <Single Name="ItemID" Type="int">59</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Red-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Red-Off.svg</Single>
+            <Single Name="ItemID" Type="int">60</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Red-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Red-On.svg</Single>
+            <Single Name="ItemID" Type="int">61</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Yellow-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Yellow-Off.svg</Single>
+            <Single Name="ItemID" Type="int">62</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Yellow-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Yellow-On.svg</Single>
+            <Single Name="ItemID" Type="int">63</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Gray-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Gray-Off.svg</Single>
+            <Single Name="ItemID" Type="int">64</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-DipSwitch-Gray-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-DipSwitch-Gray-On.svg</Single>
+            <Single Name="ItemID" Type="int">65</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Blue-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Blue-Off.svg</Single>
+            <Single Name="ItemID" Type="int">66</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Blue-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Blue-On.svg</Single>
+            <Single Name="ItemID" Type="int">67</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Green-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Green-Off.svg</Single>
+            <Single Name="ItemID" Type="int">68</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Green-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Green-On.svg</Single>
+            <Single Name="ItemID" Type="int">69</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Red-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Red-Off.svg</Single>
+            <Single Name="ItemID" Type="int">70</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Red-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Red-On.svg</Single>
+            <Single Name="ItemID" Type="int">71</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Yellow-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Yellow-Off.svg</Single>
+            <Single Name="ItemID" Type="int">72</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Yellow-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Yellow-On.svg</Single>
+            <Single Name="ItemID" Type="int">73</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Gray-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Gray-Off.svg</Single>
+            <Single Name="ItemID" Type="int">74</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RockerSwitch-Gray-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RockerSwitch-Gray-On.svg</Single>
+            <Single Name="ItemID" Type="int">75</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Blue-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Blue-Off.svg</Single>
+            <Single Name="ItemID" Type="int">76</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Blue-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Blue-On.svg</Single>
+            <Single Name="ItemID" Type="int">77</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Blue-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Blue-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">78</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Green-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Green-Off.svg</Single>
+            <Single Name="ItemID" Type="int">79</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Green-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Green-On.svg</Single>
+            <Single Name="ItemID" Type="int">80</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Green-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Green-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">81</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Red-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Red-Off.svg</Single>
+            <Single Name="ItemID" Type="int">82</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Red-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Red-On.svg</Single>
+            <Single Name="ItemID" Type="int">83</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Red-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Red-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">84</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Yellow-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Yellow-Off.svg</Single>
+            <Single Name="ItemID" Type="int">85</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Yellow-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Yellow-On.svg</Single>
+            <Single Name="ItemID" Type="int">86</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Yellow-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Yellow-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">87</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Gray-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Gray-Off.svg</Single>
+            <Single Name="ItemID" Type="int">88</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Gray-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Gray-On.svg</Single>
+            <Single Name="ItemID" Type="int">89</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PowerSwitch-Gray-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PowerSwitch-Gray-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">90</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Blue-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Blue-Off.svg</Single>
+            <Single Name="ItemID" Type="int">91</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Blue-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Blue-On.svg</Single>
+            <Single Name="ItemID" Type="int">92</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Blue-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Blue-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">93</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Green-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Green-Off.svg</Single>
+            <Single Name="ItemID" Type="int">94</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Green-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Green-On.svg</Single>
+            <Single Name="ItemID" Type="int">95</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Green-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Green-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">96</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Red-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Red-Off.svg</Single>
+            <Single Name="ItemID" Type="int">97</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Red-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Red-On.svg</Single>
+            <Single Name="ItemID" Type="int">98</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Red-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Red-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">99</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Yellow-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Yellow-Off.svg</Single>
+            <Single Name="ItemID" Type="int">100</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Yellow-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Yellow-On.svg</Single>
+            <Single Name="ItemID" Type="int">101</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Yellow-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Yellow-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">102</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Gray-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Gray-Off.svg</Single>
+            <Single Name="ItemID" Type="int">103</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Gray-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Gray-On.svg</Single>
+            <Single Name="ItemID" Type="int">104</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitch-Gray-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitch-Gray-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">105</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Blue-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Blue-Off.svg</Single>
+            <Single Name="ItemID" Type="int">106</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Blue-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Blue-On.svg</Single>
+            <Single Name="ItemID" Type="int">107</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Blue-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Blue-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">108</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Green-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Green-Off.svg</Single>
+            <Single Name="ItemID" Type="int">109</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Green-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Green-On.svg</Single>
+            <Single Name="ItemID" Type="int">110</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Green-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Green-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">111</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Red-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Red-Off.svg</Single>
+            <Single Name="ItemID" Type="int">112</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Red-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Red-On.svg</Single>
+            <Single Name="ItemID" Type="int">113</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Red-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Red-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">114</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Yellow-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Yellow-Off.svg</Single>
+            <Single Name="ItemID" Type="int">115</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Yellow-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Yellow-On.svg</Single>
+            <Single Name="ItemID" Type="int">116</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Yellow-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Yellow-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">117</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Gray-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Gray-Off.svg</Single>
+            <Single Name="ItemID" Type="int">118</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Gray-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Gray-On.svg</Single>
+            <Single Name="ItemID" Type="int">119</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-PushSwitchLed-Gray-Pushed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-PushSwitchLed-Gray-Pushed.svg</Single>
+            <Single Name="ItemID" Type="int">120</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Blue-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Blue-Left.svg</Single>
+            <Single Name="ItemID" Type="int">121</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Blue-RightUp</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Blue-RightUp.svg</Single>
+            <Single Name="ItemID" Type="int">122</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Blue-Down</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Blue-Down.svg</Single>
+            <Single Name="ItemID" Type="int">123</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Blue-RUp-ColorOff</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Blue-RUp-ColorOff.svg</Single>
+            <Single Name="ItemID" Type="int">124</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Green-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Green-Left.svg</Single>
+            <Single Name="ItemID" Type="int">125</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Green-RightUp</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Green-RightUp.svg</Single>
+            <Single Name="ItemID" Type="int">126</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Green-Down</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Green-Down.svg</Single>
+            <Single Name="ItemID" Type="int">127</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Green-RUp-ColorOff</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Green-RUp-ColorOff.svg</Single>
+            <Single Name="ItemID" Type="int">128</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Red-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Red-Left.svg</Single>
+            <Single Name="ItemID" Type="int">129</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Red-RightUp</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Red-RightUp.svg</Single>
+            <Single Name="ItemID" Type="int">130</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Red-Down</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Red-Down.svg</Single>
+            <Single Name="ItemID" Type="int">131</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Red-RUp-ColorOff</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Red-RUp-ColorOff.svg</Single>
+            <Single Name="ItemID" Type="int">132</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Yellow-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Yellow-Left.svg</Single>
+            <Single Name="ItemID" Type="int">133</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Yellow-RightUp</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Yellow-RightUp.svg</Single>
+            <Single Name="ItemID" Type="int">134</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Yellow-Down</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Yellow-Down.svg</Single>
+            <Single Name="ItemID" Type="int">135</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Yellow-RUp-ColorOff</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Yellow-RUp-ColorOff.svg</Single>
+            <Single Name="ItemID" Type="int">136</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Clock-Blue</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Clock-Blue.svg</Single>
+            <Single Name="ItemID" Type="int">137</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Clock-Gray</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Clock-Gray.svg</Single>
+            <Single Name="ItemID" Type="int">138</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Clock-Green</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Clock-Green.svg</Single>
+            <Single Name="ItemID" Type="int">139</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Clock-Red</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Clock-Red.svg</Single>
+            <Single Name="ItemID" Type="int">140</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Clock-Yellow</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Clock-Yellow.svg</Single>
+            <Single Name="ItemID" Type="int">141</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Gray-Left</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Gray-Left.svg</Single>
+            <Single Name="ItemID" Type="int">142</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Gray-RightUp</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Gray-RightUp.svg</Single>
+            <Single Name="ItemID" Type="int">143</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Gray-Down</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Gray-Down.svg</Single>
+            <Single Name="ItemID" Type="int">144</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Switch-RotarySwitch-Gray-RUp-ColorOff</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Switch-RotarySwitch-Gray-RUp-ColorOff.svg</Single>
+            <Single Name="ItemID" Type="int">145</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Blue-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Blue-Off.svg</Single>
+            <Single Name="ItemID" Type="int">146</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Blue-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Blue-On.svg</Single>
+            <Single Name="ItemID" Type="int">147</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Green-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Green-Off.svg</Single>
+            <Single Name="ItemID" Type="int">148</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Green-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Green-On.svg</Single>
+            <Single Name="ItemID" Type="int">149</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Red-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Red-Off.svg</Single>
+            <Single Name="ItemID" Type="int">150</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Red-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Red-On.svg</Single>
+            <Single Name="ItemID" Type="int">151</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Yellow-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Yellow-Off.svg</Single>
+            <Single Name="ItemID" Type="int">152</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Yellow-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Yellow-On.svg</Single>
+            <Single Name="ItemID" Type="int">153</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Gray-Off</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Gray-Off.svg</Single>
+            <Single Name="ItemID" Type="int">154</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Element-Lamp-Lamp1-Gray-On</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Element-Lamp-Lamp1-Gray-On.svg</Single>
+            <Single Name="ItemID" Type="int">155</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-SynchronTime</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-SynchronTime.svg</Single>
+            <Single Name="ItemID" Type="int">156</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-AddUser</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-AddUser.svg</Single>
+            <Single Name="ItemID" Type="int">157</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-DeleteUser</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-DeleteUser.svg</Single>
+            <Single Name="ItemID" Type="int">158</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-Lock</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-Lock.svg</Single>
+            <Single Name="ItemID" Type="int">159</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-User</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-User.svg</Single>
+            <Single Name="ItemID" Type="int">160</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-ShiftSymbol</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-ShiftSymbol.svg</Single>
+            <Single Name="ItemID" Type="int">161</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-PasswordVisible</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-PasswordVisible.svg</Single>
+            <Single Name="ItemID" Type="int">162</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-PasswordHide</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-PasswordHide.svg</Single>
+            <Single Name="ItemID" Type="int">163</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-Ok</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-Ok.svg</Single>
+            <Single Name="ItemID" Type="int">164</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-ClearText</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-ClearText.svg</Single>
+            <Single Name="ItemID" Type="int">165</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-Cancel</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-Cancel.svg</Single>
+            <Single Name="ItemID" Type="int">166</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">Dialog-Backspace</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\Dialog-Backspace.svg</Single>
+            <Single Name="ItemID" Type="int">167</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxBlue</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxBlue.svg</Single>
+            <Single Name="ItemID" Type="int">168</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxGray</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxGray.svg</Single>
+            <Single Name="ItemID" Type="int">169</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxGreen</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxGreen.svg</Single>
+            <Single Name="ItemID" Type="int">170</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxRed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxRed.svg</Single>
+            <Single Name="ItemID" Type="int">171</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">CheckboxYellow</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\CheckboxYellow.svg</Single>
+            <Single Name="ItemID" Type="int">172</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonBlue</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonBlue.svg</Single>
+            <Single Name="ItemID" Type="int">173</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonGray</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonGray.svg</Single>
+            <Single Name="ItemID" Type="int">174</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonGreen</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonGreen.svg</Single>
+            <Single Name="ItemID" Type="int">175</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonRed</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonRed.svg</Single>
+            <Single Name="ItemID" Type="int">176</Single>
+          </Single>
+          <Single Type="{215b2719-0347-4e4d-ba85-8bcd66946f66}" Method="IArchivable">
+            <Single Name="BitmapID" Type="string">RadioButtonYellow</Single>
+            <Single Name="FileID" Type="string">5ce3da45-db07-42e7-a21c-a00fff4ed8f6|C:\ProgramData\CODESYS\Visualization Styles\CODESYS\FlatImages\4.9.0.0\RadioButtonYellow.svg</Single>
+            <Single Name="ItemID" Type="int">177</Single>
+          </Single>
+        </List>
+        <Single Name="GuidInit" Type="System.Guid">ea5b4085-0e86-019d-a0b0-fb51aad430d2</Single>
+        <Single Name="GuidReInit" Type="System.Guid">aae77683-14e8-07a6-ff12-65f16262eb33</Single>
+        <Single Name="GuidExitX" Type="System.Guid">d09ac5eb-7740-037e-ac70-8482d7e503e7</Single>
+        <Single Name="ValidIds" Type="bool">False</Single>
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">32d92914-bcb4-4227-b529-32fd90910eca</Single>
+      <Array Name="Path" Type="string">
+        <Single Type="string">PLC_Stabur</Single>
+        <Single Type="string">PLC Logic</Single>
+        <Single Type="string">Application</Single>
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

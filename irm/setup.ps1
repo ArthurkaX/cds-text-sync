@@ -9,240 +9,96 @@ $menuDir = Join-Path $targetBaseDir $repoName
 $bodyPath = Join-Path $env:LOCALAPPDATA $repoName
 
 # Rehearsal mode. Set $env:CTS_SETUP_DRYRUN before running to walk every branch
-# — migration, replace, pip, menu — without changing anything outside $env:TEMP.
+# -- migration, replace, PATH, menu -- without changing anything outside $env:TEMP.
 # The name has to be true: this used to guard only the migration moves while the
-# body tree was still deleted and replaced, pip still ran, and the stubs were
+# body tree was still deleted and replaced, the CLI PATH still changed, and the stubs were
 # still written, so a "rehearsal" performed a real install.
 $dryRun = -not [string]::IsNullOrWhiteSpace($env:CTS_SETUP_DRYRUN)
 
 Write-Host "--- Environment Setup: cds-text-sync ---" -ForegroundColor Cyan
 
 if ($dryRun) {
-    Write-Host "[*] DRY RUN: nothing outside `$env:TEMP will be created, moved or deleted." -ForegroundColor Magenta
+    Write-Host "[*] DRY RUN: no changes will be made to your system." -ForegroundColor Magenta
 }
 
-function Test-PythonCommandName {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$CommandName
-    )
-
-    try {
-        $cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
-        if (-not $cmd) {
-            return $false
-        }
-
-        $versionOutput = & $CommandName --version 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            return $false
-        }
-
-        $versionText = [string]($versionOutput -join " ")
-        # cds-text-sync requires 3.11+ (the analyzer reads TOML via stdlib
-        # tomllib). Accepting any 3.x here would let the install succeed and
-        # then fail inside pip with an opaque requires-python error.
-        if ($versionText -notmatch "Python\s+3\.(\d+)") {
-            return $false
-        }
-        if ([int]$Matches[1] -lt 11) {
-            return $false
-        }
-
-        return $true
-    } catch {
-        return $false
-    }
-}
-
-function Test-PythonCommand {
-    return ((Test-PythonCommandName -CommandName "python") -or (Test-PythonCommandName -CommandName "python.exe"))
-}
-
-function Get-PythonCommandName {
-    if (Test-PythonCommandName -CommandName "python") {
-        return "python"
-    }
-    if (Test-PythonCommandName -CommandName "python.exe") {
-        return "python.exe"
-    }
-    return $null
-}
-
-function Show-PythonConfigurationHelp {
-    Write-Host "`nPython was found only partially, or it is not reachable as a working Python 3.11+ command." -ForegroundColor Yellow
-    Write-Host "cds-text-sync expects this command to work from a new PowerShell/CMD window:" -ForegroundColor Yellow
-    Write-Host "    python --version" -ForegroundColor Cyan
-    Write-Host "`nRecommended fixes:" -ForegroundColor Cyan
-    Write-Host "  1. Re-run the Python installer and enable 'Add python.exe to PATH'."
-    Write-Host "  2. Restart PowerShell/CMD after installation."
-    Write-Host "  3. Disable broken Windows App Execution Aliases for python.exe if they shadow a real install."
-    Write-Host "     Settings -> Apps -> Advanced app settings -> App execution aliases."
-    Write-Host "  4. Verify manually: python --version"
-}
-
-function Offer-PythonInstall {
-    Write-Host "`n[!] A working Python 3.11+ command was not found." -ForegroundColor Yellow
-    Write-Host '    cds-text-sync needs `python --version` to report Python 3.11 or newer from PowerShell/CMD.' -ForegroundColor Yellow
-    Write-Host "`nChoose an option:" -ForegroundColor Cyan
-    Write-Host "[W] Install with winget" -ForegroundColor Green
-    Write-Host "[M] Open manual download page" -ForegroundColor Green
-    Write-Host "[C] Show PATH / App Execution Alias configuration help" -ForegroundColor Green
-    Write-Host "[S] Skip for now and continue anyway" -ForegroundColor Green
-
-    $pythonChoice = Read-Host "`nSelect option [W, M, C, S] (default: W)"
-    if ([string]::IsNullOrWhiteSpace($pythonChoice)) {
-        $pythonChoice = "W"
-    }
-
-    switch ($pythonChoice.ToUpperInvariant()) {
-        "W" {
-            $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
-            if (-not $wingetCmd) {
-                Write-Host "[!] winget was not found on this machine." -ForegroundColor Yellow
-                Write-Host "[*] Opening the manual download page instead..." -ForegroundColor Cyan
-                Start-Process "https://www.python.org/downloads/windows/"
-                return $false
-            }
-
-            Write-Host "[*] Installing Python with winget..." -ForegroundColor Cyan
-            $wingetArgs = @(
-                "install",
-                "-e",
-                "--id",
-                "Python.Python.3.13",
-                "--accept-package-agreements",
-                "--accept-source-agreements"
-            )
-            $proc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -Wait -PassThru
-            if ($proc.ExitCode -ne 0) {
-                Write-Host "[!] winget install failed with exit code $($proc.ExitCode)." -ForegroundColor Red
-                Write-Host "[*] You can install Python manually from: https://www.python.org/downloads/windows/" -ForegroundColor Yellow
-                return $false
-            }
-
-            if (Test-PythonCommand) {
-                Write-Host "[+] Python is now available." -ForegroundColor Green
-                return $true
-            }
-
-            Write-Host '[!] winget finished, but `python --version` is still not working in this shell.' -ForegroundColor Yellow
-            Show-PythonConfigurationHelp
-            return $false
-        }
-        "M" {
-            Write-Host "[*] Opening the Python download page..." -ForegroundColor Cyan
-            Start-Process "https://www.python.org/downloads/windows/"
-            Show-PythonConfigurationHelp
-            return $false
-        }
-        "C" {
-            Show-PythonConfigurationHelp
-            return $false
-        }
-        default {
-            Write-Host "[*] Skipping Python installation step." -ForegroundColor Yellow
-            Show-PythonConfigurationHelp
-            return $false
-        }
-    }
+# Windows PowerShell draws a progress bar per received chunk: downloads and
+# Expand-Archive run many times slower, and fail where there is no console to
+# draw it on. The function scope keeps the caller's preference, which
+# `irm | iex` would otherwise change.
+function Save-Url {
+    param([string]$Uri, [string]$OutFile)
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
 }
 
 function Install-CliCommand {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$InstallPath,
-        [switch]$Required
+        [string]$InstallPath
     )
 
-    $pythonName = Get-PythonCommandName
-    if (-not $pythonName) {
-        Write-Host "[!] Python is not available; skipping CLI command installation." -ForegroundColor Yellow
-        Write-Host "    After installing Python, run:" -ForegroundColor Yellow
-        Write-Host "    python -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
-        return $false
-    }
-
-    # Self-guarding rather than relying on the caller: pip install -e rewrites
-    # the operator's environment, and a second call site added later would
-    # otherwise reopen the hole silently.
-    if ($dryRun) {
-        Write-Host "[*] Dry run: would run pip install -e `"$InstallPath`"" -ForegroundColor Magenta
-        return $true
-    }
-
+    $cliDir = Join-Path $InstallPath "products\codesys-agent\dist"
+    $ctsExe = Join-Path $cliDir "cts.exe"
     Write-Host "`n--- CLI Installation ---" -ForegroundColor Cyan
-    if ($Required) {
-        Write-Host "[!] Your installed `cts still resolves the old package name `cli." -ForegroundColor Yellow
-        Write-Host "    Reinstalling the CLI is what fixes it - answering N leaves `cts broken." -ForegroundColor Yellow
-    }
-    Write-Host "Install the system CLI command `cds-text-sync` with pip editable mode?"
-    Write-Host "This lets agents and humans run: cds-text-sync --help" -ForegroundColor Green
-    $cliChoice = Read-Host "`nInstall CLI command [Y, N] (default: Y)"
-    if ([string]::IsNullOrWhiteSpace($cliChoice)) {
-        $cliChoice = "Y"
-    }
-    if ($cliChoice.ToUpperInvariant() -ne "Y") {
-        if ($Required) {
-            Write-Host "[!] Skipping the CLI install, but your existing `cts stays broken." -ForegroundColor Yellow
-            Write-Host "    Fix it later with:" -ForegroundColor Yellow
-            Write-Host "    $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+    Write-Host "Add the bundled cts.exe folder to your user PATH?"
+    Write-Host "This lets new terminals run: cts --help" -ForegroundColor Green
+    $cliChoice = Read-Host "`nAdd to user PATH [Y, N] (default: Y)"
+    if ([string]::IsNullOrWhiteSpace($cliChoice)) { $cliChoice = "Y" }
+
+    if ($cliChoice.ToUpperInvariant() -eq "Y") {
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        $normalizePath = { param($value) ([string]$value).Trim().TrimEnd('\') }
+        $alreadyPresent = @($userPath -split ';' | Where-Object {
+            [string]::Equals((& $normalizePath $_), (& $normalizePath $cliDir), [StringComparison]::OrdinalIgnoreCase)
+        }).Count -gt 0
+        if ($alreadyPresent) {
+            Write-Host "[*] The cts.exe folder is already on your user PATH." -ForegroundColor DarkGray
+        } elseif ($dryRun) {
+            Write-Host "[*] Dry run: would add $cliDir to the user PATH" -ForegroundColor Magenta
         } else {
-            Write-Host "[*] Skipping CLI installation." -ForegroundColor Yellow
-            Write-Host "    You can install later with:" -ForegroundColor Yellow
-            Write-Host "    $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
+            $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $cliDir } else { "$userPath;$cliDir" }
+            [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
         }
-        return $false
+
+        if (@($env:Path -split ';' | Where-Object {
+            [string]::Equals((& $normalizePath $_), (& $normalizePath $cliDir), [StringComparison]::OrdinalIgnoreCase)
+        }).Count -eq 0) {
+            if ($dryRun) {
+                Write-Host "[*] Dry run: would prepend $cliDir to this session's PATH" -ForegroundColor Magenta
+            } else {
+                $env:Path = "$cliDir;$env:Path"
+            }
+        }
+    } else {
+        Write-Host "[*] Skipping user PATH update. Run $ctsExe directly when needed." -ForegroundColor Yellow
     }
 
-    try {
-        Write-Host "[*] Installing CLI command from: $InstallPath" -ForegroundColor Cyan
-        $pipArgs = @("-m", "pip", "install", "-e", $InstallPath)
-        $proc = Start-Process -FilePath $pythonName -ArgumentList $pipArgs -Wait -PassThru -NoNewWindow
-        if ($proc.ExitCode -ne 0) {
-            Write-Host "[!] CLI installation failed with exit code $($proc.ExitCode)." -ForegroundColor Red
-            Write-Host "    Try manually: $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
-            return $false
+    # Old pip launchers can shadow the bundled executable. Only offer removal
+    # when the old package is positively identified.
+    $distCts = [System.IO.Path]::GetFullPath($ctsExe)
+    $shadowing = @(Get-Command cts -All -ErrorAction SilentlyContinue | Where-Object {
+        $_.Source -and -not [string]::Equals([System.IO.Path]::GetFullPath($_.Source), $distCts, [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($shadowing.Count -gt 0) {
+        $shadowPaths = @($shadowing | ForEach-Object { $_.Source } | Select-Object -Unique)
+        foreach ($shadowPath in $shadowPaths) {
+            Write-Host "[!] An older cts command may shadow the bundled CLI: $shadowPath" -ForegroundColor Yellow
         }
-
-        $cliCmd = Get-Command cds-text-sync -ErrorAction SilentlyContinue
-        if ($cliCmd) {
-            Write-Host "[+] CLI installed: cds-text-sync" -ForegroundColor Green
-            return $true
+        $python = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $python) { return }
+        & python -m pip show cds-text-sync 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return }
+        if ($dryRun) {
+            Write-Host "[*] Dry run: would offer python -m pip uninstall -y cds-text-sync cds-cli" -ForegroundColor Magenta
+            return
         }
-
-        Write-Host "[!] pip completed, but cds-text-sync is not visible in this shell." -ForegroundColor Yellow
-        Write-Host "    Restart PowerShell/CMD or make sure Python Scripts is in PATH." -ForegroundColor Yellow
-        return $true
-    } catch {
-        Write-Host "[!] CLI installation error: $_" -ForegroundColor Red
-        Write-Host "    Try manually: $pythonName -m pip install -e `"$InstallPath`"" -ForegroundColor Yellow
-        return $false
+        $removeChoice = Read-Host "Remove the old CLI packages? [Y, N] (default: Y)"
+        if ([string]::IsNullOrWhiteSpace($removeChoice)) { $removeChoice = "Y" }
+        if ($removeChoice.ToUpperInvariant() -eq "Y") {
+            & python -m pip uninstall -y cds-text-sync cds-cli
+        }
     }
-}
-
-function Test-StaleCliInstall {
-    param(
-        [string]$PythonName
-    )
-
-    if (-not $PythonName) { return $false }
-
-    $probe = 'import importlib.util as u, sys; sys.exit(0 if u.find_spec("cli") is not None and u.find_spec("cds_text_sync") is None else 1)'
-    try {
-        # Probe from a neutral directory. From the repo body, the current working
-        # directory itself satisfies find_spec("cds_text_sync") and would mask a
-        # stale install.
-        Push-Location $env:TEMP
-        try {
-            & $PythonName -c $probe 2>$null | Out-Null
-            return ($LASTEXITCODE -eq 0)
-        } finally {
-            Pop-Location
-        }
-    } catch {
-        return $false
-    }
+    if ($dryRun) { return }
 }
 
 function Get-CodesysSpVersions {
@@ -289,7 +145,7 @@ function Resolve-ScriptDirDefault {
         $reason = "Modern CODESYS (SP >= $LegacyBoundary) detected - the per-user ScriptDir is used."
     } elseif ($legacy.Count -gt 0 -and $modern.Count -gt 0) {
         $recommended = "LocalAppData"
-        $reason = "Both legacy and modern CODESYS detected - defaulting to the user path. If scripts do not appear on the legacy install, re-run and pick the Legacy path (3)."
+        $reason = "Both legacy and modern CODESYS detected - the user path, and the menu goes to the machine-wide ProgramData path too, which only the legacy one reads."
     } else {
         $laExists = Test-Path (Join-Path $env:LOCALAPPDATA "CODESYS\ScriptDir")
         $pdExists = Test-Path (Join-Path $env:ProgramData "CODESYS\ScriptDir")
@@ -311,147 +167,244 @@ function Resolve-ScriptDirDefault {
     }
 }
 
-if (-not (Test-PythonCommand)) {
-    $pythonReady = Offer-PythonInstall
-    if (-not $pythonReady -and -not (Test-PythonCommand)) {
-        Write-Host '[!] Python is still unavailable. The installer can continue, but the package will not run until `python` is installed.' -ForegroundColor Yellow
+# The sync folder is a git repository: setting it runs `git init` there.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "`n[!] Git was not found. cds-text-sync keeps each project's sync folder as a git repository." -ForegroundColor Yellow
+    Write-Host "[W] Install with winget" -ForegroundColor Green
+    Write-Host "[M] Open manual download page" -ForegroundColor Green
+    Write-Host "[S] Skip for now and continue anyway" -ForegroundColor Green
+    $gitChoice = Read-Host "`nSelect option [W, M, S] (default: W)"
+    if ([string]::IsNullOrWhiteSpace($gitChoice)) {
+        $gitChoice = "W"
     }
-}
-
-# 2. Get available releases
-Write-Host "`n[*] Fetching available versions..." -ForegroundColor Cyan
-$stableTags = @()
-$testTags = @()
-try {
-    $releasesUrl = "https://api.github.com/repos/ArthurkaX/cds-text-sync/releases?per_page=100"
-    $headers = @{
-        "User-Agent" = "cds-text-sync-setup"
-        "Accept" = "application/vnd.github+json"
-    }
-    $releases = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get
-    if ($releases) {
-        foreach ($release in $releases) {
-            $tag = [string]$release.tag_name
-            $isPrerelease = [bool]$release.prerelease
-
-            if ($isPrerelease -or $tag -match "^v\d+\.\d+\.\d+-test\.\d+$") {
-                $testTags += $tag
-            } elseif ($tag -match "^v\d+\.\d+\.\d+$") {
-                $stableTags += $tag
+    switch ($gitChoice.ToUpperInvariant()) {
+        "W" {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-Host "[*] Installing Git with winget..." -ForegroundColor Cyan
+                $proc = Start-Process -FilePath "winget" -ArgumentList @("install", "-e", "--id", "Git.Git", "--accept-package-agreements", "--accept-source-agreements") -Wait -PassThru
+                if ($proc.ExitCode -eq 0) {
+                    Write-Host "[+] Git installed. Open a new PowerShell window before using cts." -ForegroundColor Green
+                } else {
+                    Write-Host "[!] winget install failed with exit code $($proc.ExitCode). Install Git from https://git-scm.com/download/win" -ForegroundColor Red
+                }
+            } else {
+                Write-Host "[!] winget was not found on this machine; opening the download page." -ForegroundColor Yellow
+                Start-Process "https://git-scm.com/download/win"
             }
         }
-
-        $stableTags = @($stableTags | Select-Object -Unique)
-        $testTags = @($testTags | Select-Object -Unique)
-
-        if ($stableTags.Count -gt 5) {
-            $stableTags = @($stableTags | Select-Object -First 5)
+        "M" {
+            Start-Process "https://git-scm.com/download/win"
         }
-        if ($testTags.Count -gt 5) {
-            $testTags = @($testTags | Select-Object -First 5)
+        default {
+            Write-Host "[*] Skipping Git. cts will refuse to set a sync folder until git is installed." -ForegroundColor Yellow
         }
     }
-} catch {
-    try {
-        $tagsUrl = "$repoUrl/tags"
-        $tagsResponse = Invoke-WebRequest -Uri $tagsUrl -UseBasicParsing
-        if ($tagsResponse.StatusCode -eq 200) {
-            # Parse tags from HTML - look for stable and prerelease tags
-            $stableTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?" | 
-                ForEach-Object { 
-                    $line = $_.ToString()
-                    if ($line -match "v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)") {
-                        "v" + $matches[1]
-                    }
-                } | 
-                Where-Object { $_ -ne $null } | 
-                Select-Object -Unique)
-
-            $stableTags = @($stableTags | Where-Object { $_ -match "^v\d+\.\d+\.\d+$" })
-            $testTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+-test\.\d+" |
-                ForEach-Object {
-                    $line = $_.ToString()
-                    if ($line -match "(v\d+\.\d+\.\d+-test\.\d+)") {
-                        $matches[1]
-                    }
-                } |
-                Where-Object { $_ -ne $null } |
-                Select-Object -Unique)
-
-            if ($stableTags.Count -gt 5) {
-                $stableTags = @($stableTags | Select-Object -Last 5)
-            }
-            if ($testTags.Count -gt 5) {
-                $testTags = @($testTags | Select-Object -Last 5)
-            }
-        }
-    } catch {
-        Write-Host "[!] Warning: Could not fetch releases. Only main branch will be available." -ForegroundColor Yellow
-    }
 }
 
-# 3. Show version selection menu
-Write-Host "`n--- Version Selection ---" -ForegroundColor Cyan
-Write-Host "[L] Latest development snapshot (main branch) [DEFAULT]" -ForegroundColor Green
-
-if ($stableTags.Count -gt 0) {
-    Write-Host "Stable Releases (last $($stableTags.Count)):" -ForegroundColor Cyan
-    for ($i = 0; $i -lt $stableTags.Count; $i++) {
-        $tag = $stableTags[$i]
-        $isLatest = ($i -eq 0)
-        $label = if ($isLatest) { " (recommended stable)" } else { "" }
-        Write-Host "[$($i+1)] $tag$label" -ForegroundColor Yellow
-    }
-}
-
-if ($testTags.Count -gt 0) {
-    Write-Host "Test / Pre-release Builds (last $($testTags.Count)):" -ForegroundColor Cyan
-    for ($i = 0; $i -lt $testTags.Count; $i++) {
-        $tag = $testTags[$i]
-        $isLatest = ($i -eq 0)
-        $label = if ($isLatest) { " (latest test build)" } else { "" }
-        Write-Host "[T$($i+1)] $tag$label" -ForegroundColor Yellow
-    }
-}
-
-$stableRange = if ($stableTags.Count -gt 0) { "1-$($stableTags.Count)" } else { "none" }
-$testRange = if ($testTags.Count -gt 0) { "T1-T$($testTags.Count)" } else { "none" }
-$choice = Read-Host "`nSelect version [L, $stableRange, $testRange] (default: L)"
-if ([string]::IsNullOrWhiteSpace($choice)) {
-    $choice = "L"
-}
-
-# 4. Determine download URL and version name
+# 2-4. The version: a named branch, or one picked from the menu. A branch
+# is a test line shared before a release, installed without the menu:
+#   $env:CTS_BRANCH = "next"; irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/next/irm/setup.ps1 | iex
+# A build handed over as a file, for a PC without access to GitHub or a line
+# not published there, installs from that archive (install.cmd beside it sets this):
+#   $env:CTS_ARCHIVE = "C:\Users\me\Downloads\cds-text-sync-nightly-1a2b3c4d.zip"; .\setup.ps1
+$archive = ([string]$env:CTS_ARCHIVE).Trim()
+$branch = ([string]$env:CTS_BRANCH).Trim()
 $zipUrl = ""
 $fallbackZipUrl = ""
 $versionName = ""
-
-if ($choice -eq "L") {
-    $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
-    $versionName = "main"
-} elseif ($choice -match '^[Tt](\d+)$') {
-    $testIndex = [int]$matches[1] - 1
-    if ($testIndex -ge 0 -and $testIndex -lt $testTags.Count) {
-        $selectedTag = $testTags[$testIndex]
-        $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
-        $fallbackZipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
-        $versionName = $selectedTag
-    } else {
-        Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
-        $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
-        $versionName = "main"
+if ($archive) {
+    if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+        Write-Host "[!] CTS_ARCHIVE '$archive' is not a file." -ForegroundColor Red
+        return
     }
+    $archiveItem = Get-Item -LiteralPath $archive
+    Write-Host "`n[*] Installing from the archive $($archiveItem.FullName) (CTS_ARCHIVE); clear it for the version menu." -ForegroundColor Cyan
+    $zipUrl = ([Uri]$archiveItem.FullName).AbsoluteUri
+    $versionName = [IO.Path]::GetFileNameWithoutExtension($archiveItem.Name)
+} elseif ($branch) {
+    if ($branch -notmatch '^[A-Za-z0-9._-]+$') {
+        Write-Host "[!] CTS_BRANCH '$branch' is not a branch name this installer takes (letters, digits, . _ -)." -ForegroundColor Red
+        return
+    }
+    Write-Host "`n[*] Installing branch $branch (CTS_BRANCH); clear it for the version menu." -ForegroundColor Cyan
+    $zipUrl = "$repoUrl/archive/refs/heads/$branch.zip"
+    $versionName = $branch
 } else {
-    $tagIndex = [int]$choice - 1
-    if ($tagIndex -ge 0 -and $tagIndex -lt $stableTags.Count) {
-        $selectedTag = $stableTags[$tagIndex]
-        $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
-        $fallbackZipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
-        $versionName = $selectedTag
-    } else {
-        Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
+    # 2. Get available releases
+    Write-Host "`n[*] Fetching available versions..." -ForegroundColor Cyan
+    $stableTags = @()
+    $testTags = @()
+    try {
+        $releasesUrl = "https://api.github.com/repos/ArthurkaX/cds-text-sync/releases?per_page=100"
+        $headers = @{
+            "User-Agent" = "cds-text-sync-setup"
+            "Accept" = "application/vnd.github+json"
+        }
+        $releases = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get
+        if ($releases) {
+            foreach ($release in $releases) {
+                $tag = [string]$release.tag_name
+                $isPrerelease = [bool]$release.prerelease
+
+                if ($isPrerelease -or $tag -match "^v\d+\.\d+\.\d+-test\.\d+$") {
+                    $testTags += $tag
+                } elseif ($tag -match "^v\d+\.\d+\.\d+$") {
+                    $stableTags += $tag
+                }
+            }
+
+            $stableTags = @($stableTags | Select-Object -Unique)
+            $testTags = @($testTags | Select-Object -Unique)
+
+            if ($stableTags.Count -gt 5) {
+                $stableTags = @($stableTags | Select-Object -First 5)
+            }
+            if ($testTags.Count -gt 5) {
+                $testTags = @($testTags | Select-Object -First 5)
+            }
+        }
+    } catch {
+        try {
+            $tagsUrl = "$repoUrl/tags"
+            $tagsResponse = Invoke-WebRequest -Uri $tagsUrl -UseBasicParsing
+            if ($tagsResponse.StatusCode -eq 200) {
+                # Parse tags from HTML - look for stable and prerelease tags
+                $stableTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?" |
+                    ForEach-Object {
+                        $line = $_.ToString()
+                        if ($line -match "v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)") {
+                            "v" + $matches[1]
+                        }
+                    } |
+                    Where-Object { $_ -ne $null } |
+                    Select-Object -Unique)
+
+                $stableTags = @($stableTags | Where-Object { $_ -match "^v\d+\.\d+\.\d+$" })
+                $testTags = @($tagsResponse.Content | Select-String "v\d+\.\d+\.\d+-test\.\d+" |
+                    ForEach-Object {
+                        $line = $_.ToString()
+                        if ($line -match "(v\d+\.\d+\.\d+-test\.\d+)") {
+                            $matches[1]
+                        }
+                    } |
+                    Where-Object { $_ -ne $null } |
+                    Select-Object -Unique)
+
+                if ($stableTags.Count -gt 5) {
+                    $stableTags = @($stableTags | Select-Object -Last 5)
+                }
+                if ($testTags.Count -gt 5) {
+                    $testTags = @($testTags | Select-Object -Last 5)
+                }
+            }
+        } catch {
+            Write-Host "[!] Warning: Could not fetch releases. Only main branch will be available." -ForegroundColor Yellow
+        }
+    }
+
+    # 3. Show version selection menu
+    Write-Host "`n--- Version Selection ---" -ForegroundColor Cyan
+    Write-Host "[L] 4.0 beta, the latest (main branch) [DEFAULT]" -ForegroundColor Green
+
+    if ($stableTags.Count -gt 0) {
+        Write-Host "Stable Releases (last $($stableTags.Count)):" -ForegroundColor Cyan
+        for ($i = 0; $i -lt $stableTags.Count; $i++) {
+            $tag = $stableTags[$i]
+            $isLatest = ($i -eq 0)
+            $label = if ($isLatest) { " (latest stable)" } else { "" }
+            Write-Host "[$($i+1)] $tag$label" -ForegroundColor Yellow
+        }
+    }
+
+    if ($testTags.Count -gt 0) {
+        Write-Host "Test / Pre-release Builds (last $($testTags.Count)):" -ForegroundColor Cyan
+        for ($i = 0; $i -lt $testTags.Count; $i++) {
+            $tag = $testTags[$i]
+            $isLatest = ($i -eq 0)
+            $label = if ($isLatest) { " (latest tagged pre-release)" } else { "" }
+            Write-Host "[T$($i+1)] $tag$label" -ForegroundColor Yellow
+        }
+    }
+
+    $stableRange = if ($stableTags.Count -gt 0) { "1-$($stableTags.Count)" } else { "none" }
+    $testRange = if ($testTags.Count -gt 0) { "T1-T$($testTags.Count)" } else { "none" }
+    $choice = Read-Host "`nSelect version [L, $stableRange, $testRange] (default: L)"
+    if ([string]::IsNullOrWhiteSpace($choice)) {
+        $choice = "L"
+    }
+
+    # 4. Determine download URL and version name
+
+    if ($choice -eq "L") {
         $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
         $versionName = "main"
+    } elseif ($choice -match '^[Tt](\d+)$') {
+        $testIndex = [int]$matches[1] - 1
+        if ($testIndex -ge 0 -and $testIndex -lt $testTags.Count) {
+            $selectedTag = $testTags[$testIndex]
+            $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
+            $fallbackZipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
+            $versionName = $selectedTag
+        } else {
+            Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
+            $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
+            $versionName = "main"
+        }
+    } else {
+        $tagIndex = [int]$choice - 1
+        if ($tagIndex -ge 0 -and $tagIndex -lt $stableTags.Count) {
+            $selectedTag = $stableTags[$tagIndex]
+            $zipUrl = "$repoUrl/releases/download/$selectedTag/cds-text-sync-$selectedTag.zip"
+            $fallbackZipUrl = "$repoUrl/archive/refs/tags/$selectedTag.zip"
+            $versionName = $selectedTag
+        } else {
+            Write-Host "[!] Invalid selection. Falling back to main branch." -ForegroundColor Yellow
+            $zipUrl = "$repoUrl/archive/refs/heads/main.zip"
+            $versionName = "main"
+        }
+    }
+
+    # Releases up to 3.4.1 have no cts.exe, nor has main while it carries
+    # them (no products/codesys-agent there): their own installer sets them up.
+    $beforeCtsExe = $false
+    if ($versionName -match '^v(\d+)\.(\d+)\.(\d+)') {
+        $beforeCtsExe = [version]"$($matches[1]).$($matches[2]).$($matches[3])" -le [version]"3.4.1"
+    } elseif ($versionName -eq "main") {
+        try { Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/products/codesys-agent/Directory.Build.props" -Method Head -UseBasicParsing | Out-Null }
+        catch { $beforeCtsExe = $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404 }
+    }
+    if ($beforeCtsExe) {
+        $ownInstaller = "https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/$versionName/irm/setup.ps1"
+        $pickAgain = if ($versionName -eq "main") { "L (main)" } else { $versionName }
+        Write-Host "`n[*] $versionName comes before cts.exe; its own installer sets it up. Pick $pickAgain again in its menu." -ForegroundColor Cyan
+        # The agent this line put beside the menu entry is nothing to the older
+        # menu, whose installer refuses a folder it does not know.
+        $agentDirs = @("CODESYS\ScriptDir", "Astra.IDE\ScriptDir") | ForEach-Object { Join-Path (Join-Path $env:LOCALAPPDATA $_) "cds-text-sync\agent" }
+        $agentDirs += Join-Path $env:ProgramData "CODESYS\ScriptDir\cds-text-sync\agent"
+        if ($dryRun) {
+            foreach ($agentDir in $agentDirs | Where-Object { Test-Path -LiteralPath $_ }) { Write-Host "[*] Dry run: would remove $agentDir" -ForegroundColor Magenta }
+            Write-Host "[*] Dry run: would run $ownInstaller" -ForegroundColor Magenta
+        }
+        if (-not $dryRun) {
+            foreach ($agentDir in $agentDirs | Where-Object { Test-Path -LiteralPath $_ }) {
+                try { Remove-Item -LiteralPath $agentDir -Recurse -Force -ErrorAction Stop }
+                catch {
+                    Write-Host "[!] Could not remove $agentDir ($_): close CODESYS and run the installer again." -ForegroundColor Red
+                    return
+                }
+            }
+            # The older installer replaces its program folder, which holds this
+            # PC's projects.json (each project's sync folder and the PC's role),
+            # without it; an update back to this line reads it again.
+            $registry = Join-Path $env:LOCALAPPDATA "cds-text-sync\projects.json"
+            $registryBytes = if (Test-Path -LiteralPath $registry) { [IO.File]::ReadAllBytes($registry) } else { $null }
+            Invoke-Expression (Invoke-RestMethod -Uri $ownInstaller -UseBasicParsing)
+            if ($registryBytes -and (Test-Path -LiteralPath (Split-Path $registry)) -and -not (Test-Path -LiteralPath $registry)) {
+                [IO.File]::WriteAllBytes($registry, $registryBytes)
+                Write-Host "[+] Kept projects.json for a later update." -ForegroundColor Green
+            }
+        }
+        return
     }
 }
 
@@ -518,14 +471,14 @@ if ($pathChoice -eq "2") {
     $targetBaseDir = $localAppDataScriptDir
 }
 
-# The menu directory holds nothing but generated Project_*.py stubs.
+# The menu directory holds nothing but generated cds-text-sync.py stub.
 # The tool itself goes to $bodyPath, chosen a few lines below.
 $menuDir = Join-Path $targetBaseDir $repoName
 
 # 5b. If installing into ProgramData, verify write access up front.
 # %PROGRAMDATA%\CODESYS usually needs administrator rights. On failure we warn,
 # print the exact elevated copy command, and fall back to the user path so the
-# package and CLI still install (the legacy CODESYS only sees the scripts once
+# tool and CLI are still installed (the legacy CODESYS only sees the scripts once
 # they are copied into ProgramData).
 if ($targetIsProgramData) {
     $canWriteProgramData = $false
@@ -555,7 +508,7 @@ if ($targetIsProgramData) {
         Write-Host "`n    Fix option A - re-run this installer from an elevated PowerShell (Run as administrator)." -ForegroundColor Cyan
         Write-Host "    Fix option B - after this run, copy the generated menu scripts once from an elevated PowerShell:" -ForegroundColor Cyan
         Write-Host "        Copy-Item -Recurse -Force `"$localAppDataScriptDir\$repoName`" `"$targetBaseDir\`"" -ForegroundColor Cyan
-        Write-Host "`n[*] Falling back to the standard user path so the package and CLI still install:" -ForegroundColor Yellow
+        Write-Host "`n[*] Falling back to the standard user path so the tool and CLI are still installed:" -ForegroundColor Yellow
         Write-Host "    $localAppDataScriptDir" -ForegroundColor Yellow
         Write-Host "    (On legacy CODESYS the scripts appear only after they exist in ProgramData.)" -ForegroundColor Yellow
         $targetBaseDir = $localAppDataScriptDir
@@ -568,7 +521,7 @@ if ($targetIsProgramData) {
 #
 # CODESYS scans ScriptDir recursively and lists every .py it finds, so the tool
 # itself must not live there: otherwise ~120 internal modules end up in the
-# Tools > Scripting menu. ScriptDir receives nothing but generated Project_*.py
+# Tools > Scripting menu. ScriptDir receives nothing but generated cds-text-sync.py
 # stubs; everything else is installed here.
 $defaultBodyPath = Join-Path $env:LOCALAPPDATA $repoName
 $bodyPath = $defaultBodyPath
@@ -608,7 +561,7 @@ if (Test-Path -LiteralPath $menuDir) {
     $menuItem = Get-Item -LiteralPath $menuDir -Force
     $isLink = [bool]($menuItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
 
-    # Match the same layouts as install_menu.classify_menu_dir. Older releases
+    # The layouts cts install leaves to this installer. Older releases
     # used src\ide_bridge at the menu root; newer archives have the bridge under
     # products\codesys-host and carry the root cds_text_sync package instead.
     $isFullInstallation = (
@@ -663,7 +616,7 @@ if (Test-Path -LiteralPath $menuDir) {
                 Move-Item -LiteralPath $bodyPath -Destination $asidePath
             }
         }
-        # Move, never copy-then-delete: profiles\astra.json and other untracked
+        # Move, never copy-then-delete: projects.json and other untracked
         # user files live inside the tree, and a git clone keeps its remote.
         if (-not $dryRun) {
             Move-Item -LiteralPath $menuDir -Destination $bodyPath
@@ -695,24 +648,45 @@ if (-not (Test-Path $targetBaseDir)) {
 }
 
 # 6. Download and install
+# A branch moves, and GitHub's CDN keeps what a URL answered for minutes, so a
+# branch is fetched by the commit it points at now: the archive and the agent
+# binaries then come from the same commit.
+$mediaRef = $versionName
+if ($zipUrl -like "*/archive/refs/heads/*") {
+    try {
+        $commit = (Invoke-RestMethod -Uri "https://api.github.com/repos/ArthurkaX/cds-text-sync/commits/$versionName" -UseBasicParsing).sha
+        if ($commit -match '^[0-9a-f]{40}$') {
+            $zipUrl = "$repoUrl/archive/$commit.zip"
+            $mediaRef = $commit
+            Write-Host "[*] Branch $versionName is at commit $($commit.Substring(0, 8))." -ForegroundColor Cyan
+        }
+    } catch {
+        Write-Host "[!] Could not look up the commit of $versionName ($_); downloading the branch by name." -ForegroundColor Yellow
+    }
+}
 $tempZipPath = "$env:TEMP\cds-text-sync-$versionName.zip"
 $tempExtractPath = "$env:TEMP\cds-text-sync-temp-$versionName"
 
 try {
-    Write-Host "[*] Downloading cds-text-sync ($versionName)..." -ForegroundColor Cyan
+    $fetching = if ($archive) { "Reading the archive" } else { "Downloading cds-text-sync" }
+    Write-Host "[*] $fetching ($versionName)..." -ForegroundColor Cyan
     try {
-        Invoke-WebRequest -Uri $zipUrl -OutFile $tempZipPath -UseBasicParsing
+        Save-Url $zipUrl $tempZipPath
     } catch {
         if ($fallbackZipUrl) {
             Write-Host "[!] Release asset not available; downloading source archive for $versionName instead." -ForegroundColor Yellow
-            Invoke-WebRequest -Uri $fallbackZipUrl -OutFile $tempZipPath -UseBasicParsing
+            Save-Url $fallbackZipUrl $tempZipPath
         } else {
             throw
         }
     }
 
     Write-Host "[*] Extracting archive..." -ForegroundColor Cyan
-    Expand-Archive -Path $tempZipPath -DestinationPath $tempExtractPath -Force
+    # Expand-Archive comes from a script module, which reads the global preference.
+    $progress = $global:ProgressPreference
+    $global:ProgressPreference = 'SilentlyContinue'
+    try { Expand-Archive -Path $tempZipPath -DestinationPath $tempExtractPath -Force }
+    finally { $global:ProgressPreference = $progress }
 
     # Archives normally contain a single top-level folder ("cds-text-sync-main",
     # "cds-text-sync-v1.7.3"). Some older release assets are flat (files at the
@@ -724,7 +698,7 @@ try {
     } else {
         $extractedPath = $tempExtractPath
     }
-    
+
     if (Test-Path -LiteralPath $bodyPath) {
         Write-Host "[*] Updating existing installation..." -ForegroundColor Cyan
         # Backup next to the program folder, never inside ScriptDir.
@@ -737,12 +711,13 @@ try {
         }
 
         # Carry over user files that live inside the tree and are not shipped in
-        # the archive (profiles\astra.json and friends). Without this the
-        # replace below deletes them silently on every update.
+        # the archive: projects.json at the root (where each project's sync
+        # folder is on this machine) and the like. Without this the replace
+        # below deletes them silently on every update.
         # Read-only, so a rehearsal computes it too: which of your files would
         # survive is the main thing a rehearsal is asked to report.
         $preserved = @()
-        foreach ($rel in @("profiles")) {
+        foreach ($rel in @(".")) {
             $preserveSrc = Join-Path $bodyPath $rel
             if (Test-Path -LiteralPath $preserveSrc) {
                 foreach ($userFile in Get-ChildItem -LiteralPath $preserveSrc -File -Force) {
@@ -762,14 +737,16 @@ try {
         if ($preserved.Count -gt 0 -and -not $dryRun) {
             New-Item -ItemType Directory -Force -Path $stashDir | Out-Null
             foreach ($item in $preserved) {
-                Copy-Item -LiteralPath $item.Path -Destination (Join-Path $stashDir $item.Name) -Force
+                $stashRel = Join-Path $stashDir $item.Rel
+                New-Item -ItemType Directory -Force -Path $stashRel | Out-Null
+                Copy-Item -LiteralPath $item.Path -Destination (Join-Path $stashRel $item.Name) -Force
             }
         }
 
         if ($dryRun) {
             Write-Host "[*] Dry run: would back up to $backupPath" -ForegroundColor Magenta
             Write-Host "[*] Dry run: would replace $bodyPath with the downloaded tree" -ForegroundColor Magenta
-            Write-Host ("[*] Dry run: would keep " + $preserved.Count + " of your own file(s) in profiles\") -ForegroundColor Magenta
+            Write-Host ("[*] Dry run: would keep " + $preserved.Count + " of your own file(s)") -ForegroundColor Magenta
             foreach ($item in $preserved) {
                 Write-Host ("      " + $item.Rel + "\" + $item.Name) -ForegroundColor Magenta
             }
@@ -783,11 +760,11 @@ try {
                 if (-not (Test-Path -LiteralPath $restoreDir)) {
                     New-Item -ItemType Directory -Force -Path $restoreDir | Out-Null
                 }
-                Copy-Item -LiteralPath (Join-Path $stashDir $item.Name) `
+                Copy-Item -LiteralPath (Join-Path (Join-Path $stashDir $item.Rel) $item.Name) `
                           -Destination (Join-Path $restoreDir $item.Name) -Force
             }
             if ($preserved.Count -gt 0) {
-                Write-Host ("[+] Kept " + $preserved.Count + " of your own file(s) in profiles\.") -ForegroundColor Green
+                Write-Host ("[+] Kept " + $preserved.Count + " of your own file(s): " + (($preserved | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Green
                 Remove-Item -LiteralPath $stashDir -Recurse -Force -ErrorAction SilentlyContinue
             }
 
@@ -828,68 +805,96 @@ try {
 }
 
 if (Test-Path -LiteralPath $bodyPath) {
-    $pythonName = Get-PythonCommandName
+    $null = Install-CliCommand -InstallPath $bodyPath
 
-    $staleCli = Test-StaleCliInstall -PythonName $pythonName
-
-    if ($pythonName -and ($migrated -or $staleCli)) {
-        # Clear the previous editable install when the layout was moved out of
-        # ScriptDir, or when the installed distribution still resolves the old
-        # `cli` package name. Left alone it shadows the real package and `cts`
-        # breaks silently.
-        Write-Host "`n[*] Clearing the previous editable install..." -ForegroundColor Cyan
-        if (-not $dryRun) {
-            Start-Process -FilePath $pythonName `
-                          -ArgumentList @("-m", "pip", "uninstall", "-y", "cds-text-sync") `
-                          -Wait -NoNewWindow | Out-Null
-        } else {
-            Write-Host "[*] Dry run: would uninstall the 'cds-text-sync' package" -ForegroundColor Magenta
-        }
-    }
-
-    $cliInstalled = Install-CliCommand -InstallPath $bodyPath -Required:$staleCli
-
-    if (-not $cliInstalled -and $staleCli) {
-        Write-Host "`n[!] Your existing 'cts' command still points at the previous package name" -ForegroundColor Yellow
-        Write-Host "    and will fail with `"No module named 'cli'`" until you run:" -ForegroundColor Yellow
-        Write-Host "    $pythonName -m pip install -e `"$bodyPath`"" -ForegroundColor Yellow
-    }
-
-    # Generate the menu stubs. Run from the program folder so this still works
-    # when the pip step was skipped or failed.
-    Write-Host "`n--- CODESYS Menu ---" -ForegroundColor Cyan
-    if ($pythonName) {
-        # The generator has its own --dry-run, so a rehearsal still exercises it
-        # for real - manifest, ScriptDir discovery, and the guard that refuses a
-        # body the CODESYS scanner can still reach - and writes nothing.
-        $menuArgs = @("-m", "cds_text_sync.install_menu", "--body", "$bodyPath", "--script-dir", "$targetBaseDir")
+    # The prebuilt agent DLLs and cts.exe live in Git LFS. A GitHub zip carries
+    # only their pointer files unless the repository includes LFS objects in
+    # archives, so fetch each pointer's content from GitHub's LFS media host.
+    $agentDist = Join-Path $bodyPath "products\codesys-agent\dist"
+    foreach ($dll in @("Cts.Agent.Core.dll", "Cts.Agent.dll", "cts.exe")) {
+        $dllPath = Join-Path $agentDist $dll
+        if (-not (Test-Path -LiteralPath $dllPath)) { continue }
+        $head = [System.IO.File]::ReadAllBytes($dllPath) | Select-Object -First 24
+        if ([System.Text.Encoding]::ASCII.GetString([byte[]]$head) -notlike "version https://git-lfs*") { continue }
+        $mediaUrl = "https://media.githubusercontent.com/media/ArthurkaX/cds-text-sync/$mediaRef/products/codesys-agent/dist/$dll"
         if ($dryRun) {
-            $menuArgs += "--dry-run"
+            Write-Host "[*] Dry run: would download $dll from $mediaUrl" -ForegroundColor Magenta
+            continue
         }
-        Push-Location $bodyPath
+        Write-Host "[*] Downloading the in-IDE agent: $dll" -ForegroundColor Cyan
         try {
-            & $pythonName @menuArgs
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "[!] Menu generation failed. Run it manually:" -ForegroundColor Yellow
-                Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
-                Write-Host "    $pythonName -m cds_text_sync.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
-            }
-        } finally {
-            Pop-Location
+            Save-Url $mediaUrl $dllPath
+        } catch {
+            Write-Host "[!] Could not download $dll ($_). The menu works; the agent needs it - re-run the installer." -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "[!] Python is not available; generate the menu later with:" -ForegroundColor Yellow
-        Write-Host "    cd `"$bodyPath`"" -ForegroundColor Yellow
-        Write-Host "    python -m cds_text_sync.install_menu --script-dir `"$targetBaseDir`"" -ForegroundColor Yellow
+    }
+
+    # The menu entry, the agent and its toolbar button: cts.exe from the
+    # download installs them. Its --check rehearses the install for real --
+    # ScriptDir discovery, an older install in the way, the toolbar files --
+    # and writes nothing.
+    Write-Host "`n--- CODESYS Menu ---" -ForegroundColor Cyan
+    $ctsExe = Join-Path $agentDist "cts.exe"
+    # Astra.IDE keeps its own ScriptDir next to CODESYS's: the standard
+    # path serves both IDEs when Astra.IDE is installed.
+    $menuTargets = @($targetBaseDir)
+    $astraScriptDir = Join-Path $env:LOCALAPPDATA "Astra.IDE\ScriptDir"
+    if ($targetBaseDir -eq $localAppDataScriptDir -and (Test-Path -LiteralPath $astraScriptDir)) {
+        $menuTargets += $astraScriptDir
+    }
+    # CODESYS before 3.5.17 reads only the machine-wide ScriptDir; a newer one
+    # beside it shows the entry once, not twice, so both get it.
+    if ($targetBaseDir -eq $localAppDataScriptDir -and $recommendation.LegacyDetected -and $recommendation.ModernDetected) {
+        $legacyWritable = $dryRun
+        if (-not $dryRun) {
+            try {
+                New-Item -ItemType Directory -Force -Path $programDataScriptDir -ErrorAction Stop | Out-Null
+                $probeFile = Join-Path $programDataScriptDir (".cts_write_test_" + $PID)
+                Set-Content -Path $probeFile -Value "test" -ErrorAction Stop
+                Remove-Item -Path $probeFile -Force -ErrorAction SilentlyContinue
+                $legacyWritable = $true
+            } catch {
+                $legacyWritable = $false
+            }
+        }
+        if ($legacyWritable) {
+            $menuTargets += $programDataScriptDir
+        } else {
+            Write-Host "[!] The legacy CODESYS reads only $programDataScriptDir, which needs administrator rights." -ForegroundColor Yellow
+            Write-Host "    From an elevated PowerShell, once:" -ForegroundColor Yellow
+            Write-Host "    & `"$ctsExe`" install --script-dir `"$programDataScriptDir`" --toolbar" -ForegroundColor Cyan
+        }
+    }
+    $ctsHead = if (Test-Path -LiteralPath $ctsExe) { [System.IO.File]::ReadAllBytes($ctsExe) | Select-Object -First 2 } else { @() }
+    if (-not ($ctsHead.Count -eq 2 -and $ctsHead[0] -eq 0x4D -and $ctsHead[1] -eq 0x5A)) {
+        Write-Host "[!] $ctsExe is not the program (a Git LFS pointer the download did not replace); the menu is not installed. Re-run the installer." -ForegroundColor Yellow
+        $menuTargets = @()
+    }
+    foreach ($menuTarget in $menuTargets) {
+        $menuArgs = @("install", "--script-dir", "$menuTarget", "--toolbar")
+        if ($dryRun) {
+            $menuArgs += "--check"
+        }
+        & $ctsExe @menuArgs
+        if ($LASTEXITCODE -ne 0 -and -not $dryRun) {
+            Write-Host "[!] The menu was not installed completely. Run it again once CODESYS is closed:" -ForegroundColor Yellow
+            Write-Host "    & `"$ctsExe`" install --script-dir `"$menuTarget`" --toolbar" -ForegroundColor Yellow
+        }
     }
 }
 
 Write-Host "`n--- Setup Finished! ---" -ForegroundColor Cyan
 Write-Host ("  Program : " + $bodyPath)
 Write-Host ("  Menu    : " + $menuDir)
-Write-Host  "  CLI     : cts / cds-text-sync"
+Write-Host ("  CLI     : " + (Join-Path $bodyPath "products\codesys-agent\dist\cts.exe"))
 if ($dryRun) {
     Write-Host "`n  DRY RUN: none of the above was actually written." -ForegroundColor Magenta
 } else {
-    Write-Host "`n  Check anytime with:  cts where" -ForegroundColor DarkGray
+    Write-Host "`n  If added, new terminals pick up the updated user PATH. Check anytime with:  cts install --check" -ForegroundColor DarkGray
+    Write-Host "`n--- Next, in CODESYS ---" -ForegroundColor Cyan
+    Write-Host "  1. Use the cds-text-sync toolbar button (blue arrows around CTS) to start the agent and open the quick window."
+    Write-Host "     It does the same as Tools > Scripting > Scripts > C > cds-text-sync."
+    Write-Host "     If CODESYS was open during setup, close it and run: cts install --toolbar"
+    Write-Host "  2. Press Alt+Q, then 8 and 1: Enter takes the suggested sync folder."
+    Write-Host "  3. Alt+Q again: on a new folder, 2 (IDE -> Disk) writes the project to disk."
 }

@@ -1,0 +1,44 @@
+{
+  "deny": [],
+  "layout": "project-view",
+  "profile": "default",
+  "project_id": "374e2afd-b7d6-4447-8bd8-ce8e480d827d",
+  "projections": {
+    "dut_st": {
+      "enabled": true,
+      "format": "st",
+      "import_safe": false,
+      "kind": "dut"
+    },
+    "gvl_st": {
+      "enabled": true,
+      "format": "st",
+      "import_safe": false,
+      "kind": "gvl"
+    },
+    "pou_child_st": {
+      "enabled": true,
+      "format": "st",
+      "import_safe": false,
+      "kind": "method"
+    },
+    "pou_st": {
+      "enabled": true,
+      "format": "st",
+      "import_safe": false,
+      "kind": "pou"
+    },
+    "textlist_csv": {
+      "enabled": true,
+      "format": "csv",
+      "import_safe": true,
+      "kind": "textlist"
+    }
+  },
+  "sync_mode": "xml_first",
+  "version": 2,
+  "view_root": null,
+  "xml_in_view_kinds": [
+    "visu"
+  ]
+}

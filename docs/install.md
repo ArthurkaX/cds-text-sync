@@ -2,24 +2,14 @@
 
 ## Requirements
 
-- **Minimum Tested Target**: CODESYS V3.5 SP10+ (earlier versions might support
-  scripting but lack essential API features for reliable text syncing).
-- **Recommended Target**: CODESYS V3.5 SP13 and newer.
-- **Python 3.11+ Required**: CODESYS/IronPython is used only as a thin IDE bridge.
-  Export, compare, import, options, diagnostics, and the CLI use the external
-  Python 3 engine, so `python` must be available from the Windows command line.
-
-Check before running the scripts:
-
-```powershell
-python --version
-```
-
-If this command is not found or reports a version below 3.11, install Python
-3.11 or newer and configure your environment so `python` points to it. The quick
-PowerShell installer also checks for
-`python` up front and can offer a manual download page or a `winget`
-installation path if it is missing.
+- **CODESYS**: V3.5 SP16 or newer. Tested on SP16 Patch 9
+  (x86) and SP22 (x64); older versions are not tested.
+- **Windows 10 or 11**: `cts.exe` and the in-IDE agent are .NET Framework 4.8
+  programs, which Windows 10 1903 and later include.
+- **Git Required**: the sync folder is a Git repository; setting it (Alt+Q, `8`,
+  `1`, or `cts set-sync-folder`) runs `git init` there, and branches, commits and the sync base are Git's. The
+  quick installer checks for `git` and can install it with `winget`. A team's
+  repository keeps the project file in Git LFS, which Git for Windows includes.
 
 ---
 
@@ -29,16 +19,19 @@ Two folders, and it is worth knowing which is which:
 
 - **Program folder** — the tool itself. Default `%LOCALAPPDATA%\cds-text-sync\`,
   or any folder you choose, including a Git clone.
-- **ScriptDir** — the CODESYS scripting folder. It receives **only the generated
-  `Project_*.py` menu scripts**, nothing else.
+- **ScriptDir** — the CODESYS scripting folder. It receives **only the
+  `cds-text-sync` folder**: the menu entry `cds-text-sync.py` and, in its
+  `agent` folder, the in-IDE agent with a copy of `cts.exe`.
+- **Script Commands** — the sibling folder CODESYS uses for toolbar commands.
+  The installer puts `cds-text-sync.py`, its icon and `config.json` entry there.
 
 The split is not cosmetic. CODESYS scans its ScriptDir recursively and lists
-every `.py` it finds, so installing the whole tool there would put hundreds of
-internal modules into **Tools > Scripting** alongside the `Project_*` commands
-you actually use.
+every `.py` it finds, so installing the whole tool there would put the
+program's own scripts into **Tools > Scripting** alongside the `cds-text-sync`
+entry you actually use.
 Keeping the program out of ScriptDir is what keeps that menu clean.
 
-Run `cts where` at any time to see both paths and whether the menu is in order.
+Run `cts install --check` at any time to see whether the menu and the agent are up to date.
 
 ---
 
@@ -51,16 +44,18 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 ```
 
 > [!NOTE]
-> - **No Git required**: This script downloads clean zip archives from GitHub,
->   not the full repository with history.
-> - **Choose version**: You can select the latest development version, a stable
->   release, or a test / pre-release build from the interactive menu.
+> - **Downloads zip archives**: the tool comes as a clean zip from GitHub, not
+>   a clone with history. Git is still needed for the sync folder itself.
+> - **Choose version**: the interactive menu offers the latest `main`, a stable
+>   release, or a test / pre-release build. A branch shared for testing is
+>   installed by name instead (`CTS_BRANCH`, see the
+>   [Quick Setup Guide](../irm/setup.md#a-test-branch)).
 > - **Prints a map**: The installer ends by printing the program folder, the
 >   menu folder, and the CLI command, so you never have to guess where things
 >   went.
 > - **Migrates older installs**: If a previous version sits inside ScriptDir,
->   the installer moves it out and generates the menu scripts in its place.
->   Your own files under `profiles/` are carried across.
+>   the installer moves it out and writes the menu entry in its place.
+>   Your own files in it (`projects.json`) are carried across.
 
 > [!TIP]
 > For a detailed explanation of what the script does, check the
@@ -71,26 +66,35 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 ## Method 2: Manual Copy
 
 Extract the archive **anywhere except a CODESYS ScriptDir** — for example
-`%LOCALAPPDATA%\cds-text-sync\` — then, from that folder:
+`%LOCALAPPDATA%\cds-text-sync\` — then run the bundled CLI from that folder:
 
 ```powershell
-python -m pip install -e .
-cts install-menu
+products\codesys-agent\dist\cts.exe install --toolbar
 ```
 
-`cts install-menu` finds every CODESYS ScriptDir on the machine and writes the
-`Project_*.py` menu scripts into it. If `pip` was skipped or failed, the same
-generator runs directly:
+To use `cts` from any terminal, add `<program-folder>\products\codesys-agent\dist` to the user PATH:
 
 ```powershell
-python -m cds_text_sync.install_menu
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";<program-folder>\products\codesys-agent\dist", "User")
 ```
 
-- **Note on `cds_bootstrap.py`**: This is a support loader used by the public
-  `Project_*.py` entrypoints. Do not run it directly.
+`cts install` writes the menu entry into the first CODESYS ScriptDir it finds,
+with the in-IDE agent and `cts.exe` beside it, taken from beside the `cts.exe`
+that runs it: the prebuilt files in `products/codesys-agent/dist` (kept in Git
+LFS; the quick installer fetches them when the zip holds only their LFS
+pointers, and a clone needs `git lfs pull`), or in a build tree the agent built
+with that `cts.exe`. Once that folder is on PATH, `cts install` does the same.
+CODESYS must be closed while the agent changes.
 
-These are the ScriptDir locations the generator knows about; it writes into the
-ones that exist:
+`cts install` also cleans up after an older install in the same ScriptDir:
+generated stubs under other names, in the menu folder or in `<ScriptDir>`
+itself, and Python caches. It removes only files it recognises as its own
+(stubs by their generated marker, and the `Project_compare.py`,
+`Project_parameters.py` and `Project_perf_test.py` scripts releases before 3.0
+wrote whole), reports each one, names anything else it
+leaves in place, and `--check` shows the same list without changing anything.
+
+These are the ScriptDir locations it knows about:
 
 - **Standard (User Profile)**: `C:\Users\<YourUsername>\AppData\Local\CODESYS\ScriptDir\`
 - **Legacy CODESYS (< ~3.5.17)**: `C:\ProgramData\CODESYS\ScriptDir\` — older
@@ -99,8 +103,8 @@ ones that exist:
 - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
 - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
 
-Pass `--script-dir <path>` to target one explicitly, or `--all-script-dirs` to
-serve several CODESYS installations from a single program folder.
+Pass `--script-dir <path>` to target one explicitly, or `--all` to
+serve every CODESYS installation from a single program folder.
 
 > [!TIP]
 > Using a different CODESYS version or fork? See the
@@ -117,67 +121,52 @@ ScriptDir**:
 ```powershell
 git clone https://github.com/ArthurkaX/cds-text-sync C:\Tools\cds-text-sync
 cd C:\Tools\cds-text-sync
-python -m pip install -e .
-python -m cds_text_sync.install_menu
+git lfs pull
+products\codesys-agent\dist\cts.exe install --toolbar
 ```
 
 Nothing has to be deleted from the clone, and nothing is copied into ScriptDir
-except the generated menu scripts. Updating afterwards is just:
+except the menu entry and the agent. Updating afterwards is:
 
 ```powershell
 git pull
+cts install
 ```
 
-The menu scripts point at the clone, so a pull takes effect immediately. Re-run
-`cts install-menu` only if a release adds a new `Project_*` command; `cts where`
-reports when the menu and the program folder have drifted apart.
+`cts install --check` reports when the installed agent and the clone have
+drifted apart.
 
 ---
 
-## Install the CLI
+## Use the CLI
 
-`cts` is installed with Python packaging, from the program folder:
-
-```powershell
-python -m pip install -e <program-folder>
-cts --help
-```
-
-This is what `cts`, the reverse-pipe daemon and [`cts visu`](visu.md) need. The
-classic `Project_*.py` menu workflow works without it — but `cts install-menu`
-is the easiest way to create those menu scripts, so installing the CLI first is
-the smoother path.
-
----
+The bundled CLI is `products\codesys-agent\dist\cts.exe`. Add its folder to the user PATH to use `cts` from any terminal, as shown in the manual installation steps above.
 
 ## After installing
 
-1. **Access in CODESYS**: the commands appear under
-   **Tools > Scripting > Scripts > P**, and nothing else from this tool appears
+1. **Access in CODESYS**: the entry appears under
+   **Tools > Scripting > Scripts > C > cds-text-sync**, and nothing else from this tool appears
    anywhere else in that menu.
-2. **Add to Toolbar (Recommended)**: go to **Tools > Customize > Toolbars** and
-   add the generated commands from **ScriptEngine Commands > P**. The commands
-   are grouped under `P` because their names start with `Project_`.
+2. **Toolbar button**: the `cds-text-sync` button
+   (<img src="../img/cts-button.png" alt="CTS two-arrow button" height="20">) starts the agent
+   and opens the quick window, just like **Tools > Scripting > Scripts > C >
+   cds-text-sync**. Setup adds it to the Standard toolbar when CODESYS is
+   closed. If CODESYS was open, close it and run `cts install --toolbar`.
+   To add it yourself, use **Tools > Customize > Toolbars > Add Command >
+   ScriptEngine Commands > cds-text-sync**.
 
-   <details>
-   <summary><strong>▶ Click to open the animation: adding Project_* scripts to a toolbar</strong></summary>
+   The toolbar button is a shortcut to the same menu entry.
 
-   <p><img src="../img/add_button.gif"
-      alt="Adding the Project_* scripts to a CODESYS toolbar"
-      width="100%"></p>
-   </details>
-
-   The buttons are the short way in; the menu path above is the long way. Both
-   stay available.
-
-3. **Link a project to disk**: open the project in CODESYS, run
-   `Project_directory.py` and take the suggested `<project>-cts` folder beside
-   the `.project` file (any other command offers the same dialog if you start
-   there instead), and then run
-   `Project_export.py`. All supported `.st` and `.csv` text exports are enabled
-   by default; use `Project_options.py` only for advanced changes. See
+3. **Link a project to disk**: open the project in CODESYS and run
+   `cds-text-sync.py` to start the in-IDE agent. Press Alt+Q, then `8` and `1`,
+   and take the suggested folder: the clone the `.project` lies in, else
+   `<project>-cts` beside it (or `cts set-sync-folder`); the folder becomes a git repository right away.
+   On a project someone else set up, clone its repository first; Alt+Q then opens on this row and
+   asks for the clone.
+   Then press `2` in the quick window, or run `cts export`. All supported `.st` and `.csv` text exports are enabled
+   by default; use the quick window's Settings page for changes. See
    [Script overview](scripts.md) and
-   [Recommended workflow](project-layout.md#recommended-workflow-with-git-lfs).
+   [Recommended workflow](../readMe.md#2-git-workflows).
 
 ---
 
@@ -185,30 +174,21 @@ the smoother path.
 
 1. **Check stable releases**: first check whether there is a newer stable release
    at [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases).
-2. **Re-run the installer**, or replace the contents of the program folder and
-   run `cts install-menu` again.
-   - **Important**: active scripts held in CODESYS memory may become **stale**
-     after replacing files. Restart CODESYS or reload your project so the Script
-     Engine picks up the latest modules.
-3. **Clean extract**: run `Project_export.py` to refresh `.dump/IDE.xml`, the
-   configured view root, and manifest data with the latest script logic.
-4. **Commit changes**: review and commit the changes in Git.
+2. **Close CODESYS and re-run the installer**, or replace the contents of the
+   program folder and run `cts install` again. CODESYS holds the agent while it
+   runs: `cts install` names a CODESYS that holds it instead of writing half an
+   install, and `cts install --check` says whether anything is out of date.
+3. **Coming from cds-text-sync 3.x**: the old sync folder is not taken over
+   (`cts set-sync-folder` refuses a folder with `.dump/manifest.json`). Choose
+   a new folder with `cts set-sync-folder`, then `cts export` and `cts commit`.
 
 > **Upgrading from a version installed inside ScriptDir**: older releases put the
 > whole tool in ScriptDir. Those installs keep working untouched, so there is no
 > rush — but the IDE menu stays cluttered until you migrate. Re-running the
 > quick installer does the move for you. Doing it by hand is the same two steps
 > as a fresh install: move the folder out of ScriptDir, then run
-> `cts install-menu` from its new location. Toolbar buttons survive either way,
-> because the menu scripts keep their names.
->
-> **Important when upgrading from pre-2.0 versions**: The current workflow uses
-> the XML-first layout and requires Python 3. Run `Project_options.py` after
-> upgrading, choose your layout/profile/projections, then run a clean
-> `Project_export.py` before reviewing Git changes.
->
-> **Tip**: A clean extract after upgrading ensures the exported XML views,
-> projection files, and manifest data match the current engine behavior.
+> `cts install` from its new location. Toolbar buttons survive either way,
+> because the menu entry keeps its name.
 >
 > **Rollback**: If you encounter issues with a new version, see
 > [Releases & rollback](releases.md) for how to safely revert to a previous

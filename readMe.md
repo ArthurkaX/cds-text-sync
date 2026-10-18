@@ -1,3 +1,12 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/cts-logo-dark.png">
+    <img src="img/cts-logo.png" alt="CTS cds-text-sync" width="480">
+  </picture>
+</p>
+
+<p align="center"><b>Your CODESYS project as text: Git, editors and AI agents work on it, the IDE stays in sync.</b></p>
+
 # cds-text-sync
 
 [![Release](https://img.shields.io/github/v/release/ArthurkaX/cds-text-sync?include_prereleases&sort=semver)](https://github.com/ArthurkaX/cds-text-sync/releases)
@@ -11,91 +20,116 @@ This is an independent MIT-licensed tool, not an official CODESYS product.
 
 ## 1. Quick start
 
-Requirements: Windows, CODESYS V3.5 SP10+ (SP13+ recommended), and Python 3.11+.
+Requirements: Windows 10 or 11, CODESYS V3.5 SP16 or newer
+(tested on SP16 Patch 9 x86 and SP22 x64), and Git (the sync
+folder is a Git repository; Git for Windows includes the Git LFS a team's
+project file needs). `cts` and the in-IDE agent are .NET Framework 4.8
+programs, which Windows 10 1903 and later include.
 
-Install the tool and CODESYS menu scripts:
+Install the tool and its CODESYS menu entry:
 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
-For each project, the important path is:
+> [!IMPORTANT]
+> **4.0 beta.** cds-text-sync is now `cts.exe` and an agent inside CODESYS;
+> the `Project_*.py` scripts are gone. A 3.x sync folder is not taken over,
+> and the last 3.x release, 3.4.1, stays one choice away in the installer's
+> menu. [Upgrading to 4.0](docs/upgrade-4.md) lists what changes, what to
+> delete and how to go back.
 
-1. Open the project in CODESYS and run **`Project_directory.py`**. Press Enter to
-   take the suggested `<project>-cts` folder beside the `.project` file, or pick
-   your own.
-2. Run **`Project_export.py`**. All supported `.st` and `.csv` text exports are
-   enabled by default.
-3. Edit `project-view/` and commit the changes to Git.
-4. Run **`Project_import.py`** to apply disk changes back to CODESYS.
+The `cds-text-sync` toolbar button
+(<img src="img/cts-button.png" alt="CTS two-arrow button" height="20">) starts the agent and opens the quick
+window, just like **Tools > Scripting > Scripts > C > cds-text-sync**. The
+installer places its script and icon in CODESYS's sibling **Script Commands**
+folder and adds the button to Standard. If CODESYS was open during setup, close
+it and run `cts install --toolbar`. For each project,
+the important path is:
 
-That is enough for the first export/import cycle. `Project_options.py` is only
-needed for advanced settings such as sync mode, layout, profile or projection
-selection; the same settings can be read and changed offline with
-`cts config show` / `cts config set`. See the
-[installation guide](docs/install.md) if the scripts do not appear under
+1. Open the project in CODESYS and start the agent once each time CODESYS
+   starts: the toolbar button or **Tools > Scripting > Scripts > C >
+   cds-text-sync** (or open the project with `cts project open --launch`).
+   Nothing starts it on its own. Until it runs, Alt+Q does
+   nothing and `cts` finds no IDE.
+2. Press **Alt+Q**, then `8` Settings and `1` Sync folder. Enter takes the
+   suggested folder (the clone the `.project` lies in, else `<project>-cts`
+   beside it), or type your own (`cts set-sync-folder PATH` does the same).
+   The project keeps only an id; each machine remembers its own folder for it,
+   so a copy of the `.project` opened anywhere finds it again. That folder becomes a Git
+   repository root on the spot: `git init` when it has none, ignore rules for
+   generated files, and a first commit. Later the same row opens a folder
+   dialog to move it; `8` also changes the key if Alt+Q is taken.
+
+   Joining a project someone else set up: get its repository the way your
+   team shares repositories (`git clone`), open the `.project` you were given
+   (or the one the repository holds) and press Alt+Q. The window opens on this
+   row and asks where your clone is; pick it once. A folder of another project
+   is refused. The `.project` in the repository is the owner's (the machine that
+   set the project up): only `cts commit --publish` there replaces it, and your
+   commits carry the `.st` files, never a `.project`.
+3. In the quick window, on a new folder press `2` (IDE -> Disk) to write the
+   project to `project-view/`. The window shows the branch and what changed on
+   each side.
+4. Edit `project-view/`, then `1` (Disk -> IDE) carries the edits into the
+   IDE, `3` compares (the disk or a branch), `5` commits, and `7` opens the
+   folder in your git program (GitHub Desktop, VS Code, Zed: your choice in
+   Settings) for merging branches and the history. From a shell the same steps are
+   `cts export`, `cts import`, `cts compare`, `cts commit` and `cts open`.
+
+<p><img src="img/quick-window.png"
+   alt="The quick window: branch, sync folder and what changed on each side, then the numbered commands"
+   width="420"></p>
+
+`cts compare` shows what differs between disk, the IDE and the last sync before
+either; `3` in the quick window opens the same difference in your git program:
+
+<p><img src="img/compare-github-desktop.png"
+   alt="Compare: the IDE's changes to F_Scale.st against the disk, shown in GitHub Desktop"
+   width="100%"></p>
+
+The quick window's Settings page covers the sync folder, the program
+`7` opens, the quick key, this PC's role and the permissions; the files on disk
+have no settings (one `.st` per POU, `.csv` for text lists). See the
+[installation guide](docs/install.md) if the entry does not appear under
 **Tools > Scripting**.
-
-New here? **[Onboarding: your first hour](docs/onboarding.md)** walks the same
-path with the detail this list leaves out — where the commands live in the menu,
-how to put the ones you repeat on a **quick-access toolbar button**, and the one
-choice that is fixed once you export.
 
 ## 2. Git workflows
 
-Choose the workflow on an **empty sync folder before the first export**. The
-mode is fixed for that folder; changing it later means creating a new empty
-sync folder and exporting again.
+`project-view/` maps one-to-one onto the project: a POU, GVL, DUT or interface
+is one `.st` file (methods, properties and actions inside), a text list is a
+`.csv`, and devices, tasks, visualizations and other non-ST structure stay
+native XML. `cts export` gives you both what Git can review and what CODESYS
+can reimport; `cts import` carries a changed, new, renamed or removed file
+back object by object.
 
-### I only want readable `.st` files
-
-Choose **text-first** in `Project_options.py`.
-
-- `.st` is the source of truth for Structured Text edits.
-- Structural XML is kept in the tool-owned `.dump/xml/` mirror instead of the
-  normal Git view.
-- This is the convenient mode for external editors, code review and LLM work.
-- XML objects that must stay hand-editable, such as visualizations, can still
-  be kept in the view.
-
-### I need full control, including XML
-
-Keep the default **XML-first** mode.
-
-- Native XML in `project-view/` is the canonical round-trip format.
-- Readable `.st` and `.csv` projections are generated beside it; all supported
-  text projections are enabled by default.
-- This mode is the right choice when Git must show and control devices, tasks,
-  visualizations and other non-ST project structure as well.
-
-More detail: [sync modes](docs/sync-modes.md), [project layout](docs/project-layout.md),
-and [team workflow](docs/workflow.md).
+The configured view root (`project-view/` by default) is the editable, Git
+tracked tree; cts keeps its temporary files under `.git/cts/`, outside it. Keep
+`project-view/` and `cds-text-sync.json` in commits. The sync base
+(`refs/cts/base`) records what disk and IDE last agreed on, so `cts` can tell
+which side changed. For a team, work on feature branches and have the project
+owner review changes before merging to `main`; [Working as a team](docs/team.md)
+walks through the owner's and a colleague's steps.
 
 ## 3. I want to find errors in my project
 
 Export the project first, then run the analyzer against its `.st` files. It is
-offline: no CODESYS window, daemon or PLC connection is required.
+offline: no CODESYS window or PLC connection is required.
 
 ```powershell
 cts analyze --workspace C:\path\to\sync-folder
-cts analyze --workspace C:\path\to\sync-folder --format sarif  # CI/code scanning
+cts analyze --workspace C:\path\to\sync-folder --sarif findings.sarif  # CI/code scanning
 cts analyze rules
 cts analyze explain CTS0007  # for example, indentation
 ```
 
-You can open the desktop findings view with **`Project_analyze_ui.py`**. Safe
-autofixes are previewed before they are applied, including structural
-indentation fixes where available.
+In the IDE, quick window More, `5` Static analysis opens the findings window.
 
-<details>
-<summary><strong>▶ Click to open the animation: Static Analyzer findings UI</strong></summary>
-
-<p><img src="img/static_analyzer_demo.gif"
-   alt="Static Analyzer findings UI"
+<p><img src="img/analyze-window.png"
+   alt="The findings window: findings by severity, the marked line and the rule's documentation"
    width="100%"></p>
-</details>
 
-Details: [static analyzer](products/cds-static-analyzer/README.md).
+Details: [static analysis](docs/analyze.md).
 
 ### One command for "is this shippable?"
 
@@ -109,6 +143,11 @@ cts --pretty verify --sync-folder C:\path\to\sync-folder
 cts verify --with-test      # also run the .test/ plans on the PLC
 ```
 
+`cts test` runs ST tests in simulation: a second device in simulation holds a
+TestApp whose task tests the shared POUs, counts into a GVL `TestResult` and
+logs each test to the runtime's log; every run saves that log as a file
+(`cts guide tests`). The production application may stay online meanwhile.
+
 A check that cannot run (no IDE open) is reported as `skipped` and marks the
 run incomplete — it never turns into a failure. Exit codes: `0` pass, `1` real
 problems, `2` could not start, `3` incomplete with `--incomplete error`.
@@ -116,143 +155,139 @@ problems, `2` could not start, `3` incomplete with `--incomplete error`.
 <details>
 <summary><strong>▶ Click to open: Quick ST formatting inside CODESYS</strong></summary>
 
-Use **`Project_fmt.py`** from **Tools > Scripting** when one Structured Text
-object looks untidy and opening the full Analyzer would be unnecessary. It
-aligns variable declarations and repairs structural code indentation directly
-in the open IDE object.
+When a Structured Text object looks untidy and opening the full Analyzer would
+be unnecessary, open the format window: Alt+Q, `0` (More), `1` Format ST, or
+quick window More, `1` Format ST. It aligns variable
+declarations and repairs structural code indentation in the open IDE objects.
 
-1. Select a POU, GVL, or DUT in the project tree.
-2. Run **`Project_fmt.py`** from **Tools > Scripting**.
-3. Filter the object list or select a block. The list shows which blocks need
-   formatting.
-4. Open one block, or choose **Review All** to review blocks from the top.
-5. Compare the **Before** and **After** panes. Changed characters are
-   highlighted, and **Previous change** / **Next change** navigate the preview.
-6. Choose **Apply**, **Skip**, or **Stop**. Use the normal CODESYS Undo command
-   if you need to revert an applied change.
+1. The list shows every Structured Text object of the project, those the
+   formatter would change marked with their line count; the filter box narrows
+   it.
+2. The object chosen shows side by side, as the IDE has it and formatted, the
+   changed lines marked on both sides; **Previous change** / **Next change**
+   (Shift+F8 / F8) move between them.
+3. **Apply** writes that object and goes on to the next one to fix; **Skip**
+   goes on without writing; **Reload** (F5) reads the IDE again. An object
+   edited since the list was read is refused rather than overwritten. Use the
+   normal CODESYS Undo command to revert an applied change.
 
-<p><img src="img/fmt_select_object.png"
-   alt="Project_fmt object selection and formatting status list"
-   width="100%"></p>
+The same formatting runs from the shell: `cts fmt` lists what it would change,
+`cts fmt NAME --write` applies it.
 
-<p><img src="img/fmt_preview.png"
-   alt="Project_fmt side-by-side formatting preview"
-   width="100%"></p>
-
-<p><img src="img/fmt_review_all.png"
-   alt="Project_fmt Review All wizard preview"
-   width="100%"></p>
-
-More details: [Project_fmt script guide](docs/scripts.md#3-project_fmtpy-quick-st-formatting).
+More details: [Script overview](docs/scripts.md#3-more-page-1-format-st-quick-st-formatting).
 </details>
 
 <details>
-<summary><strong>▶ Click to open the animation: FSM transition map</strong></summary>
+<summary><strong>▶ Click to open: FSM transition map</strong></summary>
 
 If your code is built around state machines and you often have to read one
-quickly — an unfamiliar `CASE`, or your own from six months ago — run
-**`Project_fsm.py`** from **Tools > Scripting**, or `cts fsm ui` from the shell.
-It reads the exported `.st` files offline and draws each machine as a GRAFCET
-diagram: numbered steps, one bar per transition with its receptivity beside it,
-and a step with several ways out fanned out as a divergence. Click a step or a
-transition row to highlight it; right-click either one to read the Structured
-Text it was drawn from.
+quickly — an unfamiliar `CASE`, or your own from six months ago — open the quick
+window and choose More, `4` FSM map (Alt+Q, `0`, `4`). The agent's window lists the machines in the project's Structured Text
+(unsaved edits included) and draws the one chosen as a GRAFCET diagram:
+numbered steps, one bar per transition with its receptivity beside it, and a
+step with several ways out fanned out as a divergence. Click a step or a
+transition to read the Structured Text behind it. From the shell, `cts fsm`
+lists the same machines, `cts fsm --disk` reads them from the exported files.
 
-<p><img src="img/fsm_demo.gif"
-   alt="FSM transition map window"
-   width="100%"></p>
-
-More details: [Project_fsm.py script guide](docs/scripts.md#4-project_fsmpy-fsm-transition-map)
-and [`cts fsm`](products/cds-text-sync/src/cds_text_sync/CLI.md#fsm-transition-maps-cts-fsm).
+More details: [Script overview](docs/scripts.md#4-more-page-4-fsm-map-fsm-transition-map)
+and `cts fsm --help`.
 </details>
 
 ## 4. I want an LLM agent to control the project
 
-Start **`Project_daemon.py`** from CODESYS Tools > Scripting. It exposes the
+Start the agent in CODESYS (the toolbar button or **Tools > Scripting >
+Scripts > C > cds-text-sync**). It opens the quick window and exposes the
 currently open project to the `cts` CLI. An agent can then export, inspect,
 change, compare, import and build without clicking through the IDE:
 
 ```powershell
-cts status                 # check daemon, project and sync folder
+cts status                 # check the project, PLC and sync folder
 cts set-sync-folder C:\path\to\sync --save  # configure it through the agent
-cts set-sync-folder --save # or automatically use the saved project directory
+cts set-sync-folder --save # or the suggested folder (the clone the .project lies in)
 cts export                 # CODESYS -> project-view/
 cts compare                # inspect IDE vs disk
 cts import                 # project-view/ -> CODESYS
 cts build                  # build the active application
-cts analyze --workspace .  # offline check; daemon is not required
+cts analyze --workspace .  # offline check; no IDE required
 cts verify                 # every applicable check, one verdict, one exit code
-cts config show            # effective settings and where each value came from
+cts config show            # the quick window key and where it comes from
 ```
 
-<details>
-<summary><strong>▶ Click to open the animation: using the cts CLI</strong></summary>
+An LLM agent (left) working on the project open in CODESYS (right) through
+`cts`: it edits a function block, adds a function, draws an HMI screen, builds,
+downloads to the simulation, reads and writes live values, runs the analysis and
+commits:
 
-<p><img src="img/cli_demo.gif"
-   alt="Using the cts command-line interface"
+<p><img src="img/agent_demo.gif"
+   alt="An LLM agent driving the CODESYS IDE through cts: edit, build, visualization, simulation, live values, analysis, commit"
    width="100%"></p>
-</details>
 
 ### Several IDEs at once: point the agent at one project
 
-Each running CODESYS IDE has its own daemon window. The top of that window
-shows a target line, `IDE: ide-<pid> · <project>`, with a **Copy** button.
-Copy puts a ready-made line on the clipboard:
+Each running CODESYS IDE is addressed as `ide-<pid>`. In that IDE, Alt+Q, `0`
+(More), then `3` copies a ready line:
 
 ```
 !cts --target ide-6128 --expect-project example_lib --help
 ```
 
-Paste it into the agent's chat and the agent learns in one step which IDE and
-which project it should work with. Every later command carries the same
+Paste it into the agent's chat and it learns in one step which IDE and which project it should work with. Every later command carries the same
 `--target` and `--expect-project`, so it cannot land in the wrong IDE, and it
 refuses to write if someone has switched the IDE to another project. The
-`--help` at the end prints the command list together with the state of that
-instance. This is what lets two agents work on two projects in parallel, for
+`--help` at the end prints the command list and where to start (`status`
+with the same two flags shows that IDE's state). This is what lets two agents work on two projects in parallel, for
 example an application and the library it uses. With more than one IDE open,
-`cts` without `--target` refuses and prints the available targets.
+`cts` without `--target` goes to the IDE whose project's sync folder holds the
+current folder (or the `--sync-folder` given); when none does, it refuses and
+prints the available targets with their sync folders.
 
 A library project has no application to compile. `cts build` checks it, and
 `cts build --install` does what the IDE button "Save project and install into
 library repository" does, so an agent can develop a library end to end.
 
 The CLI also exposes project-tree operations, PLC interaction, tests and
-diagnostics. Read the [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md).
+diagnostics. Run `cts --help`, `cts <command> --help`, and `cts guide` for the
+reference matching the installed version.
 
 ### Give an LLM agent the full picture of the project
 
 An agent working on the project blind — with no visibility into its own POUs
 or the library functions it calls — has to guess signatures or grep raw
 sources. `cts docs` reads the exported project and the libraries it actually
-references, and writes compact per-symbol markdown so the agent knows every
-POU's kind, interface and doc comment, and every referenced library
-function's signature, without ever opening the raw CODESYS sources:
+references, offline, and writes what the agent needs to know without opening
+the raw CODESYS sources:
 
 ```powershell
 cts docs --workspace C:\path\to\sync
-cts docs --daemon --libraries "C:\ProgramData\CODESYS"
+cts docs --libraries "C:\ProgramData\CODESYS"
+cts docs --check          # 0 fresh, 1 stale, 2 no bundle
 ```
 
-Output goes to `.cts-docs/`: `project.md` and `libraries/*.md` (one section
-per POU — kind, name, doc comment, interface table), an `index.md` summary
-with a **Missing LibDoc** and **Not referenced** section, and machine-readable
-`symbols.jsonl` / `manifest.json`. Only libraries the Library Manager actually
-references are documented; nothing outside the project's own dependencies is
-pulled in. `.cts-docs/` is generated, so export/import/compare ignore it and
-the recommended `.gitignore` entries cover it; `--output` writes elsewhere.
+Output goes to `.cts-docs/`: `index.md` lists everything; `project/<Name>.md`
+is one card per object — kind, doc comment, interface, inherited members,
+its methods, properties and actions, what it calls, who calls it, the tasks
+that run it and the globals it reads and writes; `libraries/<Name>-<Version>.md`
+is one page per referenced library from its installed LibDoc (signature,
+description, example, interface). `symbols.jsonl` holds every symbol as one
+JSON line and `manifest.json` the counts and the missing LibDoc with the
+reason. Only libraries the Library Manager references are documented, and only
+in the referenced version. `.cts-docs/` is generated, so export/import/compare
+ignore it and the `.gitignore` written when the sync folder is chosen covers
+it; `--out` writes elsewhere.
 
-Details: [documentation bundle](products/cds-text-sync/src/cds_text_sync/CLI.md#documentation-bundle).
+Details: `cts docs --help`.
 
 ### Generate visualization screens from SVG
 
 An agent can create an SVG sketch as plain text, lint and preview it, compile it
-into a CODESYS visualization, and import the result through the same daemon:
+into a CODESYS visualization, and import the result through the in-IDE agent:
 
 ```powershell
 cts visu new --name Line1 --w 1024 --h 600 --out line1.svg
 cts visu lint --svg line1.svg --fix
 cts visu preview --svg line1.svg
-cts visu from-svg --svg line1.svg --create-screen --screen-name Line1
+cts visu from-svg --svg line1.svg --create-screen --screen-name Line1 `
+    --folder "PLC/Plc Logic/Application" --gvl VisuVars  # the folder as cts project-tree prints it
 cts import
 ```
 
@@ -263,16 +298,14 @@ Details: [HMI screens from SVG](docs/visu.md).
 ## Documentation
 
 - [Installation](docs/install.md)
-- [Sync modes](docs/sync-modes.md)
 - [Script overview](docs/scripts.md)
-- [Project layout](docs/project-layout.md)
-- [CLI reference](products/cds-text-sync/src/cds_text_sync/CLI.md)
-- [Static analyzer](products/cds-static-analyzer/README.md)
+- [Project layout](#2-git-workflows)
+- [Working as a team](docs/team.md)
+- [CLI and operating guides](products/codesys-agent/src/Cts.Agent.Core/Guides/)
+- [Static analysis](docs/analyze.md)
 - [HMI screens from SVG](docs/visu.md)
-- [Profiles](profiles/profiles.md)
-- [Operating guides](products/cds-cli/src/cds_cli/guides/) — also shipped in the
-  package, listed with `cts guide`
 - [Releases and rollback](docs/releases.md)
+- [Upgrading to 4.0 (beta)](docs/upgrade-4.md)
 
 Issues, friction reports and feature requests are welcome in the [GitHub issue
 tracker](https://github.com/ArthurkaX/cds-text-sync/issues). See the

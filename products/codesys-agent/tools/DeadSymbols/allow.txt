@@ -1,0 +1,58 @@
+# Members used where no C# source shows it: one name per line, as
+# DeadSymbols prints it, under a comment that says who uses it.
+
+# The menu entry cts install writes (InstallCommand.StubText) calls it.
+Cts.Agent.AgentHost.Menu()
+# Called by name from Menu through the AppDomain anchor: the agent running
+# may come from another build.
+Cts.Agent.AgentHost.ShowQuick()
+# Reflection: a newer agent's Start stops the one it replaces (dev.reload,
+# a redeploy); the two are different assemblies.
+Cts.Agent.AgentHost.Stop()
+# Reflection: bound with Delegate.CreateDelegate to an IDE event.
+Cts.Agent.IdeEvents.Sink.Handle(object, System.EventArgs)
+# Reflection: Ide.Handler wraps them, by name, in the IDE's login and
+# address resolution delegates (Connect.cs), and the credentials callback
+# (Credentials.cs).
+Cts.Agent.Ide.LoginPrompts.OnlineChange()
+Cts.Agent.Ide.LoginPrompts.Question(int, object, string[])
+Cts.Agent.Ide.LoginTargets.Found(object)
+Cts.Agent.LoginCredentials.Provide(object)
+# Test seams: state a test reads to see what the code did.
+Cts.Agent.VarCache.Count
+Cts.Agent.EventBus.SubscriberCount
+Cts.Agent.Session.IsClosed
+Cts.Agent.ModalDiff.Changed
+Cts.Agent.UiCall.Run<T>(System.Action<System.Action>, System.Func<T>, int, string)
+# COM vtable slots: FolderPicker declares them only to keep the methods it
+# calls at their place in the shell's interface table.
+Cts.Agent.FolderPicker.IFileOpenDialog.SetFileTypes()
+Cts.Agent.FolderPicker.IFileOpenDialog.SetFileTypeIndex()
+Cts.Agent.FolderPicker.IFileOpenDialog.GetFileTypeIndex()
+Cts.Agent.FolderPicker.IFileOpenDialog.Advise()
+Cts.Agent.FolderPicker.IFileOpenDialog.Unadvise()
+Cts.Agent.FolderPicker.IFileOpenDialog.GetOptions()
+Cts.Agent.FolderPicker.IFileOpenDialog.SetDefaultFolder()
+Cts.Agent.FolderPicker.IFileOpenDialog.GetFolder()
+Cts.Agent.FolderPicker.IFileOpenDialog.GetCurrentSelection()
+Cts.Agent.FolderPicker.IFileOpenDialog.SetFileName()
+Cts.Agent.FolderPicker.IFileOpenDialog.GetFileName()
+Cts.Agent.FolderPicker.IFileOpenDialog.SetOkButtonLabel()
+Cts.Agent.FolderPicker.IFileOpenDialog.SetFileNameLabel()
+Cts.Agent.FolderPicker.IShellItem.BindToHandler()
+Cts.Agent.FolderPicker.IShellItem.GetParent()
+# cts.exe's entry point: the runtime calls it.
+Cts.Cli.Program
+Cts.Cli.Program.Main(string[])
+# Tests inject agent replies without launching a pipe server.
+Cts.Cli.CliCall.CliCall(Cts.Cli.CliCommand, Cts.Cli.CliOptions, Cts.Cli.Hello, double, System.Func<string, System.Collections.Generic.IDictionary<string, object>, System.Collections.Generic.IDictionary<string, object>>)
+# WIN32_FIND_DATAW's layout: FindFirstFileW fills every field, cts reads the name.
+Cts.Cli.PipeHost.FindData.Attributes
+Cts.Cli.PipeHost.FindData.Created
+Cts.Cli.PipeHost.FindData.Accessed
+Cts.Cli.PipeHost.FindData.Written
+Cts.Cli.PipeHost.FindData.SizeHigh
+Cts.Cli.PipeHost.FindData.SizeLow
+Cts.Cli.PipeHost.FindData.Reserved0
+Cts.Cli.PipeHost.FindData.Reserved1
+Cts.Cli.PipeHost.FindData.AlternateName

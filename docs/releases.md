@@ -12,37 +12,32 @@ We maintain **stable, manually tested releases** for safe production use.
 
 ## Version policy
 
-- **Tags starting with `v`**: official stable releases (e.g. `v2.0.1`, `v1.7.5`)
-- **Main branch**: latest development code (may be unstable)
+- **Tags `vX.Y.Z`**: stable releases (e.g. `v3.4.1`)
+- **Tags with a suffix** (e.g. `v4.0.0-beta.1`): pre-releases, listed under
+  the installer's `T` entries
+- **`main` branch**: the quick installer's default; now the 4.0 beta
+  ([Upgrading to 4.0](upgrade-4.md))
 - **Testing**: all stable releases are manually tested before tagging
 
 ## Rolling back to a stable version
 
 If you encounter bugs in a newer version:
 
-**Option 1: Git rollback (recommended)**
+**Option 1: the quick installer (recommended)**
 
-```bash
-# Check available stable tags
-git tag
+Close CODESYS, clear a branch selection and run the installer from `main`; its
+menu lists the stable releases and installs the one chosen:
 
-# Rollback to specific stable version (e.g., v2.0.1)
-git checkout v2.0.1
-
-# Then update your CODESYS scripts with that version —
-# follow the installation steps to copy the files
+```powershell
+Remove-Item Env:CTS_BRANCH -ErrorAction SilentlyContinue
+irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
-**Option 2: Download from GitHub Releases**
+**Option 2: a Git clone of the program**
 
-1. Go to [GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases)
-2. Download the release archive for the stable version
-3. Extract it over your program folder, then run `cts install-menu` to refresh
-   the CODESYS menu scripts — see [Installation](install.md#method-2-manual-copy)
-
-> [!NOTE]
-> You can also use the [Quick PowerShell Setup](install.md#method-1-quick-powershell-setup-recommended),
-> which downloads stable releases as clean zip archives without requiring Git.
+Check out the release tag (`git tag` lists them, e.g. `git checkout v3.4.1`),
+then follow the installation steps of that version's own `docs/install.md`:
+older releases install differently from the current one.
 
 > [!NOTE]
 > Always back up your project before rolling back to a different version.

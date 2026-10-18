@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">True</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">b5430773-3042-47d6-a6d3-28650a6ce532</Single>
+        <Single Name="ParentGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name="Name" Type="string">GlobalTextList</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">63784cbb-9ba0-45e6-9d69-babf3f040511</Single>
+        <Array Name="EmbeddedTypeGuids" Type="System.Guid" />
+      </Single>
+      <Single Name="Object" Type="{63784cbb-9ba0-45e6-9d69-babf3f040511}" Method="IArchivable">
+        <List Name="TextList" Type="System.Collections.ArrayList" />
+        <List Name="Languages" Type="System.Collections.ArrayList" />
+        <Single Name="GuidInit" Type="System.Guid">79bbe63d-bc08-4a81-8363-25dc756f7b10</Single>
+        <Single Name="GuidReInit" Type="System.Guid">727a5406-977f-4be9-86cd-48820abe961b</Single>
+        <Single Name="GuidExitX" Type="System.Guid">8060131b-a1e3-4c26-804c-deaf6f015e4d</Single>
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+      <Array Name="Path" Type="string" />
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

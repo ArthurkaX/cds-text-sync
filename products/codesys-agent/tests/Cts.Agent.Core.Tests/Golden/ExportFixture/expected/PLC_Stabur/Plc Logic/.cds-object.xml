@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">1e5b3f5c-f0ee-4e98-9930-973ef33b8914</Single>
+        <Single Name="ParentGuid" Type="System.Guid">834deaef-7878-4ab2-8b30-988c5290a10e</Single>
+        <Single Name="Name" Type="string">Plc Logic</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">40b404f9-e5dc-42c6-907f-c89f4a517386</Single>
+        <Array Name="EmbeddedTypeGuids" Type="System.Guid" />
+      </Single>
+      <Single Name="Object" Type="{40b404f9-e5dc-42c6-907f-c89f4a517386}" Method="IArchivable" />
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">834deaef-7878-4ab2-8b30-988c5290a10e</Single>
+      <Array Name="Path" Type="string">
+        <Single Type="string">PLC_Stabur</Single>
+      </Array>
+      <Single Name="Index" Type="int">0</Single>
+    </Single>

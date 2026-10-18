@@ -1,0 +1,34 @@
+global options:
+  --target ID              IDE instance, e.g. ide-3684 (cts status names it; Alt+Q, 0, 3 copies a
+                           ready line). Env: CTS_TARGET
+  --expect-project NAME|PATH
+                           Refuse to run if the IDE has another project open
+  --output {short,json,text}
+                           short (default: one verdict line plus what to act on), json (the full
+                           machine payload) or text (human-readable dump)
+  --json                   Shortcut for --output json: the full machine payload, nothing else
+  --pretty, -p             Shortcut for --output text
+  --version                Print the version and exit
+  -h, --help               Show this help; `cts COMMAND --help` shows a command's own
+
+Output:
+  The first line is the verdict, `<ok|partial|error> <command> key=value ...`
+  (`ok compare unchanged=26 modified=0`, `error build errors=2`); below it is
+  what to act on, and the last line names the IDE and project it ran against
+  (`ide-3684 · Demo`). A failure names the cause and, when cts knows the way
+  out, ends with `Next: <command>`. Parse --json, a failure included.
+
+Rules:
+  - The folder's project-view/ is the source: edit files, then
+    cts import -> cts build -> cts download (only when deployment was asked).
+  - While the IDE is online with the PLC, project edits are refused:
+    cts disconnect first.
+  - The IDE finishes a command the CLI stopped waiting for. After a timeout
+    run cts status and cts compare before repeating anything.
+  - A modal dialog blocks the IDE: cts dialog reads it, cts dialog answer
+    answers it.
+  - With several IDEs open, run cts in the project's sync folder or pass the
+    same --target and --expect-project on every command:
+      cts --target ide-3684 --expect-project Demo status
+  - Read `cts guide` before the first task: the workflow, the command
+    reference and the topic guides (HMI screens: cts guide visu-svg).

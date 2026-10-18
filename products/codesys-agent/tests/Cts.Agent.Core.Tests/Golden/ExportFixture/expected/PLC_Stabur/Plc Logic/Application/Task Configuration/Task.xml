@@ -1,0 +1,58 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">eeb5b1df-33f4-4d15-998b-96eb75e493e1</Single>
+        <Single Name="ParentGuid" Type="System.Guid">94b0959f-05b2-4de8-a7db-6f3d9eb27923</Single>
+        <Single Name="Name" Type="string">Task</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">98a2708a-9b18-4f31-82ed-a1465b24fa2d</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{98a2708a-9b18-4f31-82ed-a1465b24fa2d}" Method="IArchivable">
+        <Single Name="AllowEmpty" Type="bool">False</Single>
+        <Single Name="Kindoftask" Type="{38cb1f21-e463-4240-9171-f74fb561a060}">Cyclic</Single>
+        <List Name="CustomParameters" Type="{3e5ba045-1fc5-40ec-9ce7-4b62ec8ccfdf}" />
+        <List Name="IntervalParameters" Type="{3e5ba045-1fc5-40ec-9ce7-4b62ec8ccfdf}" />
+        <List Name="EventParameters" Type="{3e5ba045-1fc5-40ec-9ce7-4b62ec8ccfdf}" />
+        <List Name="ExternalEventParameters" Type="{3e5ba045-1fc5-40ec-9ce7-4b62ec8ccfdf}" />
+        <List Name="FreewheelingParameters" Type="{3e5ba045-1fc5-40ec-9ce7-4b62ec8ccfdf}" />
+        <Single Name="Priority" Type="string">1</Single>
+        <Single Name="Watchdog" Type="{97c20fcf-2c50-4dbb-8faa-06ff4f1e4275}" Method="IArchivable">
+          <Single Name="Enabled" Type="bool">False</Single>
+          <Single Name="Time" Type="{68e48988-4399-454b-ae43-e500b779c242}" Method="IArchivable">
+            <Single Name="Time" Type="string" />
+            <Single Name="Unit" Type="string">ms</Single>
+          </Single>
+          <Single Name="Sensitivity" Type="string">1</Single>
+        </Single>
+        <Single Name="Interval" Type="{68e48988-4399-454b-ae43-e500b779c242}" Method="IArchivable">
+          <Single Name="Time" Type="string">200</Single>
+          <Single Name="Unit" Type="string">ms</Single>
+        </Single>
+        <Single Name="Event" Type="string" />
+        <Single Name="ExternalEvent" Type="string" />
+        <Single Name="TaskGuid" Type="System.Guid">b5219da9-f4de-41f1-a09a-40a2ea7e72f8</Single>
+        <Single Name="EventPOUGuid" Type="System.Guid">aeea2413-cf38-4bd7-81f0-dfbaaf6203be</Single>
+        <List Name="PouList" Type="{33f568bb-4a2c-48cb-a762-34cca3066d03}">
+          <Single Type="{f194d1ef-7376-42ce-a729-4a5485a97a46}" Method="IArchivable">
+            <Single Name="Name" Type="string">MAIN</Single>
+            <Single Name="Comment" Type="string" />
+          </Single>
+        </List>
+        <Single Name="Implicit" Type="bool">False</Single>
+        <Single Name="WithinSPSTimeSlicing" Type="bool">True</Single>
+        <Single Name="Core" Type="int">-1</Single>
+        <Single Name="Core2" Type="int">-2</Single>
+        <Single Name="TaskGroup" Type="string">IEC-Tasks</Single>
+        <Single Name="SynchTask" Type="string" />
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">94b0959f-05b2-4de8-a7db-6f3d9eb27923</Single>
+      <Array Name="Path" Type="string">
+        <Single Type="string">PLC_Stabur</Single>
+        <Single Type="string">PLC Logic</Single>
+        <Single Type="string">Application</Single>
+        <Single Type="string">Task Configuration</Single>
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

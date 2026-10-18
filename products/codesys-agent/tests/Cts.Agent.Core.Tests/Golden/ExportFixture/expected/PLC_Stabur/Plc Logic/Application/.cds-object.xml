@@ -1,0 +1,56 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">32d92914-bcb4-4227-b529-32fd90910eca</Single>
+        <Single Name="ParentGuid" Type="System.Guid">1e5b3f5c-f0ee-4e98-9930-973ef33b8914</Single>
+        <Single Name="Name" Type="string">Application</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties">
+          <Entry>
+            <Key>
+              <Single Type="System.Guid">24568a24-c491-472c-a21f-ee5d33859fab</Single>
+            </Key>
+            <Value>
+              <Single Type="{24568a24-c491-472c-a21f-ee5d33859fab}" Method="IArchivable">
+                <Single Name="MemoryReserveForOnlineChange" Type="int">0</Single>
+                <Single Name="ExcludeFromBuild" Type="bool">False</Single>
+                <Single Name="External" Type="bool">False</Single>
+                <Single Name="EnableSystemCall" Type="bool">False</Single>
+                <Single Name="CompilerDefines" Type="string">VISU_USEPROPERTYINFO</Single>
+                <Single Name="LinkAlways" Type="bool">False</Single>
+                <Array Name="Undefines" Type="string" />
+              </Single>
+            </Value>
+          </Entry>
+        </Dictionary>
+        <Single Name="TypeGuid" Type="System.Guid">639b491f-5557-464c-af91-1471bac9f549</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{639b491f-5557-464c-af91-1471bac9f549}" Method="IArchivable">
+        <Single Name="DynamicMemory" Type="int">-1</Single>
+        <Single Name="DownloadContent" Type="bool">True</Single>
+        <Single Name="StopParentAppsOnException" Type="bool">False</Single>
+        <Single Name="GuidNetVarGVL" Type="System.Guid">725d5008-a83d-40eb-ac12-3fcef151ce08</Single>
+        <Single Name="GuidMemSettings" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
+        <Null Name="BootAppSettings" />
+        <Single Name="OverrideTargetMemorySizes" Type="bool">False</Single>
+        <Single Name="TargetInputSize" Type="int">0</Single>
+        <Single Name="TargetOutputSize" Type="int">0</Single>
+        <Single Name="TargetMemoryize" Type="int">0</Single>
+        <Single Name="StaticSize" Type="int">0</Single>
+        <Single Name="AllowUserDefinedStaticSize" Type="bool">False</Single>
+        <Single Name="X509CommonName" Type="string" />
+        <Single Name="X509EncryptionThumbprint" Type="string" />
+        <Null Name="X509EncryptionThumbprints" />
+        <Single Name="SignDownloadWithX509Certificate" Type="bool">False</Single>
+        <Single Name="FirmCode" Type="uint">0</Single>
+        <Single Name="ProductCode" Type="uint">0</Single>
+        <Single Name="KeepOnParentOnlineChange" Type="bool">False</Single>
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">1e5b3f5c-f0ee-4e98-9930-973ef33b8914</Single>
+      <Array Name="Path" Type="string">
+        <Single Type="string">PLC_Stabur</Single>
+        <Single Type="string">PLC Logic</Single>
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

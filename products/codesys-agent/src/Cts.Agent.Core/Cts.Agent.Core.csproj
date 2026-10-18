@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- net48 too: the IDE side then needs no netstandard.dll facade (absent before .NET Framework 4.7.2). -->
+    <TargetFrameworks>netstandard2.0;net48</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Cts.Agent.Core</AssemblyName>
+    <RootNamespace>Cts.Agent</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Sync\TypeKinds.json">
+      <LogicalName>Cts.Sync.TypeKinds.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Visu\catalog\*.json">
+      <LogicalName>Cts.Visu.Catalog.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Visu\Templates\*.tmpl">
+      <LogicalName>Cts.Visu.Templates.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Guides\**\*" LogicalName="Cts.Agent.Guides.%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Cli\TopHelp.txt" LogicalName="Cts.Cli.TopHelp.txt" />
+    <EmbeddedResource Include="Cli\cds-text-sync.ico" LogicalName="Cts.Agent.Install.cds-text-sync.ico" />
+    <EmbeddedResource Include="Analysis\Rules\*.md" LogicalName="Cts.Analysis.Rules.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Visu\themes\*.json" Link="Visu\Themes\%(Filename)%(Extension)" LogicalName="Cts.Visu.Themes.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Visu\stylesheet.css" Link="Visu\stylesheet.css" LogicalName="Cts.Visu.stylesheet.css" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Reflection.Emit (DevListen: a handler the IDE can invoke reflectively) is
+         not in the netstandard2.0 facade; net48 has it in the framework, so the
+         package is only referenced where it is actually needed. -->
+    <PackageReference Include="System.Reflection.Emit" Version="4.7.0" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+  </ItemGroup>
+</Project>

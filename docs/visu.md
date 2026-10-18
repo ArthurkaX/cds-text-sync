@@ -6,8 +6,7 @@ diffs, reviews and merges like the rest of the project.
 
 This page is the walkthrough: what you need before you start, the whole chain
 from an empty file to a screen open in CODESYS, and how the screen gets wired to
-PLC variables. For the exhaustive flag reference see
-[`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md#visualization-svg--codesys); for the authoring
+PLC variables. For exact flags run `cts visu <subcommand> --help`; for the authoring
 contract an LLM is expected to follow, run `cts guide visu-svg` (it ships in the
 package, so it always matches the installed CLI version).
 
@@ -15,28 +14,29 @@ package, so it always matches the installed CLI version).
 
 ## Before you start
 
-- **The CLI is installed**: `python -m pip install -e <cds-text-sync-folder>`,
-  then `cts --help` works. See [Installation](install.md).
-- **`new`, `lint`, `preview` and `bind` need nothing else.** No IDE, no project, no
-  daemon — they read the sketch file and a style. You can author and iterate on a
-  screen offline, on a machine without CODESYS.
-- **`from-svg`, `to-svg`, `check`, `add`, `list`, `create-screen` need a sync
-  folder** — a project already linked to disk with `Project_directory.py` and
-  exported once with `Project_export.py`, so `project-view/` exists. See
-  [Recommended workflow](project-layout.md#recommended-workflow-with-git-lfs).
-- **Point the commands at that folder.** Every subcommand takes
-  `--sync-folder <path>`; without it the tool looks in the current directory,
-  and if it does not find a project view there it cannot resolve your theme,
-  your existing GVLs, or where to write the screen:
+- **The CODESYS CLI is installed**: use `cts.exe --help`. See [Installation](install.md).
+- **`new`, `lint`, `preview` and `bind` need no project.** They read or write
+  the sketch file. You can author and iterate offline, on a machine without
+  CODESYS.
+- **Screen commands need a project view.** `from-svg`, `to-svg`, `check`,
+  `add`, `list`, `create-screen`, and `describe --screen` read or write screen
+  XML in `project-view/`. The project must be linked with `cts set-sync-folder`
+  and exported with `cts export`. See
+  [Recommended workflow](../readMe.md#2-git-workflows).
+- **Set a sync folder when needed.** Project-aware commands accept
+  `--sync-folder <path>`; without it they search around the current directory.
+  If no project view is found, they cannot resolve the theme or existing GVLs,
+  or write the screen:
 
   ```powershell
-  cts visu lint --svg line1.svg --sync-folder C:\path\to\project
+  cts visu lint --svg line1.svg --sync-folder C:\path\to\sync
   ```
 
-- **`--create-screen` needs a folder that already holds an object.** A new
-  screen's placement in the CODESYS tree is copied from a sibling in `--folder`,
-  so create the HMI folder and put at least one visualization in it from the IDE
-  before compiling into it.
+- **`--folder` is a CODESYS project-tree path.** Use the folder as shown by
+  `cts project-tree`; it can be the application or a folder inside it.
+- **`--create-screen` needs an existing object in that folder.** The new
+  screen copies its placement from a sibling object, so create the HMI folder
+  and add an object to it before compiling a new screen there.
 
 ---
 
@@ -47,7 +47,7 @@ cts visu new --name Line1 --w 1024 --h 600 --out line1.svg   # laid-out skeleton
 cts visu lint --svg line1.svg --fix                          # design check, snaps the mechanical ones
 cts visu lint --svg line1.svg                                # then read what is left
 cts visu preview --svg line1.svg                             # .preview.svg + .preview.png — open the PNG
-cts visu from-svg --svg line1.svg --create-screen --screen-name Line1 \
+cts visu from-svg --svg line1.svg --create-screen --screen-name Line1 `
     --folder "Runtime/PLC Logic/Application/HMI" --gvl VisuVars
 cts visu check --screen Line1                                # grade the compiled screen
 cts import                                                   # project-view/ -> CODESYS
@@ -56,17 +56,15 @@ cts import                                                   # project-view/ -> 
 **The last line is the one people miss.** `from-svg` writes a visualization
 `.xml` into `project-view/` — it does not touch the running IDE. The screen
 reaches CODESYS the same way every other edit does, through
-[`cts import`](../products/cds-text-sync/src/cds_text_sync/CLI.md#main-sync-commands) (or `Project_import.py` from
-the Tools > Scripting menu). Until you run it, the screen exists on disk only.
+`cts import`. Until you run it, the screen exists on disk only.
 
-In [text-first mode](sync-modes.md#text-first-opt-in) this works unchanged:
-`visu` is in the default `xml_in_view_kinds` list, so visualization XML stays in
-the tracked view instead of moving to the `.dump/xml/` mirror.
+In XML-first mode this works unchanged: a visualization's XML lives in the
+tracked `project-view/`, so it reaches the IDE through the same `cts import`.
 
 Recompiling later:
 
 ```powershell
-# an existing screen: use --screen, drop --create-screen
+# rebuild an existing screen in place
 cts visu from-svg --svg line1.svg --screen Line1 --folder "Runtime/PLC Logic/Application/HMI"
 
 # or rebuild it wholesale, keeping the object Guid so import updates
@@ -74,7 +72,8 @@ cts visu from-svg --svg line1.svg --screen Line1 --folder "Runtime/PLC Logic/App
 cts visu from-svg --svg line1.svg --create-screen --screen-name Line1 --replace
 ```
 
-Without `--replace`, an existing screen is never overwritten.
+`--screen` rebuilds that screen's elements. With `--create-screen`, an existing
+screen name is refused unless `--replace` is set; replacement keeps its Guid.
 
 ---
 
@@ -89,12 +88,12 @@ A screen that only draws is a picture. Three attributes make it live:
 | `data-cds-action="OnMouseUp: screen CoolingTower"` | `<rect data-cds-type="button">` | a native input action — `TAP`, `TOGGLE`, `ST …`, screen change; several separated by `\|\|` |
 
 Set them with `cts visu bind` instead of hand-editing the sketch — it patches
-only these attributes on one element (by index, from `cts visu describe --screen
-... --elem N` or the element's position in the file) and refuses anything that
-would touch geometry:
+only these attributes on one element (by index, from `cts visu list --screen ...`
+or the element's position in the file) and refuses anything that would touch
+geometry:
 
 ```powershell
-cts visu bind --svg line1.svg --elem 3 --var HMI.Temperature      # data-text-var
+cts visu bind --svg line1.svg --elem 3 --text-var HMI.Temperature # data-text-var
 cts visu bind --svg line1.svg --elem 5 --tap HMI.StartPump        # data-cds-tap
 cts visu bind --svg line1.svg --elem 5 --action "OnMouseUp: screen CoolingTower"
 cts visu bind --svg line1.svg --elem 5 --clear                    # remove all bindings
@@ -166,7 +165,7 @@ accept them, so what you preview is what you compile:
 - **`--background auto|style|#RRGGBB`** — `auto` (default) uses a curated
   neutral; `style` restores the visual style's own background.
 
-Colour roles are defined in [`cds_text_sync/visu/stylesheet.css`](../products/cds-text-sync/src/cds_text_sync/visu/stylesheet.css)
+Colour roles are defined in [`stylesheet.css`](../products/codesys-agent/src/Cts.Agent.Core/Visu/stylesheet.css)
 and can be overridden per project with a `visu.css` in the project-view
 directory.
 
@@ -183,8 +182,8 @@ run it first, then read what is left, because those are the judgement calls.
 `--strict` makes findings fatal instead of advisory (`from-svg` accepts it too).
 
 **`check`** re-reads a screen that already exists in the project view and grades
-it as CODESYS will: bounds, member consistency, Text-IDs. It takes `--screen`,
-not `--name`.
+it as CODESYS will: geometry, members, Text-IDs, colour links and overlaps. It
+takes `--screen`, not `--name`.
 
 **`preview`** is not a checker but belongs in the same loop. The sketch carries
 no colours, so opening it in a viewer shows black shapes on white and tells you
@@ -233,12 +232,15 @@ radial gradients are supported on `rect`/`circle`/`ellipse` (see
 | `to-svg` | decompile an existing screen back to a sketch | yes |
 | `check` | validate a compiled screen | yes |
 | `types` | list the element vocabulary | no |
-| `describe` | describe a type, or an element of a screen (`--screen --elem N`) | for `--screen` |
+| `describe` | describe a type and, optionally, an element of a screen (`--type NAME --screen NAME --elem N`) | for `--screen` |
 | `create-screen` | create a new empty screen without going through SVG | yes |
 | `bind` | patch only the binding attributes on one sketch element | no |
 | `add` | add one element to a compiled screen | yes |
 | `list` | list the elements of a compiled screen | yes |
 | `capture-frame` | capture a `VisuFbFrame` instance as a golden template + catalog | yes |
+
+`from-svg` also writes a preview SVG (and PNG when Chrome or Edge is available)
+after a successful compile. Pass `--no-preview` to skip that render.
 
 `add`, `list`, `create-screen` and `describe --elem` are element-level
 operations on the compiled XML. They exist for surgical edits and for building a
@@ -249,22 +251,22 @@ sketch is what reviews in a PR.
 
 ## Letting an agent drive it
 
-This is what the SVG contract is for. `cts visu --help` prints the whole
-contract inline — supported tags, the semantic classes, every CSS variable, the
-colour rules, what is unsupported — so an LLM agent with shell access needs no
-other documentation to author a screen:
+This is what the SVG contract is for. The shipped guide
+[`cts guide visu-svg`](../products/codesys-agent/src/Cts.Agent.Core/Guides/visu-svg.md)
+carries it whole — supported tags, the semantic classes, every CSS variable,
+the colour rules, what is unsupported — together with the layout rules (the 4px
+grid, page margin, bands, type scale, touch targets, the text-baseline rule),
+the ordered workflow with the approval pause before compiling, two lint-clean
+example sketches to imitate (reachable with `cts guide visu-svg --file
+examples/…`) and the per-class text-box geometry, so an LLM agent with shell
+access needs no other documentation to author a screen:
 
 ```powershell
-cts visu --help
+cts guide visu-svg
 ```
 
-For a better result, point your agent at the shipped guide:
-[`cts guide visu-svg`](../products/cds-cli/src/cds_cli/guides/visu-svg.md) adds
-what `--help` cannot fit: layout rules (the 4px grid, page margin, bands, type
-scale, touch targets, the text-baseline rule), the ordered workflow with the
-approval pause before compiling, two lint-clean example sketches to imitate
-(reachable with `cts guide visu-svg --file examples/…`), and the per-class
-text-box geometry. The Claude Code skill [`skills/cds-visu-svg/`](../skills/cds-visu-svg/)
+`cts visu --help` lists the subcommands and `cts visu <subcommand> --help` their
+flags. The Claude Code skill [`skills/cds-visu-svg/`](../skills/cds-visu-svg/)
 is a thin wrapper that tells the agent to read it.
 
 Two real runs, sketch on the left, the same screen after `from-svg` and an

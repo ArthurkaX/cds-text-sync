@@ -1,27 +1,17 @@
 # -*- coding: utf-8 -*-
-"""IronPython 2.7 compatibility lint for modules the CODESYS host imports.
+"""IronPython 2.7 compatibility lint for the headless CRC script.
 
-Everything under the host's ``src/ide_bridge/`` runs inside the CODESYS
-ScriptEngine, whose interpreter is IronPython 2.7: the ``Project_*.py``
-entrypoints, the FMT workflow, and the reverse-pipe daemon.  The repo-local
-modules they import (``cts_shared.*``, the shared ``cds_text_sync.engine``
-helpers, the rest of the bridge) must therefore stay Python-2-compatible even
-though the unit tests run under CPython 3.  This tool statically checks them
-for Python 3-only syntax, builtin calls and source that IronPython 2.7 cannot
-even parse.
-
-The checked set is *computed*, not hand-listed: it seeds with every module the
-host loads and follows their repo-local imports to a fixed point.  The old
-hand-maintained list drifted -- the encoding defect in ``cts_shared/coerce.py``
-slipped through it and only surfaced on the CODESYS VM as a SyntaxError dialog
--- so a new module is now gated by being dropped into ``ide_bridge/`` or
-imported from it, with no edit here.
+``products/codesys-host/headless/plc_crc.py`` runs inside the CODESYS
+ScriptEngine, whose interpreter is IronPython 2.7 (the menu entry is generated
+by cts.exe and loads the C# agent).  It must stay Python-2-compatible even
+though the unit tests run under CPython 3.  This tool statically checks it for
+Python 3-only syntax, builtin calls and source that IronPython 2.7 cannot even
+parse.  It imports nothing from the repository, so it is the whole set.
 
 Usage::
 
-    python tools/compat_check.py            # lint the discovered host set
+    python tools/compat_check.py            # lint the headless CRC script
     python tools/compat_check.py <paths...> # lint explicit files
-    python tools/compat_check.py --ci       # exit 1 on any finding
 
 It is deliberately dependency-free (stdlib ``ast`` only) so the same command
 can run on a developer machine and in CI.
@@ -37,208 +27,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ── Where the host tree lives ──────────────────────────────────────────────
-
-HOST_ROOT = os.path.join(ROOT, "products", "codesys-host")
-IDE_BRIDGE_DIR = os.path.join(HOST_ROOT, "src", "ide_bridge")
-ENGINE_DIR = os.path.join(
-    ROOT, "products", "cds-text-sync", "src", "cds_text_sync", "engine"
-)
-PRODUCT_SRC_DIR = os.path.join(ROOT, "products", "cds-text-sync", "src")
-SHARED_SRC_DIR = os.path.join(ROOT, "shared", "src")
-
-# Where an import name is looked up.  Order matters only for a name that is
-# shadowed; the bridge comes first because its modules are imported by name
-# and its directory outranks the host root on the CODESYS sys.path.  The
-# engine directory is on the host's sys.path at runtime (ide_runtime_common
-# adds it), so its modules are imported by bare name, the same way the bridge
-# imports them.
-MODULE_SEARCH_ROOTS = (
-    IDE_BRIDGE_DIR,
-    ENGINE_DIR,
-    SHARED_SRC_DIR,
-    PRODUCT_SRC_DIR,
-    HOST_ROOT,
-)
-
-# Entry points nothing imports, so the walk has to be seeded with them
-# explicitly: the host's own Project_*.py stubs, the shared bootstrap they all
-# go through, and the headless CRC script CODESYS runs by path
-# (--runscript).  These are the only hand-listed members of the set.
-EXPLICIT_ENTRYPOINTS = (
-    os.path.join(HOST_ROOT, "cds_bootstrap.py"),
-    os.path.join(HOST_ROOT, "headless", "plc_crc.py"),
-)
-
-# Files deliberately kept out of the gate, keyed by their repository-relative
-# path, valued with the reason.  Empty today: every module the host reaches is
-# meant to be IronPython-clean, and a fresh walk of ide_bridge/ reaches no
-# CPython-only module behind a guarded import.  When that changes -- a
-# try/except ImportError fallback that is genuinely CPython-only -- name the
-# file here so the exclusion is visible and reviewed, instead of letting the
-# walk lint code that never runs on the VM.
-EXCLUDED_FILES = {}
-
-
-# ── Discovering the default file set ───────────────────────────────────────
-
-
-def _package_parts(path):
-    """The dotted package owning *path*, as a list, or ``[]`` when top-level."""
-    parts = []
-    directory = os.path.dirname(path)
-    while os.path.isfile(os.path.join(directory, "__init__.py")):
-        parts.insert(0, os.path.basename(directory))
-        directory = os.path.dirname(directory)
-    return parts
-
-
-def _module_names_imported(path):
-    """Every module name *path* imports, relative imports made absolute.
-
-    Best effort: a file that will not parse yields no names (it is still linted,
-    and the lint reports the parse error), and a dynamic import such as
-    ``__import__(name)`` cannot be seen.  The host only uses dynamic imports
-    with a runtime-computed name, so nothing statically reachable is lost.
-    """
-    try:
-        with open(path, "rb") as stream:
-            source = stream.read()
-    except (IOError, OSError):
-        return []
-    try:
-        tree = ast.parse(source, filename=path)
-    except SyntaxError:
-        return []
-
-    package = _package_parts(path)
-    names = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                names.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                if node.level > len(package):
-                    continue
-                base = package[: len(package) - (node.level - 1)]
-                if node.module:
-                    names.append(".".join(base + [node.module]))
-                else:
-                    names.extend(".".join(base + [alias.name]) for alias in node.names)
-            elif node.module:
-                names.append(node.module)
-                # ``from pkg import mod`` may name a submodule.
-                names.extend(node.module + "." + alias.name for alias in node.names)
-    return names
-
-
-def _resolve_module(module_name, search_roots):
-    """Return ``(module_file, package_init_files)`` for a repo module, or None.
-
-    A dotted name executes the ``__init__.py`` of each package on the way, so
-    those are part of the runtime set too.  Only the packages *inside* the
-    search root count: a top-level module imported by bare name never runs the
-    ``__init__.py`` of the directory that happens to contain it.
-    """
-    parts = module_name.split(".")
-    for root in search_roots:
-        module_file = os.path.join(root, *parts) + ".py"
-        if not os.path.isfile(module_file):
-            module_file = os.path.join(root, *parts, "__init__.py")
-            if not os.path.isfile(module_file):
-                continue
-        inits = []
-        for depth in range(1, len(parts)):
-            init = os.path.join(root, *parts[:depth], "__init__.py")
-            if os.path.isfile(init):
-                inits.append(init)
-        return module_file, inits
-    return None
-
-
-def _is_excluded(path, excluded):
-    rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
-    return rel in excluded or os.path.normpath(path) in excluded
-
-
-def _entrypoint_files(host_root=None):
-    """The explicit seeds: host entrypoint stubs plus the by-path scripts."""
-    host_root = HOST_ROOT if host_root is None else host_root
-    if host_root == HOST_ROOT:
-        entrypoints = list(EXPLICIT_ENTRYPOINTS)
-    else:
-        # A different root (tests on a temp tree) has no known by-path scripts.
-        entrypoints = []
-    try:
-        names = sorted(os.listdir(host_root))
-    except OSError:
-        names = []
-    entrypoints.extend(
-        os.path.join(host_root, name)
-        for name in names
-        if name.startswith("Project_") and name.endswith(".py")
-    )
-    return entrypoints
-
-
-def discover_default_files(
-    bridge_dir=None, search_roots=None, entrypoints=None, excluded=None
-):
-    """The modules the CODESYS host runs, as absolute paths.
-
-    Seeds with every ``*.py`` in the bridge directory and the explicit
-    entrypoints, then follows repo-local imports until the set stops growing.
-    """
-    bridge_dir = IDE_BRIDGE_DIR if bridge_dir is None else bridge_dir
-    roots = MODULE_SEARCH_ROOTS if search_roots is None else tuple(search_roots)
-    if entrypoints is None:
-        entrypoints = _entrypoint_files()
-    if excluded is None:
-        excluded = EXCLUDED_FILES
-
-    seeds = []
-    try:
-        walk_names = sorted(os.listdir(bridge_dir))
-    except OSError:
-        walk_names = []
-    seeds.extend(
-        os.path.join(bridge_dir, name)
-        for name in walk_names
-        if name.endswith(".py")
-    )
-    seeds.extend(entrypoints)
-
-    files = set()
-    seen = set()
-    queue = list(seeds)
-    while queue:
-        path = os.path.normpath(queue.pop(0))
-        if path in seen or _is_excluded(path, excluded) or not os.path.isfile(path):
-            continue
-        seen.add(path)
-        files.add(path)
-        for module_name in _module_names_imported(path):
-            resolved = _resolve_module(module_name, roots)
-            if resolved is None:
-                continue
-            module_file, inits = resolved
-            for candidate in inits + [module_file]:
-                candidate = os.path.normpath(candidate)
-                if candidate not in seen and not _is_excluded(candidate, excluded):
-                    queue.append(candidate)
-    return sorted(files)
-
-
-def default_files():
-    """``discover_default_files()`` as repository-relative POSIX paths."""
-    return [
-        os.path.relpath(path, ROOT).replace(os.sep, "/")
-        for path in discover_default_files()
-    ]
-
-
-DEFAULT_FILES = default_files()
+# The files CODESYS runs as IronPython, relative to the repository.
+DEFAULT_FILES = ["products/codesys-host/headless/plc_crc.py"]
 
 # PEP 263 coding cookie, e.g. ``# -*- coding: utf-8 -*-``.
 _SOURCE_ENCODING_RE = re.compile(rb"coding[:=]\s*([-\w.]+)")
@@ -630,10 +420,6 @@ def lint(paths):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    ci = False
-    if "--ci" in argv:
-        ci = True
-        argv.remove("--ci")
     if argv:
         paths = [p if os.path.isabs(p) else os.path.join(ROOT, p) for p in argv]
     else:
@@ -647,11 +433,7 @@ def main(argv=None):
 
     errors = lint(paths)
     print("IronPython compat lint: {0} error(s)".format(errors))
-    if errors:
-        return 1
-    if ci:
-        return 0
-    return 0
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

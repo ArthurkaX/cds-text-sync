@@ -31,7 +31,7 @@ SETUP = Path(__file__).parent.parent.parent / "irm" / "setup.ps1"
 MUTATORS = re.compile(
     r"\b(Remove-Item|Move-Item|Copy-Item|New-Item|Set-Content|Out-File"
     r"|Expand-Archive|Install-CliCommand)\b"
-    r"|\[System\.IO\.Directory\]::Delete"
+    r"|\[System\.IO\.Directory\]::Delete|\[Environment\]::SetEnvironmentVariable"
     r"|pip[\"'\s,)]+.*\b(install|uninstall)\b"
 )
 
@@ -222,9 +222,9 @@ def test_the_backup_of_an_earlier_real_run_is_not_deleted(lines):
     pytest.fail("the backup cleanup went away; re-target this test")
 
 
-def test_the_pip_install_guards_itself(lines):
-    """`pip install -e` rewrites the operator's environment — it may not rely
-    on the caller remembering the flag."""
+def test_the_cli_path_step_guards_itself(lines):
+    """`Install-CliCommand` writes the user PATH — it may not rely on the caller
+    remembering the dry-run flag."""
     assert "Install-CliCommand" in _self_guarding_functions(lines), (
         "Install-CliCommand must return early when $dryRun is set; without "
         "that, every call site has to be guarded by hand and a new one will "
@@ -232,10 +232,10 @@ def test_the_pip_install_guards_itself(lines):
     )
 
 
-def test_the_menu_generator_is_asked_for_its_own_dry_run(lines):
-    """install_menu can validate for real and write nothing — use that."""
+def test_the_menu_install_is_asked_for_its_own_check(lines):
+    """cts install --check can validate for real and write nothing — use that."""
     source = "\n".join(lines)
-    assert '$menuArgs += "--dry-run"' in source, (
-        "a rehearsal should still exercise the stub generator, its ScriptDir "
-        "discovery and its guards, via install_menu --dry-run"
+    assert '$menuArgs += "--check"' in source, (
+        "a rehearsal should still exercise the menu install, its ScriptDir "
+        "discovery and its guards, via cts install --check"
     )

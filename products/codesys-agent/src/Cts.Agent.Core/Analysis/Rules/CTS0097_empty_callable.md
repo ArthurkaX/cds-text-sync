@@ -1,0 +1,50 @@
+---
+title: Empty callable implementation
+since: 3.1.0
+related: [CTS0023, CTS0045]
+---
+
+## What it is
+
+`CTS0097` reports a `PROGRAM`, `FUNCTION_BLOCK`, `FUNCTION`, method, action,
+or property with an empty implementation section. A `FUNCTION_BLOCK` or
+`PROGRAM` with methods or actions may leave its own body empty: its code lives
+in them.
+
+## Why it is dangerous
+
+An empty callable often remains after a skeleton was created for a feature that
+was never implemented. It is easy to overlook because the project still
+compiles, while callers may silently execute no logic.
+
+Comment-only and semicolon-only implementations are treated as empty.
+
+## Example
+
+```st bad 1
+FUNCTION_BLOCK FB_Reserved // cts:here
+IMPLEMENTATION
+// TODO: implement the state machine
+```
+
+```st good
+FUNCTION_BLOCK FB_Reserved
+IMPLEMENTATION
+xReady := TRUE; // cts:here is intentionally not empty
+```
+
+```st good
+FUNCTION_BLOCK FB_Station // cts:method FB_Station: Start
+IMPLEMENTATION
+// The station's work is in its methods.
+```
+
+## When ignoring is legitimate
+
+Ignore deliberate lifecycle hooks, generated extension points, and compatibility
+stubs when their empty behavior is part of the documented contract.
+
+## How to fix
+
+Implement the callable, remove it, or add a concise comment explaining the
+intentional stub and suppress the finding with a reason.

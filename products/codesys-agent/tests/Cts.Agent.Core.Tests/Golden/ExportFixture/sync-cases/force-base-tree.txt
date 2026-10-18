@@ -1,0 +1,37 @@
+100644 blob 8553a497b0283b510a0b470cf5f99a1ab5f2415b	cds-text-sync.json
+100644 blob b04bea8959334c731937f9ff4363b299f08b3420	project-view/PLC_Stabur/.cds-object.xml
+100644 blob 6e4c57b4210a82b9623cbb4456472fdd006cc49a	project-view/PLC_Stabur/Leds.xml
+100644 blob 8bb667789dfdd8e7bf764ca653fd02a29e9dc23c	project-view/PLC_Stabur/Plc Logic/.cds-object.xml
+100644 blob d6b17e9b4b700fe73151dd8c2e090c8fcb0bc553	project-view/PLC_Stabur/Plc Logic/Application/.cds-object.xml
+100644 blob 6032c6065056929029a683654adc82d79729e820	project-view/PLC_Stabur/Plc Logic/Application/E_BenchMode.st
+100644 blob 88406df0c94b807ed69568d61911f02116559769	project-view/PLC_Stabur/Plc Logic/Application/FB_BenchRun.st
+100644 blob 91015abd4552cc1d0830a8d9500c0b21ec3aacee	project-view/PLC_Stabur/Plc Logic/Application/FB_Logger.st
+100644 blob 3351c605a0dfd7415c9871caa1054280b1bc449a	project-view/PLC_Stabur/Plc Logic/Application/FB_Motor.st
+100644 blob b251b4db93ad7e156731fbf826c6bae0dbecb531	project-view/PLC_Stabur/Plc Logic/Application/FB_Valve.st
+100644 blob 50d5c6fea9300bd47ad24e408fa9f5be0e6dc7c1	project-view/PLC_Stabur/Plc Logic/Application/GVL_Bench.st
+100644 blob 5fa8fa6691a36433576e30dc446f2b2e9b946fb1	project-view/PLC_Stabur/Plc Logic/Application/GVL_Fixture.st
+100644 blob 1c337541496abf3a82ca1af96fd2a2a09d3fdc57	project-view/PLC_Stabur/Plc Logic/Application/GVL_Motors.st
+100644 blob 2350c17f7be6f3d8a6c252bae5030474de39c319	project-view/PLC_Stabur/Plc Logic/Application/Library Manager.xml
+100644 blob e7eb0c4e2942ee1d9c1050f04fcc4e7c1032cd1b	project-view/PLC_Stabur/Plc Logic/Application/LogComponent.st
+100644 blob 0f679931414491926c6e4b4a2ae635d9908f0b53	project-view/PLC_Stabur/Plc Logic/Application/MAIN.st
+100644 blob 3981628ee5c4c4aa467a1e45b51fb4cb8a6b992c	project-view/PLC_Stabur/Plc Logic/Application/PRG_BitBench.st
+100644 blob 8ac4b6118cd1cde9dfd30c31dbad7617f74beb49	project-view/PLC_Stabur/Plc Logic/Application/ST_Bits8.st
+100644 blob 62270021faad50e70a9046ed40fba7e65b601050	project-view/PLC_Stabur/Plc Logic/Application/ST_Bits8Ext.st
+100644 blob 369da7d84e3ba5b25d3b293a14227ee3e5b9a285	project-view/PLC_Stabur/Plc Logic/Application/ST_Bools8.st
+100644 blob 61edd05b7abdfa0557ea1f7f1a7562d7b7d8cceb	project-view/PLC_Stabur/Plc Logic/Application/ST_Packed.st
+100644 blob 9464a43fd8eae4c99a9030cd1d6fe7c3fbd7ca4c	project-view/PLC_Stabur/Plc Logic/Application/Task Configuration/.cds-object.xml
+100644 blob 6a1610870606d8cdfdaf633c8f1e83cc1eef11a5	project-view/PLC_Stabur/Plc Logic/Application/Task Configuration/Task.xml
+100644 blob bae6ee02e450d78e14963a832e6e599f71c721c1	project-view/PLC_Stabur/Plc Logic/Application/Task Configuration/VISU_TASK.xml
+100644 blob 68f549c91ecce8e3ee435883e818b6de58597858	project-view/PLC_Stabur/Plc Logic/Application/U_Bits8.st
+100644 blob dea65e83907266fa506ec61c27c014d9312c7fe8	project-view/PLC_Stabur/Plc Logic/Application/U_ExtBits.st
+100644 blob c4a7fe76a23573a8c3b594c5b0253100a80caf26	project-view/PLC_Stabur/Plc Logic/Application/Visualization Manager/.cds-object.xml
+100644 blob 76d99005052db8d69edc859c88956247b8a03643	project-view/PLC_Stabur/Plc Logic/Application/Visualization Manager/TargetVisu.xml
+100644 blob a6f3bad3d65d9b37dfe161eb3d9c8b3fc284241a	project-view/PLC_Stabur/Plc Logic/Application/Visualization Manager/WebVisu.xml
+100644 blob 78dba3d108887306a0e7ee38dcb997c7061f0210	project-view/PLC_Stabur/Plc Logic/Application/Visualization.xml
+100644 blob 7cffa69e28c8ffdcbd312d7a8b920d33c8d5167b	project-view/PLC_Stabur/Plc Logic/Application/__VisualizationStyle.xml
+100644 blob 04bde60b376d395590357740f4d3fa0573a155ba	project-view/PLC_Stabur/Retain_.xml
+100644 blob 6b537aba43a58863c1faf50ba4040b0ba9c9bff2	project-view/POUs/GlobalTextList.csv
+100644 blob 1e6559e9ab0d638a9aaf9ab01f41cda7a2842227	project-view/POUs/GlobalTextList.xml
+100644 blob 444b9e6e7dd2a82395e13855255459cf311db55d	project-view/POUs/Library Manager.xml
+100644 blob c620dacb8c0e2af957f48690a8d63c7684bf89e4	project-view/POUs/Project Information.xml
+100644 blob 473926ccf1c06f1bbddf70dc4fc8382c1b1be64d	project-view/POUs/Project Settings.xml

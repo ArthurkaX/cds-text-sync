@@ -1,0 +1,280 @@
+{
+  "type": "textfield",
+  "visualElementTypeName": "VisuFbElemTextfield",
+  "visualElementName": "Textfield",
+  "visualElementIsRectangle": true,
+  "elementVersion": 1,
+  "golden_template": "element_textfield.xml.tmpl",
+  "description": "Text field - displays a runtime variable value or static text. Like Label but bound to a variable.",
+
+  "geometry": {
+    "x": 1649127785,
+    "y": 357335551,
+    "width": 2422045748,
+    "height": 2134141914,
+    "center_x": 550940142,
+    "center_y": 1473355128
+  },
+
+  "invariants": [
+    {
+      "id": "bounds",
+      "rule": "X >= 0 and Y >= 0 and X+Width <= SizeX and Y+Height <= SizeY",
+      "severity": "error"
+    },
+    {
+      "id": "text_requires_textid",
+      "rule": "If member 390574330 (text) is non-empty, member 823443203 (Text ID, GlobalTextList ref) is REQUIRED or CODESYS rejects the import.",
+      "severity": "error",
+      "text_member_id": 390574330,
+      "textid_member_id": 823443203
+    }
+  ],
+
+  "params": {
+    "x": {
+      "member_id": 1649127785,
+      "kind": "int",
+      "geometry": true,
+      "doc": "X (left), px"
+    },
+    "y": {
+      "member_id": 357335551,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Y (top), px"
+    },
+    "width": {
+      "member_id": 2422045748,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Width, px"
+    },
+    "height": {
+      "member_id": 2134141914,
+      "kind": "int",
+      "geometry": true,
+      "doc": "Height, px"
+    },
+    "text": {
+      "member_id": 390574330,
+      "kind": "string",
+      "requires": "textid",
+      "doc": "Static text / format string (requires a Text-ID when non-empty)"
+    },
+    "text_id": {
+      "member_id": 823443203,
+      "kind": "string",
+      "doc": "Text-ID reference into GlobalTextList"
+    },
+    "text_var": {
+      "member_id": 2477733581,
+      "kind": "string",
+      "doc": "Runtime variable binding (e.g. 'HMI.MyVar')"
+    },
+    "tooltip": {
+      "member_id": 571893170,
+      "kind": "string",
+      "doc": "Tooltip text"
+    },
+    "font_name": {
+      "member_id": 1603690730,
+      "kind": "string",
+      "doc": "Font name"
+    },
+    "font_size": {
+      "member_id": 4253639993,
+      "kind": "short",
+      "doc": "Font size"
+    },
+    "h_align": {
+      "member_id": 2340015797,
+      "kind": "string",
+      "doc": "Horizontal align: LEFT|HCENTER|RIGHT"
+    },
+    "v_align": {
+      "member_id": 2565699834,
+      "kind": "string",
+      "doc": "Vertical align: TOP|VCENTER|BOTTOM"
+    }
+  },
+
+  "base_members": [
+    { "id": 571893170, "form": "scalar", "value_type": "string", "value": "" },
+    {
+      "id": 494569607,
+      "form": "color",
+      "color": "-4276546",
+      "canonical_name": "Element-Frame-Color"
+    },
+    {
+      "id": 2812299069,
+      "form": "color",
+      "color": "-1",
+      "canonical_name": "Element-Fill-Color"
+    },
+    {
+      "id": 135947015,
+      "form": "color",
+      "color": "-1694395",
+      "canonical_name": "Element-Alarm-Frame-Color"
+    },
+    {
+      "id": 493260384,
+      "form": "color",
+      "color": "-677707",
+      "canonical_name": "Element-Alarm-Fill-Color"
+    },
+    {
+      "id": 2340015797,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "HCENTER"
+    },
+    {
+      "id": 2565699834,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "VCENTER"
+    },
+    {
+      "id": 4134387352,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "NONE"
+    },
+    {
+      "id": 1603690730,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "Arial"
+    },
+    {
+      "id": 4253639993,
+      "form": "scalar",
+      "value_type": "short",
+      "value": "12"
+    },
+    { "id": 2729990903, "form": "scalar", "value_type": "uint", "value": "0" },
+    { "id": 1213979116, "form": "scalar", "value_type": "uint", "value": "0" },
+    {
+      "id": 3488306084,
+      "form": "scalar",
+      "value_type": "uint",
+      "value": "4278190080"
+    },
+    {
+      "id": 663104332,
+      "form": "color",
+      "color": "-16777216",
+      "canonical_name": "Font-Default-Color"
+    },
+    {
+      "id": 1999528970,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "<toggle/tap variable>"
+    },
+    { "id": 3719097617, "form": "scalar", "value_type": "int", "value": "0" },
+    {
+      "id": 1649127785,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "x"
+    },
+    {
+      "id": 357335551,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "0",
+      "role": "y"
+    },
+    {
+      "id": 2422045748,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "width"
+    },
+    {
+      "id": 2134141914,
+      "form": "scalar",
+      "value_type": "int",
+      "value": "100",
+      "role": "height"
+    },
+    { "id": 3729828405, "form": "font_descriptor" },
+    {
+      "id": 1337389588,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "FROM_STYLE"
+    },
+    { "id": 2678395525, "form": "scalar", "value_type": "uint", "value": "1" },
+    {
+      "id": 390574330,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "text"
+    },
+    {
+      "id": 2597686782,
+      "form": "scalar",
+      "value_type": "bool",
+      "value": "False"
+    },
+    {
+      "id": 2477733581,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "text_var"
+    },
+    {
+      "id": 823443203,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "",
+      "role": "text_id"
+    },
+    {
+      "id": 3438453433,
+      "form": "scalar",
+      "value_type": "string",
+      "value": "100"
+    }
+  ],
+
+  "font_descriptor": {
+    "FontStyle": "0",
+    "AdditionalFontStyle": "0",
+    "ExplicitColor": "-16777216",
+    "CanonicalName": "Font-Standard",
+    "FontName": "Arial",
+    "DisplayName": "",
+    "FontSize": "12",
+    "ScriptIdentification": "0",
+    "DoubleFontSize": "0",
+    "NamedColor": {
+      "Color": "-16777216",
+      "CanonicalName": "Font-Default-Color"
+    }
+  },
+
+  "themeable_colors": {
+    "fill": {
+      "member_id": 2812299069,
+      "role": "field.fill",
+      "canonical_name": "Element-Fill-Color",
+      "default_signed": -1
+    },
+    "frame": {
+      "member_id": 494569607,
+      "role": "field.frame",
+      "canonical_name": "Element-Frame-Color",
+      "default_signed": -4276546
+    }
+  }
+}

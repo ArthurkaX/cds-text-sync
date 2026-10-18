@@ -1,0 +1,5 @@
+# TypeOf checks for the newer interface, then falls back to TypeGuidOf(Object).
+_3S.CoDeSys.Core.Objects.IMetaObject7
+# The device tree uses ObjectTypeGuid when this newer stub interface is present,
+# and otherwise falls back to ObjectType on IMetaObjectStub.
+_3S.CoDeSys.Core.Objects.IMetaObjectStub6

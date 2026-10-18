@@ -1,0 +1,1471 @@
+[
+  {
+    "name": "test_fsm_core.py:39",
+    "text": "PROGRAM MarkerLess\nVAR\n  st : INT;\nEND_VAR\nCASE st OF\n  0: st := 1;\n  1: st := 0;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "st",
+        "numeric": true,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "0",
+            "code": "0: st := 1;",
+            "line": 6
+          },
+          {
+            "label": "1",
+            "code": "1: st := 0;",
+            "line": 7
+          }
+        ],
+        "transitions": [
+          {
+            "source": "0",
+            "target": "1",
+            "guard": "",
+            "code": "st := 1;",
+            "line": 6,
+            "block": false
+          },
+          {
+            "source": "1",
+            "target": "0",
+            "guard": "",
+            "code": "st := 0;",
+            "line": 7,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:76",
+    "text": "CASE P.state OF\nENUM_X.A:\n  IF c THEN\n    P.next_state := ENUM_X.B;\n  END_IF\nENUM_X.B:\n  P.next_state := ENUM_X.A;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "P.state",
+        "numeric": false,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "ENUM_X.A",
+            "code": "ENUM_X.A:\nIF c THEN\n  P.next_state := ENUM_X.B;\nEND_IF",
+            "line": 2
+          },
+          {
+            "label": "ENUM_X.B",
+            "code": "ENUM_X.B:\nP.next_state := ENUM_X.A;",
+            "line": 6
+          }
+        ],
+        "transitions": [
+          {
+            "source": "ENUM_X.A",
+            "target": "ENUM_X.B",
+            "guard": "c",
+            "code": "IF c THEN\nP.next_state := ENUM_X.B;",
+            "line": 3,
+            "block": true
+          },
+          {
+            "source": "ENUM_X.B",
+            "target": "ENUM_X.A",
+            "guard": "",
+            "code": "P.next_state := ENUM_X.A;",
+            "line": 7,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:96",
+    "text": "IF STATE <> NEXT_STATE THEN\n  STATE := NEXT_STATE;\nEND_IF\nCASE STATE OF\nDOOR_STATE.INIT:\n  NEXT_STATE := DOOR_STATE.LOCKED;\nDOOR_STATE.LOCKED:\n  NEXT_STATE := DOOR_STATE.INIT;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "STATE",
+        "numeric": false,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "DOOR_STATE.INIT",
+            "code": "DOOR_STATE.INIT:\nNEXT_STATE := DOOR_STATE.LOCKED;",
+            "line": 5
+          },
+          {
+            "label": "DOOR_STATE.LOCKED",
+            "code": "DOOR_STATE.LOCKED:\nNEXT_STATE := DOOR_STATE.INIT;",
+            "line": 7
+          }
+        ],
+        "transitions": [
+          {
+            "source": "DOOR_STATE.INIT",
+            "target": "DOOR_STATE.LOCKED",
+            "guard": "",
+            "code": "NEXT_STATE := DOOR_STATE.LOCKED;",
+            "line": 6,
+            "block": false
+          },
+          {
+            "source": "DOOR_STATE.LOCKED",
+            "target": "DOOR_STATE.INIT",
+            "guard": "",
+            "code": "NEXT_STATE := DOOR_STATE.INIT;",
+            "line": 8,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:119",
+    "text": "CASE _fsmState OF\n0:\n  _nextFsmState := 10;\n10:\n  _nextFsmState := 20;\n20:\n  _nextFsmState := 0;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "_fsmState",
+        "numeric": true,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "0",
+            "code": "0:\n_nextFsmState := 10;",
+            "line": 2
+          },
+          {
+            "label": "10",
+            "code": "10:\n_nextFsmState := 20;",
+            "line": 4
+          },
+          {
+            "label": "20",
+            "code": "20:\n_nextFsmState := 0;",
+            "line": 6
+          }
+        ],
+        "transitions": [
+          {
+            "source": "0",
+            "target": "10",
+            "guard": "",
+            "code": "_nextFsmState := 10;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "10",
+            "target": "20",
+            "guard": "",
+            "code": "_nextFsmState := 20;",
+            "line": 5,
+            "block": false
+          },
+          {
+            "source": "20",
+            "target": "0",
+            "guard": "",
+            "code": "_nextFsmState := 0;",
+            "line": 7,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:139",
+    "text": "CASE STATE_BF1 OF\nBF_STATE.IDLE:\n  STATE_BF1 := BF_STATE.RUN;\nBF_STATE.RUN:\n  STATE_BF1 := BF_STATE.IDLE;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "STATE_BF1",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "BF_STATE.IDLE",
+            "code": "BF_STATE.IDLE:\nSTATE_BF1 := BF_STATE.RUN;",
+            "line": 2
+          },
+          {
+            "label": "BF_STATE.RUN",
+            "code": "BF_STATE.RUN:\nSTATE_BF1 := BF_STATE.IDLE;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "BF_STATE.IDLE",
+            "target": "BF_STATE.RUN",
+            "guard": "",
+            "code": "STATE_BF1 := BF_STATE.RUN;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "BF_STATE.RUN",
+            "target": "BF_STATE.IDLE",
+            "guard": "",
+            "code": "STATE_BF1 := BF_STATE.IDLE;",
+            "line": 5,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:156",
+    "text": "CASE initStep OF\n0:\n  initStep := 1;\n1:\n  initStep := 0;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "initStep",
+        "numeric": true,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "0",
+            "code": "0:\ninitStep := 1;",
+            "line": 2
+          },
+          {
+            "label": "1",
+            "code": "1:\ninitStep := 0;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "0",
+            "target": "1",
+            "guard": "",
+            "code": "initStep := 1;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "1",
+            "target": "0",
+            "guard": "",
+            "code": "initStep := 0;",
+            "line": 5,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:178",
+    "text": "CASE i_InitialStatus OF\nCarrier_status.NONE:\n  _InitialStatus := 'NONE';\nEND_CASE\n",
+    "machines": []
+  },
+  {
+    "name": "test_fsm_extract.py:190",
+    "text": "CASE CMD OF\nSCN_CMD.CHECK:\n  messageLength := 10;\nEND_CASE\n",
+    "machines": []
+  },
+  {
+    "name": "test_fsm_extract.py:207",
+    "text": "CASE STATE_BF1 OF\nBF_STATE.IDLE:\n  STATE_BF1 := BF_STATE.RUN;\nBF_STATE.RUN:\n  STATE_BF1 := BF_STATE.IDLE;\nEND_CASE\nCASE STATE_BF2 OF\nBF_STATE.IDLE:\n  STATE_BF2 := BF_STATE.RUN;\nBF_STATE.RUN:\n  STATE_BF2 := BF_STATE.IDLE;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "STATE_BF1",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "BF_STATE.IDLE",
+            "code": "BF_STATE.IDLE:\nSTATE_BF1 := BF_STATE.RUN;",
+            "line": 2
+          },
+          {
+            "label": "BF_STATE.RUN",
+            "code": "BF_STATE.RUN:\nSTATE_BF1 := BF_STATE.IDLE;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "BF_STATE.IDLE",
+            "target": "BF_STATE.RUN",
+            "guard": "",
+            "code": "STATE_BF1 := BF_STATE.RUN;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "BF_STATE.RUN",
+            "target": "BF_STATE.IDLE",
+            "guard": "",
+            "code": "STATE_BF1 := BF_STATE.IDLE;",
+            "line": 5,
+            "block": false
+          }
+        ]
+      },
+      {
+        "selector": "STATE_BF2",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "BF_STATE.IDLE",
+            "code": "BF_STATE.IDLE:\nSTATE_BF2 := BF_STATE.RUN;",
+            "line": 8
+          },
+          {
+            "label": "BF_STATE.RUN",
+            "code": "BF_STATE.RUN:\nSTATE_BF2 := BF_STATE.IDLE;",
+            "line": 10
+          }
+        ],
+        "transitions": [
+          {
+            "source": "BF_STATE.IDLE",
+            "target": "BF_STATE.RUN",
+            "guard": "",
+            "code": "STATE_BF2 := BF_STATE.RUN;",
+            "line": 9,
+            "block": false
+          },
+          {
+            "source": "BF_STATE.RUN",
+            "target": "BF_STATE.IDLE",
+            "guard": "",
+            "code": "STATE_BF2 := BF_STATE.IDLE;",
+            "line": 11,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:238",
+    "text": "P.next_state := ENUM_X.B;\nCASE P.state OF\nENUM_X.A:\n  P.next_state := ENUM_X.C;\nENUM_X.B:\n  P.next_state := ENUM_X.A;\nENUM_X.C:\n  P.next_state := ENUM_X.A;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "P.state",
+        "numeric": false,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "ENUM_X.A",
+            "code": "ENUM_X.A:\nP.next_state := ENUM_X.C;",
+            "line": 3
+          },
+          {
+            "label": "ENUM_X.B",
+            "code": "ENUM_X.B:\nP.next_state := ENUM_X.A;",
+            "line": 5
+          },
+          {
+            "label": "ENUM_X.C",
+            "code": "ENUM_X.C:\nP.next_state := ENUM_X.A;",
+            "line": 7
+          }
+        ],
+        "transitions": [
+          {
+            "source": null,
+            "target": "ENUM_X.B",
+            "guard": "",
+            "code": "P.next_state := ENUM_X.B;",
+            "line": 1,
+            "block": false
+          },
+          {
+            "source": "ENUM_X.A",
+            "target": "ENUM_X.C",
+            "guard": "",
+            "code": "P.next_state := ENUM_X.C;",
+            "line": 4,
+            "block": false
+          },
+          {
+            "source": "ENUM_X.B",
+            "target": "ENUM_X.A",
+            "guard": "",
+            "code": "P.next_state := ENUM_X.A;",
+            "line": 6,
+            "block": false
+          },
+          {
+            "source": "ENUM_X.C",
+            "target": "ENUM_X.A",
+            "guard": "",
+            "code": "P.next_state := ENUM_X.A;",
+            "line": 8,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:258",
+    "text": "CASE P.state OF\nENUM_X.A:\n  IF a THEN\n    IF b THEN\n      P.next_state := ENUM_X.B;\n    END_IF\n  END_IF\nENUM_X.B:\n  P.next_state := ENUM_X.A;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "P.state",
+        "numeric": false,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "ENUM_X.A",
+            "code": "ENUM_X.A:\nIF a THEN\n  IF b THEN\n    P.next_state := ENUM_X.B;\n  END_IF\nEND_IF",
+            "line": 2
+          },
+          {
+            "label": "ENUM_X.B",
+            "code": "ENUM_X.B:\nP.next_state := ENUM_X.A;",
+            "line": 8
+          }
+        ],
+        "transitions": [
+          {
+            "source": "ENUM_X.A",
+            "target": "ENUM_X.B",
+            "guard": "a AND b",
+            "code": "IF b THEN\nP.next_state := ENUM_X.B;",
+            "line": 4,
+            "block": true
+          },
+          {
+            "source": "ENUM_X.B",
+            "target": "ENUM_X.A",
+            "guard": "",
+            "code": "P.next_state := ENUM_X.A;",
+            "line": 9,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:279",
+    "text": "CASE P.state OF\nENUM_X.A:\n  f(CMD := SCN_CMD.READ, Get_Info := GetInfo.x);\nEND_CASE\n",
+    "machines": []
+  },
+  {
+    "name": "test_fsm_extract.py:291",
+    "text": "CASE P.state OF\nENUM_X.A:\n  // P.next_state := ENUM_X.B;\nEND_CASE\n",
+    "machines": []
+  },
+  {
+    "name": "test_fsm_extract.py:309",
+    "text": "CASE P.state OF\nST.A:\n  P.next_state := ST.B (* go now *);\nST.B:\n  P.next_state := ST.A;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "P.state",
+        "numeric": false,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "ST.A",
+            "code": "ST.A:\nP.next_state := ST.B (* go now *);",
+            "line": 2
+          },
+          {
+            "label": "ST.B",
+            "code": "ST.B:\nP.next_state := ST.A;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "ST.A",
+            "target": "ST.B",
+            "guard": "",
+            "code": "P.next_state := ST.B (* go now *);",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "ST.B",
+            "target": "ST.A",
+            "guard": "",
+            "code": "P.next_state := ST.A;",
+            "line": 5,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "test_fsm_extract.py:330",
+    "text": "CASE cmd OF\nCMD.READ:\n  len := 10;\nCMD.WRITE:\n  len := 20;\nCMD.PING:\n  len := 2;\nEND_CASE\n",
+    "machines": []
+  },
+  {
+    "name": "test_fsm_extract.py:434",
+    "text": "IF n < 10 THEN v := 1; ELSE v := 2; END_IF\nCASE v OF\n1: s := 'one';\n2: s := 'two';\nEND_CASE\n",
+    "machines": []
+  },
+  {
+    "name": "test_fsm_payload_contract.py:209",
+    "text": "PROGRAM MarkerLess\nVAR\n  st : INT;\nEND_VAR\nCASE st OF\n  0: st := 1;\n  1: st := 0;\nEND_CASE\n",
+    "machines": [
+      {
+        "selector": "st",
+        "numeric": true,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "0",
+            "code": "0: st := 1;",
+            "line": 6
+          },
+          {
+            "label": "1",
+            "code": "1: st := 0;",
+            "line": 7
+          }
+        ],
+        "transitions": [
+          {
+            "source": "0",
+            "target": "1",
+            "guard": "",
+            "code": "st := 1;",
+            "line": 6,
+            "block": false
+          },
+          {
+            "source": "1",
+            "target": "0",
+            "guard": "",
+            "code": "st := 0;",
+            "line": 7,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:enum",
+    "text": "CASE state OF\nE.IDLE: state := E.RUN;\nE.RUN: state := E.IDLE;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "E.IDLE",
+            "code": "E.IDLE: state := E.RUN;",
+            "line": 2
+          },
+          {
+            "label": "E.RUN",
+            "code": "E.RUN: state := E.IDLE;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "E.IDLE",
+            "target": "E.RUN",
+            "guard": "",
+            "code": "state := E.RUN;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "E.RUN",
+            "target": "E.IDLE",
+            "guard": "",
+            "code": "state := E.IDLE;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:numeric",
+    "text": "CASE nState OF\n0: nState := 1;\n1: nState := 0;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "nState",
+        "numeric": true,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "0",
+            "code": "0: nState := 1;",
+            "line": 2
+          },
+          {
+            "label": "1",
+            "code": "1: nState := 0;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "0",
+            "target": "1",
+            "guard": "",
+            "code": "nState := 1;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "1",
+            "target": "0",
+            "guard": "",
+            "code": "nState := 0;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:if_chain",
+    "text": "CASE state OF\nIDLE:\n IF a THEN state := RUN; ELSIF b THEN state := STOP; ELSE state := IDLE; END_IF\nRUN: state := IDLE;\nSTOP: state := IDLE;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "IDLE",
+            "code": "IDLE:\nIF a THEN state := RUN; ELSIF b THEN state := STOP; ELSE state := IDLE; END_IF",
+            "line": 2
+          },
+          {
+            "label": "RUN",
+            "code": "RUN: state := IDLE;",
+            "line": 4
+          },
+          {
+            "label": "STOP",
+            "code": "STOP: state := IDLE;",
+            "line": 5
+          }
+        ],
+        "transitions": [
+          {
+            "source": "IDLE",
+            "target": "RUN",
+            "guard": "a",
+            "code": "IF a THEN state := RUN;",
+            "line": 3,
+            "block": true
+          },
+          {
+            "source": "IDLE",
+            "target": "STOP",
+            "guard": "NOT a AND b",
+            "code": "ELSIF b THEN state := STOP;",
+            "line": 3,
+            "block": true
+          },
+          {
+            "source": "IDLE",
+            "target": "IDLE",
+            "guard": "NOT a AND NOT b",
+            "code": "ELSE state := IDLE;",
+            "line": 3,
+            "block": true
+          },
+          {
+            "source": "RUN",
+            "target": "IDLE",
+            "guard": "",
+            "code": "state := IDLE;",
+            "line": 4,
+            "block": false
+          },
+          {
+            "source": "STOP",
+            "target": "IDLE",
+            "guard": "",
+            "code": "state := IDLE;",
+            "line": 5,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:nested_case",
+    "text": "CASE state OF\nA:\n CASE mode OF\n  0: state := B;\n END_CASE\nB: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A:\nCASE mode OF\n 0: state := B;\nEND_CASE",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 6
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "",
+            "code": "0: state := B;",
+            "line": 4,
+            "block": true
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 6,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:and_or",
+    "text": "CASE state OF\nA:\n IF a OR b THEN state := B; END_IF\nB:\n IF c AND d THEN state := A; END_IF\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A:\nIF a OR b THEN state := B; END_IF",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B:\nIF c AND d THEN state := A; END_IF",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "a OR b",
+            "code": "IF a OR b THEN state := B;",
+            "line": 3,
+            "block": true
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "c AND d",
+            "code": "IF c AND d THEN state := A;",
+            "line": 5,
+            "block": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:comments_strings",
+    "text": "// CASE fake OF\nCASE state OF\nA: text := 'CASE bogus OF'; (* IF fake THEN state := B; *) state := B;\nB: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: text := 'CASE bogus OF'; (* IF fake THEN state := B; *) state := B;",
+            "line": 3
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "",
+            "code": "state := B;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 4,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:two_places",
+    "text": "CASE state OF\nA: IF a THEN state := B; END_IF\n IF b THEN state := B; END_IF\nB: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: IF a THEN state := B; END_IF\nIF b THEN state := B; END_IF",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "a",
+            "code": "IF a THEN state := B;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "b",
+            "code": "IF b THEN state := B;",
+            "line": 3,
+            "block": true
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 4,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:no_edges",
+    "text": "CASE state OF\nA: x := 1;\nB: x := 2;\nEND_CASE",
+    "machines": []
+  },
+  {
+    "name": "synthetic:two_machines",
+    "text": "CASE s1 OF\nA: s1 := B;\nB: s1 := A;\nEND_CASE\nCASE s2 OF\n0: s2 := 1;\n1: s2 := 0;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "s1",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: s1 := B;",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: s1 := A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "",
+            "code": "s1 := B;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "s1 := A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      },
+      {
+        "selector": "s2",
+        "numeric": true,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "0",
+            "code": "0: s2 := 1;",
+            "line": 6
+          },
+          {
+            "label": "1",
+            "code": "1: s2 := 0;",
+            "line": 7
+          }
+        ],
+        "transitions": [
+          {
+            "source": "0",
+            "target": "1",
+            "guard": "",
+            "code": "s2 := 1;",
+            "line": 6,
+            "block": false
+          },
+          {
+            "source": "1",
+            "target": "0",
+            "guard": "",
+            "code": "s2 := 0;",
+            "line": 7,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:deferred",
+    "text": "CASE P.state OF\nE.A: P.next_state := E.B;\nE.B: P.next_state := E.A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "P.state",
+        "numeric": false,
+        "deferred": true,
+        "warnings": [],
+        "states": [
+          {
+            "label": "E.A",
+            "code": "E.A: P.next_state := E.B;",
+            "line": 2
+          },
+          {
+            "label": "E.B",
+            "code": "E.B: P.next_state := E.A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "E.A",
+            "target": "E.B",
+            "guard": "",
+            "code": "P.next_state := E.B;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "E.B",
+            "target": "E.A",
+            "guard": "",
+            "code": "P.next_state := E.A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:guard_elsif",
+    "text": "CASE state OF\nA: IF a THEN state := B; ELSIF b THEN state := C; ELSE state := A; END_IF\nB: state := A;\nC: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: IF a THEN state := B; ELSIF b THEN state := C; ELSE state := A; END_IF",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          },
+          {
+            "label": "C",
+            "code": "C: state := A;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "a",
+            "code": "IF a THEN state := B;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "A",
+            "target": "C",
+            "guard": "NOT a AND b",
+            "code": "ELSIF b THEN state := C;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "A",
+            "target": "A",
+            "guard": "NOT a AND NOT b",
+            "code": "ELSE state := A;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "C",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 4,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:guard_nested",
+    "text": "CASE state OF\nA: IF a THEN IF b THEN state := B; END_IF END_IF\nB: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: IF a THEN IF b THEN state := B; END_IF END_IF",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "a AND b",
+            "code": "IF b THEN state := B;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:warnings",
+    "text": "CASE state OF\nA: state := UNKNOWN;\nB: state := A;\nC: x := 2;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [
+          {
+            "line": 2,
+            "text": "assigns UNKNOWN to the state variable but no branch handles it"
+          },
+          {
+            "line": 2,
+            "text": "state A has no outgoing transition"
+          },
+          {
+            "line": 4,
+            "text": "state C has no outgoing transition"
+          },
+          {
+            "line": 3,
+            "text": "state B is never entered"
+          },
+          {
+            "line": 4,
+            "text": "state C is never entered"
+          }
+        ],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: state := UNKNOWN;",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          },
+          {
+            "label": "C",
+            "code": "C: x := 2;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:enum_alias",
+    "text": "CASE state OF\nE.A, E.ALIAS: state := E.B;\nE.B: state := E.ALIAS;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "E.A, E.ALIAS",
+            "code": "E.A, E.ALIAS: state := E.B;",
+            "line": 2
+          },
+          {
+            "label": "E.B",
+            "code": "E.B: state := E.ALIAS;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "E.A, E.ALIAS",
+            "target": "E.B",
+            "guard": "",
+            "code": "state := E.B;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "E.B",
+            "target": "E.A, E.ALIAS",
+            "guard": "",
+            "code": "state := E.ALIAS;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:global_edge",
+    "text": "CASE state OF\nA: x := 1;\nB: state := A;\nEND_CASE\nstate := B;",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: x := 1;",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": null,
+            "target": "B",
+            "guard": "",
+            "code": "state := B;",
+            "line": 5,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:qualified",
+    "text": "CASE P.state OF\nE.A: P.state := E.B;\nE.B: P.state := E.A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "P.state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "E.A",
+            "code": "E.A: P.state := E.B;",
+            "line": 2
+          },
+          {
+            "label": "E.B",
+            "code": "E.B: P.state := E.A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "E.A",
+            "target": "E.B",
+            "guard": "",
+            "code": "P.state := E.B;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "E.B",
+            "target": "E.A",
+            "guard": "",
+            "code": "P.state := E.A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:elsif_or",
+    "text": "CASE state OF\nA: IF a OR b THEN state := B; ELSIF c OR d THEN state := C; END_IF\nB: state := A;\nC: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: IF a OR b THEN state := B; ELSIF c OR d THEN state := C; END_IF",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          },
+          {
+            "label": "C",
+            "code": "C: state := A;",
+            "line": 4
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "a OR b",
+            "code": "IF a OR b THEN state := B;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "A",
+            "target": "C",
+            "guard": "NOT (a OR b) AND (c OR d)",
+            "code": "ELSIF c OR d THEN state := C;",
+            "line": 2,
+            "block": true
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          },
+          {
+            "source": "C",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 4,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:nested_if_case",
+    "text": "IF enable THEN CASE state OF\nA: state := B;\nB: state := A;\nEND_CASE END_IF",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: state := B;",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "A",
+            "target": "B",
+            "guard": "",
+            "code": "state := B;",
+            "line": 2,
+            "block": false
+          },
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "synthetic:unhandled",
+    "text": "CASE state OF\nA: state := BOGUS;\nB: state := A;\nEND_CASE",
+    "machines": [
+      {
+        "selector": "state",
+        "numeric": false,
+        "deferred": false,
+        "warnings": [
+          {
+            "line": 2,
+            "text": "assigns BOGUS to the state variable but no branch handles it"
+          },
+          {
+            "line": 2,
+            "text": "state A has no outgoing transition"
+          },
+          {
+            "line": 3,
+            "text": "state B is never entered"
+          }
+        ],
+        "states": [
+          {
+            "label": "A",
+            "code": "A: state := BOGUS;",
+            "line": 2
+          },
+          {
+            "label": "B",
+            "code": "B: state := A;",
+            "line": 3
+          }
+        ],
+        "transitions": [
+          {
+            "source": "B",
+            "target": "A",
+            "guard": "",
+            "code": "state := A;",
+            "line": 3,
+            "block": false
+          }
+        ]
+      }
+    ]
+  }
+]

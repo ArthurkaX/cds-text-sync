@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>Cts.Agent</AssemblyName>
+    <RootNamespace>Cts.Agent</RootNamespace>
+    <!-- One DLL for the 32-bit CODESYS and the 64-bit Astra.IDE. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Reading a dialog's real radio buttons and check boxes (t71): the agent
+         is inside the process that owns them, so Control.FromHandle finds the
+         control itself.  This is the framework's own assembly, not a vendor
+         one; Cts.Agent.Core stays free of it so the Core is testable on Linux. -->
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Cts.Agent.Core\Cts.Agent.Core.csproj" />
+  </ItemGroup>
+</Project>

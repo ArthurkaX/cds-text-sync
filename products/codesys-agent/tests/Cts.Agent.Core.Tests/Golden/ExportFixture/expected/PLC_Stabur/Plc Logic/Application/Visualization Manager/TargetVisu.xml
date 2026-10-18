@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">430f4678-860b-4588-a66e-3635ba2d0f5c</Single>
+        <Single Name="ParentGuid" Type="System.Guid">1198c444-11de-471f-8e7d-e296372fb9b4</Single>
+        <Single Name="Name" Type="string">TargetVisu</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">bc63f5fa-d286-4786-994e-7b27e4f97bd5</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{bc63f5fa-d286-4786-994e-7b27e4f97bd5}" Method="IArchivable">
+        <Single Name="ViewSettings" Type="{cb5403ec-4e3b-4965-9be8-913e6068f7cb}" Method="IArchivable">
+          <Single Name="StartVisu" Type="string">Visualization</Single>
+          <Null Name="HtmFileName" />
+          <Single Name="UpdateRate" Type="int">200</Single>
+          <Single Name="CommBufferSize" Type="int">50000</Single>
+          <Single Name="BestFit" Type="bool">False</Single>
+          <Single Name="ClientSizeMode" Type="{c37fe731-4f69-4d98-82fe-4f9aefbe200d}">AutoDetect</Single>
+          <Single Name="ClientSizeX" Type="int">2000</Single>
+          <Single Name="ClientSizeY" Type="int">2000</Single>
+          <Single Name="Antialiasing" Type="bool">True</Single>
+          <Single Name="ClientOperationType" Type="{bd122c9a-5824-461f-8b56-d89816d314bf}">Keyboard</Single>
+          <Single Name="ScaleTypeIsotropic" Type="bool">False</Single>
+          <Single Name="UseScalingOptionsForDialogs" Type="bool">True</Single>
+          <Single Name="FillBackground" Type="bool">True</Single>
+        </Single>
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">1198c444-11de-471f-8e7d-e296372fb9b4</Single>
+      <Array Name="Path" Type="string">
+        <Single Type="string">PLC_Stabur</Single>
+        <Single Type="string">PLC Logic</Single>
+        <Single Type="string">Application</Single>
+        <Single Type="string">Visualization Manager</Single>
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

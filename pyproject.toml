@@ -1,73 +1,6 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "cds-text-sync"
-dynamic = ["version"]
-description = "CODESYS CLI + reverse-pipe daemon"
-requires-python = ">=3.11"
-authors = [{ name = "cds-text-sync contributors" }]
-
-[project.urls]
-Homepage = "https://github.com/ArthurkaX/cds-text-sync"
-
-[project.scripts]
-# This compatibility wheel is the distribution that gets installed today; the
-# products repeat their own entry points for the future split, and the two
-# copies must stay identical (tests/unit/test_version_consistency.py pins it).
-cts = "cds_cli.main:main"
-cds-text-sync = "cds_cli.main:main"  # legacy alias, compatibility wheel only
-
-[project.optional-dependencies]
-# Kept optional: the command-line and CI workflows must stay dependency-free.
-ui = ["pywebview>=5,<6"]
-
-[tool.setuptools.dynamic]
-version = { attr = "cds_text_sync.__version__" }
-
-[tool.setuptools.packages.find]
-include = [
-  "cds_text_sync",
-  "cds_text_sync.*",
-  "cds_static_analyzer",
-  "cds_static_analyzer.*",
-  "cds_cli",
-  "cds_cli.*",
-  "visu_lint",
-  "visu_lint.*",
-  "cts_shared",
-  "cts_shared.*",
-]
-where = [
-  "products/cds-text-sync/src",
-  "products/cds-static-analyzer/src",
-  "products/cds-cli/src",
-  "products/visu-lint/src",
-  "shared/src",
-]
-
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.package-data]
-cds_text_sync = ["CLI.md", "TEST_FORMAT.md", "ui_assets/*", "fsm_ui_assets/*"]
-# The operating guides `cts guide` serves, version-matched with the CLI.
-cds_cli = [
-  "guides/*.md",
-  "guides/visu-svg/*.md",
-  "guides/visu-svg/examples/*.svg",
-]
-"cds_text_sync.engine" = ["sys_funcs.json"]
-"cds_text_sync.visu" = [
-  "catalog/*.json",
-  "templates/*.tmpl",
-  "themes/*.json",
-  "styles_snapshot.json",
-  "stylesheet.css",
-  "DESIGN.md",
-]
-"cds_static_analyzer" = ["rules/*.py", "rules/*.md"]
+# The product is .NET (products/codesys-agent); the Python left here is the
+# IronPython script headless CODESYS runs, the repository's tools and tests.
+# This file only configures the linters for them.
 
 [tool.ruff]
 
@@ -76,10 +9,4 @@ cds_cli = [
 select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
-# These modules deliberately modify sys.path or load CLR namespaces before
-# importing runtime-only modules. Moving those imports would break IronPython
-# and CODESYS-hosted execution.
-"products/codesys-host/src/ide_bridge/*.py" = ["E402", "F401"]
-"products/cds-static-analyzer/src/cds_static_analyzer/__init__.py" = ["E402"]
-"products/cds-cli/src/cds_cli/_cli_io.py" = ["E402"]
 "tests/unit/*.py" = ["E402"]

@@ -1,269 +1,242 @@
 # Script Overview
 
-The CODESYS-side entry points, in the order you use them — note that the CODESYS
-menu itself lists them alphabetically, so the menu order is not this order. All
-of them appear under **Tools > Scripting > Scripts > P** after
-[installation](install.md), and the ones you repeat are worth putting on a
-toolbar button ([onboarding, step 3](onboarding.md#3-find-the-commands--the-short-way)) —
-and they are the only thing this tool puts in that menu. The recurring sync,
-daemon, and analysis actions also have `cts` equivalents for shell and CI use —
-see [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
+What the tool offers inside CODESYS, in the order you use it. After
+[installation](install.md) it has one menu entry, **Tools > Scripting > Scripts >
+C > cds-text-sync**, and the same command as a toolbar button; both start the
+in-IDE agent and open the quick window (Alt+Q), where everything below lives.
+Each action also has a `cts` equivalent for shell and CI use; run `cts --help`
+and `cts <command> --help` for the installed CLI reference.
 
-## 1. `Project_directory.py` (Setup)
+## 1. The sync folder (setup)
 
-**Run this first.** It links your current CODESYS project to a sync root on disk.
+**Set it first.** It links your current CODESYS project to a folder on disk,
+a git repository. With the agent running (`cds-text-sync.py`), press Alt+Q,
+then `8` Settings and `1` Sync folder; `cts set-sync-folder PATH` does the same
+from a shell.
 
-![Setup Project Directory](../img/setFolder.gif)
-
-- One dialog with the path already filled in: a folder named after the project
-  (`MyProject-cts`) beside the `.project` file. Enter accepts it, the field is
-  editable, and **Browse…** opens the folder browser.
-- **Relative Path Support**:
-  - The suggested name is relative, and so is anything you browse to inside the
-    project directory. A path you type is stored exactly as typed.
-  - Use `.` to sync to the same directory as your project file, or any
-    subfolder name relative to it.
-  - **Perfect for team collaboration**: Relative paths work on any machine
-    without reconfiguration, as they're resolved relative to the project file
-    location.
-  - The folder will be created automatically if it doesn't exist.
-- Any command that needs a sync folder and finds none offers this same dialog
-  and then continues, so it does not have to be run first.
-- On a folder that has no `cds-text-sync.json` yet, it continues into
-  `Project_options.py` — the only point where the sync mode is still free to
-  choose.
-- Saves the sync-root path in the CODESYS project properties used by the active
-  scripts.
-- The selected sync root is then resolved into generated state such as `.dump/`
-  and the editable view root such as `project-view/`.
+- On a project without one, the row's line already holds a folder named after
+  the project (`./MyProject-cts`) beside the `.project` file. Enter accepts it,
+  and the line is editable. Once set, the same row opens Explorer's folder
+  dialog to move it.
+- A relative path starts at the folder of the `.project` file; `.` is that
+  folder itself. The folder is created when it does not exist.
+- The project finds its folder by its id, not by a path. It gets an id
+  (`cts-project-id` in Project Information, the one field cts keeps in the
+  `.project`), the folder's `cds-text-sync.json` names the same id, and this PC
+  remembers where the folder is (`%LOCALAPPDATA%\cds-text-sync\projects.json`).
+  A copy of the `.project` opened from anywhere finds the folder again; on
+  another PC, the project has no sync folder until it is set once there, for
+  that PC's clone of the repository.
+- The PC that gives the project its id is its owner: the one that publishes
+  the project file into the repository (`cts commit --publish`).
+- On a folder that has no `cds-text-sync.json` yet, it writes one with the
+  settings in effect (your user defaults over the built-in ones).
+- Makes the folder a git repository root: a
+  folder without a repository gets `git init`, a `.gitignore` for what cts and
+  CODESYS generate there (`.cts-docs/`, the `.project`'s lock, option
+  and build files), a `.gitattributes` that keeps native `.xml` objects out of
+  line merges, the `cds-text-sync.json` above, and a first commit of those
+  files. A folder that is already
+  a repository root only gets the missing lines, uncommitted. A folder inside
+  another repository, not at its root, is refused: the sync base
+  needs the repository root to be the sync folder.
+- The selected sync root is then resolved into the editable view root such as
+  `project-view/`. cts keeps its temporary files under the repository's
+  `.git/cts/`, never in the working tree.
 
 **Examples**:
 
 - Absolute path: `C:\MyProjects\MyPLC\sync\`
 - Relative path (project directory): `./`
-- Relative path (subfolder): `./sync/` or `./git-repo/src/`
+- Relative path (subfolder): `./sync/`
 
 ## 2. Active sync commands
 
-The active root entry points are `Project_directory.py`, `Project_options.py`,
-`Project_export.py`, `Project_import.py`, `Project_compare_ui.py`,
-`Project_build.py`, `Project_fmt.py`, `Project_fsm.py`, `Project_discover.py`,
-and `Project_resources.py`.
+The menu has one entry, `cds-text-sync.py`; it starts the agent and opens the
+quick window. The installer also registers `cds-text-sync` in the sibling
+CODESYS Script Commands folder, with its script and icon, and adds its button
+(<img src="../img/cts-button.png" alt="CTS two-arrow button" height="20">) to the Standard toolbar. If CODESYS was open during setup, close it and
+run `cts install --toolbar`. The button does the same as the menu entry.
+Export, import, compare and build (`cts build`) are `cts` commands (section 6).
 
-## 3. `Project_fmt.py` (Quick ST formatting)
+### The quick window
+
+Alt+Q in CODESYS (while its window has the focus; other programs keep their
+Alt+Q) opens the quick window over the IDE. Opening it runs only reads
+(`cts compare`, git branch/log, and a git fetch at most once a minute); nothing
+changes until a command is chosen.
+
+- **No project open**: the known projects, opening any `.project` file, and
+  Settings for user-level tools and the quick key.
+- **Header**: the work branch (`↑N ↓M` when it is N commits ahead of its
+  upstream and M behind, as of the last fetch), the sync folder, online or
+  offline, and what changed since the last sync (`changed: disk N · IDE N ·
+  both N`, `in sync`, or `not on disk yet — 2 writes it` for a folder never
+  exported).
+- `1` **Disk -> IDE** (`cts import --tool`) and `2` **IDE -> Disk**
+  (`cts export --tool`) carry what changed on one side to the other. An
+  object both sides changed is merged; when the edits overlap, it opens in
+  the merge program side by side: the other side's text on the left,
+  read-only, the carried text on the right. Edit the right side, save and
+  close: what is saved goes to the IDE and the file. Closed without saving,
+  the object stays as it was on both sides. **Shift+1** and **Shift+2** (or
+  Shift and a click) make one side the other with no merge (`cts import
+  --force` / `cts export --force`); what was overwritten stays on
+  `refs/cts/overwritten`.
+- `3` **Compare**: `1` the disk (`cts compare --tool`), then the local
+  branches, the most recent first (`cts compare --tool --against NAME`).
+  Nothing is merged here: branches are merged in your git program (`7`), and
+  `1` carries the result into the IDE.
+- `4` **Switch branch**: the local branches, the most recent first. Choosing
+  one runs `cts checkout NAME --disk-only` (the disk moves, the IDE keeps its
+  work, so `3` shows what the branch changes and `1` carries it); the branch
+  the work is on pulls the team's commits (`cts project update`, offline
+  only); the first row, `+`, asks a name and runs `cts branch NAME`.
+- `5` **Commit**: asks the message and runs `cts commit -m`; when the
+  repository has a remote it then offers `cts push`.
+- `6` **Commit and publish** (`cts commit --publish`) on the project owner's
+  PC; **Pull and update the project** (`cts project update`, offline only) on
+  a colleague's.
+- `7` **Open in ...** (`cts open`): the sync folder in your git program, for
+  what the window does not do: merging branches, the history, undoing a
+  commit, a conflict git left; `1` then carries what changed into the IDE.
+  The row names the program: the one chosen in Settings (`cts tool open
+  NAME`: GitHub Desktop, VS Code, Zed, Explorer or any program's full path),
+  else the first of GitHub Desktop, VS Code and Zed installed, else Explorer.
+- `8` **Settings** (section 5): the sync folder (`cts set-sync-folder`), the
+  program `7` opens (`cts tool open NAME`), the quick key, This PC and
+  Permissions. The compare and merge programs are git's `diff.tool` and
+  `merge.tool`.
+- `0` **More**: `1` Format ST (section 3), `2` the agent's activity as it
+  happens, `3` copies the line that points an AI agent at this IDE
+  (`!cts --target ide-<pid> --expect-project <project> --help`), `4` the FSM
+  map (section 4), `5` Static analysis over `cts analyze` (section 8).
+
+<p><img src="../img/quick-window.png" alt="The quick window" width="380">
+   <img src="../img/quick-more.png" alt="The quick window's More page" width="380"></p>
+
+A digit, a click or the arrows and Enter run an item; a row that asks opens a
+line in the footer (Enter runs it, Esc cancels). While a command runs the
+window shows a spinner with the seconds and the stage reached, then the
+command's verdict line. An item that cannot run now turns grey and says why
+(Disk -> IDE and Pull and update while online; everything but Settings and More without a
+sync folder or while a compare runs). Esc or a click elsewhere closes the
+window, except while a command runs. Each item is a `cts` process started with
+`CTS_IDE_PID` (it talks only to this IDE) and `CTS_PROGRESS=1` (it writes each
+stage to stderr as `progress: STAGE`).
+
+Another key opens the window when you choose one: `cts config set quick_key
+Ctrl+Shift+Q` (Ctrl, Alt and Shift, then a letter, a digit or F1-F12; a letter
+or a digit needs a modifier). It is yours, in `defaults.json`, the same in
+every project; the agent picks it up at once, and the chord matches exactly, so
+AltGr+Q still types its character. `cts config unset quick_key` goes back to
+Alt+Q.
+
+## 3. More page, `1` Format ST (Quick ST formatting)
 
 Use this when a Structured Text object looks untidy and opening the full
-Analyzer would be unnecessary.
+Analyzer would be unnecessary. In the quick window, choose More, `1` Format ST
+to open the format window: Alt+Q, `0` (More), `1` Format ST.
 
-1. Select a POU, GVL, or DUT in the CODESYS project tree.
-2. Run `Project_fmt.py` from **Tools > Scripting**.
-3. The first screen loads object names only. Click a block to analyze it; its
-   row then shows either `[N line(s) to fix]` or `[OK]`.
-4. Use the filter box when the project contains many objects. Choose
-   **Open selected** for one analyzed object, or **Review All** to scan from
-   the top and open the first object that needs changes.
-5. Review the side-by-side **Before** and **After** preview. Changed lines are
-   highlighted in both panes; **Previous change** and **Next change** jump
-   between them and the panes follow each other's scroll position.
-6. Choose **Apply**, **Skip**, or **Stop**. After each decision, **Review All**
-   continues scanning from the next object.
+1. The window reads the project's Structured Text objects through `cts fmt
+   --json` and lists them, those the formatter would change marked with their
+   line count. The filter box narrows the list.
+2. The object chosen shows side by side, as the IDE has it and formatted.
+   Changed lines are highlighted in both panes, which scroll together;
+   **Previous change** and **Next change** (Shift+F8 / F8) jump between them.
+3. **Apply** writes the object (`cts fmt --guid G --write --if-timestamp T`)
+   and selects the next one to fix; **Skip** goes on without writing;
+   **Reload** (F5) reads the IDE again; Esc closes the window.
 
-`Project_fmt.py` formats only the object currently shown in the preview. It
-aligns variable declarations and repairs structural code indentation; it does
-not run a project-wide analysis or start the daemon. Text is loaded lazily so
-the first list appears without waiting for every project object. Applying a
-change mutates the open IDE object directly; review the preview and use the
-CODESYS Undo command if needed. The formatter refuses to overwrite a section
-that changed after its preview was created. If the CODESYS version does not
-expose its tree selection to ScriptEngine, the script opens a list of textual
-project objects instead.
+It aligns variable declarations and repairs structural code indentation; it
+does not run a project-wide analysis and needs no sync folder. The menu entry
+opens the quick window, where More, `1` opens this same format view. Applying a
+change writes the open IDE object directly; use the CODESYS Undo command if
+needed. An object edited since the list was read is refused, not overwritten:
+Reload and look at it again. An agent started before this window existed
+cannot open it; restarting CODESYS loads the installed one.
 
-## 4. `Project_fsm.py` (FSM transition map)
+## 4. More page, `4` FSM map (FSM transition map)
 
-Use this when you want to see state machine(s) from the exported
-`project-view` workspace as a diagram.
+Use this when you want to see the state machines in the project's Structured
+Text as a diagram. The quick window opens the agent's FSM window: Alt+Q, `0`
+(More), `4` FSM map.
 
-1. Configure the sync folder and export the project.
-2. Run `Project_fsm.py` from **Tools > Scripting**.
-3. The menu entry starts a separate CPython process against the project's
-   configured sync folder and opens the FSM map window. The CODESYS
-   ScriptEngine only launches that process; it does not host the window.
-4. Filter the exported `.st` files in the left-hand list, then scan the
-   filtered set or open one file directly.
-5. Select a machine to draw the state boxes and edges on the right. The
-   transition rows in source order sit on the left — a later write overrides
-   an earlier one. Click a state to highlight the edges that touch it, or a
-   transition row to highlight exactly that edge.
-6. Right-click a state or a transition to read the Structured Text it was
-   drawn from, in a popup over the diagram. Ctrl+wheel zooms the diagram
-   around the pointer; dragging pans it.
-7. **Copy Mermaid** puts a `stateDiagram-v2` rendering of the current machine
-   on the clipboard; **Copy PlantUML** puts the same machine there as a
-   `@startuml` block. Both are text only — nothing is sent anywhere.
+1. The window reads the project's Structured Text through `cts fsm --layout --json`
+   (unsaved edits included, no sync folder or export needed) and lists every
+   state machine found, with its object, selector and step count. The filter
+   box narrows the list.
+2. The machine chosen is drawn as a GRAFCET chart: numbered steps (the initial
+   one with a double frame), one bar per transition with its receptivity
+   beside it, long jumps as numbered notes. Transitions written outside the
+   `CASE` hang from an "any" box: they take priority.
+3. Click a step or a transition to read the Structured Text behind it and the
+   line of the implementation it starts on.
+4. Ctrl+wheel or Ctrl+plus/minus zooms, Ctrl+0 fits the chart; **Reload** (F5)
+   reads the IDE again; Esc closes the window.
 
-The window is non-modal and stays interactive while a scan runs: the analysis
-happens in a separate bounded worker pool, so a large function block no longer
-freezes the IDE. `Project_fsm.py` is read-only: it never writes to any project
-object. It detects state machines implemented as a `CASE` over a state
-variable whose branches assign to the same variable (or its `next_`/`new_`
-twin). An object with no `textual_implementation` (a DUT, a GVL) is simply
-`[no FSM]`, not an error. The diagram does not jump to the source position in
-the CODESYS editor.
+The window is read-only: it never writes to any project object. It detects
+state machines implemented as a `CASE` over a state variable whose branches
+assign to the same variable (or its `next_`/`new_` twin). An agent started
+before this window existed cannot open it; restarting CODESYS loads the
+installed one. From the shell, `cts fsm` lists the same machines, `cts fsm NAME`
+shows one object's transitions (`--mermaid` as a diagram), and `cts fsm --disk`
+reads them from the sync folder's files.
 
-Because the window runs as a separate CPython process, `python` must be
-available on the `PATH` (or `CDS_PYTHON` must point at `python.exe`), and the
-optional UI dependency must be installed once with `pip install -e ".[ui]"`.
-If the interpreter cannot be started, CODESYS reports the failed launch and
-how to set `CDS_PYTHON`; if the UI dependency is missing, the window explains
-how to install it. The command-line equivalent is
-[`cts fsm ui`](../products/cds-text-sync/src/cds_text_sync/CLI.md#fsm-transition-maps-cts-fsm).
+## 5. Settings page
 
-## 5. `Project_options.py` (Advanced project options)
+The quick window's Settings page holds the sync folder, the program
+`7` opens (section 1), the quick key (`cts config set quick_key`, yours, in
+`defaults.json`), This PC (owner or colleague) and Permissions, the deny list
+in the project's committed `cds-text-sync.json`. The files on disk have no
+settings: the view is `project-view/` in the sync folder, written as section 7
+says.
 
-The normal first export does not require this dialog: the default profile
-already enables every supported `.st` and `.csv` text projection. Use it after
-selecting the sync root only when you need to change advanced project options.
+<p><img src="../img/quick-settings.png" alt="The quick window's Settings page" width="420"></p>
 
-The dialog has two tabs, each laid out as a format column and a behavior column.
-**General** edits the per-user `defaults.json`: the values a new project starts
-from, plus the behavior values the other projects inherit. It offers **Reset to
-built-in**, which empties that file on the next save. **Project** edits this
-project's committed `cds-text-sync.json`.
+## 6. Export, import and compare
 
-- **Sync Mode**: Choose XML-first (default) or text-first. This is a one-time
-  choice on an empty folder — see [Sync modes](sync-modes.md).
-- **View Storage**: Choose default `project-view/`, root-view, or an explicit
-  custom view root.
-- **View Root Lock**: Choose the view storage before the first export. After
-  `.dump/manifest.json` has been created, `Project_options.py` locks the layout
-  and custom view root controls; hover a locked one to see why. To use a
-  different export folder, start again with a clean sync directory.
-- **Profile**: Select the active CODESYS profile for object type handling.
-- **Projections**: All supported readable `.st` and `.csv` files start enabled
-  in the default profile. The dialog can disable individual projections or
-  restore them for a custom profile. In text-first mode the same list becomes
-  **Keep XML in view** and chooses which kinds keep native `.xml` in Git.
-- **Behavior**: Enable or disable timestamped binary backup before import, set
-  how many generated backups to keep, and turn detailed engine logs, advanced
-  debug, and the final import/export success popup on or off. On the **Project**
-  tab this block is either **Same as General** (greyed, following the General
-  values) or **Own for this project**, which pins the five values in
-  `cds-text-sync.json`.
-- **Git Ignore Helper**: Append recommended generated-state ignore rules without
-  rewriting existing user rules.
+These are `cts` commands, run outside CODESYS against the in-IDE agent that
+`cds-text-sync.py` starts: `cts export` (IDE to disk), `cts import` (disk to
+IDE, object by object), `cts sync` (both directions) and `cts compare`; run
+`cts guide workflow` for the full cycle.
 
-## 6. `Project_export.py` (CODESYS -> Disk)
+## 7. Files on disk
 
-Exports the current project state into the XML-first workspace under the
-configured sync folder.
+What `cts export` writes for each kind of object, always the same:
 
-![Export Changes](../img/Export.gif)
+| Object | Files in `project-view/` |
+|---|---|
+| ST program, function block, function, interface, with its methods, properties and actions | `Name.st`, the members inside |
+| GVL, persistent variables, task-local GVL, DUT | `Name.st` |
+| Network variable list (sender) | `Name.st` and `Name.xml`, its network settings |
+| Network variable list (receiver) | `Name.xml`; the IDE writes its variables from the sender |
+| CFC, FBD, LD or SFC POU | `Name.xml`, each member `Name.Member.xml` beside it, ST ones too |
+| Graphical method or action of an ST POU | `Owner.Member.xml` beside `Owner.st` |
+| Text list, global text list | `Name.csv`, its rows, and `Name.xml`, the rest of the list (its languages) without the rows |
+| Alarm group | `Name.csv`, its alarms with their messages (only the `Message` columns go back to the IDE), and an `.xml` for the group and one for its message list |
+| Folder | a directory with `.cds-object.xml`; an empty one `Name.xml` |
+| Anything else: visualization, task, device, Library Manager, project settings | `Name.xml` |
 
-- **Fresh Snapshot**: Exports the live IDE project to `.dump/IDE.xml`.
-- **Views Refresh**: Rebuilds the configured view root from the snapshot using
-  the external Python 3 engine.
-- **Manifest Update**: Writes `.dump/manifest.json` so later compare/import steps
-  use the same exported object inventory.
-- **Layout Guard**: Export, compare, and import fail with a clear error if the
-  current view root does not match the manifest. This prevents duplicate editable
-  folders after changing storage settings.
-- **Offline-Friendly**: The heavy parsing and folder generation happen outside
-  the IDE bridge.
-- **Overwrite protection**: Local edits you have not imported yet are not
-  silently overwritten — see
-  [Overwrite protection](sync-modes.md#overwrite-protection-both-modes).
+An `.st` or `.csv` is edited as text; an `.xml` goes back whole and is merged element by element.
 
-## 7. `Project_import.py` (Disk -> CODESYS)
+An `.st` may start with one cts pragma line,
+`(* cds-text-sync: TypeGuid="{...}" External CompilerDefines="SIM" *)`. It
+carries what the text cannot: `TypeGuid` the type of persistent or task-local
+variables, and the object's settings that are not the IDE's default (the build
+properties `ExcludeFromBuild`, `LinkAlways`, `External`, `EnableSystemCall`,
+`CompilerDefines`, `MemoryReserveForOnlineChange`, and `POULevel`,
+`SpecialFunc`, `AddAttributeSubsequent`, `ParameterList`, `TaskForWrite`).
+`cts import` sets them in the IDE, and a removed one goes back to its default.
+A setting the line cannot hold keeps an `.xml` beside the `.st`.
 
-Applies disk changes back into CODESYS using the XML-first bridge.
+## 8. Diagnostics
 
-- **Snapshot Before Change**: Captures a fresh `.dump/IDE.xml` before planning any
-  import.
-- **Patch Build**: Runs the external engine against the configured view root and
-  prepares `.dump/IMPORT.xml`.
-- **Safety Backup**: When enabled, saves the open project and copies the project
-  binary to `.backup/YYYYMMDD_HHMMSS_<project-name>.bak` before applying a patch
-  that changes the IDE.
-- **Native Apply**: Textual objects are applied with CODESYS text APIs, then
-  remaining non-textual XML is applied through native import.
-- **Creates**: New standalone `.st` files can create supported text objects when
-  the object kind is clear from the source. This is also how a screen compiled by
-  [`cts visu from-svg`](visu.md) reaches the IDE.
-
-## 8. `Project_compare_ui.py` (IDE vs Disk)
-
-Shows what differs between the current IDE state and the exported disk view,
-and lets you act on it.
-
-![Compare and Interactive Sync](../img/Compare-Import.gif)
-
-- **Fresh Compare Snapshot**: Exports the current IDE state to
-  `.dump/IDE.current.xml`.
-- **View Baseline**: Compares that snapshot against the configured view root
-  using the external diff engine.
-- **Report Output**: Writes `.dump/compare_report.json` with object names and
-  paths, for diagnostics and follow-up review.
-- **Object List**: Shows the differing objects in a CODESYS dialog.
-- **Actions**: Can launch import or export from the dialog. Checked objects can be
-  applied selectively when the external engine can resolve them by GUID.
-
-For a compare without any dialog — in a shell, in CI, or from the daemon — use
-[`cts compare`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
-
-## 9. Text projections
-
-Projections are editable views generated from XML-backed CODESYS objects. They
-are enabled by default in XML-first mode and can be adjusted in
-`Project_options.py`; in
-[text-first mode](sync-modes.md#text-first-opt-in) the `.st` ones are always on.
-
-- **POU `.st`**: Declaration/interface first, then `// --- implementation ---`,
-  then implementation.
-- **POU children `.st`**: Methods, actions, properties, and accessors are emitted
-  as flat sibling files such as `ST_FB.ST_METHOD.st`.
-- **GVL, persistent variables, and DUT `.st`**: Global variables, persistent
-  variable lists, task-local GVLs, and DUT declarations can be edited as text
-  files.
-- **TypeGuid metadata pragmas**: Ambiguous `.st` projections may start with
-  `(* cds-text-sync: TypeGuid="{...}" *)`; this is a sync hint only and is
-  stripped before XML rehydration or IDE text updates.
-- **Text list `.csv`**: Existing `TextID` rows and language values can be edited
-  for translation workflows.
-- **Alarm item `.csv`**: Existing alarm rows can be edited by stable `AlarmID`.
-- **Conflict Handling**: If both the redacted XML and its projection changed,
-  compare/import fails explicitly instead of choosing a source silently.
-
-CSV projections are update-only in this release. Inserted, removed, renamed, or
-duplicate rows fail explicitly. CODESYS supports only one Persistent Variables
-object per application, so creating a second one from a new `.st` file is
-rejected before IDE apply. Graphical implementations are skipped by profile
-safety rules unless a safe textual representation is available.
-
-## 10. Diagnostics
-
-- **`Project_build.py`**: Builds the active or selected application and writes
-  `.dump/build_<Application>.log` plus `.dump/build_report.json`.
-- **`Project_discover.py`**: Captures the live IDE tree and profile/type
-  resolution into `.dump/discover_tree.log` and `.dump/discover_report.json`.
-- **`Project_resources.py`**: Analyzes snapshot object sizes and categories,
-  writing `.dump/resources_report.json` and `.dump/resources_top.log`.
-- **`Project_analyze_ui.py`**: Opens the offline static-analysis desktop UI for
-  the current project. It is a thin adapter over the same analysis engine as
-  `cts analyze` — it never talks to CODESYS or the daemon. Requires the optional
-  UI dependency (`pip install 'cds-text-sync[ui]'`); the command-line equivalent
-  is [`cts analyze`](../products/cds-text-sync/src/cds_text_sync/CLI.md#static-analysis-cts-analyze).
-- **`Project_snapshooter.py`**: PLC variable preset snapshots. Runs a small
-  interactive wizard that takes, compares, and restores named presets of online
-  variable values (for example
-  `snapshooter.take(paths=["GVL_Routing.partCount"], label="speed")`). It shares
-  its backend with the future `cts snapshooter` CLI; the offline variable tree
-  it maps is built from `.dump/IDE.xml` by the external engine
-  (`snapshooter-map`). The CLI equivalents for capturing and applying live
-  values are `cts variable-snapshot` and `cts variable-restore`.
-- **`Project_daemon.py`**: Starts the reverse-pipe daemon so the `cts` CLI can
-  drive the open IDE. Its window shows `IDE: ide-<pid> · <project>` with a **Copy**
-  button that puts `!cts --target ide-<pid> --expect-project <project> --help` on the
-  clipboard, so you can hand an agent the exact connection to this project in one
-  paste (see [Several IDEs at once](../readMe.md#several-ides-at-once-point-the-agent-at-one-project)).
-  See [`cds_text_sync/CLI.md`](../products/cds-text-sync/src/cds_text_sync/CLI.md).
-- Offline static call graph via `cts engine call-tree`. See `--help` for options.
+- **Quick window More, `5` Static analysis**: Opens the findings window of
+  `cts analyze` for the project's sync folder (see
+  [static analysis](analyze.md)); the command-line equivalent is
+  `cts analyze --help`.
+- **`cds-text-sync.py`**: Starts the in-IDE agent and opens the quick window.
+  `cts` in a terminal also reaches this IDE. Run it once each time CODESYS
+  starts; nothing starts it on its own.
+  Run `cts <command> --help` for command options.

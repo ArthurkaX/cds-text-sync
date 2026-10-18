@@ -1,0 +1,40 @@
+PLC_Stabur/.cds-object.xml
+PLC_Stabur/Leds.xml
+PLC_Stabur/Plc Logic/.cds-object.xml
+PLC_Stabur/Plc Logic/Application/.cds-object.xml
+PLC_Stabur/Plc Logic/Application/E_BenchMode.st
+PLC_Stabur/Plc Logic/Application/FB_BenchRun.st
+PLC_Stabur/Plc Logic/Application/FB_Logger.st
+PLC_Stabur/Plc Logic/Application/FB_Motor.st
+PLC_Stabur/Plc Logic/Application/FB_Valve.st
+PLC_Stabur/Plc Logic/Application/F_Scale.st
+PLC_Stabur/Plc Logic/Application/GVL_Bench.st
+PLC_Stabur/Plc Logic/Application/GVL_Fixture.st
+PLC_Stabur/Plc Logic/Application/GVL_Motors.st
+PLC_Stabur/Plc Logic/Application/I_LiveTmp.st
+PLC_Stabur/Plc Logic/Application/Library Manager.xml
+PLC_Stabur/Plc Logic/Application/LiveTmpFolder/.cds-object.xml
+PLC_Stabur/Plc Logic/Application/LiveTmpFolder/GVL_LiveTmp.st
+PLC_Stabur/Plc Logic/Application/LogComponent.st
+PLC_Stabur/Plc Logic/Application/MAIN.st
+PLC_Stabur/Plc Logic/Application/PRG_BitBench.st
+PLC_Stabur/Plc Logic/Application/ST_Bits8.st
+PLC_Stabur/Plc Logic/Application/ST_Bits8Ext.st
+PLC_Stabur/Plc Logic/Application/ST_Bools8.st
+PLC_Stabur/Plc Logic/Application/ST_Packed.st
+PLC_Stabur/Plc Logic/Application/Task Configuration/.cds-object.xml
+PLC_Stabur/Plc Logic/Application/Task Configuration/Task.xml
+PLC_Stabur/Plc Logic/Application/Task Configuration/VISU_TASK.xml
+PLC_Stabur/Plc Logic/Application/U_Bits8.st
+PLC_Stabur/Plc Logic/Application/U_ExtBits.st
+PLC_Stabur/Plc Logic/Application/Visualization Manager/.cds-object.xml
+PLC_Stabur/Plc Logic/Application/Visualization Manager/TargetVisu.xml
+PLC_Stabur/Plc Logic/Application/Visualization Manager/WebVisu.xml
+PLC_Stabur/Plc Logic/Application/Visualization.xml
+PLC_Stabur/Plc Logic/Application/__VisualizationStyle.xml
+PLC_Stabur/Retain_.xml
+POUs/GlobalTextList.csv
+POUs/GlobalTextList.xml
+POUs/Library Manager.xml
+POUs/Project Information.xml
+POUs/Project Settings.xml
