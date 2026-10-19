@@ -63,8 +63,13 @@ namespace Cts.Agent
             // next command.  UiCall's epoch guard is the second line of defence,
             // for a dialog that opens between this check and the UI thread
             // starting the work.
-            _router.Gate = request => ModalGate.Check(request.Method, _modal, _modalProbe)
-                ?? ModalGate.CheckBusy(request.Method, _router.Running().Select(run => run.Key));
+            _router.Gate = request =>
+            {
+                // The gate runs on the handler's thread just before it: OnUi checks this.
+                _ide.ExpectedProject.Value = request.Params.TryGetValue("project_path", out var expected) ? expected as string : null;
+                return ModalGate.Check(request.Method, _modal, _modalProbe)
+                    ?? ModalGate.CheckBusy(request.Method, _router.Running().Select(run => run.Key));
+            };
             _vars = new VarsService(_ide, new VarCache(), _log);
             RegisterMethods();
             // dev.* exists only when asked for: the discovery tools are not part

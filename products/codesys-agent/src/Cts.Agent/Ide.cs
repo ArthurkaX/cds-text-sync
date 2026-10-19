@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 
 namespace Cts.Agent
 {
@@ -80,8 +81,20 @@ namespace Cts.Agent
             _engineIface.GetMethod("InvokeInPrimaryThread").Invoke(_engine, new object[] { action, new object[0], true });
         }
 
+        // The project file the request being answered began with (its
+        // `project_path`), or null; set before each handler runs.
+        public readonly AsyncLocal<string> ExpectedProject = new AsyncLocal<string>();
+
         public T OnUi<T>(string what, int timeoutMs, Func<T> fn)
         {
+            // Checked on the UI thread right before the work: another project
+            // opened since the command began is refused, not written to.
+            var expected = ExpectedProject.Value;
+            if (expected != null)
+            {
+                var work = fn;
+                fn = () => { CheckProject(expected); return work(); };
+            }
             var journal = Journal;
             if (journal != null && ObjectJournal.IsWrite(what))
             {
@@ -95,6 +108,16 @@ namespace Cts.Agent
                 fn = () => { CommitEditors(); return call(); };
             }
             return UiCall.Run(Post, fn, timeoutMs, what, Modal, StartTimeout.FinishBackstopMs, Probe);
+        }
+
+        void CheckProject(string expected)
+        {
+            var primary = PrimaryProject();
+            if (primary == null) return;
+            var path = (string)Prop(_projectIface, primary, "Path");
+            if (!string.Equals(path, expected, StringComparison.OrdinalIgnoreCase))
+                throw new ProtocolException(ErrorCodes.ProjectChanged, "the IDE has " + path + " open now, not " + expected
+                    + " that the command began with; nothing was done");
         }
 
         // Every open editor gives its object the text it holds (see OpenEditors).

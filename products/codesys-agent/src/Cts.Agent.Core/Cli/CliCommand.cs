@@ -168,6 +168,8 @@ namespace Cts.Cli
         {
             var ms = (int)Math.Min(int.MaxValue, Math.Max(1, seconds * 1000));
             var request = new Dictionary<string, object>(parameters ?? new Dictionary<string, object>()) { ["start_timeout_ms"] = (long)ms };
+            // The agent refuses the call when the IDE has another project open by then.
+            if (Hello.ProjectPath != null) request["project_path"] = Hello.ProjectPath;
             object result;
             try { result = _callOverride != null ? _callOverride(method, parameters) : Watched(method, request, ms); }
             catch (AgentException e) { throw Failure(method, e); }
@@ -219,7 +221,7 @@ namespace Cts.Cli
         }
 
         // The codes of a failure that is not the agent's refusal of the call.
-        static readonly HashSet<string> Unsettled = new HashSet<string> { "busy", "dialog_blocked", "dialog_opened", "timeout", "transport" };
+        static readonly HashSet<string> Unsettled = new HashSet<string> { "busy", "dialog_blocked", "dialog_opened", "timeout", "transport", ErrorCodes.ProjectChanged };
 
         CliFailure Described(string method, AgentException e)
         {
@@ -242,6 +244,7 @@ namespace Cts.Cli
                         dialogs.Count > 0 ? ModalErrors.BlockLine(dialogs) : null);
                 case "dialog_opened":
                     return new CliFailure(Command.Verb, e.Code, e.Message, DialogWatch.AnswerLine(dialogs[0]), 3, ModalErrors.BlockLine(dialogs));
+                case ErrorCodes.ProjectChanged: cause = "IDE ide-" + pid + " opened another project while the command ran"; next = "cts status"; break;
                 case "timeout": cause = "IDE ide-" + pid + " did not answer " + method + " in time; outcome unknown"; next = "cts status"; break;
                 case "transport": cause = "the connection to IDE ide-" + pid + " broke; outcome unknown"; next = "cts status"; break;
                 default:

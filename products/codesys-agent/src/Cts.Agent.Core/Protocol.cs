@@ -43,6 +43,10 @@ namespace Cts.Agent
         // keep a choice that was applied to it.  Nothing was pressed, and
         // error.data.dialogs carries the dialog as it is now.
         public const string DialogChanged = "dialog_changed";
+
+        // The request names the project its command began with (`project_path`)
+        // and the IDE has another one open now: the call did nothing.
+        public const string ProjectChanged = "project_changed";
     }
 
     // A handler throws this to answer with a specific error code.

@@ -471,6 +471,12 @@ started the call, so nothing ran), `dialog_blocked` (a dialog is up), and `timeo
 (it started but did not finish in the finish budget — the outcome is unknown, it may
 still complete). A refused command names the dialog; `cts dialog` prints the dialogs.
 
+Every request cts sends carries `project_path`, the project file its command's `hello`
+named. `OnUi` checks it on the UI thread right before the work: when the IDE has
+another project open by then, the call answers `project_changed` and does nothing, so
+a project switched during a command (by the user or another session) is never written
+to by that command. A request without `project_path` is not checked.
+
 ### What the live check measured (Windows, CODESYS 3.5.22.30)
 
 The Win32 half was verified against the IDE on the test VM (evidence:

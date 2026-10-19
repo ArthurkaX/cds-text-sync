@@ -340,6 +340,31 @@ namespace Cts.Agent.Tests
             }
         }
 
+        // Each call names the project its command began with; the agent that
+        // has another open by then refuses it, and the command ends there.
+        [Fact]
+        public void A_call_names_its_project_and_a_switched_project_ends_the_command()
+        {
+            var host = new FakeHost();
+            var sent = new List<object>();
+            host.Agents[7144] = Agent(@"C:\work\plant\A.project", null, (method, p) =>
+            {
+                sent.Add(p.TryGetValue("project_path", out var path) ? path : null);
+                throw new ProtocolException(ErrorCodes.ProjectChanged, "the IDE has B.project open now");
+            });
+            var command = CliCommands.All.Single(item => item.Name == "build");
+            var options = CliOptions.Parse(new[] { "build" }, null, command);
+            using (var conn = host.Open(7144))
+            {
+                var hello = new Hello(7144, (IDictionary<string, object>)host.Agents[7144]("hello", new Dictionary<string, object>()));
+                var call = new CliCall(conn, host, command, options, hello, 30);
+                var failure = Assert.Throws<CliFailure>(() => call.Call("project.build", null));
+                Assert.False(failure.Declined);
+                Assert.Equal("IDE ide-7144 opened another project while the command ran", failure.Cause);
+            }
+            Assert.Equal(new object[] { @"C:\work\plant\A.project" }, sent);
+        }
+
         [Fact]
         public void A_command_stopped_by_a_dialog_without_details_keeps_the_dialog_command()
         {
