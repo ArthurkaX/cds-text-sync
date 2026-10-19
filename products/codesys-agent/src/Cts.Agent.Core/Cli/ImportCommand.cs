@@ -316,7 +316,7 @@ namespace Cts.Cli
 
         internal static IDictionary<string, object> Execute(CliCall call) => Run(call, string.Equals(call.Command.Name, "sync", StringComparison.OrdinalIgnoreCase));
 
-        // `cts import`, or with *syncing* `cts sync`, which `cts commit` runs first.
+        // `cts import`, or with *syncing* `cts sync`.
         internal static IDictionary<string, object> Run(CliCall call, bool syncing) => new ImportRun(call, syncing, false).Execute();
 
         // After `cts export --tool`: the text objects the disk changed too,

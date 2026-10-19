@@ -1393,7 +1393,7 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
-        public void CommitSyncsTheIdeEditIntoItsFileAndCommitsTheFolder()
+        public void CommitTakesTheDiskAsItIsAndWarnsOfTheIdeEdit()
         {
             var view = ViewFolder.Of(_root);
             var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
@@ -1405,18 +1405,18 @@ namespace Cts.Agent.Tests
                 if (method == "project.tree") return Tree(item.Path);
                 throw new InvalidOperationException("unexpected agent call " + method);
             }, false, null, "session:changed");
+            var marks = _sources.Count;
             var result = call.Command.Execute(call);
             Assert.Equal(true, result["committed"]);
             Assert.Equal("main", result["branch"]);
             Assert.Equal("first state", GitRepository.Run(_root, "log -1 --format=%s").Trim());
-            Assert.Contains("IDE edit", GitRepository.Run(_root, "show HEAD:" + ProcessArgs.Quote(Path.GetRelativePath(_root, view).Replace('\\', '/') + "/" + item.File)));
+            Assert.DoesNotContain("IDE edit", GitRepository.Run(_root, "show HEAD:" + ProcessArgs.Quote(Path.GetRelativePath(_root, view).Replace('\\', '/') + "/" + item.File)));
             Assert.Equal(GitRepository.Run(_root, "rev-parse HEAD").Trim(), GitRepository.Run(_root, "rev-parse v1^{commit}").Trim());
             Assert.Equal("", GitRepository.Run(_root, "status --porcelain"));
-            Assert.Equal("main@" + GitRepository.Run(_root, "rev-parse HEAD").Trim().Substring(0, 8), _sources.Last());
+            Assert.Equal(marks, _sources.Count);
             var line = Verdict.Line(call.Command.Build(result).Status, "commit", call.Command.Build(result).Pairs);
             Assert.StartsWith("ok commit branch=main commit=", line);
-            Assert.Contains(" to_disk=1 ", line);
-            Assert.DoesNotContain("saved=", line);
+            Assert.Contains(" ide_differs=1", line);
         }
 
         [Fact]
@@ -1439,7 +1439,7 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
-        public void CommitOffABranchIsRefusedBeforeTheSync()
+        public void CommitOffABranchIsRefused()
         {
             Git("add -A");
             Git("commit -q -m start");
@@ -2450,14 +2450,23 @@ namespace Cts.Agent.Tests
         {
             var data = new Dictionary<string, object>
             {
-                { "committed", true }, { "commit", "fc7a965fbb2e" }, { "branch", "master" }, { "files", 1 },
-                { "to_disk", new List<object> { new Dictionary<string, object> { { "name", "F_Scale" } } } }, { "saved", false }, { "ide_unsaved", true },
+                { "committed", true }, { "commit", "fc7a965fbb2e" }, { "branch", "master" }, { "files", 1 }, { "differ", 0 }, { "ide_unsaved", true },
             };
             var answer = CommitCommand.Command.Build(data);
-            Assert.Contains(answer.Pairs, pair => pair.Key == "to_disk");
+            Assert.DoesNotContain(answer.Pairs, pair => pair.Key == "ide_differs");
             Assert.Equal("the IDE project stays unsaved: the commit holds the folder's files, not the project file; cts save when the engineer wants it saved", answer.Details.Last());
             data.Remove("ide_unsaved");
             Assert.DoesNotContain(CommitCommand.Command.Build(data).Details, line => line.Contains("stays unsaved"));
+        }
+
+        [Fact]
+        public void A_commit_of_a_disk_the_IDE_differs_from_warns_and_still_commits()
+        {
+            var data = new Dictionary<string, object> { { "committed", true }, { "commit", "fc7a965fbb2e" }, { "branch", "master" }, { "files", 2 }, { "differ", 3 } };
+            var answer = CommitCommand.Command.Build(data);
+            Assert.Equal("ok", answer.Status);
+            Assert.Contains(answer.Pairs, pair => pair.Key == "ide_differs" && Equals(pair.Value, 3));
+            Assert.StartsWith("[WARN] the IDE and the disk differ in 3 object(s)", answer.Details.Single());
         }
     }
 }

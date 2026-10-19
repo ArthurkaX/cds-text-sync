@@ -150,7 +150,7 @@ namespace Cts.Cli
         // The commands that write the open project and the sync folder, so a
         // failure part way can leave some of their changes in either.
         static bool WritesIde(CliCommand command)
-            => command.Name == "import" || command.Name == "sync" || command.Name == "commit" || command.Name == "checkout"
+            => command.Name == "import" || command.Name == "sync" || command.Name == "checkout"
                 || command.Name == "project" && command.Sub == "update";
 
         // The commands that read or write a sync folder's work tree, base or

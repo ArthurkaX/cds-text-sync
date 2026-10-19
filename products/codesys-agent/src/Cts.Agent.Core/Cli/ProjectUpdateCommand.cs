@@ -155,7 +155,7 @@ namespace Cts.Cli
             if (!Equals(compare.ContainsKey("base") ? compare["base"] : null, true)
                 || !compare.TryGetValue("summary", out var value) || !(value is IDictionary<string, object> summary)) return;
             var changed = JsonMap.Int(summary, "ide_changed") + JsonMap.Int(summary, "both");
-            if (changed > 0) throw new InvalidOperationException("the IDE changed " + changed + " object(s) since the last sync (cts compare names them): cts commit takes them into the branch first");
+            if (changed > 0) throw new InvalidOperationException("the IDE changed " + changed + " object(s) since the last sync (cts compare names them): cts sync carries them to disk, then cts commit takes them into the branch");
         }
 
         internal static void RequireUpstream(string folder)

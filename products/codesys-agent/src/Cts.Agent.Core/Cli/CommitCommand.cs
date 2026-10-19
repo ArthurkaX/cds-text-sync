@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Cts.Agent;
@@ -7,8 +8,8 @@ using Cts.Sync;
 
 namespace Cts.Cli
 {
-    // `cts commit -m MESSAGE`: cts sync, then git commit of the sync folder
-    // on its branch; nothing is committed when the sync stops.
+    // `cts commit -m MESSAGE`: git commit of the sync folder's files on its
+    // branch; a difference between the IDE and the disk is only a warning.
     public static class CommitCommand
     {
         static readonly IDictionary<string, string> CtsIdentity = new Dictionary<string, string>
@@ -20,9 +21,9 @@ namespace Cts.Cli
         public static readonly CliCommand Command = new CliCommand
         {
             Name = "commit",
-            Summary = "Sync the IDE and the sync folder, then commit the folder on its branch",
-            Description = "Record the project's state on the sync folder's branch: cts sync first (what only the IDE changed goes into the files, what only the disk changed into the IDE, edits on both sides are merged), then git add -A and git commit with the message. Every change git does not ignore is committed, files cts does not manage included, but never a *.project: the project file in the repository is its owner's, published with --publish. The IDE's project is not saved (cts save does that). With --tag the commit (or HEAD, when there was nothing to commit) is tagged, so cts checkout can go back to it.\n\n"
-                + "Nothing is committed when the sync stops: a conflict (exit 2; --take picks the side), a change the sync cannot carry, or the IDE refusing a write (cts sync names the cause). Refused before the sync when no branch is checked out (cts branch NAME starts one) or the tag exists. The user's git identity is used, cts' own when git has none; hooks run.\n\n"
+            Summary = "Commit the sync folder's files on its branch",
+            Description = "Record the sync folder on its branch: git add -A and git commit with the message, of the files as they are on disk; the IDE is not read or written. Every change git does not ignore is committed, files cts does not manage included, but never a *.project: the project file in the repository is its owner's, published with --publish. The IDE's project is not saved (cts save does that). With --tag the commit (or HEAD, when there was nothing to commit) is tagged, so cts checkout can go back to it.\n\n"
+                + "When the IDE and the disk differ (cts compare names how), the commit still goes and says so in a [WARN] line: cts export or cts sync first carries the IDE's edits into the files. Refused when no branch is checked out (cts branch NAME starts one) or the tag exists. The user's git identity is used, cts' own when git has none; hooks run.\n\n"
                 + "--publish (the project's owner only: the machine that gave it its id, or cts set-sync-folder --owner) also saves the project and commits its file under Git LFS, the base a colleague opens before cts import: the file the repository tracks, else the open one when it lies in the repository, else <name>.project at its root (published=PATH on the line).",
             TimeoutKey = "sync_compare_text",
             Options = new[]
@@ -31,7 +32,6 @@ namespace Cts.Cli
                 CliOption.Text("--message", "message", "MESSAGE", "The commit message"),
                 CliOption.Text("--tag", "tag", "NAME", "Tag the commit with this name (an annotated tag)"),
                 CliOption.Switch("--publish", "publish", "Also save the project and commit its file (Git LFS), the base the team opens; the owner's only"),
-                CliOption.Choice("--take", "take", "For an object whose edits overlap: keep the disk text or the IDE text, as cts sync --take does", "disk", "ide"),
                 CliOption.Text("--sync-folder", "sync_folder", "PATH", "Refuse unless the open project's sync folder is this one"),
             },
             Execute = Execute,
@@ -58,17 +58,8 @@ namespace Cts.Cli
             {
                 throw new CliFailure("commit", "refused", error.Message, "cts commit --help", 1);
             }
-            IDictionary<string, object> data;
-            try { data = ImportCommand.Run(call, true); }
-            catch (CliFailure stopped)
-            {
-                throw new CliFailure("commit", stopped.Cause, stopped.Message + "; nothing committed", stopped.Next, stopped.ExitCode, stopped.Note);
-            }
-            if (Equals(data.ContainsKey("partial") ? data["partial"] : null, true))
-            {
-                data["partial_reason"] = Convert.ToString(data.ContainsKey("partial_reason") ? data["partial_reason"] : "the sync stopped") + "; nothing committed";
-                return data;
-            }
+            var data = new Dictionary<string, object>();
+            var differ = Differences(call, data);
             try
             {
                 if (target != null)
@@ -86,12 +77,13 @@ namespace Cts.Cli
             }
             catch (InvalidOperationException error)
             {
-                throw new CliFailure("commit", "refused", error.Message + "; the sync went through, the commit did not", "cts commit --help", 1);
+                throw new CliFailure("commit", "refused", error.Message + "; nothing committed", "cts commit --help", 1);
             }
             foreach (var pair in GitRepository.Position(folder)) data[pair.Key] = pair.Value;
             if (tag.Length > 0) data["tag"] = tag;
-            // The published file was saved before its commit: it keeps the sync's label.
-            if (target == null) ProjectSource.Mark(call, folder, ViewFolder.Of(folder), data);
+            // The label names the commit the IDE's code is: only when the IDE
+            // and the files agree, and not on a published file, saved before its commit.
+            if (target == null && differ == 0) ProjectSource.Mark(call, folder, ViewFolder.Of(folder), data);
             // The commit holds the files, never the project file: say so when
             // the IDE still has edits its project file lacks.
             if (target == null && Equals(call.Call("project.status", new Dictionary<string, object>()).TryGetValue("unsaved_changes", out var unsaved) ? unsaved : null, true))
@@ -99,7 +91,26 @@ namespace Cts.Cli
             return data;
         }
 
-        // What the commit would fail on, before the sync moves anything: a
+        // How many objects the IDE and the disk hold differently, by cts
+        // compare, into data["differ"]; -1 with data["compare_error"] when
+        // the compare failed.  Never stops the commit: it commits the disk.
+        static int Differences(CliCall call, IDictionary<string, object> data)
+        {
+            try
+            {
+                var summary = (IDictionary<string, object>)ComparePlanner.Plan(call)["summary"];
+                var count = new[] { "modified", "added", "deleted", "not_importable", "ide_changed" }.Sum(key => JsonMap.Int(summary, key));
+                data["differ"] = count;
+                return count;
+            }
+            catch (CliFailure error)
+            {
+                data["compare_error"] = error.Message;
+                return -1;
+            }
+        }
+
+        // What the commit would fail on, before anything moves: a
         // detached HEAD (the commit would belong to no branch) and a tag name
         // that is not valid or already taken.
         static void Check(string folder, string tag)
@@ -164,16 +175,16 @@ namespace Cts.Cli
 
         static Answer Line(IDictionary<string, object> data)
         {
-            if (!data.ContainsKey("committed")) return ImportCommand.Build(data);
-            var sync = ImportCommand.Build(data);
             var commit = Convert.ToString(data["commit"]);
             var answer = new Answer().Add("branch", data["branch"]).Add("commit", commit.Substring(0, Math.Min(8, commit.Length))).Add("files", data["files"]);
-            // The sync's counts (to_disk=1 for an IDE edit written into its file), without the IDE's save.
-            foreach (var pair in sync.Pairs.Where(pair => pair.Key != "saved")) answer.Add(pair.Key, pair.Value);
             if (data.ContainsKey("tag")) answer.Add("tag", data["tag"]);
             if (data.ContainsKey("published")) answer.Add("published", data["published"]);
-            foreach (var line in sync.Details) answer.Detail(line);
-            if (Equals(data.ContainsKey("ide_unsaved") ? data["ide_unsaved"] : null, true) && !sync.Details.Any(line => line.StartsWith("the IDE holds the change unsaved", StringComparison.Ordinal)))
+            var differ = data.TryGetValue("differ", out var counted) ? Convert.ToInt32(counted, CultureInfo.InvariantCulture) : 0;
+            if (differ > 0)
+                answer.Add("ide_differs", differ).Detail("[WARN] the IDE and the disk differ in " + differ + " object(s), and the commit holds the disk's: cts compare names them; cts export or cts sync carries the IDE's edits into the files, then cts commit again");
+            if (data.TryGetValue("compare_error", out var failed))
+                answer.Detail("[WARN] the IDE was not compared with the disk (" + failed + "); the commit holds the disk's files");
+            if (Equals(data.ContainsKey("ide_unsaved") ? data["ide_unsaved"] : null, true))
                 answer.Detail("the IDE project stays unsaved: the commit holds the folder's files, not the project file; cts save when the engineer wants it saved");
             return answer;
         }

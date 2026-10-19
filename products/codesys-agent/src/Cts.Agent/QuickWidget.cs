@@ -16,8 +16,8 @@
 // local branches in the same window; one chosen is `cts checkout --disk-only`:
 // the disk moves, the IDE does not, so Compare and Disk → IDE come next.
 // Its first row starts a new branch where the work is (`cts branch NAME`),
-// and digit 5 commits (`cts commit -m`): with the IDE's edits, a person forks
-// a branch, works and records it without leaving the IDE.  Digit 7 opens the
+// and digit 5 commits the folder's files (`cts commit -m`): after IDE → Disk
+// carried the IDE's edits, a person forks a branch, works and records it without leaving the IDE.  Digit 7 opens the
 // sync folder in the person's git program, where branches are merged.  Digit
 // 8 lists the settings: the sync folder, the programs, this window's key, the project's
 // permissions (groups of keys, each allowed or blocked, switched by the agent itself), then the

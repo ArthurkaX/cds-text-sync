@@ -59,7 +59,7 @@ namespace Cts.Agent.Tests
             };
             var failure = Assert.Throws<InvalidOperationException>(() => ProjectUpdateCommand.CheckNoIdeChanges(compare));
             Assert.Contains("the IDE changed 1 object(s)", failure.Message);
-            Assert.Contains("cts commit takes them into the branch first", failure.Message);
+            Assert.Contains("cts sync carries them to disk, then cts commit takes them into the branch", failure.Message);
         }
 
         [Fact]
