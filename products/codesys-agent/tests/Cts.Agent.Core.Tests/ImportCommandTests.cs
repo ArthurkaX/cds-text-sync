@@ -32,6 +32,40 @@ namespace Cts.Agent.Tests
             });
         }
 
+        // The file changes again after the IDE took its text and before the import
+        // records the base: the base keeps what it had, the disk keeps the new edit.
+        [Fact]
+        public void A_file_changed_while_the_import_runs_keeps_its_base_and_its_edit()
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
+                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            var baseFile = ExportCommand.Relative(_root, file);
+            var before = GitRepository.Run(_root, "show " + ProcessArgs.Quote("refs/cts/base:" + baseFile));
+            File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
+            var parsed = StViewReader.Read(view).Objects.First(item => Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar)) == file);
+            var current = new Dictionary<string, object> { { "declaration", Strip(parsed.Declaration) }, { "implementation", parsed.Implementation } };
+            string guid = null;
+            var call = ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(parsed.Path);
+                if (method == "objects.settext")
+                {
+                    guid = Convert.ToString(args["guid"]);
+                    foreach (var part in new[] { "declaration", "implementation" }) if (args.ContainsKey(part)) current[part] = args[part];
+                    File.WriteAllText(file, File.ReadAllText(file).Replace("// disk edit", "// disk edit\n// later edit"));
+                    return new Dictionary<string, object>();
+                }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new[] { new Dictionary<string, object>(current) { { "guid", guid } } } } };
+                throw new InvalidOperationException("unexpected agent call " + method);
+            });
+            var result = ImportCommand.Execute(call);
+            Assert.Equal(new[] { ExportCommand.Relative(view, file) }, (IEnumerable<string>)result["changed_meanwhile"]);
+            Assert.Equal(before, GitRepository.Run(_root, "show " + ProcessArgs.Quote("refs/cts/base:" + baseFile)));
+            Assert.Contains("// later edit", File.ReadAllText(file));
+            Assert.DoesNotContain("later edit", Convert.ToString(current["implementation"]) + current["declaration"]);
+        }
+
         [Fact]
         public void Carries_an_existing_text_edit_and_moves_only_its_base_file()
         {

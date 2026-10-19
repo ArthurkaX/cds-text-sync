@@ -33,22 +33,18 @@ namespace Cts.Cli
                 var touched = new List<string>();
                 foreach (var record in _work.NativeRecords.Concat(_work.CsvRecords).Concat(_work.FolderRecords).Where(ComparePlanner.IdeDeleted))
                 {
-                    var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
-                    if (File.Exists(full)) File.Delete(full);
-                    touched.Add(record.Path);
+                    if (_work.Stamps.Delete(record.Path)) touched.Add(record.Path);
                 }
                 foreach (var file in _work.StRecords.Where(ComparePlanner.IdeDeleted).Select(record => record.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToList())
                 {
                     if (_work.StRecords.Any(record => record.Path.Equals(file, StringComparison.OrdinalIgnoreCase) && record.Category != "ide_changed")) continue;
                     var gone = new HashSet<string>(_work.StRecords.Where(record => ComparePlanner.IdeDeleted(record) && record.Path.Equals(file, StringComparison.OrdinalIgnoreCase)).Select(record => record.ObjectPath), StringComparer.OrdinalIgnoreCase);
                     var kept = _work.Parsed.Objects.Where(item => item.File.Equals(file, StringComparison.OrdinalIgnoreCase) && !gone.Contains(item.Key)).Select(item => item.Key).ToList();
-                    var full = Path.Combine(_work.View, file.Replace('/', Path.DirectorySeparatorChar));
-                    if (kept.Count == 0) File.Delete(full);
-                    else if (_work.IdeFiles != null && _work.IdeFiles.TryGetValue(file, out var bytes)
-                        && new HashSet<string>(kept, StringComparer.OrdinalIgnoreCase).SetEquals((_work.IdeObjects ?? new List<StViewObject>()).Where(item => item.File.Equals(file, StringComparison.OrdinalIgnoreCase)).Select(item => item.Key)))
-                        File.WriteAllBytes(full, bytes);
-                    else continue;
-                    touched.Add(file);
+                    if (kept.Count == 0 ? _work.Stamps.Delete(file)
+                        : _work.IdeFiles != null && _work.IdeFiles.TryGetValue(file, out var bytes)
+                            && new HashSet<string>(kept, StringComparer.OrdinalIgnoreCase).SetEquals((_work.IdeObjects ?? new List<StViewObject>()).Where(item => item.File.Equals(file, StringComparison.OrdinalIgnoreCase)).Select(item => item.Key))
+                            && _work.Stamps.Write(file, bytes))
+                        touched.Add(file);
                 }
                 // A folder the IDE deleted goes once its files did.
                 foreach (var record in _work.FolderRecords.Where(ComparePlanner.IdeDeleted).OrderByDescending(record => record.Path.Count(ch => ch == '/')))
@@ -211,15 +207,16 @@ namespace Cts.Cli
                     }
                     var guid = Convert.ToString(reply["guid"]);
                     parentGuid = Convert.ToString(reply.ContainsKey("parent_guid") ? reply["parent_guid"] : parentGuid);
-                    content = PlaceNative(full, content, NativeMetaValue(content, "Guid"), guid, parentGuid);
+                    content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), guid, parentGuid);
                     _nativeWrites.Add(new NativeWrite { Guid = guid, Name = NativeMetaValue(content, "Name"), Path = path, Content = content, Created = true, Csv = csv });
                 }
                 foreach (var record in _work.NativeReplaces)
                 {
                     var path = record.Path;
                     var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
-                    // Both sides' edits, merged: the file gets them first.
-                    if (record.MergedXml != null) File.WriteAllBytes(full, (byte[])record.MergedXml);
+                    // Both sides' edits, merged: the file gets them first, unless it changed
+                    // meanwhile; then the object waits for the next sync.
+                    if (record.MergedXml != null && !_work.Stamps.Write(full, (byte[])record.MergedXml)) continue;
                     var csv = CsvOf(path);
                     var content = WithRows(csv, File.ReadAllText(full));
                     var parameters = new Dictionary<string, object> { { "guid", record.Guid }, { "xml", content } };
@@ -322,7 +319,7 @@ namespace Cts.Cli
                 foreach (var key in _emptiedFolders.OrderByDescending(key => key.Count(ch => ch == '/')))
                 {
                     var folder = Path.Combine(_work.View, key.Replace('/', Path.DirectorySeparatorChar));
-                    File.Delete(Path.Combine(folder, ".cds-object.xml"));
+                    _work.Stamps.Delete(key + "/.cds-object.xml");
                     if (!Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
                 }
                 var unappliedGuids = new HashSet<string>(_readBack.Select(item => Convert.ToString(item["guid"])), StringComparer.OrdinalIgnoreCase);
@@ -346,24 +343,23 @@ namespace Cts.Cli
                 // a file already there (a renamed folder's) still names the old folder's guid and name.
                 var newFolders = _work.CreatedFolders.Select(key => key + "/.cds-object.xml")
                     .Select(path => new IdeFile { Guid = _work.Created[FolderKey(path)], Path = path });
-                var toDisk = WriteIdeFiles(_call, _work.View, landedFiles.Concat(ideNativeFiles).Concat(newFolders).ToList());
+                var toDisk = WriteIdeFiles(_call, _work.View, _work.Stamps, landedFiles.Concat(ideNativeFiles).Concat(newFolders).ToList());
                 foreach (var path in _work.IdeNewTextFiles)
                 {
                     var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(full));
                     var members = _work.IdeNewTextObjects.Where(item => item.File.Equals(path, StringComparison.OrdinalIgnoreCase)
                         && IsStMember(item.Kind)
                         && (!(item.Kind == "GET" || item.Kind == "SET") || !_work.IdeNewTextObjects.Any(parent => parent.Kind == "PROPERTY"
                             && parent.Path.Length + 1 == item.Path.Length && item.Path.Take(parent.Path.Length).SequenceEqual(parent.Path, StringComparer.OrdinalIgnoreCase))))
                         .OrderBy(item => item.DeclarationLine).ToList();
                     if (File.Exists(full) && members.Count > 0)
-                        foreach (var member in members) AppendNewMember(full, _work.IdeFiles[path], member);
-                    else File.WriteAllBytes(full, _work.IdeFiles[path]);
+                        foreach (var member in members) AppendNewMember(_work.Stamps, full, _work.IdeFiles[path], member);
+                    else _work.Stamps.Write(full, _work.IdeFiles[path]);
                 }
                 foreach (var edit in _work.MergeFiles.Where(edit => !unappliedGuids.Contains(edit.Guid)))
-                    ReplaceObjectParts(_work.View, edit.Original, edit.Merged);
+                    ReplaceObjectParts(_work.View, _work.Stamps, edit.Original, edit.Merged);
                 foreach (var edit in _work.IdeToDisk.Where(edit => !unappliedGuids.Contains(edit.Guid)))
-                    ReplaceObjectParts(_work.View, edit.Original, edit.Merged);
+                    ReplaceObjectParts(_work.View, _work.Stamps, edit.Original, edit.Merged);
                 var ideRemovedFiles = _work.Syncing && !_call.Options.Params.ContainsKey("force") ? RemoveIdeDeleted() : new List<string>();
                 var carriedFiles = _work.Writes.Where(pair => !unappliedGuids.Contains(pair.Guid)).Select(pair => pair.Item.File)
                     .Concat(_nativeWrites.Where(item => !unappliedGuids.Contains(item.Guid)).SelectMany(item => new[] { item.Path, item.Csv }).Where(path => path != null))
@@ -394,12 +390,15 @@ namespace Cts.Cli
                 // From another project file's sync, an import that carried every
                 // difference makes the disk this project's base.
                 var takesOver = _work.OtherProject != null && _work.Conflicts.Count == 0 && unappliedGuids.Count == 0;
-                var baseName = CarryBase(_work.Folder, _work.View, carriedFiles, takesOver);
+                // A file changed on disk meanwhile keeps its base: the IDE did not get that change.
+                carriedFiles.RemoveAll(_work.Stamps.Moved);
+                var baseName = CarryBase(_work.Folder, _work.View, carriedFiles, takesOver && _work.Stamps.Changed.Count == 0);
                 if (takesOver) SyncBase.SaveProject(_work.Folder, _call.Hello.ProjectPath);
                 var output = BuildPayload(_call, _work.Data, _work.AddedItems, _work.CreatedAccessorNames, _work.CreatedFolders, _work.Updated, _work.Deleted,
                     _work.ForcedDeletedNames, _work.ForcedCreateItems, _work.ForcedCreated, _folderDeletes, _work.Renames, _settings, _readBack,
                     _work.ForceRecords, baseName);
                 output["syncing"] = _work.Syncing;
+                if (_work.Stamps.Changed.Count > 0) output["changed_meanwhile"] = _work.Stamps.Changed.ToList();
                 output["to_disk"] = toDisk;
                 if (_work.IdeToDisk.Count > 0) output["to_disk"] = toDisk.Concat(_work.IdeToDisk.Select(edit => edit.Original.File)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 if (_work.IdeNewTextObjects.Count > 0) output["to_disk"] = ((IEnumerable<string>)output["to_disk"])

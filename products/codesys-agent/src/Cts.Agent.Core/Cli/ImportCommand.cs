@@ -53,7 +53,7 @@ namespace Cts.Cli
             if (deleted.Count > 0) output.Add("deleted", deleted.Count);
             var renamed = Values(data, "renamed_objects");
             if (renamed.Count > 0) output.Add("renamed", renamed.Count);
-            foreach (var key in new[] { "merged", "to_disk", "overwritten_ide_changes" })
+            foreach (var key in new[] { "merged", "to_disk", "overwritten_ide_changes", "changed_meanwhile" })
                 if (Values(data, key).Count > 0) output.Add(key == "overwritten_ide_changes" ? "overwritten" : key, Values(data, key).Count);
             if (data.TryGetValue("timings", out var timings) && timings is IDictionary<string, object> times && times.TryGetValue("total_s", out var seconds)) output.Add("s", seconds);
             output.Add("saved", data.ContainsKey("saved") && Equals(data["saved"], true));
@@ -67,6 +67,8 @@ namespace Cts.Cli
                         + (key == "conflicts" && item is IDictionary<string, object> conflict && conflict.ContainsKey("path") ? " " + conflict["path"] : ""));
             foreach (var library in Items(data.ContainsKey("libraries_not_loaded") ? data["libraries_not_loaded"] : null))
                 output.Detail("library not loaded " + library["name"] + ": " + library["error"] + " (Library Repository: is it installed?)");
+            foreach (var path in Values(data, "changed_meanwhile"))
+                output.Detail("changed-meanwhile " + path + ": changed on disk while cts ran, so cts left it and its sync base as they were; the next cts compare shows it");
             if (data.TryGetValue("partial_reason", out var partialReason)) output.Detail(partialReason);
             if (data.TryGetValue("save_dialog", out var saveDialog)) output.Detail("not saved yet: " + saveDialog + "; the save finishes once it is answered (cts dialog answer)");
             else if (data.TryGetValue("save_error", out var saveError)) output.Detail("not saved: " + saveError + "; cts save saves it");
@@ -368,7 +370,7 @@ namespace Cts.Cli
         // from the IDE now: the IDE completes what it was given (a new object's
         // place, computed properties), and the
         // file and the base must hold that.  A file that already is so stays.
-        static List<string> WriteIdeFiles(CliCall call, string view, IList<IdeFile> files)
+        static List<string> WriteIdeFiles(CliCall call, string view, ViewStamps stamps, IList<IdeFile> files)
         {
             var written = new List<string>();
             if (files.Count == 0) return written;
@@ -396,9 +398,7 @@ namespace Cts.Cli
                             || files.Any(other => other.Csv && string.Equals(other.Path, Path.ChangeExtension(file.Path, ".csv"), StringComparison.OrdinalIgnoreCase))));
                     if (bytes == null) continue;
                     if (File.Exists(full) && File.ReadAllBytes(full).SequenceEqual(bytes)) continue;
-                    Directory.CreateDirectory(Path.GetDirectoryName(full));
-                    File.WriteAllBytes(full, bytes);
-                    written.Add(file.Path);
+                    if (stamps.Write(full, bytes)) written.Add(file.Path);
                 }
             }
             finally { File.Delete(snapshot); }

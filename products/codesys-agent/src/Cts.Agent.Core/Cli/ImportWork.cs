@@ -14,6 +14,8 @@ namespace Cts.Cli
             internal IList<StViewObject> IdeObjects;
             internal List<CompareRecord> Changed;
             internal string OtherProject, Folder, View;
+            // The view's files before the planner read them, to tell a file changed meanwhile.
+            internal ViewStamps Stamps;
             internal bool HasBase;
             internal string ToolNote;
             internal StViewResult Parsed;

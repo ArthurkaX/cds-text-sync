@@ -50,7 +50,7 @@ namespace Cts.Cli
             }
         }
 
-        static string PlaceNative(string path, string content, string oldGuid, string guid, string parentGuid)
+        static string PlaceNative(ViewStamps stamps, string path, string content, string oldGuid, string guid, string parentGuid)
         {
             var raw = File.ReadAllBytes(path);
             var hasBom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
@@ -68,7 +68,7 @@ namespace Cts.Cli
                 }
                 content = content.Substring(0, metaStart) + meta + content.Substring(objectStart);
             }
-            File.WriteAllText(path, (hasBom ? "\uFEFF" : "") + content, new UTF8Encoding(false));
+            stamps.Write(path, new UTF8Encoding(false).GetBytes((hasBom ? "\uFEFF" : "") + content));
             return content;
         }
 

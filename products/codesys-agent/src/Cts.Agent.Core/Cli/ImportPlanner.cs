@@ -88,6 +88,7 @@ namespace Cts.Cli
                 if (force)
                     foreach (var record in _work.Changed.Where(record => IsFolderRecord(record) && ComparePlanner.IdeDeleted(record)))
                         record.Category = "added";
+                _work.Stamps = ViewStamps.Take(_work.View);
                 _work.Parsed = StViewReader.Read(_work.View);
                 _work.StRecords = _work.Changed.Where(record => record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)).ToList();
                 _work.FolderRecords = _work.Changed.Where(IsFolderRecord).ToList();

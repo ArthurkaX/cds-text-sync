@@ -77,7 +77,7 @@ namespace Cts.Cli
 
         static bool IsStMember(string kind) => new[] { "METHOD", "ACTION", "PROPERTY", "GET", "SET" }.Contains(kind, StringComparer.OrdinalIgnoreCase);
 
-        static void AppendNewMember(string file, byte[] exported, StViewObject item)
+        static void AppendNewMember(ViewStamps stamps, string file, byte[] exported, StViewObject item)
         {
             var source = StText.Lf(new UTF8Encoding(false, true).GetString(exported).TrimStart('\uFEFF'));
             var lines = source.Split('\n');
@@ -97,10 +97,10 @@ namespace Cts.Cli
             // As the export joins a file's blocks: one blank line between them, a newline at the end.
             var separator = text.EndsWith("\n", StringComparison.Ordinal) || text.EndsWith("\r", StringComparison.Ordinal) ? newline : newline + newline;
             var suffix = separator + block.Replace("\n", newline) + newline;
-            File.WriteAllBytes(file, original.Concat(new UTF8Encoding(false).GetBytes(suffix)).ToArray());
+            stamps.Write(file, original.Concat(new UTF8Encoding(false).GetBytes(suffix)).ToArray());
         }
 
-        static void ReplaceObjectParts(string view, StViewObject oldItem, StViewObject newItem)
+        static void ReplaceObjectParts(string view, ViewStamps stamps, StViewObject oldItem, StViewObject newItem)
         {
             var full = Path.Combine(view, oldItem.File.Replace('/', Path.DirectorySeparatorChar));
             var bytes = File.ReadAllBytes(full);
@@ -115,7 +115,7 @@ namespace Cts.Cli
                 : newItem.Declaration;
             text = ReplacePart(text, oldItem.Declaration, declaration, oldItem.DeclarationLine, newline);
             text = ReplacePart(text, oldItem.Implementation, newItem.Implementation, oldItem.ImplementationLine, newline);
-            File.WriteAllBytes(full, new UTF8Encoding(bom).GetBytes(text));
+            stamps.Write(full, new UTF8Encoding(bom).GetBytes(text));
         }
 
         static string ReplacePart(string file, string oldPart, string newPart, int? firstLine, string newline)
