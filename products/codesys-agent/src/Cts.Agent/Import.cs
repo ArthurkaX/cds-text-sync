@@ -32,7 +32,7 @@ namespace Cts.Agent
             if (IsFolder(parent))
             {
                 Guid placed;
-                SvAddObject(SvParentNode(handle, DevicesView, parentGuid), created, name, guid, out placed);
+                SvAddObject(SvNode(handle, parentGuid, out _), created, name, guid, out placed);
                 return FinishImport(handle, placed, properties);
             }
             var add = _objectManagerIface.GetMethod("AddObject");

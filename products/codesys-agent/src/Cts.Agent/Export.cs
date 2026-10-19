@@ -143,8 +143,7 @@ namespace Cts.Agent
         }
 
         // export_native writes two views: POUs (the project-level roots) and
-        // Devices (each device's subtree); the one tree the IDE answers is
-        // split here.
+        // Devices (each device's subtree).
         static readonly Guid PousView = new Guid("21af5390-2942-461a-bf89-951aaf6999f1");
         static readonly Guid DevicesView = new Guid("d9b2b2cc-ea99-4c3b-aa42-1e5c49e65b84");
 
@@ -159,9 +158,9 @@ namespace Cts.Agent
             var view = ReadStructuredView(handle);
             // A "__" root is the IDE's own project-level alias (__VisualizationStyle):
             // the export writes only the application's copy below the device.
-            var roots = view.Roots.Where(n => !view.Access.NameOf(n).StartsWith("__", StringComparison.Ordinal)).ToList();
-            yield return new ViewWalk { Guid = PousView, Nodes = SvWalk.Walk(roots.Where(n => !view.IsDevice(n)), view.Access) };
-            yield return new ViewWalk { Guid = DevicesView, Nodes = SvWalk.Walk(roots.Where(view.IsDevice), view.Access) };
+            Func<List<object>, IEnumerable<object>> exported = roots => roots.Where(n => !view.Access.NameOf(n).StartsWith("__", StringComparison.Ordinal));
+            yield return new ViewWalk { Guid = PousView, Nodes = SvWalk.Walk(exported(view.PouRoots), view.Access) };
+            yield return new ViewWalk { Guid = DevicesView, Nodes = SvWalk.Walk(exported(view.DeviceRoots), view.Access) };
         }
 
         // IObjectManager2.ExportObject(handle, guid, metaStream, objectStream, writerGuid).

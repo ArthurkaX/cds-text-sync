@@ -140,15 +140,19 @@ namespace Cts.Agent
 
         sealed class StructuredView
         {
-            public List<object> Roots;
+            public List<object> DeviceRoots;
+            public List<object> PouRoots;
             public SvNodeAccess Access;
             public Func<object, bool> IsDevice;
+
+            public IEnumerable<object> Roots { get { return DeviceRoots.Concat(PouRoots); } }
         }
 
-        // The project's structured views: the device roots of the Devices tab
-        // and the other roots of the POUs tab, each as its own view shows it
-        // (a folder of the POUs tab is a node of the POUs view only), and how
-        // to read a node.
+        // The project's structured views, each tab's roots as its own view
+        // shows them, and how to read a node.  The POUs view alone has the
+        // POUs tab's folders; the Devices view lists that tab's objects too,
+        // flat, so of its roots only a device or a folder of the Devices tab
+        // is taken.
         StructuredView ReadStructuredView(int handle)
         {
             var nodeIface = FindType("_3S.CoDeSys.Core.Objects.ISVNode");
@@ -162,12 +166,25 @@ namespace Cts.Agent
             var getView = ManagerMethod("GetStructuredView", typeof(int), typeof(Guid));
             Func<Guid, List<object>> rootsOf = guid => ((Array)Prop(viewIface, getView.Invoke(_objectManager, new object[] { handle, guid }), "Children")).Cast<object>().ToList();
             Func<object, bool> isDevice = n => ((Type)Prop(nodeIface, n, "ObjectType")).GetInterfaces().Any(i => i.Name == "IDeviceObject");
+            Func<object, Guid> objectOf = n => (Guid)Prop(nodeIface, n, "ObjectGuid");
+            Func<object, IEnumerable<object>> childrenOf = n => ((Array)Prop(nodeIface, n, "Children")).Cast<object>();
+            var pouRoots = rootsOf(PousView).Where(n => !isDevice(n)).ToList();
+            var onPousTab = new HashSet<Guid>();
+            var pending = new Stack<object>(pouRoots);
+            while (pending.Count > 0)
+            {
+                var node = pending.Pop();
+                onPousTab.Add(objectOf(node));
+                foreach (var child in childrenOf(node)) pending.Push(child);
+            }
+            var folderType = new Guid(ObjectKinds.FolderType);
             return new StructuredView
             {
-                Roots = rootsOf(DevicesView).Where(isDevice).Concat(rootsOf(PousView).Where(n => !isDevice(n))).ToList(),
+                DeviceRoots = rootsOf(DevicesView).Where(n => isDevice(n) || typeOf(n) == folderType && !onPousTab.Contains(objectOf(n))).ToList(),
+                PouRoots = pouRoots,
                 Access = new SvNodeAccess
                 {
-                    ObjectOf = n => (Guid)Prop(nodeIface, n, "ObjectGuid"),
+                    ObjectOf = objectOf,
                     NameOf = n => (string)Prop(nodeIface, n, "Name"),
                     ObjectNameOf = n =>
                     {
@@ -175,7 +192,7 @@ namespace Cts.Agent
                         var name = FindProperty(stub.GetType(), "Name");
                         return name == null ? null : Value(name, stub) as string;
                     },
-                    ChildrenOf = n => ((Array)Prop(nodeIface, n, "Children")).Cast<object>(),
+                    ChildrenOf = childrenOf,
                     IndexOf = n => (int)Prop(nodeIface, n, "Index"),
                     TypeOf = typeOf,
                     Skip = n => typeOf(n) == TaskCallType,

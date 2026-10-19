@@ -32,9 +32,8 @@ namespace Cts.Agent
             // A folder, or anything directly below one, is placed through the
             // structured view: a plain AddObject with a folder (or Application)
             // parent lands at the project root instead of inside the folder.
-            // Every view guid answers the same tree, so Devices is the default.
             if (spec.StructuredView.HasValue || spec.Kind == "folder" || parent != null && IsFolder(parent))
-                return CreateInFolder(handle, factory, spec, spec.StructuredView ?? DevicesView);
+                return CreateInFolder(handle, factory, spec);
             if (!Accepts(factory, parentObject))
             {
                 // A METHOD below an interface needs the interface-method factory;
@@ -102,15 +101,19 @@ namespace Cts.Agent
         }
 
         // Creates one object inside a structured-view node: the folder itself
-        // below its container's node, or an object below its folder's node.
-        // A property cannot go this way (its factory needs the batch-argument
-        // route and its parent is always a POU, never a folder).
-        Dictionary<string, object> CreateInFolder(int handle, object factory, ObjectCreate spec, Guid view)
+        // below its container's node, or an object below its folder's node,
+        // in the caller's view or the one that holds the parent.  A root
+        // folder goes to the POUs tab.  A property cannot go this way (its
+        // factory needs the batch-argument route and its parent is always a
+        // POU, never a folder).
+        Dictionary<string, object> CreateInFolder(int handle, object factory, ObjectCreate spec)
         {
             if (spec.Kind == "property")
                 throw new ProtocolException(ErrorCodes.BadParams,
                     "a property cannot be created through a structured view");
-            var node = spec.AtRoot ? StructuredViewOf(handle, view) : SvParentNode(handle, view, spec.ParentGuid);
+            var node = spec.AtRoot ? StructuredViewOf(handle, spec.StructuredView ?? PousView)
+                : spec.StructuredView.HasValue ? SvParentNode(handle, spec.StructuredView.Value, spec.ParentGuid)
+                : SvNode(handle, spec.ParentGuid, out _);
             WarmFactory(factory);
             object created;
             try
@@ -162,13 +165,31 @@ namespace Cts.Agent
         // itself below its container's node, or an object below its folder.
         object SvParentNode(int handle, Guid svGuid, Guid nodeGuid)
         {
+            Exception cause;
+            var node = TrySvNode(handle, svGuid, nodeGuid, out cause);
+            if (node == null) throw UnknownObject(nodeGuid, cause);
+            return node;
+        }
+
+        // The node of `nodeGuid` in the view of the tab that shows it: the
+        // POUs view first (it alone has the POUs tab's folders, and the
+        // Devices view lists that tab's objects too), then the Devices view.
+        object SvNode(int handle, Guid nodeGuid, out Guid view)
+        {
+            view = PousView;
+            var node = TrySvNode(handle, PousView, nodeGuid, out _);
+            if (node != null) return node;
+            view = DevicesView;
+            return SvParentNode(handle, DevicesView, nodeGuid);
+        }
+
+        object TrySvNode(int handle, Guid svGuid, Guid nodeGuid, out Exception cause)
+        {
             var sv = StructuredViewOf(handle, svGuid);
             var getNode = NeedMethod(sv.GetType(), "GetNode", new[] { typeof(Guid) }, "IStructuredView.GetNode is not present in this IDE");
-            object node;
-            try { node = getNode.Invoke(sv, new object[] { nodeGuid }); }
-            catch (Exception e) { throw UnknownObject(nodeGuid, e); }
-            if (node == null) throw UnknownObject(nodeGuid, null);
-            return node;
+            cause = null;
+            try { return getNode.Invoke(sv, new object[] { nodeGuid }); }
+            catch (Exception e) { cause = e; return null; }
         }
 
         object StructuredViewOf(int handle, Guid svGuid)
@@ -398,16 +419,21 @@ namespace Cts.Agent
             };
         }
 
-        // Moves one object below another node of the devices view (a folder or
-        // its Application): the IDE changes only where the tree shows it, so the
-        // object keeps its guid, its text and its place in the build.
+        // Moves one object below another node of its tab (a folder, or its
+        // Application on the Devices tab): the IDE changes only where the tree
+        // shows it, so the object keeps its guid, its text and its place in
+        // the build.  A move to the other tab is refused.
         public Dictionary<string, object> MoveObject(ObjectMove spec)
         {
             RefuseWhileOnline();
             RequirePermission("objects.move");
             var handle = ProjectHandle();
-            var node = SvParentNode(handle, DevicesView, spec.Guid);
-            var target = SvParentNode(handle, DevicesView, spec.ParentGuid);
+            Guid view;
+            var target = SvNode(handle, spec.ParentGuid, out view);
+            var node = TrySvNode(handle, view, spec.Guid, out _);
+            if (node == null)
+                throw new ProtocolException(ErrorCodes.BadParams, "cannot move " + Id(spec.Guid) + " below " + Id(spec.ParentGuid)
+                    + ": it is not on the " + (view == PousView ? "POUs" : "Devices") + " tab");
             var move = node.GetType().GetMethods().FirstOrDefault(method => method.Name == "MoveObject"
                 && method.GetParameters().Length == 2 && method.GetParameters()[1].ParameterType == typeof(int)
                 && method.GetParameters()[0].ParameterType.IsInstanceOfType(target));
