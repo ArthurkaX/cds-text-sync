@@ -174,20 +174,28 @@ namespace Cts.Agent
             return node;
         }
 
-        // The node of `nodeGuid` in the view of the tab that shows it.  Each
-        // view answers a node for any object, with its own folders, so the
-        // tab comes from the object's parents: the Devices tab when a device
-        // holds it, else the POUs tab (whose objects and folders have none).
+        // The node of `nodeGuid` in the view of the tab that shows it.  A view
+        // answers a node for objects of the other tab too, so the Devices tab
+        // is the one whose node has a device at the top of its branch; a
+        // folder is a node only (no parent object to follow).
         object SvNode(int handle, Guid nodeGuid, out Guid view)
         {
-            view = PousView;
-            for (var current = nodeGuid; current != Guid.Empty; )
+            var nodeIface = FindType("_3S.CoDeSys.Core.Objects.ISVNode");
+            var devices = StructuredViewOf(handle, DevicesView);
+            object top = null;
+            try
             {
-                var meta = ObjectMeta(handle, current, "GetObjectToRead");
-                if (Prop(_metaObjectIface, meta, "Object").GetType().GetInterfaces().Any(i => i.Name == "IDeviceObject")) { view = DevicesView; break; }
-                current = ParentOf(meta);
+                var node = NeedMethod(devices.GetType(), "GetNode", new[] { typeof(Guid) }, "IStructuredView.GetNode is not present in this IDE").Invoke(devices, new object[] { nodeGuid });
+                for (; node != null; node = Prop(nodeIface, node, "Parent")) top = node;
             }
+            catch (System.Reflection.TargetInvocationException) { /* not a node of the Devices view */ }
+            view = top != null && IsDeviceNode(top) ? DevicesView : PousView;
             return SvParentNode(handle, view, nodeGuid);
+        }
+
+        bool IsDeviceNode(object node)
+        {
+            return ((Type)Prop(FindType("_3S.CoDeSys.Core.Objects.ISVNode"), node, "ObjectType")).GetInterfaces().Any(i => i.Name == "IDeviceObject");
         }
 
         object StructuredViewOf(int handle, Guid svGuid)

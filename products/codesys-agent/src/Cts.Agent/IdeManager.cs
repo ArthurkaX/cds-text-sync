@@ -165,10 +165,15 @@ namespace Cts.Agent
                 : n => TypeGuidOf((Type)Prop(stubIface, getStub.Invoke(n, null), "ObjectType"));
             var getView = ManagerMethod("GetStructuredView", typeof(int), typeof(Guid));
             Func<Guid, List<object>> rootsOf = guid => ((Array)Prop(viewIface, getView.Invoke(_objectManager, new object[] { handle, guid }), "Children")).Cast<object>().ToList();
-            Func<object, bool> isDevice = n => ((Type)Prop(nodeIface, n, "ObjectType")).GetInterfaces().Any(i => i.Name == "IDeviceObject");
+            Func<object, bool> isDevice = IsDeviceNode;
             Func<object, Guid> objectOf = n => (Guid)Prop(nodeIface, n, "ObjectGuid");
             Func<object, IEnumerable<object>> childrenOf = n => ((Array)Prop(nodeIface, n, "Children")).Cast<object>();
-            var pouRoots = rootsOf(PousView).Where(n => !isDevice(n)).ToList();
+            var folderType = new Guid(ObjectKinds.FolderType);
+            // The POUs view lists the objects of an application's folders flat
+            // at its top too: of its roots only a folder or an object with no
+            // parent object is the tab's own.
+            var pouRoots = rootsOf(PousView).Where(n => !isDevice(n)
+                && (typeOf(n) == folderType || (Guid)Prop(stubIface, getStub.Invoke(n, null), "ParentObjectGuid") == Guid.Empty)).ToList();
             var onPousTab = new HashSet<Guid>();
             var pending = new Stack<object>(pouRoots);
             while (pending.Count > 0)
@@ -177,7 +182,6 @@ namespace Cts.Agent
                 onPousTab.Add(objectOf(node));
                 foreach (var child in childrenOf(node)) pending.Push(child);
             }
-            var folderType = new Guid(ObjectKinds.FolderType);
             return new StructuredView
             {
                 DeviceRoots = rootsOf(DevicesView).Where(n => isDevice(n) || typeOf(n) == folderType && !onPousTab.Contains(objectOf(n))).ToList(),
