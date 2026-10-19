@@ -62,7 +62,7 @@ namespace Cts.Cli
                 var finalBase = GitRun.In(folder, "rev-parse -q --verify refs/cts/base^{commit}");
                 if (result.BaseRecorded) SyncBase.SaveProject(folder, call.Hello.ProjectPath);
                 // The stamp says the IDE is the base; a kept file the IDE may hold otherwise breaks that.
-                if (result.BaseRecorded && result.PendingImport.Count == 0 && finalBase.ExitCode == 0 && !string.IsNullOrEmpty(ideStamp))
+                if (result.BaseRecorded && result.PendingImport.Count == 0 && result.ChangedMeanwhile.Count == 0 && finalBase.ExitCode == 0 && !string.IsNullOrEmpty(ideStamp))
                     SyncBase.SaveStamp(stampPath, call.Hello.ProjectPath, ideStamp, finalBase.Output.Trim());
                 else if (File.Exists(stampPath)) File.Delete(stampPath);
                 var data = new Dictionary<string, object>
@@ -77,6 +77,7 @@ namespace Cts.Cli
                 if (result.OwnerKept.Count > 0) data["owner_kept"] = result.OwnerKept;
                 if (result.Ignored.Count > 0) data["ignored"] = result.Ignored.Count;
                 if (result.PendingImport.Count > 0) data["pending_import"] = result.PendingImport;
+                if (result.ChangedMeanwhile.Count > 0) data["changed_meanwhile"] = result.ChangedMeanwhile;
                 if (call.Options.Params.ContainsKey("conflict_tool") && !call.Options.Params.ContainsKey("force") && result.PendingImport.Count > 0)
                     Settle(call, folder, data, result.PendingImport);
                 return data;
@@ -120,6 +121,9 @@ namespace Cts.Cli
             if (merged.Count > 0) answer.Add("merged", merged.Count);
             foreach (var name in merged) answer.Detail("merged " + name + " (changed on disk too; the IDE and the file now hold the result)");
             if (data.TryGetValue("settle_note", out var note)) answer.Detail(note);
+            var meanwhile = data.TryGetValue("changed_meanwhile", out var changed) ? (IList<string>)changed : new List<string>();
+            if (meanwhile.Count > 0) answer.Add("changed_meanwhile", meanwhile.Count);
+            foreach (var path in meanwhile) answer.Detail(ImportCommand.ChangedMeanwhile(path));
             if (pending != null) foreach (var path in pending) answer.Detail("kept " + path + " (changed on disk since the last sync)");
             if (kept != null) foreach (var path in kept) answer.Detail("kept " + path + " (not the IDE's, new or changed on disk)");
             if (data.TryGetValue("owner_kept", out var ownerKept) && ((IList<string>)ownerKept).Count > 0) answer.Detail(ComparePlanner.OwnerKeptNote((IList<string>)ownerKept));
@@ -176,6 +180,8 @@ namespace Cts.Cli
             var relativeView = Relative(folder, view);
             SyncBase.CheckBase(folder);
             if (force) SyncBase.KeepOverwritten(folder, relativeView);
+            // Before any read of the view: a file changed after this is someone else's edit.
+            var stamps = ViewStamps.Take(view);
             var baseRef = GitRun.In(folder, "rev-parse -q --verify refs/cts/base^{commit}");
             var headRef = GitRun.In(folder, "rev-parse -q --verify HEAD^{commit}");
             // Another project file's base is no base for this one: only what
@@ -187,25 +193,27 @@ namespace Cts.Cli
             var comparable = hasBase || headRef.ExitCode == 0;
             var changedOnDisk = force || !comparable
                 ? new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase) : SyncBase.Changed(folder, relativeView, comparison);
-            var result = ViewExport.Write(snapshot, folder, SyncBase.LoadNatives(folder, project));
+            var result = ViewExport.Write(snapshot, folder, SyncBase.LoadNatives(folder, project), null, stamps);
             // The IDE's stamp says nothing of a file the ignore rules left as it was.
             foreach (var native in result.Natives.Where(native => result.Ignored.Contains(native.Path)).ToList()) result.Natives.Remove(native);
             var against = hasBase ? baseRef : comparable ? headRef : null;
-            if (against != null) result.OwnerKept = RestoreOwnerKept(folder, view, relativeView, against.Output.Trim(), result, changedOnDisk);
-            var pending = RestorePending(view, changedOnDisk);
-            RemoveUnchangedOrphans(view, result, force || comparable ? changedOnDisk : null, force, pending);
+            if (against != null) result.OwnerKept = RestoreOwnerKept(folder, view, relativeView, against.Output.Trim(), result, changedOnDisk, stamps);
+            var pending = RestorePending(view, changedOnDisk, stamps);
+            RemoveUnchangedOrphans(view, result, force || comparable ? changedOnDisk : null, force, pending, stamps);
             result.PendingImport = pending;
-            try { result.Base = SyncBase.Record(folder, relativeView, pending.Concat(result.KeptOrphans).Select(p => RepoPath(relativeView, p)).ToList()); }
+            try { result.Base = SyncBase.Record(folder, relativeView, pending.Concat(result.KeptOrphans).Select(p => RepoPath(relativeView, p)).ToList(), stamps); }
             catch (InvalidOperationException) { result.BaseRecorded = false; }
+            result.ChangedMeanwhile = stamps.Changed.ToList();
             SyncBase.SaveNatives(folder, project, result.Natives.Where(native => !pending.Contains(native.Path, StringComparer.OrdinalIgnoreCase)
-                && !result.OwnerKept.Contains(native.Path, StringComparer.OrdinalIgnoreCase)).ToList(), view);
+                && !result.OwnerKept.Contains(native.Path, StringComparer.OrdinalIgnoreCase)
+                && !stamps.Changed.Contains(native.Path, StringComparer.OrdinalIgnoreCase)).ToList(), view);
             return result;
         }
 
         // What the owner keeps (ProjectInfo.OwnerKeeps) the IDE wrote unlike *commit* goes back to the
         // commit's file on a PC that is not the project's owner; one changed
         // on disk is RestorePending's.
-        static List<string> RestoreOwnerKept(string folder, string view, string relativeView, string commit, ExportResult result, IDictionary<string, byte[]> changed)
+        static List<string> RestoreOwnerKept(string folder, string view, string relativeView, string commit, ExportResult result, IDictionary<string, byte[]> changed, ViewStamps stamps)
         {
             var kept = new List<string>();
             var candidates = result.Natives.Select(native => native.Path).Where(path => !changed.ContainsKey(path))
@@ -218,8 +226,7 @@ namespace Cts.Cli
                 {
                     var before = committed.Read(file.Path);
                     if (before == null || SameContent(file.Path, before, File.ReadAllBytes(file.Full))) continue;
-                    File.WriteAllBytes(file.Full, before);
-                    kept.Add(file.Path);
+                    if (stamps.Write(file.Full, before)) kept.Add(file.Path);
                 }
             return kept;
         }
@@ -233,7 +240,9 @@ namespace Cts.Cli
         static string RepoPath(string view, string path) => view == "." ? path : view + "/" + path;
         static string Append(string path) => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
-        static List<string> RestorePending(string view, IDictionary<string, byte[]> changed)
+        // A file changed on disk since the last sync gets back what it had
+        // before the export; one changed during it (*stamps*) keeps that change.
+        static List<string> RestorePending(string view, IDictionary<string, byte[]> changed, ViewStamps stamps)
         {
             var pending = new List<string>();
             foreach (var item in changed)
@@ -241,12 +250,12 @@ namespace Cts.Cli
                 var full = Path.Combine(view, item.Key.Replace('/', Path.DirectorySeparatorChar));
                 if (item.Value == null)
                 {
-                    if (File.Exists(full)) File.Delete(full);
+                    if (File.Exists(full)) stamps.Delete(full);
                     pending.Add(item.Key);
                 }
                 else if (File.Exists(full) && !SameContent(item.Key, item.Value, File.ReadAllBytes(full)))
                 {
-                    File.WriteAllBytes(full, item.Value);
+                    stamps.Write(full, item.Value);
                     pending.Add(item.Key);
                 }
             }
@@ -329,14 +338,14 @@ namespace Cts.Cli
         // An orphan (a view file the IDE no longer has) goes when it is as the
         // base left it, or with --force; an edited or new one stays. *changed*
         // is null when there is no base to judge by: then every orphan stays.
-        static void RemoveUnchangedOrphans(string view, ExportResult result, IDictionary<string, byte[]> changed, bool force, IList<string> pending)
+        static void RemoveUnchangedOrphans(string view, ExportResult result, IDictionary<string, byte[]> changed, bool force, IList<string> pending, ViewStamps stamps)
         {
             foreach (var path in result.KeptOrphans.ToList())
             {
                 if (pending.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
                 var full = Path.Combine(view, path.Replace('/', Path.DirectorySeparatorChar));
                 if (!force && (changed == null || changed.ContainsKey(path))) continue;
-                if (File.Exists(full)) File.Delete(full);
+                if (File.Exists(full) && !stamps.Delete(full)) continue;
                 result.KeptOrphans.Remove(path);
             }
         }

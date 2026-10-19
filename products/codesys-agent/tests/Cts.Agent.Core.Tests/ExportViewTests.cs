@@ -647,6 +647,52 @@ namespace Cts.Agent.Tests
             finally { Directory.Delete(root, true); }
         }
 
+        // Someone edits the view while an export writes it. A file changed before cts wrote
+        // it keeps that edit and its base; one changed after keeps the edit, and its base
+        // takes the IDE's text, which cts wrote; a file made meanwhile stays out of the base.
+        [Fact]
+        public void Files_changed_while_the_export_writes_keep_their_edits_out_of_the_base()
+        {
+            var fixture = Path.Combine(AppContext.BaseDirectory, "Golden", "ExportFixture");
+            var root = Path.Combine(Path.GetTempPath(), "cts-export-meanwhile-" + Guid.NewGuid().ToString("N"));
+            var view = Path.Combine(root, "project-view");
+            Directory.CreateDirectory(root);
+            try
+            {
+                RunGit(root, "init --quiet");
+                File.Copy(Path.Combine(fixture, "cds-text-sync.json"), Path.Combine(root, "cds-text-sync.json"));
+                var first = ViewStamps.Take(view);
+                ViewExport.Write(Path.Combine(fixture, "snapshot.xml"), root, null, null, first);
+                File.WriteAllText(Path.Combine(view, "Stray.st"), "made meanwhile");
+                SyncBase.Record(root, "project-view", new List<string>(), first);
+                Assert.DoesNotContain("project-view/Stray.st", RunGit(root, "ls-tree -r --name-only refs/cts/base"));
+
+                var files = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).Where(path => !path.EndsWith("Stray.st")).Take(2).ToList();
+                string Repo(string full) => "project-view/" + ExportCommand.Relative(view, full);
+                string Base(string full) => GitRepository.Run(root, "show " + ProcessArgs.Quote("refs/cts/base:" + Repo(full)));
+                var ide = files.Select(File.ReadAllText).ToList();
+                File.WriteAllText(files[1], "an older sync's text\n");
+                SyncBase.Record(root, "project-view", new List<string>());
+
+                var stamps = ViewStamps.Take(view);
+                File.AppendAllText(files[0], "// edited before cts wrote it\n");
+                ViewExport.Write(Path.Combine(fixture, "snapshot.xml"), root, null, null, stamps);
+                Assert.Equal(ide[1], File.ReadAllText(files[1]));
+                File.AppendAllText(files[1], "// edited after cts wrote it\n");
+                File.WriteAllText(Path.Combine(view, "New.st"), "made meanwhile");
+                SyncBase.Record(root, "project-view", new List<string>(), stamps);
+
+                Assert.EndsWith("// edited before cts wrote it\n", File.ReadAllText(files[0]));
+                Assert.Equal(ide[0], Base(files[0]));
+                Assert.EndsWith("// edited after cts wrote it\n", File.ReadAllText(files[1]));
+                Assert.Equal(ide[1], Base(files[1]));
+                Assert.DoesNotContain("project-view/New.st", RunGit(root, "ls-tree -r --name-only refs/cts/base"));
+                Assert.Equal(new[] { "New.st", ExportCommand.Relative(view, files[0]), ExportCommand.Relative(view, files[1]) }.OrderBy(path => path, StringComparer.OrdinalIgnoreCase),
+                    stamps.Changed);
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
         [Fact]
         public void ForceSnapshotStoresTheDiskViewOnTheOverwrittenRef()
         {

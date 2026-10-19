@@ -1,19 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
-namespace Cts.Cli
+namespace Cts.Sync
 {
-    // The view's files as an import found them before it read them (size and
-    // write time), and as it wrote them since. A file someone changed on disk
-    // while the import ran is not overwritten, and its sync base stays as it
-    // was, since the IDE did not get that change: the next compare finds it.
+    // The view's files as an import or export found them before it read them
+    // (size and write time), and as it wrote them since. A file someone changed
+    // on disk while cts ran is not overwritten, and its sync base does not take
+    // that change (SyncBase.Record): the next compare finds it.
     // The folder lock keeps other cts commands out; this is for everyone else.
     internal sealed class ViewStamps
     {
         readonly string _view;
         readonly Dictionary<string, Stamp> _seen = new Dictionary<string, Stamp>(StringComparer.OrdinalIgnoreCase);
         readonly SortedSet<string> _changed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, byte[]> _wrote = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
         struct Stamp
         {
@@ -25,17 +27,27 @@ namespace Cts.Cli
         internal static ViewStamps Take(string view)
         {
             var stamps = new ViewStamps(view);
-            if (Directory.Exists(view))
-                foreach (var full in Directory.EnumerateFiles(view, "*", SearchOption.AllDirectories))
-                    if (Of(new FileInfo(full)) is Stamp stamp) stamps._seen[stamps.Relative(full)] = stamp;
+            foreach (var full in Files(view))
+                if (Of(new FileInfo(full)) is Stamp stamp) stamps._seen[stamps.Relative(full)] = stamp;
             return stamps;
         }
 
-        // The view files Moved found changed on disk while the import ran.
+        // The view files Moved found changed on disk while cts ran.
         internal IReadOnlyCollection<string> Changed => _changed;
 
-        // Whether the view file *path* (relative or full) is not as the import
-        // last saw it; such a file is named in Changed from then on.
+        // Every view file that is not as cts last saw it, one someone made
+        // meanwhile too: Changed once the whole view is looked at again.
+        internal IReadOnlyCollection<string> Recheck()
+        {
+            foreach (var path in _seen.Keys.Concat(Files(_view).Select(Relative)).ToList()) Moved(path);
+            return _changed;
+        }
+
+        // What cts last wrote to the view file *path* (null: deleted it).
+        internal bool Wrote(string path, out byte[] bytes) => _wrote.TryGetValue(Relative(path), out bytes);
+
+        // Whether the view file *path* (relative or full) is not as cts last
+        // saw it; such a file is named in Changed from then on.
         internal bool Moved(string path)
         {
             var relative = Relative(path);
@@ -54,7 +66,7 @@ namespace Cts.Cli
             var full = Full(Relative(path));
             Directory.CreateDirectory(Path.GetDirectoryName(full));
             File.WriteAllBytes(full, bytes);
-            Saw(path);
+            Saw(path, bytes);
             return true;
         }
 
@@ -63,17 +75,21 @@ namespace Cts.Cli
         {
             if (Moved(path)) return false;
             File.Delete(Full(Relative(path)));
-            Saw(path);
+            Saw(path, null);
             return true;
         }
 
-        void Saw(string path)
+        void Saw(string path, byte[] bytes)
         {
             var relative = Relative(path);
+            _wrote[relative] = bytes;
             var now = Of(new FileInfo(Full(relative)));
             if (now.HasValue) _seen[relative] = now.Value;
             else _seen.Remove(relative);
         }
+
+        static IEnumerable<string> Files(string view) =>
+            Directory.Exists(view) ? Directory.EnumerateFiles(view, "*", SearchOption.AllDirectories) : Enumerable.Empty<string>();
 
         static Stamp? Of(FileInfo file)
         {

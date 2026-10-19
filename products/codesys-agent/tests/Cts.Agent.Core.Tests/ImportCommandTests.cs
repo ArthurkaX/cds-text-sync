@@ -66,6 +66,35 @@ namespace Cts.Agent.Tests
             Assert.DoesNotContain("later edit", Convert.ToString(current["implementation"]) + current["declaration"]);
         }
 
+        // Two new files, and the IDE reads back the text of one: the other stays
+        // out of the base, or the next sync would take the IDE's empty object for it.
+        [Fact]
+        public void A_new_file_the_IDE_did_not_take_stays_out_of_the_base()
+        {
+            var view = ViewFolder.Of(_root);
+            var item = StViewReader.Read(view).Objects.First(found => found.Path.Last() == "F_Scale");
+            var file = Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(file), "F_Lost.st"), File.ReadAllText(file).Replace("F_Scale", "F_Lost"));
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(file), "F_Good.st"), File.ReadAllText(file).Replace("F_Scale", "F_Good"));
+            var texts = new Dictionary<string, Dictionary<string, object>>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(item.Path.Take(item.Path.Length - 1).ToArray());
+                if (method == "objects.create") return new Dictionary<string, object> { { "guid", "guid-" + args["name"] } };
+                if (method == "objects.settext")
+                {
+                    if (!Equals(args["guid"], "guid-F_Lost")) texts[Convert.ToString(args["guid"])] = new Dictionary<string, object>(args);
+                    return new Dictionary<string, object>();
+                }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", texts.Values.ToArray() } };
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.Equal("F_Lost", ((IEnumerable<object>)result["unapplied_objects"]).Cast<IDictionary<string, object>>().Single()["name"]);
+            var listed = GitRepository.Run(_root, "ls-tree -r --name-only refs/cts/base");
+            Assert.Contains("F_Good.st", listed);
+            Assert.DoesNotContain("F_Lost.st", listed);
+        }
+
         [Fact]
         public void Carries_an_existing_text_edit_and_moves_only_its_base_file()
         {

@@ -390,9 +390,7 @@ namespace Cts.Cli
                 // From another project file's sync, an import that carried every
                 // difference makes the disk this project's base.
                 var takesOver = _work.OtherProject != null && _work.Conflicts.Count == 0 && unappliedGuids.Count == 0;
-                // A file changed on disk meanwhile keeps its base: the IDE did not get that change.
-                carriedFiles.RemoveAll(_work.Stamps.Moved);
-                var baseName = CarryBase(_work.Folder, _work.View, carriedFiles, takesOver && _work.Stamps.Changed.Count == 0);
+                var baseName = CarryBase(_work.Folder, _work.View, carriedFiles, takesOver, _work.Stamps);
                 if (takesOver) SyncBase.SaveProject(_work.Folder, _call.Hello.ProjectPath);
                 var output = BuildPayload(_call, _work.Data, _work.AddedItems, _work.CreatedAccessorNames, _work.CreatedFolders, _work.Updated, _work.Deleted,
                     _work.ForcedDeletedNames, _work.ForcedCreateItems, _work.ForcedCreated, _folderDeletes, _work.Renames, _settings, _readBack,

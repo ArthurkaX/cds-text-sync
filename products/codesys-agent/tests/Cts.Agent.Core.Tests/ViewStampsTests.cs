@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
-using Cts.Cli;
+using Cts.Sync;
 using Xunit;
 
 namespace Cts.Agent.Tests

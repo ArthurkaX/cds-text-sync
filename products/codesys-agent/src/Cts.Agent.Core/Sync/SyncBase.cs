@@ -47,9 +47,14 @@ namespace Cts.Sync
             }) + "\n", new UTF8Encoding(false));
         }
 
-        public static string Record(string repo, string view, IList<string> keep)
+        // The view as the disk has it, but for *keep* (repository paths), which
+        // keeps the base's entry. With *stamps*, a view file someone changed
+        // while cts ran (ViewStamps) keeps it too, or takes what cts wrote
+        // there last, which the IDE holds: the next compare shows that change.
+        internal static string Record(string repo, string view, IList<string> keep, ViewStamps stamps = null)
         {
-            var index = Path.Combine(GitRepository.Run(repo, "rev-parse --absolute-git-dir").Trim(), "cts", "base-index");
+            var gitDir = GitRepository.Run(repo, "rev-parse --absolute-git-dir").Trim();
+            var index = Path.Combine(gitDir, "cts", "base-index");
             Directory.CreateDirectory(Path.GetDirectoryName(index));
             var env = GitRepository.PrivateIndex(index);
             if (!File.Exists(index)) GitRepository.Run(repo, "read-tree --empty", env);
@@ -58,8 +63,48 @@ namespace Cts.Sync
             if (paths.Length > 0) GitRepository.Run(repo, "add -A -- " + string.Join(" ", paths.Select(ProcessArgs.Quote)), env);
             var source = parent ?? (GitRun.In(repo, "rev-parse -q --verify HEAD^{commit}") is var head && head.ExitCode == 0 ? head.Output.Trim() : null);
             if (source != null) keep = keep.Concat(Ignored(repo, view, env, source)).Distinct(StringComparer.Ordinal).ToList();
+            var pinned = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            var unknown = new List<string>();
+            if (stamps != null)
+            {
+                var prefix = view == "." ? "" : view.TrimEnd('/') + "/";
+                var kept = new HashSet<string>(keep, StringComparer.OrdinalIgnoreCase);
+                // Looked at once the view is in the index: a change after that is not in it.
+                foreach (var path in stamps.Recheck().Where(path => !kept.Contains(prefix + path)))
+                {
+                    if (stamps.Wrote(path, out var bytes)) pinned[prefix + path] = bytes;
+                    else if (source != null) keep = keep.Concat(new[] { prefix + path }).ToList();
+                    else unknown.Add(prefix + path);
+                }
+            }
             if (source != null && keep.Count > 0) RestoreBaseEntries(repo, env, source, keep);
+            Pin(repo, env, Path.Combine(gitDir, "cts"), pinned);
+            Drop(repo, env, unknown.Concat(pinned.Where(item => item.Value == null).Select(item => item.Key)).ToList());
             return CommitBase(repo, env, parent, "cts base: export");
+        }
+
+        // *pinned*'s bytes as the entries of their repository paths (null: none), hashed
+        // with the path's own attributes, as git add would have them from the disk.
+        static void Pin(string repo, IDictionary<string, string> env, string scratch, IDictionary<string, byte[]> pinned)
+        {
+            var file = Path.Combine(scratch, "pinned-" + Guid.NewGuid().ToString("N"));
+            var input = new StringBuilder();
+            try
+            {
+                foreach (var item in pinned.Where(item => item.Value != null))
+                {
+                    File.WriteAllBytes(file, item.Value);
+                    var blob = GitRepository.Run(repo, "hash-object -w --path " + ProcessArgs.Quote(item.Key) + " -- " + ProcessArgs.Quote(file)).Trim();
+                    input.Append("100644 " + blob + "\t" + item.Key).Append('\0');
+                }
+            }
+            finally { if (File.Exists(file)) File.Delete(file); }
+            if (input.Length > 0) GitRepository.RunWithInput(repo, "update-index -z --index-info", env, input.ToString());
+        }
+
+        static void Drop(string repo, IDictionary<string, string> env, IList<string> paths)
+        {
+            if (paths.Count > 0) GitRepository.RunWithInput(repo, "update-index -z --force-remove --stdin", env, string.Join("\0", paths) + "\0");
         }
 
         // The files Git's ignore rules leave to the owner (ViewIgnore), as repository paths: their

@@ -67,8 +67,7 @@ namespace Cts.Cli
                         + (key == "conflicts" && item is IDictionary<string, object> conflict && conflict.ContainsKey("path") ? " " + conflict["path"] : ""));
             foreach (var library in Items(data.ContainsKey("libraries_not_loaded") ? data["libraries_not_loaded"] : null))
                 output.Detail("library not loaded " + library["name"] + ": " + library["error"] + " (Library Repository: is it installed?)");
-            foreach (var path in Values(data, "changed_meanwhile"))
-                output.Detail("changed-meanwhile " + path + ": changed on disk while cts ran, so cts left it and its sync base as they were; the next cts compare shows it");
+            foreach (var path in Values(data, "changed_meanwhile")) output.Detail(ChangedMeanwhile(path));
             if (data.TryGetValue("partial_reason", out var partialReason)) output.Detail(partialReason);
             if (data.TryGetValue("save_dialog", out var saveDialog)) output.Detail("not saved yet: " + saveDialog + "; the save finishes once it is answered (cts dialog answer)");
             else if (data.TryGetValue("save_error", out var saveError)) output.Detail("not saved: " + saveError + "; cts save saves it");
@@ -77,6 +76,8 @@ namespace Cts.Cli
             return output;
         }
 
+        internal static string ChangedMeanwhile(object path) =>
+            "changed-meanwhile " + path + ": changed on disk while cts ran, so cts left that change on disk and out of the sync base; the next cts compare shows it";
         static List<object> Values(IDictionary<string, object> values, string key) => values != null && values.TryGetValue(key, out var value) && value is System.Collections.IEnumerable items && !(value is string) ? items.Cast<object>().ToList() : new List<object>();
         static string Name(object value) => value is IDictionary<string, object> item ? Convert.ToString(item.ContainsKey("name") ? item["name"] : item.ContainsKey("view_path") ? item["view_path"] : item.ContainsKey("guid") ? item["guid"] : "?") : Convert.ToString(value);
         static string Tag(string key, bool syncing) => key == "unapplied_objects" ? "unapplied" : key == "overwritten_ide_changes" ? "overwrote-ide" : key == "conflicts" ? "conflict"
@@ -191,7 +192,7 @@ namespace Cts.Cli
             }
         }
 
-        static string CarryBase(string folder, string view, IList<string> carriedFiles, bool whole)
+        static string CarryBase(string folder, string view, IList<string> carriedFiles, bool whole, ViewStamps stamps)
         {
             string baseName = null;
             if (carriedFiles.Count > 0 || whole)
@@ -199,11 +200,15 @@ namespace Cts.Cli
                 var gitDir = GitRepository.Run(folder, "rev-parse --absolute-git-dir").Trim();
                 var current = GitRun.In(folder, "rev-parse -q --verify refs/cts/base^{commit}");
                 var viewRelative = ExportCommand.Relative(folder, view);
-                var carried = new HashSet<string>(carriedFiles.Select(path => viewRelative == "." ? path : viewRelative.TrimEnd('/') + "/" + path), StringComparer.Ordinal);
+                var carried = new HashSet<string>(carriedFiles.Select(path => viewRelative == "." ? path : viewRelative.TrimEnd('/') + "/" + path), StringComparer.OrdinalIgnoreCase);
+                // Every file the import did not carry keeps its base entry, a new one
+                // the IDE did not take too: the base takes nothing else from the disk.
                 var tracked = !whole && current.ExitCode == 0
                     ? GitRepository.Run(folder, "ls-tree -r --name-only " + current.Output.Trim()).Split('\n').Select(path => path.Trim()).Where(path => path.Length > 0)
+                        .Concat(Directory.Exists(view) ? Directory.EnumerateFiles(view, "*", SearchOption.AllDirectories)
+                            .Select(path => (viewRelative == "." ? "" : viewRelative.TrimEnd('/') + "/") + path.Substring(view.TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace(Path.DirectorySeparatorChar, '/')) : Enumerable.Empty<string>())
                     : Enumerable.Empty<string>();
-                baseName = SyncBase.Record(folder, viewRelative, tracked.Where(path => !carried.Contains(path)).ToList());
+                baseName = SyncBase.Record(folder, viewRelative, tracked.Where(path => !carried.Contains(path)).Distinct(StringComparer.Ordinal).ToList(), stamps);
                 var stampPath = Path.Combine(gitDir, "cts", "ide-stamp.json");
                 if (File.Exists(stampPath)) File.Delete(stampPath);
             }

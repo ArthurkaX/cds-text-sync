@@ -50,9 +50,11 @@ namespace Cts.Sync
             internal List<TextPart> Accessors = new List<TextPart>();
         }
 
-        internal static ExportResult Write(string snapshotPath, string projectRoot, IDictionary<string, object> known, IList<ExportedTextPart> textParts = null)
+        // *stamps* as taken before the view was read; a file changed since stays as it is.
+        internal static ExportResult Write(string snapshotPath, string projectRoot, IDictionary<string, object> known, IList<ExportedTextPart> textParts = null, ViewStamps stamps = null)
         {
-            var target = new FolderViewRenderTarget(ViewFolder.Of(Path.GetFullPath(projectRoot)), projectRoot);
+            var view = ViewFolder.Of(Path.GetFullPath(projectRoot));
+            var target = new FolderViewRenderTarget(view, projectRoot, stamps ?? ViewStamps.Take(view));
             var result = WriteTo(snapshotPath, projectRoot, known, target, textParts);
             result.Ignored = target.Ignored;
             return result;

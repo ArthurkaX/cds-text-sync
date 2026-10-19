@@ -125,11 +125,13 @@ namespace Cts.Sync
         readonly string repository;
         readonly Dictionary<string, byte[]> written = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
         readonly HashSet<string> kept = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        readonly ViewStamps stamps;
 
-        public FolderViewRenderTarget(string root, string repository)
+        public FolderViewRenderTarget(string root, string repository, ViewStamps stamps)
         {
             this.root = Path.GetFullPath(root);
             this.repository = repository;
+            this.stamps = stamps;
             Directory.CreateDirectory(this.root);
         }
 
@@ -182,9 +184,7 @@ namespace Cts.Sync
                 // calls it unchanged, and rewriting it would only show in git.
                 if (item.Key.EndsWith(".st", StringComparison.OrdinalIgnoreCase) && ReadDisk(item.Key) is byte[] disk
                     && StViewReader.SameObjects(item.Key, disk, item.Value)) continue;
-                var full = PathSafety.SafePath(root, item.Key);
-                Directory.CreateDirectory(Path.GetDirectoryName(full));
-                File.WriteAllBytes(full, item.Value);
+                stamps.Write(PathSafety.SafePath(root, item.Key), item.Value);
             }
             var emitted = new HashSet<string>(written.Keys.Concat(kept), StringComparer.OrdinalIgnoreCase);
             return onDisk.Where(path => !emitted.Contains(path) && !Ignored.Contains(path)).ToList();

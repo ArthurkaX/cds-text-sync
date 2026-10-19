@@ -15,6 +15,8 @@ namespace Cts.Sync
         public IList<NativeExport> Natives { get; private set; } = new List<NativeExport>();
         internal IDictionary<string, IList<string>> GuidFiles { get; } = new Dictionary<string, IList<string>>(System.StringComparer.OrdinalIgnoreCase);
         public IList<string> PendingImport { get; internal set; } = new List<string>();
+        // The view files someone changed on disk while the export ran (ViewStamps): left as they were.
+        internal IList<string> ChangedMeanwhile { get; set; } = new List<string>();
         // Library Managers and Project Settings this PC's IDE wrote differently, put back as they were (ProjectInfo.OwnerKeeps).
         public IList<string> OwnerKept { get; internal set; } = new List<string>();
         public string Base { get; internal set; }
