@@ -1260,6 +1260,31 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void ForceMakesAnObjectTheIdeDeletedAgainFromItsFile()
+        {
+            var view = ViewFolder.Of(_root);
+            var diskItem = StViewReader.Read(view).Objects.First(item => item.Path.Last() == "F_Scale");
+            var document = XDocument.Load(Path.Combine(Fixture, "snapshot.xml"));
+            document.Descendants().First(element => (string)element.Attribute("Name") == "MetaObject"
+                && element.Elements().Any(child => (string)child.Attribute("Name") == "Name" && child.Value == "F_Scale")).Parent.Remove();
+            var ideSnapshot = Path.Combine(_root, "ide-deleted.xml");
+            document.Save(ideSnapshot);
+            SyncBase.SaveStamp(StampPath(), _project, "session:changed", GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var creates = new List<string>();
+            var current = new Dictionary<string, object>();
+            var result = ImportCommand.Execute(ImportCall(new[] { "--force" }, (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(ideSnapshot, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(diskItem.Path.Take(diskItem.Path.Length - 1).ToArray());
+                if (method == "objects.create") { creates.Add(Convert.ToString(args["name"])); return new Dictionary<string, object> { { "guid", "44444444-4444-4444-4444-444444444444" } }; }
+                if (method == "objects.settext") { current.Clear(); foreach (var pair in args) current[pair.Key] = pair.Value; return new Dictionary<string, object>(); }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new[] { new Dictionary<string, object>(current) } } };
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.True(creates.SequenceEqual(new[] { "F_Scale" }), Json.Pretty(result));
+        }
+
+        [Fact]
         public void ForceKeepsTheIDEFileOnOverwrittenRefBeforeWritingDiskText()
         {
             var view = ViewFolder.Of(_root);
@@ -1370,6 +1395,28 @@ namespace Cts.Agent.Tests
             Assert.Contains(answer.Pairs, pair => pair.Key == "conflicts" && Equals(pair.Value, 1));
             Assert.Contains(answer.Details, line => line.StartsWith("conflict MAIN ") && line.EndsWith("the same lines"));
             Assert.Contains("Keep the disk text: cts sync --take disk. Keep the IDE text: cts sync --take ide.", answer.Details);
+        }
+
+        [Fact]
+        public void SyncWritesAnIdeBodyIntoAFileWrittenWithoutOne()
+        {
+            var view = ViewFolder.Of(_root);
+            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
+            var file = Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar));
+            var exported = File.ReadAllText(file);
+            var marker = exported.IndexOf("// --- implementation ---", StringComparison.Ordinal);
+            File.WriteAllText(file, exported.Substring(0, marker) + exported.Substring(exported.IndexOf("END_PROGRAM", marker, StringComparison.Ordinal)));
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var snapshot = File.ReadAllText(Path.Combine(Fixture, "snapshot.xml"));
+            var result = ImportCommand.Execute(SyncCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.WriteAllText(Convert.ToString(args["path"]), snapshot); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(item.Path);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.Equal(exported, File.ReadAllText(file));
+            Assert.Contains(item.File, ((IEnumerable<object>)result["to_disk"]).Cast<string>());
         }
 
         [Fact]
@@ -1611,6 +1658,32 @@ namespace Cts.Agent.Tests
             Assert.Contains(name, ((IEnumerable<object>)result["ide_removed"]).Cast<string>());
             var baseFiles = GitRepository.Run(_root, "ls-tree -r --name-only refs/cts/base");
             Assert.All(files, file => Assert.DoesNotContain(file, baseFiles));
+        }
+
+        [Fact]
+        public void SyncRemovesAFolderTheIdeDeletedWithItsFiles()
+        {
+            var view = ViewFolder.Of(_root);
+            var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .First(path => path.Replace('\\', '/').EndsWith("/Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
+            var folder = Path.Combine(Path.GetDirectoryName(appContainer), "Gone");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, ".cds-object.xml"), File.ReadAllText(appContainer)
+                .Replace("32d92914-bcb4-4227-b529-32fd90910eca", "33333333-3333-3333-3333-333333333333")
+                .Replace("<Single Name=\"Name\" Type=\"string\">Application</Single>", "<Single Name=\"Name\" Type=\"string\">Gone</Single>")
+                .Replace("639b491f-5557-464c-af91-1471bac9f549", ObjectKinds.FolderType));
+            File.WriteAllText(Path.Combine(folder, "GVL_Gone.st"), "VAR_GLOBAL\nEND_VAR\n");
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var snapshot = Path.Combine(Fixture, "snapshot.xml");
+            ImportCommand.Execute(SyncCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(snapshot, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(new[] { "MAIN" });
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.False(Directory.Exists(folder));
+            Assert.DoesNotContain("/Gone/", GitRepository.Run(_root, "ls-tree -r --name-only refs/cts/base"));
         }
 
         [Fact]
@@ -1984,8 +2057,12 @@ namespace Cts.Agent.Tests
             Assert.Equal(new[] { moved.Key }, ((IEnumerable<object>)result["renamed_objects"]).Cast<string>());
         }
 
-        [Fact]
-        public void CreatesAnUnmarkedNewFolderBeforeItsOneMemberPerFileGVL()
+        // A renamed folder brings its old file along: the old folder's guid
+        // and name, rewritten as the folder the import made.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void CreatesAnUnmarkedNewFolderBeforeItsOneMemberPerFileGVL(bool renamedFolderFile)
         {
             var view = ViewFolder.Of(_root);
             var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
@@ -1993,6 +2070,9 @@ namespace Cts.Agent.Tests
             var parent = Path.GetDirectoryName(appContainer);
             var newFolder = Path.Combine(parent, "NewFolder");
             Directory.CreateDirectory(newFolder);
+            if (renamedFolderFile) File.WriteAllText(Path.Combine(newFolder, ".cds-object.xml"), File.ReadAllText(appContainer)
+                .Replace("<Single Name=\"Name\" Type=\"string\">Application</Single>", "<Single Name=\"Name\" Type=\"string\">OldFolder</Single>")
+                .Replace("639b491f-5557-464c-af91-1471bac9f549", ObjectKinds.FolderType));
             File.WriteAllText(Path.Combine(newFolder, "GVL_New.st"), "VAR_GLOBAL\n    xNew : BOOL;\nEND_VAR\n");
             var parentKey = Path.GetRelativePath(view, parent).Replace('\\', '/');
             var folderEntry = File.ReadAllText(appContainer)

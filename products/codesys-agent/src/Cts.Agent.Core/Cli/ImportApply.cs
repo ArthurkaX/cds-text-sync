@@ -31,7 +31,7 @@ namespace Cts.Cli
             List<string> RemoveIdeDeleted()
             {
                 var touched = new List<string>();
-                foreach (var record in _work.NativeRecords.Concat(_work.CsvRecords).Where(ComparePlanner.IdeDeleted))
+                foreach (var record in _work.NativeRecords.Concat(_work.CsvRecords).Concat(_work.FolderRecords).Where(ComparePlanner.IdeDeleted))
                 {
                     var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
                     if (File.Exists(full)) File.Delete(full);
@@ -50,6 +50,12 @@ namespace Cts.Cli
                     else continue;
                     touched.Add(file);
                 }
+                // A folder the IDE deleted goes once its files did.
+                foreach (var record in _work.FolderRecords.Where(ComparePlanner.IdeDeleted).OrderByDescending(record => record.Path.Count(ch => ch == '/')))
+                {
+                    var folder = Path.Combine(_work.View, FolderKey(record.Path).Replace('/', Path.DirectorySeparatorChar));
+                    if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
+                }
                 return touched;
             }
 
@@ -64,9 +70,10 @@ namespace Cts.Cli
                     foreach (var record in _work.ForceRecords)
                     {
                         var objectPath = record.ObjectPath;
-                        var path = objectPath == null ? record.Path
-                            : At(_work.IdeObjects, objectPath)?.File;
-                        if (string.IsNullOrEmpty(path)) path = record.Path;
+                        var ide = objectPath == null ? null : At(_work.IdeObjects, objectPath);
+                        // An object the IDE deleted (or moved away) has no text here to keep.
+                        if (objectPath != null && ide == null) continue;
+                        var path = string.IsNullOrEmpty(ide?.File) ? record.Path : ide.File;
                         if (!_work.IdeFiles.TryGetValue(path, out var bytes)) return Refused(_call, _work.Data, "cannot preserve the IDE's text for " + record.Name);
                         preserve[viewRelative == "." ? path : viewRelative.TrimEnd('/') + "/" + path] = bytes;
                     }
@@ -105,7 +112,7 @@ namespace Cts.Cli
                 {
                     var parent = ParentKey(rename.Item.Key);
                     if (string.Equals(ParentKey(Convert.ToString(rename.DeletedRecord.ObjectPath)), parent, StringComparison.OrdinalIgnoreCase)) continue;
-                    rename.ParentGuid = _work.Created.TryGetValue(parent, out var created) ? created
+                    rename.ParentGuid = parent.Length == 0 ? "" : _work.Created.TryGetValue(parent, out var created) ? created
                         : _work.IdeByPath.TryGetValue(parent, out var existing) ? existing
                         : throw new InvalidOperationException("validated move target is missing: " + parent);
                 }
@@ -335,9 +342,9 @@ namespace Cts.Cli
                         .Select(item => new IdeFile { Guid = item.Guid, Path = item.XmlPath ?? Path.ChangeExtension(item.Path, ".xml") }))
                     .Concat(landedLists.Select(item => new IdeFile { Guid = item.Group ?? item.Guid, Path = item.Path, Csv = true }))
                     .ToList();
-                // A folder the import made gets its file as export writes it, so the next export adds none.
+                // A folder the import made gets its file as export writes it, so the next export adds none;
+                // a file already there (a renamed folder's) still names the old folder's guid and name.
                 var newFolders = _work.CreatedFolders.Select(key => key + "/.cds-object.xml")
-                    .Where(path => !File.Exists(Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar))))
                     .Select(path => new IdeFile { Guid = _work.Created[FolderKey(path)], Path = path });
                 var toDisk = WriteIdeFiles(_call, _work.View, landedFiles.Concat(ideNativeFiles).Concat(newFolders).ToList());
                 foreach (var path in _work.IdeNewTextFiles)

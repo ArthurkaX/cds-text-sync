@@ -353,6 +353,15 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void MoveToTheRootTakesRootNotAParent()
+        {
+            var spec = ObjectMove.From(Req("{\"method\":\"objects.move\",\"params\":{\"guid\":\"" + Parent + "\",\"root\":true}}"));
+            Assert.True(spec.AtRoot);
+            Assert.Equal(Guid.Empty, spec.ParentGuid);
+            Assert.Throws<ProtocolException>(() => ObjectMove.From(Req("{\"method\":\"objects.move\",\"params\":{\"guid\":\"" + Parent + "\",\"root\":true,\"parent_guid\":\"" + Parent + "\"}}")));
+        }
+
+        [Fact]
         public void RenameRefusesAnEmptyName()
         {
             Assert.Equal("bad_params", FailRename("{\"guid\":\"" + Parent + "\",\"name\":\"\"}").Code);

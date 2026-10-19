@@ -165,31 +165,29 @@ namespace Cts.Agent
         // itself below its container's node, or an object below its folder.
         object SvParentNode(int handle, Guid svGuid, Guid nodeGuid)
         {
-            Exception cause;
-            var node = TrySvNode(handle, svGuid, nodeGuid, out cause);
-            if (node == null) throw UnknownObject(nodeGuid, cause);
+            var sv = StructuredViewOf(handle, svGuid);
+            var getNode = NeedMethod(sv.GetType(), "GetNode", new[] { typeof(Guid) }, "IStructuredView.GetNode is not present in this IDE");
+            object node;
+            try { node = getNode.Invoke(sv, new object[] { nodeGuid }); }
+            catch (Exception e) { throw UnknownObject(nodeGuid, e); }
+            if (node == null) throw UnknownObject(nodeGuid, null);
             return node;
         }
 
-        // The node of `nodeGuid` in the view of the tab that shows it: the
-        // POUs view first (it alone has the POUs tab's folders, and the
-        // Devices view lists that tab's objects too), then the Devices view.
+        // The node of `nodeGuid` in the view of the tab that shows it.  Each
+        // view answers a node for any object, with its own folders, so the
+        // tab comes from the object's parents: the Devices tab when a device
+        // holds it, else the POUs tab (whose objects and folders have none).
         object SvNode(int handle, Guid nodeGuid, out Guid view)
         {
             view = PousView;
-            var node = TrySvNode(handle, PousView, nodeGuid, out _);
-            if (node != null) return node;
-            view = DevicesView;
-            return SvParentNode(handle, DevicesView, nodeGuid);
-        }
-
-        object TrySvNode(int handle, Guid svGuid, Guid nodeGuid, out Exception cause)
-        {
-            var sv = StructuredViewOf(handle, svGuid);
-            var getNode = NeedMethod(sv.GetType(), "GetNode", new[] { typeof(Guid) }, "IStructuredView.GetNode is not present in this IDE");
-            cause = null;
-            try { return getNode.Invoke(sv, new object[] { nodeGuid }); }
-            catch (Exception e) { cause = e; return null; }
+            for (var current = nodeGuid; current != Guid.Empty; )
+            {
+                var meta = ObjectMeta(handle, current, "GetObjectToRead");
+                if (Prop(_metaObjectIface, meta, "Object").GetType().GetInterfaces().Any(i => i.Name == "IDeviceObject")) { view = DevicesView; break; }
+                current = ParentOf(meta);
+            }
+            return SvParentNode(handle, view, nodeGuid);
         }
 
         object StructuredViewOf(int handle, Guid svGuid)
@@ -419,24 +417,22 @@ namespace Cts.Agent
             };
         }
 
-        // Moves one object below another node of its tab (a folder, or its
-        // Application on the Devices tab): the IDE changes only where the tree
-        // shows it, so the object keeps its guid, its text and its place in
-        // the build.  A move to the other tab is refused.
+        // Moves one object below a folder or an Application, on either tab,
+        // through the view of the tab it goes to: the IDE changes only where
+        // the tree shows it, so the object keeps its guid and its text.  The
+        // top of the POUs tab has no node: MoveObject takes no parent for it.
         public Dictionary<string, object> MoveObject(ObjectMove spec)
         {
             RefuseWhileOnline();
             RequirePermission("objects.move");
             var handle = ProjectHandle();
-            Guid view;
-            var target = SvNode(handle, spec.ParentGuid, out view);
-            var node = TrySvNode(handle, view, spec.Guid, out _);
-            if (node == null)
-                throw new ProtocolException(ErrorCodes.BadParams, "cannot move " + Id(spec.Guid) + " below " + Id(spec.ParentGuid)
-                    + ": it is not on the " + (view == PousView ? "POUs" : "Devices") + " tab");
+            var view = PousView;
+            var target = spec.AtRoot ? null : SvNode(handle, spec.ParentGuid, out view);
+            var node = SvParentNode(handle, view, spec.Guid);
+            var nodeType = FindType("_3S.CoDeSys.Core.Objects.ISVNode");
             var move = node.GetType().GetMethods().FirstOrDefault(method => method.Name == "MoveObject"
                 && method.GetParameters().Length == 2 && method.GetParameters()[1].ParameterType == typeof(int)
-                && method.GetParameters()[0].ParameterType.IsInstanceOfType(target));
+                && method.GetParameters()[0].ParameterType == nodeType);
             if (move == null) throw new ProtocolException(ErrorCodes.Unavailable, "ISVNode.MoveObject is not present in this IDE");
             try { move.Invoke(node, new object[] { target, -1 }); }
             catch (Exception e) { throw new ProtocolException(ErrorCodes.BadParams, "cannot move " + Id(spec.Guid) + " there: " + Invocation.Cause(e).Message); }

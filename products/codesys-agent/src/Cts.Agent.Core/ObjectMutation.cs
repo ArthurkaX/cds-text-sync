@@ -202,13 +202,22 @@ namespace Cts.Agent
     public sealed class ObjectMove
     {
         public Guid Guid { get; private set; }
+        // Guid.Empty with AtRoot: the top of the POUs tab, as for objects.create.
         public Guid ParentGuid { get; private set; }
+        public bool AtRoot { get; private set; }
 
-        public static ObjectMove From(Request req) => new ObjectMove
+        public static ObjectMove From(Request req)
         {
-            Guid = ObjectCreate.ParseGuid(req.String("guid"), "guid"),
-            ParentGuid = ObjectCreate.ParseGuid(req.String("parent_guid"), "parent_guid"),
-        };
+            var atRoot = req.Bool("root", false);
+            if (atRoot && req.Params.ContainsKey("parent_guid"))
+                throw new ProtocolException(ErrorCodes.BadParams, "pass parent_guid or root, not both");
+            return new ObjectMove
+            {
+                Guid = ObjectCreate.ParseGuid(req.String("guid"), "guid"),
+                ParentGuid = atRoot ? Guid.Empty : ObjectCreate.ParseGuid(req.String("parent_guid"), "parent_guid"),
+                AtRoot = atRoot,
+            };
+        }
     }
 
     public sealed class ObjectRename

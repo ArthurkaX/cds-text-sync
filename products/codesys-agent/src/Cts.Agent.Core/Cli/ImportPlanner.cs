@@ -80,13 +80,14 @@ namespace Cts.Cli
             {
                 _work.Folder = Convert.ToString(_work.Data["sync_folder"]);
                 _work.View = ViewFolder.Of(_work.Folder);
-                _work.ForceRecords = _work.HasBase && _call.Options.Params.ContainsKey("force") ? _work.Changed.Where(record => record.Category == "ide_changed"
-                    || record.IdeChanged).ToList() : new List<CompareRecord>();
-                var forceFolderKeys = _work.Changed.Where(record => IsFolderRecord(record) && record.Category == "ide_changed")
-                    .Select(record => FolderKey(record.Path)).ToList();
-                _work.ForceRecords = _work.ForceRecords.Where(record => !IsFolderRecord(record)
-                    && !forceFolderKeys.Any(key => Convert.ToString(record.ObjectPath ?? "")
-                        .StartsWith(key + "/", StringComparison.OrdinalIgnoreCase))).ToList();
+                var force = _work.HasBase && _call.Options.Params.ContainsKey("force");
+                _work.ForceRecords = force ? _work.Changed.Where(record => !IsFolderRecord(record) && (record.Category == "ide_changed"
+                    || record.IdeChanged)).ToList() : new List<CompareRecord>();
+                // --force: a folder the IDE deleted (or renamed) is made again; one only the IDE
+                // has goes once the forced deletes emptied it.
+                if (force)
+                    foreach (var record in _work.Changed.Where(record => IsFolderRecord(record) && ComparePlanner.IdeDeleted(record)))
+                        record.Category = "added";
                 _work.Parsed = StViewReader.Read(_work.View);
                 _work.StRecords = _work.Changed.Where(record => record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)).ToList();
                 _work.FolderRecords = _work.Changed.Where(IsFolderRecord).ToList();

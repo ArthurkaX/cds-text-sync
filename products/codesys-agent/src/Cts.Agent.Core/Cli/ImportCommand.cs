@@ -157,7 +157,7 @@ namespace Cts.Cli
             internal string Guid;
             internal StViewObject Item;
             internal CompareRecord DeletedRecord;
-            internal string ParentGuid;		// The folder it moves into; null when it stays in its own
+            internal string ParentGuid;		// The folder it moves into, "" for the project root; null when it stays in its own
         }
 
         internal sealed class MergeFileEdit
@@ -182,7 +182,7 @@ namespace Cts.Cli
             foreach (var rename in renames)
             {
                 if (rename.ParentGuid != null)
-                    call.Call("objects.move", new Dictionary<string, object> { { "guid", rename.Guid }, { "parent_guid", rename.ParentGuid } });
+                    call.Call("objects.move", Below(rename.ParentGuid, new Dictionary<string, object> { { "guid", rename.Guid } }));
                 if (!string.Equals(rename.DeletedRecord.Name, rename.Item.Path.Last(), StringComparison.Ordinal))
                     call.Call("objects.rename", new Dictionary<string, object> { { "guid", rename.Guid }, { "name", rename.Item.Path.Last() } });
                 writes.Add(new TextWrite { Guid = rename.Guid, Item = rename.Item });

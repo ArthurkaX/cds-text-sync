@@ -108,7 +108,12 @@ namespace Cts.Cli
             var bom = text.StartsWith("\uFEFF", StringComparison.Ordinal);
             if (bom) text = text.Substring(1);
             var newline = text.Contains("\r\n") ? "\r\n" : text.Contains("\r") ? "\r" : "\n";
-            text = ReplacePart(text, oldItem.Declaration, newItem.Declaration, oldItem.DeclarationLine, newline);
+            // A file written while the body was empty has no implementation
+            // part: the IDE's body goes in after the declaration, below the marker.
+            var declaration = oldItem.Implementation == null && NormalizePart(newItem.Implementation ?? "").Length > 0
+                ? NormalizePart(newItem.Declaration) + "\n" + StPragma.ImplementationMarker + "\n" + NormalizePart(newItem.Implementation)
+                : newItem.Declaration;
+            text = ReplacePart(text, oldItem.Declaration, declaration, oldItem.DeclarationLine, newline);
             text = ReplacePart(text, oldItem.Implementation, newItem.Implementation, oldItem.ImplementationLine, newline);
             File.WriteAllBytes(full, new UTF8Encoding(bom).GetBytes(text));
         }
