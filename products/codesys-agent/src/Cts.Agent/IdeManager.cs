@@ -145,9 +145,10 @@ namespace Cts.Agent
             public Func<object, bool> IsDevice;
         }
 
-        // The project's structured view: its root nodes and how to read a node.
-        // GetStructuredView answers the same whole tree for every view guid
-        // (probed live), so the Devices one stands for all.
+        // The project's structured views: the device roots of the Devices tab
+        // and the other roots of the POUs tab, each as its own view shows it
+        // (a folder of the POUs tab is a node of the POUs view only), and how
+        // to read a node.
         StructuredView ReadStructuredView(int handle)
         {
             var nodeIface = FindType("_3S.CoDeSys.Core.Objects.ISVNode");
@@ -158,10 +159,12 @@ namespace Cts.Agent
             Func<object, Guid> typeOf = stub6Iface != null
                 ? (Func<object, Guid>)(n => (Guid)Prop(stub6Iface, getStub.Invoke(n, null), "ObjectTypeGuid"))
                 : n => TypeGuidOf((Type)Prop(stubIface, getStub.Invoke(n, null), "ObjectType"));
-            var view = ManagerMethod("GetStructuredView", typeof(int), typeof(Guid)).Invoke(_objectManager, new object[] { handle, DevicesView });
+            var getView = ManagerMethod("GetStructuredView", typeof(int), typeof(Guid));
+            Func<Guid, List<object>> rootsOf = guid => ((Array)Prop(viewIface, getView.Invoke(_objectManager, new object[] { handle, guid }), "Children")).Cast<object>().ToList();
+            Func<object, bool> isDevice = n => ((Type)Prop(nodeIface, n, "ObjectType")).GetInterfaces().Any(i => i.Name == "IDeviceObject");
             return new StructuredView
             {
-                Roots = ((Array)Prop(viewIface, view, "Children")).Cast<object>().ToList(),
+                Roots = rootsOf(DevicesView).Where(isDevice).Concat(rootsOf(PousView).Where(n => !isDevice(n))).ToList(),
                 Access = new SvNodeAccess
                 {
                     ObjectOf = n => (Guid)Prop(nodeIface, n, "ObjectGuid"),
@@ -177,7 +180,7 @@ namespace Cts.Agent
                     TypeOf = typeOf,
                     Skip = n => typeOf(n) == TaskCallType,
                 },
-                IsDevice = n => ((Type)Prop(nodeIface, n, "ObjectType")).GetInterfaces().Any(i => i.Name == "IDeviceObject"),
+                IsDevice = isDevice,
             };
         }
 
