@@ -70,6 +70,39 @@ namespace Cts.Agent.Tests
             public override void SetLength(long value) => throw new NotSupportedException();
         }
 
+        // The agent's bytes a few at a time, as a pipe may hand over a large reply.
+        sealed class TrickleStream : Stream
+        {
+            readonly Stream _inner;
+            public TrickleStream(Stream inner) { _inner = inner; }
+            public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, Math.Min(count, 7));
+            public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => true;
+            public override long Length => throw new NotSupportedException();
+            public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+            public override void Flush() { }
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+        }
+
+        [Fact]
+        public void A_reply_that_arrives_a_few_bytes_at_a_time_is_read_whole_and_the_next_one_too()
+        {
+            var text = new string('x', 5000) + "\u00e9";
+            var stream = new TrickleStream(new FakeAgentStream((method, p) => new Dictionary<string, object> { { "method", method }, { "text", text } }));
+            using (var conn = new AgentConnection(stream, "trickle"))
+            {
+                foreach (var method in new[] { "first", "second" })
+                {
+                    var reply = (IDictionary<string, object>)conn.Call(method, null, 5000);
+                    Assert.Equal(method, reply["method"]);
+                    Assert.Equal(text, reply["text"]);
+                }
+            }
+        }
+
         sealed class FakeHost : IAgentHost
         {
             public readonly Dictionary<int, Func<string, IDictionary<string, object>, object>> Agents = new Dictionary<int, Func<string, IDictionary<string, object>, object>>();

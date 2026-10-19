@@ -35,6 +35,9 @@ namespace Cts.Cli
         readonly byte[] _chunk = new byte[65536];
         long _nextId;
         bool _broken;
+        // How far _pending is known to hold no newline: a large reply arrives
+        // in many chunks, and each is searched once.
+        int _scanned;
 
         public AgentConnection(Stream stream, string name)
         {
@@ -83,16 +86,18 @@ namespace Cts.Cli
             while (true)
             {
                 var buffer = _pending.GetBuffer();
-                var end = Array.IndexOf(buffer, (byte)'\n', 0, (int)_pending.Length);
+                var end = Array.IndexOf(buffer, (byte)'\n', _scanned, (int)_pending.Length - _scanned);
                 if (end >= 0)
                 {
                     var line = Utf8.GetString(buffer, 0, end);
                     var rest = (int)_pending.Length - end - 1;
                     Buffer.BlockCopy(buffer, end + 1, buffer, 0, rest);
                     _pending.SetLength(rest);
+                    _scanned = 0;
                     if (line.Trim().Length > 0) return line;
                     continue;
                 }
+                _scanned = (int)_pending.Length;
                 var left = (int)Math.Max(0, (deadline - DateTime.UtcNow).TotalMilliseconds);
                 Task<int> read;
                 try { read = _stream.ReadAsync(_chunk, 0, _chunk.Length); }
