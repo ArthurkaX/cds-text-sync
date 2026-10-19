@@ -204,7 +204,7 @@ namespace Cts.Cli
                             { "parent_guid", parentGuid }, { "xml", WithRows(csv, content) },
                         });
                     }
-                    catch (AgentException error)
+                    catch (CliFailure error) when (error.Declined)
                     {
                         _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
                         continue;
@@ -231,7 +231,7 @@ namespace Cts.Cli
                     }
                     IDictionary<string, object> replaced;
                     try { replaced = _call.Call("objects.replace", parameters); }
-                    catch (AgentException error)
+                    catch (CliFailure error) when (error.Declined)
                     {
                         _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", Convert.ToString(record.Guid) }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
                         continue;
@@ -302,7 +302,7 @@ namespace Cts.Cli
                     if (miss.Key != null)
                         _work.FieldReadBack.Add(new Dictionary<string, object> { { "guid", planFields.Guid }, { "name", planFields.Name }, { "path", planFields.Path }, { "parts", new[] { miss.Key } } });
                     }
-                    catch (AgentException error)
+                    catch (CliFailure error) when (error.Declined)
                     {
                         _work.FieldReadBack.Add(new Dictionary<string, object> { { "guid", planFields.Guid }, { "name", planFields.Name }, { "path", planFields.Path }, { "error", error.Message } });
                     }
@@ -431,7 +431,7 @@ namespace Cts.Cli
                         || _nativeWrites.Count > 0 || _work.NativeDeletes.Count > 0 || _work.CreatedFolders.Count > 0 || _updatedFieldObjects.Count > 0))
                 {
                     try { _call.Call("project.save", new Dictionary<string, object>()); output["saved"] = true; }
-                    catch (AgentException error) { output["save_error"] = error.Message; }
+                    catch (CliFailure error) when (error.Declined) { output["save_error"] = error.Message; }
                 }
                 return output;
             }

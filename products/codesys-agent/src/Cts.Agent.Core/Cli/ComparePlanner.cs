@@ -142,7 +142,7 @@ namespace Cts.Cli
                         if (useIdeCache)
                         {
                             try { skeleton = call.Call("project.skeleton", new Dictionary<string, object>()); }
-                            catch (AgentException) { }
+                            catch (CliFailure failure) when (failure.Declined) { }
                         }
                         call.Call("project.export", new Dictionary<string, object> { { "path", snapshot } });
                         exportElapsed.Stop();

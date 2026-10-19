@@ -114,7 +114,7 @@ namespace Cts.Cli
             if (writes.Count == 0) return new List<IDictionary<string, object>>();
             IDictionary<string, object> reply;
             try { reply = call.Call("objects.export", new Dictionary<string, object> { { "guids", writes.Select(item => item.Guid).ToArray() } }); }
-            catch (AgentException error)
+            catch (CliFailure error) when (error.Declined)
             {
                 return writes.Select(item =>
                 {

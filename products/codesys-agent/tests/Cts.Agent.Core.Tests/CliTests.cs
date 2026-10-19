@@ -319,6 +319,27 @@ namespace Cts.Agent.Tests
             Assert.Contains("nothing is open now, so run the command again", error);
         }
 
+        // A call over the pipe: the agent's refusal is Declined, a reply that
+        // says the call never ran (busy, a dialog) is not.
+        [Theory]
+        [InlineData("ide_error", true)]
+        [InlineData("unknown_method", true)]
+        [InlineData("busy", false)]
+        [InlineData("dialog_blocked", false)]
+        public void A_refusal_over_the_pipe_is_declined_and_a_call_that_did_not_run_is_not(string code, bool declined)
+        {
+            var host = new FakeHost();
+            host.Agents[7144] = Agent(null, null, method => throw new ProtocolException(code, "refused"));
+            var command = CliCommands.All.Single(item => item.Name == "build");
+            var options = CliOptions.Parse(new[] { "build" }, null, command);
+            using (var conn = host.Open(7144))
+            {
+                var call = new CliCall(conn, host, command, options, new Hello(7144, new Dictionary<string, object>()), 30);
+                var failure = Assert.Throws<CliFailure>(() => call.Call("project.build", null));
+                Assert.Equal(declined, failure.Declined);
+            }
+        }
+
         [Fact]
         public void A_command_stopped_by_a_dialog_without_details_keeps_the_dialog_command()
         {

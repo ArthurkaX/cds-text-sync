@@ -62,7 +62,7 @@ namespace Cts.Cli
                 }
                 return ExportAndPatchIdeSubset(call, facts, viewRelative, snapshot, cachePath, cached, current, changes, attempt);
             }
-            catch (AgentException)
+            catch (CliFailure failure) when (failure.Declined)
             {
                 return attempt;
             }

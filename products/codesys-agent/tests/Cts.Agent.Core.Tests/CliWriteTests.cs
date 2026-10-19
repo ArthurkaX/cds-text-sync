@@ -77,6 +77,22 @@ namespace Cts.Agent.Tests
             Assert.Equal(agree, WriteCommand.Agree(written, read));
         }
 
+        [Theory]
+        [InlineData("1000000001", "1000000000", null, false)]
+        [InlineData("9007199254740993", "9007199254740992", null, false)]
+        [InlineData("-5", "DINT#-5", null, true)]
+        [InlineData("+7", "7", null, true)]
+        [InlineData("0.1", "0.10000000000000001", "LREAL", true)]
+        [InlineData("0.1", "0.1000000001", "LREAL", false)]
+        [InlineData("3.14159265", "3.141593", "LREAL", false)]
+        [InlineData("3.14159265", "3.1415927", "REAL", true)]
+        [InlineData("3.14159265", "3.141593", "REAL", false)]
+        [InlineData("1.0", "1", "REAL", true)]
+        public void Numbers_agree_only_when_they_name_one_value_of_the_type(string written, string read, string iec, bool agree)
+        {
+            Assert.Equal(agree, WriteCommand.Agree(written, read, iec));
+        }
+
         [Fact]
         public void The_read_back_polls_until_the_plc_shows_the_value()
         {

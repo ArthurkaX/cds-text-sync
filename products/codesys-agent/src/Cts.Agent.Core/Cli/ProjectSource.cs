@@ -29,7 +29,7 @@ namespace Cts.Cli
                 });
                 output["source"] = source;
             }
-            catch (AgentException error) { output["source_error"] = error.Message; }
+            catch (CliFailure error) when (error.Declined) { output["source_error"] = error.Message; }
         }
     }
 }

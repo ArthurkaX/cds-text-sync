@@ -156,7 +156,8 @@ namespace Cts.Cli
         public double Seconds { get; private set; }
 
         // One agent call within the command's budget; the agent waits as long
-        // for the IDE to start it. A failure ends the command (CliFailure).
+        // for the IDE to start it. A failure ends the command (CliFailure)
+        // unless the caller goes on after a Declined one.
         public IDictionary<string, object> Call(string method, IDictionary<string, object> parameters)
         {
             return Call(method, parameters, Seconds);
@@ -165,11 +166,10 @@ namespace Cts.Cli
         // The same, within *seconds* of its own: one of many short calls.
         public IDictionary<string, object> Call(string method, IDictionary<string, object> parameters, double seconds)
         {
-            if (_callOverride != null) return _callOverride(method, parameters);
             var ms = (int)Math.Min(int.MaxValue, Math.Max(1, seconds * 1000));
             var request = new Dictionary<string, object>(parameters ?? new Dictionary<string, object>()) { ["start_timeout_ms"] = (long)ms };
             object result;
-            try { result = Watched(method, request, ms); }
+            try { result = _callOverride != null ? _callOverride(method, parameters) : Watched(method, request, ms); }
             catch (AgentException e) { throw Failure(method, e); }
             return result as IDictionary<string, object> ?? new Dictionary<string, object> { { "result", result } };
         }
@@ -212,6 +212,16 @@ namespace Cts.Cli
         // ran (safe to retry), a dialog stopped it, a timeout or a dropped pipe
         // left the outcome unknown, any other code is the agent's own refusal.
         CliFailure Failure(string method, AgentException e)
+        {
+            var failure = Described(method, e);
+            failure.Declined = !Unsettled.Contains(e.Code);
+            return failure;
+        }
+
+        // The codes of a failure that is not the agent's refusal of the call.
+        static readonly HashSet<string> Unsettled = new HashSet<string> { "busy", "dialog_blocked", "dialog_opened", "timeout", "transport" };
+
+        CliFailure Described(string method, AgentException e)
         {
             var pid = Hello.Pid;
             var message = e.Message.Split('\n')[0].Trim();

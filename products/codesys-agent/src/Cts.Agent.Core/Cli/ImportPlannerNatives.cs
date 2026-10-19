@@ -57,7 +57,7 @@ namespace Cts.Cli
                         return Refused(_call, _work.Data, "cannot read " + path);
                     IDictionary<string, object> fieldsReply;
                     try { fieldsReply = _call.Call("objects.fields", new Dictionary<string, object> { { "guid", node.Guid } }); }
-                    catch (AgentException error)
+                    catch (CliFailure error) when (error.Declined)
                     {
                         _work.FieldReadBack.Add(new Dictionary<string, object> { { "guid", node.Guid }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
                         continue;

@@ -223,6 +223,12 @@ namespace Cts.Cli
         public int ExitCode { get; private set; }
         // A line for stderr after the message (the dialog a refusal saw), or null.
         public string Note { get; private set; }
+        // The agent ran the call and refused it: nothing of it happened and the
+        // connection still serves the next call, so a caller may note the
+        // refusal and go on. False for a failure whose outcome is unknown (no
+        // reply in time, a broken connection) or that blocks every call (a
+        // dialog, a busy IDE): the command ends there.
+        public bool Declined { get; internal set; }
 
         public CliFailure(string command, string cause, string message, string next, int exitCode, string note = null) : base(message)
         {

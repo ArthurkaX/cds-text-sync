@@ -605,6 +605,56 @@ namespace Cts.Agent.Tests
             Assert.Equal(true, result["saved"]);
         }
 
+        // An import that changes Task.xml, its agent's replies past the tree from *reply*.
+        CliCall NativeTaskImport(Func<string, IDictionary<string, object>, IDictionary<string, object>> reply)
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            File.WriteAllText(file, File.ReadAllText(file).Replace("<Single Name=\"AllowEmpty\" Type=\"bool\">False</Single>",
+                "<Single Name=\"AllowEmpty\" Type=\"bool\">True</Single>"));
+            var key = ExportCommand.Relative(view, Path.GetDirectoryName(file)) + "/Task";
+            var call = ImportCall(null, (method, args) =>
+                method == "project.tree" ? Tree(key.Split('/'))
+                : method == "objects.export" ? NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]))
+                : method == "project.export" ? SnapshotReply(args, File.ReadAllText(file))
+                : reply(method, args) ?? throw new InvalidOperationException("unexpected agent call " + method));
+            call.Options.Params["save"] = true;
+            return call;
+        }
+
+        [Fact]
+        public void An_object_the_agent_refuses_is_named_unapplied_and_the_import_answers()
+        {
+            var call = NativeTaskImport((method, args) =>
+                method == "objects.replace" ? throw new AgentException("ide_error", "the IDE refused the XML") : null);
+            var result = ImportCommand.Execute(call);
+            var miss = ((IEnumerable<object>)result["unapplied_objects"]).Cast<IDictionary<string, object>>().Single();
+            Assert.Equal("the IDE refused the XML", miss["error"]);
+        }
+
+        [Fact]
+        public void A_save_the_agent_refuses_is_named_and_the_import_answers()
+        {
+            var call = NativeTaskImport((method, args) =>
+                method == "objects.replace" ? new Dictionary<string, object>()
+                : method == "project.save" ? throw new AgentException("ide_error", "the project file is read-only") : null);
+            var result = ImportCommand.Execute(call);
+            Assert.Equal("the project file is read-only", result["save_error"]);
+            Assert.False(result.ContainsKey("saved") && Equals(result["saved"], true));
+        }
+
+        [Theory]
+        [InlineData("timeout")]
+        [InlineData("transport")]
+        public void A_call_whose_outcome_is_unknown_ends_the_import(string code)
+        {
+            var call = NativeTaskImport((method, args) =>
+                method == "objects.replace" ? throw new AgentException(code, "no reply") : null);
+            var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(call));
+            Assert.False(failure.Declined);
+            Assert.Contains("outcome unknown", failure.Cause);
+        }
+
         [Fact]
         public void Carries_changed_native_meta_properties_from_the_ide_export()
         {

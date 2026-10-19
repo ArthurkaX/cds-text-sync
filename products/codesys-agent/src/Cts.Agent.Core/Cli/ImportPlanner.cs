@@ -345,7 +345,7 @@ namespace Cts.Cli
                 {
                     IDictionary<string, object> exported;
                     try { exported = _call.Call("objects.export", new Dictionary<string, object> { { "guids", _work.NativeReplaces.Select(record => Convert.ToString(record.Guid)).ToArray() } }); }
-                    catch (AgentException error) { return Refused(_call, _work.Data, "cannot read native MetaObject properties: " + error.Message); }
+                    catch (CliFailure error) when (error.Declined) { return Refused(_call, _work.Data, "cannot read native MetaObject properties: " + error.Message); }
                     foreach (var item in Items(exported.ContainsKey("objects") ? exported["objects"] : null))
                         if (item.ContainsKey("guid") && item.ContainsKey("meta")) _work.NativeBefore[Convert.ToString(item["guid"]).Trim().Trim('{', '}')] = item;
                 }

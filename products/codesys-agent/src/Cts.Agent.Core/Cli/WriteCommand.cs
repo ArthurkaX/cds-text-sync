@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Cts.Agent;
@@ -26,6 +27,7 @@ namespace Cts.Cli
         // `INT#0`, `REAL#1.5`, `T#2s`: the PLC may print a value with its type.
         static readonly Regex TypePrefix = new Regex("^[A-Za-z_][A-Za-z0-9_]*#");
         static readonly Regex EnumValue = new Regex(@"^[A-Za-z_]\w*\.[A-Za-z_]\w*$");
+        static readonly Regex WholeNumber = new Regex(@"^[+-]?[0-9]+$");
 
         public static IDictionary<string, object> Execute(CliCall call)
         {
@@ -117,13 +119,13 @@ namespace Cts.Cli
                 back = read(name);
                 if (back.ContainsKey("unavailable")) { confirmed = false; break; }
                 var shown = Value(back, "value") as string;
-                if (Agree(expected, shown)) { confirmed = true; break; }
+                if (Agree(expected, shown, Value(back, "iec") as string)) { confirmed = true; break; }
                 // An enum shows its member; a number written to it is checked
                 // against the member's value.
                 if (shown != null && EnumValue.IsMatch(shown.Trim()) && IecTypes.IsDecimal(Bare(expected)))
                 {
                     var member = read(shown.Trim());
-                    if (!member.ContainsKey("unavailable") && Agree(expected, Value(member, "value") as string)) { confirmed = true; break; }
+                    if (!member.ContainsKey("unavailable") && Agree(expected, Value(member, "value") as string, Value(member, "iec") as string)) { confirmed = true; break; }
                 }
                 if (clock() >= deadline) { confirmed = false; break; }
                 sleep(ReadBackPollS);
@@ -143,7 +145,13 @@ namespace Cts.Cli
         // included (the IDE answers a write with 'it's' and a read with
         // 'it$'s'). Anything else is a mismatch: a write is never reported
         // verified on a guess.
-        internal static bool Agree(string written, string read)
+        internal static bool Agree(string written, string read) => Agree(written, read, null);
+
+        // The same, *iec* the read variable's type: two whole numbers agree
+        // only when equal (a double cannot tell 2^53+1 from 2^53), a REAL's
+        // two spellings when they name one float, any other two numbers when
+        // they name one double. No tolerance: 1000000001 is not 1000000000.
+        internal static bool Agree(string written, string read, string iec)
         {
             if (read == null || written == null) return false;
             var left = Bare(written);
@@ -153,10 +161,15 @@ namespace Cts.Cli
             if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase)) return true;
             if (EnumValue.IsMatch(right) && StText.IsIdentifier(left))
                 return string.Equals(left, Snapshot.LastSegment(right), StringComparison.OrdinalIgnoreCase);
+            BigInteger x, y;
+            if (WholeNumber.IsMatch(left) && WholeNumber.IsMatch(right)
+                && BigInteger.TryParse(left, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out x)
+                && BigInteger.TryParse(right, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out y))
+                return x == y;
             double a, b;
-            return double.TryParse(left, NumberStyles.Float, CultureInfo.InvariantCulture, out a)
-                && double.TryParse(right, NumberStyles.Float, CultureInfo.InvariantCulture, out b)
-                && Math.Abs(a - b) <= 1e-9 * Math.Max(1.0, Math.Abs(a));
+            if (!double.TryParse(left, NumberStyles.Float, CultureInfo.InvariantCulture, out a)
+                || !double.TryParse(right, NumberStyles.Float, CultureInfo.InvariantCulture, out b)) return false;
+            return string.Equals(iec, "REAL", StringComparison.OrdinalIgnoreCase) ? (float)a == (float)b : a == b;
         }
 
         static string Bare(string text) => TypePrefix.Replace(text.Trim(), "", 1);
@@ -190,7 +203,7 @@ namespace Cts.Cli
         }
 
         // One variable read after the write: {name, value} as the IDE spells
-        // it, or {unavailable: why}. An empty read-back is never shown as an
+        // it and its IEC type as iec, or {unavailable: why}. An empty read-back is never shown as an
         // empty variable.
         internal static IDictionary<string, object> ReadBack(CliCall call, string name)
         {
@@ -204,11 +217,13 @@ namespace Cts.Cli
                     ? "'" + name + "' is not exported to the online application. It may be misspelled, not declared as a symbol, "
                         + "or not compiled into the PLC."
                     : ErrorOf(result, "read failed")));
-            return new Dictionary<string, object>
+            var back = new Dictionary<string, object>
             {
                 { "name", name },
                 { "value", Value(result, "text") as string ?? Convert.ToString(Value(result, "value") ?? "", CultureInfo.InvariantCulture) },
             };
+            if (Value(result, "iec") is string iec) back["iec"] = iec;
+            return back;
         }
 
         static IDictionary<string, object> Unavailable(string why) => new Dictionary<string, object> { { "unavailable", why } };
