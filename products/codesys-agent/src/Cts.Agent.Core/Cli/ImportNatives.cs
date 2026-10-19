@@ -109,11 +109,30 @@ namespace Cts.Cli
             return result;
         }
 
+        // `objects.export` of *guids*, every page: a reply stops once it holds
+        // a few megabytes of XML and names the guids it did not export as
+        // `rest`, which are asked again until none is left.
+        internal static List<IDictionary<string, object>> ExportedObjects(CliCall call, IList<string> guids)
+        {
+            var objects = new List<IDictionary<string, object>>();
+            var asked = guids.ToArray();
+            while (asked.Length > 0)
+            {
+                var reply = call.Call("objects.export", new Dictionary<string, object> { { "guids", asked } });
+                objects.AddRange(Items(reply.ContainsKey("objects") ? reply["objects"] : null));
+                var rest = (reply.ContainsKey("rest") ? reply["rest"] as IEnumerable<object> : null)?.Select(Convert.ToString).ToArray() ?? new string[0];
+                if (rest.Length >= asked.Length)
+                    throw new CliFailure(call.Command.Verb, "bad_reply", "objects.export answered none of " + asked.Length + " objects and named them all as rest", null, 1);
+                asked = rest;
+            }
+            return objects;
+        }
+
         static List<IDictionary<string, object>> ReadBackNative(CliCall call, IList<NativeWrite> writes)
         {
             if (writes.Count == 0) return new List<IDictionary<string, object>>();
-            IDictionary<string, object> reply;
-            try { reply = call.Call("objects.export", new Dictionary<string, object> { { "guids", writes.Select(item => item.Guid).ToArray() } }); }
+            List<IDictionary<string, object>> exported;
+            try { exported = ExportedObjects(call, writes.Select(item => item.Guid).ToList()); }
             catch (CliFailure error) when (error.Declined)
             {
                 return writes.Select(item =>
@@ -123,7 +142,7 @@ namespace Cts.Cli
                     return miss;
                 }).ToList();
             }
-            var objects = Items(reply.ContainsKey("objects") ? reply["objects"] : null)
+            var objects = exported
                 .ToDictionary(item => Convert.ToString(item["guid"]).Trim('{', '}'), StringComparer.OrdinalIgnoreCase);
             var unapplied = new List<IDictionary<string, object>>();
             foreach (var item in writes)

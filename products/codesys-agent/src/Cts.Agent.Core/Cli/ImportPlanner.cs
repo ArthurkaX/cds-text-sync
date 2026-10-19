@@ -343,10 +343,10 @@ namespace Cts.Cli
                 _work.NativeBefore = new Dictionary<string, IDictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
                 if (_work.NativeReplaces.Count > 0)
                 {
-                    IDictionary<string, object> exported;
-                    try { exported = _call.Call("objects.export", new Dictionary<string, object> { { "guids", _work.NativeReplaces.Select(record => Convert.ToString(record.Guid)).ToArray() } }); }
+                    List<IDictionary<string, object>> exported;
+                    try { exported = ExportedObjects(_call, _work.NativeReplaces.Select(record => Convert.ToString(record.Guid)).ToList()); }
                     catch (CliFailure error) when (error.Declined) { return Refused(_call, _work.Data, "cannot read native MetaObject properties: " + error.Message); }
-                    foreach (var item in Items(exported.ContainsKey("objects") ? exported["objects"] : null))
+                    foreach (var item in exported)
                         if (item.ContainsKey("guid") && item.ContainsKey("meta")) _work.NativeBefore[Convert.ToString(item["guid"]).Trim().Trim('{', '}')] = item;
                 }
                 // A device's description is not swapped as a property: the IDE's Update Device

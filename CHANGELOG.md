@@ -93,6 +93,7 @@ _What changes against the 3.4 releases, by area; the step-by-step history is in 
 - `from-svg` fills a screen that is still empty and a project whose global text list is empty (CODESYS writes both lists self-closed). `--gvl NAME` adds to the project's GVL of that name in whatever folder it lies (a new one still goes to `POUs`); when several carry the name it writes nothing and asks for `--gvl-file`.
 - A text field built by `from-svg` or `visu add` shows its value in the online visualization; it used to stay blank there, though the editor drew it.
 - A plain `<rect>`, `<circle>` or `<ellipse>` is the IDE's rectangle with its bindings: `data-text` (centred, a format with `data-text-var`), `data-color-var` with `data-on-fill`/`data-on-stroke` (the colours while the BOOL is TRUE), `data-fill-var`/`data-stroke-var` (DWORD colours) and `data-cds-action`, so one shape is a rack cell that shows, colours and answers a click. `visu bind --text-var` and new `--color-var` bind shapes, `--gvl` declares their variables, `to-svg` writes them back.
+- `cts import` and `cts sync` of several large screens read every one back: the agent answers a few megabytes of XML per reply and names the rest, which cts now asks for again; before, a screen past the first reply was reported `unapplied` though it had landed.
 
 **Install**
 

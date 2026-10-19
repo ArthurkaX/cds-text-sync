@@ -643,6 +643,32 @@ namespace Cts.Agent.Tests
             Assert.False(result.ContainsKey("saved") && Equals(result["saved"], true));
         }
 
+        [Fact]
+        public void An_export_reply_that_stops_at_its_budget_is_asked_again_for_the_rest()
+        {
+            var asked = new List<string>();
+            var call = ImportCall(null, (method, args) =>
+            {
+                Assert.Equal("objects.export", method);
+                var guids = ((IList<object>)args["guids"]).Select(Convert.ToString).ToList();
+                asked.Add(string.Join(",", guids));
+                var reply = new Dictionary<string, object> { { "objects", new List<object> { new Dictionary<string, object> { { "guid", guids[0] }, { "meta", "m" }, { "object", "o" } } } } };
+                if (guids.Count > 1) reply["rest"] = guids.Skip(1).Cast<object>().ToList();
+                return reply;
+            });
+            var exported = ImportCommand.ExportedObjects(call, new[] { "a", "b", "c" });
+            Assert.Equal(new[] { "a", "b", "c" }, exported.Select(item => Convert.ToString(item["guid"])));
+            Assert.Equal(new[] { "a,b,c", "b,c", "c" }, asked);
+        }
+
+        [Fact]
+        public void An_export_reply_that_exports_nothing_and_names_it_all_rest_is_refused()
+        {
+            var call = ImportCall(null, (method, args) => new Dictionary<string, object> { { "objects", new List<object>() }, { "rest", args["guids"] } });
+            var failure = Assert.Throws<CliFailure>(() => ImportCommand.ExportedObjects(call, new[] { "a", "b" }));
+            Assert.Equal("bad_reply", failure.Cause);
+        }
+
         [Theory]
         [InlineData("timeout")]
         [InlineData("transport")]
