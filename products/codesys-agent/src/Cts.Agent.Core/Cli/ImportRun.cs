@@ -30,10 +30,19 @@ namespace Cts.Cli
                 stop = apply.Preserve();
                 if (stop != null) return stop;
                 planner.MatchRenames();
-                apply.ApplyTexts();
-                apply.ApplyNatives();
-                apply.ApplyTextLists();
-                return apply.Finish();
+                try
+                {
+                    apply.ApplyTexts();
+                    apply.ApplyNatives();
+                    apply.ApplyTextLists();
+                    return apply.Finish();
+                }
+                // No reply in time or a broken connection: what the IDE took before it stays there.
+                catch (CliFailure stopped) when (!stopped.Declined && stopped.Note == null)
+                {
+                    throw new CliFailure(stopped.CommandName, stopped.Cause, stopped.Message, "cts compare", stopped.ExitCode,
+                        "cts " + _call.Command.Words + " stopped part way: the IDE may hold some of its changes; cts compare shows what still differs, and running it again carries the rest");
+                }
             }
         }
 

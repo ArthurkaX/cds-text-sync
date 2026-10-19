@@ -742,6 +742,8 @@ namespace Cts.Agent.Tests
             var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(call));
             Assert.False(failure.Declined);
             Assert.Contains("outcome unknown", failure.Cause);
+            Assert.Equal("cts compare", failure.Next);
+            Assert.Contains("stopped part way", failure.Note);
         }
 
         [Fact]
