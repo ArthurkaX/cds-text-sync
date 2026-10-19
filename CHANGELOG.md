@@ -46,6 +46,7 @@ _What changes against the 3.4 releases, by area; the step-by-step history is in 
 - `1` Disk -> IDE and `2` IDE -> Disk merge an object both sides changed and open overlapping edits side by side in the merge program; Shift+1 / Shift+2 make one side the other (`--force`). `3` Compare (the disk, or the IDE against a branch), `4` Switch branch (a new branch on its first row), `5` Commit, `6` Commit and publish (the owner) or Pull and update (a colleague), `7` Open the sync folder in your git program, `8` Settings, `0` More: Format ST, the agent's activity, the line for an AI agent, the FSM map, the analysis findings.
 - The header shows the branch, its last commit, `↑↓` against its upstream (fetched quietly) and what changed on each side; a row that cannot run now says why; a failure has a Copy link with the whole output.
 - Settings: the sync folder, the program `7` opens, This PC (owner or colleague), the quick key (also `cts config set quick_key`), and Permissions, the deny list no cts command can change.
+- `5` Commit the disk and `6` Commit the disk, publish commit the files on disk, not the IDE; the message prompt counts the IDE edits `2` IDE -> Disk would carry first.
 - With no project open it lists the known projects; a project without a sync folder on this PC opens on the sync folder row.
 
 **Working as a team** ([docs/team.md](docs/team.md))

@@ -92,9 +92,11 @@ changes until a command is chosen.
   work, so `3` shows what the branch changes and `1` carries it); the branch
   the work is on pulls the team's commits (`cts project update`, offline
   only); the first row, `+`, asks a name and runs `cts branch NAME`.
-- `5` **Commit**: asks the message and runs `cts commit -m`; when the
-  repository has a remote it then offers `cts push`.
-- `6` **Commit and publish** (`cts commit --publish`) on the project owner's
+- `5` **Commit the disk**: asks the message and runs `cts commit -m`, which
+  commits the files on disk, not the IDE (`2` IDE → Disk first carries the
+  IDE's edits; the prompt counts them); when the repository has a remote it
+  then offers `cts push`.
+- `6` **Commit the disk, publish** (`cts commit --publish`) on the project owner's
   PC; **Pull and update the project** (`cts project update`, offline only) on
   a colleague's.
 - `7` **Open in ...** (`cts open`): the sync folder in your git program, for

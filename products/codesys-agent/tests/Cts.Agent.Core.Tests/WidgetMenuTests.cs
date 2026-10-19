@@ -256,7 +256,7 @@ namespace Cts.Agent.Tests
             var commit = WidgetMenu.ForKey(WidgetMenu.Items(true, "C:\\work", 7, "plant", false), '5');
             Assert.Null(commit.Disabled);
             Assert.Equal("commit message", commit.Asks);
-            Assert.Equal("cts commit", commit.Hint);
+            Assert.Equal("the files on disk, not the IDE", commit.Hint);
             Assert.Equal(new[] { "commit", "-m", "valve timing" }, WidgetMenu.Answered(commit, "valve timing"));
             Assert.Equal(WidgetMenu.NoSyncFolder, WidgetMenu.ForKey(WidgetMenu.Items(false, "", 7, "plant", false), '5').Disabled);
             Assert.Equal("unavailable", WidgetMenu.ForKey(WidgetMenu.Items(false, "", 7, "plant", false), '5').Hint);
@@ -469,7 +469,7 @@ namespace Cts.Agent.Tests
         public void TheOwnersPublishRowHasAShortHint()
         {
             var publish = WidgetMenu.Items(false, "C:\\work", 1, "plant", true).Single(item => item.Key == '6');
-            Assert.Equal("cts commit --publish", publish.Hint);
+            Assert.Equal("+ the saved project file", publish.Hint);
         }
 
         [Fact]
@@ -558,6 +558,18 @@ namespace Cts.Agent.Tests
         public void TheOutcomeIsTheVerdictElseTheLastErrorElseTheExitCode(string stdout, string stderr, int code, string outcome)
         {
             Assert.Equal(outcome, WidgetMenu.Outcome(stdout, stderr, code));
+        }
+
+        [Theory]
+        [InlineData("ok compare unchanged=10 ide_changed=2 both=1", 3)]
+        [InlineData("ok compare unchanged=10 modified=4", 0)]
+        [InlineData("ok compare base=other unchanged=1089 modified=0 added=0 deleted=0 not_importable=0 ide=cached", 0)]
+        [InlineData("ok compare base=other unchanged=9 modified=2 added=1", 3)]
+        [InlineData(null, 0)]
+        public void IdeEditsCountsWhatACommitOfTheDiskLeavesOut(string verdict, int edits)
+        {
+            Assert.Equal(edits, WidgetMenu.IdeEdits(verdict));
+            Assert.Equal(edits > 0, WidgetMenu.CommitNote(edits).Length > 0);
         }
     }
 }

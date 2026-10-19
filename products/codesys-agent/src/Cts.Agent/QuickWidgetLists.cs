@@ -27,7 +27,7 @@ namespace Cts.Agent
         {
             WidgetTone tone;
             var state = WidgetMenu.State(ok ? line : null, out tone);
-            view.ShowState(state, tone);
+            view.ShowState(state, tone, WidgetMenu.IdeEdits(ok ? line : null));
         }
 
         // The header's branch, read off the UI thread.  With *fetch* the

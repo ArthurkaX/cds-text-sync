@@ -35,7 +35,7 @@ Scripting > Scripts > C > cds-text-sync**. Alt+Q opens the quick window; the ste
    git, `git remote add origin URL`).
 2. `2` IDE → Disk writes the code for the first time (the header says
    `not on disk yet` until then).
-3. `6` Commit and publish the project: type a message, Enter. The window then
+3. `6` Commit the disk, publish: type a message, Enter. The window then
    asks whether the branch goes to the team: `1` Push the branch.
 
 ## A colleague: joining
@@ -54,7 +54,7 @@ Scripting > Scripts > C > cds-text-sync**. Alt+Q opens the quick window; the ste
 ## Every day
 
 - **Edit** in CODESYS as usual.
-- **Commit:** `5`, a message, Enter; then `1` pushes the branch, Esc keeps the
+- **Commit:** `2` IDE → Disk, then `5` Commit the disk, a message, Enter; then `1` pushes the branch, Esc keeps the
   commit on this PC for now. When the team pushed first, the push is refused
   and the window offers `1` to pull their commits; after the pull it asks
   about the push again.

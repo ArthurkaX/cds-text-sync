@@ -58,6 +58,7 @@ namespace Cts.Agent
         string _commit;
         //: What changed since the last sync; "" until the compare answers.
         string _state = "";
+        int _ideEdits;
         WidgetTone _tone;
         readonly bool _online;
 
@@ -190,9 +191,10 @@ namespace Cts.Agent
         }
 
         // The state line arrives later too: it is a `cts compare`.
-        public void ShowState(string state, WidgetTone tone)
+        public void ShowState(string state, WidgetTone tone, int ideEdits)
         {
             _state = state;
+            _ideEdits = ideEdits;
             _tone = tone;
             Invalidate(new Rectangle(0, 0, Width0, HeaderHeight));
         }
@@ -288,7 +290,7 @@ namespace Cts.Agent
         {
             _asking = item;
             _ok = null;
-            _footer = item.Asks + ":   Enter runs cts " + string.Join(" ", item.Args.Take(2))
+            _footer = (item.Args[0] == "commit" ? WidgetMenu.CommitNote(_ideEdits) : "") + item.Asks + ":   Enter runs cts " + string.Join(" ", item.Args.Take(2))
                 + (item.Picks != null ? ", F4 or ... picks a folder" : "") + ", Esc cancels";
             _footerColor = Muted;
             _answer.Text = item.Initial ?? "";

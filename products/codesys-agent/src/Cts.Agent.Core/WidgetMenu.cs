@@ -144,10 +144,10 @@ namespace Cts.Agent
                 Forcing(Item('2', "IDE → Disk", folder, "export", "--tool"), "the IDE wins"),
                 Page('3', "Compare", WidgetPage.Compare, folder, "IDE with the disk or a branch"),
                 Page('4', "Switch branch", WidgetPage.Branches, folder, "on disk"),
-                Asking(Item('5', "Commit", folder, "commit", "-m"), "commit message", "cts commit"),
+                Asking(Item('5', "Commit the disk", folder, "commit", "-m"), "commit message", "the files on disk, not the IDE"),
                 owner
-                    ? Asking(Item('6', "Commit and publish the project", folder, "commit", "--publish", "-m"),
-                        "commit message", "cts commit --publish")
+                    ? Asking(Item('6', "Commit the disk, publish", folder, "commit", "--publish", "-m"),
+                        "commit message", "+ the saved project file")
                     : Item('6', "Pull and update the project", folder ?? (online ? Online : null), "project", "update"),
                 Hinted(Item('7', "Open the project folder", folder, "open"), "history, merging branches, undo"),
                 Page('8', "Settings", WidgetPage.Settings, null, syncFolder.Length > 0 ? "sync folder, project" : "set the sync folder"),
@@ -223,6 +223,23 @@ namespace Cts.Agent
             tone = both > 0 ? WidgetTone.Both : parts.Count > 0 ? WidgetTone.Changed : WidgetTone.InSync;
             return parts.Count > 0 ? "changed: " + string.Join(" · ", parts) : "in sync";
         }
+
+        // How many objects the IDE holds that the disk lacks, by a compare's
+        // *verdict*: what only the IDE changed or both did; every difference
+        // when the folder has no base of this project file; 0 for a line that
+        // is not a compare's.  A commit takes the disk without them.
+        public static int IdeEdits(string verdict)
+        {
+            if (verdict == null || !verdict.StartsWith("ok compare", StringComparison.Ordinal)) return 0;
+            var counts = Counts(verdict);
+            if (Value(verdict, "base") == "none" || Value(verdict, "base") == "other")
+                return counts("modified") + counts("added") + counts("deleted") + counts("not_importable") + counts("ide_changed");
+            return counts("ide_changed") + counts("both");
+        }
+
+        //: The commit message's prompt when the IDE holds *edits* the disk lacks; "" without any.
+        public static string CommitNote(int edits)
+            => edits > 0 ? "the IDE has " + edits.ToString(CultureInfo.InvariantCulture) + " edit(s) not on disk, 2 IDE → Disk takes them; " : "";
 
         //: Why the branch the work is on, with no upstream, does nothing.
         public const string Here = "the work is on this branch already; it has no team repository to pull from";
