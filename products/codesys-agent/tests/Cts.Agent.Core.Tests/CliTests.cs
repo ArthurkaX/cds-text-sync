@@ -196,6 +196,20 @@ namespace Cts.Agent.Tests
             Assert.DoesNotContain("subcommands", sub.Message);
         }
 
+        // A long list of device types starts with the way to narrow it.
+        [Fact]
+        public void Device_types_names_the_filter_when_the_list_is_long()
+        {
+            var types = CliCommands.All.Single(c => c.Words == "project device-types");
+            Dictionary<string, object> Listing(int count) => new Dictionary<string, object>
+            {
+                { "count", count },
+                { "devices", Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object> { { "type", 4096 }, { "id", "id" + i }, { "version", "1.0" }, { "name", "PLC " + i }, { "vendor", "Vendor" } }).ToList() },
+            };
+            Assert.Equal("narrow the list with --filter TEXT (part of the name, vendor or id)", types.Build(Listing(21)).Details[0]);
+            Assert.DoesNotContain(types.Build(Listing(3)).Details, line => line.Contains("--filter"));
+        }
+
         [Fact]
         public void Sync_accepts_the_import_save_option()
         {

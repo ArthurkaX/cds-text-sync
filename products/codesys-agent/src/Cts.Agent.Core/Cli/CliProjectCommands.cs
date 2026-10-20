@@ -87,7 +87,9 @@ namespace Cts.Cli
                 Build = data =>
                 {
                     var answer = new Answer().Add("count", Value(data, "count"));
-                    foreach (var device in Items(data, "devices").OfType<IDictionary<string, object>>())
+                    var devices = Items(data, "devices").OfType<IDictionary<string, object>>().ToList();
+                    if (devices.Count > 20) answer.Detail("narrow the list with --filter TEXT (part of the name, vendor or id)");
+                    foreach (var device in devices)
                         answer.Detail("--type " + Value(device, "type") + " --id \"" + Value(device, "id") + "\" --version "
                             + Value(device, "version") + "  " + Value(device, "name") + " (" + Value(device, "vendor") + ")");
                     return answer;
