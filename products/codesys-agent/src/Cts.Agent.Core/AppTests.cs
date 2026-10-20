@@ -18,9 +18,11 @@
 // on (the run's log: what the tests wrote and what the runtime said meanwhile),
 // then logs that application out and makes the earlier application active
 // again, whatever happened.  An application on a device that is not in
-// simulation is refused: the run never downloads to a PLC.  Like test.run it
-// holds no UI thread: each call takes it for itself and the polling sleeps on
-// the caller's thread.
+// simulation is refused unless `plc` says the tests may go to that PLC.
+// `repeat` runs them again that many times in all: a warm reset and a start
+// when the deny list allows the reset, else another download.  Like test.run
+// it holds no UI thread: each call takes it for itself and the polling sleeps
+// on the caller's thread.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -38,11 +40,21 @@ namespace Cts.Agent
         const long DefaultWaitMs = 30000;
         const long PollMs = 100;
 
-        public static Dictionary<string, object> Run(string application, long waitMs, TestPlans.Call call, Action<long> sleep, Func<long> clockMs)
+        // What `test.app` was asked for.
+        public sealed class Request
+        {
+            public string Application = "";
+            public long WaitMs;
+            public bool Plc;
+            public int Repeat = 1;
+            public bool ResetAllowed;
+        }
+
+        public static Dictionary<string, object> Run(Request request, TestPlans.Call call, Action<long> sleep, Func<long> clockMs)
         {
             var start = clockMs();
-            var name = string.IsNullOrEmpty(application) ? DefaultApplication : application;
-            var found = Find(call("project.devices", new Dictionary<string, object>()), name);
+            var name = string.IsNullOrEmpty(request.Application) ? DefaultApplication : request.Application;
+            var found = Find(call("project.devices", new Dictionary<string, object>()), name, request.Plc);
             var guid = Text(found.Application, "guid");
             var answer = new Dictionary<string, object>
             {
@@ -50,28 +62,34 @@ namespace Cts.Agent
                 { "device", Text(found.Device, "path") },
                 { "status", "FAIL" },
             };
+            if (!Equals(Value(found.Device, "simulation"), true)) answer["plc"] = true;
             var previous = found.Previous;
             call("app.activate", new Dictionary<string, object> { { "application", guid } });
             try
             {
-                answer["application_state"] = Value(call("app.download", new Dictionary<string, object> { { "start", true } }), "application_state");
-                var deadline = clockMs() + (waitMs > 0 ? waitMs : DefaultWaitMs);
-                var done = false;
-                while (true)
+                var runs = new List<object>();
+                for (var number = 1; number <= Math.Max(1, request.Repeat); number++)
                 {
-                    done = Equals(Read(call, new[] { Gvl + ".Done" })[0], true);
-                    if (done || clockMs() >= deadline) break;
-                    sleep(PollMs);
+                    if (number == 1 || !request.ResetAllowed)
+                        answer["application_state"] = Value(call("app.download", new Dictionary<string, object> { { "start", true } }), "application_state");
+                    else
+                    {
+                        call("app.reset", new Dictionary<string, object> { { "kind", "warm" } });
+                        answer["application_state"] = Value(call("app.start", new Dictionary<string, object>()), "application_state");
+                    }
+                    var run = Once(call, sleep, clockMs, request.WaitMs > 0 ? request.WaitMs : DefaultWaitMs);
+                    run["run"] = (long)number;
+                    runs.Add(run);
                 }
-                var counts = Read(call, new[] { Gvl + ".Passed", Gvl + ".Failed" });
-                var passed = Convert.ToInt64(counts[0], CultureInfo.InvariantCulture);
-                var failed = Convert.ToInt64(counts[1], CultureInfo.InvariantCulture);
-                answer["done"] = done;
-                answer["passed"] = passed;
-                answer["failed"] = failed;
-                answer["status"] = done && failed == 0 ? "PASS" : "FAIL";
-                if (!done) answer["error"] = Gvl + ".Done stayed FALSE for " + (waitMs > 0 ? waitMs : DefaultWaitMs) + " ms: a test that never ends, or a task that does not call the tests";
-                RunLog(call, answer);
+                var last = (Dictionary<string, object>)runs[runs.Count - 1];
+                foreach (var key in new[] { "done", "passed", "failed", "error", "log", "log_error" })
+                    if (last.ContainsKey(key)) answer[key] = last[key];
+                answer["status"] = runs.All(run => Equals(((IDictionary<string, object>)run)["status"], "PASS")) ? "PASS" : "FAIL";
+                if (runs.Count > 1)
+                {
+                    answer["runs"] = runs;
+                    answer["restart"] = request.ResetAllowed ? "reset" : "download";
+                }
             }
             finally
             {
@@ -83,6 +101,31 @@ namespace Cts.Agent
             return answer;
         }
 
+        // One run after the start: TestResult.Done awaited, the counts and the run's log.
+        static Dictionary<string, object> Once(TestPlans.Call call, Action<long> sleep, Func<long> clockMs, long waitMs)
+        {
+            var deadline = clockMs() + waitMs;
+            var done = false;
+            while (true)
+            {
+                done = Equals(Read(call, new[] { Gvl + ".Done" })[0], true);
+                if (done || clockMs() >= deadline) break;
+                sleep(PollMs);
+            }
+            var counts = Read(call, new[] { Gvl + ".Passed", Gvl + ".Failed" });
+            var failed = Convert.ToInt64(counts[1], CultureInfo.InvariantCulture);
+            var run = new Dictionary<string, object>
+            {
+                { "done", done },
+                { "passed", Convert.ToInt64(counts[0], CultureInfo.InvariantCulture) },
+                { "failed", failed },
+                { "status", done && failed == 0 ? "PASS" : "FAIL" },
+            };
+            if (!done) run["error"] = Gvl + ".Done stayed FALSE for " + waitMs + " ms: a test that never ends, or a task that does not call the tests";
+            RunLog(call, run);
+            return run;
+        }
+
         sealed class Found
         {
             public IDictionary<string, object> Device;
@@ -91,7 +134,7 @@ namespace Cts.Agent
         }
 
         // The application named, on its device, and the active one before the run.
-        static Found Find(IDictionary<string, object> devices, string name)
+        static Found Find(IDictionary<string, object> devices, string name, bool plc)
         {
             var pairs = (Value(devices, "devices") as IList<object> ?? new List<object>()).OfType<IDictionary<string, object>>()
                 .SelectMany(device => (Value(device, "applications") as IList<object> ?? new List<object>()).OfType<IDictionary<string, object>>()
@@ -106,9 +149,10 @@ namespace Cts.Agent
                 throw Bad("Two applications are named '" + name + "' (" + string.Join(", ", named.Select(p => Text(p.Key, "path")))
                     + "): rename one, or name the other with --app.");
             var found = named[0];
-            if (!Equals(Value(found.Key, "simulation"), true))
-                throw Bad("Device '" + Text(found.Key, "path") + "' of " + name + " is not in simulation, and cts runs tests only "
-                    + "in simulation, never on a PLC: switch it in CODESYS (Online -> Simulation with " + name + " active).");
+            if (!plc && !Equals(Value(found.Key, "simulation"), true))
+                throw Bad("Device '" + Text(found.Key, "path") + "' of " + name + " is not in simulation, and cts runs tests "
+                    + "in simulation unless told otherwise: switch it in CODESYS (Online -> Simulation with " + name + " active), "
+                    + "or run cts test --plc to download " + name + " to that PLC and run the tests there.");
             return new Found
             {
                 Device = found.Key,
@@ -117,7 +161,7 @@ namespace Cts.Agent
             };
         }
 
-        // The simulation's log from the last TEST_START on, as `log`; what kept
+        // The runtime's log from the last TEST_START on, as `log`; what kept
         // it from being read, as `log_error`.  A log the run cannot read does
         // not fail the run: the counts already say whether the tests passed.
         static void RunLog(TestPlans.Call call, Dictionary<string, object> answer)
@@ -127,7 +171,7 @@ namespace Cts.Agent
             catch (ProtocolException e)
             {
                 answer["log"] = new List<object>();
-                answer["log_error"] = "the simulation's log could not be read: " + e.Message;
+                answer["log_error"] = "the runtime's log could not be read: " + e.Message;
                 return;
             }
             var start = entries.FindLastIndex(entry => Text(entry as IDictionary<string, object>, "info").Contains(StartMarker));

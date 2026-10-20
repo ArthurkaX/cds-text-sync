@@ -66,6 +66,49 @@ namespace Cts.Agent.Tests
             finally { Directory.Delete(folder, true); }
         }
 
+        // Three runs on a PLC, the second failing one test: the line counts the
+        // failed run and names the test with its run.
+        [Fact]
+        public void Test_repeat_on_a_plc_names_each_failing_test_with_its_run()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "cts-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(folder, ".git"));
+            try
+            {
+                IDictionary<string, object> asked = null;
+                var host = new FakeHost();
+                host.Agents[1] = Agent(@"C:\work\plant\.project\plant.project", folder, (method, p) =>
+                {
+                    asked = p;
+                    Dictionary<string, object> Ran(long run, string status, params string[] infos) => new Dictionary<string, object>
+                    {
+                        { "run", run }, { "status", status }, { "passed", 1L }, { "failed", status == "PASS" ? 0L : 1L }, { "done", true },
+                        { "log", new List<object> { Entry("CTS|M|TEST_START|TestApp|") }.Concat(infos.Select(info => (object)Entry(info))).ToList() },
+                    };
+                    return new Dictionary<string, object>
+                    {
+                        { "application", "TestApp" }, { "device", "PLC" }, { "plc", true }, { "status", "FAIL" }, { "restart", "download" },
+                        { "passed", 1L }, { "failed", 0L }, { "logout", "ok" },
+                        { "runs", new List<object>
+                            {
+                                Ran(1, "PASS", "CTS|M|TEST_PASS|timer|"),
+                                Ran(2, "FAIL", "CTS|M|TEST_FAIL|timer|got=4999;want=5000"),
+                                Ran(3, "PASS", "CTS|M|TEST_PASS|timer|"),
+                            } },
+                    };
+                });
+                var (code, output, _) = Run(host, "test", "--plc", "--repeat", "3");
+                Assert.Equal(1, code);
+                Assert.Equal(true, asked["plc"]);
+                Assert.Equal(3L, asked["repeat"]);
+                Assert.StartsWith("error test passed=1 failed=0 runs=3 failed_runs=1 restart=download application=TestApp device=PLC plc=true", output);
+                Assert.Contains("\nrun 2: FAIL timer got=4999 want=5000\n", output);
+                Assert.Equal(6, File.ReadAllLines(Path.Combine(folder, ".git", "cts", "test", "TestApp.log")).Length);
+                Assert.StartsWith("error test cause=usage", Run(host, "test", "--repeat", "0").output);
+            }
+            finally { Directory.Delete(folder, true); }
+        }
+
         [Fact]
         public void Test_output_puts_the_log_where_it_is_asked()
         {

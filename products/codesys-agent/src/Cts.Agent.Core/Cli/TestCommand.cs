@@ -19,22 +19,36 @@ namespace Cts.Cli
             var options = call.Options.Params;
             var parameters = new Dictionary<string, object>();
             if (options.TryGetValue("application", out var application)) parameters["application"] = application;
+            if (options.ContainsKey("plc")) parameters["plc"] = true;
+            var repeat = options.TryGetValue("repeat", out var times) ? Convert.ToInt64(times, CultureInfo.InvariantCulture) : 1;
+            if (repeat < 1) throw new CliFailure("test", "usage", "--repeat is 1 or more", "cts test --help", 2);
+            parameters["repeat"] = repeat;
             var wait = options.TryGetValue("wait", out var seconds) ? Convert.ToDouble(seconds, CultureInfo.InvariantCulture) : 30;
             parameters["wait_ms"] = (long)(wait * 1000);
             var watch = ProjectFileWatch.Start(call.Hello.ProjectPath);
-            var data = new Dictionary<string, object>(call.Call(AppTests.Method, parameters, Math.Max(call.Seconds, wait + 90)));
+            var data = new Dictionary<string, object>(call.Call(AppTests.Method, parameters, Math.Max(call.Seconds, repeat * (wait + 90))));
             watch.Report(data);
 
-            var lines = Items(data, "log").OfType<IDictionary<string, object>>().Select(PlcLogCommand.Line).ToList();
-            data["tests"] = lines.Select(CtsEvents.Parse)
-                .Where(r => r != null && !r.ContainsKey("parse_error") && (Equals(r["code"], "TEST_PASS") || Equals(r["code"], "TEST_FAIL")))
-                .Select(r => (object)new Dictionary<string, object>
+            var runs = Items(data, "runs").OfType<IDictionary<string, object>>().ToList();
+            List<string> lines;
+            if (runs.Count == 0)
+            {
+                lines = Items(data, "log").OfType<IDictionary<string, object>>().Select(PlcLogCommand.Line).ToList();
+                data["tests"] = Tests(lines, null);
+            }
+            else
+            {
+                lines = new List<string>();
+                var tests = new List<object>();
+                foreach (var run in runs)
                 {
-                    { "name", r["tag"] },
-                    { "status", Equals(r["code"], "TEST_PASS") ? "PASS" : "FAIL" },
-                    { "fields", r["fields"] },
-                })
-                .ToList();
+                    var runLines = Items(run, "log").OfType<IDictionary<string, object>>().Select(PlcLogCommand.Line).ToList();
+                    lines.AddRange(runLines);
+                    tests.AddRange(Tests(runLines, Value(run, "run")));
+                    run.Remove("log");
+                }
+                data["tests"] = tests;
+            }
             var target = Destination(options.TryGetValue("output", out var output) ? Convert.ToString(output, CultureInfo.InvariantCulture) : "",
                 call.Hello.SyncFolder, Convert.ToString(data.TryGetValue("application", out var named) ? named : AppTests.DefaultApplication, CultureInfo.InvariantCulture));
             File.WriteAllText(target, string.Concat(lines.Select(l => l + "\n")), new UTF8Encoding(false));
@@ -43,21 +57,43 @@ namespace Cts.Cli
             return data;
         }
 
+        // The tests a run's log names; *run* numbers them when there were several.
+        static List<object> Tests(IEnumerable<string> lines, object run) => lines.Select(CtsEvents.Parse)
+            .Where(r => r != null && !r.ContainsKey("parse_error") && (Equals(r["code"], "TEST_PASS") || Equals(r["code"], "TEST_FAIL")))
+            .Select(r =>
+            {
+                var test = new Dictionary<string, object>
+                {
+                    { "name", r["tag"] },
+                    { "status", Equals(r["code"], "TEST_PASS") ? "PASS" : "FAIL" },
+                    { "fields", r["fields"] },
+                };
+                if (run != null) test["run"] = run;
+                return (object)test;
+            })
+            .ToList();
+
         public static Answer Build(IDictionary<string, object> data)
         {
+            var runs = Items(data, "runs").OfType<IDictionary<string, object>>().ToList();
             var answer = new Answer()
                 .Add("passed", Value(data, "passed"))
                 .Add("failed", Value(data, "failed"))
+                .Add("runs", runs.Count > 0 ? (object)runs.Count : null)
+                .Add("failed_runs", runs.Count > 0 ? (object)runs.Count(run => !Equals(Value(run, "status"), "PASS")) : null)
+                .Add("restart", Value(data, "restart"))
                 .Add("application", Value(data, "application"))
                 .Add("device", Value(data, "device"))
+                .Add("plc", Equals(Value(data, "plc"), true) ? (object)true : null)
                 .Add("ms", Value(data, "ms"))
                 .Add("log", Value(data, "log_file"));
             if (Equals(Value(data, "saved_by_ide"), true)) answer.Add("saved", "by-ide").Detail(DownloadCommand.SavedByIde);
             foreach (var test in Items(data, "tests").OfType<IDictionary<string, object>>().Where(t => Equals(t["status"], "FAIL")))
             {
                 var fields = (test["fields"] as IDictionary<string, object> ?? new Dictionary<string, object>()).Select(f => f.Key + "=" + f.Value);
-                answer.Detail(string.Join(" ", new[] { "FAIL " + test["name"] }.Concat(fields)));
+                answer.Detail(string.Join(" ", new[] { (test.ContainsKey("run") ? "run " + test["run"] + ": " : "") + "FAIL " + test["name"] }.Concat(fields)));
             }
+            foreach (var run in runs.Where(run => Value(run, "error") != null)) answer.Detail("run " + Value(run, "run") + ": " + Value(run, "error"));
             answer.Detail(Value(data, "error"));
             answer.Detail(Value(data, "log_error"));
             foreach (var tidy in new[] { "logout", "reactivate" })

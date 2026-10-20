@@ -41,8 +41,14 @@ In the sync folder the project root is the top of `project-view/`
 simulation, starts it, waits until `TestResult.Done` is TRUE, reads the
 counts, reads the simulation's log from the run's `TEST_START` record on,
 logs TestApp out and makes the earlier application active again. A device
-that is not in simulation is refused: the tests never go to a PLC. Exit 0
-when every test passed.
+that is not in simulation is refused unless `--plc` says the tests may go to
+that PLC: then TestApp is downloaded there (the deny list's `download`
+applies) and the tests run on the real runtime. `--repeat N` runs them N
+times, each run after the first started again by a warm reset when the deny
+list allows `reset_plc`, else by another download (`restart=` on the line);
+the line counts the failed runs (`failed_runs=`) and names each failing test
+with its run, which finds a test that fails now and then. Exit 0 when every
+test of every run passed.
 
 Every run leaves its log: the records the tests wrote and whatever the
 runtime logged meanwhile (an exception, a watchdog), in the runtime's log

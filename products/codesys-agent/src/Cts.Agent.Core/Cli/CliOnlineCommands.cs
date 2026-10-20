@@ -214,21 +214,26 @@ namespace Cts.Cli
             new CliCommand
             {
                 Name = "test",
-                Summary = "Run the ST tests of the test application in simulation",
+                Summary = "Run the ST tests of the test application, in simulation unless --plc",
                 Description = "Runs the tests a test application holds: a device in simulation with an application (TestApp, or "
                     + "--app) whose task calls tests on the POUs the applications share, counts them into a GVL TestResult "
                     + "(Done, Passed, Failed) and logs each one to the runtime's log (CTS|M|TEST_PASS|name|, CTS|M|TEST_FAIL|name|k=v; "
                     + "cts guide tests). cts makes that application the active one, downloads it to the simulation, starts it, "
                     + "waits for TestResult.Done, reads the counts and the simulation's log from the run's CTS|M|TEST_START| on, "
                     + "logs it out and makes the earlier application active again. The run's log is always saved: --output, else "
-                    + "the sync folder's .git/cts/test/<application>.log. A device that is not in simulation is refused: tests "
-                    + "never go to a PLC. Exit 0 when every test passed, 1 otherwise.",
+                    + "the sync folder's .git/cts/test/<application>.log. A device that is not in simulation is refused unless "
+                    + "--plc: then the application is downloaded to that PLC (the deny list's download applies) and the tests run "
+                    + "there. --repeat N runs them N times, each run started again by a warm reset when the deny list allows "
+                    + "reset_plc, else by another download (restart=); the line counts the failed runs and names each failing test "
+                    + "with its run, which finds a test that fails now and then. Exit 0 when every test of every run passed, 1 otherwise.",
                 TimeoutKey = DenyRules.RunTests,
                 Options = new[]
                 {
                     CliOption.Text("--app", "application", "NAME", "The test application (default: " + AppTests.DefaultApplication + ")"),
                     CliOption.Int("--wait", "wait", "Seconds to wait for TestResult.Done after the start (default: 30)"),
                     CliOption.Text("--output", "output", "PATH", "Save the run's log here (a file, or a folder for <application>.log)"),
+                    CliOption.Switch("--plc", "plc", "Run the tests on the application's PLC when its device is not in simulation"),
+                    CliOption.Int("--repeat", "repeat", "Run the tests this many times (default: 1)"),
                 },
                 Execute = TestCommand.Execute,
                 Build = TestCommand.Build,

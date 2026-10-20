@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Xunit;
@@ -17,10 +18,12 @@ namespace Cts.Agent.Core.Tests
         int _doneAfterReads = 1;
         readonly List<object> _log = new List<object>();
         bool _logFails;
+        Func<long> _flaky;
 
-        Dictionary<string, object> Run(string application = "", long waitMs = 0)
+        Dictionary<string, object> Run(string application = "", long waitMs = 0, bool plc = false, int repeat = 1, bool reset = false)
         {
-            return AppTests.Run(application, waitMs, Fake, ms => _now += ms, () => _now);
+            return AppTests.Run(new AppTests.Request { Application = application, WaitMs = waitMs, Plc = plc, Repeat = repeat, ResetAllowed = reset },
+                Fake, ms => _now += ms, () => _now);
         }
 
         IDictionary<string, object> Fake(string method, Dictionary<string, object> parameters)
@@ -39,8 +42,13 @@ namespace Cts.Agent.Core.Tests
                     };
                 case "app.activate":
                 case "app.logout":
+                case "app.reset":
                     return new Dictionary<string, object>();
+                case "app.start":
+                    _doneAfterReads = 1;
+                    return new Dictionary<string, object> { { "application_state", "run" } };
                 case "app.download":
+                    _doneAfterReads = Math.Max(_doneAfterReads, 1);
                     return new Dictionary<string, object> { { "application_state", "run" } };
                 case "plc.log":
                     if (_logFails) throw new ProtocolException(ErrorCodes.Unavailable, "no logger service");
@@ -50,6 +58,7 @@ namespace Cts.Agent.Core.Tests
                     foreach (string name in (IList<object>)parameters["names"])
                     {
                         if (name == "TestResult.Done") rows.Add(Ok(--_doneAfterReads <= 0));
+                        else if (name == "TestResult.Failed" && _flaky != null) rows.Add(Ok(_flaky()));
                         else if (_plc.TryGetValue(name, out var value)) rows.Add(Ok(value));
                         else rows.Add(new Dictionary<string, object> { { "ok", false }, { "error", new Dictionary<string, object> { { "message", "not exported" } } } });
                     }
@@ -162,7 +171,46 @@ namespace Cts.Agent.Core.Tests
             _simulation = false;
             var e = Assert.Throws<ProtocolException>(() => Run());
             Assert.Contains("not in simulation", e.Message);
+            Assert.Contains("cts test --plc", e.Message);
             Assert.Equal(new[] { "project.devices {}" }, _calls);
+        }
+
+        [Fact]
+        public void Plc_runs_on_a_device_that_is_not_in_simulation()
+        {
+            _simulation = false;
+            Counts(2, 0);
+            var answer = Run(plc: true);
+            Assert.Equal("PASS", answer["status"]);
+            Assert.Equal(true, answer["plc"]);
+            Assert.Contains(_calls, c => c.StartsWith("app.download"));
+        }
+
+        // A flaky test fails one run of several: the run fails and says which.
+        [Fact]
+        public void Repeat_restarts_by_reset_when_allowed_and_any_failing_run_fails()
+        {
+            Counts(2, 0);
+            var reads = 0;
+            _flaky = () => ++reads == 2 ? 1L : 0L;
+            var answer = Run(repeat: 3, reset: true);
+            Assert.Equal("FAIL", answer["status"]);
+            Assert.Equal("reset", answer["restart"]);
+            var runs = ((IList<object>)answer["runs"]).Cast<IDictionary<string, object>>().ToList();
+            Assert.Equal(new[] { "PASS", "FAIL", "PASS" }, runs.Select(run => (string)run["status"]));
+            Assert.Equal(1, _calls.Count(c => c.StartsWith("app.download")));
+            Assert.Equal(2, _calls.Count(c => c.StartsWith("app.reset")));
+        }
+
+        [Fact]
+        public void Repeat_downloads_again_when_the_reset_is_denied()
+        {
+            Counts(2, 0);
+            var answer = Run(repeat: 2);
+            Assert.Equal("PASS", answer["status"]);
+            Assert.Equal("download", answer["restart"]);
+            Assert.Equal(2, _calls.Count(c => c.StartsWith("app.download")));
+            Assert.DoesNotContain(_calls, c => c.StartsWith("app.reset"));
         }
 
         [Fact]

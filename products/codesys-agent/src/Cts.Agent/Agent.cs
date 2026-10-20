@@ -338,9 +338,19 @@ namespace Cts.Agent
             // through the methods above like test.run.
             _router.Register(AppTests.Method, (req, s) =>
             {
-                _ide.OnUi(AppTests.Method, StartTimeout.Parse(req, UiTimeoutMs), () => { _ide.RequireKey(DenyRules.RunTests); return 0; });
+                var request = new AppTests.Request
+                {
+                    Application = req.String("application", ""), WaitMs = req.Int("wait_ms", 0), Plc = req.Bool("plc", false), Repeat = (int)req.Int("repeat", 1),
+                };
+                _ide.OnUi(AppTests.Method, StartTimeout.Parse(req, UiTimeoutMs), () =>
+                {
+                    _ide.RequireKey(DenyRules.RunTests);
+                    var deny = _ide.DenyList();
+                    request.ResetAllowed = deny != null && DenyRules.BlockedBy(deny, ResetKinds.DenyKey) == null;
+                    return 0;
+                });
                 var clock = Stopwatch.StartNew();
-                return AppTests.Run(req.String("application", ""), req.Int("wait_ms", 0), (method, parameters) => Local(method, parameters, s),
+                return AppTests.Run(request, (method, parameters) => Local(method, parameters, s),
                     ms => Thread.Sleep(TimeSpan.FromMilliseconds(ms)), () => clock.ElapsedMilliseconds);
             });
 

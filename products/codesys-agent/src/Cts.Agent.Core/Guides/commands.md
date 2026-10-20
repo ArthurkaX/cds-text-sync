@@ -433,7 +433,7 @@ but a collision should not happen at all).
 | Start or stop the application (the in-IDE agent; needs a logged-in session) | `cts start`, `cts stop` |
 | Store the logged-in application on the PLC as its boot application | `cts boot-app` |
 | Reset the logged-in application (origin erases it and needs `--force`) | `cts reset --kind warm\|cold\|origin` |
-| Run the ST tests of the test application in simulation (`cts guide tests`) | `cts test [--app NAME] [--output PATH]` |
+| Run the ST tests of the test application in simulation, or on its PLC (`cts guide tests`) | `cts test [--app NAME] [--output PATH] [--plc] [--repeat N]` |
 | Whether the PLC runs the code the IDE generated last | `cts plc-crc` |
 | Read the PLC runtime log, or list its loggers | `cts plc-log [--logger NAME] [--tail N]` |
 | What the PLC runs: runtime, device, each application with its state and project | `cts plc info` |
