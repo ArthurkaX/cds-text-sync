@@ -87,7 +87,7 @@ _What changes against the 3.4 releases, by area; the step-by-step history is in 
 - New `cts fmt [NAME] [--write]` for the IDE's code and `cts fmt --disk` for the files: indentation in editor columns, aligned declaration tables, spacing inside a statement left as written; More `1` shows each change side by side.
 - New `cts new KIND NAME` writes a POU, GVL, DUT or member as a `.st` file for `cts import`.
 - `cts fsm [NAME]` lists the state machines with their transitions and what looks wrong; the FSM window (More, `4`) draws them.
-- `cts docs` writes `cts-docs/v4` for an AI agent: a card per object with its calls, callers, tasks and globals, a page per library.
+- `cts docs` writes `cts-docs/v4` for an AI agent: a card per object with its calls, callers, tasks and globals, a page per library. `cts docs --show NAME` prints one library symbol (`Standard.TON`, `NBS.TCP_Client`) without writing the bundle.
 - `cts guide` prints a map of a long guide (`--section`, `--all`); bare `cts guide` lists the common jobs as command sequences, and `cts guide --help` names the topics. An unknown command names the subcommand it matches (`cts list-devices` → `cts project list-devices`).
 
 **HMI screens**

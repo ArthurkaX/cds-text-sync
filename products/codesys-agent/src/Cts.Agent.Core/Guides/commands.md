@@ -539,7 +539,7 @@ under `"analyze"`: `fail_on`, `incomplete`, `rules.<ID>.enabled`/`severity`/
 
 ## Project Documentation
 
-`cts docs` writes `.cts-docs/` beside the project view, offline: read `index.md` first, then `project/<Name>.md` for an object (interface, inherited members, methods/properties/actions, calls, callers, tasks, globals read and written) and `libraries/<Name>-<Version>.md` for a referenced library's LibDoc (signature, description, example, interface). `symbols.jsonl` is one JSON line per symbol, to search. A library without LibDoc of the referenced version is listed under Missing LibDoc with the reason; another version never stands in. `--libraries DIR` (default `C:\ProgramData\CODESYS`), `--out DIR`, `--check` (exit 0 fresh, 1 stale, 2 no bundle).
+`cts docs` writes `.cts-docs/` beside the project view, offline: read `index.md` first, then `project/<Name>.md` for an object (interface, inherited members, methods/properties/actions, calls, callers, tasks, globals read and written) and `libraries/<Name>-<Version>.md` for a referenced library's LibDoc (signature, description, example, interface). `symbols.jsonl` is one JSON line per symbol, to search. A library without LibDoc of the referenced version is listed under Missing LibDoc with the reason; another version never stands in. `--libraries DIR` (default `C:\ProgramData\CODESYS`), `--out DIR`, `--check` (exit 0 fresh, 1 stale, 2 no bundle). `--show NAME` prints one library symbol's page instead and writes nothing: `TON`, `Standard.TON` or `NBS.TCP_Client` (by namespace or library name), with the methods documented below it; a library's or namespace's name alone prints all of it; no match names the symbols that hold the name (exit 1).
 
 ## FSM Transition Maps
 

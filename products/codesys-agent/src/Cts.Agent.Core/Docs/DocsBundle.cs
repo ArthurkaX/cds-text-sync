@@ -346,15 +346,48 @@ namespace Cts.Docs
             text.Append("- " + Joined(page, item => item.System ? "System library" : "Application library") + "\n");
             text.Append("- LibDoc: `" + entry.Tree.Path + "`\n\n");
             if (entry.Symbols.Count == 0) text.Append("_No documented symbols in this LibDoc tree._\n\n");
-            foreach (var symbol in entry.Symbols)
-            {
-                text.Append("## " + (symbol.Kind.Length > 0 ? symbol.Kind + " " : "") + symbol.Name + "\n\n");
-                if (symbol.Signature.Length > 0) text.Append("```st\n" + symbol.Signature + "\n```\n\n");
-                if (symbol.Description.Length > 0) text.Append(symbol.Description + "\n\n");
-                foreach (var example in symbol.Examples) text.Append("```st\n" + example + "\n```\n\n");
-                Table(text, symbol.Interface);
-            }
+            foreach (var symbol in entry.Symbols) Section(text, symbol);
             return text.ToString().TrimEnd('\n') + "\n";
+        }
+
+        static void Section(StringBuilder text, LibrarySymbol symbol)
+        {
+            text.Append("## " + (symbol.Kind.Length > 0 ? symbol.Kind + " " : "") + symbol.Name + "\n\n");
+            if (symbol.Signature.Length > 0) text.Append("```st\n" + symbol.Signature + "\n```\n\n");
+            if (symbol.Description.Length > 0) text.Append(symbol.Description + "\n\n");
+            foreach (var example in symbol.Examples) text.Append("```st\n" + example + "\n```\n\n");
+            Table(text, symbol.Interface);
+        }
+
+        // The documented library symbols *name* names (`cts docs --show`): bare,
+        // by its namespace or by its library's name (Standard.TON), with what is
+        // documented below it (TON.Method; a library's or namespace's name alone
+        // shows all of it). Without a match, `near` has up to 10 names that hold
+        // its last part.
+        internal static IDictionary<string, object> Show(string view, string libraries, string name)
+        {
+            var wanted = name.Trim();
+            var found = new List<object>();
+            var near = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var last = Snapshot.LastSegment(wanted);
+            var pages = Libraries(LibraryReferences.Read(view, out _), libraries).Where(entry => entry.Tree != null)
+                .GroupBy(entry => entry.File, StringComparer.OrdinalIgnoreCase).Select(page => page.First());
+            foreach (var entry in pages)
+                foreach (var symbol in entry.Symbols)
+                {
+                    var keys = new[] { symbol.Name, entry.Reference.Namespace + "." + symbol.Name, entry.Reference.Name + "." + symbol.Name }
+                        .Where(key => !key.StartsWith(".", StringComparison.Ordinal));
+                    if (keys.Any(key => key.Equals(wanted, StringComparison.OrdinalIgnoreCase) || key.StartsWith(wanted + ".", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var text = new StringBuilder();
+                        Section(text, symbol);
+                        found.Add(new Dictionary<string, object> { ["library"] = entry.Reference.Name + " " + entry.Tree.Version, ["name"] = symbol.Name, ["text"] = text.ToString().TrimEnd('\n') });
+                    }
+                    else if (symbol.Name.IndexOf(last, StringComparison.OrdinalIgnoreCase) >= 0) near.Add(symbol.Name);
+                }
+            var data = new Dictionary<string, object> { ["show"] = wanted, ["found"] = found };
+            if (found.Count == 0) data["near"] = near.Take(10).Cast<object>().ToList();
+            return data;
         }
 
         static string NotReferenced(SortedDictionary<string, SortedSet<string>> libraries)

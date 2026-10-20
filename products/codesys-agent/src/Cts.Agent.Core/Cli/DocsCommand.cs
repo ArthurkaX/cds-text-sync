@@ -23,6 +23,8 @@ namespace Cts.Cli
                 CliOption.Text("--libraries", "libraries", "DIR", @"The CODESYS library root (default: C:\ProgramData\CODESYS)"),
                 CliOption.Text("--out", "out", "DIR", "Where to write the bundle (default: .cts-docs beside the project view)"),
                 CliOption.Switch("--check", "check", "Only say whether the bundle matches the sources and installed LibDoc"),
+                CliOption.Text("--show", "show", "NAME", "Print one library symbol's documentation instead of writing the bundle: TON, Standard.TON, "
+                    + "a namespace's or library's name for all of it"),
             },
             LocalExecute = Execute, Build = Build,
         };
@@ -41,11 +43,22 @@ namespace Cts.Cli
             var output = Path.GetFullPath(options.Text("out") ?? Path.Combine(workspace.Root, ".cts-docs"));
             var libraries = options.Text("libraries");
             if (options.Params.ContainsKey("check")) return DocsBundle.Check(workspace.View, libraries, output);
+            if (options.Text("show") is string show) return DocsBundle.Show(workspace.View, libraries ?? DocsBundle.DefaultLibraries, show);
             return DocsBundle.Generate(workspace.View, libraries ?? DocsBundle.DefaultLibraries, output);
         }
 
         static Answer Build(IDictionary<string, object> data)
         {
+            if (data.TryGetValue("show", out var show))
+            {
+                var found = (IList<object>)data["found"];
+                var shown = new Answer().Add("show", show).Add("found", found.Count);
+                foreach (IDictionary<string, object> symbol in found) shown.Detail("# " + symbol["library"] + "\n" + symbol["text"]);
+                if (found.Count > 0) return shown;
+                var near = (IList<object>)data["near"];
+                return shown.Failed().Detail("no referenced library documents " + show + (near.Count > 0 ? "; names that hold it: " + string.Join(", ", near) : "")
+                    + ". cts docs writes every referenced library's page, and its index.md names the libraries with no LibDoc on this PC");
+            }
             if (data.TryGetValue("state", out var state))
             {
                 var check = new Answer().Add("state", state).Add("out", data["output"]);

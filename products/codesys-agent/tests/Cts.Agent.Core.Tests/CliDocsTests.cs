@@ -221,6 +221,25 @@ END_ACTION
         }
 
         [Fact]
+        public void Show_prints_one_symbol_by_its_bare_or_library_name_and_names_near_ones()
+        {
+            Project();
+            LibDocTree("System", "Standard", "3.5.22.0", ("TON (FB)", "x/TON.html", TonPage), ("Gc (GVL)", "x/Gc.html", GvlPage));
+            var workspace = Path.Combine(folder, "sync");
+
+            var (code, output, _) = CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries, "--show", "Standard.TON");
+            Assert.Equal(0, code);
+            Assert.StartsWith("ok docs show=Standard.TON found=1\n# Standard 3.5.22.0\n## FUNCTION_BLOCK TON\n", output);
+            Assert.Contains("| Output | Q | BOOL |  | Done |", output);
+            Assert.False(Directory.Exists(Path.Combine(workspace, ".cts-docs")));
+            Assert.StartsWith("ok docs show=standard found=2\n", CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries, "--show", "standard").output);
+
+            (code, output, _) = CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries, "--show", "TO");
+            Assert.Equal(1, code);
+            Assert.Contains("no referenced library documents TO; names that hold it: TON.", output);
+        }
+
+        [Fact]
         public void Missing_libdoc_says_why_and_another_version_never_stands_in()
         {
             Project();
