@@ -206,6 +206,35 @@ namespace Cts.Agent.Tests
             Assert.Contains("(in F_Scale, not called by any task)", output);
         }
 
+        // A library referenced qualified-only hides its names: unknown-name
+        // errors come with the namespaces that need the prefix.
+        [Fact]
+        public void Build_names_the_qualified_only_libraries_behind_unknown_names()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "cts-build-lib-" + Guid.NewGuid().ToString("N"));
+            var app = Path.Combine(folder, "project-view", "Dev", "Plc Logic", "Application");
+            Directory.CreateDirectory(app);
+            string Library(string ns, string qualified) => "<Single><Single Name=\"Namespace\" Type=\"string\">" + ns + "</Single><Single Name=\"QualifiedOnly\" Type=\"bool\">" + qualified + "</Single></Single>";
+            File.WriteAllText(Path.Combine(app, "Library Manager.xml"), "<Single>" + Library("Standard", "True") + Library("Util", "False") + Library("CmpLog", "True") + "</Single>");
+            try
+            {
+                var host = new FakeHost();
+                host.Agents[1] = Agent(Path.Combine(folder, "Plant.project"), folder, (method, p) => new Dictionary<string, object>
+                {
+                    { "application", "Application" }, { "compiled", true },
+                    { "messages", new object[]
+                        {
+                            new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0077" }, { "text", "Unknown type: 'TON'" }, { "object", "PRG" } },
+                            new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0046" }, { "text", "Identifier 'CONCAT' not defined" }, { "object", "PRG" } },
+                        } },
+                });
+                var (code, output, _) = Run(host, "build");
+                Assert.Equal(1, code);
+                Assert.Contains("2 errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): Standard, CmpLog.", output);
+            }
+            finally { Directory.Delete(folder, true); }
+        }
+
         [Fact]
         public void Build_places_errors_before_warnings_with_file_line_and_column()
         {

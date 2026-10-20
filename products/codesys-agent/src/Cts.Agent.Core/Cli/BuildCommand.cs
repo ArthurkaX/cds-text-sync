@@ -63,8 +63,44 @@ namespace Cts.Cli
                 if (result.ContainsKey(key)) data[key] = result[key];
             var pending = NotImported(call);
             if (pending.Count > 0) data["not_imported"] = pending;
+            var unknown = messages.Count(m => Severity(Value(m, "severity")) == "error" && UnknownName.IsMatch(Convert.ToString(Value(m, "text"), CultureInfo.InvariantCulture) ?? ""));
+            if (unknown > 0 && !string.IsNullOrEmpty(call.Hello.SyncFolder))
+            {
+                var namespaces = QualifiedOnly(ViewFolder.Of(call.Hello.SyncFolder), Convert.ToString(data["application"], CultureInfo.InvariantCulture));
+                if (namespaces.Count > 0)
+                {
+                    data["unknown_names"] = unknown;
+                    data["qualified_only"] = namespaces.Cast<object>().ToList();
+                }
+            }
             if (previous != null) data["previous_application"] = previous;
             return data;
+        }
+
+        static readonly System.Text.RegularExpressions.Regex UnknownName =
+            new System.Text.RegularExpressions.Regex(@"^\s*(Unknown type: '|Identifier '[^']*' not defined)");
+
+        // The namespaces of the libraries the sync folder's Library Manager of
+        // *application* (any Library Manager when none is in a folder of that
+        // name) references qualified-only: their names need the prefix.
+        static IList<string> QualifiedOnly(string view, string application)
+        {
+            if (!Directory.Exists(view)) return new List<string>();
+            var managers = Directory.GetFiles(view, "Library Manager.xml", SearchOption.AllDirectories);
+            var own = managers.Where(file => string.Equals(Path.GetFileName(Path.GetDirectoryName(file)), application, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var namespaces = new List<string>();
+            foreach (var file in own.Length > 0 ? own : managers)
+            {
+                System.Xml.Linq.XDocument doc;
+                try { doc = System.Xml.Linq.XDocument.Load(file); }
+                catch (Exception e) when (e is IOException || e is System.Xml.XmlException || e is UnauthorizedAccessException) { continue; }
+                foreach (var flag in doc.Descendants().Where(e => (string)e.Attribute("Name") == "QualifiedOnly" && e.Value.Trim() == "True"))
+                {
+                    var name = flag.Parent?.Elements().FirstOrDefault(e => (string)e.Attribute("Name") == "Namespace")?.Value.Trim();
+                    if (!string.IsNullOrEmpty(name) && !namespaces.Contains(name, StringComparer.OrdinalIgnoreCase)) namespaces.Add(name);
+                }
+            }
+            return namespaces;
         }
 
         // Makes the application named the active one; the one active before, or null when it already was.
@@ -162,6 +198,9 @@ namespace Cts.Cli
             var codes = allErrors.GroupBy(m => Convert.ToString(Value(m, "code"), CultureInfo.InvariantCulture) is string code && code.Length > 0 ? code : "?")
                 .OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => g.Key + ":" + g.Count()).ToList();
             if (codes.Count > 0) answer.Add("error_codes", string.Join(",", codes));
+            if (Value(data, "qualified_only") is IEnumerable<object> qualified)
+                answer.Detail(Value(data, "unknown_names") + " errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): "
+                    + string.Join(", ", qualified) + ". Write the prefix, or clear Qualified only in the library's properties");
             foreach (var item in Rows(errors, 12, "", "errors")) answer.Detail(item);
             foreach (var item in Rows(warnings, errors.Count > 0 ? 5 : 15, "warning ", "warnings")) answer.Detail(item);
             if (errors.Count > 0 || Equals(Value(data, "diagnostics_complete"), false) || data.ContainsKey("install_error")) answer.Failed();
