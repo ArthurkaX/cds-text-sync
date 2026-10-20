@@ -304,6 +304,7 @@ namespace Cts.Cli
                 var name = (string)child.Attribute("Name");
                 if ((root && name == "Index") || IgnoredXmlNames.Contains(name) || DerivedProperty(element, child)) { child.Remove(); continue; }
                 NormalizeElement(child, false);
+                if (name != null && NoValue(child)) child.Remove();
             }
             foreach (var node in element.Nodes().OfType<XText>().ToList())
             {
@@ -317,6 +318,14 @@ namespace Cts.Cli
                 Reorder(element, element.Elements().OrderBy(e => e.Elements().FirstOrDefault(x => (string)x.Attribute("Name") == "Key")?.ToString(SaveOptions.DisableFormatting) ?? "", StringComparer.Ordinal));
             if ((string)element.Attribute("Name") == "VisualElemMemberList" && element.Elements().All(e => e.Elements().Any(x => (string)x.Attribute("Name") == "Id")))
                 Reorder(element, element.Elements().OrderBy(e => e.Elements().First(x => (string)x.Attribute("Name") == "Id").Value.Trim(), StringComparer.Ordinal));
+        }
+
+        // A field without a value: one CODESYS version writes <Null>, another
+        // an empty <Array>, a newer one adds the field the older one lacks.
+        static bool NoValue(XElement field)
+        {
+            var kind = field.Name.LocalName;
+            return kind == "Null" || (kind == "Array" || kind == "List" || kind == "List2") && !field.Nodes().Any();
         }
 
         static bool DerivedProperty(XElement parent, XElement entry)

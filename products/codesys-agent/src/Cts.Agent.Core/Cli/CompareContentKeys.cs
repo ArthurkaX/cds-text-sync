@@ -90,7 +90,7 @@ namespace Cts.Cli
         static string ContentKeyKind(string path)
         {
             var extension = Path.GetExtension(path).ToLowerInvariant();
-            if (extension == ".xml") return "xml";
+            if (extension == ".xml") return "xml2";   // a new normalization rule takes a new kind, so keys cached by the old one go unused
             if (extension == ".st" || extension == ".csv") return "text";
             return "bytes";
         }

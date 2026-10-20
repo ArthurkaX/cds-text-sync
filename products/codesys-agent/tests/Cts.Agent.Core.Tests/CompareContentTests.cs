@@ -26,6 +26,18 @@ namespace Cts.Agent.Core.Tests
             Assert.True(ExportCommand.SameContent("A.xml", Bytes("<Root><Single Name='Comment' /></Root>"), Bytes("<Root><Single Name='Comment'></Single></Root>")));
         }
 
+        // A Library Manager saved by SP16 and exported again by SP22: the
+        // versions write an unset field differently, and the content is one.
+        [Fact]
+        public void AFieldWithoutAValueIsOneWhateverTheVersionWritesForIt()
+        {
+            const string older = "<Root><Single Name='Object'><List Name='Items'><Single><Array Name='Params' Type='{e38d}' /><Single Name='Id'>1</Single></Single></List></Single></Root>";
+            const string newer = "<Root><Single Name='Object'><List2 Name='ParameterTable' /><List Name='Items'><Single><Null Name='Params' /><Single Name='Id'>1</Single></Single></List></Single></Root>";
+            Assert.True(ExportCommand.SameContent("Library Manager.xml", Bytes(older), Bytes(newer)));
+            Assert.False(ExportCommand.SameContent("Library Manager.xml", Bytes(older), Bytes(newer.Replace("<Null Name='Params' />", "<Array Name='Params'><Single>x</Single></Array>"))));
+            Assert.False(ExportCommand.SameContent("Library Manager.xml", Bytes(older), Bytes(newer.Replace("<List Name='Items'>", "<List Name='Items'><Null />"))));
+        }
+
         [Fact]
         public void TheSourceLabelStaysOutOfTheViewAndItsCompare()
         {
