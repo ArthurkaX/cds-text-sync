@@ -484,7 +484,7 @@ namespace Cts.Agent.Tests
             var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
             File.Delete(file);
             var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(ImportCall(null, (method, args) => throw new InvalidOperationException("mutation must be refused"), deny: new[] { "delete_pou" })));
-            Assert.Equal("Forbidden by the deny list (deny list includes 'delete_pou'): it would delete " + Path.GetFileNameWithoutExtension(file) + " from the project  See `cts permissions`.", failure.Message);
+            Assert.Equal("Forbidden by the deny list (deny list includes 'delete_pou'): it would delete " + Path.GetFileNameWithoutExtension(file) + " from the project; nothing was imported, the other changes neither  See `cts permissions`.", failure.Message);
         }
 
         [Fact]

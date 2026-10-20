@@ -18,7 +18,6 @@ namespace Cts.Agent
             "reset_plc --kind origin",
             "create_boot_app",
             "plc_upload",
-            "delete_pou",
         };
 
         //: Where the list lives and how durable that is, as `cts permissions`

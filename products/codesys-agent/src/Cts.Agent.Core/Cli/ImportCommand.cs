@@ -314,6 +314,7 @@ namespace Cts.Cli
                         var reason = blocked == key ? "Forbidden by the deny list (deny list includes '" + key + "')"
                             : "Forbidden by the deny list (pattern '" + blocked + "' matches '" + key + "')";
                         if (key == "delete_pou" && deletedRecords.Count > 0) reason += ": it would delete " + Names(deletedRecords) + " from the project";
+                        if (key == "delete_pou") reason += "; nothing was imported, the other changes neither";
                         return reason + "  See `cts permissions`.";
                     }
                 }

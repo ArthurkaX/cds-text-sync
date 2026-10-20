@@ -393,7 +393,7 @@ namespace Cts.Agent
         // ---- objects.delete / objects.rename
 
         // Removes one object by GUID.  The project's deny list is enforced here:
-        // `delete_pou` is denied by default, so a delete must not succeed just
+        // a project that denies `delete_pou` must not lose an object just
         // because the agent performs it.
         public Dictionary<string, object> DeleteObject(ObjectDelete spec)
         {

@@ -399,11 +399,12 @@ namespace Cts.Agent.Tests
             var boxes = groups.SelectMany(group => group.Choices).ToList();
             Assert.Equal(DenyRules.Catalog.Select(entry => entry.Key), boxes.Select(box => box.Toggles));
             Assert.All(boxes, box => Assert.Null(box.Args));
-            Assert.Equal("1 of 9 blocked", groups[0].Hint);
-            var delete = boxes.Single(box => box.Toggles == "delete_pou");
-            Assert.True(delete.Current);
-            Assert.Null(delete.Disabled);
-            Assert.Equal("delete_pou", delete.Hint);
+            Assert.Equal("0 of 9 blocked", groups[0].Hint);
+            var upload = boxes.Single(box => box.Toggles == "plc_upload");
+            Assert.True(upload.Current);
+            Assert.Null(upload.Disabled);
+            Assert.Equal("plc_upload", upload.Hint);
+            Assert.False(boxes.Single(box => box.Toggles == "delete_pou").Current);
             Assert.False(boxes.Single(box => box.Toggles == "build").Current);
             Assert.Equal("123456789", new string(groups[1].Choices.Take(9).Select(box => box.Key).ToArray()));
             Assert.Equal('\0', groups[1].Choices[9].Key);

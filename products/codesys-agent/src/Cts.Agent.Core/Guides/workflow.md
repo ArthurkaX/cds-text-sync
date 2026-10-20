@@ -78,7 +78,7 @@ There is no flag to edit the project while the IDE is online. The refusal covers
 
 `cts import` then moves the sync base `refs/cts/base` for the files it carried, so a second `cts compare` comes back clean. A file holding an object that did not reach the IDE, or a conflict, keeps its old base, so the disk copy of that edit survives and the next import tries it again.
 
-Deleting all of an object's files deletes the object in the IDE, only when the project allows it (`delete_pou` in `cts permissions`, denied by default). A text object the IDE has that was never in `project-view/` is left alone by `cts import`; `cts import --force` deletes it (its text kept on `refs/cts/overwritten`), or delete it in the IDE.
+Deleting all of an object's files deletes the object in the IDE, unless the project denies it (`delete_pou` in `cts permissions`). A text object the IDE has that was never in `project-view/` is left alone by `cts import`; `cts import --force` deletes it (its text kept on `refs/cts/overwritten`), or delete it in the IDE.
 
 ## Keep the Work in Git
 

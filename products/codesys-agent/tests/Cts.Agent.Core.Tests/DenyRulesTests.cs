@@ -24,10 +24,10 @@ namespace Cts.Agent.Tests
         [Fact]
         public void NothingStoredMeansTheDefaults()
         {
-            // delete_pou is denied by default, so a delete is refused with no
-            // property in the project at all.
-            Assert.Contains("deny list includes 'delete_pou'", Reason("", "delete_pou"));
-            Allowed("", "delete_object");
+            // plc_upload is denied by default, so it is refused with no
+            // property in the project at all; a delete is allowed.
+            Assert.Contains("deny list includes 'plc_upload'", Reason("", "plc_upload"));
+            Allowed("", "delete_pou");
         }
 
         [Fact]
@@ -56,8 +56,8 @@ namespace Cts.Agent.Tests
         [Fact]
         public void AConfigWithoutADenyKeyKeepsTheDefaults()
         {
-            Assert.Contains("deny list includes 'delete_pou'",
-                Reason("{\"poll_ms\":60}", "delete_pou"));
+            Assert.Contains("deny list includes 'plc_upload'",
+                Reason("{\"poll_ms\":60}", "plc_upload"));
         }
 
         [Fact]
@@ -188,7 +188,6 @@ namespace Cts.Agent.Tests
                 "reset_plc --kind origin",
                 "create_boot_app",
                 "plc_upload",
-                "delete_pou",
             }, DenyRules.DefaultDeny);
         }
 
@@ -210,7 +209,7 @@ namespace Cts.Agent.Tests
             Assert.False(data.ContainsKey("layout"));
             Assert.False(data.ContainsKey("config_error"));
             var none = DenyRules.Describe("{\"layout\":\"project-view\"}", true);
-            Assert.Contains("delete_pou", ((System.Collections.Generic.List<object>)none["deny"]).ConvertAll(x => (string)x));
+            Assert.Contains("plc_upload", ((System.Collections.Generic.List<object>)none["deny"]).ConvertAll(x => (string)x));
         }
 
         [Theory]
@@ -222,7 +221,7 @@ namespace Cts.Agent.Tests
         {
             var data = DenyRules.Describe(raw, readable);
             Assert.Contains("unreadable", (string)data["config_error"]);
-            Assert.Contains("delete_pou", ((System.Collections.Generic.List<object>)data["deny"]).ConvertAll(x => (string)x));
+            Assert.Contains("plc_upload", ((System.Collections.Generic.List<object>)data["deny"]).ConvertAll(x => (string)x));
         }
 
         [Fact]
@@ -246,8 +245,8 @@ namespace Cts.Agent.Tests
         [Fact]
         public void ToggleAllowsADeniedKeyAndAFileWithoutDenyStartsFromTheDefaults()
         {
-            var text = DenyRules.Toggle("{\"layout\": \"flat\"}", "delete_pou");
-            Assert.Equal(DenyRules.DefaultDeny.Where(key => key != "delete_pou"), DenyRules.DenyList(text, true));
+            var text = DenyRules.Toggle("{\"layout\": \"flat\"}", "plc_upload");
+            Assert.Equal(DenyRules.DefaultDeny.Where(key => key != "plc_upload"), DenyRules.DenyList(text, true));
             Assert.Equal(DenyRules.DefaultDeny.Concat(new[] { "download" }), DenyRules.DenyList(DenyRules.Toggle("", "download"), true));
         }
 
