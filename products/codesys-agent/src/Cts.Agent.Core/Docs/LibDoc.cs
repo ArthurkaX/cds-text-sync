@@ -87,10 +87,42 @@ namespace Cts.Docs
             if (libdoc == null) return "library_root_unavailable";
             var libraries = Folders(libdoc).Where(vendor => reference.Vendor.Length == 0 || Name(vendor).Equals(reference.Vendor, StringComparison.OrdinalIgnoreCase))
                 .SelectMany(Folders).Where(folder => Name(folder).Equals(reference.Name, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (libraries.Count == 0) return "documentation_package_absent";
+            if (libraries.Count == 0) return Undocumented(root, reference);
             if (reference.Version.Length > 0 && reference.Version != "*")
-                return libraries.Any(library => Directory.Exists(System.IO.Path.Combine(library, reference.Version))) ? "documentation_package_absent" : "exact_version_missing";
-            return libraries.Any(library => Folders(library).Count > 0) ? "documentation_package_absent" : "wildcard_unresolved";
+                return libraries.Any(library => Directory.Exists(System.IO.Path.Combine(library, reference.Version))) ? Undocumented(root, reference) : "exact_version_missing";
+            return libraries.Any(library => Folders(library).Count > 0) ? Undocumented(root, reference) : "wildcard_unresolved";
+        }
+
+        // What each reason a library has no pages means, for the ones a user acts on.
+        internal static readonly Dictionary<string, string> Explained = new Dictionary<string, string>
+        {
+            ["plain_text_library"] = "its comments are plain text: CODESYS writes documentation pages only for a library whose Project "
+                + "Information sets DocFormat = reStructuredText (the Library Manager shows its comments all the same)",
+            ["libdoc_not_generated"] = "it is documented in reStructuredText, but CODESYS has not written its pages yet: it does once a "
+                + "Library Manager of an IDE with Library Documentation Support shows the library",
+        };
+
+        // Why the installed library of *reference* has no pages: CODESYS
+        // writes them only for one in reStructuredText (its projectinfo, in
+        // the library repository, names DocFormat), and only once shown.
+        static string Undocumented(string root, LibraryReference reference)
+        {
+            var folder = Cli.LibCommand.InstalledFolder(root, reference.Name.Trim(), reference.Version.Trim().Length == 0 ? "*" : reference.Version.Trim(), reference.Vendor.Trim());
+            var info = folder == null ? null : System.IO.Path.Combine(folder, "projectinfo");
+            if (info == null || !File.Exists(info)) return "documentation_package_absent";
+            var bytes = File.ReadAllBytes(info);
+            bool Holds(string text)
+            {
+                var pattern = Encoding.Unicode.GetBytes(text);
+                for (var at = 0; at + pattern.Length <= bytes.Length; at++)
+                {
+                    var i = 0;
+                    while (i < pattern.Length && bytes[at + i] == pattern[i]) i++;
+                    if (i == pattern.Length) return true;
+                }
+                return false;
+            }
+            return Holds("DocFormat") && Holds("reStructuredText") ? "libdoc_not_generated" : "plain_text_library";
         }
 
         // Installed libraries no reference names, each with its versions

@@ -56,8 +56,10 @@ namespace Cts.Cli
                 foreach (IDictionary<string, object> symbol in found) shown.Detail("# " + symbol["library"] + "\n" + symbol["text"]);
                 if (found.Count > 0) return shown;
                 var near = (IList<object>)data["near"];
-                return shown.Failed().Detail("no referenced library documents " + show + (near.Count > 0 ? "; names that hold it: " + string.Join(", ", near) : "")
+                shown.Failed().Detail("no referenced library documents " + show + (near.Count > 0 ? "; names that hold it: " + string.Join(", ", near) : "")
                     + ". cts docs writes every referenced library's page, and its index.md names the libraries with no LibDoc on this PC");
+                foreach (var library in (IList<object>)data["undocumented"]) shown.Detail("no pages for " + library);
+                return shown;
             }
             if (data.TryGetValue("state", out var state))
             {

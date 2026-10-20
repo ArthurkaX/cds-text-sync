@@ -370,7 +370,8 @@ namespace Cts.Docs
             var found = new List<object>();
             var near = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             var last = Snapshot.LastSegment(wanted);
-            var pages = Libraries(LibraryReferences.Read(view, out _), libraries).Where(entry => entry.Tree != null)
+            var entries = Libraries(LibraryReferences.Read(view, out _), libraries);
+            var pages = entries.Where(entry => entry.Tree != null)
                 .GroupBy(entry => entry.File, StringComparer.OrdinalIgnoreCase).Select(page => page.First());
             foreach (var entry in pages)
                 foreach (var symbol in entry.Symbols)
@@ -386,7 +387,12 @@ namespace Cts.Docs
                     else if (symbol.Name.IndexOf(last, StringComparison.OrdinalIgnoreCase) >= 0) near.Add(symbol.Name);
                 }
             var data = new Dictionary<string, object> { ["show"] = wanted, ["found"] = found };
-            if (found.Count == 0) data["near"] = near.Take(10).Cast<object>().ToList();
+            if (found.Count == 0)
+            {
+                data["near"] = near.Take(10).Cast<object>().ToList();
+                data["undocumented"] = entries.Where(entry => entry.Missing != null && LibDoc.Explained.ContainsKey(entry.Missing))
+                    .Select(entry => (object)(entry.Reference.Name + ", " + entry.Reference.Version + ": " + LibDoc.Explained[entry.Missing])).Distinct().ToList();
+            }
             return data;
         }
 

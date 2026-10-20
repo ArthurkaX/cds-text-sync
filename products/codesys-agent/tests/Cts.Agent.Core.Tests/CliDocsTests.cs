@@ -239,6 +239,34 @@ END_ACTION
             Assert.Contains("no referenced library documents TO; names that hold it: TON.", output);
         }
 
+        // CODESYS writes pages only for a library in reStructuredText, and
+        // only once a Library Manager shows it: its projectinfo says which.
+        [Fact]
+        public void A_library_with_no_pages_says_whether_its_comments_are_plain_text_or_its_pages_not_written_yet()
+        {
+            Project();
+            void Installed(string vendor, string name, string version, params string[] strings)
+            {
+                var directory = Path.Combine(libraries, "Managed Libraries", vendor, name, version);
+                Directory.CreateDirectory(directory);
+                File.WriteAllBytes(Path.Combine(directory, "projectinfo"), strings.SelectMany(text => new byte[] { 7, 0 }.Concat(System.Text.Encoding.Unicode.GetBytes(text))).ToArray());
+            }
+            Installed("PSV Electro", "PSVRetain", "1.0.0.0", "Properties", "Company", "PSV Electro");
+            Installed("System", "IoStandard", "3.5.16.0", "Properties", "DocFormat", "reStructuredText");
+            Directory.CreateDirectory(Path.Combine(libraries, "LibDoc", "System", "IoStandard", "3.5.16.0", "Default"));
+            var workspace = Path.Combine(folder, "sync");
+
+            var (code, output, _) = CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries, "--show", "PSV_Retain");
+
+            Assert.Equal(1, code);
+            Assert.Contains("\nno pages for PSVRetain, *: its comments are plain text: CODESYS writes documentation pages only for a library whose Project Information sets DocFormat = reStructuredText", output);
+            Assert.Contains("\nno pages for IoStandard, 3.5.16.0: it is documented in reStructuredText, but CODESYS has not written its pages yet", output);
+            CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries);
+            var index = File.ReadAllText(Path.Combine(workspace, ".cts-docs", "index.md"));
+            Assert.Contains("| PSVRetain | * | PSV Electro |  | plain_text_library |", index);
+            Assert.Contains("| IoStandard | 3.5.16.0 | System | IoStandard | libdoc_not_generated |", index);
+        }
+
         [Fact]
         public void Missing_libdoc_says_why_and_another_version_never_stands_in()
         {
