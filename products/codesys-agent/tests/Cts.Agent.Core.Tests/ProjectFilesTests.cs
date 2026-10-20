@@ -50,9 +50,9 @@ namespace Cts.Agent.Tests
         [Fact]
         public void UnsavedRefusalNamesWhatToRunFirst()
         {
-            var e = ProjectFiles.Unsaved("The project", "`cts project close`");
+            var e = ProjectFiles.Unsaved("The project", "Run `cts project close --save` to keep them, or `cts project close --discard` to drop them.");
             Assert.Equal(ErrorCodes.BadParams, e.Code);
-            Assert.Equal("The project has unsaved changes. Run `cts save`, then `cts project close`, or discard the changes in CODESYS.", e.Message);
+            Assert.Equal("The project has unsaved changes. Run `cts project close --save` to keep them, or `cts project close --discard` to drop them.", e.Message);
         }
     }
 }

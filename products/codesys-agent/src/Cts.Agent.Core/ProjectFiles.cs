@@ -48,10 +48,9 @@ namespace Cts.Agent
 
         // Closing a project with unsaved changes brings up the IDE's modal save
         // prompt, so it is refused instead.
-        public static ProtocolException Unsaved(string what, string then)
+        public static ProtocolException Unsaved(string what, string next)
         {
-            return new ProtocolException(ErrorCodes.BadParams,
-                what + " has unsaved changes. Run `cts save`, then " + then + ", or discard the changes in CODESYS.");
+            return new ProtocolException(ErrorCodes.BadParams, what + " has unsaved changes. " + next);
         }
     }
 }

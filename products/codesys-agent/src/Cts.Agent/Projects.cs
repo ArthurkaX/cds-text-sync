@@ -48,7 +48,8 @@ namespace Cts.Agent
                 if (LoggedInApplications().Length > 0)
                     throw new ProtocolException(ErrorCodes.BadParams,
                         "The open project is online with the PLC. Run `cts disconnect`, then `cts project open`.");
-                if (IsDirty(primary)) throw ProjectFiles.Unsaved("The primary project", "`cts project close`");
+                if (IsDirty(primary)) throw ProjectFiles.Unsaved("The primary project",
+                    "Run `cts save` to keep them or `cts project close --discard` to drop them, then `cts project open` again.");
                 replaced = ProjectFiles.DisplayName(PathOf(primary));
                 if (!Close(primary)) throw new ProtocolException(ErrorCodes.Internal, "CODESYS did not close the project " + replaced);
             }
@@ -93,7 +94,8 @@ namespace Cts.Agent
                     throw new ProtocolException(ErrorCodes.BadParams,
                         "The project is online with the PLC. Run `cts disconnect`, then `cts project close`.");
                 if (save && IsDirty(project)) data["saved"] = SaveProject()["saved"];
-                if (IsDirty(project) && !discard) throw ProjectFiles.Unsaved("The project", "`cts project close`");
+                if (IsDirty(project) && !discard) throw ProjectFiles.Unsaved("The project",
+                    "Run `cts project close --save` to keep them, or `cts project close --discard` to drop them.");
                 var name = ProjectFiles.DisplayName(PathOf(project));
                 if (!Close(project)) throw new ProtocolException(ErrorCodes.Internal, "CODESYS did not close the project " + name);
                 data["closed"] = name;
@@ -127,7 +129,7 @@ namespace Cts.Agent
         {
             if (IsDirty(project))
             {
-                if (refuseUnsaved) throw ProjectFiles.Unsaved("The requested project", "retry");
+                if (refuseUnsaved) throw ProjectFiles.Unsaved("The requested project", "Save or discard them in CODESYS, then retry.");
                 return;
             }
             Close(project);
