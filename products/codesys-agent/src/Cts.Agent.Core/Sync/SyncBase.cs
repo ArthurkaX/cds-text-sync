@@ -51,7 +51,9 @@ namespace Cts.Sync
         // keeps the base's entry. With *stamps*, a view file someone changed
         // while cts ran (ViewStamps) keeps it too, or takes what cts wrote
         // there last, which the IDE holds: the next compare shows that change.
-        internal static string Record(string repo, string view, IList<string> keep, ViewStamps stamps = null)
+        // A file Git's ignore rules match keeps its entry unless it is one of
+        // *carried* (repository paths an import gave the IDE).
+        internal static string Record(string repo, string view, IList<string> keep, ViewStamps stamps = null, ICollection<string> carried = null)
         {
             var gitDir = GitRepository.Run(repo, "rev-parse --absolute-git-dir").Trim();
             var index = Path.Combine(gitDir, "cts", "base-index");
@@ -62,7 +64,13 @@ namespace Cts.Sync
             var paths = new[] { view, "cds-text-sync.json" }.Where(p => File.Exists(Path.Combine(repo, p.Replace('/', Path.DirectorySeparatorChar))) || Directory.Exists(Path.Combine(repo, p.Replace('/', Path.DirectorySeparatorChar)))).ToArray();
             if (paths.Length > 0) GitRepository.Run(repo, "add -A -- " + string.Join(" ", paths.Select(ProcessArgs.Quote)), env);
             var source = parent ?? (GitRun.In(repo, "rev-parse -q --verify HEAD^{commit}") is var head && head.ExitCode == 0 ? head.Output.Trim() : null);
-            if (source != null) keep = keep.Concat(Ignored(repo, view, env, source)).Distinct(StringComparer.Ordinal).ToList();
+            if (source != null)
+            {
+                var ignored = Ignored(repo, view, env, source).ToList();
+                var taken = ignored.Where(path => carried != null && carried.Contains(path)).ToList();
+                if (taken.Count > 0) GitRepository.Run(repo, "add -f -- " + string.Join(" ", taken.Select(ProcessArgs.Quote)), env);
+                keep = keep.Concat(ignored.Except(taken)).Distinct(StringComparer.Ordinal).ToList();
+            }
             var pinned = new Dictionary<string, byte[]>(StringComparer.Ordinal);
             var unknown = new List<string>();
             if (stamps != null)

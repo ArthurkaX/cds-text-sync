@@ -207,7 +207,7 @@ namespace Cts.Cli
                         .Concat(Directory.Exists(view) ? Directory.EnumerateFiles(view, "*", SearchOption.AllDirectories)
                             .Select(path => (viewRelative == "." ? "" : viewRelative.TrimEnd('/') + "/") + path.Substring(view.TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace(Path.DirectorySeparatorChar, '/')) : Enumerable.Empty<string>())
                     : Enumerable.Empty<string>();
-                baseName = SyncBase.Record(folder, viewRelative, tracked.Where(path => !carried.Contains(path)).Distinct(StringComparer.Ordinal).ToList(), stamps);
+                baseName = SyncBase.Record(folder, viewRelative, tracked.Where(path => !carried.Contains(path)).Distinct(StringComparer.Ordinal).ToList(), stamps, carried);
                 var stampPath = Path.Combine(gitDir, "cts", "ide-stamp.json");
                 if (File.Exists(stampPath)) File.Delete(stampPath);
             }

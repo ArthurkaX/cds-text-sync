@@ -158,6 +158,24 @@ namespace Cts.Agent.Core.Tests
                 + "PLC_Stabur/Plc Logic/Application/Task Configuration/VISU_TASK.xml; nothing was done", refused.Message);
         }
 
+        // The base keeps an ignored file's entry, but for one the import
+        // carried into the IDE: that one the IDE now holds as the disk does.
+        [Fact]
+        public void TheBaseTakesAnIgnoredFileOnlyWhenTheImportCarriedIt()
+        {
+            const string task = Tasks + "/Task.xml";
+            SyncBase.Record(_root, "project-view", new List<string>());
+            var synced = Git("rev-parse refs/cts/base:\"" + task + "\"");
+            Exclude("**/Task Configuration/");
+            File.AppendAllText(Path.Combine(_root, task), "<!-- carried -->");
+
+            SyncBase.Record(_root, "project-view", new List<string>());
+            Assert.Equal(synced, Git("rev-parse refs/cts/base:\"" + task + "\""));
+
+            SyncBase.Record(_root, "project-view", new List<string>(), null, new HashSet<string>(new[] { task }, StringComparer.OrdinalIgnoreCase));
+            Assert.Equal(Git("hash-object \"" + task + "\""), Git("rev-parse refs/cts/base:\"" + task + "\""));
+        }
+
         void Exclude(params string[] rules)
         {
             File.AppendAllText(Path.Combine(_root, ".git", "info", "exclude"), string.Concat(rules.Select(rule => rule + "\n")));
