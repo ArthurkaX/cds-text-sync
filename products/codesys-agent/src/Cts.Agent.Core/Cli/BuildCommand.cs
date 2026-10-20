@@ -21,6 +21,7 @@ namespace Cts.Cli
                 CliOption.Switch("--install", "install", "For a library project, save and install after a clean check"),
                 CliOption.Switch("--all-objects", "all_objects", "Also check every application object, including unreferenced objects"),
                 CliOption.Text("--app", "application", "NAME", "Make the named application the active one first; download and connect then act on it too"),
+                CliOption.Text("--libraries", "libraries", "DIR", @"The CODESYS library root (default: C:\ProgramData\CODESYS), for naming a referenced library installed after the IDE started"),
             },
             Execute = Execute, Build = Build,
         };
@@ -64,6 +65,15 @@ namespace Cts.Cli
             var pending = NotImported(call);
             if (pending.Count > 0) data["not_imported"] = pending;
             var unknown = messages.Count(m => Severity(Value(m, "severity")) == "error" && UnknownName.IsMatch(Convert.ToString(Value(m, "text"), CultureInfo.InvariantCulture) ?? ""));
+            if (unknown > 0 && !string.IsNullOrEmpty(call.Hello.SyncFolder) && call.Hello.Started is DateTime started)
+            {
+                var since = InstalledSince(ViewFolder.Of(call.Hello.SyncFolder), started, call.Options.Text("libraries") ?? Docs.DocsBundle.DefaultLibraries);
+                if (since.Count > 0)
+                {
+                    data["unknown_names"] = unknown;
+                    data["installed_since_start"] = since.Cast<object>().ToList();
+                }
+            }
             if (unknown > 0 && !string.IsNullOrEmpty(call.Hello.SyncFolder))
             {
                 var namespaces = QualifiedOnly(ViewFolder.Of(call.Hello.SyncFolder), Convert.ToString(data["application"], CultureInfo.InvariantCulture));
@@ -75,6 +85,23 @@ namespace Cts.Cli
             }
             if (previous != null) data["previous_application"] = previous;
             return data;
+        }
+
+        // The referenced libraries whose installed files are newer than the IDE:
+        // it keeps the copy it loaded first, which can lack names they have now.
+        static IList<string> InstalledSince(string view, DateTime started, string root)
+        {
+            if (!Directory.Exists(view)) return new List<string>();
+            var since = new List<string>();
+            foreach (var reference in Docs.LibraryReferences.Read(view, out _))
+            {
+                var folder = LibCommand.InstalledFolder(root, reference.Name, reference.Version.Length == 0 ? "*" : reference.Version, reference.Vendor);
+                if (folder == null) continue;
+                var installed = Directory.GetFiles(folder).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+                if (installed > started)
+                    since.Add(reference.Name + ", " + Path.GetFileName(folder) + " (" + reference.Vendor + ") at " + installed.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture));
+            }
+            return since;
         }
 
         static readonly System.Text.RegularExpressions.Regex UnknownName =
@@ -198,6 +225,9 @@ namespace Cts.Cli
             var codes = allErrors.GroupBy(m => Convert.ToString(Value(m, "code"), CultureInfo.InvariantCulture) is string code && code.Length > 0 ? code : "?")
                 .OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => g.Key + ":" + g.Count()).ToList();
             if (codes.Count > 0) answer.Add("error_codes", string.Join(",", codes));
+            if (Value(data, "installed_since_start") is IEnumerable<object> installed)
+                answer.Detail(Value(data, "unknown_names") + " errors name an unknown type or identifier, and these referenced libraries were installed after the IDE started: "
+                    + string.Join(", ", installed) + ". The IDE keeps the copy it loaded first, which can lack their names now: restart the IDE, then cts build");
             if (Value(data, "qualified_only") is IEnumerable<object> qualified)
                 answer.Detail(Value(data, "unknown_names") + " errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): "
                     + string.Join(", ", qualified) + ". Write the prefix, or cts lib set NAMESPACE --qualified-only off, then cts import");

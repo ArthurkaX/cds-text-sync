@@ -231,11 +231,19 @@ namespace Cts.Cli
         static string NewestInstalled(string root, string library)
         {
             var match = Newest.Match(library);
-            if (!match.Success) return null;
-            var folder = Path.Combine(root, "Managed Libraries", match.Groups["vendor"].Value.Trim(), match.Groups["name"].Value.Trim());
-            if (!Directory.Exists(folder)) return null;
-            return Directory.GetDirectories(folder).Select(Path.GetFileName)
-                .Select(name => Version.TryParse(name, out var version) ? version : null).Where(version => version != null).Max()?.ToString();
+            return match.Success ? Path.GetFileName(InstalledFolder(root, match.Groups["name"].Value.Trim(), "*", match.Groups["vendor"].Value.Trim())) : null;
+        }
+
+        // The folder of a library version in the repository under *root*, the
+        // newest for "*", which CODESYS loads; null when it is not installed.
+        internal static string InstalledFolder(string root, string name, string version, string vendor)
+        {
+            var library = Path.Combine(root, "Managed Libraries", vendor, name);
+            if (!Directory.Exists(library)) return null;
+            if (version != "*") return Directory.Exists(Path.Combine(library, version)) ? Path.Combine(library, version) : null;
+            var newest = Directory.GetDirectories(library).Select(Path.GetFileName)
+                .Select(folder => Version.TryParse(folder, out var parsed) ? parsed : null).Where(parsed => parsed != null).Max();
+            return newest == null ? null : Path.Combine(library, newest.ToString());
         }
 
         static IDictionary<string, object> Set(CliOptions options, IAgentHost host, string work)

@@ -49,6 +49,11 @@ namespace Cts.Cli
             get { var p = Project; return p != null && p.TryGetValue("sync_folder", out var v) ? v as string : null; }
         }
 
+        // When the agent, loaded as the IDE starts, came up (UTC).
+        internal DateTime? Started => Data.TryGetValue("started", out var value) && DateTime.TryParse(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var started)
+            ? started : (DateTime?)null;
+
         // The open project's `cts-source` label: the commit its code came from.
         internal string Source
         {

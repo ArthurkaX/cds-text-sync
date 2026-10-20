@@ -235,6 +235,51 @@ namespace Cts.Agent.Tests
             finally { Directory.Delete(folder, true); }
         }
 
+        // A library installed again while the IDE runs is not loaded again:
+        // unknown names then come with the libraries newer than the IDE.
+        [Fact]
+        public void Build_names_a_referenced_library_installed_after_the_IDE_started()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "cts-build-lib-" + Guid.NewGuid().ToString("N"));
+            var app = Path.Combine(folder, "project-view", "Dev", "Plc Logic", "Application");
+            Directory.CreateDirectory(app);
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Golden", "Docs", "Library Manager.xml"), Path.Combine(app, "Library Manager.xml"));
+            var libraries = Path.Combine(folder, "codesys");
+            string Installed(string vendor, string name, string version, DateTime at)
+            {
+                var directory = Path.Combine(libraries, "Managed Libraries", vendor, name, version);
+                Directory.CreateDirectory(directory);
+                var file = Path.Combine(directory, name + ".library");
+                File.WriteAllText(file, "");
+                File.SetLastWriteTimeUtc(file, at);
+                return file;
+            }
+            var started = new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc);
+            Installed("PSV Electro", "PSVRetain", "1.0.10.0", started.AddHours(1));
+            Installed("CAA Technical Workgroup", "CAA Device Diagnosis", "3.5.15.0", started.AddHours(-1));
+            try
+            {
+                var host = new FakeHost();
+                var agent = Agent(Path.Combine(folder, "Plant.project"), folder, (method, p) => new Dictionary<string, object>
+                {
+                    { "application", "Application" }, { "compiled", true },
+                    { "messages", new object[] { new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0077" }, { "text", "Unknown type: 'PSV_Retain'" }, { "object", "PRG" } } } },
+                });
+                host.Agents[1] = (method, p) =>
+                {
+                    var reply = agent(method, p);
+                    if (method == "hello") ((IDictionary<string, object>)reply)["started"] = "2026-10-20T10:00:00.000Z";
+                    return reply;
+                };
+                var (code, output, _) = Run(host, "build", "--libraries", libraries);
+                Assert.Equal(1, code);
+                Assert.Contains("1 errors name an unknown type or identifier, and these referenced libraries were installed after the IDE started: PSVRetain, 1.0.10.0 (PSV Electro) at ", output);
+                Assert.Contains("restart the IDE, then cts build", output);
+                Assert.DoesNotContain("CAA Device Diagnosis, 3.5.15.0 (CAA Technical Workgroup) at", output);
+            }
+            finally { Directory.Delete(folder, true); }
+        }
+
         [Fact]
         public void Build_places_errors_before_warnings_with_file_line_and_column()
         {
