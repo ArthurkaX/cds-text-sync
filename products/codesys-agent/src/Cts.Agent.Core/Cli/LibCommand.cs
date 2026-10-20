@@ -18,6 +18,8 @@ namespace Cts.Cli
         const string ManagerType = "adb5cb65-8e1d-4a00-b70a-375ea27582f3";
         const string PlaceholderItem = "4723ebe7-5bfc-43c6-be6b-5097002ef6b4";
         const string ConcreteItem = "51a11660-6c0d-4598-8c08-419c5845ea1f";
+        // The resolver CODESYS gives a placeholder the Library Manager adds (CAA Net Base Services' CAA NetBaseSrv).
+        const string PlaceholderResolver = "b303f5ce-75ff-4668-a777-7da8debb449c";
         const string ImportNext = "cts import";
         static readonly Regex Resolution = new Regex(@"^\s*[^,]+?,\s*(\*|[0-9][0-9.]*)\s*\([^()]+\)\s*$");
         static readonly Regex Identifier = new Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
@@ -52,13 +54,16 @@ namespace Cts.Cli
             {
                 Name = "lib", Sub = "add", Summary = "Reference a library on disk",
                 Description = "Adds \"Name, Version (Vendor)\" (version * for the newest installed) to the application's Library Manager "
-                    + "as a direct reference; --namespace is the prefix its names take (the library's documentation names it, cts docs "
-                    + "--show). With several applications --app picks one. cts import then loads the library; it names one that does not load.",
+                    + "as a direct reference, or through --placeholder, which lets the device pick the version (CAA Net Base Services "
+                    + "goes through CAA NetBaseSrv); --namespace is the prefix its names take (the library's documentation names it, cts docs "
+                    + "--show). With several applications --app picks one; a project with none (a new library) gets one at its root. cts import "
+                    + "then loads the library; it names one that does not load.",
                 Arguments = "LIBRARY", ArgumentLimit = 1, ArgumentHelp = "\"Name, Version (Vendor)\", e.g. \"CAA Net Base Services, * (CAA Technical Workgroup)\"",
                 Options = Where.Concat(new[]
                 {
                     CliOption.Needed("--namespace", "namespace", "NS", "The namespace its names take, e.g. NBS"),
                     CliOption.Switch("--qualified-only", "qualified_only", "Its names need the namespace in front"),
+                    CliOption.Text("--placeholder", "placeholder", "NAME", "Reference it through this placeholder; the library is its default resolution"),
                 }).ToArray(),
                 LocalExecute = Add, Build = Edited,
             },
@@ -100,7 +105,9 @@ namespace Cts.Cli
             }
         }
 
-        static List<Manager> Managers(CliOptions options, string work, string verb)
+        // With *create*, a project with no Library Manager gets one at its
+        // root (POUs/, where export writes it), with no references yet.
+        static List<Manager> Managers(CliOptions options, string work, string verb, bool create = false)
         {
             AnalyzeWorkspace workspace;
             try { workspace = AnalyzeWorkspace.Resolve(options.Text("workspace"), null, work); }
@@ -115,7 +122,15 @@ namespace Cts.Cli
                     throw new CliFailure(verb, "no such application", "no Library Manager belongs to " + app + "; the managers are in: " + string.Join(", ", managers.Select(manager => manager.App)), "cts lib", 1);
                 return picked;
             }
-            if (managers.Count == 0) throw new CliFailure(verb, "no Library Manager", "the sync folder has no Library Manager.xml: cts export writes them", "cts export", 1);
+            if (managers.Count == 0 && create)
+            {
+                var file = Path.Combine(workspace.View, "POUs", "Library Manager.xml");
+                Directory.CreateDirectory(Path.GetDirectoryName(file));
+                File.WriteAllText(file, EmptyManager.Replace("{guid}", Guid.NewGuid().ToString("D")).Replace("\r\n", "\n"), new UTF8Encoding(false));
+                managers.Add(Read(file, workspace.View));
+            }
+            if (managers.Count == 0)
+                throw new CliFailure(verb, "no Library Manager", "the project has no Library Manager: cts lib add creates one with its first reference", "cts lib add --help", 1);
             return managers;
         }
 
@@ -237,12 +252,15 @@ namespace Cts.Cli
                 throw new CliFailure("lib-add", "usage", "LIBRARY is \"Name, Version (Vendor)\", e.g. \"CAA Net Base Services, * (CAA Technical Workgroup)\"", "cts lib add --help", 2);
             var ns = options.Text("namespace").Trim();
             if (!Identifier.IsMatch(ns)) throw new CliFailure("lib-add", "usage", "--namespace is an identifier, e.g. NBS", "cts lib add --help", 2);
-            var managers = Managers(options, work, "lib-add");
+            var managers = Managers(options, work, "lib-add", true);
             if (managers.Count > 1)
                 throw new CliFailure("lib-add", "several Library Managers", "several Library Managers: pick one with --app (" + string.Join(", ", managers.Select(manager => manager.App)) + ")", "cts lib", 1);
             var target = managers[0];
             var name = library.Split(',')[0].Trim();
-            var already = target.Items.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || item.Namespace.Equals(ns, StringComparison.OrdinalIgnoreCase));
+            var placeholder = options.Text("placeholder")?.Trim();
+            if (placeholder?.Length == 0) throw new CliFailure("lib-add", "usage", "--placeholder names the placeholder, e.g. \"CAA NetBaseSrv\"", "cts lib add --help", 2);
+            var already = target.Items.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || item.Namespace.Equals(ns, StringComparison.OrdinalIgnoreCase)
+                || placeholder != null && item.Matches(placeholder));
             if (already != null)
                 throw new CliFailure("lib-add", "already referenced", target.Relative + " already references " + already.Line() + ": cts lib set changes it, cts lib remove drops it", "cts lib", 1);
             if (target.ListEnd < 0) throw new CliFailure("lib-add", "no list of references", target.Relative + " has no list of references to add to", "cts lib", 1);
@@ -251,12 +269,23 @@ namespace Cts.Cli
             var step = sample != null && sample.End > sample.Start + 1 ? Indent(target.Lines[sample.Start + 1]).Substring(indent.Length) : "  ";
             var cr = target.Lines[target.ListEnd].EndsWith("\r", StringComparison.Ordinal) ? "\r" : "";
             var inner = indent + step;
-            var block = new[]
+            var head = placeholder == null ? new[]
             {
                 indent + "<Single Type=\"{" + ConcreteItem + "}\" Method=\"IArchivable\">",
                 inner + "<Single Name=\"Optional\" Type=\"bool\">False</Single>",
                 inner + "<Null Name=\"Params\" />",
                 inner + "<Single Name=\"Name\" Type=\"string\">" + Escaped(library) + "</Single>",
+            } : new[]
+            {
+                indent + "<Single Type=\"{" + PlaceholderItem + "}\" Method=\"IArchivable\">",
+                inner + "<Single Name=\"DefaultResolution\" Type=\"string\">" + Escaped(library) + "</Single>",
+                inner + "<Single Name=\"Optional\" Type=\"bool\">False</Single>",
+                inner + "<Null Name=\"Params\" />",
+                inner + "<Single Name=\"PlaceholderName\" Type=\"string\">" + Escaped(placeholder) + "</Single>",
+                inner + "<Single Name=\"ResolverGuid\" Type=\"System.Guid\">" + PlaceholderResolver + "</Single>",
+            };
+            var block = head.Concat(new[]
+            {
                 inner + "<Single Name=\"Id\" Type=\"long\">" + NewId(target) + "</Single>",
                 inner + "<Single Name=\"Namespace\" Type=\"string\">" + ns + "</Single>",
                 inner + "<Single Name=\"SystemLibrary\" Type=\"bool\">False</Single>",
@@ -265,10 +294,10 @@ namespace Cts.Cli
                 inner + "<Single Name=\"QualifiedOnly\" Type=\"bool\">" + (options.Params.ContainsKey("qualified_only") ? "True" : "False") + "</Single>",
                 inner + "<Single Name=\"LinkAllContent\" Type=\"bool\">False</Single>",
                 indent + "</Single>",
-            }.Select(line => line + cr);
+            }).Select(line => line + cr);
             target.Lines.InsertRange(target.ListEnd, block);
             target.Save();
-            return new Dictionary<string, object> { ["changed"] = new List<object> { target.Relative + ": " + library } };
+            return new Dictionary<string, object> { ["changed"] = new List<object> { target.Relative + ": " + library + (placeholder == null ? "" : " through placeholder " + placeholder) } };
         }
 
         static IDictionary<string, object> Remove(CliOptions options, IAgentHost host, string work)
@@ -318,6 +347,32 @@ namespace Cts.Cli
                 if (!taken.Contains("<Single Name=\"Id\" Type=\"long\">" + id + "</Single>")) return id;
             }
         }
+
+        // A root Library Manager as export writes it, with no references.
+        const string EmptyManager = @"<?xml version='1.0' encoding='utf-8'?>
+<Single Type=""{6198ad31-4b98-445c-927f-3258a0e82fe3}"" Method=""IArchivable"">
+      <Single Name=""IsRoot"" Type=""bool"">True</Single>
+      <Single Name=""MetaObject"" Type=""{81297157-7ec9-45ce-845e-84cab2b88ade}"" Method=""IArchivable"">
+        <Single Name=""Guid"" Type=""System.Guid"">{guid}</Single>
+        <Single Name=""ParentGuid"" Type=""System.Guid"">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name=""Name"" Type=""string"">Library Manager</Single>
+        <Dictionary Type=""{2c41fa04-1834-41c1-816e-303c7aa2c05b}"" Name=""Properties"">
+        </Dictionary>
+        <Single Name=""TypeGuid"" Type=""System.Guid"">" + ManagerType + @"</Single>
+        <Null Name=""EmbeddedTypeGuids"" />
+      </Single>
+      <Single Name=""Object"" Type=""{" + ManagerType + @"}"" Method=""IArchivable"">
+        <List2 Name=""ParameterTable"" />
+        <List Name=""Items"" Type=""System.Collections.ArrayList"">
+        </List>
+        <Dictionary Type=""System.Collections.Hashtable"" Name=""PlaceholderRedirectionTable"">
+        </Dictionary>
+      </Single>
+      <Single Name=""ParentSVNodeGuid"" Type=""System.Guid"">00000000-0000-0000-0000-000000000000</Single>
+      <Array Name=""Path"" Type=""string"" />
+      <Single Name=""Index"" Type=""int"">-1</Single>
+    </Single>
+";
 
         static string Escaped(string text) => text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
     }

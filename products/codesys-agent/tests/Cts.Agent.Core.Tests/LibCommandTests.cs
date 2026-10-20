@@ -69,6 +69,40 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void AddThroughAPlaceholderWritesAPlaceholderReference()
+        {
+            var (code, output, _) = Lib("lib", "add", "CAA Net Base Services, 3.5.15.0 (CAA Technical Workgroup)", "--namespace", "NBS", "--placeholder", "CAA NetBaseSrv");
+
+            Assert.Equal(0, code);
+            Assert.Contains("App/Library Manager.xml: CAA Net Base Services, 3.5.15.0 (CAA Technical Workgroup) through placeholder CAA NetBaseSrv\n", output);
+            Assert.Contains("\n  NBS  CAA Net Base Services, 3.5.15.0 (CAA Technical Workgroup)  placeholder CAA NetBaseSrv\n", Lib("lib").output);
+            Assert.Contains("<Single Name=\"ResolverGuid\" Type=\"System.Guid\">b303f5ce-75ff-4668-a777-7da8debb449c</Single>", File.ReadAllText(_manager));
+            Assert.Contains("already references NBS", Lib("lib", "add", "Other, * (Vendor)", "--namespace", "Other", "--placeholder", "CAA NetBaseSrv").error);
+
+            Assert.StartsWith("ok lib-remove changed=1\n", Lib("lib", "remove", "CAA NetBaseSrv").output);
+            Assert.Equal(_original, File.ReadAllText(_manager));
+        }
+
+        // A library project starts with no Library Manager: the first lib add
+        // writes one at the project root, which cts import creates there.
+        [Fact]
+        public void AddToAProjectWithoutALibraryManagerCreatesOneAtTheRoot()
+        {
+            File.Delete(_manager);
+            Assert.Contains("cts lib add creates one", Lib("lib").error);
+
+            var (code, output, _) = Lib("lib", "add", "Standard, * (System)", "--namespace", "Standard");
+
+            Assert.Equal(0, code);
+            Assert.Contains("\nPOUs/Library Manager.xml: Standard, * (System)\n", output);
+            Assert.Contains("\n  Standard  Standard, * (System)\n", Lib("lib").output);
+            var created = File.ReadAllText(Path.Combine(_root, "project-view", "POUs", "Library Manager.xml"));
+            Assert.Contains("<Single Name=\"ParentGuid\" Type=\"System.Guid\">00000000-0000-0000-0000-000000000000</Single>", created);
+            Assert.DoesNotContain("{guid}", created);
+            System.Xml.Linq.XDocument.Parse(created);
+        }
+
+        [Fact]
         public void UnknownNamesAndMalformedLibrariesAreRefused()
         {
             Assert.Contains("no Library Manager references Nothing", Lib("lib", "remove", "Nothing").error);
