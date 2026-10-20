@@ -67,6 +67,11 @@ namespace Cts.Cli
             if (running != null)
                 return new Dictionary<string, object> { { "launched", false }, { "already_open", true }, { "agent", "ide-" + running.Pid }, { "project", path } };
 
+            // Session 0 (an ssh login, a service) has no desktop: a CODESYS
+            // started there never shows and its agent never answers.
+            if (Path.DirectorySeparatorChar == '\\' && Process.GetCurrentProcess().SessionId == 0)
+                throw Refused("cts runs in Windows session 0 (an ssh login or a service), which has no desktop: a CODESYS started from here "
+                    + "would never answer. Start CODESYS on the user's desktop, then run cts project open without --launch");
             var codesys = options.Params.TryGetValue("codesys", out var given) ? Path.GetFullPath(Convert.ToString(given))
                 : Newest(Executables(ProgramFiles()));
             if (codesys == null) throw Refused("no CODESYS.exe under Program Files; name it with --codesys");
