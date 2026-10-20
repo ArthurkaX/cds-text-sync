@@ -20,6 +20,13 @@ is named under the command's line, once each, as `dialog seen meanwhile [id
 ...]: ...`, and under `dialogs_seen` in `--json`; a failed command names it on
 its error output. A progress window is part of the command and is not named.
 
+Some dialogs come after the command that caused them has answered: CODESYS
+asks about the project environment (a compiler version that is not installed)
+once an older project has loaded. `cts project open` waits two seconds after
+the load and names such a dialog with its `cts dialog answer` line, and `cts
+agent list` names the dialog any IDE is blocked by, so the next command is not
+chained behind it.
+
 ## The verdict line, then the dialog
 
 ```

@@ -47,6 +47,27 @@ namespace Cts.Agent.Tests
             Assert.StartsWith("ok project-open opened=" + Verdict.Quote(file) + " already_open=true\n", Run(host, "project", "open", "--path", file).output);
         }
 
+        // CODESYS asks about the project environment once the load is done,
+        // after project.open answered: the answer names that dialog.
+        [Fact]
+        public void Project_open_names_the_dialog_the_load_left_on_screen()
+        {
+            var file = Path.Combine(Path.GetTempPath(), "Old.project");
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, (name, parameters) => name == "project.open"
+                ? new Dictionary<string, object> { { "opened", file }, { "already_open", false } }
+                : new Dictionary<string, object> { { "dialogs", new List<object> { new ModalWindow
+                    {
+                        Hwnd = 9, Class = ModalPolicy.DialogClass, Title = "Project Environment", Text = "The compiler version specified in this project is not available.",
+                        Buttons = new[] { "OK", "Set All to Newest" }, Ownerless = true, Enabled = true, Visible = true,
+                    }.ToData() } } });
+            var (code, output, _) = Run(host, "project", "open", "--path", file);
+            Assert.Equal(0, code);
+            Assert.Contains("the IDE shows a dialog since the load, and every next command waits for it: [id ", output);
+            Assert.Contains("Project Environment - The compiler version specified in this project is not available.", output);
+            Assert.Contains("Next: cts dialog answer --id ", output);
+        }
+
         [Fact]
         public void Project_open_launch_uses_the_IDE_that_already_has_the_file_open()
         {

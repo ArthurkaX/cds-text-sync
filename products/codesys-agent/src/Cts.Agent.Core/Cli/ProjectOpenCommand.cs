@@ -44,7 +44,7 @@ namespace Cts.Cli
                 CliOption.Switch("--no-runscript", "no_runscript", "For --launch: start the IDE with the project only, no agent"),
                 CliOption.Int("--wait", "wait", "For --launch: seconds to wait for the agent (default: 90)"),
             },
-            Execute = call => call.Call("project.open", new Dictionary<string, object> { { "path", Path.GetFullPath(Convert.ToString(call.Options.Params["path"])) } }, LoadSeconds),
+            Execute = call => Open(call, Path.GetFullPath(Convert.ToString(call.Options.Params["path"]))),
             LocalExecute = Launch,
             LocalWhen = options => options.Params.ContainsKey("launch"),
             Build = data => new Answer()
@@ -56,8 +56,34 @@ namespace Cts.Cli
                 .Add("project", Value(data, "project"))
                 .Add("profile", Value(data, "profile"))
                 .Detail(Value(data, "codesys") == null ? null : "codesys " + Value(data, "codesys"))
-                .Detail(Value(data, "runscript") == null ? null : "runscript " + Value(data, "runscript")),
+                .Detail(Value(data, "runscript") == null ? null : "runscript " + Value(data, "runscript"))
+                .Detail(Dialogs.Of(data, "dialog_open").Select(window => "the IDE shows a dialog since the load, and every next command waits for it: "
+                    + window.Snapshot() + "\nNext: " + DialogWatch.AnswerLine(window)).FirstOrDefault()),
         };
+
+        // How long a dialog the load posts (Project Environment, a compiler
+        // version) may take to show after project.open answered.
+        const int SettleMs = 2000;
+
+        // project.open, then the question the IDE shows once the load is
+        // done, if any, as dialog_open: the next command would stop at it.
+        static IDictionary<string, object> Open(CliCall call, string path)
+        {
+            var data = new Dictionary<string, object>(call.Call("project.open", new Dictionary<string, object> { { "path", path } }, LoadSeconds));
+            if (Equals(Value(data, "already_open"), true)) return data;
+            var deadline = DateTime.UtcNow.AddMilliseconds(SettleMs);
+            do
+            {
+                Thread.Sleep(500);
+                var questions = Dialogs.Of(call.Call("dialog.probe", new Dictionary<string, object>(), 5), "dialogs").Where(DialogWatch.IsQuestion).ToList();
+                if (questions.Count > 0)
+                {
+                    data["dialog_open"] = questions.Select(window => (object)window.ToData()).ToList();
+                    break;
+                }
+            } while (DateTime.UtcNow < deadline);
+            return data;
+        }
 
         static IDictionary<string, object> Launch(CliOptions options, IAgentHost host, string work)
         {
@@ -110,7 +136,8 @@ namespace Cts.Cli
             var hello = AwaitAgent(host, ide, wait);
             data["agent"] = "ide-" + hello.Pid;
             using (var conn = host.Open(hello.Pid))
-                new CliCall(conn, host, Command, options, hello, LoadSeconds).Call("project.open", new Dictionary<string, object> { { "path", path } });
+                foreach (var pair in Open(new CliCall(conn, host, Command, options, hello, LoadSeconds), path))
+                    if (pair.Key == "dialog_open") data[pair.Key] = pair.Value;
             return data;
         }
 

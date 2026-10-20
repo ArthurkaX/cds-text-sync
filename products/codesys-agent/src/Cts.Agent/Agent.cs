@@ -449,6 +449,8 @@ namespace Cts.Agent
                 { "methods", new List<string>(_router.Methods) },
                 { "user_changes", _journal.Count },
             };
+            // A dialog on screen holds every command that needs the UI thread.
+            if (_modal.AnyOpen) hello["dialogs"] = _modal.Current.Select(window => (object)window.ToData()).ToList();
             try
             {
                 var project = _ide.OnUiUnguarded("hello", 1500, () => _ide.ProjectState());

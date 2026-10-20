@@ -203,6 +203,7 @@ namespace Cts.Cli
                         var where = path ?? (Equals(Value(entry, "ui_busy"), true) ? "(UI busy, project unknown)" : "(no project)");
                         details.Add("ide-" + pid + "  " + (Value(entry, "product") ?? "?") + " " + (Value(entry, "product_version") ?? "?")
                             + "  agent " + (Value(entry, "agent_version") ?? "?") + "  protocol " + (Value(entry, "protocol") ?? "?") + "  " + where);
+                        details.AddRange(Dialogs.Of(entry, "dialogs").Select(window => "ide-" + pid + "  blocked by a dialog " + window.Snapshot()));
                     }
                 }
                 if (entries.Count > 0)
