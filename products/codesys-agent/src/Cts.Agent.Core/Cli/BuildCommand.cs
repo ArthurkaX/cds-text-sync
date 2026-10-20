@@ -46,7 +46,7 @@ namespace Cts.Cli
                 foreach (var message in (Value(result, "checked_messages") as IEnumerable<object> ?? new object[0]).OfType<IDictionary<string, object>>())
                 {
                     if (Severity(Value(message, "severity")) != "error" && Severity(Value(message, "severity")) != "warning") continue;
-                    if (seen.Add(MessageKey(message))) messages.Add(new Dictionary<string, object>(message) { ["not_compiled"] = true });
+                    if (seen.Add(MessageKey(message))) messages.Add(new Dictionary<string, object>(message) { ["not_called"] = true });
                 }
             }
             var errors = messages.Count(m => Severity(Value(m, "severity")) == "error");
@@ -178,7 +178,7 @@ namespace Cts.Cli
                     place += (place.Length == 0 ? "" : " at ") + file + ":" + Value(row, "line") + (Value(row, "column") == null ? "" : ":" + Value(row, "column"));
                 else if (Value(row, "part") is string part && Value(row, "part_line") != null)
                     place += (place.Length == 0 ? "" : " at ") + part + ":" + Value(row, "part_line") + (Value(row, "column") == null ? "" : ":" + Value(row, "column"));
-                if (Equals(Value(row, "not_compiled"), true)) place += ", not compiled";
+                if (Equals(Value(row, "not_called"), true)) place += ", not called by any task";
                 yield return prefix + "[" + Value(row, "code") + "] " + Normalize(Value(row, "text")) + (place.Length == 0 ? "" : " (in " + place + ")");
             }
             if (rows.Count > shown) yield return "... and " + (rows.Count - shown) + " more " + noun + ": cts build --json lists them all";

@@ -193,7 +193,7 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
-        public void Build_all_objects_marks_diagnostics_that_were_not_compiled()
+        public void Build_all_objects_marks_diagnostics_of_objects_no_task_calls()
         {
             var host = new FakeHost();
             host.Agents[1] = Agent(null, null, (method, p) => new Dictionary<string, object>
@@ -203,7 +203,7 @@ namespace Cts.Agent.Tests
             });
             var (code, output, _) = Run(host, "build", "--all-objects");
             Assert.Equal(1, code);
-            Assert.Contains("(in F_Scale, not compiled)", output);
+            Assert.Contains("(in F_Scale, not called by any task)", output);
         }
 
         [Fact]
