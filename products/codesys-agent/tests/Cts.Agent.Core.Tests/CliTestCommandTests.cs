@@ -83,7 +83,8 @@ namespace Cts.Agent.Tests
                     Dictionary<string, object> Ran(long run, string status, params string[] infos) => new Dictionary<string, object>
                     {
                         { "run", run }, { "status", status }, { "passed", 1L }, { "failed", status == "PASS" ? 0L : 1L }, { "done", true },
-                        { "log", new List<object> { Entry("CTS|M|TEST_START|TestApp|") }.Concat(infos.Select(info => (object)Entry(info))).ToList() },
+                        { "log", infos.Length == 0 ? new List<object>() : new List<object> { Entry("CTS|M|TEST_START|TestApp|") }.Concat(infos.Select(info => (object)Entry(info))).ToList() },
+                        { "log_error", infos.Length == 0 ? "the log took nothing" : null },
                     };
                     return new Dictionary<string, object>
                     {
@@ -93,7 +94,7 @@ namespace Cts.Agent.Tests
                             {
                                 Ran(1, "PASS", "CTS|M|TEST_PASS|timer|"),
                                 Ran(2, "FAIL", "CTS|M|TEST_FAIL|timer|got=4999;want=5000"),
-                                Ran(3, "PASS", "CTS|M|TEST_PASS|timer|"),
+                                Ran(3, "PASS"),
                             } },
                     };
                 });
@@ -103,7 +104,8 @@ namespace Cts.Agent.Tests
                 Assert.Equal(3L, asked["repeat"]);
                 Assert.StartsWith("error test passed=1 failed=0 runs=3 failed_runs=1 restart=download application=TestApp device=PLC plc=true", output);
                 Assert.Contains("\nrun 2: FAIL timer got=4999 want=5000\n", output);
-                Assert.Equal(6, File.ReadAllLines(Path.Combine(folder, ".git", "cts", "test", "TestApp.log")).Length);
+                Assert.Contains("\nrun 3: the log took nothing\n", output);
+                Assert.Equal(4, File.ReadAllLines(Path.Combine(folder, ".git", "cts", "test", "TestApp.log")).Length);
                 Assert.StartsWith("error test cause=usage", Run(host, "test", "--repeat", "0").output);
             }
             finally { Directory.Delete(folder, true); }

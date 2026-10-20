@@ -37,6 +37,7 @@ namespace Cts.Agent
         public const string DefaultApplication = "TestApp";
         public const string Gvl = "TestResult";
         const string StartMarker = "CTS|M|TEST_START|";
+        const string Overflow = "LOGGING BUFFER OVERFLOW";
         const long DefaultWaitMs = 30000;
         const long PollMs = 100;
 
@@ -68,6 +69,7 @@ namespace Cts.Agent
             try
             {
                 var runs = new List<object>();
+                string lastStart = null;
                 for (var number = 1; number <= Math.Max(1, request.Repeat); number++)
                 {
                     if (number == 1 || !request.ResetAllowed)
@@ -77,7 +79,7 @@ namespace Cts.Agent
                         call("app.reset", new Dictionary<string, object> { { "kind", "warm" } });
                         answer["application_state"] = Value(call("app.start", new Dictionary<string, object>()), "application_state");
                     }
-                    var run = Once(call, sleep, clockMs, request.WaitMs > 0 ? request.WaitMs : DefaultWaitMs);
+                    var run = Once(call, sleep, clockMs, request.WaitMs > 0 ? request.WaitMs : DefaultWaitMs, ref lastStart);
                     run["run"] = (long)number;
                     runs.Add(run);
                 }
@@ -102,7 +104,7 @@ namespace Cts.Agent
         }
 
         // One run after the start: TestResult.Done awaited, the counts and the run's log.
-        static Dictionary<string, object> Once(TestPlans.Call call, Action<long> sleep, Func<long> clockMs, long waitMs)
+        static Dictionary<string, object> Once(TestPlans.Call call, Action<long> sleep, Func<long> clockMs, long waitMs, ref string lastStart)
         {
             var deadline = clockMs() + waitMs;
             var done = false;
@@ -122,7 +124,7 @@ namespace Cts.Agent
                 { "status", done && failed == 0 ? "PASS" : "FAIL" },
             };
             if (!done) run["error"] = Gvl + ".Done stayed FALSE for " + waitMs + " ms: a test that never ends, or a task that does not call the tests";
-            RunLog(call, run);
+            lastStart = RunLog(call, run, lastStart);
             return run;
         }
 
@@ -164,7 +166,10 @@ namespace Cts.Agent
         // The runtime's log from the last TEST_START on, as `log`; what kept
         // it from being read, as `log_error`.  A log the run cannot read does
         // not fail the run: the counts already say whether the tests passed.
-        static void RunLog(TestPlans.Call call, Dictionary<string, object> answer)
+        // A repeated run whose last TEST_START is the one the run before read
+        // logged nothing the runtime kept: a runtime whose log is full drops
+        // new entries.  Returns the TEST_START read, for the next run.
+        static string RunLog(TestPlans.Call call, Dictionary<string, object> answer, string previousStart)
         {
             List<object> entries;
             try { entries = (Value(call("plc.log", new Dictionary<string, object>()), "entries") as IList<object> ?? new List<object>()).ToList(); }
@@ -172,12 +177,22 @@ namespace Cts.Agent
             {
                 answer["log"] = new List<object>();
                 answer["log_error"] = "the runtime's log could not be read: " + e.Message;
-                return;
+                return previousStart;
             }
             var start = entries.FindLastIndex(entry => Text(entry as IDictionary<string, object>, "info").Contains(StartMarker));
+            var startKey = start < 0 ? null : Text(entries[start] as IDictionary<string, object>, "time") + " " + Text(entries[start] as IDictionary<string, object>, "info");
+            if (start >= 0 && startKey == previousStart)
+            {
+                answer["log"] = new List<object>();
+                answer["log_error"] = "the runtime's log took nothing of this run, its last " + StartMarker + " record is the run before's"
+                    + (entries.Any(entry => Text(entry as IDictionary<string, object>, "info").Contains(Overflow)) ? " (the log is full: " + Overflow + ")" : "")
+                    + "; the counts say whether the tests passed";
+                return previousStart;
+            }
             answer["log"] = start < 0 ? new List<object>() : entries.GetRange(start, entries.Count - start);
             if (start < 0)
                 answer["log_error"] = "the log has no " + StartMarker + " record: the tests log nothing to the runtime's log (cts guide tests)";
+            return startKey;
         }
 
         // The values of *names*, each one required: a missing one means the

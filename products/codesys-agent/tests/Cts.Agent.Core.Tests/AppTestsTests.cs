@@ -213,6 +213,25 @@ namespace Cts.Agent.Core.Tests
             Assert.DoesNotContain(_calls, c => c.StartsWith("app.reset"));
         }
 
+        // A full runtime log drops what the second run writes: that run gets
+        // no log rather than the first run's.
+        [Fact]
+        public void A_repeated_run_the_full_log_dropped_reads_no_earlier_run()
+        {
+            Counts(2, 0);
+            _log.Add(new Dictionary<string, object> { { "time", "t1" }, { "info", "CTS|M|TEST_START|TestApp|" } });
+            _log.Add(new Dictionary<string, object> { { "time", "t1" }, { "info", "CTS|M|TEST_PASS|F_Clamp lifts to lo|" } });
+            _log.Add(new Dictionary<string, object> { { "time", "t0" }, { "info", "LOGGING BUFFER OVERFLOW; LOG MESSAGES DISMISSED" } });
+            var answer = Run(repeat: 2, reset: true);
+            var runs = ((IList<object>)answer["runs"]).Cast<IDictionary<string, object>>().ToList();
+            Assert.Equal(3, Infos(runs[0]["log"]).Count);
+            Assert.False(runs[0].ContainsKey("log_error"));
+            Assert.Empty(Infos(runs[1]["log"]));
+            Assert.Contains("took nothing of this run", (string)runs[1]["log_error"]);
+            Assert.Contains("the log is full: LOGGING BUFFER OVERFLOW", (string)runs[1]["log_error"]);
+            Assert.Equal("PASS", answer["status"]);
+        }
+
         [Fact]
         public void A_missing_application_names_the_ones_there_are()
         {

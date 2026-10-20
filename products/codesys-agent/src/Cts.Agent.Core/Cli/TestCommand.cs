@@ -93,9 +93,14 @@ namespace Cts.Cli
                 var fields = (test["fields"] as IDictionary<string, object> ?? new Dictionary<string, object>()).Select(f => f.Key + "=" + f.Value);
                 answer.Detail(string.Join(" ", new[] { (test.ContainsKey("run") ? "run " + test["run"] + ": " : "") + "FAIL " + test["name"] }.Concat(fields)));
             }
-            foreach (var run in runs.Where(run => Value(run, "error") != null)) answer.Detail("run " + Value(run, "run") + ": " + Value(run, "error"));
-            answer.Detail(Value(data, "error"));
-            answer.Detail(Value(data, "log_error"));
+            if (runs.Count == 0)
+            {
+                answer.Detail(Value(data, "error"));
+                answer.Detail(Value(data, "log_error"));
+            }
+            foreach (var run in runs)
+                foreach (var key in new[] { "error", "log_error" })
+                    if (Value(run, key) != null) answer.Detail("run " + Value(run, "run") + ": " + Value(run, key));
             foreach (var tidy in new[] { "logout", "reactivate" })
                 if (Value(data, tidy) is string said && said != "ok") answer.Detail(tidy + ": " + said);
             return Equals(Value(data, "status"), "PASS") ? answer : answer.Failed();
