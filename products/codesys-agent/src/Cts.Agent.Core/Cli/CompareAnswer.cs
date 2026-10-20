@@ -11,6 +11,23 @@ namespace Cts.Cli
         internal static string OwnerKeptNote(ICollection<string> paths) => string.Join(", ", paths) + (paths.Count == 1 ? " differs" : " differ")
             + " in this IDE; only the project's owner changes its libraries and settings, so cts leaves " + (paths.Count == 1 ? "it" : "them") + " out on this PC";
 
+        // The folders of the view git tracks in two spellings that differ only in
+        // case, the topmost of each: Windows holds them as one folder, and a copy
+        // of the sync folder merges them.
+        internal static IList<string> CaseTwins(string folder, string viewRelative)
+        {
+            var folders = GitRepository.Run(folder, "ls-files -z -- " + ProcessArgs.Quote(viewRelative)).Split(new[] { '\0' }, StringSplitOptions.RemoveEmptyEntries)
+                .SelectMany(path => path.Split('/').Skip(1).Select((_, depth) => string.Join("/", path.Split('/').Take(depth + 1))))
+                .Distinct(StringComparer.Ordinal);
+            var twins = folders.GroupBy(path => path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1)
+                .ToDictionary(group => group.Key, group => group.OrderBy(path => path, StringComparer.Ordinal).ToList(), StringComparer.OrdinalIgnoreCase);
+            return twins.Where(twin => !twins.ContainsKey(twin.Key.Contains('/') ? twin.Key.Substring(0, twin.Key.LastIndexOf('/')) : ""))
+                .OrderBy(twin => twin.Key, StringComparer.OrdinalIgnoreCase).Select(twin => string.Join(" and ", twin.Value)).ToList();
+        }
+
+        internal static string CaseTwinsNote(IList<string> twins) => "git tracks folders whose names differ only in case, which Windows holds as one: "
+            + string.Join("; ", twins) + ". Keep the spelling cts export writes: git rm -r --cached the other, then cts export";
+
         // What to do about objects the IDE changed: compare's and import's last line; a deleted one has no text to read.
         internal static string IdeChangedNext(ICollection<IDictionary<string, object>> items)
         {

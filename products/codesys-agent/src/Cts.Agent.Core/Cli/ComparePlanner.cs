@@ -339,6 +339,8 @@ namespace Cts.Cli
                     ? ideFiles.Paths.ToDictionary(path => path, path => ideFiles.Read(path), StringComparer.OrdinalIgnoreCase) : null;
                 var info = call.Options.Params.TryGetValue("compare_info", out var compareInfo) ? ((IEnumerable<string>)compareInfo).ToList() : new List<string>();
                 if (ownerKept.Count > 0) info.Add(OwnerKeptNote(ownerKept));
+                var caseTwins = CaseTwins(folder, viewRelative);
+                if (caseTwins.Count > 0) info.Add(CaseTwinsNote(caseTwins));
                 if (ignored.Count > 0) info.Add(ViewIgnore.Note(ignored.Count));
                 if (ignoredStale.Count > 0) info.Add(ViewIgnore.StaleNote(ignoredStale));
                 if (info.Count > 0) data["info"] = info;

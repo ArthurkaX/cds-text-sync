@@ -123,6 +123,19 @@ namespace Cts.Agent.Core.Tests
             Assert.Contains("FB_Valve.st is not a file of the view that Git's ignore rules match; cts import carries it without --include-ignored", refused.Message);
         }
 
+        // Linux keeps both spellings apart; Windows would hold them as one folder.
+        [Fact]
+        public void FoldersThatDifferOnlyInCaseAreNamedOncePerPair()
+        {
+            var twin = Path.Combine(_root, "project-view", "PLC_Stabur", "PLC Logic", "Application");
+            Directory.CreateDirectory(twin);
+            File.WriteAllText(Path.Combine(twin, "notes.txt"), "old spelling");
+            Git("add -A");
+
+            Assert.Equal(new[] { "project-view/PLC_Stabur/PLC Logic and project-view/PLC_Stabur/Plc Logic" }, ComparePlanner.CaseTwins(_root, "project-view"));
+            Assert.Empty(ComparePlanner.CaseTwins(_root, "project-view/PLC_Stabur/Plc Logic"));
+        }
+
         [Fact]
         public void ARuleOverTheApplicationIsRefused()
         {
