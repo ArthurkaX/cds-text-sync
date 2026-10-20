@@ -19,6 +19,8 @@ namespace Cts.Agent.Core.Tests
         readonly List<object> _log = new List<object>();
         bool _logFails;
         Func<long> _flaky;
+        Action _late;
+        Action _onStart;
 
         Dictionary<string, object> Run(string application = "", long waitMs = 0, bool plc = false, int repeat = 1, bool reset = false)
         {
@@ -45,13 +47,16 @@ namespace Cts.Agent.Core.Tests
                 case "app.reset":
                     return new Dictionary<string, object>();
                 case "app.start":
+                    _onStart?.Invoke();
                     _doneAfterReads = 1;
                     return new Dictionary<string, object> { { "application_state", "run" } };
                 case "app.download":
+                    _onStart?.Invoke();
                     _doneAfterReads = Math.Max(_doneAfterReads, 1);
                     return new Dictionary<string, object> { { "application_state", "run" } };
                 case "plc.log":
                     if (_logFails) throw new ProtocolException(ErrorCodes.Unavailable, "no logger service");
+                    _late?.Invoke();
                     return new Dictionary<string, object> { { "entries", _log } };
                 case "vars.read":
                     var rows = new List<object>();
@@ -102,6 +107,7 @@ namespace Cts.Agent.Core.Tests
         public void Passing_run_switches_to_the_test_application_and_back()
         {
             Counts(3, 0);
+            Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|", "CTS|M|TEST_PASS|b|", "CTS|M|TEST_PASS|c|");
             var answer = Run();
             Assert.Equal("PASS", answer["status"]);
             Assert.Equal(3L, answer["passed"]);
@@ -113,7 +119,7 @@ namespace Cts.Agent.Core.Tests
         [Fact]
         public void The_run_log_starts_at_the_last_test_start()
         {
-            Counts(2, 1);
+            Counts(1, 1);
             Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_FAIL|old run|", "Application started",
                 "CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|F_Clamp lifts to lo|", "CTS|M|TEST_FAIL|F_Clamp cuts to hi|got=11;want=10");
             var answer = Run();
@@ -149,6 +155,7 @@ namespace Cts.Agent.Core.Tests
         public void Done_is_polled_until_true()
         {
             Counts(1, 0);
+            Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|");
             _doneAfterReads = 4;
             Assert.Equal("PASS", Run()["status"]);
             Assert.Equal(300, _now);
@@ -180,10 +187,16 @@ namespace Cts.Agent.Core.Tests
         {
             _simulation = false;
             Counts(2, 0);
+            // A PLC's log keeps an earlier command's records; this run's come late.
+            Logged("CTS|M|TEST_START|TestApp|earlier", "CTS|M|TEST_PASS|a|", "CTS|M|TEST_PASS|b|");
+            var readsAfterStart = -1;
+            _onStart = () => readsAfterStart = 0;
+            _late = () => { if (readsAfterStart >= 0 && ++readsAfterStart == 2) Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|", "CTS|M|TEST_PASS|b|"); };
             var answer = Run(plc: true);
             Assert.Equal("PASS", answer["status"]);
             Assert.Equal(true, answer["plc"]);
             Assert.Contains(_calls, c => c.StartsWith("app.download"));
+            Assert.Equal(new[] { "CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|", "CTS|M|TEST_PASS|b|" }, Infos(answer["log"]));
         }
 
         // A flaky test fails one run of several: the run fails and says which.
@@ -213,23 +226,35 @@ namespace Cts.Agent.Core.Tests
             Assert.DoesNotContain(_calls, c => c.StartsWith("app.reset"));
         }
 
-        // A full runtime log drops what the second run writes: that run gets
-        // no log rather than the first run's.
+        // The records reach the log a read or two after Done: each run waits
+        // for its own TEST_START and results, and a run whose records never
+        // come gets no log rather than the run before's.
         [Fact]
-        public void A_repeated_run_the_full_log_dropped_reads_no_earlier_run()
+        public void Each_run_waits_for_its_own_records_in_the_log()
         {
             Counts(2, 0);
-            _log.Add(new Dictionary<string, object> { { "time", "t1" }, { "info", "CTS|M|TEST_START|TestApp|" } });
-            _log.Add(new Dictionary<string, object> { { "time", "t1" }, { "info", "CTS|M|TEST_PASS|F_Clamp lifts to lo|" } });
-            _log.Add(new Dictionary<string, object> { { "time", "t0" }, { "info", "LOGGING BUFFER OVERFLOW; LOG MESSAGES DISMISSED" } });
-            var answer = Run(repeat: 2, reset: true);
+            var started = 0;
+            var reads = 0;
+            _late = () =>
+            {
+                if (++reads % 2 == 0 && _log.Count < started * 3)
+                    Logged("CTS|M|TEST_START|TestApp|@" + started, "CTS|M|TEST_PASS|a|", "CTS|M|TEST_PASS|b|");
+            };
+            _onStart = () => started++;
+            var answer = Run(repeat: 3, reset: true);
             var runs = ((IList<object>)answer["runs"]).Cast<IDictionary<string, object>>().ToList();
+            Assert.Equal("CTS|M|TEST_START|TestApp|@1", Infos(runs[0]["log"])[0]);
+            Assert.Equal("CTS|M|TEST_START|TestApp|@2", Infos(runs[1]["log"])[0]);
+            Assert.False(runs[1].ContainsKey("log_error"));
+            Assert.Equal("CTS|M|TEST_START|TestApp|@3", Infos(runs[2]["log"])[0]);
+
+            _log.Clear();
+            _late = () => { if (_log.Count == 0) Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|", "CTS|M|TEST_PASS|b|"); };
+            runs = ((IList<object>)Run(repeat: 2, reset: true)["runs"]).Cast<IDictionary<string, object>>().ToList();
             Assert.Equal(3, Infos(runs[0]["log"]).Count);
-            Assert.False(runs[0].ContainsKey("log_error"));
             Assert.Empty(Infos(runs[1]["log"]));
-            Assert.Contains("took nothing of this run", (string)runs[1]["log_error"]);
-            Assert.Contains("the log is full: LOGGING BUFFER OVERFLOW", (string)runs[1]["log_error"]);
-            Assert.Equal("PASS", answer["status"]);
+            Assert.Contains("no CTS|M|TEST_START| record of this run 5 s after TestResult.Done", (string)runs[1]["log_error"]);
+            Assert.Equal("PASS", runs[1]["status"]);
         }
 
         [Fact]

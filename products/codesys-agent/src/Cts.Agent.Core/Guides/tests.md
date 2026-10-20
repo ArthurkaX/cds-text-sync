@@ -47,10 +47,11 @@ applies) and the tests run on the real runtime. `--repeat N` runs them N
 times, each run after the first started again by a warm reset when the deny
 list allows `reset_plc`, else by another download (`restart=` on the line);
 the line counts the failed runs (`failed_runs=`) and names each failing test
-with its run, which finds a test that fails now and then. A runtime whose
-log is full drops what later runs write (`LOGGING BUFFER OVERFLOW`): such a
-run is named under the line with no log of its own, and its counts still
-decide. Exit 0 when every test of every run passed.
+with its run, which finds a test that fails now and then. The records reach
+the log a moment after `TestResult.Done`: each run waits up to 5 s for its
+own `TEST_START` and as many results as the counts; a run whose records do
+not come is named under the line with no log of its own, and its counts
+still decide. Exit 0 when every test of every run passed.
 
 Every run leaves its log: the records the tests wrote and whatever the
 runtime logged meanwhile (an exception, a watchdog), in the runtime's log

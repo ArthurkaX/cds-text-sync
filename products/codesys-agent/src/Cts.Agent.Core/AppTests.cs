@@ -37,7 +37,11 @@ namespace Cts.Agent
         public const string DefaultApplication = "TestApp";
         public const string Gvl = "TestResult";
         const string StartMarker = "CTS|M|TEST_START|";
-        const string Overflow = "LOGGING BUFFER OVERFLOW";
+        const string PassMarker = "CTS|M|TEST_PASS|";
+        const string FailMarker = "CTS|M|TEST_FAIL|";
+        //: How long a run's records may take to reach the log after
+        //: TestResult.Done.
+        const long LogWaitMs = 5000;
         const long DefaultWaitMs = 30000;
         const long PollMs = 100;
 
@@ -69,7 +73,7 @@ namespace Cts.Agent
             try
             {
                 var runs = new List<object>();
-                string lastStart = null;
+                var lastStart = Equals(Value(found.Device, "simulation"), true) ? null : PriorStart(call);
                 for (var number = 1; number <= Math.Max(1, request.Repeat); number++)
                 {
                     if (number == 1 || !request.ResetAllowed)
@@ -124,7 +128,7 @@ namespace Cts.Agent
                 { "status", done && failed == 0 ? "PASS" : "FAIL" },
             };
             if (!done) run["error"] = Gvl + ".Done stayed FALSE for " + waitMs + " ms: a test that never ends, or a task that does not call the tests";
-            lastStart = RunLog(call, run, lastStart);
+            lastStart = RunLog(call, sleep, clockMs, run, lastStart, (long)run["passed"] + failed);
             return run;
         }
 
@@ -166,34 +170,64 @@ namespace Cts.Agent
         // The runtime's log from the last TEST_START on, as `log`; what kept
         // it from being read, as `log_error`.  A log the run cannot read does
         // not fail the run: the counts already say whether the tests passed.
-        // A repeated run whose last TEST_START is the one the run before read
-        // logged nothing the runtime kept: a runtime whose log is full drops
-        // new entries.  Returns the TEST_START read, for the next run.
-        static string RunLog(TestPlans.Call call, Dictionary<string, object> answer, string previousStart)
+        // The records reach the log the logger service reads after
+        // TestResult.Done, so the log is read again until it holds a
+        // TEST_START other than *previousStart* (the one the run before read)
+        // with as many results as the counts, or LogWaitMs ran out.  Returns
+        // the TEST_START read, for the next run.
+        static string RunLog(TestPlans.Call call, Action<long> sleep, Func<long> clockMs, Dictionary<string, object> answer, string previousStart, long expected)
         {
+            var deadline = clockMs() + LogWaitMs;
             List<object> entries;
-            try { entries = (Value(call("plc.log", new Dictionary<string, object>()), "entries") as IList<object> ?? new List<object>()).ToList(); }
-            catch (ProtocolException e)
+            int start;
+            while (true)
+            {
+                try { entries = Entries(call); }
+                catch (ProtocolException e)
+                {
+                    answer["log"] = new List<object>();
+                    answer["log_error"] = "the runtime's log could not be read: " + e.Message;
+                    return previousStart;
+                }
+                start = entries.FindLastIndex(entry => Info(entry).Contains(StartMarker));
+                if (start >= 0 && StartKey(entries[start]) != previousStart && Results(entries, start) >= expected || clockMs() >= deadline) break;
+                sleep(PollMs);
+            }
+            if (start < 0 || StartKey(entries[start]) == previousStart)
             {
                 answer["log"] = new List<object>();
-                answer["log_error"] = "the runtime's log could not be read: " + e.Message;
+                answer["log_error"] = start < 0
+                    ? "the log has no " + StartMarker + " record: the tests log nothing to the runtime's log (cts guide tests)"
+                    : "the log shows no " + StartMarker + " record of this run " + LogWaitMs / 1000 + " s after " + Gvl + ".Done, only the run before's; the counts say whether the tests passed";
                 return previousStart;
             }
-            var start = entries.FindLastIndex(entry => Text(entry as IDictionary<string, object>, "info").Contains(StartMarker));
-            var startKey = start < 0 ? null : Text(entries[start] as IDictionary<string, object>, "time") + " " + Text(entries[start] as IDictionary<string, object>, "info");
-            if (start >= 0 && startKey == previousStart)
-            {
-                answer["log"] = new List<object>();
-                answer["log_error"] = "the runtime's log took nothing of this run, its last " + StartMarker + " record is the run before's"
-                    + (entries.Any(entry => Text(entry as IDictionary<string, object>, "info").Contains(Overflow)) ? " (the log is full: " + Overflow + ")" : "")
-                    + "; the counts say whether the tests passed";
-                return previousStart;
-            }
-            answer["log"] = start < 0 ? new List<object>() : entries.GetRange(start, entries.Count - start);
-            if (start < 0)
-                answer["log_error"] = "the log has no " + StartMarker + " record: the tests log nothing to the runtime's log (cts guide tests)";
-            return startKey;
+            answer["log"] = entries.GetRange(start, entries.Count - start);
+            var results = Results(entries, start);
+            if (results < expected)
+                answer["log_error"] = "the log holds " + results + " of the " + expected + " results the counts name " + LogWaitMs / 1000 + " s after " + Gvl + ".Done";
+            return StartKey(entries[start]);
         }
+
+        // The last TEST_START a PLC's log holds before the run: a real
+        // runtime keeps the records of earlier runs.
+        static string PriorStart(TestPlans.Call call)
+        {
+            try
+            {
+                var entries = Entries(call);
+                var start = entries.FindLastIndex(entry => Info(entry).Contains(StartMarker));
+                return start < 0 ? null : StartKey(entries[start]);
+            }
+            catch (ProtocolException) { return null; }
+        }
+
+        static List<object> Entries(TestPlans.Call call) => (Value(call("plc.log", new Dictionary<string, object>()), "entries") as IList<object> ?? new List<object>()).ToList();
+
+        static string Info(object entry) => Text(entry as IDictionary<string, object>, "info");
+
+        static string StartKey(object entry) => Text(entry as IDictionary<string, object>, "time") + " " + Info(entry);
+
+        static int Results(List<object> entries, int start) => entries.Skip(start).Count(entry => Info(entry).Contains(PassMarker) || Info(entry).Contains(FailMarker));
 
         // The values of *names*, each one required: a missing one means the
         // application does not follow the TestResult convention.

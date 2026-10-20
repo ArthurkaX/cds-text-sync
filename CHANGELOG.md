@@ -76,7 +76,7 @@ _What changes against the 3.4 releases, by area; the step-by-step history is in 
 **Tests and CI**
 
 - `cts guide` names the ST unit test job and says a clean `cts compare` lets the deploy job skip `cts import`.
-- New `cts test`: ST tests in a test application on a device in simulation, each logged through CmpLog, the log kept as a file; `--plc` runs them on the device's PLC, and `--repeat N` runs them N times (a warm reset between runs when the deny list allows it) and names each failing test with its run (a run whose entries a full runtime log dropped is named, with no log of its own).
+- New `cts test`: ST tests in a test application on a device in simulation, each logged through CmpLog, the log kept as a file; `--plc` runs them on the device's PLC, and `--repeat N` runs them N times (a warm reset between runs when the deny list allows it) and names each failing test with its run (each run waits for its own records, which reach the runtime's log a moment after `TestResult.Done`; a run whose records do not come is named, with no log of its own).
 - `cts verify` (analyze, sketch lint, build, `--with-test`, `--deploy`) gives one status per stage on its line; `.test` plans run through the agent.
 - `cts build` names the `.st` file, line and column of each message and lists the warnings; `--all-objects` also checks the objects no task calls, marking their messages `not called by any task` (`not_called` in `--json`); errors that name an unknown type or identifier come with the namespaces of the libraries the Library Manager references qualified-only; `--app NAME` makes another application of the project the active one and compiles it.
 
