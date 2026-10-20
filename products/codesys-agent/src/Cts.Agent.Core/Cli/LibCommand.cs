@@ -23,6 +23,7 @@ namespace Cts.Cli
         const string ImportNext = "cts import";
         static readonly Regex Resolution = new Regex(@"^\s*[^,]+?,\s*(\*|[0-9][0-9.]*)\s*\([^()]+\)\s*$");
         static readonly Regex Identifier = new Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
+        static readonly Regex Newest = new Regex(@"^\s*(?<name>[^,]+?),\s*\*\s*\((?<vendor>[^()]+)\)\s*$");
 
         static readonly CliOption[] Where =
         {
@@ -37,8 +38,11 @@ namespace Cts.Cli
                 Name = "lib", Summary = "List the libraries the project references (offline)",
                 Description = "Reads each Library Manager.xml of the sync folder: one line per reference with its namespace, the library "
                     + "(name, version, vendor), the placeholder it goes through and qualified-only when its names need the namespace in "
-                    + "front (Standard.TON). cts lib set, add and remove change the files; cts import then loads them in the IDE.",
-                Options = Where, LocalExecute = List, Build = BuildList,
+                    + "front (Standard.TON), and for a direct reference to version * the newest version installed on this PC, which "
+                    + "CODESYS takes: CODESYS versions on one PC share the library repository, so it can be one an older CODESYS cannot "
+                    + "compile. cts lib set, add and remove change the files; cts import then loads them in the IDE.",
+                Options = Where.Concat(new[] { CliOption.Text("--libraries", "libraries", "DIR", @"The CODESYS library root (default: C:\ProgramData\CODESYS)") }).ToArray(),
+                LocalExecute = List, Build = BuildList,
             },
             new CliCommand
             {
@@ -80,7 +84,7 @@ namespace Cts.Cli
         sealed class Item
         {
             internal int Start, End, QualifiedLine = -1;
-            internal string Kind, Placeholder = "", Library = "", Namespace = "";
+            internal string Kind, Placeholder = "", Library = "", Namespace = "", Resolved;
             internal bool QualifiedOnly;
 
             internal string Name => Library.Split(',')[0].Trim();
@@ -88,7 +92,7 @@ namespace Cts.Cli
             internal bool Matches(string name) => new[] { Name, Placeholder, Namespace }.Any(key => key.Length > 0 && key.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
 
             internal string Line() => (Namespace.Length > 0 ? Namespace : "-") + "  " + Library + (Kind == "placeholder" ? "  placeholder " + Placeholder : "")
-                + (QualifiedOnly ? "  qualified-only" : "");
+                + (QualifiedOnly ? "  qualified-only" : "") + (Resolved != null ? "  * is " + Resolved + " here" : "");
         }
 
         sealed class Manager
@@ -193,6 +197,8 @@ namespace Cts.Cli
         static IDictionary<string, object> List(CliOptions options, IAgentHost host, string work)
         {
             var managers = Managers(options, work, "lib");
+            var root = options.Text("libraries") ?? Docs.DocsBundle.DefaultLibraries;
+            foreach (var item in managers.SelectMany(manager => manager.Items).Where(item => item.Kind == "library")) item.Resolved = NewestInstalled(root, item.Library);
             return new Dictionary<string, object>
             {
                 ["managers"] = managers.Select(manager => (object)new Dictionary<string, object>
@@ -201,7 +207,7 @@ namespace Cts.Cli
                     ["libraries"] = manager.Items.Select(item => (object)new Dictionary<string, object>
                     {
                         ["kind"] = item.Kind, ["library"] = item.Library, ["placeholder"] = item.Placeholder, ["namespace"] = item.Namespace,
-                        ["qualified_only"] = item.QualifiedOnly, ["line"] = item.Line(),
+                        ["qualified_only"] = item.QualifiedOnly, ["resolved"] = item.Resolved, ["line"] = item.Line(),
                     }).ToList(),
                 }).ToList(),
             };
@@ -218,6 +224,18 @@ namespace Cts.Cli
                 foreach (IDictionary<string, object> item in (IList<object>)manager["libraries"]) answer.Detail("  " + item["line"]);
             }
             return answer;
+        }
+
+        // The newest version of *library* ("Name, * (Vendor)") in the library
+        // repository under *root*; null for an exact version or none installed.
+        static string NewestInstalled(string root, string library)
+        {
+            var match = Newest.Match(library);
+            if (!match.Success) return null;
+            var folder = Path.Combine(root, "Managed Libraries", match.Groups["vendor"].Value.Trim(), match.Groups["name"].Value.Trim());
+            if (!Directory.Exists(folder)) return null;
+            return Directory.GetDirectories(folder).Select(Path.GetFileName)
+                .Select(name => Version.TryParse(name, out var version) ? version : null).Where(version => version != null).Max()?.ToString();
         }
 
         static IDictionary<string, object> Set(CliOptions options, IAgentHost host, string work)

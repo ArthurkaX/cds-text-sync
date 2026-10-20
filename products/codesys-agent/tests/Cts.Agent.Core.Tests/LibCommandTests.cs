@@ -36,6 +36,21 @@ namespace Cts.Agent.Tests
             Assert.Contains("\n  PSVRetain  PSVRetain, * (PSV Electro)\n", output);
         }
 
+        // Several CODESYS versions on one PC share the library repository:
+        // the newest there is what * loads, even in the older CODESYS.
+        [Fact]
+        public void ListNamesTheVersionAStarLoadsHere()
+        {
+            var libraries = Path.Combine(_root, "codesys");
+            foreach (var version in new[] { "1.0.9.0", "1.0.10.0", "browsercache" })
+                Directory.CreateDirectory(Path.Combine(libraries, "Managed Libraries", "PSV Electro", "PSVRetain", version));
+
+            var output = Lib("lib", "--libraries", libraries).output;
+
+            Assert.Contains("\n  PSVRetain  PSVRetain, * (PSV Electro)  * is 1.0.10.0 here\n", output);
+            Assert.Contains("\n  PSVRetain  PSVRetain, * (PSV Electro)\n", Lib("lib").output);
+        }
+
         [Fact]
         public void SetChangesOnlyTheFlagsLine()
         {
