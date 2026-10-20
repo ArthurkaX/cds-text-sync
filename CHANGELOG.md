@@ -104,7 +104,7 @@ _What changes against the 3.4 releases, by area; the step-by-step history is in 
 **Development**
 
 - The agent and cts.exe ship prebuilt in `products/codesys-agent/dist` (Git LFS), built by `tools/dist.py` in a commit of their own after the change.
-- Dead code fails the checks (vulture, the agent build, `tools/DeadSymbols`); `CLAUDE.md` states the rules.
+- Dead code fails the checks (vulture, the agent build, `tools/DeadSymbols`).
 
 ---
 
