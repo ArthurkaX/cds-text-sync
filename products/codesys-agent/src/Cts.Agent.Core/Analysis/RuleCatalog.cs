@@ -102,6 +102,7 @@ namespace Cts.Analysis
             new CTS0098(),
             new CTS0099(),
             new CTS0100(),
+            new CTS0101(),
         };
     }
 }
