@@ -249,13 +249,17 @@ namespace Cts.Agent
         }
 
         // The folder `cts set-sync-folder` offers a project without one: the
-        // sync root its file lies in, else a `<project>-cts` folder beside
-        // the file.  "" for a project not saved.
+        // sync root its file lies in, else the git repository it lies in (a
+        // folder inside a repository is never one: the sync folder is a
+        // repository's root), else a `<project>-cts` folder beside the file.
+        // "" for a project not saved.
         public static string Suggested(string projectPath)
         {
             if (string.IsNullOrEmpty(projectPath) || !Path.IsPathRooted(projectPath)) return "";
             var root = EnclosingRoot(projectPath);
             if (root != "") return root;
+            for (var dir = Path.GetDirectoryName(Path.GetFullPath(projectPath)); !string.IsNullOrEmpty(dir); dir = Path.GetDirectoryName(dir))
+                if (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, ".git"))) return dir;
             return Path.Combine(Path.GetDirectoryName(projectPath), FolderName(Path.GetFileNameWithoutExtension(projectPath)));
         }
 

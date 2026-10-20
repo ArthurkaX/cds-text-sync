@@ -143,7 +143,7 @@ namespace Cts.Agent.Tests
             var inside = Path.Combine(link, "sub");
             Directory.CreateDirectory(inside);
             var refusal = Assert.Throws<InvalidOperationException>(() => GitRepository.Repository(inside));
-            Assert.Contains("is inside the repository at " + link + ", not at its root", refusal.Message);
+            Assert.Contains("is inside the repository at " + link + ", not at its root. Use the repository's root (cts set-sync-folder \"" + link + "\")", refusal.Message);
         }
 
         static string Temp()

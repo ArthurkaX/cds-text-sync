@@ -174,7 +174,7 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
-        public void TheSuggestionIsTheEnclosingSyncRootElseAFolderBeside()
+        public void TheSuggestionIsTheEnclosingSyncRootElseTheRepositoryElseAFolderBeside()
         {
             var clone = Folder("plant", null);
             Assert.Equal(clone, ProjectInfo.Suggested(Path.Combine(clone, "plant.project")));
@@ -182,6 +182,12 @@ namespace Cts.Agent.Tests
             Directory.CreateDirectory(loose);
             Assert.Equal(Path.Combine(loose, "Line-2-cts"), ProjectInfo.Suggested(Path.Combine(loose, "Line 2.project")));
             Assert.Equal("", ProjectInfo.Suggested("Line 2.project"));
+            // A project in a git repository: the repository's root, since a
+            // folder inside it cannot be a sync folder.
+            var repo = Path.Combine(_root, "kit");
+            Directory.CreateDirectory(Path.Combine(repo, ".git"));
+            Directory.CreateDirectory(Path.Combine(repo, ".project"));
+            Assert.Equal(repo, ProjectInfo.Suggested(Path.Combine(repo, ".project", "kit.project")));
         }
 
         [Fact]

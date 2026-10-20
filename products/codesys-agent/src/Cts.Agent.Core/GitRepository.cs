@@ -53,7 +53,7 @@ namespace Cts.Agent
         {
             var comparison = Path.DirectorySeparatorChar == '\\' ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             if (!string.Equals(root.TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), comparison))
-                throw new InvalidOperationException("The sync folder " + folder + " is inside the repository at " + root + ", not at its root. Run 'git init' in the sync folder itself, or move the repository there.");
+                throw new InvalidOperationException("The sync folder " + folder + " is inside the repository at " + root + ", not at its root. Use the repository's root (cts set-sync-folder \"" + root + "\"), run 'git init' in the sync folder itself, or move the repository there.");
         }
 
         public static IDictionary<string, object> Position(string folder)
