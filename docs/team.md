@@ -89,13 +89,14 @@ syntax of `.gitignore`, never committed):
 cts reads Git's ignore rules (`.gitignore`, `.git/info/exclude`, the global
 excludes file) and leaves every view file they match as it is, also one the
 owner committed: an export neither writes nor removes it, an import does not
-apply it, and a compare does not count it (it says how many it left out).
+apply it, and a compare does not count it (it says how many it left out, and
+names those the IDE holds otherwise than the disk).
 A folder object is `<folder>/.cds-object.xml`, so a pattern ending in `/`
 takes the folder with everything below it; the names are the project's own.
 A rule that covers the application, or a folder but not what is below it, is
 refused before anything is written. To take the owner's version of an ignored
-part, remove the line, press `1`, and put the line back. Rules in `.gitignore`
-apply to the owner as well.
+file, run `cts import --include-ignored PATH`. Rules in `.gitignore` apply to
+the owner as well.
 
 ## When both sides changed the same lines
 

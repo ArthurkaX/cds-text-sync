@@ -54,6 +54,7 @@ namespace Cts.Cli
                     CliOption.Switch("--force", "force", "Keep overwritten IDE text before carrying disk text"),
                     CliOption.Switch("--allow-unapplied", "allow_unapplied", "Acknowledge objects that could not be read back"),
                     CliOption.Switch("--tool", "conflict_tool", "An object whose IDE and disk edits overlap opens side by side in the merge program, the disk's text on the right; what is saved there goes to both"),
+                    CliOption.Many("--include-ignored", "include_ignored", "PATH", "A file of the view Git's ignore rules match that this import compares and carries like any other (repeatable)"),
                 },
                 Execute = ImportCommand.Execute,
                 Build = ImportCommand.Build,

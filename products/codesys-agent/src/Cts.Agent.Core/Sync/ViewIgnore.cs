@@ -72,6 +72,10 @@ namespace Cts.Sync
         }
 
         internal static string Note(int count) => "Git's ignore rules match " + count + " file(s) of the view; cts leaves them as they are and does not compare them";
+
+        // The ignored files whose IDE copy is not the disk's: an edit on disk never reaches the IDE by itself.
+        internal static string StaleNote(IList<string> paths) => "ignored, and the IDE holds other content than the disk: " + string.Join(", ", paths.Take(Named))
+            + (paths.Count > Named ? " and " + (paths.Count - Named) + " more" : "") + "; cts import --include-ignored PATH carries one into the IDE";
     }
 
     // *inner* without what Git's ignore rules match; with *instead*, an

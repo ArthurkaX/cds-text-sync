@@ -92,6 +92,37 @@ namespace Cts.Agent.Core.Tests
             Assert.False(objects.ContainsKey("ide_changed"));
         }
 
+        // The owner's Task.xml is ignored but not the IDE's: the line names it.
+        [Fact]
+        public void ACompareNamesAnIgnoredFileTheIdeHoldsOtherwise()
+        {
+            Exclude("**/Task Configuration/");
+
+            var info = (IEnumerable<string>)Compare()["info"];
+
+            Assert.Contains(ViewIgnore.StaleNote(new[] { "PLC_Stabur/Plc Logic/Application/Task Configuration/Task.xml" }), info);
+        }
+
+        [Fact]
+        public void IncludeIgnoredComparesThatFileLikeAnyOther()
+        {
+            Exclude("**/Task Configuration/Task.xml");
+
+            var result = Compare("import", "--include-ignored", Path.Combine(_root, Tasks, "Task.xml"));
+
+            var objects = (IDictionary<string, object>)result["objects"];
+            Assert.Equal("Task.xml", Path.GetFileName(Convert.ToString(((IEnumerable<IDictionary<string, object>>)objects["modified"]).Single()["path"])));
+            Assert.False(result.ContainsKey("info"));
+        }
+
+        [Fact]
+        public void IncludeIgnoredRefusesAFileTheRulesDoNotMatch()
+        {
+            var refused = Assert.Throws<CliFailure>(() => Compare("import", "--include-ignored", Path.Combine(_root, Valve)));
+
+            Assert.Contains("FB_Valve.st is not a file of the view that Git's ignore rules match; cts import carries it without --include-ignored", refused.Message);
+        }
+
         [Fact]
         public void ARuleOverTheApplicationIsRefused()
         {
@@ -119,10 +150,12 @@ namespace Cts.Agent.Core.Tests
             File.AppendAllText(Path.Combine(_root, ".git", "info", "exclude"), string.Concat(rules.Select(rule => rule + "\n")));
         }
 
-        IDictionary<string, object> Compare()
+        IDictionary<string, object> Compare() => Compare("compare", "--full");
+
+        IDictionary<string, object> Compare(string verb, params string[] args)
         {
-            var command = CliCommands.Find(new[] { "compare" });
-            var options = CliOptions.Parse(new[] { "compare", "--sync-folder", _root, "--full" }, null, command);
+            var command = CliCommands.Find(new[] { verb });
+            var options = CliOptions.Parse(new[] { verb, "--sync-folder", _root }.Concat(args).ToArray(), null, command);
             var hello = new Hello(42, new Dictionary<string, object>
             {
                 { "project", new Dictionary<string, object> { { "path", "C:\\projects\\demo.project" }, { "sync_folder", _root } } },

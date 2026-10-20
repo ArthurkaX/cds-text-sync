@@ -206,9 +206,14 @@ namespace Cts.Cli
                 // What Git's ignore rules leave to the project's owner is no difference (ViewIgnore).
                 var everyPath = diskSource.Paths.Concat(ideFiles.Paths).Concat(baseFiles == null ? Enumerable.Empty<string>() : baseFiles.Paths).ToList();
                 var ignored = ViewIgnore.Match(folder, viewRelative, everyPath);
+                var ignoredStale = new List<string>();
+                if (ignored.Count > 0) ViewIgnore.Refuse(ignored, everyPath, path => ideFiles.Read(path) ?? diskSource.Read(path) ?? baseFiles?.Read(path));
+                ignored.ExceptWith(IncludedIgnored(call, view, ignored));
                 if (ignored.Count > 0)
                 {
-                    ViewIgnore.Refuse(ignored, everyPath, path => ideFiles.Read(path) ?? diskSource.Read(path) ?? baseFiles?.Read(path));
+                    var onBothSides = new HashSet<string>(diskSource.Paths.Where(ignored.Contains), StringComparer.OrdinalIgnoreCase);
+                    onBothSides.IntersectWith(ideFiles.Paths);
+                    ignoredStale = onBothSides.Where(path => !SameViewContent(path, diskSource, ideFiles, contentKeys)).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
                     diskSource = new IgnoredViewFiles(diskSource, ignored);
                     ideFiles = new IgnoredViewFiles(ideFiles, ignored);
                     if (baseFiles != null) baseView = new IgnoredViewFiles(baseFiles, ignored);
@@ -335,6 +340,7 @@ namespace Cts.Cli
                 var info = call.Options.Params.TryGetValue("compare_info", out var compareInfo) ? ((IEnumerable<string>)compareInfo).ToList() : new List<string>();
                 if (ownerKept.Count > 0) info.Add(OwnerKeptNote(ownerKept));
                 if (ignored.Count > 0) info.Add(ViewIgnore.Note(ignored.Count));
+                if (ignoredStale.Count > 0) info.Add(ViewIgnore.StaleNote(ignoredStale));
                 if (info.Count > 0) data["info"] = info;
                 var diskTimes = records.Where(r => r.Category == "modified" || r.Category == "added" || r.Category == "not_importable").Select(r => Path.Combine(view, r.Path.Replace('/', Path.DirectorySeparatorChar))).Where(File.Exists).Select(p => File.GetLastWriteTime(p)).ToList();
                 var lastEdit = new Dictionary<string, object>();
@@ -416,6 +422,22 @@ namespace Cts.Cli
                 else AddRecord(records, counts, "modified", name, entry.File, diskObject ?? ideObject, null, diskIdeParts, true, snapshotTimes);
             }
         }
+        // The files `import --include-ignored` names, view-relative: each must be one Git's ignore rules match.
+        static IEnumerable<string> IncludedIgnored(CliCall call, string view, ISet<string> ignored)
+        {
+            if (!call.Options.Params.TryGetValue("include_ignored", out var named)) return Enumerable.Empty<string>();
+            var included = new List<string>();
+            foreach (var path in ((IEnumerable<object>)named).Select(Convert.ToString))
+            {
+                var relative = ExportCommand.Relative(view, Path.GetFullPath(path));
+                if (!ignored.Contains(relative))
+                    throw new CliFailure(call.Command.Name, "refused", path + " is not a file of the view that Git's ignore rules match"
+                        + (relative.StartsWith("../", StringComparison.Ordinal) ? " (it is outside " + view + ")" : "; cts import carries it without --include-ignored"), "cts compare", 1);
+                included.Add(relative);
+            }
+            return included;
+        }
+
         static Dictionary<string, StViewObject> ByKey(StViewResult result) => result.Objects.GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         static bool PlainFolder(byte[] content)
         {
