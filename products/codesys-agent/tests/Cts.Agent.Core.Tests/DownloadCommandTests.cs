@@ -12,6 +12,7 @@ namespace Cts.Agent.Tests
         readonly string _root = Path.Combine(Path.GetTempPath(), "cts-download-" + Guid.NewGuid().ToString("N"));
         readonly CliCommand _command = CliCommands.All.Single(command => command.Name == "download");
         readonly List<string> _asked = new List<string>();
+        bool _ideSaves;
 
         public DownloadCommandTests()
         {
@@ -49,6 +50,28 @@ namespace Cts.Agent.Tests
             var answer = _command.Build(data);
             Assert.Contains(answer.Pairs, pair => pair.Key == "commit" && Equals(pair.Value, "unrecorded"));
             Assert.Contains(answer.Details, line => line.StartsWith("commit unrecorded: uncommitted changes", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void ARepositoryWithoutACommitSaysSoOnce()
+        {
+            Git("update-ref refs/cts/base HEAD");
+            Git("update-ref -d refs/heads/main");
+            var data = _command.Execute(Call("download", "--no-wait"));
+            Assert.Equal("the sync folder's repository has no commit yet: cts commit makes the first", ((IDictionary<string, object>)data["source"])["unrecorded"]);
+        }
+
+        // CODESYS saved the project on its own while it downloaded: the line says so.
+        [Fact]
+        public void AProjectTheIdeSavedDuringTheDownloadIsNamed()
+        {
+            File.WriteAllText(Path.Combine(_root, "sample.project"), "");
+            File.SetLastWriteTimeUtc(Path.Combine(_root, "sample.project"), DateTime.UtcNow.AddMinutes(-5));
+            Assert.False(_command.Execute(Call("download", "--no-wait")).ContainsKey("saved_by_ide"));
+            _ideSaves = true;
+            var answer = _command.Build(_command.Execute(Call("download", "--no-wait")));
+            Assert.Contains(answer.Pairs, pair => pair.Key == "saved" && Equals(pair.Value, "by-ide"));
+            Assert.Contains(answer.Details, line => line.StartsWith("the IDE saved the project during the download", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -94,6 +117,7 @@ namespace Cts.Agent.Tests
             {
                 _asked.Add(method);
                 object answer;
+                if (method == "app.download" && _ideSaves) File.SetLastWriteTimeUtc(Path.Combine(_root, "sample.project"), DateTime.UtcNow);
                 if (method == "app.download") answer = new Dictionary<string, object> { { "downloaded", true }, { "started", parameters["start"] }, { "application", "Application" } };
                 else if (method == "project.status") answer = new Dictionary<string, object> { { "plc", new Dictionary<string, object> { { "online", true }, { "application_state", "stop" } } } };
                 else throw new InvalidOperationException("unexpected agent call " + method);

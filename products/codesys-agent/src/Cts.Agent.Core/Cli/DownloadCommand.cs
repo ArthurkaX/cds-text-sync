@@ -20,7 +20,9 @@ namespace Cts.Cli
         {
             var options = call.Options.Params;
             var start = !Equals(Value(options, "start"), "0");
+            var watch = ProjectFileWatch.Start(call.Hello.ProjectPath);
             var data = new Dictionary<string, object>(call.Call("app.download", new Dictionary<string, object> { { "start", start } }));
+            watch.Report(data);
             if (Equals(Value(data, "downloaded"), true)) data["source"] = Record(call);
             if (!start)
             {
@@ -61,6 +63,8 @@ namespace Cts.Cli
             }
         }
 
+        internal const string SavedByIde = "the IDE saved the project during the download (cts did not ask it to): the file is now in this IDE's format";
+
         static IDictionary<string, object> Unrecorded(string why) => new Dictionary<string, object> { { "unrecorded", why } };
 
         public static Answer Build(IDictionary<string, object> data)
@@ -74,6 +78,7 @@ namespace Cts.Cli
                 .Add("value", Value(data, "value"))
                 .Add("application", Value(data, "application"))
                 .Add("plc", Value(data, "plc"));
+            if (Equals(Value(data, "saved_by_ide"), true)) answer.Add("saved", "by-ide").Detail(SavedByIde);
             if (Value(data, "source") is IDictionary<string, object> source)
             {
                 if (Value(source, "commit") is string commit && commit.Length > 0) answer.Add("commit", commit.Substring(0, Math.Min(8, commit.Length)));

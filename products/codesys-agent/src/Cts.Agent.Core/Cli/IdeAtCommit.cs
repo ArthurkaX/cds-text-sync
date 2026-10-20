@@ -16,6 +16,7 @@ namespace Cts.Cli
         {
             var baseRef = GitRun.In(folder, "rev-parse -q --verify refs/cts/base^{commit}");
             if (baseRef.ExitCode != 0) throw new InvalidOperationException("no sync base yet: run cts export first");
+            if (GitRepository.Position(folder)["commit"] == null) throw new InvalidOperationException("the sync folder's repository has no commit yet: cts commit makes the first");
             var paths = FolderGit.Uncommitted(folder, call.Hello.ProjectPath);
             if (paths.Count > 0) throw new InvalidOperationException("uncommitted changes in the sync folder, cts commit them first: " + string.Join(", ", paths.Take(5)) + (paths.Count > 5 ? " (+" + (paths.Count - 5) + " more)" : ""));
             var summary = ComparePlanner.Plan(call)["summary"] as IDictionary<string, object>;

@@ -21,7 +21,9 @@ namespace Cts.Cli
             if (options.TryGetValue("application", out var application)) parameters["application"] = application;
             var wait = options.TryGetValue("wait", out var seconds) ? Convert.ToDouble(seconds, CultureInfo.InvariantCulture) : 30;
             parameters["wait_ms"] = (long)(wait * 1000);
+            var watch = ProjectFileWatch.Start(call.Hello.ProjectPath);
             var data = new Dictionary<string, object>(call.Call(AppTests.Method, parameters, Math.Max(call.Seconds, wait + 90)));
+            watch.Report(data);
 
             var lines = Items(data, "log").OfType<IDictionary<string, object>>().Select(PlcLogCommand.Line).ToList();
             data["tests"] = lines.Select(CtsEvents.Parse)
@@ -50,6 +52,7 @@ namespace Cts.Cli
                 .Add("device", Value(data, "device"))
                 .Add("ms", Value(data, "ms"))
                 .Add("log", Value(data, "log_file"));
+            if (Equals(Value(data, "saved_by_ide"), true)) answer.Add("saved", "by-ide").Detail(DownloadCommand.SavedByIde);
             foreach (var test in Items(data, "tests").OfType<IDictionary<string, object>>().Where(t => Equals(t["status"], "FAIL")))
             {
                 var fields = (test["fields"] as IDictionary<string, object> ?? new Dictionary<string, object>()).Select(f => f.Key + "=" + f.Value);
