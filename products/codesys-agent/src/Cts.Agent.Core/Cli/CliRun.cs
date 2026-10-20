@@ -114,9 +114,26 @@ namespace Cts.Cli
         {
             var seconds = options.Timeout
                 ?? (command.TimeoutKey == null ? command.Seconds : hello.TimeoutFor(command.TimeoutKey) ?? DefaultTimeoutS);
+            var call = new CliCall(conn, host, command, options, hello, seconds);
             using (AcquireFolderLock(command, options, hello, error))
-                return command.Execute(new CliCall(conn, host, command, options, hello, seconds));
+            {
+                IDictionary<string, object> data;
+                try { data = command.Execute(call); }
+                catch (CliFailure failure) when (call.Seen.Count > 0)
+                {
+                    // A dialog the failure itself names is not repeated.
+                    var named = failure.Message + "\n" + failure.Note;
+                    var unnamed = call.Seen.Where(window => !named.Contains(window.Fingerprint));
+                    failure.Note = string.Join("\n", new[] { failure.Note }.Concat(SeenLines(unnamed)).Where(line => !string.IsNullOrEmpty(line)));
+                    throw;
+                }
+                if (call.Seen.Count == 0) return data;
+                return new Dictionary<string, object>(data) { ["dialogs_seen"] = call.Seen.Select(window => (object)window.ToData()).ToList() };
+            }
         }
+
+        // One line per dialog the IDE showed while the command ran.
+        static IEnumerable<string> SeenLines(IEnumerable<ModalWindow> windows) => windows.Select(window => "dialog seen meanwhile " + window.Snapshot());
 
         // An agent of another build than this cts.exe: what one of them has
         // the other may lack, so a command can fail for no reason it names.
@@ -229,6 +246,7 @@ namespace Cts.Cli
                     var shown = answer.Uncapped ? answer.Details.Count : MaxDetailLines;
                     foreach (var line in answer.Details.Take(shown)) output.WriteLine(line);
                     if (answer.Details.Count > shown) output.WriteLine("... and " + (answer.Details.Count - shown) + " more");
+                    foreach (var line in SeenLines(Dialogs.Of(data, "dialogs_seen"))) output.WriteLine(line);
                 }
                 output.WriteLine("ide-" + hello.Pid + " · " + (hello.ProjectName ?? (hello.UiBusy ? "project not read: the IDE was busy" : "no project")));
             }

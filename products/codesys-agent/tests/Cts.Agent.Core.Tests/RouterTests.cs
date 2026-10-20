@@ -36,6 +36,22 @@ namespace Cts.Agent.Tests
             Assert.Equal(5L, reply["result"]);
         }
 
+        // A dialog the IDE showed while the handler ran, and closed again,
+        // comes back with the result.
+        [Fact]
+        public void ADialogThatCameAndWentDuringAHandlerIsInItsResult()
+        {
+            var modal = new ModalState();
+            var r = new Router { Modal = modal };
+            var dialog = new ModalWindow { Hwnd = 5, Class = ModalPolicy.DialogClass, Title = "CODESYS", Text = "Thread was being aborted.", Buttons = new[] { "OK" }, Ownerless = true, Enabled = true, Visible = true };
+            r.Register("work", (req, s) => { modal.Update(new[] { dialog }); modal.Update(new ModalWindow[0]); return new Dictionary<string, object> { { "done", true } }; });
+            r.Register("quiet", (req, s) => new Dictionary<string, object> { { "done", true } });
+            var result = (IDictionary<string, object>)Reply(r.Handle("{\"id\":1,\"method\":\"work\"}", null))["result"];
+            var seen = Assert.Single((IList<object>)result["dialogs_seen"]);
+            Assert.Equal("Thread was being aborted.", ((IDictionary<string, object>)seen)["text"]);
+            Assert.False(((IDictionary<string, object>)Reply(r.Handle("{\"id\":2,\"method\":\"quiet\"}", null))["result"]).ContainsKey("dialogs_seen"));
+        }
+
         [Fact]
         public void EchoesNumericId()
         {

@@ -27,6 +27,11 @@ namespace Cts.Agent
         // while a modal dialog is open.
         public Func<Request, ProtocolException> Gate { get; set; }
 
+        // Optional: the agent's modal snapshot. A dialog that opened while a
+        // handler ran is named in its result as dialogs_seen: one the IDE
+        // showed and closed again on its own leaves no other trace.
+        public ModalState Modal { get; set; }
+
         public void Register(string method, Handler handler)
         {
             if (string.IsNullOrEmpty(method)) throw new ArgumentException("method is required", "method");
@@ -96,7 +101,12 @@ namespace Cts.Agent
                     if (blocked != null)
                         return Replies.Fail(request.Id, code = blocked.Code, blocked.Message, blocked.Details);
                 }
-                var result = Replies.Ok(request.Id, handler(request, session));
+                var epoch = Modal != null ? Modal.Epoch : 0L;
+                var value = handler(request, session);
+                var seen = Modal != null && !request.Method.StartsWith("dialog.", StringComparison.Ordinal) ? Modal.OpenedSince(epoch) : new ModalWindow[0];
+                if (seen.Length > 0 && value is IDictionary<string, object> answer)
+                    value = new Dictionary<string, object>(answer) { ["dialogs_seen"] = seen.Select(window => (object)window.ToData()).ToList() };
+                var result = Replies.Ok(request.Id, value);
                 ok = true;
                 return result;
             }

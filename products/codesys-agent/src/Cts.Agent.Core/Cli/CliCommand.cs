@@ -155,6 +155,18 @@ namespace Cts.Cli
         public Hello Hello { get; private set; }
         public double Seconds { get; private set; }
 
+        // The questions the IDE showed while this command's calls ran, once
+        // each: the watch's probes and the agent's own dialogs_seen. A
+        // progress window is part of the command and is left out.
+        internal List<ModalWindow> Seen { get; } = new List<ModalWindow>();
+
+        void Saw(IEnumerable<ModalWindow> windows)
+        {
+            lock (Seen)
+                foreach (var window in windows.Where(DialogWatch.IsQuestion))
+                    if (!Seen.Any(known => known.Fingerprint == window.Fingerprint)) Seen.Add(window);
+        }
+
         // One agent call within the command's budget; the agent waits as long
         // for the IDE to start it. A failure ends the command (CliFailure)
         // unless the caller goes on after a Declined one.
@@ -173,7 +185,14 @@ namespace Cts.Cli
             object result;
             try { result = _callOverride != null ? _callOverride(method, parameters) : Watched(method, request, ms); }
             catch (AgentException e) { throw Failure(method, e); }
-            return result as IDictionary<string, object> ?? new Dictionary<string, object> { { "result", result } };
+            var answer = result as IDictionary<string, object> ?? new Dictionary<string, object> { { "result", result } };
+            if (answer.ContainsKey("dialogs_seen"))
+            {
+                Saw(Dialogs.Of(answer, "dialogs_seen"));
+                answer = new Dictionary<string, object>(answer);
+                answer.Remove("dialogs_seen");
+            }
+            return answer;
         }
 
         // The call, with the dialog watch beside it (DialogWatch). A dialog.*
@@ -183,7 +202,7 @@ namespace Cts.Cli
         {
             if (method.StartsWith("dialog.", StringComparison.Ordinal)) return _conn.Call(method, request, ms);
             var call = Task.Run(() => _conn.Call(method, request, ms));
-            try { return DialogWatch.Await(call, Probe, method); }
+            try { return DialogWatch.Await(call, () => { var windows = Probe(); Saw(windows); return windows; }, method); }
             catch (AgentException e) when (e.Code == "dialog_opened")
             {
                 _conn.Dispose();

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Xunit;
 
@@ -131,6 +132,20 @@ namespace Cts.Agent.Tests
         }
 
         // ---- ModalState
+
+        // A dialog that opened after the epoch is named, closed again or not.
+        [Fact]
+        public void OpenedSinceNamesTheDialogsThatCameEvenWhenTheyWent()
+        {
+            var state = new ModalState();
+            state.Update(new[] { Dialog(1, "Before") });
+            var epoch = state.Epoch;
+            state.Update(new[] { Dialog(1, "Before"), Dialog(2, "Thread was being aborted") });
+            state.Update(new ModalWindow[0]);
+            state.Update(new[] { Dialog(3, "Save changes?") });
+            Assert.Equal(new[] { "Thread was being aborted", "Save changes?" }, state.OpenedSince(epoch).Select(window => window.Title));
+            Assert.Empty(state.OpenedSince(state.Epoch));
+        }
 
         [Fact]
         public void AnOpenedDialogGetsAnIdRaisesOpenedAndBumpsTheEpoch()

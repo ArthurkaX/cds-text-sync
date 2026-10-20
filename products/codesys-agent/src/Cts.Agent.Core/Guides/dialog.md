@@ -14,6 +14,12 @@ cts dialog answer --choose "<option>" --press "<button>"
 Both commands are answered off the UI thread, so they work precisely when
 everything else is refused.
 
+A question the IDE showed while a command ran, and that went away before
+anyone answered it (CODESYS closes some on its own, an error box among them),
+is named under the command's line, once each, as `dialog seen meanwhile [id
+...]: ...`, and under `dialogs_seen` in `--json`; a failed command names it on
+its error output. A progress window is part of the command and is not named.
+
 ## The verdict line, then the dialog
 
 ```

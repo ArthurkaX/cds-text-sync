@@ -222,7 +222,7 @@ namespace Cts.Cli
         public string Next { get; private set; }
         public int ExitCode { get; private set; }
         // A line for stderr after the message (the dialog a refusal saw), or null.
-        public string Note { get; private set; }
+        public string Note { get; internal set; }
         // The agent ran the call and refused it: nothing of it happened and the
         // connection still serves the next call, so a caller may note the
         // refusal and go on. False for a failure whose outcome is unknown (no

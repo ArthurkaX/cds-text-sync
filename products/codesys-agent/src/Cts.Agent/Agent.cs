@@ -56,6 +56,7 @@ namespace Cts.Agent
             _router.OnHandlerFault = (m, e) => _log.Write("handler " + m + " failed: " + e);
             // Every request the router answers also becomes one line in the agent log.
             _router.OnActivity = _log.Write;
+            _router.Modal = _modal;
             // While a modal dialog is up only the UI-free methods answer; this
             // gate turns everything else into dialog_blocked before its handler
             // runs.  It confirms the cached snapshot with one fresh look before

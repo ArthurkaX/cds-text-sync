@@ -29,6 +29,9 @@ namespace Cts.Agent
         // The last few windows that closed, each with the epoch its close made.
         readonly List<KeyValuePair<long, ModalWindow>> _closed = new List<KeyValuePair<long, ModalWindow>>();
         const int ClosedKept = 8;
+        // The last few windows that opened, each with the epoch its opening made.
+        readonly List<KeyValuePair<long, ModalWindow>> _opened = new List<KeyValuePair<long, ModalWindow>>();
+        const int OpenedKept = 16;
         long _epoch;
         long _nextId;
 
@@ -57,6 +60,19 @@ namespace Cts.Agent
                 var list = new List<ModalWindow>();
                 for (var i = _closed.Count - 1; i >= 0; i--)
                     if (_closed[i].Key > epoch) list.Add(_closed[i].Value);
+                return list.ToArray();
+            }
+        }
+
+        // The windows that opened after *epoch*, oldest first, open or closed
+        // since: what a call that began at that epoch names as seen meanwhile.
+        public ModalWindow[] OpenedSince(long epoch)
+        {
+            lock (_lock)
+            {
+                var list = new List<ModalWindow>();
+                foreach (var pair in _opened)
+                    if (pair.Key > epoch) list.Add(pair.Value);
                 return list.ToArray();
             }
         }
@@ -92,6 +108,8 @@ namespace Cts.Agent
                         _open.Add(window.Hwnd, window);
                         _epoch++;
                         opened.Add(window);
+                        _opened.Add(new KeyValuePair<long, ModalWindow>(_epoch, window));
+                        if (_opened.Count > OpenedKept) _opened.RemoveAt(0);
                     }
                 }
 

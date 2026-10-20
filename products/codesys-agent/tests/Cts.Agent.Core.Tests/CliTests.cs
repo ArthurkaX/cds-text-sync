@@ -322,6 +322,22 @@ namespace Cts.Agent.Tests
             }
         }
 
+        // The IDE showed a question during the build and it went away on its
+        // own: the answer names it under the line, and --json carries it.
+        [Fact]
+        public void A_dialog_that_came_and_went_during_a_command_is_named_under_its_line()
+        {
+            var host = new FakeHost();
+            host.Agents[7144] = Agent(null, null, (method, parameters) => method == "app.build"
+                ? new Dictionary<string, object> { { "application", "App" }, { "compiled", true }, { "messages", new object[0] }, { "dialogs_seen", new List<object> { LoginDialog("3f9a1c02") } } }
+                : new Dictionary<string, object>());
+            var (code, output, _) = Run(host, "build");
+            Assert.Equal(0, code);
+            Assert.Contains("\ndialog seen meanwhile [id 3f9a1c02]: CODESYS - The application changed since last download.", output);
+            var (_, json, _) = Run(host, "build", "--json");
+            Assert.Contains("\"dialogs_seen\"", json);
+        }
+
         [Fact]
         public void A_command_stopped_by_a_dialog_prints_the_answer_and_dialog_once()
         {
