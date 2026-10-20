@@ -125,6 +125,27 @@ namespace Cts.Agent.Tests
                 Assert.IsType<List<string>>(added[".gitignore"]));
         }
 
+        // A sync folder reached through another spelling of the repository's
+        // root (a mapped drive on Windows, a link here) is that root: git's
+        // --show-toplevel names the target, and the folder keeps its own path.
+        [Fact]
+        public void RepositoryRootReachedThroughALinkIsTheSyncFolder()
+        {
+            var root = Temp();
+            var target = Path.Combine(root, "share");
+            Directory.CreateDirectory(target);
+            GitRepository.Run(target, "init --quiet");
+            var link = Path.Combine(root, "mapped");
+            Directory.CreateSymbolicLink(link, target);
+            Assert.Equal(false, GitFolder.Prepare(link, "id")["initialized"]);
+            Assert.Equal(link, GitRepository.Repository(link));
+            Assert.Equal(link, GitRepository.ReadFacts(link).Root);
+            var inside = Path.Combine(link, "sub");
+            Directory.CreateDirectory(inside);
+            var refusal = Assert.Throws<InvalidOperationException>(() => GitRepository.Repository(inside));
+            Assert.Contains("is inside the repository at " + link + ", not at its root", refusal.Message);
+        }
+
         static string Temp()
         {
             var path = Path.Combine(Path.GetTempPath(), "cts-sync-" + Guid.NewGuid().ToString("N"));

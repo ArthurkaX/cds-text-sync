@@ -17,7 +17,7 @@ namespace Cts.Cli
         {
             if (!Directory.Exists(folder)) return None();
             GitRun top;
-            try { top = GitRun.In(folder, "rev-parse --show-toplevel"); }
+            try { top = GitRun.In(folder, "rev-parse --show-cdup"); }
             catch (InvalidOperationException error) { return Failed(error.Message); }
             if (top.ExitCode != 0)
             {
@@ -26,7 +26,7 @@ namespace Cts.Cli
                     ? None()
                     : Failed("git refuses the repository at " + folder + ": " + message);
             }
-            var root = Path.GetFullPath(top.Output.Trim());
+            var root = GitRepository.RootOf(folder, top.Output);
             var position = GitRepository.Position(root);
             var status = GitRun.In(root, "status --porcelain=v1 -z");
             if (status.ExitCode != 0) return Failed("git status failed: " + status.Message);

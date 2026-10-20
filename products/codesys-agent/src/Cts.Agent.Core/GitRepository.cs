@@ -21,13 +21,13 @@ namespace Cts.Agent
             if (string.IsNullOrWhiteSpace(folder)) throw new InvalidOperationException(" is not a git repository. Run 'cts set-sync-folder' with it to make one.");
             folder = Path.GetFullPath(folder);
             if (!Directory.Exists(folder)) throw new InvalidOperationException(folder + " is not a git repository. Run 'cts set-sync-folder' with it to make one.");
-            var result = GitRun.In(folder, "rev-parse --show-toplevel --absolute-git-dir --show-object-format -q --verify refs/cts/base^{commit}");
-            var lines = result.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length < 3 || result.ExitCode != 0 && result.ExitCode != 1)
+            var result = GitRun.In(folder, "rev-parse --show-cdup --absolute-git-dir --show-object-format -q --verify refs/cts/base^{commit}");
+            var lines = result.Output.Replace("\r", "").Split('\n');
+            if (lines.Length < 3 || lines[1].Trim().Length == 0 || result.ExitCode != 0 && result.ExitCode != 1)
                 throw new InvalidOperationException(folder + " is not a git repository. Run 'cts set-sync-folder' with it to make one.");
-            var root = Path.GetFullPath(lines[0].Trim());
+            var root = RootOf(folder, lines[0]);
             RequireRoot(root, folder);
-            return new Facts { Root = root, GitDir = lines[1].Trim(), ObjectFormat = lines[2].Trim(), BaseCommit = result.ExitCode == 0 && lines.Length > 3 ? lines[3].Trim() : null };
+            return new Facts { Root = root, GitDir = lines[1].Trim(), ObjectFormat = lines[2].Trim(), BaseCommit = result.ExitCode == 0 && lines.Length > 3 && lines[3].Trim().Length > 0 ? lines[3].Trim() : null };
         }
 
         public static string Repository(string folder)
@@ -35,12 +35,18 @@ namespace Cts.Agent
             if (string.IsNullOrWhiteSpace(folder)) throw new InvalidOperationException(" is not a git repository. Run 'cts set-sync-folder' with it to make one.");
             folder = Path.GetFullPath(folder);
             if (!Directory.Exists(folder)) throw new InvalidOperationException(folder + " is not a git repository. Run 'cts set-sync-folder' with it to make one.");
-            var top = GitRun.In(folder, "rev-parse --show-toplevel");
+            var top = GitRun.In(folder, "rev-parse --show-cdup");
             if (top.ExitCode != 0) throw new InvalidOperationException(folder + " is not a git repository. Run 'cts set-sync-folder' with it to make one.");
-            var root = Path.GetFullPath(top.Output.Trim());
+            var root = RootOf(folder, top.Output);
             RequireRoot(root, folder);
             return root;
         }
+
+        // The root of the repository that holds *folder*, from git's
+        // --show-cdup there, in the spelling of *folder*: git's own
+        // --show-toplevel resolves a mapped drive to its UNC path and a
+        // link to its target, which no path the user gave matches.
+        internal static string RootOf(string folder, string cdup) => Path.GetFullPath(Path.Combine(folder, cdup.Trim(), "."));
 
         // Refuses a sync folder that lies inside the repository at *root* but is not its root.
         internal static void RequireRoot(string root, string folder)

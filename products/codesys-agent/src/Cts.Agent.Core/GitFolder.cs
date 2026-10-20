@@ -18,8 +18,8 @@ namespace Cts.Agent
                 throw new InvalidOperationException("it holds a cds-text-sync 3.x export (.dump/manifest.json), which this version does not take over: choose a new folder and cts export the project into it");
             var existing = folder;
             while (!Directory.Exists(existing) && Path.GetDirectoryName(existing) != existing) existing = Path.GetDirectoryName(existing);
-            var rootRun = GitRun.In(existing, "rev-parse --show-toplevel");
-            var root = rootRun.ExitCode == 0 ? Path.GetFullPath(rootRun.Output.Trim()) : "";
+            var rootRun = GitRun.In(existing, "rev-parse --show-cdup");
+            var root = rootRun.ExitCode == 0 ? GitRepository.RootOf(existing, rootRun.Output) : "";
             if (root != "") GitRepository.RequireRoot(root, folder);
             var initialized = root == "";
             Directory.CreateDirectory(folder);
