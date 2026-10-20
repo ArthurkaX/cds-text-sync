@@ -541,6 +541,8 @@ under `"analyze"`: `fail_on`, `incomplete`, `rules.<ID>.enabled`/`severity`/
 
 `cts docs` writes `.cts-docs/` beside the project view, offline: read `index.md` first, then `project/<Name>.md` for an object (interface, inherited members, methods/properties/actions, calls, callers, tasks, globals read and written) and `libraries/<Name>-<Version>.md` for a referenced library's LibDoc (signature, description, example, interface). `symbols.jsonl` is one JSON line per symbol, to search. A library without LibDoc of the referenced version is listed under Missing LibDoc with the reason; another version never stands in. `--libraries DIR` (default `C:\ProgramData\CODESYS`), `--out DIR`, `--check` (exit 0 fresh, 1 stale, 2 no bundle). `--show NAME` prints one library symbol's page instead and writes nothing: `TON`, `Standard.TON` or `NBS.TCP_Client` (by namespace or library name), with the methods documented below it; a library's or namespace's name alone prints all of it; no match names the symbols that hold the name (exit 1).
 
+`cts lib` lists the library references of each `Library Manager.xml` in the sync folder (namespace, library, placeholder, `qualified-only`), offline. `cts lib set NAME --qualified-only on|off`, `cts lib add "Name, Version (Vendor)" --namespace NS [--qualified-only]` and `cts lib remove NAME` edit those files, only the lines of that reference; NAME is the library's name, its placeholder or its namespace, `--app` picks one application's manager. `cts import` then loads the change in the IDE and names a library that does not load. A build whose errors name unknown types or identifiers says which libraries are qualified-only.
+
 ## FSM Transition Maps
 
 | Goal | Command |

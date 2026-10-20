@@ -52,7 +52,7 @@ namespace Cts.Cli
             if (data.TryGetValue("show", out var show))
             {
                 var found = (IList<object>)data["found"];
-                var shown = new Answer().Add("show", show).Add("found", found.Count);
+                var shown = new Answer().Add("show", show).Add("found", found.Count).Whole();
                 foreach (IDictionary<string, object> symbol in found) shown.Detail("# " + symbol["library"] + "\n" + symbol["text"]);
                 if (found.Count > 0) return shown;
                 var near = (IList<object>)data["near"];

@@ -200,7 +200,7 @@ namespace Cts.Cli
             if (codes.Count > 0) answer.Add("error_codes", string.Join(",", codes));
             if (Value(data, "qualified_only") is IEnumerable<object> qualified)
                 answer.Detail(Value(data, "unknown_names") + " errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): "
-                    + string.Join(", ", qualified) + ". Write the prefix, or clear Qualified only in the library's properties");
+                    + string.Join(", ", qualified) + ". Write the prefix, or cts lib set NAMESPACE --qualified-only off, then cts import");
             foreach (var item in Rows(errors, 12, "", "errors")) answer.Detail(item);
             foreach (var item in Rows(warnings, errors.Count > 0 ? 5 : 15, "warning ", "warnings")) answer.Detail(item);
             if (errors.Count > 0 || Equals(Value(data, "diagnostics_complete"), false) || data.ContainsKey("install_error")) answer.Failed();

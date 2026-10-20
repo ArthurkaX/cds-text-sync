@@ -115,6 +115,7 @@ namespace Cts.Cli
             foreach (var command in VisuRenderCommands.Commands) commands.Add(command);
             foreach (var command in PlcCommand.Commands) commands.Add(command);
             commands.Add(DocsCommand.Command);
+            commands.AddRange(LibCommand.Commands);
             return commands;
         }
 
