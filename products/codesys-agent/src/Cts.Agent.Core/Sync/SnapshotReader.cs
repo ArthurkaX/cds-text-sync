@@ -122,6 +122,9 @@ namespace Cts.Sync
         // in two. A path that matches the parent chain apart from case takes
         // the parent's spelling, parents first; a folder, which has no parent
         // GUID, takes the spelling the parented objects use for its segments.
+        // A label that differs in more than case (a task configuration a
+        // script named "TaskConfiguration", labelled "Task Configuration")
+        // gives way too when the path is as deep as the parent chain.
         static void AlignPaths(ProjectModel model)
         {
             foreach (var node in model.Nodes.Values.OrderBy(n => Depth(model, n)))
@@ -132,7 +135,7 @@ namespace Cts.Sync
                 var derived = parent.DisplayPath.Where(p => p.Length > 0).Select(model.SafeComponent)
                     .Concat(new[] { model.SafeComponent(parent.OutputName ?? parent.Name) }).ToList();
                 var shared = Math.Min(recorded.Count, derived.Count);
-                if (!recorded.Take(shared).SequenceEqual(derived.Take(shared), StringComparer.OrdinalIgnoreCase)) continue;
+                if (recorded.Count != derived.Count && !recorded.Take(shared).SequenceEqual(derived.Take(shared), StringComparer.OrdinalIgnoreCase)) continue;
                 SetPath(node, derived.Take(recorded.Count).Concat(recorded.Skip(derived.Count)));
             }
             var spelling = new Dictionary<string, string>(StringComparer.Ordinal);

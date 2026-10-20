@@ -626,6 +626,25 @@ namespace Cts.Agent.Tests
             finally { Directory.Delete(root, true); }
         }
 
+        // A project a script made: the task configuration is named
+        // "TaskConfiguration", and CODESYS records its task's path with the
+        // labels "PLC Logic" and "Task Configuration". The task goes into the
+        // folder of its parents' names, with the other objects.
+        [Fact]
+        public void ATaskGoesBelowItsParentsNamesWhenTheLabelsDiffer()
+        {
+            var model = SnapshotReader.FromSkeleton(new[]
+            {
+                new SnapshotNodeFields { Guid = "d1", Name = "Test", Type = "device", Path = new List<string>() },
+                new SnapshotNodeFields { Guid = "l1", ParentGuid = "d1", Name = "Plc Logic", Type = "logic", Path = new List<string> { "Test" } },
+                new SnapshotNodeFields { Guid = "a1", ParentGuid = "l1", Name = "TestApp", Type = "app", Path = new List<string> { "Test", "PLC Logic" } },
+                new SnapshotNodeFields { Guid = "c1", ParentGuid = "a1", Name = "TaskConfiguration", Type = "config", Path = new List<string> { "Test", "PLC Logic", "TestApp" } },
+                new SnapshotNodeFields { Guid = "t1", ParentGuid = "c1", Name = "TestTask", Type = "task", Path = new List<string> { "Test", "PLC Logic", "TestApp", "Task Configuration" } },
+            }, "");
+            Assert.Equal(new[] { "Test", "Plc Logic", "TestApp", "TaskConfiguration", "TestTask" }, model.Nodes["t1"].Parts(model));
+            Assert.Equal(new[] { "Test", "Plc Logic", "TestApp", "TaskConfiguration" }, model.Nodes["c1"].Parts(model));
+        }
+
         [Fact]
         public void CSharpBaseTreeMatchesPythonExportGolden()
         {
