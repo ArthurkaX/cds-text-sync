@@ -422,7 +422,7 @@ namespace Cts.Cli
         // group names lands in "other commands".
         static readonly KeyValuePair<string, string[]>[] Groups =
         {
-            Group("IDE and its state", "ping", "status", "agent list", "dialog", "dialog answer", "read-log", "permissions", "project open", "project close", "project list"),
+            Group("IDE and its state", "ping", "status", "agent list", "dialog", "dialog answer", "read-log", "permissions", "project new", "project open", "project close", "project list"),
             Group("folder and IDE", "export", "compare", "import", "sync", "save", "set-sync-folder", "new", "fmt", "tool"),
             Group("git", "branch", "checkout", "commit", "merge", "push", "log", "project update", "open", "hook"),
             Group("project", "project-tree", "read-object", "project list-devices", "project device-types", "project change-device", "project simulate", "project set-credentials", "lib", "lib set", "lib add", "lib remove"),

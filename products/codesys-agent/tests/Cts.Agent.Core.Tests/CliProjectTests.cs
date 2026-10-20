@@ -2,6 +2,7 @@ using System;
 using Cts.Cli;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace Cts.Agent.Tests
@@ -135,6 +136,33 @@ namespace Cts.Agent.Tests
             Assert.Equal("--profile=\"CODESYS V3.5 SP22\" \"--runscript=C:\\S b\\cds-text-sync.py\"",
                 ProjectOpenCommand.CommandLine(@"C:\a b\P.project", @"C:\S b\cds-text-sync.py", "CODESYS V3.5 SP22"));
             Assert.Equal("--project=P", ProjectOpenCommand.CommandLine("P", null, null));
+        }
+
+        [Fact]
+        public void Project_new_copies_the_installations_empty_project_as_a_project_or_a_library()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-new-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var common = Path.Combine(root, "CODESYS", "Common");
+                var templates = Path.Combine(root, "CODESYS", "Templates");
+                Directory.CreateDirectory(common);
+                Directory.CreateDirectory(templates);
+                var exe = Path.Combine(common, "CODESYS.exe");
+                File.WriteAllText(exe, "");
+                File.WriteAllText(Path.Combine(templates, "Empty.project"), "empty");
+                var command = CliCommands.All.Single(c => c.Name == "project" && c.Sub == "new");
+                IDictionary<string, object> New(string path) =>
+                    command.LocalExecute(CliOptions.Parse(new[] { "project", "new", "--path", path, "--codesys", exe }, null, command), null, root);
+
+                var library = New(Path.Combine("out", "Lib.library"));
+                Assert.Equal("library", library["kind"]);
+                Assert.Equal("empty", File.ReadAllText(Path.Combine(root, "out", "Lib.library")));
+                Assert.Equal("project", New("P.project")["kind"]);
+                Assert.Equal("refused", Assert.Throws<CliFailure>(() => New("P.project")).Cause);
+                Assert.Equal("usage", Assert.Throws<CliFailure>(() => New("P.txt")).Cause);
+            }
+            finally { Directory.Delete(root, true); }
         }
 
         [Fact]

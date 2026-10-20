@@ -98,6 +98,7 @@ namespace Cts.Cli
             VerifyCommand.Command,
             ProjectUpdateCommand.Command,
             ProjectOpenCommand.Command,
+            ProjectNewCommand.Command,
             InstallCommand.Command,
             ToolCommand.Command,
             TeamGuard.Command,
