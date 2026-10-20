@@ -143,10 +143,15 @@ namespace Cts.Cli
                         + "or run cds-text-sync once from the CODESYS menu (Tools > Scripting > Scripts > C > cds-text-sync).", NoAgentNext, 2);
                 var held = alive.Count == 1 ? alive : ByWorkFolder(alive, workFolder);
                 foreach (var other in alive.Where(a => !held.Contains(a) || held.Count != 1)) other.Key.Dispose();
-                if (held.Count != 1)
+                if (held.Count > 1)
+                    throw new CliFailure(command, "several agents for this folder",
+                        "Several IDEs have their sync folder here (copies of one project); choose one with --target ide-<pid>, "
+                        + "or set CTS_TARGET=ide-<pid> for every command of this shell. Available: "
+                        + string.Join(", ", held.Select(a => "ide-" + a.Value.Pid + " (" + (a.Value.ProjectPath ?? "no project") + ")")), null, 2);
+                if (held.Count == 0)
                     throw new CliFailure(command, "several agents, none for this folder",
-                        "Several agents are running and none has its sync folder here; run cts in that project's sync folder "
-                        + "or choose one with --target ide-<pid>. Available: "
+                        "Several agents are running and none has its sync folder here; run cts in that project's sync folder, "
+                        + "choose one with --target ide-<pid>, or set CTS_TARGET=ide-<pid> for every command of this shell. Available: "
                         + string.Join(", ", alive.Select(a => "ide-" + a.Value.Pid + " (" + (a.Value.SyncFolder ?? "no sync folder") + ")")), null, 2);
                 chosen = held[0];
             }

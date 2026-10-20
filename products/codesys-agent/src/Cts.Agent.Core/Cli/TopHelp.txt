@@ -28,7 +28,8 @@ Rules:
   - A modal dialog blocks the IDE: cts dialog reads it, cts dialog answer
     answers it.
   - With several IDEs open, run cts in the project's sync folder or pass the
-    same --target and --expect-project on every command:
+    same --target and --expect-project on every command (or set CTS_TARGET
+    once for the shell):
       cts --target ide-3684 --expect-project Demo status
   - Read `cts guide` before the first task: the workflow, the command
     reference and the topic guides (HMI screens: cts guide visu-svg).

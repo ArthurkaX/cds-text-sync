@@ -607,6 +607,21 @@ namespace Cts.Agent.Tests
             Assert.Contains(@"ide-1 (C:\a), ide-2 (no sync folder)", error);
         }
 
+        // A copy of the project in a second IDE finds the same sync folder.
+        [Fact]
+        public void Two_agents_for_this_folder_name_their_projects_and_the_shell_setting()
+        {
+            var host = new FakeHost();
+            host.Agents[1] = Agent(@"C:\work\plant\plant.project", @"C:\work\plant", Pong);
+            host.Agents[2] = Agent(@"D:\copy\plant.project", @"C:\work\plant", Pong);
+
+            var (code, output, error) = Run(host, "ping");
+
+            Assert.Equal(2, code);
+            Assert.StartsWith("error ping cause=\"several agents for this folder\"", output);
+            Assert.Contains(@"set CTS_TARGET=ide-<pid> for every command of this shell. Available: ide-1 (C:\work\plant\plant.project), ide-2 (D:\copy\plant.project)", error);
+        }
+
         [Fact]
         public void Target_picks_the_ide_and_an_unknown_one_is_not_reachable()
         {
