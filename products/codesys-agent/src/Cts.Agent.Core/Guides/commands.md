@@ -205,7 +205,7 @@ may save other pending IDE edits. Use `cts import --save` when the user asked
 to apply and save folder changes. It also saves when there are no folder
 changes, so it can be used as a persistence step.
 
-Import applies to the in-memory project and does not save — saving commits everything else open in the IDE, so it is the user's call. Report the `unsaved` warning when it appears; use `--save` only when the user asked for it (it saves through the agent after a clean read-back and reports `saved=true`; a partial run never saves).
+Import applies to the in-memory project and does not save — saving commits everything else open in the IDE, so it is the user's call: the line says `saved=false` while the IDE holds the change unsaved. Use `--save` only when the user asked for it (it saves through the agent after a clean read-back and reports `saved=true`; a partial run never saves).
 
 ### Import
 

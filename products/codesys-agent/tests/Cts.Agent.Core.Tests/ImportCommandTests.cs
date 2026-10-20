@@ -2550,7 +2550,7 @@ namespace Cts.Agent.Tests
                 answer.Pairs.Select(pair => pair.Key + "=" + Convert.ToString(pair.Value)));
             Assert.Equal(Verdict.Partial, answer.Status);
             Assert.Equal(2, answer.ExitCode);
-            Assert.Contains("the IDE holds the change unsaved; saving the project is the user's call (cts save)", answer.Details);
+            Assert.DoesNotContain(answer.Details, line => line.Contains("unsaved"));
         }
 
         [Fact]

@@ -71,7 +71,6 @@ namespace Cts.Cli
             if (data.TryGetValue("partial_reason", out var partialReason)) output.Detail(partialReason);
             if (data.TryGetValue("save_dialog", out var saveDialog)) output.Detail("not saved yet: " + saveDialog + "; the save finishes once it is answered (cts dialog answer)");
             else if (data.TryGetValue("save_error", out var saveError)) output.Detail("not saved: " + saveError + "; cts save saves it");
-            if (Equals(data.ContainsKey("saved") ? data["saved"] : null, false) && (updatedText.Count + createdText.Count + updatedFields.Count + createdNative.Count + updatedNative.Count + created.Count + deleted.Count > 0)) output.Detail("the IDE holds the change unsaved; saving the project is the user's call (cts save)");
             if (Equals(data.ContainsKey("partial") ? data["partial"] : null, true)) output.Partial().WithExitCode(2);
             return output;
         }
