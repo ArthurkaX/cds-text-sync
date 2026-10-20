@@ -173,8 +173,9 @@ namespace Cts.Agent
         // The records reach the log the logger service reads after
         // TestResult.Done, so the log is read again until it holds a
         // TEST_START other than *previousStart* (the one the run before read)
-        // with as many results as the counts, or LogWaitMs ran out.  Returns
-        // the TEST_START read, for the next run.
+        // with as many results as the counts, or LogWaitMs ran out.  Only
+        // *previousStart* then means the tests did not run and the counts are
+        // stale: the run fails.  Returns the TEST_START read, for the next run.
         static string RunLog(TestPlans.Call call, Action<long> sleep, Func<long> clockMs, Dictionary<string, object> answer, string previousStart, long expected)
         {
             var deadline = clockMs() + LogWaitMs;
@@ -196,9 +197,14 @@ namespace Cts.Agent
             if (start < 0 || StartKey(entries[start]) == previousStart)
             {
                 answer["log"] = new List<object>();
-                answer["log_error"] = start < 0
-                    ? "the log has no " + StartMarker + " record: the tests log nothing to the runtime's log (cts guide tests)"
-                    : "the log shows no " + StartMarker + " record of this run " + LogWaitMs / 1000 + " s after " + Gvl + ".Done, only the run before's; the counts say whether the tests passed";
+                if (start < 0)
+                    answer["log_error"] = "the log has no " + StartMarker + " record: the tests log nothing to the runtime's log (cts guide tests)";
+                else
+                {
+                    answer["status"] = "FAIL";
+                    answer["error"] = "the tests did not run: " + LogWaitMs / 1000 + " s after " + Gvl + ".Done the log shows no "
+                        + StartMarker + " record of this run, only an earlier run's, and the counts are that run's";
+                }
                 return previousStart;
             }
             answer["log"] = entries.GetRange(start, entries.Count - start);

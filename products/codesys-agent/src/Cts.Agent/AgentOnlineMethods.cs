@@ -16,8 +16,7 @@ namespace Cts.Agent
             // Store the logged-in application as the PLC's boot application (`cts boot-app`).
             _router.Register("app.bootapp", (req, s) => _ide.OnUi("app.bootapp", StartTimeout.Parse(req, UiTimeoutMs), () => _ide.CreateBootApplication()));
             // Reset the logged-in application (`cts reset`).
-            _router.Register("app.reset", (req, s) => _ide.OnUi("app.reset", StartTimeout.Parse(req, UiTimeoutMs),
-                () => _ide.ResetApplication(req.String("kind", "warm"), req.Bool("force", false))));
+            _router.Register("app.reset", (req, s) => _ide.ResetApplication(req.String("kind", "warm"), req.Bool("force", false), StartTimeout.Parse(req, UiTimeoutMs)));
             // Whether the PLC runs the code the IDE generated last (`cts plc-crc`).
             _router.Register("app.crc", (req, s) => _ide.OnUi("app.crc", StartTimeout.Parse(req, UiTimeoutMs), () => _ide.ApplicationChecksums()));
             // The entries of one directory on the PLC (`cts plc ls`).

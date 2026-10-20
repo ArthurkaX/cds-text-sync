@@ -228,7 +228,7 @@ namespace Cts.Agent.Core.Tests
 
         // The records reach the log a read or two after Done: each run waits
         // for its own TEST_START and results, and a run whose records never
-        // come gets no log rather than the run before's.
+        // come did not run: it fails, with no log rather than the run before's.
         [Fact]
         public void Each_run_waits_for_its_own_records_in_the_log()
         {
@@ -253,8 +253,8 @@ namespace Cts.Agent.Core.Tests
             runs = ((IList<object>)Run(repeat: 2, reset: true)["runs"]).Cast<IDictionary<string, object>>().ToList();
             Assert.Equal(3, Infos(runs[0]["log"]).Count);
             Assert.Empty(Infos(runs[1]["log"]));
-            Assert.Contains("no CTS|M|TEST_START| record of this run 5 s after TestResult.Done", (string)runs[1]["log_error"]);
-            Assert.Equal("PASS", runs[1]["status"]);
+            Assert.Contains("the tests did not run: 5 s after TestResult.Done the log shows no CTS|M|TEST_START| record of this run", (string)runs[1]["error"]);
+            Assert.Equal("FAIL", runs[1]["status"]);
         }
 
         [Fact]

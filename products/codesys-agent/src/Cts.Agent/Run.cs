@@ -220,7 +220,27 @@ namespace Cts.Agent
             };
         }
 
-        public Dictionary<string, object> ResetApplication(string kind, bool force)
+        // Reset on the UI thread, then wait (off it) until the runtime reports
+        // the stopped application: the IDE shows it running a moment longer,
+        // and a start meanwhile finds nothing to do and the reset then stops it.
+        public Dictionary<string, object> ResetApplication(string kind, bool force, int startMs)
+        {
+            var result = OnUi("app.reset", startMs, () => ResetOnUi(kind, force));
+            var timer = Stopwatch.StartNew();
+            while (Equals(result.TryGetValue("application_state", out var state) ? state : null, "run") && timer.ElapsedMilliseconds < RunSettleMs)
+            {
+                Thread.Sleep(RunPollMs);
+                try { result["application_state"] = OnUi("app.reset", startMs, () => ApplicationStateOf(ActiveApplication())); }
+                catch (Exception e)
+                {
+                    result.Remove("application_state");
+                    result["application_state_error"] = Invocation.Cause(e).Message;
+                }
+            }
+            return result;
+        }
+
+        Dictionary<string, object> ResetOnUi(string kind, bool force)
         {
             var option = ResetKinds.Option(kind, force);
             string raw; bool readable;
