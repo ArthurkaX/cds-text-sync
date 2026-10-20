@@ -172,6 +172,8 @@ namespace Cts.Agent
             reason = by == null ? ""
                 : by == method ? "Forbidden by the deny list (deny list includes '" + method + "')"
                 : "Forbidden by the deny list (pattern '" + by + "' matches '" + method + "')";
+            if (by != null && method == ResetKinds.DenyKey && BlockedBy(deny, "download") == null)
+                reason += "; cts download, which the list allows, also starts the application again from its initial values";
             return by == null;
         }
 

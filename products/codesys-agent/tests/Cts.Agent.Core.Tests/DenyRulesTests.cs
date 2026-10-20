@@ -30,6 +30,15 @@ namespace Cts.Agent.Tests
             Allowed("", "delete_pou");
         }
 
+        // A warm or cold reset the list refuses points to the download it allows.
+        [Fact]
+        public void ARefusedResetNamesTheAllowedDownload()
+        {
+            Assert.Contains("cts download, which the list allows, also starts the application again", Reason("", "reset_plc"));
+            Assert.DoesNotContain("cts download", Reason("{\"deny\":[\"reset_plc\",\"download\"]}", "reset_plc"));
+            Assert.DoesNotContain("cts download", Reason("", "reset_plc --kind origin"));
+        }
+
         [Fact]
         public void AnExplicitEntryIsDenied()
         {
