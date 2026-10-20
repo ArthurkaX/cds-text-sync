@@ -159,7 +159,7 @@ The bundled CLI is `products\codesys-agent\dist\cts.exe`. Add its folder to the 
 
 3. **Link a project to disk**: open the project in CODESYS and run
    `cds-text-sync.py` to start the in-IDE agent. Press Alt+Q, then `8` and `1`,
-   and take the suggested folder: the clone the `.project` lies in, else
+   and take the suggested folder: the root of the git repository the `.project` lies in, else
    `<project>-cts` beside it (or `cts set-sync-folder`); the folder becomes a git repository right away.
    On a project someone else set up, clone its repository first; Alt+Q then opens on this row and
    asks for the clone.

@@ -882,7 +882,7 @@ namespace Cts.Agent.Tests
 
             var (_, output, _) = Run(host, "connect", "--ip", "10.0.0.5");
 
-            Assert.StartsWith("ok connect state=stop application=App plc=plc-7 ip=10.0.0.5 app_created=true\nthe PLC had no such application; login created it\nThe PLC runs other code.\n", output);
+            Assert.StartsWith("ok connect state=stop application=App plc=plc-7 ip=10.0.0.5 app_created=true\nthe PLC had no such application; login created it\nThe PLC runs other code.\n" + DownloadCommand.StaysOnline + "\n", output);
             var json = (IDictionary<string, object>)Json.Parse(Run(host, "connect", "--ip", "10.0.0.5", "--json").output);
             Assert.Equal(true, json["app_created"]);
             Assert.False(json.ContainsKey("created"));

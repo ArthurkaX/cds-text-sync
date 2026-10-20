@@ -65,6 +65,9 @@ namespace Cts.Cli
 
         internal const string SavedByIde = "the IDE saved the project during the download (cts did not ask it to): the file is now in this IDE's format";
 
+        // After a login the IDE stays online, and the next project edit is refused.
+        internal const string StaysOnline = "the IDE stays online: project edits (import, update-pou, delete-pou) are refused until cts disconnect, which leaves the PLC running";
+
         static IDictionary<string, object> Unrecorded(string why) => new Dictionary<string, object> { { "unrecorded", why } };
 
         public static Answer Build(IDictionary<string, object> data)
@@ -86,6 +89,7 @@ namespace Cts.Cli
             }
             foreach (var message in (Value(data, "messages") as IEnumerable<object> ?? new object[0]).OfType<IDictionary<string, object>>())
                 answer.Detail("[" + Value(message, "code") + "] " + Value(message, "text"));
+            if (Equals(Value(data, "downloaded"), true)) answer.Detail(StaysOnline);
             return Equals(Value(data, "ready"), false) ? answer.Failed().Detail("not ready: " + Value(data, "reason")) : answer;
         }
 

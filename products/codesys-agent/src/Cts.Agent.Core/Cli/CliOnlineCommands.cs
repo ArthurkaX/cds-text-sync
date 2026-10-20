@@ -123,7 +123,7 @@ namespace Cts.Cli
                     if (Equals(Value(data, "app_created"), true)) answer.Detail("the PLC had no such application; login created it");
                     foreach (var prompt in Items(data, "prompts").OfType<IDictionary<string, object>>())
                         if (Equals(Value(prompt, "prompt"), "online_change")) answer.Detail(Value(prompt, "text"));
-                    return answer;
+                    return answer.Detail(DownloadCommand.StaysOnline);
                 },
             },
             new CliCommand

@@ -97,7 +97,7 @@ namespace Cts.Agent.Tests
             Assert.Equal(Verdict.Ok, answer.Status);
             Assert.Contains(answer.Pairs, pair => pair.Key == "plc" && Equals(pair.Value, "bench-plc"));
             Assert.Contains(answer.Pairs, pair => pair.Key == "commit" && Equals(pair.Value, "01234567"));
-            Assert.Equal(new[] { "[C0373] a warning" }, answer.Details);
+            Assert.Equal(new[] { "[C0373] a warning", DownloadCommand.StaysOnline }, answer.Details);
         }
 
         [Fact]
