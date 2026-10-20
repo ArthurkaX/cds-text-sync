@@ -324,10 +324,11 @@ namespace Cts.Cli
                 _readBack.AddRange(_work.FieldReadBack);
                 foreach (var key in _work.FolderDeletes)
                     if (_work.IdeByPath.TryGetValue(key, out var folderGuid)) _call.Call("objects.delete", new Dictionary<string, object> { { "guid", folderGuid } });
-                // A folder its last object's delete emptied keeps only its own file on disk; that goes with it.
+                // A folder its last object's delete emptied keeps at most its own file on disk; that goes with it.
                 foreach (var key in _work.EmptiedFolders.OrderByDescending(key => key.Count(ch => ch == '/')))
                 {
                     var folder = Path.Combine(_work.View, key.Replace('/', Path.DirectorySeparatorChar));
+                    if (!Directory.Exists(folder)) continue;
                     _work.Stamps.Delete(key + "/.cds-object.xml");
                     if (!Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
                 }

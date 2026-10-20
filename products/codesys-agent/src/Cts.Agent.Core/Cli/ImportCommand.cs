@@ -128,9 +128,10 @@ namespace Cts.Cli
                     var allObjectsDeleted = descendants.Count > 0 && descendants.All(objectKey => deletedKeys.Any(deletedKey =>
                         objectKey.Equals(deletedKey, StringComparison.OrdinalIgnoreCase)
                         || objectKey.StartsWith(deletedKey.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase)));
+                    // A plain folder is on disk as its directory alone: gone with it, it is gone.
                     if (allObjectsDeleted && ideNodes.TryGetValue(key, out var folder) && string.Equals(folder.Type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase)
-                        && Directory.Exists(full) && File.Exists(Path.Combine(full, ".cds-object.xml"))
-                        && !Directory.GetFiles(full, "*", SearchOption.AllDirectories).Any(file => !Path.GetFileName(file).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase)))
+                        && (!Directory.Exists(full) || File.Exists(Path.Combine(full, ".cds-object.xml"))
+                            && !Directory.GetFiles(full, "*", SearchOption.AllDirectories).Any(file => !Path.GetFileName(file).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase))))
                         candidates.Add(key);
                     directory = Path.GetDirectoryName(directory);
                 }

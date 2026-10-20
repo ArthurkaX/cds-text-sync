@@ -2515,6 +2515,39 @@ namespace Cts.Agent.Tests
             Assert.True(Directory.Exists(newFolder));
         }
 
+        // A plain folder is on disk as its directory alone: every object of it
+        // moved to another folder, and the directory gone, the import moves
+        // them and deletes the folder.
+        [Fact]
+        public void A_plain_folder_whose_objects_all_moved_away_goes_with_its_directory()
+        {
+            var treePath = EmptiedFolder(out var oldFolder);
+            File.Delete(Path.Combine(oldFolder, ".cds-object.xml"));
+            File.WriteAllText(Path.Combine(oldFolder, "GVL_One.st"), "VAR_GLOBAL\nEND_VAR\n");
+            SyncBase.Record(_root, ExportCommand.Relative(_root, ViewFolder.Of(_root)), new List<string>());
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var newFolder = Path.Combine(Path.GetDirectoryName(oldFolder), "Moved");
+            Directory.CreateDirectory(newFolder);
+            File.WriteAllText(Path.Combine(newFolder, "GVL_One.st"), "VAR_GLOBAL\nEND_VAR\n");
+            Directory.Delete(oldFolder, true);
+            var deleted = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return TreeWithGuids(treePath);
+                if (method == "objects.create") return new Dictionary<string, object> { { "guid", "guid-new" } };
+                if (method == "objects.delete") deleted.Add(Convert.ToString(args["guid"]));
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new object[0] } };
+                if (method == "project.export")
+                {
+                    File.Copy(Path.Combine(Fixture, "snapshot.xml"), Convert.ToString(args["path"]), true);
+                    return new Dictionary<string, object>();
+                }
+                return new Dictionary<string, object>();
+            }));
+            Assert.Equal(new[] { "guid-" + (treePath.Length - 1) }, deleted);
+            Assert.Contains("EmptyAfterImport", ((IEnumerable<object>)result["deleted_objects"]).Cast<string>());
+        }
+
         // A folder below the application whose one object, GVL_One, is gone
         // from disk since the base; its tree path down to that object.
         string[] EmptiedFolder(out string newFolder)
