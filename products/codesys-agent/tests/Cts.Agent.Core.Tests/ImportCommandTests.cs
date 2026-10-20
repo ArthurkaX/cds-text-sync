@@ -2603,7 +2603,9 @@ namespace Cts.Agent.Tests
             var newFolder = Path.Combine(Path.GetDirectoryName(oldFolder), "Moved");
             Directory.CreateDirectory(newFolder);
             File.WriteAllText(Path.Combine(newFolder, "GVL_One.st"), "VAR_GLOBAL\nEND_VAR\n");
+            // A move leaves the directory behind, empty.
             Directory.Delete(oldFolder, true);
+            Directory.CreateDirectory(oldFolder);
             var deleted = new List<string>();
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
             {
