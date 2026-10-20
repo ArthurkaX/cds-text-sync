@@ -88,11 +88,14 @@ namespace Cts.Agent
                     runs.Add(run);
                 }
                 var last = (Dictionary<string, object>)runs[runs.Count - 1];
-                foreach (var key in new[] { "done", "passed", "failed", "error", "log", "log_error" })
+                foreach (var key in new[] { "done", "passed", "failed", "error", "log", "log_error", "runtime_notices" })
                     if (last.ContainsKey(key)) answer[key] = last[key];
                 answer["status"] = runs.All(run => Equals(((IDictionary<string, object>)run)["status"], "PASS")) ? "PASS" : "FAIL";
                 if (runs.Count > 1)
                 {
+                    // The counts of all the runs: each run's are in its own entry.
+                    foreach (var key in new[] { "passed", "failed" })
+                        answer[key] = runs.Sum(run => Convert.ToInt64(Value((IDictionary<string, object>)run, key) ?? 0L, CultureInfo.InvariantCulture));
                     answer["runs"] = runs;
                     answer["restart"] = request.ResetAllowed ? "reset" : "download";
                 }
@@ -207,7 +210,12 @@ namespace Cts.Agent
                 }
                 return previousStart;
             }
-            answer["log"] = entries.GetRange(start, entries.Count - start);
+            // A record with no time (year 1) is the runtime's own notice, a log
+            // buffer overflow: not the run's, it is named apart.
+            var range = entries.GetRange(start, entries.Count - start);
+            answer["log"] = range.Where(entry => !Timeless(entry)).ToList();
+            var notices = range.Where(Timeless).Select(Info).ToList();
+            if (notices.Count > 0) answer["runtime_notices"] = notices;
             var results = Results(entries, start);
             if (results < expected)
                 answer["log_error"] = "the log holds " + results + " of the " + expected + " results the counts name " + LogWaitMs / 1000 + " s after " + Gvl + ".Done";
@@ -230,6 +238,8 @@ namespace Cts.Agent
         static List<object> Entries(TestPlans.Call call) => (Value(call("plc.log", new Dictionary<string, object>()), "entries") as IList<object> ?? new List<object>()).ToList();
 
         static string Info(object entry) => Text(entry as IDictionary<string, object>, "info");
+
+        static bool Timeless(object entry) => Text(entry as IDictionary<string, object>, "time").StartsWith("0001-01-01", StringComparison.Ordinal);
 
         static string StartKey(object entry) => Text(entry as IDictionary<string, object>, "time") + " " + Info(entry);
 

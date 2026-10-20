@@ -73,6 +73,10 @@ namespace Cts.Cli
             })
             .ToList();
 
+        // The tests one run counted: with several runs, passed= and failed= are their sums.
+        static long PerRun(IDictionary<string, object> run) =>
+            Convert.ToInt64(Value(run, "passed") ?? 0L, CultureInfo.InvariantCulture) + Convert.ToInt64(Value(run, "failed") ?? 0L, CultureInfo.InvariantCulture);
+
         public static Answer Build(IDictionary<string, object> data)
         {
             var runs = Items(data, "runs").OfType<IDictionary<string, object>>().ToList();
@@ -80,6 +84,7 @@ namespace Cts.Cli
                 .Add("passed", Value(data, "passed"))
                 .Add("failed", Value(data, "failed"))
                 .Add("runs", runs.Count > 0 ? (object)runs.Count : null)
+                .Add("per_run", runs.Count > 0 ? (object)PerRun(runs[0]) : null)
                 .Add("failed_runs", runs.Count > 0 ? (object)runs.Count(run => !Equals(Value(run, "status"), "PASS")) : null)
                 .Add("restart", Value(data, "restart"))
                 .Add("application", Value(data, "application"))
@@ -101,6 +106,8 @@ namespace Cts.Cli
             foreach (var run in runs)
                 foreach (var key in new[] { "error", "log_error" })
                     if (Value(run, key) != null) answer.Detail("run " + Value(run, "run") + ": " + Value(run, key));
+            foreach (var notice in Items(data, "runtime_notices").Concat(runs.SelectMany(run => Items(run, "runtime_notices"))).Distinct())
+                answer.Detail("runtime notice, not in the log file: " + notice);
             foreach (var tidy in new[] { "logout", "reactivate" })
                 if (Value(data, tidy) is string said && said != "ok") answer.Detail(tidy + ": " + said);
             return Equals(Value(data, "status"), "PASS") ? answer : answer.Failed();

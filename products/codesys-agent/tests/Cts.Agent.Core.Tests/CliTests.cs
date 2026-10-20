@@ -502,6 +502,23 @@ namespace Cts.Agent.Tests
             Assert.Contains("ide-7145  unreachable: transport: pipe closed\n", output);
         }
 
+        // A blocked IDE comes with the line that answers its dialog, aimed at
+        // that IDE when there are several.
+        [Fact]
+        public void Agent_list_names_the_answer_to_a_blocking_dialog()
+        {
+            var host = new FakeHost();
+            host.Agents[7144] = (method, p) => new Dictionary<string, object>
+            {
+                { "protocol", "1.0" }, { "product", "CODESYS" }, { "dialogs", new List<object> { LoginDialog("3f9a1c02") } },
+            };
+            host.Agents[7145] = (method, p) => new Dictionary<string, object> { { "protocol", "1.0" }, { "product", "CODESYS" } };
+
+            var (_, output, _) = Run(host, "agent", "list");
+
+            Assert.Contains("\nNext: cts dialog answer --id 3f9a1c02 --choose \"Login with online change\" --press \"OK\" --target ide-7144\n", output);
+        }
+
         [Fact]
         public void Agent_list_json_is_the_raw_sorted_discovery_list()
         {

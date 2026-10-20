@@ -224,8 +224,10 @@ namespace Cts.Cli
                     + "the sync folder's .git/cts/test/<application>.log. A device that is not in simulation is refused unless "
                     + "--plc: then the application is downloaded to that PLC (the deny list's download applies) and the tests run "
                     + "there. --repeat N runs them N times, each run started again by a warm reset when the deny list allows "
-                    + "reset_plc, else by another download (restart=); the line counts the failed runs and names each failing test "
-                    + "with its run, which finds a test that fails now and then. Exit 0 when every test of every run passed, 1 otherwise.",
+                    + "reset_plc, else by another download (restart=); passed= and failed= then add up all the runs, per_run= is one "
+                    + "run's tests, and the line counts the failed runs and names each failing test with its run, which finds a "
+                    + "test that fails now and then. A runtime notice with no time (a log buffer overflow) is named under the line, "
+                    + "not saved with the run's log. Exit 0 when every test of every run passed, 1 otherwise.",
                 TimeoutKey = DenyRules.RunTests,
                 Options = new[]
                 {

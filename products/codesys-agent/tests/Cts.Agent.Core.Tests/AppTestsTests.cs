@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Cts.Cli;
 using Xunit;
 
 namespace Cts.Agent.Core.Tests
@@ -129,6 +130,19 @@ namespace Cts.Agent.Core.Tests
             Assert.False(answer.ContainsKey("log_error"));
         }
 
+        // The runtime's own notice of a full log buffer carries no time: it is
+        // named apart, not written among the run's records.
+        [Fact]
+        public void A_record_without_a_time_is_a_runtime_notice_not_the_runs()
+        {
+            Counts(1, 0);
+            Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|");
+            _log.Add(new Dictionary<string, object> { { "time", "0001-01-01T00:00:00.000Z" }, { "info", "LOGGING BUFFER OVERFLOW; LOG MESSAGES DISMISSED" } });
+            var answer = Run();
+            Assert.Equal(new[] { "CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|" }, Infos(answer["log"]));
+            Assert.Contains("runtime notice, not in the log file: LOGGING BUFFER OVERFLOW; LOG MESSAGES DISMISSED", TestCommand.Build(answer).Details);
+        }
+
         [Fact]
         public void A_log_without_a_test_start_is_named_and_the_counts_still_decide()
         {
@@ -223,6 +237,8 @@ namespace Cts.Agent.Core.Tests
             Assert.Equal("PASS", answer["status"]);
             Assert.Equal("download", answer["restart"]);
             Assert.Equal(2, _calls.Count(c => c.StartsWith("app.download")));
+            Assert.Equal(4L, answer["passed"]);
+            Assert.Contains("passed=4 failed=0 runs=2 per_run=2", Verdict.Line(TestCommand.Build(answer).Status, "test", TestCommand.Build(answer).Pairs));
             Assert.DoesNotContain(_calls, c => c.StartsWith("app.reset"));
         }
 

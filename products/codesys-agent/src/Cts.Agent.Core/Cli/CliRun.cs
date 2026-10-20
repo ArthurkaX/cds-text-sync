@@ -217,7 +217,9 @@ namespace Cts.Cli
                         var where = path ?? (Equals(Value(entry, "ui_busy"), true) ? "(UI busy, project unknown)" : "(no project)");
                         details.Add("ide-" + pid + "  " + (Value(entry, "product") ?? "?") + " " + (Value(entry, "product_version") ?? "?")
                             + "  agent " + (Value(entry, "agent_version") ?? "?") + "  protocol " + (Value(entry, "protocol") ?? "?") + "  " + where);
-                        details.AddRange(Dialogs.Of(entry, "dialogs").Select(window => "ide-" + pid + "  blocked by a dialog " + window.Snapshot()));
+                        foreach (var window in Dialogs.Of(entry, "dialogs"))
+                            details.Add("ide-" + pid + "  blocked by a dialog " + window.Snapshot() + "\nNext: "
+                                + DialogWatch.AnswerLine(window) + (entries.Count > 1 ? " --target ide-" + pid : ""));
                     }
                 }
                 if (entries.Count > 0)

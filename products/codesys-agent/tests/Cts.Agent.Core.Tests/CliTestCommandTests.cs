@@ -89,7 +89,7 @@ namespace Cts.Agent.Tests
                     return new Dictionary<string, object>
                     {
                         { "application", "TestApp" }, { "device", "PLC" }, { "plc", true }, { "status", "FAIL" }, { "restart", "download" },
-                        { "passed", 1L }, { "failed", 0L }, { "logout", "ok" },
+                        { "passed", 3L }, { "failed", 1L }, { "logout", "ok" },
                         { "runs", new List<object>
                             {
                                 Ran(1, "PASS", "CTS|M|TEST_PASS|timer|"),
@@ -102,7 +102,7 @@ namespace Cts.Agent.Tests
                 Assert.Equal(1, code);
                 Assert.Equal(true, asked["plc"]);
                 Assert.Equal(3L, asked["repeat"]);
-                Assert.StartsWith("error test passed=1 failed=0 runs=3 failed_runs=1 restart=download application=TestApp device=PLC plc=true", output);
+                Assert.StartsWith("error test passed=3 failed=1 runs=3 per_run=1 failed_runs=1 restart=download application=TestApp device=PLC plc=true", output);
                 Assert.Contains("\nrun 2: FAIL timer got=4999 want=5000\n", output);
                 Assert.Contains("\nrun 3: the log took nothing\n", output);
                 Assert.Equal(4, File.ReadAllLines(Path.Combine(folder, ".git", "cts", "test", "TestApp.log")).Length);
