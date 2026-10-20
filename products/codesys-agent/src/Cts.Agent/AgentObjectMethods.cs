@@ -43,7 +43,7 @@ namespace Cts.Agent
             _router.Register("objects.replace", (req, s) => _ide.OnUi("objects.replace", StartTimeout.Parse(req, UiTimeoutMs),
                 () => _ide.ReplaceObject(req.String("guid"), req.String("xml"), req.Strings("properties"))));
             _router.Register("objects.import", (req, s) => _ide.OnUi("objects.import", StartTimeout.Parse(req, UiTimeoutMs),
-                () => _ide.ImportObject(req.String("parent_guid"), req.String("xml"))));
+                () => _ide.ImportObject(req.String("parent_guid", ""), req.Bool("root", false), req.String("xml"))));
             _router.Register("objects.export", (req, s) => _ide.OnUi("objects.export", StartTimeout.Parse(req, UiTimeoutMs),
                 () => _ide.ExportObjects(TextsParams.Guids(req), ExportParams.Known(req))));
             _router.Register("objects.move", (req, s) => _ide.OnUi("objects.move", StartTimeout.Parse(req, UiTimeoutMs), () => _ide.MoveObject(ObjectMove.From(req))));

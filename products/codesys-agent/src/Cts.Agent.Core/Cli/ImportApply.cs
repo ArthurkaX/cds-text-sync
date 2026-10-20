@@ -189,10 +189,7 @@ namespace Cts.Cli
                     IDictionary<string, object> reply;
                     try
                     {
-                        reply = _call.Call("objects.import", new Dictionary<string, object>
-                        {
-                            { "parent_guid", parentGuid }, { "xml", WithRows(csv, content) },
-                        });
+                        reply = _call.Call("objects.import", Below(parentGuid, new Dictionary<string, object> { { "xml", WithRows(csv, content) } }));
                     }
                     catch (CliFailure error) when (error.Declined)
                     {

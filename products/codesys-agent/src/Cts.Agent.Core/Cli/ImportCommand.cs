@@ -111,6 +111,15 @@ namespace Cts.Cli
 
         static string ParentKey(string key) => (Path.GetDirectoryName(key) ?? "").Replace('\\', '/');
 
+        // The view key a new native object *key* goes below; "" is the project
+        // root, which the view's top stands for, and POUs/ too for the kinds
+        // export writes there (a Library Manager, Project Settings).
+        static string NativeParentKey(string key, string xml)
+        {
+            var parent = ParentKey(key);
+            return parent.Equals("POUs", StringComparison.OrdinalIgnoreCase) && SnapshotReader.UnderPous(NativeMetaValue(xml, "TypeGuid")) ? "" : parent;
+        }
+
         static IEnumerable<string> EmptiedFolders(string view, IEnumerable<CompareRecord> deleted, IDictionary<string, TreeObject> ideNodes)
         {
             var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

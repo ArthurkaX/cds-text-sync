@@ -107,7 +107,9 @@ namespace Cts.Cli
                 _work.CsvRecords = _work.Changed.Where(record => record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)).ToList();
                 foreach (var record in _work.NativeRecords.Where(record => record.Category == "added"))
                 {
-                    var directory = ParentKey(Path.ChangeExtension(record.Path, null).Replace('\\', '/'));
+                    var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
+                    var directory = NativeParentKey(Path.ChangeExtension(record.Path, null).Replace('\\', '/'), File.Exists(full) ? File.ReadAllText(full) : "");
+                    if (directory.Length == 0) continue;
                     var segments = directory.Split('/');
                     for (var depth = 1; depth <= segments.Length; depth++)
                     {

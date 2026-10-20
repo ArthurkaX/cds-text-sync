@@ -989,6 +989,43 @@ namespace Cts.Agent.Tests
             Assert.Equal("0", NativeValue(File.ReadAllText(file), "Added"));
         }
 
+        // The view's top is the project root, and so is POUs/ for the kinds
+        // export writes there: neither becomes a folder.
+        [Fact]
+        public void A_new_native_object_at_the_view_top_or_a_project_level_one_in_POUs_goes_to_the_root()
+        {
+            var view = ViewFolder.Of(_root);
+            string Copy(string source, string name, string directory)
+            {
+                var file = Path.Combine(directory, name + ".xml");
+                var text = File.ReadAllText(source);
+                var old = NativeValue(text, "Name");
+                File.WriteAllText(file, text.Replace("<Single Name=\"Name\" Type=\"string\">" + old + "</Single>", "<Single Name=\"Name\" Type=\"string\">" + name + "</Single>"));
+                return file;
+            }
+            var manager = Copy(Path.Combine(view, "POUs", "Library Manager.xml"), "Second Manager", Path.Combine(view, "POUs"));
+            var visu = Copy(Directory.GetFiles(view, "Visualization.xml", SearchOption.AllDirectories).Single(), "TopVisu", view);
+            var imports = new List<IDictionary<string, object>>();
+            var calls = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(new string[0]);
+                if (method == "objects.import")
+                {
+                    imports.Add(new Dictionary<string, object>(args));
+                    return new Dictionary<string, object> { { "guid", "2222222" + imports.Count + "-2222-2222-2222-222222222222" }, { "parent_guid", "00000000-0000-0000-0000-000000000000" } };
+                }
+                if (method == "objects.export") return NativeReply(imports.Count == 1 ? manager : visu, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(manager), File.ReadAllText(visu));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.DoesNotContain("objects.create", calls);
+            Assert.Equal(2, imports.Count);
+            Assert.All(imports, args => { Assert.Equal(true, args["root"]); Assert.False(args.ContainsKey("parent_guid")); });
+            Assert.Equal("00000000-0000-0000-0000-000000000000", NativeValue(File.ReadAllText(manager), "ParentGuid"));
+        }
+
         [Fact]
         public void Creates_missing_folders_before_importing_a_native_xml_file()
         {

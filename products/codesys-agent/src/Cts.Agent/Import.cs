@@ -15,21 +15,24 @@ namespace Cts.Agent
 {
     internal sealed partial class Ide
     {
-        public Dictionary<string, object> ImportObject(string parentGuidText, string xml)
+        // Below *parentGuidText*, or at the project's top level with *atRoot*,
+        // as for objects.create.
+        public Dictionary<string, object> ImportObject(string parentGuidText, bool atRoot, string xml)
         {
             RefuseWhileOnline();
             RequirePermission("objects.import");
-            var parentGuid = ParseObjectGuid(parentGuidText);
+            if (atRoot == (parentGuidText.Length > 0)) throw new ProtocolException(ErrorCodes.BadParams, "pass parent_guid or root, one of them");
+            var parentGuid = atRoot ? Guid.Empty : ParseObjectGuid(parentGuidText);
             var documents = EntryDocuments.Parse(xml);
             var handle = ProjectHandle();
-            var parent = ObjectMeta(handle, parentGuid, "GetObjectToRead");
+            var parent = atRoot ? null : ObjectMeta(handle, parentGuid, "GetObjectToRead");
             string name;
             Array properties;
             var created = Deserialize(ImportObjectMethod(), documents, out name, out properties);
             if (string.IsNullOrEmpty(name))
                 throw new ProtocolException(ErrorCodes.BadParams, "the entry's MetaObject has no Name");
             var guid = (bool)Manager("ExistsObject", handle, documents.Guid) ? Guid.NewGuid() : documents.Guid;
-            if (IsFolder(parent))
+            if (parent != null && IsFolder(parent))
             {
                 Guid placed;
                 SvAddObject(SvNode(handle, parentGuid, out _), created, name, guid, out placed);
@@ -44,7 +47,7 @@ namespace Cts.Agent
             catch (Exception e)
             {
                 throw new ProtocolException(ErrorCodes.BadParams,
-                    "cannot import '" + name + "' below " + NameOf(parent) + ": " + Invocation.Cause(e).Message);
+                    "cannot import '" + name + "' " + Where(parent) + ": " + Invocation.Cause(e).Message);
             }
             return FinishImport(handle, guid, properties);
         }

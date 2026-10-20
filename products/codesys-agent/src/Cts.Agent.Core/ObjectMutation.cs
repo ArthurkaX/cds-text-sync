@@ -184,7 +184,8 @@ namespace Cts.Agent
             if (!Guid.TryParse(text, out guid))
                 throw new ProtocolException(ErrorCodes.BadParams, "parameter '" + parameter + "' must be a GUID: " + text);
             if (guid == Guid.Empty)
-                throw new ProtocolException(ErrorCodes.BadParams, "parameter '" + parameter + "' must not be the empty GUID");
+                throw new ProtocolException(ErrorCodes.BadParams, "parameter '" + parameter + "' must not be the empty GUID"
+                    + (parameter == "parent_guid" ? "; root: true names the project's top level" : ""));
             return guid;
         }
     }

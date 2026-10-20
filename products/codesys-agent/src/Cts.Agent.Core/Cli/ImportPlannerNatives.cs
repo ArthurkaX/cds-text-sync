@@ -173,8 +173,9 @@ namespace Cts.Cli
                             var name = NativeMetaValue(xml, "Name");
                             if (!string.Equals(name, Path.GetFileName(key), StringComparison.OrdinalIgnoreCase))
                                 return Refused(_call, _work.Data, "added " + path + ": its object is named '" + name + "', not as the file");
-                            var parent = ParentKey(key);
-                            if (_work.IdeByPath.TryGetValue(parent, out var parentGuid)) record.ParentGuid = parentGuid;
+                            var parent = NativeParentKey(key, xml);
+                            if (parent.Length == 0) record.ParentGuid = "";
+                            else if (_work.IdeByPath.TryGetValue(parent, out var parentGuid)) record.ParentGuid = parentGuid;
                             else if (_work.FolderRecords.Any(container => container.Category == "added"
                                 && string.Equals(FolderKey(container.Path), parent, StringComparison.OrdinalIgnoreCase)))
                                 record.ParentKey = parent;

@@ -281,7 +281,9 @@ them -- `objects.create`), renames a renamed file and deletes what a file no
 longer holds. Without a sync base yet (a fresh clone) the IDE is the base:
 what differs is written, what is missing is created, nothing is deleted. A
 changed `.xml` (a task, a visualization) or text-list `.csv` goes by objects
-as well, conflicts included. A new `.xml` below an object the IDE has is
+as well, conflicts included. A new `.xml` below an object the IDE has, or at
+the top of `project-view/` (the project root, as `POUs/` is for the project-level
+objects export writes there, a Library Manager or Project Settings), is
 imported (`objects.import`; its MetaObject `Name` must be the file's name, its
 MetaObject properties come along, and a copied file takes the new GUID the IDE
 gives it, wherever the file named its own); with a base, a removed one
