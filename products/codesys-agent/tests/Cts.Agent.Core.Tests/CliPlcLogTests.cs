@@ -135,6 +135,7 @@ namespace Cts.Agent.Tests
             var output = Run(LogAgent(new List<string>()), "plc-log", "--tail", "50").output;
 
             Assert.Equal(RuntimeLog.Length + 2, output.TrimEnd('\n').Split('\n').Length);
+            Assert.Equal(output, Run(LogAgent(new List<string>()), "plc-log", "--tail", "0").output);
         }
 
         [Fact]

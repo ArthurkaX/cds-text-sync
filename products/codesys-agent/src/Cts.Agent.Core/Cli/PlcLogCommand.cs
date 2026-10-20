@@ -17,15 +17,15 @@ namespace Cts.Cli
         {
             var options = call.Options.Params;
             var logger = Text(options, "logger");
-            var tail = options.TryGetValue("tail", out var n) ? Convert.ToInt32(n, CultureInfo.InvariantCulture) : 0;
-            if (tail == 0 && options.Count == 0) tail = 20;
+            // --tail 0 shows every entry; no option at all, the last 20.
+            int? tail = options.TryGetValue("tail", out var n) ? Convert.ToInt32(n, CultureInfo.InvariantCulture) : options.Count == 0 ? 20 : (int?)null;
             var output = Text(options, "output");
             var level = Text(options, "level");
             var code = Text(options, "code");
             var wantCts = options.ContainsKey("cts") || level.Length > 0 || code.Length > 0;
             var listOnly = options.ContainsKey("loggers");
 
-            if (listOnly || tail == 0 && output.Length == 0 && !wantCts)
+            if (listOnly || tail == null && output.Length == 0 && !wantCts)
             {
                 var names = Items(call.Call("plc.loggers", new Dictionary<string, object>()), "loggers").ToList();
                 return new Dictionary<string, object> { { "loggers", names }, { "count", (long)names.Count } };
@@ -34,7 +34,7 @@ namespace Cts.Cli
             var read = call.Call("plc.log", new Dictionary<string, object> { { "logger", logger } });
             logger = read.TryGetValue("logger", out var named) && named is string name ? name : logger;
             var lines = Items(read, "entries").OfType<IDictionary<string, object>>().Select(Line).ToList();
-            var shown = tail > 0 ? lines.Skip(Math.Max(0, lines.Count - tail)).ToList() : lines;
+            var shown = tail > 0 ? lines.Skip(Math.Max(0, lines.Count - tail.Value)).ToList() : lines;
 
             var data = new Dictionary<string, object> { { "logger", logger } };
             if (options.Count == 0)
@@ -48,7 +48,7 @@ namespace Cts.Cli
             }
             if (!wantCts)
             {
-                if (tail > 0)
+                if (tail != null)
                 {
                     data["tail"] = shown.ToList<object>();
                     data["tail_count"] = (long)shown.Count;
