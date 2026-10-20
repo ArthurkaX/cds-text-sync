@@ -49,6 +49,12 @@ namespace Cts.Cli
             get { var p = Project; return p != null && p.TryGetValue("sync_folder", out var v) ? v as string : null; }
         }
 
+        // The open project's `cts-source` label: the commit its code came from.
+        internal string Source
+        {
+            get { var p = Project; return p != null && p.TryGetValue("source", out var v) ? v as string : null; }
+        }
+
         // The project's name: its file name without `.project`.
         public string ProjectName
         {

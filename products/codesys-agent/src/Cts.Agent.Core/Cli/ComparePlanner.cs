@@ -195,6 +195,9 @@ namespace Cts.Cli
                 var ideTimedFiles = unchanged ? null : new TimedViewFiles(renderedView);
                 IViewFiles ideFiles = unchanged ? (IViewFiles)(cachedIdeFiles ?? baseFiles) : ideTimedFiles;
                 IViewFiles baseView = baseFiles;
+                var staleLabel = call.Hello.Source;
+                var stale = unchanged || baseView == null || otherProject != null || staleLabel == null ? new HashSet<string>()
+                    : StaleBase(folder, viewRelative, staleLabel, ideFiles, ref baseView, contentKeys);
                 if (baseCommit != null)
                 {
                     try { diskBaseFiles = new DiskAgainstBaseViewFiles(folder, viewRelative, baseFiles, Path.Combine(gitDir, "cts", "disk-index")); }
@@ -216,7 +219,7 @@ namespace Cts.Cli
                     ignoredStale = onBothSides.Where(path => !SameViewContent(path, diskSource, ideFiles, contentKeys)).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
                     diskSource = new IgnoredViewFiles(diskSource, ignored);
                     ideFiles = new IgnoredViewFiles(ideFiles, ignored);
-                    if (baseFiles != null) baseView = new IgnoredViewFiles(baseFiles, ignored);
+                    if (baseView != null) baseView = new IgnoredViewFiles(baseView, ignored);
                 }
                 var diskFiles = new TimedViewFiles(diskSource);
                 var diskPaths = diskFiles.Paths.ToList();
@@ -326,6 +329,7 @@ namespace Cts.Cli
                     records.Add(record);
                 }
                 CompareSt(diskSt, baseSt, ideSt, sameSt, sameTripleSt, records, counts, call.Options.Params.ContainsKey("all"), snapshotTimes);
+                foreach (var record in records.Where(record => record.Reason == null && record.Category != "unchanged" && stale.Contains(record.Path))) record.Reason = StaleReason;
                 compareElapsed.Stop();
                 var objects = new Dictionary<string, object>
                 {
@@ -338,6 +342,7 @@ namespace Cts.Cli
                 var importIdeFiles = call.Options.Params.ContainsKey("force") || importing
                     ? ideFiles.Paths.ToDictionary(path => path, path => ideFiles.Read(path), StringComparer.OrdinalIgnoreCase) : null;
                 var info = call.Options.Params.TryGetValue("compare_info", out var compareInfo) ? ((IEnumerable<string>)compareInfo).ToList() : new List<string>();
+                if (stale.Count > 0) info.Add(StaleNote(staleLabel, stale.Count));
                 if (ownerKept.Count > 0) info.Add(OwnerKeptNote(ownerKept));
                 var caseTwins = CaseTwins(folder, viewRelative);
                 if (caseTwins.Count > 0) info.Add(CaseTwinsNote(caseTwins));

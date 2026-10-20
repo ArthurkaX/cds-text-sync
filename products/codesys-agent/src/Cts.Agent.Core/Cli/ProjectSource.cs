@@ -13,13 +13,24 @@ namespace Cts.Cli
     // edits after it are what cts compare finds.
     internal static class ProjectSource
     {
+        const string Uncommitted = " +uncommitted";
+
+        // The commit a `cts-source` *label* names; null when the view held
+        // changes no commit has, or the label names none.
+        internal static string Commit(string label)
+        {
+            var source = ProjectInfo.SourceOf(label);
+            var at = source.LastIndexOf('@');
+            return at < 0 || source.EndsWith(Uncommitted, StringComparison.Ordinal) ? null : source.Substring(at + 1);
+        }
+
         internal static void Mark(CliCall call, string folder, string view, IDictionary<string, object> output)
         {
             var position = GitRepository.Position(folder);
             var commit = position["commit"] as string;
             if (commit == null) return;
             var uncommitted = GitRepository.Run(folder, "status --porcelain -- " + ProcessArgs.Quote(view)).Length > 0;
-            var source = (position["branch"] as string ?? "detached") + "@" + commit.Substring(0, 8) + (uncommitted ? " +uncommitted" : "");
+            var source = (position["branch"] as string ?? "detached") + "@" + commit.Substring(0, 8) + (uncommitted ? Uncommitted : "");
             try
             {
                 call.Call("project.source", new Dictionary<string, object>

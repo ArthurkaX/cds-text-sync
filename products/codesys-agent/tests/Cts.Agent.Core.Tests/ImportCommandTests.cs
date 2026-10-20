@@ -474,6 +474,43 @@ namespace Cts.Agent.Tests
             Assert.Contains(ideChanged, record => Convert.ToString(record["path"]).EndsWith("Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
         }
 
+        // The IDE opened a project file saved before the last import: it holds
+        // the commit its label names, the folder what came after, and nothing
+        // of it is an edit in the IDE.
+        [Fact]
+        public void A_project_file_older_than_the_folder_is_brought_up_to_date_not_taken_for_IDE_edits()
+        {
+            var view = ViewFolder.Of(_root);
+            var viewRelative = ExportCommand.Relative(_root, view);
+            Git("add -A"); Git("commit -q -m saved");
+            var saved = GitRepository.Run(_root, "rev-parse HEAD").Trim();
+            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// later\nEND_PROGRAM"));
+            File.WriteAllText(Path.Combine(view, "GVL_Later.st"), "VAR_GLOBAL\n    xLater : BOOL;\nEND_VAR\n");
+            SyncBase.Record(_root, viewRelative, new List<string>());
+            Git("add -A"); Git("commit -q -m imported");
+            Func<string, IDictionary<string, object>, IDictionary<string, object>> stale = (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(Path.Combine(Fixture, "snapshot.xml"), Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return ViewTree(view);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            };
+            IDictionary<string, object> Objects(IDictionary<string, object> result) => (IDictionary<string, object>)result["objects"];
+            IEnumerable<string> Paths(IDictionary<string, object> result, string category) => Objects(result).TryGetValue(category, out var rows)
+                ? ((System.Collections.IEnumerable)rows).Cast<IDictionary<string, object>>().Select(row => Convert.ToString(row["path"])) : Enumerable.Empty<string>();
+
+            var unlabelled = ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, stale, false, null, "session:reopened"));
+            Assert.Contains("GVL_Later.st", Paths(unlabelled, "ide_changed"));
+
+            var call = ImportCall(new[] { "--dry-run" }, stale, false, null, "session:reopened");
+            ((IDictionary<string, object>)call.Hello.Data["project"])["source"] = ProjectInfo.Source("main@" + saved.Substring(0, 8), "2026-10-20 09:00");
+            var result = ImportCommand.Execute(call);
+            Assert.Empty(Paths(result, "ide_changed"));
+            Assert.Contains("GVL_Later.st", Paths(result, "added"));
+            Assert.Contains(ExportCommand.Relative(view, file), Paths(result, "modified"));
+            Assert.Contains((IEnumerable<string>)result["info"], line => line.StartsWith("The open project file is older than the folder: the IDE holds the text of main@" + saved.Substring(0, 8) + " in 2 file(s)"));
+        }
+
         [Fact]
         public void SyncRefusedOnlineNamesSyncToRepeat()
         {
