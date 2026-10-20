@@ -82,7 +82,7 @@ namespace Cts.Sync
             foreach (var element in copy.DescendantsAndSelf().ToList())
                 foreach (var child in element.Elements().Where(e => (string)e.Attribute("Name") == "Timestamp").ToList()) RemoveElement(child);
             foreach (var dictionary in copy.DescendantsAndSelf().Where(e => e.Name.LocalName == "Dictionary" && (string)e.Attribute("Name") == "Properties"))
-                foreach (var property in dictionary.Elements().Where(e => IsDerivedProperty(e) || ProjectInfo.IsSourceEntry(e)).ToList()) RemoveElement(property);
+                foreach (var property in dictionary.Elements().Where(e => IsDerivedProperty(e) || ProjectInfo.IsOwnEntry(e)).ToList()) RemoveElement(property);
             foreach (var dictionary in copy.DescendantsAndSelf().Where(e => e.Name.LocalName == "Dictionary").Reverse()) SortElements(dictionary, e => Serialize(e.Elements().FirstOrDefault(k => k.Name.LocalName == "Key") ?? new XElement("Key")));
             foreach (var list in copy.DescendantsAndSelf().Where(e => (string)e.Attribute("Name") == "VisualElemMemberList"))
             {

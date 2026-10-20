@@ -14,6 +14,7 @@
 //   objects.export  {"guids": [...]}  ->  {"objects": [{"guid", "meta", "object"}]}
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml;
 
@@ -42,10 +43,12 @@ namespace Cts.Agent
             Guid guid;
             if (!Guid.TryParse(guidText ?? "", out guid) || guid == Guid.Empty)
                 throw new ProtocolException(ErrorCodes.BadParams, "the entry's MetaObject has no Guid");
+            var obj = Member(root, "Object");
+            WithoutOwnEntries(obj);
             return new EntryDocuments
             {
                 Meta = AsDocument(meta),
-                Object = AsDocument(Member(root, "Object")),
+                Object = AsDocument(obj),
                 Guid = guid,
             };
         }
@@ -59,6 +62,18 @@ namespace Cts.Agent
                     if (element != null && element.GetAttribute("Name") == name) return element;
                 }
             throw new ProtocolException(ErrorCodes.BadParams, "the entry has no " + name);
+        }
+
+        // The project's id and `cts-source` stay the IDE's: a disk file, of a
+        // copy or from before the view left them out, never sets them.
+        static void WithoutOwnEntries(XmlElement obj)
+        {
+            foreach (XmlElement dictionary in obj.SelectNodes(".//Dictionary[@Name='Properties']"))
+                foreach (var entry in dictionary.ChildNodes.OfType<XmlElement>().Where(e => e.Name == "Entry").ToList())
+                {
+                    var key = entry.ChildNodes.OfType<XmlElement>().FirstOrDefault(e => e.Name == "Key");
+                    if (key != null && ProjectInfo.IsOwnKey(key.InnerText.Trim())) dictionary.RemoveChild(entry);
+                }
         }
 
         static string MemberText(XmlElement parent, string name)

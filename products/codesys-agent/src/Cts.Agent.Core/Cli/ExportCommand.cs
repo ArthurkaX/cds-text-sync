@@ -334,7 +334,7 @@ namespace Cts.Cli
             var holders = entry.Elements().FirstOrDefault(e => e.Name.LocalName == "Value")?.Elements().ToList();
             return holders != null && holders.Count == 1 && holders[0].Elements().Any()
                 && holders[0].Elements().All(e => (string)e.Attribute("Name") == "PlaceholderResolution")
-                || ProjectInfo.IsSourceEntry(entry);
+                || ProjectInfo.IsOwnEntry(entry);
         }
 
         static void Reorder(XElement parent, IEnumerable<XElement> ordered)

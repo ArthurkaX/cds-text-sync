@@ -63,6 +63,7 @@ namespace Cts.Cli
                     var hello = picked.Value;
                     ReportOtherBuild(hello, error);
                     ReportUserChanges(conn, hello, error);
+                    ReportOtherFolder(options, hello, workFolder, error);
                     var data = Execute(command, options, conn, host, hello, error);
                     if (data.TryGetValue("info", out var info) && info is IEnumerable<string> lines)
                         foreach (var line in lines) error.WriteLine("[INFO] " + line);
@@ -143,6 +144,19 @@ namespace Cts.Cli
             if (agent != null && agent != Build())
                 error.WriteLine("[WARN] The IDE's agent is " + agent + ", this cts is " + Build()
                     + ": close CODESYS and run `cts install` from the cts you use, so both are one build.");
+        }
+
+        // A command run in another sync folder still works on the IDE's
+        // project and its folder: said, so a copy's shell does not act on the
+        // original unawares.
+        static void ReportOtherFolder(CliOptions options, Hello hello, string workFolder, TextWriter error)
+        {
+            if (options.Params.ContainsKey("sync_folder")) return;
+            var here = ProjectInfo.OtherSyncFolder(workFolder, hello.SyncFolder);
+            if (here != "")
+                error.WriteLine("[WARN] This command works on " + hello.SyncFolder + ", the sync folder of the project ide-" + hello.Pid
+                    + " has open, not on " + here + " around the current folder. When that IDE holds a copy of the project, "
+                    + "`cts set-sync-folder " + here + " --new-id` gives the copy that folder; another IDE is chosen with --target.");
         }
 
         // What the IDE changed outside cts since the last cts command (the

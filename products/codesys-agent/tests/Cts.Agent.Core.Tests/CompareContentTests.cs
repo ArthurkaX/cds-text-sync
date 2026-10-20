@@ -38,14 +38,17 @@ namespace Cts.Agent.Core.Tests
             Assert.False(ExportCommand.SameContent("Library Manager.xml", Bytes(older), Bytes(newer.Replace("<List Name='Items'>", "<List Name='Items'><Null />"))));
         }
 
+        // The id and the source label are the .project's: a copy's files name
+        // no id, so its import cannot make it the original.
         [Fact]
-        public void TheSourceLabelStaysOutOfTheViewAndItsCompare()
+        public void TheIdAndTheSourceLabelStayOutOfTheViewAndItsCompare()
         {
-            const string bare = "<Root><Dictionary Name='Properties'><Entry><Key><Single Type='string'>cts-project-id</Single></Key><Value><Single Type='string'>id</Single></Value></Entry></Dictionary></Root>";
-            var labelled = bare.Replace("</Dictionary>", "<Entry><Key><Single Type='string'>cts-source</Single></Key><Value><Single Type='string'>master@0123abcd \u00b7 2026-10-16 20:32</Single></Value></Entry></Dictionary>");
+            const string bare = "<Root><Dictionary Name='Properties'><Entry><Key><Single Type='string'>Title</Single></Key><Value><Single Type='string'>demo</Single></Value></Entry></Dictionary></Root>";
+            var labelled = bare.Replace("</Dictionary>", "<Entry><Key><Single Type='string'>cts-project-id</Single></Key><Value><Single Type='string'>id</Single></Value></Entry>"
+                + "<Entry><Key><Single Type='string'>cts-source</Single></Key><Value><Single Type='string'>master@0123abcd \u00b7 2026-10-16 20:32</Single></Value></Entry></Dictionary>");
             Assert.True(ExportCommand.SameContent("POUs/Project Information.xml", Bytes(bare), Bytes(labelled)));
             Assert.Equal(ViewExport.NativeBytes(XElement.Parse(bare), false), ViewExport.NativeBytes(XElement.Parse(labelled), false));
-            Assert.False(ExportCommand.SameContent("POUs/Project Information.xml", Bytes(bare), Bytes(bare.Replace(">id<", ">other<"))));
+            Assert.False(ExportCommand.SameContent("POUs/Project Information.xml", Bytes(bare), Bytes(bare.Replace(">demo<", ">other<"))));
         }
 
         [Fact]

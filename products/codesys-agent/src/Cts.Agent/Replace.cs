@@ -8,7 +8,8 @@
 // properties (by their type guid) the file holds differently from the IDE:
 // each is removed from the object and the file's copy, if it has one, added.
 // The rest of the MetaObject (its name) does not travel and the caller's
-// read-back reports it.  Same online refusal and permission as every write.
+// read-back reports it.  A Project Information keeps the IDE's id and
+// `cts-source`.  Same online refusal and permission as every write.
 // A Library Manager swapped this way has not loaded the libraries it now
 // names (the IDE loads one when it is added in its editor): each is loaded
 // after the swap, and one that does not load is named in `libraries`.
@@ -37,14 +38,28 @@ namespace Cts.Agent
                 string name;
                 Array carried;
                 var obj = Deserialize(import, documents, out name, out carried);
+                var own = OwnValues(Prop(_metaObjectIface, meta, "Object"));
                 try { replace.Invoke(meta, new[] { obj }); }
                 catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "ReplaceObject: " + Invocation.Cause(e).Message); }
+                foreach (var value in own)
+                    _projectInfoIface.GetMethod("PutValue").Invoke(Prop(_metaObjectIface, meta, "Object"), new object[] { value.Key, value.Value });
                 if (properties != null) CarryProperties(meta, carried, properties);
                 return new Dictionary<string, object> { { "guid", Id(parsed) } };
             });
             var libraries = LoadLibraries(guid);
             if (libraries != null) result["libraries"] = libraries;
             return result;
+        }
+
+        // The id and `cts-source` a Project Information holds, which the disk
+        // file never carries (EntryDocuments): put back after its swap.
+        Dictionary<string, string> OwnValues(object obj)
+        {
+            var values = new Dictionary<string, string>();
+            if (!_projectInfoIface.IsInstanceOfType(obj)) return values;
+            foreach (var key in new[] { ProjectInfo.IdProperty, ProjectInfo.SourceProperty })
+                if (ProjectText(obj, key) != "") values[key] = ProjectText(obj, key);
+            return values;
         }
 
         // Each library a Library Manager names, loaded (ILibManItem2.TryLoad):

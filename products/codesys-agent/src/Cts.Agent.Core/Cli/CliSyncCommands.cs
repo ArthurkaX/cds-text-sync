@@ -133,7 +133,7 @@ namespace Cts.Cli
                 ArgumentHelp = "Absolute path, or ./path relative to the CODESYS project file. Omit to use the sync folder the project file lies in, else a <project>-cts folder beside it.",
                 Options = new[]
                 {
-                    CliOption.Switch("--new-id", "new_id", "The project is a copy made for another plant: give it a new id and the folder as a repository of its own."),
+                    CliOption.Switch("--new-id", "new_id", "The project is a copy made for another plant: give it a new id and the folder as a repository of its own. A copied folder that still names the project, while this PC has the project's own folder elsewhere, takes the new id."),
                     CliOption.Switch("--owner", "owner", "Make this machine the project's owner, the one that publishes the project file (cts commit --publish) and changes its libraries. The machine that gives the project its id is its owner already; one owner per team."),
                     CliOption.Switch("--colleague", "colleague", "Make this machine a colleague's: it takes the published project file (cts project update), and its IDE's Library Manager stays off the disk. Without --owner or --colleague the machine keeps its role."),
                     CliOption.Switch("--save", "save", "Save the CODESYS project after giving it its id. This also saves any other pending IDE edits."),

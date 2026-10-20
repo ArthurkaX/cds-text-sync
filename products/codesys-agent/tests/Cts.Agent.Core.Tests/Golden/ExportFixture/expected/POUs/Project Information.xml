@@ -43,14 +43,6 @@
               <Single Type="string">WIN-CODESYS</Single>
             </Value>
           </Entry>
-          <Entry>
-            <Key>
-              <Single Type="string">cts-project-id</Single>
-            </Key>
-            <Value>
-              <Single Type="string">374e2afd-b7d6-4447-8bd8-ce8e480d827d</Single>
-            </Value>
-          </Entry>
         </Dictionary>
         <Single Name="GetCompanyGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>
         <Single Name="GetTitleGUID" Type="System.Guid">00000000-0000-0000-0000-000000000000</Single>

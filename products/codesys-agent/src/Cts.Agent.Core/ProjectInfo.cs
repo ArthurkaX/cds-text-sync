@@ -34,13 +34,16 @@ namespace Cts.Agent
         // The label *source* written at *when*, as the property holds it.
         public static string Source(string source, string when) { return source + SourceWhen + when; }
 
-        // Whether *entry* of the Properties dictionary is the `cts-source` label:
-        // the view and its compare leave it out, so writing it changes nothing on disk.
-        internal static bool IsSourceEntry(XElement entry)
+        // Whether *entry* of the Properties dictionary is the project's id or
+        // its `cts-source` label: both belong to the .project, not to the view.
+        // The view and its compare leave them out, so writing them changes
+        // nothing on disk, and a copy's import cannot carry the original's id.
+        internal static bool IsOwnEntry(XElement entry)
         {
             var key = entry.Elements().FirstOrDefault(e => e.Name.LocalName == "Key");
-            return key != null && key.Value.Trim() == SourceProperty;
+            return key != null && IsOwnKey(key.Value.Trim());
         }
+        internal static bool IsOwnKey(string key) => key == SourceProperty || key == IdProperty;
 
         // Whether *xml*, a view file the IDE wrote, is a Library Manager or the
         // Project Settings, which stay off the disk of *folder*: a team
@@ -128,7 +131,9 @@ namespace Cts.Agent
         public static string ChooseId(string id, string folder, bool newId = false, string registry = null)
         {
             var owner = IdOf(folder);
-            if (owner != "" && newId) throw new InvalidOperationException(folder + " already belongs to project " + owner + ": a copy of the project needs a folder of its own");
+            if (owner != "" && newId && !CopiedFolder(owner, id, folder, registry))
+                throw new InvalidOperationException(folder + " already belongs to project " + owner + ": a copy of the project needs a folder of its own");
+            if (owner != "" && newId) return NewProjectId();
             if (owner != "" && id != "" && owner != id) throw new InvalidOperationException(folder + " belongs to another project (" + owner + "; this one is " + id + ")");
             if (owner != "") return owner;
             if (newId || id == "") return NewProjectId();
@@ -136,6 +141,15 @@ namespace Cts.Agent
             if (other != "" && Different(other, folder) && IdOf(other) == id)
                 throw new InvalidOperationException("this project's sync folder is " + other + ". Choose it, or pass --new-id when the project is a copy made for another plant and gets a repository of its own");
             return id;
+        }
+
+        // Whether *folder*, naming project *owner*, is a copy of that project's
+        // folder: *owner* is the open project's *id*, and this machine has the
+        // project's own folder elsewhere, still naming it.
+        static bool CopiedFolder(string owner, string id, string folder, string registry)
+        {
+            var original = RegistryFolder(owner, registry);
+            return owner == id && original != "" && Different(original, folder) && IdOf(original) == owner;
         }
 
         // *owner* null keeps what this machine was.
@@ -222,6 +236,15 @@ namespace Cts.Agent
         static object Entry(string id, string registry)
         {
             return Field(Field(Read(registry), "projects"), id);
+        }
+
+        // The sync folder around *workFolder* when it is not *syncFolder*, the
+        // one a command works on; "" when there is none or it is that one.
+        public static string OtherSyncFolder(string workFolder, string syncFolder)
+        {
+            if (string.IsNullOrEmpty(workFolder) || string.IsNullOrEmpty(syncFolder) || !Path.IsPathRooted(workFolder)) return "";
+            var here = EnclosingRoot(Path.Combine(workFolder, SettingsFile));
+            return here != "" && Different(here, syncFolder) ? here : "";
         }
 
         // The nearest folder at or above the project file's holding

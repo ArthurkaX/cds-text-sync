@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 using Xunit;
@@ -63,6 +64,22 @@ namespace Cts.Agent.Tests
             var documents = EntryDocuments.Parse("﻿" + Entry());
             Assert.NotEqual(0xEF, documents.Meta[0]);
             Assert.NotEqual(0xEF, documents.Object[0]);
+        }
+
+        // A copy's Project Information.xml, or one from before the view left
+        // them out, names the original's id: the IDE never takes it.
+        [Fact]
+        public void TheProjectsIdAndSourceLabelDoNotTravel()
+        {
+            var entry = Entry().Replace("<Single Name=\"Text\"", "<Dictionary Type=\"System.Collections.Hashtable\" Name=\"Properties\">"
+                + "<Entry><Key><Single Type=\"string\">cts-project-id</Single></Key><Value><Single Type=\"string\">original</Single></Value></Entry>"
+                + "<Entry><Key><Single Type=\"string\">cts-source</Single></Key><Value><Single Type=\"string\">main@0123abcd</Single></Value></Entry>"
+                + "<Entry><Key><Single Type=\"string\">Title</Single></Key><Value><Single Type=\"string\">demo</Single></Value></Entry>"
+                + "</Dictionary><Single Name=\"Text\"");
+
+            var keys = Root(EntryDocuments.Parse(entry).Object).Descendants("Key").Select(key => key.Value.Trim());
+
+            Assert.Equal(new[] { "Title" }, keys);
         }
 
         [Fact]

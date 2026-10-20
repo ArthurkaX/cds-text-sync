@@ -33,5 +33,5 @@
 100644 blob 6b537aba43a58863c1faf50ba4040b0ba9c9bff2	project-view/POUs/GlobalTextList.csv
 100644 blob 1e6559e9ab0d638a9aaf9ab01f41cda7a2842227	project-view/POUs/GlobalTextList.xml
 100644 blob 444b9e6e7dd2a82395e13855255459cf311db55d	project-view/POUs/Library Manager.xml
-100644 blob c620dacb8c0e2af957f48690a8d63c7684bf89e4	project-view/POUs/Project Information.xml
+100644 blob 5a0a1d0d32100133eb58689517afaabf60b07f11	project-view/POUs/Project Information.xml
 100644 blob 473926ccf1c06f1bbddf70dc4fc8382c1b1be64d	project-view/POUs/Project Settings.xml

@@ -110,6 +110,47 @@ namespace Cts.Agent.Tests
             Assert.Contains("\"deny\": [\n    \"write\"\n  ]", File.ReadAllText(Path.Combine(folder, "cds-text-sync.json")));
         }
 
+        // A copy of the project's folder still names its id: --new-id takes it
+        // while the project's own folder is elsewhere, never that folder itself.
+        [Fact]
+        public void NewIdTakesACopiedFolderButNotTheOriginal()
+        {
+            var root = Temp();
+            var registry = Path.Combine(root, "projects.json");
+            var original = Path.Combine(root, "original");
+            var copy = Path.Combine(root, "copy");
+            foreach (var folder in new[] { original, copy })
+            {
+                Directory.CreateDirectory(folder);
+                ProjectInfo.SaveSettings(folder, "{\"project_id\":\"existing\"}");
+            }
+            ProjectInfo.Record("existing", original, "demo", true, registry);
+
+            var id = ProjectInfo.ChooseId("existing", copy, true, registry);
+
+            Assert.NotEqual("existing", id);
+            Assert.Contains("already belongs to project existing", Assert.Throws<InvalidOperationException>(() => ProjectInfo.ChooseId("existing", original, true, registry)).Message);
+            Assert.Contains("already belongs to project existing", Assert.Throws<InvalidOperationException>(() => ProjectInfo.ChooseId("other", copy, true, registry)).Message);
+        }
+
+        // A shell in a copy's folder whose IDE works on the original's.
+        [Fact]
+        public void AWorkFolderInsideAnotherSyncFolderIsNamed()
+        {
+            var root = Temp();
+            var original = Path.Combine(root, "original");
+            var copy = Path.Combine(root, "copy");
+            foreach (var folder in new[] { original, copy })
+            {
+                Directory.CreateDirectory(Path.Combine(folder, "project-view"));
+                ProjectInfo.SaveSettings(folder, "{\"project_id\":\"existing\"}");
+            }
+
+            Assert.Equal(copy, ProjectInfo.OtherSyncFolder(Path.Combine(copy, "project-view"), original));
+            Assert.Equal("", ProjectInfo.OtherSyncFolder(Path.Combine(original, "project-view"), original));
+            Assert.Equal("", ProjectInfo.OtherSyncFolder(root, original));
+        }
+
         [Fact]
         public void ExistingRepositoryGetsMissingRulesWithoutAnInitialCommit()
         {
