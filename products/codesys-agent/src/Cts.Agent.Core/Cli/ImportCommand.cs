@@ -36,6 +36,7 @@ namespace Cts.Cli
                         foreach (var item in rows.Where(row => !renamedFiles.Contains(Convert.ToString(row["path"]))))
                             answer.Detail(category == "ide_changed" ? ComparePlanner.IdeChangedLine(item) : category + " " + item["name"] + " " + item["path"]);
                 foreach (var rename in renames) answer.Detail("renamed " + rename["from"] + " -> " + rename["to"] + ": the object keeps its GUID");
+                foreach (var name in Values(data, "would_delete")) answer.Detail("would delete " + name + " in the IDE");
                 if (objects != null && objects.TryGetValue("ide_changed", out var changed) && Items(changed) is var ideRows && ideRows.Any())
                     answer.Detail(ComparePlanner.IdeChangedNext(ideRows));
                 return answer;

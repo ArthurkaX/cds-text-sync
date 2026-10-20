@@ -31,6 +31,8 @@ namespace Cts.Cli
             internal List<TextWrite> Writes;
             internal List<MergeFileEdit> MergeFiles, IdeToDisk;
             internal List<RenameText> Renames;
+            // The IDE's folders the import deletes, deepest first, and of them those whose last object leaves.
+            internal List<string> FolderDeletes, EmptiedFolders;
             internal Dictionary<string, string> Created;
             // The IDE export of each native to replace before the write.
             internal Dictionary<string, IDictionary<string, object>> NativeBefore;

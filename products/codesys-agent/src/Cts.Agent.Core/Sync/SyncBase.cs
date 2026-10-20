@@ -11,7 +11,7 @@ namespace Cts.Sync
     // cache, and the IDE stamp that proves when the base describes the IDE.
     public static class SyncBase
     {
-        const string BaseRef = "refs/cts/base";
+        internal const string BaseRef = "refs/cts/base";
         const string OverwrittenRef = "refs/cts/overwritten";
 
         public sealed class Stamp

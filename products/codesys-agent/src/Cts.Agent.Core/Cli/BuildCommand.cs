@@ -242,7 +242,7 @@ namespace Cts.Cli
                     return new List<object>();
                 var view = ExportCommand.Relative(folder, ViewFolder.Of(folder));
                 var prefix = view == "." ? "" : view + "/";
-                return SyncBase.Changed(folder, view, "refs/cts/base").Keys
+                return SyncBase.Changed(folder, view, SyncBase.BaseRef).Keys
                     .Where(path => !path.Split('/').Any(part => part.StartsWith(".", StringComparison.Ordinal)))
                     .Select(path => prefix + path).OrderBy(path => path, StringComparer.Ordinal).Cast<object>().ToList();
             }

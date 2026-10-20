@@ -95,6 +95,35 @@ namespace Cts.Agent.Tests
             Assert.DoesNotContain("F_Lost.st", listed);
         }
 
+        // The disk and the IDE agree on a file the base holds otherwise, and on
+        // one only the base still has (a file moved on both sides): an import
+        // with nothing to carry gives the base both, so cts build names neither.
+        [Fact]
+        public void An_import_with_nothing_to_carry_gives_the_base_what_both_sides_agree_on()
+        {
+            var view = ViewFolder.Of(_root);
+            var relative = ExportCommand.Relative(_root, view);
+            var task = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var agreed = File.ReadAllText(task);
+            var gone = Path.Combine(Path.GetDirectoryName(task), "Gone.xml");
+            File.WriteAllText(task, agreed.Replace("</Single>", "</Single><!-- before -->"));
+            File.WriteAllText(gone, agreed);
+            SyncBase.Record(_root, relative, new List<string>());
+            File.WriteAllText(task, agreed);
+            File.Delete(gone);
+            Assert.Equal(2, SyncBase.Changed(_root, relative, SyncBase.BaseRef).Count);
+
+            ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(new string[0]);
+                if (method != "project.export") throw new InvalidOperationException("unexpected agent call " + method);
+                File.Copy(Path.Combine(Fixture, "snapshot.xml"), Convert.ToString(args["path"]), true);
+                return new Dictionary<string, object>();
+            }));
+
+            Assert.Empty(SyncBase.Changed(_root, relative, SyncBase.BaseRef));
+        }
+
         [Fact]
         public void Carries_an_existing_text_edit_and_moves_only_its_base_file()
         {
@@ -2457,19 +2486,7 @@ namespace Cts.Agent.Tests
         [Fact]
         public void DeletesTheFolderEmptiedByItsLastObjectDeletion()
         {
-            var view = ViewFolder.Of(_root);
-            var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
-                .First(path => path.Replace('\\', '/').EndsWith("/Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
-            var parent = Path.GetDirectoryName(appContainer);
-            var newFolder = Path.Combine(parent, "EmptyAfterImport");
-            Directory.CreateDirectory(newFolder);
-            File.Copy(appContainer, Path.Combine(newFolder, ".cds-object.xml"));
-            File.WriteAllText(Path.Combine(newFolder, "GVL_One.st"), "VAR_GLOBAL\nEND_VAR\n");
-            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
-            var baseCommit = GitRepository.Run(_root, "rev-parse refs/cts/base").Trim();
-            SyncBase.SaveStamp(StampPath(), _project, _stamp, baseCommit);
-            File.Delete(Path.Combine(newFolder, "GVL_One.st"));
-            var treePath = Path.GetRelativePath(view, parent).Replace('\\', '/').Split('/').Concat(new[] { "EmptyAfterImport", "GVL_One" }).ToArray();
+            var treePath = EmptiedFolder(out var newFolder);
             var deleted = new List<string>();
             var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
             {
@@ -2480,6 +2497,41 @@ namespace Cts.Agent.Tests
             Assert.Equal(new[] { "guid-" + treePath.Length, "guid-" + (treePath.Length - 1) }, deleted);
             Assert.Contains("EmptyAfterImport", ((IEnumerable<object>)result["deleted_objects"]).Cast<string>());
             Assert.False(Directory.Exists(newFolder));
+        }
+
+        // The folder no row of the plan names goes all the same: the dry run says so.
+        [Fact]
+        public void ADryRunNamesTheFolderItsLastObjectDeletionEmpties()
+        {
+            var treePath = EmptiedFolder(out var newFolder);
+            var result = ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
+            {
+                if (method == "project.tree") return TreeWithGuids(treePath);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            var folder = string.Join("/", treePath.Take(treePath.Length - 1)) + "/";
+            Assert.Equal(new[] { folder }, ((IEnumerable<object>)result["would_delete"]).Cast<string>());
+            Assert.Contains("would delete " + folder + " in the IDE", ImportCommand.Build(result).Details);
+            Assert.True(Directory.Exists(newFolder));
+        }
+
+        // A folder below the application whose one object, GVL_One, is gone
+        // from disk since the base; its tree path down to that object.
+        string[] EmptiedFolder(out string newFolder)
+        {
+            var view = ViewFolder.Of(_root);
+            var appContainer = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .First(path => path.Replace('\\', '/').EndsWith("/Application/.cds-object.xml", StringComparison.OrdinalIgnoreCase));
+            var parent = Path.GetDirectoryName(appContainer);
+            newFolder = Path.Combine(parent, "EmptyAfterImport");
+            Directory.CreateDirectory(newFolder);
+            File.Copy(appContainer, Path.Combine(newFolder, ".cds-object.xml"));
+            File.WriteAllText(Path.Combine(newFolder, "GVL_One.st"), "VAR_GLOBAL\nEND_VAR\n");
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            var baseCommit = GitRepository.Run(_root, "rev-parse refs/cts/base").Trim();
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, baseCommit);
+            File.Delete(Path.Combine(newFolder, "GVL_One.st"));
+            return Path.GetRelativePath(view, parent).Replace('\\', '/').Split('/').Concat(new[] { "EmptyAfterImport", "GVL_One" }).ToArray();
         }
 
         [Fact]

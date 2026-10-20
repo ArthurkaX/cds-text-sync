@@ -16,7 +16,7 @@ namespace Cts.Cli
             readonly ImportWork _work;
             List<IDictionary<string, object>> _readBack, _nativeApplyMisses;
             List<NativeWrite> _nativeWrites;
-            List<string> _folderDeletes, _emptiedFolders, _settings, _updatedFieldObjects;
+            List<string> _settings, _updatedFieldObjects;
 
             internal ImportApply(CliCall call, ImportWork work)
             {
@@ -113,12 +113,6 @@ namespace Cts.Cli
                         : throw new InvalidOperationException("validated move target is missing: " + parent);
                 }
                 Apply(_call, _work.Deleted, _work.ForcedDeletes, _work.Renames, _work.Writes);
-                _emptiedFolders = EmptiedFolders(_work.View, _work.Deleted.Concat(_work.NativeDeletes).Concat(_work.Renames.Select(rename => rename.DeletedRecord)).ToList(), _work.IdeNodes).ToList();
-                _folderDeletes = _work.FolderRecords.Where(record => record.Category == "deleted"
-                        || record.Category == "ide_changed" && _work.HasBase && _call.Options.Params.ContainsKey("force"))
-                    .Select(record => FolderKey(record.Path))
-                    .Concat(_emptiedFolders)
-                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(key => key.Count(ch => ch == '/')).ToList();
                 _nativeWrites = new List<NativeWrite>();
                 foreach (var item in _work.ForcedCreateItems.OrderBy(item => item.Path.Length))
                 {
@@ -243,6 +237,21 @@ namespace Cts.Cli
                 }
             }
 
+            // The files the disk and the IDE already agree on, though the base
+            // does not (a file moved on both sides, one edit made on each): the
+            // base takes them, so cts build does not name them as not imported.
+            // A container file only the IDE has stays as it is: the export
+            // writes it.  A settling sync plans only some differences, so it
+            // takes none.
+            IEnumerable<string> Agreed()
+            {
+                if (_work.Settling || !_work.HasBase || _work.IdeFiles == null) return Enumerable.Empty<string>();
+                var differing = new HashSet<string>(_work.Changed.Select(record => record.Path), StringComparer.OrdinalIgnoreCase);
+                return SyncBase.Changed(_work.Folder, ExportCommand.Relative(_work.Folder, _work.View), SyncBase.BaseRef)
+                    .Where(file => !differing.Contains(file.Key) && (file.Value != null || !_work.IdeFiles.ContainsKey(file.Key)))
+                    .Select(file => file.Key).ToList();
+            }
+
             // The .csv beside the .xml at *path*, null when it has none.
             string CsvOf(string path)
             {
@@ -313,10 +322,10 @@ namespace Cts.Cli
                 _readBack.AddRange(nativeReadBack);
                 _readBack.AddRange(_nativeApplyMisses);
                 _readBack.AddRange(_work.FieldReadBack);
-                foreach (var key in _folderDeletes)
+                foreach (var key in _work.FolderDeletes)
                     if (_work.IdeByPath.TryGetValue(key, out var folderGuid)) _call.Call("objects.delete", new Dictionary<string, object> { { "guid", folderGuid } });
                 // A folder its last object's delete emptied keeps only its own file on disk; that goes with it.
-                foreach (var key in _emptiedFolders.OrderByDescending(key => key.Count(ch => ch == '/')))
+                foreach (var key in _work.EmptiedFolders.OrderByDescending(key => key.Count(ch => ch == '/')))
                 {
                     var folder = Path.Combine(_work.View, key.Replace('/', Path.DirectorySeparatorChar));
                     _work.Stamps.Delete(key + "/.cds-object.xml");
@@ -373,7 +382,7 @@ namespace Cts.Cli
                     .Concat(_work.Renames.Select(rename => rename.DeletedRecord.Path))
                     .Concat(_work.ForceRecords.Where(record => _work.ForcedDeletedNames.Contains(record.Name)).Select(record => record.Path))
                     .Concat(_work.FolderRecords.Select(record => record.Path))
-                    .Concat(_emptiedFolders.Select(key => key + "/.cds-object.xml"))
+                    .Concat(_work.EmptiedFolders.Select(key => key + "/.cds-object.xml"))
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 foreach (var partialFile in _work.Writes.Where(pair => unappliedGuids.Contains(pair.Guid)).Select(pair => pair.Item.File))
                     carriedFiles.RemoveAll(path => path.Equals(partialFile, StringComparison.OrdinalIgnoreCase));
@@ -387,13 +396,14 @@ namespace Cts.Cli
                 carriedFiles.AddRange(toDisk);
                 carriedFiles.AddRange(_work.IdeNewTextFiles);
                 carriedFiles.AddRange(_work.IdeToDisk.Select(edit => edit.Original.File));
+                carriedFiles.AddRange(Agreed());
                 // From another project file's sync, an import that carried every
                 // difference makes the disk this project's base.
                 var takesOver = _work.OtherProject != null && _work.Conflicts.Count == 0 && unappliedGuids.Count == 0;
                 var baseName = CarryBase(_work.Folder, _work.View, carriedFiles, takesOver, _work.Stamps);
                 if (takesOver) SyncBase.SaveProject(_work.Folder, _call.Hello.ProjectPath);
                 var output = BuildPayload(_call, _work.Data, _work.AddedItems, _work.CreatedAccessorNames, _work.CreatedFolders, _work.Updated, _work.Deleted,
-                    _work.ForcedDeletedNames, _work.ForcedCreateItems, _work.ForcedCreated, _folderDeletes, _work.Renames, _settings, _readBack,
+                    _work.ForcedDeletedNames, _work.ForcedCreateItems, _work.ForcedCreated, _work.FolderDeletes, _work.Renames, _settings, _readBack,
                     _work.ForceRecords, baseName);
                 output["syncing"] = _work.Syncing;
                 if (_work.Stamps.Changed.Count > 0) output["changed_meanwhile"] = _work.Stamps.Changed.ToList();
@@ -416,7 +426,7 @@ namespace Cts.Cli
                 output["created_native_objects"] = _work.CreatedFolders.Select(Path.GetFileName).Concat(_nativeWrites.Where(item => item.Created).Select(item => item.Name)).ToList();
                 output["updated_native_objects"] = _nativeWrites.Where(item => !item.Created).Select(item => item.Name).ToList();
                 output["updated_field_objects"] = _updatedFieldObjects;
-                output["deleted_objects"] = _work.Deleted.Select(item => item.Name).Concat(_work.NativeDeletes.Select(item => item.Name)).Concat(_work.ForcedDeletedNames).Concat(_folderDeletes.Select(Path.GetFileName)).ToList();
+                output["deleted_objects"] = _work.Deleted.Select(item => item.Name).Concat(_work.NativeDeletes.Select(item => item.Name)).Concat(_work.ForcedDeletedNames).Concat(_work.FolderDeletes.Select(Path.GetFileName)).ToList();
                 var createdObjects = output["created_objects"] as IList<object>;
                 if (createdObjects != null)
                     createdObjects = createdObjects.Concat(_nativeWrites.Where(item => item.Created).Select(item => (object)new Dictionary<string, object>
@@ -424,7 +434,7 @@ namespace Cts.Cli
                 if (createdObjects != null) output["created_objects"] = createdObjects;
                 if (_work.Conflicts.Count == 0 && unappliedGuids.Count == 0 && !_work.Settling) ProjectSource.Mark(_call, _work.Folder, _work.View, output);
                 if (_call.Options.Params.ContainsKey("save") && _readBack.Count == 0
-                    && (_work.Writes.Count > 0 || _work.Deleted.Count > 0 || _work.ForcedDeletes.Count > 0 || _folderDeletes.Count > 0 || _work.Renames.Count > 0 || _settings.Count > 0
+                    && (_work.Writes.Count > 0 || _work.Deleted.Count > 0 || _work.ForcedDeletes.Count > 0 || _work.FolderDeletes.Count > 0 || _work.Renames.Count > 0 || _settings.Count > 0
                         || _nativeWrites.Count > 0 || _work.NativeDeletes.Count > 0 || _work.CreatedFolders.Count > 0 || _updatedFieldObjects.Count > 0))
                 {
                     try { _call.Call("project.save", new Dictionary<string, object>()); output["saved"] = true; }

@@ -30,6 +30,7 @@ namespace Cts.Cli
                 stop = apply.Preserve();
                 if (stop != null) return stop;
                 planner.MatchRenames();
+                planner.PlanFolderDeletes();
                 try
                 {
                     apply.ApplyTexts();

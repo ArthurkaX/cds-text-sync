@@ -52,6 +52,11 @@ namespace Cts.Cli
                 if (_work.Merged.Count > 0) _work.Data["merges"] = _work.Merged;
                 if (_work.Conflicts.Count > 0) { _work.Data["conflicts"] = _work.Conflicts; _work.Data["conflict_next"] = ConflictNext; }
                 MatchRenames();
+                PlanFolderDeletes();
+                // What --force or an emptied folder deletes in the IDE, which no row of the plan names as deleted.
+                var shown = new HashSet<string>(_work.FolderRecords.Where(record => record.Category == "deleted").Select(record => FolderKey(record.Path)), StringComparer.OrdinalIgnoreCase);
+                var deletes = _work.ForcedDeletedNames.Concat(_work.FolderDeletes.Where(key => !shown.Contains(key)).Select(key => key + "/")).ToList();
+                if (deletes.Count > 0) _work.Data["would_delete"] = deletes;
                 if (_work.Renames.Count > 0) _work.Data["renames"] = _work.Renames.Select(rename => (object)new Dictionary<string, object>
                     { { "from", rename.DeletedRecord.Path }, { "to", rename.Item.File } }).ToList();
                 return _work.Data;
@@ -294,7 +299,7 @@ namespace Cts.Cli
                     var guid = record.Guid;
                     if (string.IsNullOrEmpty(guid) && !_work.IdeByPath.TryGetValue(ideObject.Key, out guid))
                         return Refused(_call, _work.Data, "cannot identify IDE object to force-update: " + record.Name);
-                    if (diskVersion == null) _work.ForcedDeletes.Add(guid);
+                    if (diskVersion == null) { _work.ForcedDeletes.Add(guid); _work.ForcedDeletedNames.Add(record.Name); }
                     else { _work.Writes.Add(new TextWrite { Guid = guid, Item = diskVersion }); _work.Updated.Add(record.Name); }
                 }
                 foreach (var item in _work.ForcedCreateItems)
@@ -335,6 +340,18 @@ namespace Cts.Cli
                     && owner.Path.Equals(record.Path)
                     && Path.GetFileNameWithoutExtension(owner.Path) == owner.Name
                     && !Path.GetFileNameWithoutExtension(record.Path).Equals(record.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+            }
+
+            // After the renames: the folders gone from disk, with --force the ones
+            // only the IDE has, and the ones whose last object leaves.
+            internal void PlanFolderDeletes()
+            {
+                _work.EmptiedFolders = EmptiedFolders(_work.View, _work.Deleted.Concat(_work.NativeDeletes).Concat(_work.Renames.Select(rename => rename.DeletedRecord)).ToList(), _work.IdeNodes).ToList();
+                _work.FolderDeletes = _work.FolderRecords.Where(record => record.Category == "deleted"
+                        || record.Category == "ide_changed" && _work.HasBase && _call.Options.Params.ContainsKey("force"))
+                    .Select(record => FolderKey(record.Path))
+                    .Concat(_work.EmptiedFolders)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(key => key.Count(ch => ch == '/')).ToList();
             }
 
             // The IDE's natives to replace: their MetaObject properties, so only
