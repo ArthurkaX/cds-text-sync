@@ -282,7 +282,7 @@ namespace Cts.Agent
             });
             _router.Register("project.close", (req, s) =>
             {
-                var closed = _ide.OnUi("project.close", StartTimeout.Parse(req, UiTimeoutMs), () => _ide.CloseProject(req.Bool("discard", false)));
+                var closed = _ide.OnUi("project.close", StartTimeout.Parse(req, UiTimeoutMs), () => _ide.CloseProject(req.Bool("discard", false), req.Bool("save", false), req.Bool("quit", false)));
                 _journal.EventSeen(true);
                 return closed;
             });

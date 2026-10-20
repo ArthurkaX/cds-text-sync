@@ -10,6 +10,27 @@ namespace Cts.Cli
     public static partial class CliCommands
     {
         // The commands that read and change the project, and answer the IDE's dialogs.
+        const int QuitWaitSeconds = 60;
+
+        static IDictionary<string, object> CloseProject(CliCall call)
+        {
+            if (call.Options.Params.ContainsKey("save") && call.Options.Params.ContainsKey("discard"))
+                throw new CliFailure("project-close", "usage", "--save and --discard exclude each other", "cts project close --help", 2);
+            var data = call.Call("project.close", call.Options.Params);
+            if (call.Options.Params.ContainsKey("quit")) data["quit"] = Exited(call.Hello.Pid);
+            return data;
+        }
+
+        // Whether the IDE's process is gone within QuitWaitSeconds.
+        static bool Exited(int pid)
+        {
+            try
+            {
+                using (var process = System.Diagnostics.Process.GetProcessById(pid)) return process.WaitForExit(QuitWaitSeconds * 1000);
+            }
+            catch (ArgumentException) { return true; }
+        }
+
         static CliCommand[] ProjectCommands => new[]
         {
             new CliCommand
@@ -33,11 +54,25 @@ namespace Cts.Cli
             {
                 Name = "project",
                 Sub = "close",
-                Summary = "Close the current project in CODESYS",
-                Description = "Closes the project. The agent refuses while it is online or has unsaved changes.",
+                Summary = "Close the current project in CODESYS, or quit CODESYS",
+                Description = "Closes the project. The agent refuses while it is online, and while it has unsaved changes "
+                    + "unless --save saves them first or --discard drops them. --quit then exits CODESYS as File > Exit does, "
+                    + "also with no project open, and waits up to " + QuitWaitSeconds + " s for the process to end (quit=true).",
                 TimeoutKey = "project_close",
-                Execute = Agent("project.close"),
-                Build = data => new Answer().Add("closed", Value(data, "closed")),
+                Options = new[]
+                {
+                    CliOption.Switch("--save", "save", "Save unsaved changes before closing"),
+                    CliOption.Switch("--discard", "discard", "Close without saving; unsaved changes are lost"),
+                    CliOption.Switch("--quit", "quit", "Exit CODESYS after closing the project"),
+                },
+                Execute = CloseProject,
+                Build = data =>
+                {
+                    var answer = new Answer().Add("closed", Value(data, "closed")).Add("saved", Value(data, "saved")).Add("quit", Value(data, "quit"));
+                    return Equals(Value(data, "quit"), false)
+                        ? answer.Failed().Detail("CODESYS still runs " + QuitWaitSeconds + " s after it was asked to exit: cts dialog names a question that holds it")
+                        : answer;
+                },
             },
             new CliCommand
             {

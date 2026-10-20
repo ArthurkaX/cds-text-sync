@@ -3,11 +3,14 @@
 // libraries the IDE loads for a project are projects too, and are left out of
 // the list. Opening and closing refuse what would bring up a modal prompt:
 // unsaved changes, and an online session on close. `discard` closes with the
-// unsaved changes lost (`cts project update` replaces the file anyway). Both are cts's own writes
+// unsaved changes lost (`cts project update` replaces the file anyway), `save`
+// saves them first, and `quit` exits CODESYS afterwards. Both are cts's own writes
 // to the journal: loading or closing a project is not a user's edit.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Cts.Agent
 {
@@ -77,18 +80,38 @@ namespace Cts.Agent
             return data;
         }
 
-        public Dictionary<string, object> CloseProject(bool discard)
+        // Closes the primary project, saved first with *save*; with *quit*
+        // CODESYS then exits too, also when no project is open.
+        public Dictionary<string, object> CloseProject(bool discard, bool save, bool quit)
         {
-            var project = OpenProject();
+            var project = quit ? PrimaryProject() : OpenProject();
             RequirePermission("project.close");
-            if (LoggedInApplications().Length > 0)
-                throw new ProtocolException(ErrorCodes.BadParams,
-                    "The project is online with the PLC. Run `cts disconnect`, then `cts project close`.");
-            if (IsDirty(project) && !discard) throw ProjectFiles.Unsaved("The project", "`cts project close`");
-            var name = ProjectFiles.DisplayName(PathOf(project));
-            if (!Close(project)) throw new ProtocolException(ErrorCodes.Internal, "CODESYS did not close the project " + name);
-            return new Dictionary<string, object> { { "closed", name } };
+            var data = new Dictionary<string, object>();
+            if (project != null)
+            {
+                if (LoggedInApplications().Length > 0)
+                    throw new ProtocolException(ErrorCodes.BadParams,
+                        "The project is online with the PLC. Run `cts disconnect`, then `cts project close`.");
+                if (save && IsDirty(project)) data["saved"] = SaveProject()["saved"];
+                if (IsDirty(project) && !discard) throw ProjectFiles.Unsaved("The project", "`cts project close`");
+                var name = ProjectFiles.DisplayName(PathOf(project));
+                if (!Close(project)) throw new ProtocolException(ErrorCodes.Internal, "CODESYS did not close the project " + name);
+                data["closed"] = name;
+            }
+            if (quit) Quit();
+            return data;
         }
+
+        // Asks the main window to close once the answer has gone out: CODESYS
+        // exits as by File > Exit, with no project left to ask about.
+        static void Quit()
+        {
+            var main = Process.GetCurrentProcess().MainWindowHandle;
+            if (main == IntPtr.Zero) throw new ProtocolException(ErrorCodes.Unavailable, "CODESYS has no main window to close");
+            Task.Delay(QuitDelayMs).ContinueWith(_ => Win32.Close(main));
+        }
+
+        const int QuitDelayMs = 500;
 
         Dictionary<string, object> Opened(object project, string path, bool alreadyOpen)
         {

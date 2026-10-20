@@ -33,6 +33,26 @@ namespace Cts.Agent.Tests
             else Assert.Equal("ok project-list count=2\nC:/Demo.project (primary)\nC:/Library.project\nide-1 · no project\n", output);
         }
 
+        // The agent closes and asks CODESYS to exit; cts waits for the process.
+        [Fact]
+        public void Project_close_quit_saves_and_waits_for_the_ide_to_end()
+        {
+            var host = new FakeHost();
+            const int gone = int.MaxValue - 1;
+            host.Agents[gone] = Agent(null, null, (name, parameters) =>
+            {
+                Assert.Equal("project.close", name);
+                Assert.Equal(true, parameters["save"]);
+                Assert.Equal(true, parameters["quit"]);
+                return new Dictionary<string, object> { { "closed", "Demo" }, { "saved", true } };
+            });
+            Assert.StartsWith("ok project-close closed=Demo saved=true quit=true\n", Run(host, "project", "close", "--save", "--quit").output);
+            var (code, output, error) = Run(host, "project", "close", "--save", "--discard");
+            Assert.Equal(2, code);
+            Assert.StartsWith("error project-close cause=usage", output);
+            Assert.Contains("--save and --discard exclude each other", output + error);
+        }
+
         [Fact]
         public void Project_open_asks_the_agent_to_open_the_file()
         {

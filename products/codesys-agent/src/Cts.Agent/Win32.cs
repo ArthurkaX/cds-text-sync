@@ -24,6 +24,8 @@ namespace Cts.Agent
         //: (BN_CLICKED is notification code 0, the high word of wparam).
         const uint WM_COMMAND = 0x0111;
 
+        const uint WM_CLOSE = 0x0010;
+
         const int MaxText = 2048;
 
         public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr param);
@@ -57,6 +59,9 @@ namespace Cts.Agent
 
         [DllImport("user32.dll")]
         static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
+
+        // Posts WM_CLOSE: the window closes as by its close button.
+        public static bool Close(IntPtr hwnd) => PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
 
         [DllImport("user32.dll")]
         static extern IntPtr GetParent(IntPtr hwnd);
