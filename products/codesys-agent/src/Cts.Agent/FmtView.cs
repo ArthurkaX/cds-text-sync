@@ -19,13 +19,9 @@ namespace Cts.Agent
         static readonly Color Gone = Color.FromArgb(80, 38, 40);
         static readonly Color Added = Color.FromArgb(30, 68, 42);
 
-        const int EM_GETFIRSTVISIBLELINE = 0x00CE;
-        const int EM_LINESCROLL = 0x00B6;
-
         readonly TextBox _filter;
         readonly ListBox _list;
-        readonly RichTextBox _before;
-        readonly RichTextBox _after;
+        readonly PanePair _panes;
         readonly Button _apply;
         readonly Button _skip;
         readonly Button _reload;
@@ -34,7 +30,6 @@ namespace Cts.Agent
         FmtItem _current;
         FmtDiff _diff;
         bool _busy;
-        bool _scrolling;
         //: The change the panes were last brought to.
         int _at = -1;
 
@@ -48,19 +43,19 @@ namespace Cts.Agent
             var left = new Panel { Dock = DockStyle.Left, Width = 320 };
             left.Controls.Add(_list);
             left.Controls.Add(_filter);
-            _before = CodePane();
-            _after = CodePane();
-            _before.VScroll += (s, e) => Follow(_before, _after);
-            _after.VScroll += (s, e) => Follow(_after, _before);
+            left.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 1, BackColor = Rule });
+            var before = CodePane();
+            var after = CodePane();
+            _panes = new PanePair(before, after);
             var panes = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, BackColor = Back };
             panes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             panes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            panes.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            panes.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
             panes.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             panes.Controls.Add(Caption("In the IDE now"), 0, 0);
             panes.Controls.Add(Caption("Formatted"), 1, 0);
-            panes.Controls.Add(_before, 0, 1);
-            panes.Controls.Add(_after, 1, 1);
+            panes.Controls.Add(Framed(before), 0, 1);
+            panes.Controls.Add(Framed(after), 1, 1);
             _apply = Action("&Apply", Apply);
             _skip = Action("&Skip", () => Next(_current));
             _reload = Action("&Reload", Reload);
@@ -82,11 +77,6 @@ namespace Cts.Agent
                 case Keys.Shift | Keys.F8: Jump(false); return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-        Label Caption(string text)
-        {
-            return new Label { Text = text, Dock = DockStyle.Fill, ForeColor = Muted, Font = Mono, TextAlign = ContentAlignment.MiddleLeft };
         }
 
         Button Action(string text, Action run)
@@ -170,31 +160,13 @@ namespace Cts.Agent
             if (item == null || item.Lines == 0)
             {
                 _diff = null;
-                _before.Text = "";
-                _after.Text = "";
+                _panes.Clear();
                 if (item != null) Say(item.Label + ": the formatter leaves it as it is", Good);
                 return;
             }
-            CodeText.Show(_before, item.Before);
-            CodeText.Show(_after, item.After);
-            _diff = FmtReview.Changed(item.Before, item.After);
-            Mark(_before, _diff.Left, Gone);
-            Mark(_after, _diff.Right, Added);
+            _diff = _panes.Show(item.Before, item.After, Gone, Added);
             _at = -1;
             Jump(true);
-        }
-
-        static void Mark(RichTextBox box, IEnumerable<int> lines, Color color)
-        {
-            var text = box.Lines;
-            foreach (var line in lines)
-            {
-                var start = box.GetFirstCharIndexFromLine(line);
-                if (start < 0) continue;
-                box.Select(start, text[line].Length + 1);
-                box.SelectionBackColor = color;
-            }
-            box.Select(0, 0);
         }
 
         // The next (or previous) run of changed lines, near the top of both
@@ -208,39 +180,9 @@ namespace Cts.Agent
             var line = FmtReview.NextChange(lines, _at, forward);
             if (line < 0) return;
             _at = line;
-            var pane = right ? _after : _before;
-            ScrollTo(pane, Math.Max(0, line - 3));
-            Follow(pane, right ? _before : _after);
+            _panes.ScrollNear(right, line);
             var runs = FmtReview.Runs(lines);
             Say(_current.Label + ": change " + (runs.IndexOf(line) + 1) + " of " + runs.Count + ", " + _current.Lines + " line(s)", Muted);
-        }
-
-        // The other pane follows *from*: the formatted side's line maps to
-        // the line beside it before the formatter.
-        void Follow(RichTextBox from, RichTextBox to)
-        {
-            if (_scrolling || _diff == null) return;
-            _scrolling = true;
-            try
-            {
-                var top = FirstVisible(from);
-                var map = _diff.LeftOf;
-                var target = from == _after
-                    ? (top < map.Length ? map[top] : top)
-                    : Math.Max(0, Array.FindIndex(map, left => left >= top));
-                ScrollTo(to, target);
-            }
-            finally { _scrolling = false; }
-        }
-
-        static int FirstVisible(RichTextBox box)
-        {
-            return (int)Win32.SendMessage(box.Handle, EM_GETFIRSTVISIBLELINE, IntPtr.Zero, IntPtr.Zero);
-        }
-
-        static void ScrollTo(RichTextBox box, int line)
-        {
-            Win32.SendMessage(box.Handle, EM_LINESCROLL, IntPtr.Zero, (IntPtr)(line - FirstVisible(box)));
         }
 
         void DrawRow(object sender, DrawItemEventArgs e)

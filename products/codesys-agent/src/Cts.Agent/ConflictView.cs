@@ -10,7 +10,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using System.Windows.Forms;
 using static Cts.Agent.Palette;
 
@@ -19,6 +18,8 @@ namespace Cts.Agent
     internal sealed class ConflictView : ToolWindow
     {
         static readonly Color Differs = Color.FromArgb(88, 72, 30);
+        //: The row shown, in the list.
+        static readonly Color Chosen = Color.FromArgb(44, 62, 90);
 
         readonly string _command;
         readonly string[] _forced;
@@ -26,8 +27,7 @@ namespace Cts.Agent
         readonly bool _carriesDisk;
         readonly ListBox _list;
         readonly Label _about;
-        readonly RichTextBox _left;
-        readonly RichTextBox _right;
+        readonly PanePair _panes;
         readonly Button _apply;
         readonly Button[] _choices;
         List<ConflictItem> _items;
@@ -51,24 +51,26 @@ namespace Cts.Agent
             top.Controls.Add(new Label { Text = "what each side held goes on refs/cts/overwritten first", AutoSize = true, ForeColor = Muted, Font = Mono, Margin = new Padding(8, 10, 0, 0) });
             _list = RowList(20, DrawRow);
             _list.SelectedIndexChanged += (s, e) => Preview();
-            var left = new Panel { Dock = DockStyle.Left, Width = 300 };
+            var left = new Panel { Dock = DockStyle.Left, Width = 300, Padding = new Padding(0, 4, 0, 0) };
             left.Controls.Add(_list);
-            _about = new Label { Dock = DockStyle.Fill, ForeColor = Ink, Font = Mono, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
-            _left = CodePane();
-            _right = CodePane();
+            left.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 1, BackColor = Rule });
+            _about = new Label { Dock = DockStyle.Fill, ForeColor = Ink, Font = Mono, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Padding = new Padding(4, 0, 0, 0) };
+            var overwritten = CodePane();
+            var carried = CodePane();
+            _panes = new PanePair(overwritten, carried);
             var panes = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, BackColor = Back };
             panes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             panes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             panes.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            panes.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            panes.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
             panes.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             panes.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
             panes.Controls.Add(_about, 0, 0);
             panes.SetColumnSpan(_about, 2);
             panes.Controls.Add(Caption(_carriesDisk ? "IDE now (overwritten)" : "Disk now (overwritten)"), 0, 1);
             panes.Controls.Add(Caption(_carriesDisk ? "Disk (carried)" : "IDE (carried)"), 1, 1);
-            panes.Controls.Add(_left, 0, 2);
-            panes.Controls.Add(_right, 1, 2);
+            panes.Controls.Add(Framed(overwritten), 0, 2);
+            panes.Controls.Add(Framed(carried), 1, 2);
             _choices = new[]
             {
                 Choice("&Disk wins", ConflictSide.Disk),
@@ -92,11 +94,6 @@ namespace Cts.Agent
             Controls.Add(left);
             Controls.Add(top);
             Controls.Add(bottom);
-        }
-
-        Label Caption(string text)
-        {
-            return new Label { Text = text, Dock = DockStyle.Fill, ForeColor = Muted, Font = Mono, TextAlign = ContentAlignment.MiddleLeft };
         }
 
         Button Choice(string text, ConflictSide side)
@@ -156,43 +153,17 @@ namespace Cts.Agent
             if (item == null)
             {
                 _about.Text = "";
-                _left.Text = "";
-                _right.Text = "";
+                _panes.Clear();
                 return;
             }
             _about.Text = item.Name + " — " + item.Path + (item.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
                 ? ": both changed the same setting" : ": both changed the same lines");
             var overwritten = _carriesDisk ? item.Ide : item.Disk;
             var carried = _carriesDisk ? item.Disk : item.Ide;
-            CodeText.Show(_left, overwritten);
-            CodeText.Show(_right, carried);
-            var diff = FmtReview.Changed(overwritten, carried);
-            Mark(_left, diff.Left);
-            Mark(_right, diff.Right);
-            var first = diff.Right.Concat(diff.Left).DefaultIfEmpty(0).Min();
-            ScrollNear(_left, first);
-            ScrollNear(_right, first);
-        }
-
-        static void Mark(RichTextBox box, IEnumerable<int> lines)
-        {
-            var text = box.Lines;
-            foreach (var line in lines)
-            {
-                var start = box.GetFirstCharIndexFromLine(line);
-                if (start < 0) continue;
-                box.Select(start, text[line].Length + 1);
-                box.SelectionBackColor = Differs;
-            }
-            box.Select(0, 0);
-        }
-
-        static void ScrollNear(RichTextBox box, int line)
-        {
-            var start = box.GetFirstCharIndexFromLine(Math.Max(0, line - 3));
-            if (start < 0) return;
-            box.Select(start, 0);
-            box.ScrollToCaret();
+            var diff = _panes.Show(overwritten, carried, Differs, Differs);
+            // The first difference near the top, the other pane beside it.
+            if (diff.Right.Count > 0) _panes.ScrollNear(true, diff.Right[0]);
+            else if (diff.Left.Count > 0) _panes.ScrollNear(false, diff.Left[0]);
         }
 
         // The side chosen for the row shown; on to the next one still open.
@@ -216,7 +187,7 @@ namespace Cts.Agent
             if (e.Index < 0 || e.Index >= _items.Count) return;
             var item = _items[e.Index];
             var selected = (e.State & DrawItemState.Selected) != 0;
-            using (var fill = new SolidBrush(selected ? Bar : Back))
+            using (var fill = new SolidBrush(selected ? Chosen : Back))
                 e.Graphics.FillRectangle(fill, e.Bounds);
             var open = item.Side == ConflictSide.Open;
             var mark = ConflictReview.Mark(item);

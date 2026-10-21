@@ -72,6 +72,10 @@ namespace Cts.Agent
         [DllImport("user32.dll")]
         public static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam);
 
+        //: A message whose lparam points at a POINT (a rich edit's scroll position).
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wparam, ref System.Drawing.Point lparam);
+
         [DllImport("kernel32.dll")]
         public static extern int GetCurrentThreadId();
 

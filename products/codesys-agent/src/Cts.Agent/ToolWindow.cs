@@ -79,6 +79,22 @@ namespace Cts.Agent
             return list;
         }
 
+        // *inner* in a one-pixel frame of the rule colour, a few pixels from its neighbours.
+        protected static Panel Framed(Control inner)
+        {
+            var frame = new Panel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = Rule, Margin = new Padding(4) };
+            inner.Dock = DockStyle.Fill;
+            frame.Controls.Add(inner);
+            return frame;
+        }
+
+        // The title strip above a pane.
+        protected Label Caption(string text)
+        {
+            return new Label { Text = text, Dock = DockStyle.Fill, BackColor = Bar, ForeColor = Ink, Font = Mono, TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(4, 4, 4, 0), Padding = new Padding(6, 0, 0, 0) };
+        }
+
         protected RichTextBox CodePane()
         {
             return new RichTextBox
@@ -88,7 +104,7 @@ namespace Cts.Agent
                 WordWrap = false,
                 DetectUrls = false,
                 BorderStyle = BorderStyle.None,
-                BackColor = Back,
+                BackColor = Well,
                 ForeColor = Ink,
                 Font = Mono,
                 ScrollBars = RichTextBoxScrollBars.Both,
