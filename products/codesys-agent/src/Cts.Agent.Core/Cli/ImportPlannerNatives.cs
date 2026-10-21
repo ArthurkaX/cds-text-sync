@@ -203,10 +203,9 @@ namespace Cts.Cli
                 // --take: a disk side goes into the IDE as the other replaces do, an IDE side is written to its file.
                 var nativeConflicts = _work.NativeRecords.Where(record => record.Category != "ide_changed"
                     && record.IdeChanged && record.MergedXml == null).ToList();
-                if (_take == "ide")
-                    foreach (var record in nativeConflicts)
-                        if (_work.NativeReplaces.Remove(record)) _work.NativeIdeTaken.Add(record);
-                var nativeConflict = _take == null ? nativeConflicts.FirstOrDefault() : null;
+                foreach (var record in nativeConflicts.Where(record => Take(record) == "ide"))
+                    if (_work.NativeReplaces.Remove(record)) _work.NativeIdeTaken.Add(record);
+                var nativeConflict = nativeConflicts.FirstOrDefault(record => Take(record) == null);
                 if (nativeConflict != null && !_call.Options.Params.ContainsKey("force"))
                 {
                     _work.Data["conflicts"] = new[] { new Dictionary<string, object> { { "name", nativeConflict.Name }, { "path", nativeConflict.Path } } };

@@ -20,8 +20,9 @@ using System.Linq;
 // push`) when the repository has a remote; Esc keeps it on this PC.
 //
 // Disk → IDE and IDE → Disk carry one side's edits to the other and merge
-// an object both changed; one whose edits overlap opens side by side in the
-// merge program (`--tool`), and what is saved there goes to both.  Shift
+// an object both changed; for those whose edits overlap the conflict window
+// (ConflictReview) asks the side that wins each, or the merge program
+// (`--tool`), and what is saved there goes to both.  Shift
 // with the digit (or the click) makes one side the other, no merge
 // (`--force`, the overwritten text kept on refs/cts/overwritten).  Digit 7
 // opens the sync folder in the person's git program (`cts open`) for what
@@ -223,6 +224,11 @@ namespace Cts.Agent
             tone = both > 0 ? WidgetTone.Both : parts.Count > 0 ? WidgetTone.Changed : WidgetTone.InSync;
             return parts.Count > 0 ? "changed: " + string.Join(" · ", parts) : "in sync";
         }
+
+        // How many objects a compare's *verdict* says both sides changed; -1
+        // for a line that is not a compare's.
+        public static int Both(string verdict)
+            => verdict == null || !verdict.StartsWith("ok compare", StringComparison.Ordinal) ? -1 : Counts(verdict)("both");
 
         // How many objects the IDE holds that the disk lacks, by a compare's
         // *verdict*: what only the IDE changed or both did; every difference

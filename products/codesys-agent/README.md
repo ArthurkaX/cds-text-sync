@@ -260,9 +260,14 @@ line under the pill: `cts compare`'s verdict through `WidgetMenu.State`
 it` for a folder with no sync base, `state unknown` when it failed), read again after a command `WidgetMenu.MovesState` names.
 
 Digits `1` and `2` run `cts import --tool` and `cts export --tool`: an
-object both sides changed is merged, and one whose edits overlap opens in the
-merge program side by side (`ConflictTool`), so the window shows its spinner
-until the program is closed. Shift with the digit or the click runs the
+object both sides changed is merged. While the header's compare says both
+sides changed some (`WidgetMenu.Both`), the row first runs `cts import
+--dry-run --json`, whose `conflicts` carry each overlapping object's key and
+both texts; with any, the quick window closes and the conflict window
+(`ConflictView`, model `ConflictReview`) lists them: the chosen one side by
+side, Disk wins / IDE wins / Merge by hand per object, Force for the row's
+Shift run. Apply runs the row's command with `--take KEY=disk|ide` for each
+side chosen and `--tool` when one goes to the merge program (`ConflictTool`). Shift with the digit or the click runs the
 row's `WidgetItem.Forced` (`import --force`, `export --force`): one side
 becomes the other, no merge. Digit `7` runs `cts open`: the sync folder in
 the person's git program, for merging branches and the rest of git by hand;

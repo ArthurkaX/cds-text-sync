@@ -344,7 +344,8 @@ namespace Cts.Cli
         // A refusal writes nothing: --dry-run shows it under the plan, an import fails with it.
         // The first few records' names, and how many more there are.
         // What to do with objects both sides changed in the same lines.
-        const string ConflictNext = "Keep the disk text: cts sync --take disk. Keep the IDE text: cts sync --take ide.";
+        static string ConflictNext(CliCall call) => "Keep the disk text: cts " + call.Command.Words + " --take disk. Keep the IDE text: cts "
+            + call.Command.Words + " --take ide. One object: --take KEY=disk or KEY=ide, KEY its file or the key its conflict names; the side's text goes to both.";
 
         static string Names(IList<CompareRecord> records)
         {

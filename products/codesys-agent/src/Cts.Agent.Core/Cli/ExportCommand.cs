@@ -78,7 +78,7 @@ namespace Cts.Cli
                 if (result.Ignored.Count > 0) data["ignored"] = result.Ignored.Count;
                 if (result.PendingImport.Count > 0) data["pending_import"] = result.PendingImport;
                 if (result.ChangedMeanwhile.Count > 0) data["changed_meanwhile"] = result.ChangedMeanwhile;
-                if (call.Options.Params.ContainsKey("conflict_tool") && !call.Options.Params.ContainsKey("force") && result.PendingImport.Count > 0)
+                if ((call.Options.Params.ContainsKey("conflict_tool") || call.Options.Params.ContainsKey("take")) && !call.Options.Params.ContainsKey("force") && result.PendingImport.Count > 0)
                     Settle(call, folder, data, result.PendingImport);
                 return data;
             }
@@ -86,9 +86,10 @@ namespace Cts.Cli
             finally { if (File.Exists(snapshot)) File.Delete(snapshot); }
         }
 
-        // --tool: an object the disk changed too is merged, or shown side by
-        // side with the IDE's text on the right; what lands is the same in
-        // the IDE and on disk.  A file still unlike the base stays kept.
+        // --tool or --take: an object the disk changed too is merged, or shown
+        // side by side with the IDE's text on the right, or takes the side
+        // --take names; what lands is the same in the IDE and on disk.  A file
+        // still unlike the base stays kept.
         static void Settle(CliCall call, string folder, IDictionary<string, object> data, IList<string> pending)
         {
             try

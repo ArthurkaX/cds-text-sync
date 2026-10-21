@@ -556,6 +556,7 @@ namespace Cts.Agent.Tests
         [InlineData("error export cause=refused\n", "[ERROR] no sync folder\n", 1, "error export cause=refused — no sync folder")]
         [InlineData("", "noise\n[ERROR] no agent\n\n", 2, "no agent")]
         [InlineData("", "", 3, "cts exited 3")]
+        [InlineData("partial import text=1 native=0\nconflict MAIN POUs/MAIN.st\n", "", 2, "partial import text=1 native=0")]
         public void TheOutcomeIsTheVerdictElseTheLastErrorElseTheExitCode(string stdout, string stderr, int code, string outcome)
         {
             Assert.Equal(outcome, WidgetMenu.Outcome(stdout, stderr, code));

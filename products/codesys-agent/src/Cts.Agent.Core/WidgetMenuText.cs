@@ -105,7 +105,7 @@ namespace Cts.Agent
         public static string Outcome(string stdout, string stderr, int exitCode)
         {
             var verdict = Lines(stdout).FirstOrDefault(line => line.StartsWith("ok ", StringComparison.Ordinal)
-                || line.StartsWith("error ", StringComparison.Ordinal));
+                || line.StartsWith("partial ", StringComparison.Ordinal) || line.StartsWith("error ", StringComparison.Ordinal));
             var said = Lines(stderr).LastOrDefault(line => Stage(line) == null);
             var reason = said != null && said.StartsWith("[ERROR] ", StringComparison.Ordinal) ? said.Substring("[ERROR] ".Length) : said;
             // An error verdict names a cause; what went wrong is the line cts wrote to stderr.

@@ -333,10 +333,11 @@ namespace Cts.Cli
                 var landedLists = _work.CsvPlans.Where(item => !_work.FieldReadBack.Any(miss => Equals(miss["guid"], item.Guid))).ToList();
                 // A container the IDE changed or added (a new device, its application)
                 // has its .cds-object.xml like any native object.
-                var ideNativeFiles = _work.Syncing
+                // A conflict that took the IDE's side (--take) goes to its file in an import too.
+                var ideNativeFiles = (_work.Syncing
                     ? _work.NativeRecords.Concat(_work.FolderRecords).Where(record => record.Category == "ide_changed" && !string.IsNullOrEmpty(record.Guid))
-                        .Concat(_work.NativeIdeTaken).Select(record => new IdeFile { Guid = record.Guid, Path = record.Path }).ToList()
-                    : new List<IdeFile>();
+                    : Enumerable.Empty<CompareRecord>())
+                    .Concat(_work.NativeIdeTaken).Select(record => new IdeFile { Guid = record.Guid, Path = record.Path }).ToList();
                 if (_work.Syncing)
                     ideNativeFiles.AddRange(_work.CsvRecords.Where(record => record.Category == "ide_changed" && !string.IsNullOrEmpty(record.Guid))
                         .Select(record => new IdeFile { Guid = record.Guid, Path = record.Path, Csv = true }));
@@ -419,7 +420,7 @@ namespace Cts.Cli
                     output["partial"] = true;
                     output["partial_reason"] = _work.Conflicts.Count + " object(s) changed both in the IDE and on disk since the last sync, left as they are: "
                         + string.Join(", ", _work.Conflicts.Select(item => item["name"]))
-                        + ". " + ConflictNext + (_work.ToolNote == null ? "" : " " + _work.ToolNote + ".");
+                        + ". " + ConflictNext(_call) + (_work.ToolNote == null ? "" : " " + _work.ToolNote + ".");
                 }
                 output["created_native_objects"] = _work.CreatedFolders.Select(Path.GetFileName).Concat(_nativeWrites.Where(item => item.Created).Select(item => item.Name)).ToList();
                 output["updated_native_objects"] = _nativeWrites.Where(item => !item.Created).Select(item => item.Name).ToList();

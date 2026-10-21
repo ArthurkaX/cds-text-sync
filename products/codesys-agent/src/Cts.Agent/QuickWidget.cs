@@ -10,9 +10,10 @@
 // current, which MirrorRefresh sees to while nobody works (Refresh); a window
 // opened while a compare runs greys the rows that wait for it.  A command's
 // footer shows the stages cts names (CTS_PROGRESS).  Digits 1 and 2 carry one side's
-// edits to the other, merging an object both changed and opening overlapping
-// edits side by side; Shift with the digit makes one side the other
-// (`--force`).  Digit 4 lists the sync folder's
+// edits to the other, merging an object both changed; when the header says
+// both sides changed some, a dry run first names those whose edits overlap,
+// and the conflict window (ConflictView) has a person pick each one's side.
+// Shift with the digit makes one side the other (`--force`).  Digit 4 lists the sync folder's
 // local branches in the same window; one chosen is `cts checkout --disk-only`:
 // the disk moves, the IDE does not, so Compare and Disk → IDE come next.
 // Its first row starts a new branch where the work is (`cts branch NAME`),
@@ -64,6 +65,9 @@ namespace Cts.Agent
         Form _format;
         Form _fsm;
         Form _analysis;
+        Form _conflicts;
+        //: How many objects the header's last compare said both sides changed; -1 not known.
+        int _both = -1;
         //: The open project's name as the window last opened on it, "" when unsaved.
         string _project = "";
         //: The folder offered while the project has no sync folder here, and
@@ -331,7 +335,29 @@ namespace Cts.Agent
                 case WidgetPage.None:
                     break;
             }
-            Execute(view, args, folder);
+            if (ConflictReview.AsksFirst(item, args, _both)) AskFirst(view, item, args, folder);
+            else Execute(view, args, folder);
+        }
+
+        // 1 or 2 while edits on both sides may overlap: a dry run names the
+        // objects whose do; with none the row's run goes on, else the
+        // conflict window opens on them.
+        void AskFirst(WidgetView view, WidgetItem item, string[] args, string folder)
+        {
+            view.Start("cts " + ProcessArgs.Join(ConflictReview.DryRun), null);
+            _cts.Run(ConflictReview.DryRun, folder, (ok, said) => WindowThread.Later(view, () =>
+            {
+                var items = new List<ConflictItem>();
+                try { if (ok) items = ConflictReview.Parse(said); }
+                catch (JsonException e) { _log.Write("widget: the dry run answered no list: " + e.Message); }
+                if (items.Count == 0)
+                {
+                    Execute(view, args, folder);
+                    return;
+                }
+                view.Close();
+                ShowConflicts(items, item);
+            }), true, Stages(view), false);
         }
 
         void ListNoProjectSettings(WidgetView view, string note)

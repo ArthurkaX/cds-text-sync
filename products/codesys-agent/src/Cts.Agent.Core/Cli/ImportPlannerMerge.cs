@@ -15,16 +15,13 @@ namespace Cts.Cli
             {
                 if (_work.ToolNote != null) return null;
                 var hasBody = disk.Implementation != null || ide.Implementation != null;
-                string text(StViewObject item) => hasBody
-                    ? StripPragma(item.Declaration) + "\n" + StPragma.ImplementationMarker + "\n" + NormalizePart(item.Implementation)
-                    : StripPragma(item.Declaration);
                 var name = disk.Path.Last();
                 string saved;
                 try
                 {
                     saved = _work.Settling
-                        ? ConflictTool.Resolve(_work.Folder, name, "Disk (its edit)", text(disk), "IDE -> Disk: edit, save, close", text(ide))
-                        : ConflictTool.Resolve(_work.Folder, name, "IDE (its edit)", text(ide), "Disk -> IDE: edit, save, close", text(disk));
+                        ? ConflictTool.Resolve(_work.Folder, name, "Disk (its edit)", Settled(disk, hasBody), "IDE -> Disk: edit, save, close", Settled(ide, hasBody))
+                        : ConflictTool.Resolve(_work.Folder, name, "IDE (its edit)", Settled(ide, hasBody), "Disk -> IDE: edit, save, close", Settled(disk, hasBody));
                 }
                 catch (InvalidOperationException error)
                 {
@@ -50,6 +47,11 @@ namespace Cts.Cli
                 };
             }
 
+            // One side's text of an object as a person settles it: the
+            // declaration, then the marker line and the body when a side has one.
+            static string Settled(StViewObject item, bool hasBody) => hasBody
+                ? StripPragma(item.Declaration) + "\n" + StPragma.ImplementationMarker + "\n" + NormalizePart(item.Implementation)
+                : StripPragma(item.Declaration);
         }
     }
 }

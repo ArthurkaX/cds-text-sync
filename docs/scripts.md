@@ -75,11 +75,15 @@ changes until a command is chosen.
   exported).
 - `1` **Disk -> IDE** (`cts import --tool`) and `2` **IDE -> Disk**
   (`cts export --tool`) carry what changed on one side to the other. An
-  object both sides changed is merged; when the edits overlap, it opens in
-  the merge program side by side: the other side's text on the left,
-  read-only, the carried text on the right. Edit the right side, save and
-  close: what is saved goes to the IDE and the file. Closed without saving,
-  the object stays as it was on both sides. **Shift+1** and **Shift+2** (or
+  object both sides changed is merged. When the edits overlap, a conflict
+  window opens first: on the left the objects in conflict, on the right the
+  one chosen side by side (the side that would be overwritten on the left,
+  the carried side on the right, the lines that differ marked). For each,
+  **Disk wins** or **IDE wins** (that side's text goes to both), or **Merge
+  by hand...**: the run then opens it in the merge program, the carried text
+  on the right; what is saved there goes to the IDE and the file. **Apply**
+  runs once every object has its side; **Force** at the top makes the
+  carried side win everywhere, as Shift does. **Shift+1** and **Shift+2** (or
   Shift and a click) make one side the other with no merge (`cts import
   --force` / `cts export --force`); what was overwritten stays on
   `refs/cts/overwritten`.

@@ -14,7 +14,9 @@ namespace Cts.Cli
             readonly CliCall _call;
             readonly ImportWork _work;
             readonly IList<StViewObject> _baseObjects;
-            string _take;
+            //: --take KEY=SIDE, each object's side; _every the side of the rest (a plain --take SIDE), else null.
+            readonly List<KeyValuePair<string, string>> _takes = new List<KeyValuePair<string, string>>();
+            string _every;
             bool _tool;
             HashSet<string> _addedKeys;
             List<string> _folderCreateKeys;
@@ -50,7 +52,7 @@ namespace Cts.Cli
             internal IDictionary<string, object> DryRunAnswer()
             {
                 if (_work.Merged.Count > 0) _work.Data["merges"] = _work.Merged;
-                if (_work.Conflicts.Count > 0) { _work.Data["conflicts"] = _work.Conflicts; _work.Data["conflict_next"] = ConflictNext; }
+                if (_work.Conflicts.Count > 0) { _work.Data["conflicts"] = _work.Conflicts; _work.Data["conflict_next"] = ConflictNext(_call); }
                 MatchRenames();
                 PlanFolderDeletes();
                 // What --force or an emptied folder deletes in the IDE, which no row of the plan names as deleted.
@@ -73,11 +75,29 @@ namespace Cts.Cli
                 if (refusal != null) return Refused(_call, _work.Data, refusal);
                 _work.HasBase = Equals(_work.Data.ContainsKey("base") ? _work.Data["base"] : null, true);
                 if (_work.Syncing && !_work.HasBase) return Refused(_call, _work.Data, "no sync base yet: run cts export first");
-                // sync --take: the side a conflict takes; the rest syncs as without it.
-                _take = _work.Syncing && _call.Options.Params.ContainsKey("take") ? Convert.ToString(_call.Options.Params["take"]) : null;
+                // --take: the side a conflict takes, one object's or every one's; the rest goes as without it.
+                var takes = _call.Options.Params.TryGetValue("take", out var given) ? ((IEnumerable<object>)given).Select(Convert.ToString) : Enumerable.Empty<string>();
+                foreach (var take in takes)
+                {
+                    var equals = take.LastIndexOf('=');
+                    var side = equals < 0 ? take : take.Substring(equals + 1);
+                    if (side != "disk" && side != "ide") return Refused(_call, _work.Data, "--take takes KEY=disk|ide or disk|ide, not " + take);
+                    if (equals < 0) { _every = side; continue; }
+                    var key = take.Substring(0, equals).Replace('\\', '/').Trim('/');
+                    if (!_work.Changed.Any(record => record.IdeChanged && Names(record, key)))
+                        return Refused(_call, _work.Data, "--take " + take + ": no object there changed both in the IDE and on disk");
+                    _takes.Add(new KeyValuePair<string, string>(key, side));
+                }
                 _tool = _call.Options.Params.ContainsKey("conflict_tool") && !_call.Options.Params.ContainsKey("dry_run");
                 return null;
             }
+
+            // The side *record* takes when its edits overlap: its own --take KEY=SIDE, else a plain --take SIDE; null for none.
+            string Take(CompareRecord record) => _takes.Where(pair => Names(record, pair.Key)).Select(pair => pair.Value).FirstOrDefault() ?? _every;
+
+            // Does *key* name *record*: its object's view path or its file?
+            static bool Names(CompareRecord record, string key) =>
+                string.Equals(record.ObjectPath, key, StringComparison.OrdinalIgnoreCase) || string.Equals(record.Path, key, StringComparison.OrdinalIgnoreCase);
 
             // The records by kind, the disk's parsed text and the IDE's tree; a new native object's
             // missing folders become folder records.
@@ -233,15 +253,19 @@ namespace Cts.Cli
                         var baseItem = At(_baseObjects, key);
                         if (ideItem == null || baseItem == null) return Refused(_call, _work.Data, "cannot identify merge text for " + record.Name);
                         var mergedItem = MergeObject(item, baseItem, ideItem);
-                        if (mergedItem == null && _tool && _take == null) mergedItem = SideBySide(item, ideItem);
-                        if (mergedItem == null && _take == "ide")
+                        var take = Take(record);
+                        if (mergedItem == null && _tool && take == null) mergedItem = SideBySide(item, ideItem);
+                        if (mergedItem == null && take == "ide")
                         {
                             _work.IdeToDisk.Add(new MergeFileEdit { Guid = guid, Original = item, Merged = ideItem });
                             continue;
                         }
-                        if (mergedItem == null && _take != "disk")
+                        if (mergedItem == null && take != "disk")
                         {
-                            _work.Conflicts.Add(new Dictionary<string, object> { { "name", record.Name }, { "path", record.Path } });
+                            // Both texts as a person settles them, so a window can show where they differ.
+                            var hasBody = item.Implementation != null || ideItem.Implementation != null;
+                            _work.Conflicts.Add(new Dictionary<string, object> { { "name", record.Name }, { "path", record.Path }, { "key", record.ObjectPath ?? record.Path },
+                                { "disk", Settled(item, hasBody) }, { "ide", Settled(ideItem, hasBody) } });
                             continue;
                         }
                         if (mergedItem == null)

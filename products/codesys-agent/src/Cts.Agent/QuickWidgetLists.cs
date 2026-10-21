@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -23,9 +24,10 @@ namespace Cts.Agent
             _cts.Run(new[] { "compare" }, folder, (ok, line) => WindowThread.Later(view, () => ShowState(view, ok, line)));
         }
 
-        static void ShowState(WidgetView view, bool ok, string line)
+        void ShowState(WidgetView view, bool ok, string line)
         {
             WidgetTone tone;
+            _both = WidgetMenu.Both(ok ? line : null);
             var state = WidgetMenu.State(ok ? line : null, out tone);
             view.ShowState(state, tone, WidgetMenu.IdeEdits(ok ? line : null));
         }
@@ -178,6 +180,15 @@ namespace Cts.Agent
             if (_format != null) { _format.Activate(); return; }
             _format = Open("cts fmt", (title, cts) => new FmtView(title, cts));
             _format.FormClosed += (s, e) => _format = null;
+        }
+
+        // The conflict window on what a dry run of 1 or 2 found; its runs move the state the next window shows.
+        void ShowConflicts(List<ConflictItem> items, WidgetItem row)
+        {
+            _conflicts?.Close();
+            _conflicts = Open("cts " + row.Args[0] + ": the same lines changed on both sides",
+                (title, cts) => new ConflictView(title, items, row.Args[0], row.Forced, cts));
+            _conflicts.FormClosed += (s, e) => _conflicts = null;
         }
 
         internal void ShowFsm()

@@ -18,6 +18,7 @@ namespace Cts.Cli
                     CliOption.Switch("--force", "force", "Save the disk view on refs/cts/overwritten, then replace edited files and remove object files the IDE no longer writes"),
                     CliOption.Switch("--full", "full", "Walk the IDE even if it reports no change"),
                     CliOption.Switch("--tool", "conflict_tool", "Then merge each object the disk changed too; one whose edits overlap opens side by side in the merge program, the IDE's text on the right, and what is saved there goes to both"),
+                    CliOption.Many("--take", "take", "[KEY=]SIDE", "Then merge each object the disk changed too; one whose edits overlap takes the disk's or the IDE's text, and that text goes to both: disk or ide for every one, KEY=disk|ide for one (KEY: its file, or the key its conflict names)"),
                 },
                 Execute = ExportCommand.Execute,
                 Build = ExportCommand.Build,
@@ -54,6 +55,7 @@ namespace Cts.Cli
                     CliOption.Switch("--force", "force", "Keep overwritten IDE text before carrying disk text"),
                     CliOption.Switch("--allow-unapplied", "allow_unapplied", "Acknowledge objects that could not be read back"),
                     CliOption.Switch("--tool", "conflict_tool", "An object whose IDE and disk edits overlap opens side by side in the merge program, the disk's text on the right; what is saved there goes to both"),
+                    CliOption.Many("--take", "take", "[KEY=]SIDE", "An object both sides changed in the same lines takes the disk's or the IDE's text, and that text goes to both: disk or ide for every one, KEY=disk|ide for one (KEY: its file, or the key its conflict names)"),
                     CliOption.Many("--include-ignored", "include_ignored", "PATH", "A file of the view Git's ignore rules match that this import compares and carries like any other (repeatable)"),
                 },
                 Execute = ImportCommand.Execute,
@@ -63,13 +65,13 @@ namespace Cts.Cli
             {
                 Name = "sync",
                 Summary = "Carry the IDE's edits into the folder and the folder's into the IDE",
-                Description = "What cts compare lists goes where it is missing: an object the IDE changed is written to its file (text, XML or text list), one changed on disk is imported, and one both sides changed is merged. Edits that overlap are a conflict: --take chooses a side, --tool opens them in the merge program. --save saves the project after a successful sync that changed it.",
+                Description = "What cts compare lists goes where it is missing: an object the IDE changed is written to its file (text, XML or text list), one changed on disk is imported, and one both sides changed is merged. Edits that overlap are a conflict: --take chooses a side, for every one or one object, --tool opens them in the merge program. --save saves the project after a successful sync that changed it.",
                 TimeoutKey = "sync_compare_text",
                 Options = new[]
                 {
                     CliOption.Text("--sync-folder", "sync_folder", "PATH", "Sync folder (must match the open project)"),
                     CliOption.Switch("--save", "save", "Save the project after a successful sync"),
-                    CliOption.Choice("--take", "take", "Choose the disk or IDE text for conflicts", "disk", "ide"),
+                    CliOption.Many("--take", "take", "[KEY=]SIDE", "An object both sides changed in the same lines takes the disk's or the IDE's text, and that text goes to both: disk or ide for every one, KEY=disk|ide for one (KEY: its file, or the key its conflict names)"),
                     CliOption.Switch("--tool", "conflict_tool", "An object whose IDE and disk edits overlap opens side by side in the merge program, the disk's text on the right; what is saved there goes to both"),
                 },
                 Execute = ImportCommand.Execute,

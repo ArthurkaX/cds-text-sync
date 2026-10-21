@@ -1638,7 +1638,53 @@ namespace Cts.Agent.Tests
             var answer = ImportCommand.Build(result);
             Assert.Contains(answer.Pairs, pair => pair.Key == "conflicts" && Equals(pair.Value, 1));
             Assert.Contains(answer.Details, line => line.StartsWith("conflict MAIN ") && line.EndsWith("the same lines"));
-            Assert.Contains("Keep the disk text: cts sync --take disk. Keep the IDE text: cts sync --take ide.", answer.Details);
+            Assert.Contains(answer.Details, line => line.StartsWith("Keep the disk text: cts import --take disk. Keep the IDE text: cts import --take ide. One object: --take KEY=disk"));
+            // The conflict carries both sides' text and the key --take names it by.
+            var conflict = ((System.Collections.IEnumerable)result["conflicts"]).Cast<IDictionary<string, object>>().Single();
+            Assert.Equal(item.Key, conflict["key"]);
+            Assert.Contains("eObservedMode := Disk;", Convert.ToString(conflict["disk"]));
+            Assert.Contains("eObservedMode := IDE;", Convert.ToString(conflict["ide"]));
+            Assert.Contains(StPragma.ImplementationMarker, Convert.ToString(conflict["ide"]));
+        }
+
+        [Theory]
+        [InlineData("disk")]
+        [InlineData("ide")]
+        public void Import_take_settles_one_overlapping_object_by_its_key_and_its_text_goes_to_both(string side)
+        {
+            var view = ViewFolder.Of(_root);
+            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
+            var file = Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(file, File.ReadAllText(file).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := Disk;"));
+            var changedSnapshot = File.ReadAllText(Path.Combine(Fixture, "snapshot.xml")).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := IDE;");
+            var written = new List<string>();
+            IDictionary<string, object> current = null;
+            var result = ImportCommand.Execute(ImportCall(new[] { "--take", item.Key + "=" + side }, (method, args) =>
+            {
+                if (method == "project.export") { File.WriteAllText(Convert.ToString(args["path"]), changedSnapshot); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(item.Path);
+                if (method == "objects.settext") { written.Add(Convert.ToString(args["implementation"])); current = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new[] { current } } };
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.False(result.ContainsKey("conflicts"));
+            if (side == "disk") Assert.Contains(written, text => text.Contains("eObservedMode := Disk;"));
+            else
+            {
+                Assert.Empty(written);
+                Assert.Contains("eObservedMode := IDE;", File.ReadAllText(file));
+            }
+        }
+
+        [Fact]
+        public void Import_take_refuses_a_key_no_conflicting_object_has()
+        {
+            var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(ImportCall(new[] { "--take", "Nowhere/Nothing=disk" }, (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(Path.Combine(Fixture, "snapshot.xml"), Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed")));
+            Assert.Contains("--take Nowhere/Nothing=disk: no object there changed both in the IDE and on disk", failure.Message);
         }
 
         [Fact]
