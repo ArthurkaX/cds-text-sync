@@ -1,9 +1,9 @@
 // The conflict window's model.  Digits 1 and 2 of the quick window, without
 // Shift, first ask `cts import --dry-run --json` which objects both sides
-// changed in the same lines, each with its disk and IDE text; when there are
-// any, the window lists them, and a person picks for each the side that wins
-// (its text goes to both) or the merge program, or makes one side win
-// everywhere (the row's Shift run).  Apply runs the row's command with
+// changed in the same lines (an .xml: the same element), each with its disk
+// and IDE text; when there are any, the window lists them, and a person picks
+// for each the side that wins (its text goes to both) or, for a .st, the merge
+// program, or makes one side win everywhere (the row's Shift run).  Apply runs the row's command with
 // `--take KEY=disk|ide` for each choice and `--tool` when one is settled by
 // hand.  The window (ConflictView) only draws it.
 using System;
@@ -25,6 +25,8 @@ namespace Cts.Agent
         public string Disk { get; internal set; }
         public string Ide { get; internal set; }
         public ConflictSide Side { get; set; }
+        //: Can the merge program settle it: a .st object's text, not a whole .xml or .csv file.
+        public bool ByHand => (Path ?? "").EndsWith(".st", StringComparison.OrdinalIgnoreCase);
     }
 
     public static class ConflictReview

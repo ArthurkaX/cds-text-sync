@@ -32,9 +32,7 @@ namespace Cts.Cli
                     Data = plan.Payload,
                     IdeFiles = plan.IdeFiles,
                     IdeObjects = plan.IdeObjects,
-                    Changed = plan.Records.Where(record => !settling
-                        || record.Category == "modified" && record.IdeChanged
-                            && (record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase) || record.MergedXml != null)).ToList()
+                    Changed = plan.Records.Where(record => !settling || record.Category == "modified" && record.IdeChanged).ToList()
                 };
             }
 
@@ -95,6 +93,17 @@ namespace Cts.Cli
             // The side *record* takes when its edits overlap: its own --take KEY=SIDE, else a plain --take SIDE; null for none.
             string Take(CompareRecord record) => _takes.Where(pair => Names(record, pair.Key)).Select(pair => pair.Value).FirstOrDefault() ?? _every;
 
+            // *record* left as it is, named with both its texts as a person
+            // settles them, so a window can show where they differ.
+            void Conflict(CompareRecord record, string disk, string ide) =>
+                _work.Conflicts.Add(new Dictionary<string, object> { { "name", record.Name }, { "path", record.Path }, { "key", record.ObjectPath ?? record.Path },
+                    { "disk", disk }, { "ide", ide } });
+
+            // A file's text on disk and in the IDE, for a conflict of a whole file (an .xml, a .csv).
+            void FileConflict(CompareRecord record) => Conflict(record,
+                File.ReadAllText(Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar))).TrimStart('\uFEFF'),
+                _work.IdeFiles != null && _work.IdeFiles.TryGetValue(record.Path, out var ide) ? new System.Text.UTF8Encoding(false).GetString(ide).TrimStart('\uFEFF') : "");
+
             // Does *key* name *record*: its object's view path or its file?
             static bool Names(CompareRecord record, string key) =>
                 string.Equals(record.ObjectPath, key, StringComparison.OrdinalIgnoreCase) || string.Equals(record.Path, key, StringComparison.OrdinalIgnoreCase);
@@ -103,6 +112,9 @@ namespace Cts.Cli
             // missing folders become folder records.
             void Collect()
             {
+                _work.Conflicts = new List<IDictionary<string, object>>();
+                _work.Merged = new List<string>();
+                _work.NativeIdeTaken = new List<CompareRecord>();
                 _work.Folder = Convert.ToString(_work.Data["sync_folder"]);
                 _work.View = ViewFolder.Of(_work.Folder);
                 var force = _work.HasBase && _call.Options.Params.ContainsKey("force");
@@ -203,7 +215,6 @@ namespace Cts.Cli
             // Text objects new in the IDE, which sync writes to disk.
             IDictionary<string, object> PlanIdeNew()
             {
-                _work.Conflicts = new List<IDictionary<string, object>>();
                 _work.MergeFiles = new List<MergeFileEdit>();
                 _work.IdeToDisk = new List<MergeFileEdit>();
                 _work.IdeNewTextFiles = new List<string>();
@@ -262,10 +273,8 @@ namespace Cts.Cli
                         }
                         if (mergedItem == null && take != "disk")
                         {
-                            // Both texts as a person settles them, so a window can show where they differ.
                             var hasBody = item.Implementation != null || ideItem.Implementation != null;
-                            _work.Conflicts.Add(new Dictionary<string, object> { { "name", record.Name }, { "path", record.Path }, { "key", record.ObjectPath ?? record.Path },
-                                { "disk", Settled(item, hasBody) }, { "ide", Settled(ideItem, hasBody) } });
+                            Conflict(record, Settled(item, hasBody), Settled(ideItem, hasBody));
                             continue;
                         }
                         if (mergedItem == null)

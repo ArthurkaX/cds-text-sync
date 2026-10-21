@@ -25,6 +25,8 @@ namespace Cts.Cli
             //: the message list (Guid) the leaves are set on.
             internal string Group;
             internal string XmlPath;
+            //: Both sides' rows merged (CompareRecord.Merged), the file's text once applied.
+            internal byte[] Merged;
         }
 
         internal sealed class TextListInsert

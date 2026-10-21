@@ -19,7 +19,7 @@ namespace Cts.Agent.Core.Tests
                 Guid = "guid",
                 IdeChanged = true,
                 Merges = true,
-                MergedXml = new byte[] { 1 },
+                Merged = new byte[] { 1 },
                 ObjectPath = "Application.Object",
                 Timestamp = 42,
                 Kind = "program",

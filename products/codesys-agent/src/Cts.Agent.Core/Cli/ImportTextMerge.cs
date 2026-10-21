@@ -43,13 +43,13 @@ namespace Cts.Cli
             return StPragma.Is(first) ? first : null;
         }
 
-        sealed class MergedPart
+        internal sealed class MergedPart
         {
             internal bool Resolved;
             internal string Text;
         }
 
-        static MergedPart MergePart(string disk, string baseline, string ide)
+        internal static MergedPart MergePart(string disk, string baseline, string ide)
         {
             disk = NormalizePart(disk);
             baseline = NormalizePart(baseline);

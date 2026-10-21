@@ -13,7 +13,8 @@ namespace Cts.Cli
         internal bool HasGuid;
         internal bool IdeChanged;
         internal bool Merges;
-        internal byte[] MergedXml;
+        //: Both sides' edits joined, for the import to carry: an .xml by element, a .csv by line.
+        internal byte[] Merged;
         internal string ObjectPath;
         internal long? Timestamp;
         internal string Kind;

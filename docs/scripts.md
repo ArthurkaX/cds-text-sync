@@ -80,8 +80,11 @@ changes until a command is chosen.
   one chosen side by side (the side that would be overwritten on the left,
   the carried side on the right, the lines that differ marked). For each,
   **Disk wins** or **IDE wins** (that side's text goes to both), or **Merge
-  by hand...**: the run then opens it in the merge program, the carried text
-  on the right; what is saved there goes to the IDE and the file. **Apply**
+  by hand...** (a `.st` object): the run then opens it in the merge program,
+  the carried text on the right; what is saved there goes to the IDE and the
+  file. A text list's `.csv` and an object kept as `.xml` (a task, a
+  visualization) come there too, merged by rows and by elements first, and
+  take a side. **Apply**
   runs once every object has its side; **Force** at the top makes the
   carried side win everywhere, as Shift does. **Shift+1** and **Shift+2** (or
   Shift and a click) make one side the other with no merge (`cts import

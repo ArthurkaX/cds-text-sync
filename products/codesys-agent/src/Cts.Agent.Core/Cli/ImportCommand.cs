@@ -288,8 +288,7 @@ namespace Cts.Cli
             }
             var hasBase = Equals(data.ContainsKey("base") ? data["base"] : null, true);
             refused = changed.FirstOrDefault(record => hasBase && record.IdeChanged
-                && !record.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
-                && !record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase));
+                && !new[] { ".xml", ".st", ".csv" }.Any(kind => record.Path.EndsWith(kind, StringComparison.OrdinalIgnoreCase)));
             if (refused != null && !call.Options.Params.ContainsKey("force"))
             {
                 return "changed in the IDE since the last sync: " + refused.Name + " (cts import --force)";

@@ -318,12 +318,13 @@ namespace Cts.Cli
                     if (category == "ide_changed") record.Reason = !ideExists ? "deleted in the IDE; cts sync removes the file" : !hasBase ? "not in the view; cts sync writes it to disk" : "changed in the IDE; cts sync writes it to disk";
                     record.IdeChanged = both;
                     // Both sides' edits of an object kept as XML join when they
-                    // touch different elements; the import carries the merge.
-                    var merged = both && diskExists && ideExists ? XmlMerge.Merge(baseView.Read(path), diskFiles.Read(path), ideFiles.Read(path), out _) : null;
+                    // touch different elements, a text list's when they touch
+                    // different rows; the import carries the merge.
+                    var merged = both && diskExists && ideExists ? MergeSides(path, baseView.Read(path), diskFiles.Read(path), ideFiles.Read(path)) : null;
                     if (merged != null)
                     {
                         record.Merges = true;
-                        if (importing) record.MergedXml = merged;
+                        if (importing) record.Merged = merged;
                     }
                     if (snapshotTimes.TryGetValue(path, out var snapshotStamp)) { record.Guid = snapshotStamp.Guid; record.HasGuid = true; record.Timestamp = snapshotStamp.Timestamp; }
                     records.Add(record);
@@ -450,6 +451,17 @@ namespace Cts.Cli
         {
             var type = content == null ? null : Regex.Match(System.Text.Encoding.UTF8.GetString(content), "Name=\"TypeGuid\"[^>]*>([^<]*)<");
             return type == null || (type.Success && type.Groups[1].Value.Trim().Trim('{', '}').Equals(ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Both sides' edits of one file joined, null when they overlap: a
+        // text list's .csv by its lines, any other by its XML elements.
+        static byte[] MergeSides(string path, byte[] baseline, byte[] disk, byte[] ide)
+        {
+            if (!path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)) return XmlMerge.Merge(baseline, disk, ide, out _);
+            var utf8 = new System.Text.UTF8Encoding(false);
+            string Text(byte[] content) => utf8.GetString(content).TrimStart('\uFEFF');
+            var merged = ImportCommand.MergePart(Text(disk), Text(baseline), Text(ide));
+            return merged.Resolved ? utf8.GetBytes(merged.Text + "\n") : null;
         }
 
         static bool IsContainer(string path) => Path.GetFileName(path).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase) && path.Contains("/");

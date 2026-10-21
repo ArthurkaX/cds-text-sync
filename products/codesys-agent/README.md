@@ -265,7 +265,8 @@ sides changed some (`WidgetMenu.Both`), the row first runs `cts import
 --dry-run --json`, whose `conflicts` carry each overlapping object's key and
 both texts; with any, the quick window closes and the conflict window
 (`ConflictView`, model `ConflictReview`) lists them: the chosen one side by
-side, Disk wins / IDE wins / Merge by hand per object, Force for the row's
+side, Disk wins / IDE wins / Merge by hand (`.st` only: a `.csv` or `.xml` is a
+whole file, `ConflictItem.ByHand`) per object, Force for the row's
 Shift run. Apply runs the row's command with `--take KEY=disk|ide` for each
 side chosen and `--tool` when one goes to the merge program (`ConflictTool`). Shift with the digit or the click runs the
 row's `WidgetItem.Forced` (`import --force`, `export --force`): one side

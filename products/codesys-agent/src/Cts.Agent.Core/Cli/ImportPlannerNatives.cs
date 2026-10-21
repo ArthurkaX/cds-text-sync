@@ -13,7 +13,8 @@ namespace Cts.Cli
         // The planner's text lists, alarm groups and objects kept as XML.
         sealed partial class ImportPlanner
         {
-            // Each changed text list (.csv): the rows to remove and insert, read against the IDE's fields.
+            // Each changed text list (.csv): the rows to remove and insert, read against the IDE's fields;
+            // one both sides changed carries their rows merged, or is a conflict --take settles.
             IDictionary<string, object> PlanTextLists()
             {
                 _work.CsvPlans = new List<TextListPlan>();
@@ -45,6 +46,12 @@ namespace Cts.Cli
                     var alarms = record.Category == "modified" ? PlanAlarmGroup(record, path) : null;
                     if (alarms != null)
                     {
+                        // Both sides' messages are not merged: the import is refused, a settling sync leaves the group.
+                        if (record.IdeChanged && !_call.Options.Params.ContainsKey("force"))
+                        {
+                            if (_work.Settling) continue;
+                            return Refused(_call, _work.Data, "changed in the IDE since the last sync: " + record.Name + " (cts import --force)");
+                        }
                         if (alarms.Error != null) return Refused(_call, _work.Data, path + ": " + alarms.Error);
                         if (alarms.DiskLeaves.Count > 0) _work.CsvPlans.Add(alarms);
                         continue;
@@ -55,6 +62,15 @@ namespace Cts.Cli
                         return Refused(_call, _work.Data, record.Category + " " + path + ": not a changed text list");
                     if (!File.Exists(Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar))))
                         return Refused(_call, _work.Data, "cannot read " + path);
+                    if (record.IdeChanged && record.Merged == null && !_call.Options.Params.ContainsKey("force"))
+                    {
+                        record.Guid = node.Guid; record.HasGuid = true;
+                        var take = Take(record);
+                        if (take == null) { FileConflict(record); continue; }
+                        if (take == "ide") { _work.NativeIdeTaken.Add(record); continue; }
+                        // The disk's rows go in; the IDE's list is kept on refs/cts/overwritten first.
+                        _work.ForceRecords.Add(record);
+                    }
                     IDictionary<string, object> fieldsReply;
                     try { fieldsReply = _call.Call("objects.fields", new Dictionary<string, object> { { "guid", node.Guid } }); }
                     catch (CliFailure error) when (error.Declined)
@@ -63,8 +79,11 @@ namespace Cts.Cli
                         continue;
                     }
                     var leaves = FlattenFields(fieldsReply.TryGetValue("fields", out var rawFields) ? rawFields : null);
-                    var csvPlan = PlanTextList(File.ReadAllText(Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar))), leaves);
+                    var csvPlan = PlanTextList(record.Merged != null ? new System.Text.UTF8Encoding(false).GetString(record.Merged)
+                        : File.ReadAllText(Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar))), leaves);
                     if (csvPlan.Error != null) return Refused(_call, _work.Data, csvPlan.Error);
+                    csvPlan.Merged = record.Merged;
+                    if (record.Merged != null) _work.Merged.Add(record.Name);
                     csvPlan.Guid = node.Guid;
                     csvPlan.Path = path;
                     csvPlan.Name = Convert.ToString(fieldsReply.ContainsKey("name") ? fieldsReply["name"] : record.Name);
@@ -100,15 +119,13 @@ namespace Cts.Cli
                 return plan;
             }
 
-            // Each native (.xml) record: delete, import, replace or refuse; an object both sides changed stops the run.
+            // Each native (.xml) record: delete, import, replace or refuse; one both sides changed in the same element is a conflict.
             IDictionary<string, object> PlanNatives()
             {
                 _work.NativeDeletes = new List<CompareRecord>();
                 _work.NativeGone = new List<CompareRecord>();
                 _work.NativeImports = new List<CompareRecord>();
                 _work.NativeReplaces = new List<CompareRecord>();
-                _work.NativeIdeTaken = new List<CompareRecord>();
-                _work.Merged = new List<string>();
                 foreach (var record in _work.NativeRecords)
                 {
                     var path = record.Path;
@@ -188,7 +205,7 @@ namespace Cts.Cli
                         if (!found) return Refused(_call, _work.Data, path + ": not in the IDE");
                         record.Guid = guid; record.HasGuid = true;
                         _work.NativeReplaces.Add(record);
-                        if (record.MergedXml != null) _work.Merged.Add(record.Name);
+                        if (record.Merged != null) _work.Merged.Add(record.Name);
                     }
                     else if (record.Category == "ide_changed" && _work.HasBase && _call.Options.Params.ContainsKey("force")
                         && !path.EndsWith(".cds-object.xml", StringComparison.OrdinalIgnoreCase))
@@ -200,21 +217,17 @@ namespace Cts.Cli
                         else _work.NativeDeletes.Add(record);
                     }
                 }
-                // --take: a disk side goes into the IDE as the other replaces do, an IDE side is written to its file.
-                var nativeConflicts = _work.NativeRecords.Where(record => record.Category != "ide_changed"
-                    && record.IdeChanged && record.MergedXml == null).ToList();
-                foreach (var record in nativeConflicts.Where(record => Take(record) == "ide"))
-                    if (_work.NativeReplaces.Remove(record)) _work.NativeIdeTaken.Add(record);
-                var nativeConflict = nativeConflicts.FirstOrDefault(record => Take(record) == null);
-                if (nativeConflict != null && !_call.Options.Params.ContainsKey("force"))
-                {
-                    _work.Data["conflicts"] = new[] { new Dictionary<string, object> { { "name", nativeConflict.Name }, { "path", nativeConflict.Path } } };
-                    _work.Data["partial"] = true;
-                    _work.Data["refused"] = "conflict " + nativeConflict.Name + " " + nativeConflict.Path;
-                    _work.Data.Remove("summary");
-                    _work.Data.Remove("objects");
-                    return _work.Data;
-                }
+                // --take: a disk side goes into the IDE as the other replaces do, after the IDE's
+                // went on refs/cts/overwritten; an IDE side is written to its file.  The rest stays.
+                if (!_call.Options.Params.ContainsKey("force"))
+                    foreach (var record in _work.NativeReplaces.Where(record => record.IdeChanged && record.Merged == null).ToList())
+                    {
+                        var take = Take(record);
+                        if (take == "disk") { _work.ForceRecords.Add(record); continue; }
+                        _work.NativeReplaces.Remove(record);
+                        if (take == "ide") _work.NativeIdeTaken.Add(record);
+                        else FileConflict(record);
+                    }
                 return null;
             }
 

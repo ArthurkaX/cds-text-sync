@@ -207,7 +207,7 @@ namespace Cts.Cli
                     var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
                     // Both sides' edits, merged: the file gets them first, unless it changed
                     // meanwhile; then the object waits for the next sync.
-                    if (record.MergedXml != null && !_work.Stamps.Write(full, (byte[])record.MergedXml)) continue;
+                    if (record.Merged != null && !_work.Stamps.Write(full, (byte[])record.Merged)) continue;
                     var csv = CsvOf(path);
                     var content = WithRows(csv, File.ReadAllText(full));
                     var parameters = new Dictionary<string, object> { { "guid", record.Guid }, { "xml", content } };
@@ -273,9 +273,13 @@ namespace Cts.Cli
                     }
                     try
                     {
+                    // Both sides' rows, merged: the file gets them first, unless it changed
+                    // meanwhile; then the list waits for the next sync.
+                    var full = Path.Combine(_work.View, planFields.Path.Replace('/', Path.DirectorySeparatorChar));
+                    if (planFields.Merged != null && !_work.Stamps.Write(full, planFields.Merged)) continue;
                     // Planned again against the IDE as it is now: the object's .xml, imported
                     // above, may already hold the rows the csv adds.
-                    var text = File.ReadAllText(Path.Combine(_work.View, planFields.Path.Replace('/', Path.DirectorySeparatorChar)));
+                    var text = File.ReadAllText(full);
                     var ideLeaves = FlattenFields(JsonMap.Value(_call.Call("objects.fields", new Dictionary<string, object> { { "guid", planFields.Guid } }), "fields"));
                     var plan = planFields.Group != null ? PlanAlarmMessages(text, _work.IdeFiles[planFields.Path], ideLeaves) : PlanTextList(text, ideLeaves);
                     if (plan.Error != null)
@@ -337,7 +341,7 @@ namespace Cts.Cli
                 var ideNativeFiles = (_work.Syncing
                     ? _work.NativeRecords.Concat(_work.FolderRecords).Where(record => record.Category == "ide_changed" && !string.IsNullOrEmpty(record.Guid))
                     : Enumerable.Empty<CompareRecord>())
-                    .Concat(_work.NativeIdeTaken).Select(record => new IdeFile { Guid = record.Guid, Path = record.Path }).ToList();
+                    .Concat(_work.NativeIdeTaken).Select(record => new IdeFile { Guid = record.Guid, Path = record.Path, Csv = record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) }).ToList();
                 if (_work.Syncing)
                     ideNativeFiles.AddRange(_work.CsvRecords.Where(record => record.Category == "ide_changed" && !string.IsNullOrEmpty(record.Guid))
                         .Select(record => new IdeFile { Guid = record.Guid, Path = record.Path, Csv = true }));

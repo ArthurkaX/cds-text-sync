@@ -1300,6 +1300,107 @@ namespace Cts.Agent.Tests
             Assert.Equal(2, answer.ExitCode);
             Assert.Contains("conflict Task " + ExportCommand.Relative(view, file), answer.Details);
             Assert.DoesNotContain("objects.replace", calls);
+            // Both files' texts, for a window to show them side by side; the file names it for --take.
+            var conflict = (IDictionary<string, object>)((IList<object>)Json.Parse(Json.Serialize(result["conflicts"])))[0];
+            Assert.Equal(ExportCommand.Relative(view, file), conflict["key"]);
+            Assert.Contains("<Single Name=\"Priority\" Type=\"string\">5</Single>", Convert.ToString(conflict["disk"]));
+            Assert.Contains("<Single Name=\"Priority\" Type=\"string\">2</Single>", Convert.ToString(conflict["ide"]));
+        }
+
+        [Theory]
+        [InlineData("disk")]
+        [InlineData("ide")]
+        public void Import_take_settles_a_native_conflict_named_by_its_file(string side)
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            File.WriteAllText(file, Regex.Replace(File.ReadAllText(file), "<Single Name=\"Priority\" Type=\"string\">[^<]*</Single>",
+                "<Single Name=\"Priority\" Type=\"string\">5</Single>"));
+            var ideSnapshot = Path.Combine(_root, "ide-conflict.xml");
+            var document = XDocument.Load(Path.Combine(Fixture, "snapshot.xml"));
+            var taskMeta = document.Descendants().First(element => (string)element.Attribute("Name") == "MetaObject"
+                && element.Elements().Any(child => (string)child.Attribute("Name") == "Name" && child.Value == "Task"));
+            taskMeta.Parent.Descendants().First(element => (string)element.Attribute("Name") == "Priority").Value = "2";
+            document.Save(ideSnapshot);
+            var path = ExportCommand.Relative(view, file);
+            var key = ExportCommand.Relative(view, Path.GetDirectoryName(file)) + "/Task";
+            var calls = new List<string>();
+            var exported = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(new[] { "--take", path + "=" + side }, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.export" && args.TryGetValue("guids", out var guids)) exported.AddRange(((IList<object>)guids).Select(Convert.ToString));
+                if (method == "project.export") { File.Copy(ideSnapshot, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(key.Split('/'));
+                return new Dictionary<string, object>();
+            }, ideStamp: "session:changed"));
+            Assert.False(result.ContainsKey("conflicts"));
+            Assert.Equal(side == "disk", calls.Contains("objects.replace"));
+            // The IDE's side is the object's own export, written to its file; the disk's
+            // goes in after the IDE's went on refs/cts/overwritten.
+            Assert.Equal(side == "ide", exported.Contains("11111111-1111-1111-1111-111111111111"));
+            Assert.Equal(side == "disk", result.ContainsKey("overwritten_ide_changes"));
+        }
+
+        // A text list both sides changed: the disk's row 212 is *disk*, the IDE's
+        // row *ideRow* is *ideText*; the calls the import made, its answer and the file.
+        (List<string> calls, IDictionary<string, object> result, string file) TextListBothChanged(string disk, int ideRow, string ideText, params string[] flags)
+        {
+            var file = TextListFile();
+            File.WriteAllText(file, "TextID,TextDefault\n212," + disk + "\n705,This is stabur Runtime under \n978,This is stabur Runtime under arm VM\n");
+            var state = TextListFields();
+            ((IDictionary<string, object>)((IList<object>)state["TextList"])[ideRow])["TextDefault"] = ideText;
+            var calls = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(flags, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return TextListTree();
+                if (method == "project.export") return SnapshotReply(args, TextListEntry(args.TryGetValue("guids", out var guids) ? Convert.ToString(((IList<object>)guids)[0]) : "{11111111-1111-1111-1111-111111111111}", state));
+                if (method == "objects.fields") return TextListReply(state);
+                if (method == "objects.setfield")
+                {
+                    var match = Regex.Match(Convert.ToString(args["path"]), @"TextList\[(\d+)\]\.TextDefault");
+                    if (match.Success) ((IDictionary<string, object>)((IList<object>)state["TextList"])[int.Parse(match.Groups[1].Value)])["TextDefault"] = args["value"];
+                    return new Dictionary<string, object>();
+                }
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            return (calls, result, file);
+        }
+
+        [Fact]
+        public void A_text_list_both_sides_changed_in_other_rows_gets_both()
+        {
+            var (calls, result, file) = TextListBothChanged("Begin", 2, "This is stabur Runtime under QEMU");
+            Assert.False(result.ContainsKey("conflicts"), Json.Serialize(result));
+            Assert.Contains("objects.setfield", calls);
+            Assert.Equal(new[] { "GlobalTextList" }, (IList<string>)result["merged"]);
+            Assert.Contains("212,Begin", File.ReadAllText(file));
+            Assert.Contains("978,This is stabur Runtime under QEMU", File.ReadAllText(file));
+        }
+
+        [Fact]
+        public void A_text_list_both_sides_changed_in_the_same_row_is_a_conflict_with_both_texts()
+        {
+            var (calls, result, file) = TextListBothChanged("Begin", 0, "Go");
+            Assert.DoesNotContain("objects.setfield", calls);
+            Assert.Equal(2, ImportCommand.Build(result).ExitCode);
+            var conflict = (IDictionary<string, object>)((IList<object>)Json.Parse(Json.Serialize(result["conflicts"])))[0];
+            Assert.Equal("POUs/GlobalTextList.csv", conflict["key"]);
+            Assert.Contains("212,Begin", Convert.ToString(conflict["disk"]));
+            Assert.Contains("212,Go", Convert.ToString(conflict["ide"]));
+            Assert.Contains("212,Begin", File.ReadAllText(file));
+        }
+
+        [Theory]
+        [InlineData("disk", "Begin")]
+        [InlineData("ide", "Go")]
+        public void Import_take_settles_a_text_list_conflict(string side, string row)
+        {
+            var (calls, result, file) = TextListBothChanged("Begin", 0, "Go", "--take", "POUs/GlobalTextList.csv=" + side);
+            Assert.False(result.ContainsKey("conflicts"), Json.Serialize(result));
+            Assert.Equal(side == "disk", calls.Contains("objects.setfield"));
+            Assert.Contains("212," + row + "\n", File.ReadAllText(file).Replace("\r\n", "\n"));
         }
 
         [Theory]

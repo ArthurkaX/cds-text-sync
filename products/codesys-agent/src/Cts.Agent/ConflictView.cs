@@ -2,7 +2,7 @@
 // found objects both sides changed in the same lines.  Each is a row on the
 // left; the one chosen shows on the right side by side, the side the run
 // overwrites on the left and the side it carries on the right, the lines that
-// differ marked.  Disk wins, IDE wins or Merge by hand settles it and goes on
+// differ marked.  Disk wins, IDE wins or (a .st) Merge by hand settles it and goes on
 // to the next open one; Force at the top makes the carried side win
 // everywhere (the row's Shift run).  Apply, once every row is settled, runs
 // the row's command with the choices and shows its verdict; F5 lists what is
@@ -151,6 +151,7 @@ namespace Cts.Agent
         {
             var item = Current;
             foreach (var button in _choices) button.Enabled = item != null && !_busy;
+            _choices[2].Enabled &= item != null && item.ByHand;
             _apply.Enabled = !_busy && _items.Count > 0 && ConflictReview.Args(_command, _items) != null;
             if (item == null)
             {
@@ -159,7 +160,8 @@ namespace Cts.Agent
                 _right.Text = "";
                 return;
             }
-            _about.Text = item.Name + " — " + item.Path + ": both changed the same lines";
+            _about.Text = item.Name + " — " + item.Path + (item.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                ? ": both changed the same setting" : ": both changed the same lines");
             var overwritten = _carriesDisk ? item.Ide : item.Disk;
             var carried = _carriesDisk ? item.Disk : item.Ide;
             CodeText.Show(_left, overwritten);
