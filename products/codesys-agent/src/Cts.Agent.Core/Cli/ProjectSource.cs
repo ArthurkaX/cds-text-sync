@@ -24,6 +24,18 @@ namespace Cts.Cli
             return at < 0 || source.EndsWith(Uncommitted, StringComparison.Ordinal) ? null : source.Substring(at + 1);
         }
 
+        // How many commits the folder's HEAD is past the commit a `cts-source`
+        // *label* names, when HEAD descends from it: the project file was saved
+        // before them (or a pull brought them), so the IDE lacks what they
+        // changed. Null when the label names no commit HEAD descends from.
+        internal static int? Behind(string folder, string label)
+        {
+            var commit = Commit(label);
+            if (commit == null || GitRun.In(folder, "merge-base --is-ancestor " + ProcessArgs.Quote(commit) + " HEAD").ExitCode != 0) return null;
+            var count = GitRun.In(folder, "rev-list --count " + ProcessArgs.Quote(commit) + "..HEAD");
+            return count.ExitCode == 0 && int.TryParse(count.Output.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : (int?)null;
+        }
+
         internal static void Mark(CliCall call, string folder, string view, IDictionary<string, object> output)
         {
             var position = GitRepository.Position(folder);

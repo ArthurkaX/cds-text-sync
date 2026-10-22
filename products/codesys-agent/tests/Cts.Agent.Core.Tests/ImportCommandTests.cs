@@ -487,6 +487,8 @@ namespace Cts.Agent.Tests
             var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories).First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
             File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// later\nEND_PROGRAM"));
             File.WriteAllText(Path.Combine(view, "GVL_Later.st"), "VAR_GLOBAL\n    xLater : BOOL;\nEND_VAR\n");
+            Directory.CreateDirectory(Path.Combine(view, "Later"));
+            File.WriteAllText(Path.Combine(view, "Later", "GVL_Deeper.st"), "VAR_GLOBAL\n    xDeeper : BOOL;\nEND_VAR\n");
             SyncBase.Record(_root, viewRelative, new List<string>());
             Git("add -A"); Git("commit -q -m imported");
             Func<string, IDictionary<string, object>, IDictionary<string, object>> stale = (method, args) =>
@@ -507,8 +509,9 @@ namespace Cts.Agent.Tests
             var result = ImportCommand.Execute(call);
             Assert.Empty(Paths(result, "ide_changed"));
             Assert.Contains("GVL_Later.st", Paths(result, "added"));
+            Assert.Contains("Later/GVL_Deeper.st", Paths(result, "added"));
             Assert.Contains(ExportCommand.Relative(view, file), Paths(result, "modified"));
-            Assert.Contains((IEnumerable<string>)result["info"], line => line.StartsWith("The open project file is older than the folder: the IDE holds the text of main@" + saved.Substring(0, 8) + " in 2 file(s)"));
+            Assert.Contains((IEnumerable<string>)result["info"], line => line.StartsWith("The open project file is older than the folder: the IDE holds the text of main@" + saved.Substring(0, 8) + " in 3 file(s)"));
         }
 
         [Fact]

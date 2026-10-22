@@ -41,7 +41,12 @@ namespace Cts.Cli
                 if (Value(answer, key) is string text && text.Length > 0) data[key] = text;
             var hint = Hint(path, online);
             if (hint != null) data["hint"] = hint;
-            if (data.ContainsKey("sync_folder")) data["git"] = FolderGit.Position((string)data["sync_folder"], path);
+            if (data.ContainsKey("sync_folder"))
+            {
+                data["git"] = FolderGit.Position((string)data["sync_folder"], path);
+                if (data.ContainsKey("source") && ProjectSource.Behind((string)data["sync_folder"], (string)data["source"]) is int behind && behind > 0)
+                    data["source_behind"] = (long)behind;
+            }
             return data;
         }
 
@@ -71,7 +76,9 @@ namespace Cts.Cli
                     ? "cts set-sync-folder takes " + suggested + " (a PATH picks another)" : "cts set-sync-folder chooses one"));
             if (Value(data, "git") is IDictionary<string, object> git) answer.Detail(GitLine(git));
             if (Value(data, "project") is string project) answer.Detail("project " + project);
-            if (Value(data, "source") is string source) answer.Detail("source " + source + " (the commit the IDE's code came from at its last import or commit; cts compare shows edits since)");
+            if (Value(data, "source") is string source) answer.Detail("source " + source + (Value(data, "source_behind") is long behind
+                ? ", " + behind + " commit(s) behind the folder's HEAD: the project file is older than the folder (saved before the last import, or a pull came since); cts compare names what it lacks, cts import brings it in"
+                : " (the commit the IDE's code came from at its last import or commit; cts compare shows edits since)"));
             if (Equals(Value(data, "unsaved_changes"), true))
                 answer.Detail("unsaved: the IDE holds edits its project file lacks; cts compare shows whether the folder has them, cts save saves the project");
             if (Value(data, "last_command") is IDictionary<string, object> last && Value(last, "method") is string method)

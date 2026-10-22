@@ -60,6 +60,33 @@ namespace Cts.Agent.Tests
                 + "ide-7144 · plant\n", output);
         }
 
+        // The project file was saved at the first commit; the folder moved on.
+        [Fact]
+        public void Status_says_how_far_the_project_file_is_behind_the_folder()
+        {
+            var root = Repository();
+            var project = Path.Combine(root, ".project", "plant.project");
+            var first = GitRun.In(root, "rev-parse HEAD").Output.Trim();
+            File.WriteAllText(Path.Combine(root, "New.st"), "PROGRAM New\nEND_PROGRAM\n");
+            foreach (var args in new[] { "add -A", "-c user.name=t -c user.email=t@t commit -q -m two" })
+                GitRepository.Run(root, args);
+            var host = new FakeHost();
+            var label = "main@" + first.Substring(0, 8);
+            host.Agents[7144] = Agent(project, root, method =>
+            {
+                var status = ProjectStatus(project, root, false);
+                status["source"] = ProjectInfo.Source(label, "2026-10-21 09:00");
+                return status;
+            });
+
+            var (_, output, _) = Run(host, "status");
+            var json = (IDictionary<string, object>)Json.Parse(Run(host, "status", "--json").output);
+
+            Directory.Delete(root, true);
+            Assert.Contains("\nsource " + ProjectInfo.Source(label, "2026-10-21 09:00") + ", 1 commit(s) behind the folder's HEAD: the project file is older than the folder", output);
+            Assert.Equal(1L, Convert.ToInt64(json["source_behind"]));
+        }
+
         [Fact]
         public void Status_says_why_edits_are_blocked_and_what_a_folder_without_git_needs()
         {
