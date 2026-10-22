@@ -141,9 +141,11 @@ namespace Cts.Cli
         static void ReportOtherBuild(Hello hello, TextWriter error)
         {
             var agent = Value(hello.Data, "agent_version") as string;
-            if (agent != null && agent != Build())
-                error.WriteLine("[WARN] The IDE's agent is " + agent + ", this cts is " + Build()
-                    + ": close CODESYS and run `cts install` from the cts you use, so both are one build.");
+            if (agent == null || agent == Build()) return;
+            var scriptDir = Value(hello.Data, "script_dir") as string;
+            error.WriteLine("[WARN] The IDE's agent is " + agent + (scriptDir == null ? "" : " from the ScriptDir " + scriptDir) + ", this cts is " + Build()
+                + ": close CODESYS and run `cts install" + (scriptDir == null ? "" : " --script-dir \"" + scriptDir + "\"")
+                + "` from the cts you use, so both are one build.");
         }
 
         // A command run in another sync folder still works on the IDE's

@@ -103,8 +103,13 @@ These are the ScriptDir locations it knows about:
 - **Standard CODESYS (Manual Setup)**: `C:\Program Files\CODESYS 3.5.18.40\CODESYS\ScriptDir\`
 - **Delta Industrial Automation (DIAStudio)**: `C:\Program Files\Delta Industrial Automation\DIAStudio\DIADesigner-AX 1.9\CODESYS\ScriptDir`
 
-Pass `--script-dir <path>` to target one explicitly, or `--all` to
-serve every CODESYS installation from a single program folder.
+Without options `cts install` updates every ScriptDir that already holds
+cds-text-sync (an IDE may load the agent from any of them), or the first one
+found when none does; `--check` looks at the same ones, files a running
+CODESYS holds included. Pass `--script-dir <path>` to target one explicitly,
+or `--all` to serve every CODESYS installation from a single program folder.
+When the IDE runs an agent of another build, every command names the
+ScriptDir it came from.
 
 > [!TIP]
 > Using a different CODESYS version or fork? See the

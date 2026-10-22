@@ -58,11 +58,12 @@ namespace Cts.Cli
                 + "cts.exe beside it, and the same entry as a Script Command for a toolbar button; --toolbar also puts that button on "
                 + "each profile's Standard toolbar. The files come from beside this cts.exe (a download's dist folder, an installed "
                 + "agent) or, in a build tree, from the agent built with it. Only files that differ are written; CODESYS must be "
-                + "closed while the agent changes. The ScriptDir is the first found (the user's) unless --script-dir names one or "
-                + "--all takes every one. --check changes nothing and says what is out of date (exit 1 when anything is).",
+                + "closed while the agent changes. The ScriptDirs are every one that already holds cds-text-sync, or the first found "
+                + "(the user's) when none does, unless --script-dir names one or --all takes every one. --check changes nothing "
+                + "and says what is out of date (exit 1 when anything is), the files a running CODESYS holds too.",
             Options = new[]
             {
-                CliOption.Text("--script-dir", "script_dir", "DIR", "CODESYS ScriptDir (default: the first found)"),
+                CliOption.Text("--script-dir", "script_dir", "DIR", "CODESYS ScriptDir (default: each holding cds-text-sync, else the first found)"),
                 CliOption.Switch("--all", "all", "Every CODESYS ScriptDir on this machine"),
                 CliOption.Switch("--toolbar", "toolbar", "Put the button on each profile's Standard toolbar (CODESYS closed)"),
                 CliOption.Switch("--check", "check", "Change nothing; report what is out of date"),
@@ -86,7 +87,7 @@ namespace Cts.Cli
             {
                 dirs = ScriptDirs();
                 if (dirs.Count == 0) throw Refused("no CODESYS ScriptDir on this machine; name one with --script-dir DIR");
-                if (!options.Params.ContainsKey("all")) dirs = dirs.Take(1).ToList();
+                if (!options.Params.ContainsKey("all")) dirs = Installed(dirs);
             }
             var check = options.Params.ContainsKey("check");
             var toolbar = options.Params.ContainsKey("toolbar");
@@ -97,6 +98,15 @@ namespace Cts.Cli
                 { "source", Path.GetDirectoryName(source[0]) },
                 { "script_dirs", dirs.Select(dir => (object)Install(source, dir, check, toolbar, appData)).ToList() },
             };
+        }
+
+        // Of *dirs*, those holding an install, else the first: an IDE loads
+        // the agent from whichever of them it reads, so each one holding an
+        // install is brought up to date.
+        internal static IList<string> Installed(IList<string> dirs)
+        {
+            var installed = dirs.Where(dir => File.Exists(Path.Combine(dir, Folder, Stub))).ToList();
+            return installed.Count > 0 ? installed : dirs.Take(1).ToList();
         }
 
         // The agent files to copy, in AgentFiles' order, or null: beside
@@ -182,8 +192,9 @@ namespace Cts.Cli
             var locked = copies.Select(pair => pair.Value).Concat(strays).Where(Locked).ToList();
             if (locked.Count > 0)
             {
-                problems.Add("CODESYS holds " + string.Join(", ", locked.Select(Path.GetFileName)) + ": close it, then run cts install again");
-                return result;
+                problems.Add("CODESYS holds " + string.Join(", ", locked.Select(Path.GetFileName)) + ": close it, then run cts install"
+                    + (check ? "" : " again"));
+                if (!check) return result;
             }
             foreach (var pair in copies)
             {

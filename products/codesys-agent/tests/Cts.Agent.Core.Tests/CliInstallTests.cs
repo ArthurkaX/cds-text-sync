@@ -81,6 +81,36 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void A_file_a_running_CODESYS_holds_is_still_checked_and_stops_only_the_install()
+        {
+            var scriptDir = ScriptDir();
+            Install(Source(), scriptDir);
+            var held = Path.Combine(scriptDir, "cds-text-sync", "agent", "Cts.Agent.Core.dll");
+            using (new FileStream(held, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var check = Install(Source("build 2"), scriptDir, check: true);
+                Assert.Equal(Names.Length, List(check, "written").Count);
+                Assert.Contains("CODESYS holds Cts.Agent.Core.dll", (string)List(check, "problems").Single());
+                var install = Install(Source("build 2"), scriptDir);
+                Assert.Empty(List(install, "written"));
+                Assert.Single(List(install, "problems"));
+            }
+        }
+
+        [Fact]
+        public void Without_a_named_ScriptDir_each_one_holding_an_install_is_taken_else_the_first()
+        {
+            var user = ScriptDir();
+            var machine = ScriptDir("Machine");
+            var other = ScriptDir("Other");
+            foreach (var dir in new[] { user, machine, other }) Directory.CreateDirectory(dir);
+            Assert.Equal(new[] { user }, InstallCommand.Installed(new[] { user, machine, other }));
+            Install(Source(), machine);
+            Install(Source(), other);
+            Assert.Equal(new[] { machine, other }, InstallCommand.Installed(new[] { user, machine, other }));
+        }
+
+        [Fact]
         public void The_agent_comes_from_beside_cts_exe_or_from_its_build_tree()
         {
             Assert.Null(InstallCommand.Sources(Path.Combine(_root, "src", "Cts.Cli", "bin", "Debug", "net48")));

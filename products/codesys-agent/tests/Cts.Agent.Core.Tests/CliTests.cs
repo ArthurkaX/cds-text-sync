@@ -1019,12 +1019,16 @@ namespace Cts.Agent.Tests
             var build = "1.0";
             var host = new FakeHost();
             host.Agents[1] = (method, _) => method == "hello"
-                ? new Dictionary<string, object> { { "protocol", "1.0" }, { "agent_version", build } }
+                ? new Dictionary<string, object>
+                {
+                    { "protocol", "1.0" }, { "agent_version", build }, { "script_dir", @"C:\Data\CODESYS\ScriptDir" },
+                }
                 : Pong(method);
 
             var (code, _, error) = Run(host, "ping");
             Assert.Equal(0, code);
-            Assert.Contains("[WARN] The IDE's agent is 1.0, this cts is " + CliRun.Build() + ":", error);
+            Assert.Contains("[WARN] The IDE's agent is 1.0 from the ScriptDir C:\\Data\\CODESYS\\ScriptDir, this cts is " + CliRun.Build()
+                + ": close CODESYS and run `cts install --script-dir \"C:\\Data\\CODESYS\\ScriptDir\"`", error);
             build = CliRun.Build();
             Assert.DoesNotContain("[WARN]", Run(host, "ping").error);
         }

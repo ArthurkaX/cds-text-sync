@@ -448,6 +448,8 @@ namespace Cts.Agent
             {
                 { "protocol", Protocol.Version },
                 { "agent_version", Cts.Cli.CliRun.Build() },
+                // The agent lies in ScriptDir\cds-text-sync\agent.
+                { "script_dir", Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AgentHost).Assembly.Location))) },
                 { "pid", proc.Id },
                 { "process", proc.ProcessName },
                 { "product", product },
