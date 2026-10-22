@@ -91,7 +91,8 @@ namespace Cts.Sync
                         cache[path] = null;
                         continue;
                     }
-                    cache[path] = ReadBlob(reader.StandardOutput.BaseStream, fields);
+                    try { cache[path] = ReadBlob(reader.StandardOutput.BaseStream, fields); }
+                    catch (IOException error) { throw new IOException(path + " (blob " + blobs[path] + "): " + error.Message, error); }
                 }
                 writer.GetAwaiter().GetResult();
                 readTimer.Stop();

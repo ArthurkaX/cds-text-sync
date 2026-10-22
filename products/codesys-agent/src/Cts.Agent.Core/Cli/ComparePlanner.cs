@@ -48,13 +48,24 @@ namespace Cts.Cli
 
         static ComparePlan BuildPlan(CliCall call, bool importing)
         {
-            try { return Run(call, importing); }
-            catch (CliFailure) { throw; }
-            catch (Exception error) when (error is InvalidOperationException || error is IOException || error is ArgumentException
-                || error is UnauthorizedAccessException || error is FormatException || error is InvalidCastException
-                || error is KeyNotFoundException || error is NullReferenceException || error is OverflowException)
+            // A read that fails once (a file still being written over a network
+            // share, a git reader cut short) is tried again before it refuses.
+            for (var attempt = 1; ; attempt++)
             {
-                throw new CliFailure("compare", "refused", error.Message, "cts compare --help", 1);
+                try { return Run(call, importing); }
+                catch (CliFailure) { throw; }
+                catch (IOException) when (attempt == 1) { }
+                catch (IOException error)
+                {
+                    throw new CliFailure("compare", "read_failed", "a file of the sync folder could not be read, twice: " + error.Message,
+                        "run it again once nothing writes into the sync folder", 1);
+                }
+                catch (Exception error) when (error is InvalidOperationException || error is ArgumentException
+                    || error is UnauthorizedAccessException || error is FormatException || error is InvalidCastException
+                    || error is KeyNotFoundException || error is NullReferenceException || error is OverflowException)
+                {
+                    throw new CliFailure("compare", "refused", error.Message, "cts compare --help", 1);
+                }
             }
         }
 
