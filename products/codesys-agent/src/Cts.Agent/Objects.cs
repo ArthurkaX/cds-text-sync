@@ -33,7 +33,14 @@ namespace Cts.Agent
             // structured view: a plain AddObject with a folder (or Application)
             // parent lands at the project root instead of inside the folder.
             if (spec.StructuredView.HasValue || spec.Kind == "folder" || parent != null && IsFolder(parent))
-                return CreateInFolder(handle, factory, spec);
+            {
+                var placed = CreateInFolder(handle, factory, spec);
+                // parent_guid and path are the object tree's, which has no
+                // folders: the folder it went into is named apart, so a create
+                // into a folder does not read as one at the root.
+                if (parent != null && IsFolder(parent)) placed["folder_guid"] = Id(spec.ParentGuid);
+                return placed;
+            }
             if (!Accepts(factory, parentObject))
             {
                 // A METHOD below an interface needs the interface-method factory;

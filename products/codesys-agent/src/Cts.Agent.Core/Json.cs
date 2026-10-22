@@ -192,7 +192,11 @@ namespace Cts.Agent
                 long l;
                 if (isInt && long.TryParse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out l))
                     return l;
-                return double.Parse(token, NumberStyles.Float, CultureInfo.InvariantCulture);
+                // .NET Framework throws on a double out of range, a later .NET
+                // makes it infinite: neither is a JSON value ("1e8859dc-..." a GUID).
+                if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) || double.IsInfinity(d))
+                    throw Fail("number out of range");
+                return d;
             }
         }
 

@@ -23,6 +23,21 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Raw_sends_a_guid_that_starts_like_a_number_as_a_string()
+        {
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, (method, parameters) =>
+            {
+                Assert.Equal("1e8859dc-c2d4-4495-98ad-353831d0a959", parameters["parent_guid"]);
+                Assert.Equal("123e4567-e89b-12d3-a456-426614174000", parameters["guid"]);
+                return new Dictionary<string, object>();
+            });
+            var (code, _, _) = Run(host, "raw", "objects.create", "--parent_guid", "1e8859dc-c2d4-4495-98ad-353831d0a959",
+                "--guid", "123e4567-e89b-12d3-a456-426614174000");
+            Assert.Equal(0, code);
+        }
+
+        [Fact]
         public void Raw_takes_the_short_name_the_guides_give()
         {
             var host = new FakeHost();

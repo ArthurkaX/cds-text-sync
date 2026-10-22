@@ -70,6 +70,8 @@ namespace Cts.Agent.Tests
         [InlineData("tru")]
         [InlineData("1 2")]
         [InlineData("{} x")]
+        [InlineData("1e400")]
+        [InlineData("-1e400")]
         public void RejectsMalformedInput(string json)
         {
             Assert.Throws<JsonException>(() => Json.Parse(json));
