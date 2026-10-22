@@ -2393,6 +2393,88 @@ namespace Cts.Agent.Tests
             Assert.Equal(new[] { item.Key }, ((IEnumerable<object>)result["renamed_objects"]).Cast<string>());
         }
 
+        // A renamed function block whose references and body changed too is
+        // one rename: its members keep their guids, one it lost is deleted,
+        // a new one is made below it.
+        [Fact]
+        public void A_renamed_function_block_with_edits_keeps_its_guid_and_its_members()
+        {
+            var view = ViewFolder.Of(_root);
+            var tree = ViewTree(view);
+            string GuidOf(params string[] names)
+            {
+                var item = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "FB_Valve");
+                IDictionary<string, object> node = tree;
+                foreach (var name in item.Path.Concat(names.Skip(1)))
+                    node = ((IEnumerable<object>)node["children"]).Cast<IDictionary<string, object>>().Single(child => string.Equals(Convert.ToString(child["name"]), name, StringComparison.OrdinalIgnoreCase));
+                return Convert.ToString(node["guid"]);
+            }
+            var fb = GuidOf("FB_Valve");
+            var action = GuidOf("FB_Valve", "A_Reset");
+            var method = GuidOf("FB_Valve", "M_Toggle");
+            var file = Directory.GetFiles(view, "FB_Valve.st", SearchOption.AllDirectories).Single();
+            File.Delete(file);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(file), "FB_Gate.st"), "FUNCTION_BLOCK FB_Gate\nVAR\n\txOpen : BOOL;\n\txBusy : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK\n\n"
+                + "PROPERTY P_Open : BOOL\nGET\n// --- implementation ---\nP_Open := xOpen;\nEND_GET\nSET\n// --- implementation ---\nxOpen := P_Open;\nEND_SET\nEND_PROPERTY\n\n"
+                + "METHOD M_Toggle : BOOL\n// --- implementation ---\nxBusy := FALSE;\nxOpen := NOT xOpen;\nM_Toggle := xOpen;\nEND_METHOD\n\n"
+                + "METHOD M_Close : BOOL\n// --- implementation ---\nxOpen := FALSE;\nEND_METHOD\n");
+            var gvl = Directory.GetFiles(view, "GVL_Fixture.st", SearchOption.AllDirectories).Single();
+            File.WriteAllText(gvl, File.ReadAllText(gvl).Replace("FB_Valve", "FB_Gate"));
+            var calls = new List<string>();
+            var deleted = new List<string>();
+            var current = new Dictionary<string, IDictionary<string, object>>();
+            IDictionary<string, object> created = null;
+            IDictionary<string, object> Fake(string name, IDictionary<string, object> args)
+            {
+                calls.Add(name);
+                if (name == "project.tree") return tree;
+                if (name == "objects.rename")
+                {
+                    Assert.Equal(fb, args["guid"]);
+                    Assert.Equal("FB_Gate", args["name"]);
+                    return new Dictionary<string, object>();
+                }
+                if (name == "objects.delete") { deleted.Add(Convert.ToString(args["guid"])); return new Dictionary<string, object>(); }
+                if (name == "objects.create") { created = new Dictionary<string, object>(args); return new Dictionary<string, object> { { "guid", "created-1" } }; }
+                if (name == "objects.settext") { current[Convert.ToString(args["guid"])] = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (name == "objects.texts") return new Dictionary<string, object> { { "objects", current.Select(pair => { var row = new Dictionary<string, object>(pair.Value); row["guid"] = pair.Key; return (IDictionary<string, object>)row; }).ToList() } };
+                if (name == "project.export") return SnapshotReply(args);
+                throw new InvalidOperationException("unexpected agent call " + name);
+            }
+            var plan = ImportCommand.Build(ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, Fake)));
+            Assert.False(plan.Details.Any(detail => detail.StartsWith("would be refused", StringComparison.Ordinal)), string.Join("\n", plan.Details));
+            Assert.Contains(new KeyValuePair<string, object>("renamed", 1), plan.Pairs);
+            Assert.Contains(new KeyValuePair<string, object>("added", 1), plan.Pairs);
+            Assert.Contains(new KeyValuePair<string, object>("deleted", 1), plan.Pairs);
+            Assert.Equal(new[] { "project.tree" }, calls.Distinct());
+            var result = ImportCommand.Execute(ImportCall(null, Fake));
+            Assert.Contains("objects.rename", calls);
+            Assert.Equal(new[] { action }, deleted);
+            Assert.Equal("method", created["kind"]);
+            Assert.Equal("M_Close", created["name"]);
+            Assert.Equal(fb, created["parent_guid"]);
+            Assert.Contains("xBusy := FALSE;", Convert.ToString(current[method]["implementation"]));
+            Assert.Contains("xBusy : BOOL;", Convert.ToString(current[fb]["declaration"]));
+            Assert.True(calls.IndexOf("objects.rename") < calls.IndexOf("objects.settext"));
+            Assert.Equal(new[] { "FB_Gate" }, ((IEnumerable<object>)result["renamed_objects"]).Cast<string>().Select(key => key.Split('/').Last()));
+        }
+
+        // Two lists of globals alike only in their keywords are a delete and an add.
+        [Fact]
+        public void A_deleted_and_an_added_list_alike_only_in_keywords_are_no_rename()
+        {
+            var view = ViewFolder.Of(_root);
+            var tree = ViewTree(view);
+            var file = Directory.GetFiles(view, "GVL_Motors.st", SearchOption.AllDirectories).Single();
+            File.Delete(file);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(file), "GVL_Pumps.st"), "{attribute 'qualified_only'}\nVAR_GLOBAL\n\txP1Start : BOOL;\n\tnP1Starts : UDINT;\nEND_VAR\n");
+            var plan = ImportCommand.Build(ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
+                method == "project.tree" ? tree : throw new InvalidOperationException("dry run must not write: " + method))));
+            Assert.DoesNotContain(plan.Pairs, pair => pair.Key == "renamed");
+            Assert.Contains(new KeyValuePair<string, object>("added", 1), plan.Pairs);
+            Assert.Contains(new KeyValuePair<string, object>("deleted", 1), plan.Pairs);
+        }
+
         [Fact]
         public void A_file_moved_into_a_new_folder_moves_its_object_there_without_a_delete()
         {

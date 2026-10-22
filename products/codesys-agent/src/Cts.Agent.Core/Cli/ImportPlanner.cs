@@ -57,8 +57,12 @@ namespace Cts.Cli
                 var shown = new HashSet<string>(_work.FolderRecords.Where(record => record.Category == "deleted").Select(record => FolderKey(record.Path)), StringComparer.OrdinalIgnoreCase);
                 var deletes = _work.ForcedDeletedNames.Concat(_work.FolderDeletes.Where(key => !shown.Contains(key)).Select(key => key + "/")).ToList();
                 if (deletes.Count > 0) _work.Data["would_delete"] = deletes;
-                if (_work.Renames.Count > 0) _work.Data["renames"] = _work.Renames.Select(rename => (object)new Dictionary<string, object>
-                    { { "from", rename.DeletedRecord.Path }, { "to", rename.Item.File } }).ToList();
+                // A renamed object counts its members, which it takes along.
+                if (_work.Renames.Count > 0) _work.Data["renames"] = _work.Renames.Where(rename => !rename.WithParent).Select(rename => (object)new Dictionary<string, object>
+                    {
+                        { "from", rename.DeletedRecord.Path }, { "to", rename.Item.File },
+                        { "objects", 1 + _work.Renames.Count(member => member.WithParent && member.Item.Key.StartsWith(rename.Item.Key + "/", StringComparison.OrdinalIgnoreCase)) },
+                    }).ToList();
                 return _work.Data;
             }
 
@@ -156,14 +160,12 @@ namespace Cts.Cli
             // Deleted text objects get their guids; new ones their kinds and parents, with the folders they need.
             IDictionary<string, object> PlanAdded()
             {
-                foreach (var record in _work.Deleted)
-                    if (!record.HasGuid)
-                    {
-                        var key = Path.Combine(Path.GetDirectoryName(record.Path) ?? "", record.Name)
-                            .Replace(Path.DirectorySeparatorChar, '/');
-                        if (_work.IdeByPath.TryGetValue(key, out var deletedGuid)) { record.Guid = deletedGuid; record.HasGuid = true; }
-                    }
-                foreach (var record in _work.Deleted)
+                // A member goes with its deleted owner: only the top objects of what the disk lost are deleted by guid.
+                _work.DeletedMembers = _work.Deleted.Where(record => _work.Deleted.Any(owner => Under(record, owner.ObjectPath))).ToList();
+                _work.Deleted = _work.Deleted.Except(_work.DeletedMembers).ToList();
+                foreach (var record in _work.Deleted.Concat(_work.DeletedMembers))
+                    if (!record.HasGuid && record.ObjectPath != null && _work.IdeByPath.TryGetValue(record.ObjectPath, out var deletedGuid)) { record.Guid = deletedGuid; record.HasGuid = true; }
+                foreach (var record in _work.Deleted.Concat(_work.DeletedMembers))
                     if (string.IsNullOrEmpty(record.Guid)) return Refused(_call, _work.Data, "cannot identify IDE object to delete: " + record.Name);
                 _work.AddedItems = _work.StRecords.Where(record => record.Category == "added")
                     .Select(record => new AddedText { Record = record, Item = FindViewObject(_work.Parsed, record) })
@@ -348,34 +350,59 @@ namespace Cts.Cli
                 return null;
             }
 
-            // A deleted and an added object with the same text are one rename.
+            // A deleted and an added object of one kind whose texts match, but
+            // for the names of the objects that left or came, or whose lines
+            // are mostly the same, are one rename; best match first. The
+            // members below a renamed object keep their guids by their path below it.
             internal void MatchRenames()
             {
-                var consumedAdded = new HashSet<CompareRecord>();
-                var consumedDeleted = new HashSet<CompareRecord>();
                 _work.Renames = new List<RenameText>();
-                foreach (var pair in _work.AddedItems)
+                var addedKeys = new HashSet<string>(_work.AddedItems.Select(pair => pair.Item.Key), StringComparer.OrdinalIgnoreCase);
+                var names = new HashSet<string>(_work.Deleted.Concat(_work.DeletedMembers).Select(record => record.Name)
+                    .Concat(_work.AddedItems.Select(pair => pair.Item.Path.Last())), StringComparer.OrdinalIgnoreCase);
+                var candidates =
+                    from old in _work.Deleted
+                    let oldObject = At(_work.IdeObjects, old.ObjectPath)
+                    where oldObject != null
+                    from pair in _work.AddedItems
+                    where !addedKeys.Contains(ParentKey(pair.Item.Key))
+                        && string.Equals(oldObject.Kind, pair.Item.Kind, StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(old.ObjectPath, pair.Item.Key, StringComparison.OrdinalIgnoreCase)
+                    let score = RenameScore(oldObject, pair.Item, names)
+                    where score >= 0.5
+                    orderby score descending, RenameScore(old.Name, pair.Item.Path.Last()) descending
+                    select new { Old = old, Pair = pair };
+                var consumedAdded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var consumedDeleted = new HashSet<CompareRecord>();
+                foreach (var candidate in candidates.ToList())
                 {
-                    var item = pair.Item;
-                    var old = _work.Deleted.FirstOrDefault(record => !consumedDeleted.Contains(record)
-                        && record.ObjectPath != null
-                        && !string.Equals(record.ObjectPath, item.Key, StringComparison.OrdinalIgnoreCase)
-                        && At(_work.IdeObjects, record.ObjectPath) is StViewObject oldObject
-                        && _work.IdeByPath.ContainsKey(oldObject.Key)
-                        && SameRenameText(oldObject, item, record.Name, item.Path.Last()));
-                    if (old == null) continue;
-                    var oldKey = old.ObjectPath;
-                    if (!_work.IdeByPath.TryGetValue(oldKey, out var oldGuid)) continue;
-                    _work.Renames.Add(new RenameText { Guid = oldGuid, Item = item, DeletedRecord = old });
-                    consumedAdded.Add(pair.Record); consumedDeleted.Add(old);
+                    if (consumedDeleted.Contains(candidate.Old) || consumedAdded.Contains(candidate.Pair.Item.Key)) continue;
+                    _work.Renames.Add(new RenameText { Guid = candidate.Old.Guid, Item = candidate.Pair.Item, DeletedRecord = candidate.Old });
+                    consumedDeleted.Add(candidate.Old); consumedAdded.Add(candidate.Pair.Item.Key);
                 }
-                _work.AddedItems = _work.AddedItems.Where(pair => !consumedAdded.Contains(pair.Record)).ToList();
+                foreach (var rename in _work.Renames.ToList())
+                {
+                    var oldKey = rename.DeletedRecord.ObjectPath;
+                    var members = _work.DeletedMembers.Where(record => Under(record, oldKey)).ToList();
+                    foreach (var item in _work.Parsed.Objects.Where(candidate => candidate.Key.StartsWith(rename.Item.Key + "/", StringComparison.OrdinalIgnoreCase)).OrderBy(candidate => candidate.Path.Length))
+                    {
+                        var old = members.FirstOrDefault(record => !consumedDeleted.Contains(record)
+                            && string.Equals(record.ObjectPath, oldKey + item.Key.Substring(rename.Item.Key.Length), StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(record.Kind, item.Kind, StringComparison.OrdinalIgnoreCase));
+                        if (old == null) continue;
+                        _work.Renames.Add(new RenameText { Guid = old.Guid, Item = item, DeletedRecord = old, WithParent = true });
+                        consumedDeleted.Add(old); consumedAdded.Add(item.Key);
+                    }
+                    // A member the renamed object no longer has is deleted on its own, with what is below it.
+                    var gone = members.Where(record => !consumedDeleted.Contains(record)).ToList();
+                    _work.Deleted.AddRange(gone.Where(record => !gone.Any(owner => Under(record, owner.ObjectPath))));
+                }
+                _work.AddedItems = _work.AddedItems.Where(pair => !consumedAdded.Contains(pair.Item.Key)).ToList();
                 _work.Deleted = _work.Deleted.Where(record => !consumedDeleted.Contains(record)).ToList();
-                _work.Deleted = _work.Deleted.Where(record => !_work.Deleted.Any(owner => !ReferenceEquals(owner, record)
-                    && owner.Path.Equals(record.Path)
-                    && Path.GetFileNameWithoutExtension(owner.Path) == owner.Name
-                    && !Path.GetFileNameWithoutExtension(record.Path).Equals(record.Name, StringComparison.OrdinalIgnoreCase))).ToList();
             }
+
+            static bool Under(CompareRecord record, string ownerKey) =>
+                ownerKey != null && record.ObjectPath != null && record.ObjectPath.StartsWith(ownerKey + "/", StringComparison.OrdinalIgnoreCase);
 
             // After the renames: the folders gone from disk, with --force the ones
             // only the IDE has, and the ones whose last object leaves.

@@ -54,6 +54,8 @@ namespace Cts.Agent
             + "TIME LTIME DATE LDATE TIME_OF_DAY LTIME_OF_DAY TOD LTOD DATE_AND_TIME LDATE_AND_TIME DT LDT "
             + "STRING WSTRING CHAR WCHAR ANY __XWORD __UXINT __XINT");
 
+        internal static bool IsKeyword(string word) => Keywords.Contains(word);
+
         public static List<StToken> Tokens(string text)
         {
             var tokens = new List<StToken>();

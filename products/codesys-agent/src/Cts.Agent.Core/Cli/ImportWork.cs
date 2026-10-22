@@ -22,6 +22,8 @@ namespace Cts.Cli
             internal Dictionary<string, TreeObject> IdeNodes;
             internal Dictionary<string, string> IdeByPath;
             internal List<CompareRecord> ForceRecords, StRecords, FolderRecords, Deleted, NativeRecords, CsvRecords;
+            // The deleted objects below another deleted one, which go with it.
+            internal List<CompareRecord> DeletedMembers;
             internal List<IDictionary<string, object>> FieldReadBack, Conflicts;
             internal List<CompareRecord> NativeDeletes, NativeGone, NativeImports, NativeReplaces, NativeIdeTaken;
             internal List<TextListPlan> CsvPlans;

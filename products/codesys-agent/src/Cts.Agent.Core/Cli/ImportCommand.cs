@@ -20,8 +20,9 @@ namespace Cts.Cli
                 // A rename or move is a deleted and an added file that are one object: shown once, as itself.
                 var renames = Items(data.TryGetValue("renames", out var rawRenames) ? rawRenames : null);
                 var renamedFiles = new HashSet<string>(renames.SelectMany(rename => new[] { Convert.ToString(rename["from"]), Convert.ToString(rename["to"]) }), StringComparer.OrdinalIgnoreCase);
-                var answer = new Answer().Add("modified", JsonMap.Int(summary, "modified")).Add("added", JsonMap.Int(summary, "added") - renames.Count)
-                    .Add("deleted", JsonMap.Int(summary, "deleted") - renames.Count).Add("not_importable", JsonMap.Int(summary, "not_importable"))
+                var renamedObjects = renames.Sum(rename => JsonMap.Int(rename, "objects"));
+                var answer = new Answer().Add("modified", JsonMap.Int(summary, "modified")).Add("added", JsonMap.Int(summary, "added") - renamedObjects)
+                    .Add("deleted", JsonMap.Int(summary, "deleted") - renamedObjects).Add("not_importable", JsonMap.Int(summary, "not_importable"))
                     .Add("ide_changed", JsonMap.Int(summary, "ide_changed"));
                 if (renames.Count > 0) answer.Add("renamed", renames.Count);
                 var conflicts = Items(data.TryGetValue("conflicts", out var rawConflicts) ? rawConflicts : null);
@@ -171,6 +172,7 @@ namespace Cts.Cli
             internal StViewObject Item;
             internal CompareRecord DeletedRecord;
             internal string ParentGuid;		// The folder it moves into, "" for the project root; null when it stays in its own
+            internal bool WithParent;		// A member that moves with its renamed owner: only its text is written
         }
 
         internal sealed class MergeFileEdit
@@ -194,6 +196,7 @@ namespace Cts.Cli
             }
             foreach (var rename in renames)
             {
+                if (rename.WithParent) { writes.Add(new TextWrite { Guid = rename.Guid, Item = rename.Item }); continue; }
                 if (rename.ParentGuid != null)
                     call.Call("objects.move", Below(rename.ParentGuid, new Dictionary<string, object> { { "guid", rename.Guid } }));
                 if (!string.Equals(rename.DeletedRecord.Name, rename.Item.Path.Last(), StringComparison.Ordinal))
@@ -243,7 +246,7 @@ namespace Cts.Cli
                     .Concat(createdAccessorNames.Select(name => (object)new Dictionary<string, object> { { "name", name } }))
                     .Concat(createdFolders.Select(key => (object)new Dictionary<string, object> { { "name", Path.GetFileName(key) }, { "path", key } })).ToList() },
                 { "deleted_objects", deleted.Select(item => item.Name).Concat(forcedDeletedNames).Concat(folderDeletes.Select(Path.GetFileName)).ToList() },
-                { "renamed_objects", renames.Select(rename => rename.Item.Key).ToList() }, { "settings", settings },
+                { "renamed_objects", renames.Where(rename => !rename.WithParent).Select(rename => rename.Item.Key).ToList() }, { "settings", settings },
                 { "saved", false }, { "unapplied_objects", readBack }, { "base", baseName ?? data["base"] },
             };
             if (forceRecords.Count > 0) output["overwritten_ide_changes"] = forceRecords.Select(record => string.IsNullOrEmpty(record.ObjectPath) ? record.Path : record.ObjectPath).Distinct().ToList();

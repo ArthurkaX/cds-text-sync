@@ -104,8 +104,10 @@ namespace Cts.Cli
             internal void ApplyTexts()
             {
                 CreateFolders();
-                foreach (var rename in _work.Renames)
+                foreach (var rename in _work.Renames.Where(rename => !rename.WithParent))
                 {
+                    // A new member of the renamed object is made below it.
+                    _work.Created[rename.Item.Key] = rename.Guid;
                     var parent = ParentKey(rename.Item.Key);
                     if (string.Equals(ParentKey(Convert.ToString(rename.DeletedRecord.ObjectPath)), parent, StringComparison.OrdinalIgnoreCase)) continue;
                     rename.ParentGuid = parent.Length == 0 ? "" : _work.Created.TryGetValue(parent, out var created) ? created

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -137,12 +138,37 @@ namespace Cts.Cli
             return newline == "\n" ? replaced : replaced.Replace("\n", newline);
         }
 
-        static bool SameRenameText(StViewObject oldObject, StViewObject newObject, string oldName, string newName)
+        // How alike two objects' texts are, 0 to 1: 1 when they match but
+        // for the names in *names*, else the share of their lines with
+        // something besides keywords that both have, those names masked.
+        static double RenameScore(StViewObject oldObject, StViewObject newObject, ISet<string> names)
         {
-            var oldDeclaration = Regex.Replace(StripPragma(oldObject.Declaration), @"\b" + Regex.Escape(oldName) + @"\b", newName, RegexOptions.IgnoreCase);
-            return string.Equals(oldDeclaration, StripPragma(newObject.Declaration), StringComparison.OrdinalIgnoreCase)
-                && SameText(oldObject.Implementation, newObject.Implementation)
-                && string.Equals(oldObject.Kind, newObject.Kind, StringComparison.OrdinalIgnoreCase);
+            List<string> Lines(StViewObject item) => StText.Lf(StripPragma(item.Declaration) + "\n" + (item.Implementation ?? "")).Split('\n')
+                .Select(line => Regex.Replace(line.Trim(), @"[A-Za-z_]\w*", word => names.Contains(word.Value) ? "\u0001" : word.Value.ToUpperInvariant()))
+                .Where(line => line.Length > 0).ToList();
+            var oldLines = Lines(oldObject);
+            var newLines = Lines(newObject);
+            if (oldLines.SequenceEqual(newLines)) return 1;
+            var oldContent = oldLines.Where(Content).ToList();
+            var newContent = newLines.Where(Content).ToList();
+            if (oldContent.Count == 0 || newContent.Count == 0) return 0;
+            var left = oldContent.GroupBy(line => line).ToDictionary(group => group.Key, group => group.Count());
+            var shared = newContent.Count(line => left.TryGetValue(line, out var count) && count > 0 && (left[line] = count - 1) >= 0);
+            return 2.0 * shared / (oldContent.Count + newContent.Count);
+        }
+
+        // A line that holds more than keywords and masked names.
+        static bool Content(string line) => Regex.IsMatch(line, @"[^A-Z0-9_\s;:()\u0001]")
+            || Regex.Matches(line, @"[A-Z_][A-Z0-9_]*|[0-9]+").Cast<Match>().Any(word => !StHighlight.IsKeyword(word.Value));
+
+        // How alike two names are: their shared letter pairs, 0 to 1.
+        static double RenameScore(string oldName, string newName)
+        {
+            List<string> Pairs(string name) => Enumerable.Range(0, Math.Max(0, name.Length - 1)).Select(at => name.Substring(at, 2).ToUpperInvariant()).ToList();
+            var oldPairs = Pairs(oldName);
+            var newPairs = Pairs(newName);
+            if (oldPairs.Count + newPairs.Count == 0) return 0;
+            return 2.0 * oldPairs.Intersect(newPairs).Count() / (oldPairs.Count + newPairs.Count);
         }
     }
 }

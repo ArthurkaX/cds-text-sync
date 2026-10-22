@@ -81,7 +81,7 @@ Three states, compared per object in the normal form:
 | changed | changed otherwise, edits overlap | a conflict: left as it is, named under `conflicts`, exit 2 (`--force` writes it) |
 | added | not in the IDE | create (`objects.create`), parent from the path; a folder of the path the IDE lacks is created first |
 | removed | same | delete (`objects.delete`, permission `delete_pou`) |
-| one removed, one added, same kind and text | | rename (`objects.rename`) or move (`objects.move`) or both, then write |
+| one removed, one added, same kind, text alike | | rename (`objects.rename`) or move (`objects.move`) or both, then write |
 | same or changed | not in the IDE | nothing; changed, refused (`--force` creates it) |
 | not in the base | added | nothing (`--force` deletes it, permission `delete_pou`; a folder too when all in it goes) |
 
@@ -92,7 +92,14 @@ an `.xml` object as its `.xml`, a text list whose rows it changes as its
 write it to.
 
 A renamed POU file (`FB_Motor.st` to `FB_Drive.st`, its header too) is a
-rename: the object keeps its GUID and its members move with it. A file moved
+rename: the object keeps its GUID and its members move with it. Its text may
+change in the same step: a removed and an added object of one kind are one
+rename when their texts match but for the names of the objects that left or
+came (a reference renamed along), or when at least half of their lines that
+hold more than keywords are the same; the closest pair goes first. Each member
+the new file has at its old place (`P_Open`, its `GET`) keeps its GUID and
+gets the new text, one it lost is deleted, a new one is created below it. A
+removed object's members go with it, not on their own. A file moved
 into another folder (`git mv`) is a move the same way: the object goes into
 that folder in the IDE, a new folder is created first and gets its
 `.cds-object.xml` as `cts export` writes it, and nothing is deleted. A rename or
