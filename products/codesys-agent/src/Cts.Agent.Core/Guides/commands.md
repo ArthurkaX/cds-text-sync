@@ -435,11 +435,11 @@ but a collision should not happen at all).
 | Start or stop the application (the in-IDE agent; needs a logged-in session) | `cts start`, `cts stop` |
 | Store the logged-in application on the PLC as its boot application | `cts boot-app` |
 | Reset the logged-in application (origin erases it and needs `--force`) | `cts reset --kind warm\|cold\|origin` |
-| Run the ST tests of the test application in simulation, or on its PLC (`cts guide tests`) | `cts test [--app NAME] [--output PATH] [--plc] [--repeat N]` |
+| Run the ST tests of the test application in simulation, or on its PLC (`cts guide tests`) | `cts test [--app NAME] [--out PATH] [--plc] [--repeat N]` |
 | Whether the PLC runs the code the IDE generated last | `cts plc-crc` |
 | Read the PLC runtime log, or list its loggers | `cts plc-log [--logger NAME] [--tail N]` |
 | What the PLC runs: runtime, device, each application with its state and project | `cts plc info` |
-| The PLC's files: list, copy to this PC, copy to the PLC | `cts plc ls [PATH]`, `cts plc get FILE [--output PATH]`, `cts plc put SRC [DEST]` |
+| The PLC's files: list, copy to this PC, copy to the PLC | `cts plc ls [PATH]`, `cts plc get FILE [--out PATH]`, `cts plc put SRC [DEST]` |
 | Remove, make or move a file or directory on the PLC | `cts plc rm PATH`, `cts plc mkdir PATH`, `cts plc mv FROM TO` |
 | Extract generated `CTS\|` events as JSON | `cts plc-log --cts [--level M\|V] [--code CODE]` |
 
@@ -451,7 +451,7 @@ When the login or download was done by hand in the IDE — or after `cts connect
 
 `cts plc-log` reads the log through the device's logger service, the device editor's Log page, not a file: a Linux runtime writes its log outside the directory the file services reach. Each entry is printed like a line of the runtime's log file, the time in UTC. With `--cts`, an empty result with no malformed records says that ST code must log the `CTS|` marker to write records (the `cts test` test application does) and points to `cts plc-log --tail N` for the raw log. Neither it nor `cts plc` logs in: each connects to the device for its run, so they work while the IDE is offline, and a login stays as it was. `cts plc info` names the project each application on the PLC was downloaded from, without the login a `cts plc-crc` needs. `cts plc get` and `cts plc put` check the copy against the CRC32 the PLC computes for its file (`crc32=` on the line; `unchecked` with the reason when the device does not give one). `put`, `rm`, `mkdir` and `mv` change the PLC's files and answer to the deny list key `plc_upload`, denied by default; `info`, `ls` to `plc_files`, `get` to `plc_fetch`.
 
-PLC paths (the arguments of `cts plc`, except `put`'s SRC) name files on the device, not on this PC, and are sent exactly as typed: a leading `/` does not survive Git Bash, whose MSYS layer rewrites it into a Windows path before `cts` even runs (the agent then refuses it with that hint). Pass `.` — or nothing, to `cts plc ls` — for the PLC root, or set `MSYS_NO_PATHCONV=1`. Host paths are the opposite: `put`'s SRC and `get`'s `--output` are paths on this PC, made absolute before they are sent.
+PLC paths (the arguments of `cts plc`, except `put`'s SRC) name files on the device, not on this PC, and are sent exactly as typed: a leading `/` does not survive Git Bash, whose MSYS layer rewrites it into a Windows path before `cts` even runs (the agent then refuses it with that hint). Pass `.` — or nothing, to `cts plc ls` — for the PLC root, or set `MSYS_NO_PATHCONV=1`. Host paths are the opposite: `put`'s SRC and `get`'s `--out` are paths on this PC, made absolute before they are sent.
 
 ## Variables
 

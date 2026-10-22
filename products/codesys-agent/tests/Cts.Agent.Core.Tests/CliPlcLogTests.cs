@@ -154,10 +154,10 @@ namespace Cts.Agent.Tests
             Directory.CreateDirectory(folder);
             try
             {
-                var json = JsonOf(Run(LogAgent(new List<string>()), "--json", "plc-log", "--output", folder).output);
-                var named = JsonOf(Run(LogAgent(new List<string>()), "plc-log", "--logger", "PlcLog", "--output", folder, "--json").output);
+                var json = JsonOf(Run(LogAgent(new List<string>()), "--json", "plc-log", "--out", folder).output);
+                var named = JsonOf(Run(LogAgent(new List<string>()), "plc-log", "--logger", "PlcLog", "--out", folder, "--json").output);
                 var file = Path.Combine(folder, "new", "copy.log");
-                var copy = JsonOf(Run(LogAgent(new List<string>()), "plc-log", "--output", file, "--json").output);
+                var copy = JsonOf(Run(LogAgent(new List<string>()), "plc-log", "--out", file, "--json").output);
 
                 Assert.Equal(Path.Combine(folder, "codesyscontrol.log"), json["saved_to"]);
                 Assert.Equal(12L, json["saved_lines"]);

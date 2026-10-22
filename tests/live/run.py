@@ -668,7 +668,7 @@ def scenario_plc_files_online(ctx):
 def scenario_plc_log_online(ctx):
     """`cts plc-log` reads the runtime log through the device's logger service:
     the loggers, the last entries as log file lines, every entry saved by
-    --output, a logger the PLC lacks fails.  `cts plc put` writes a
+    --out, a logger the PLC lacks fails.  `cts plc put` writes a
     file to the PLC and `cts plc get` copies it back byte-equal; a file
     the PLC lacks fails.  The file stays on the simulated PLC, replaced on
     every run."""
@@ -685,7 +685,7 @@ def scenario_plc_log_online(ctx):
     folder = os.path.join(tempfile.gettempdir(), "cts-live-plc-" + os.urandom(6).hex())
     os.makedirs(folder)
     try:
-        saved = ctx.json_of(ctx.cts_ok("plc-log", "--cts", "--output", folder, "--json")[1])
+        saved = ctx.json_of(ctx.cts_ok("plc-log", "--cts", "--out", folder, "--json")[1])
         with open(saved["saved_to"], encoding="utf-8") as handle:
             assert len(handle.read().splitlines()) == saved["saved_lines"] >= tail["total_lines"], saved
         src = os.path.join(folder, "up.log")
@@ -694,10 +694,10 @@ def scenario_plc_log_online(ctx):
         sent = ctx.json_of(ctx.cts_ok("plc", "put", src, "cts-live.log", "--json")[1])
         assert sent["destination"] == "cts-live.log" and sent["size"] == os.path.getsize(src), sent
         copy = os.path.join(folder, "copy.log")
-        ctx.cts_ok("plc", "get", "cts-live.log", "--output", copy)
+        ctx.cts_ok("plc", "get", "cts-live.log", "--out", copy)
         with open(src, "rb") as one, open(copy, "rb") as two:
             assert one.read() == two.read()
-        code, out, err = ctx.cts("plc", "get", "no-such.log", "--output", copy)
+        code, out, err = ctx.cts("plc", "get", "no-such.log", "--out", copy)
         assert code != 0 and "File is not valid" in out + err, out + err
     finally:
         shutil.rmtree(folder, ignore_errors=True)

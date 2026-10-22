@@ -98,7 +98,7 @@ namespace Cts.Cli
                 get("class"), get("error_id"), get("info_id"), entry.TryGetValue("info", out var info) ? info : "");
         }
 
-        // The file --output names: inside it when it is a folder, named after
+        // The file --out names: inside it when it is a folder, named after
         // the logger's last path segment.
         static string Destination(string output, string logger)
         {

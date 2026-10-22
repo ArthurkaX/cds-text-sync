@@ -86,7 +86,7 @@ namespace Cts.Cli
                     return args[++i];
                 };
                 // After the command, the command's own option wins over a
-                // global flag of the same name (plc-log's --output file).
+                // global flag of the same name (plc-crc-headless's --timeout).
                 var own = words > 0 ? command.Options.FirstOrDefault(x => x.Flag == name) : null;
                 if (own != null)
                 {

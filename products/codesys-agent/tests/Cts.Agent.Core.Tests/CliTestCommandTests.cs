@@ -119,7 +119,7 @@ namespace Cts.Agent.Tests
             try
             {
                 var file = Path.Combine(folder, "run.log");
-                var json = JsonOf(Run(TestAgent(null, new List<IDictionary<string, object>>()), "test", "--output", file, "--json").output);
+                var json = JsonOf(Run(TestAgent(null, new List<IDictionary<string, object>>()), "test", "--out", file, "--json").output);
                 Assert.Equal(file, json["log_file"]);
                 Assert.Equal(4L, json["log_lines"]);
                 Assert.True(File.Exists(file));

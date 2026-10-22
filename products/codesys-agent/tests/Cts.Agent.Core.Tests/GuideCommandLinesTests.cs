@@ -23,7 +23,7 @@ namespace Cts.Agent.Core.Tests
         static readonly HashSet<string> Removed = new HashSet<string>
         {
             "visu-lint", "install-menu", "where", "ui", "config ui", "daemon start|stop", "snapshot", "last-result",
-            "docs --output DIR", "analyze --format sarif", "verify --probe-timeout", "merge --merge-tool", "project update --merge-tool",
+            "docs --output DIR", "plc-log --output", "plc get --output", "test --output", "analyze --format sarif", "verify --probe-timeout", "merge --merge-tool", "project update --merge-tool",
         };
 
         [Fact]

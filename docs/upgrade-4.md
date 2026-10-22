@@ -25,7 +25,7 @@ A build handed over as a `*-setup.zip` installs without GitHub: unzip it and run
 - `cts visu-lint` is replaced by `cts visu check --screen NAME`. `cts install-menu` and `cts where` are replaced by `cts install`.
 - The former `cts ui`, `cts config ui`, `cts daemon start|stop`, `cts snapshot`, and `cts last-result` commands are removed. Use the quick window, `cts status`, and `cts read-log` where applicable.
 - Analysis settings now live in the `analyze` section of `cds-text-sync.json`; suppressions are in `.cts-analyze/suppressions.json`.
-- `cts docs --output DIR` is now `cts docs --out DIR`; `cts analyze --format sarif` is now `cts analyze --sarif FILE`. `cts verify --probe-timeout` is removed.
+- `cts docs --output DIR` is now `cts docs --out DIR`, and so `cts plc-log --output PATH`, `cts plc get FILE --output PATH` and `cts test --output PATH` take `--out PATH`: `--output` is only the answer's format (`short`, `json`, `text`); `cts analyze --format sarif` is now `cts analyze --sarif FILE`. `cts verify --probe-timeout` is removed.
 - `cts merge --merge-tool` and `cts project update --merge-tool` are removed: branches, and a pull that meets the same lines changed on both sides, are merged in your git program (`cts open` opens the sync folder in it).
 - Whole-project import options `--whole` and `--no-refresh` are removed. `cts fsm` replaces `fsm ide|scan|show`; SVG and PlantUML FSM renderings are removed.
 

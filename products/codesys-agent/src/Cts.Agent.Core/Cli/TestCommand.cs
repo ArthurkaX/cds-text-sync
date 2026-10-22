@@ -11,7 +11,7 @@ namespace Cts.Cli
 {
     // `cts test`: runs the test application in simulation (agent `test.app`),
     // names each test from the run's log, and always keeps that log as a file:
-    // --output, else <sync folder>/.git/cts/test/<application>.log.
+    // --out, else <sync folder>/.git/cts/test/<application>.log.
     public static class TestCommand
     {
         public static IDictionary<string, object> Execute(CliCall call)
@@ -113,7 +113,7 @@ namespace Cts.Cli
             return Equals(Value(data, "status"), "PASS") ? answer : answer.Failed();
         }
 
-        // --output (a file, or a folder to put <application>.log in), else the
+        // --out (a file, or a folder to put <application>.log in), else the
         // sync folder's .git/cts/test, else the temp folder.
         static string Destination(string output, string syncFolder, string application)
         {

@@ -71,7 +71,7 @@ namespace Cts.Agent.Tests
                 {
                     { "file", "PlcLogic/Application/Application.crc" }, { "saved_to", "x" }, { "size", 20L }, { "crc32", "9171f120" },
                 }, sent);
-                var (code, output, _) = Run(host, "plc", "get", "PlcLogic/Application/Application.crc", "--output", folder);
+                var (code, output, _) = Run(host, "plc", "get", "PlcLogic/Application/Application.crc", "--out", folder);
                 Assert.Equal(0, code);
                 Assert.Equal(Path.Combine(folder, "Application.crc"), sent[0]["output"]);
                 Assert.Contains("crc32=9171f120", output);

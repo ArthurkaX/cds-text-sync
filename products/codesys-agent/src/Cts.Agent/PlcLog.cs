@@ -4,7 +4,7 @@
 // (a Linux runtime writes /var/log), but every runtime answers this service.
 //
 //   `plc.loggers` (`cts plc-log`): the names of the runtime's loggers.
-//   `plc.log {logger?}` (`cts plc-log --tail/--cts/--output`): the entries
+//   `plc.log {logger?}` (`cts plc-log --tail/--cts/--out`): the entries
 //     one logger holds, oldest first, read batch after batch; the runtime's
 //     first logger -- its standard one -- by default.
 //

@@ -54,13 +54,13 @@ does not come did not run (its counts are an earlier run's) and fails. Exit 0 wh
 
 Every run leaves its log: the records the tests wrote and whatever the
 runtime logged meanwhile (an exception, a watchdog), in the runtime's log
-file format. It goes to `--output` (a file, or a folder for
+file format. It goes to `--out` (a file, or a folder for
 `<application>.log`), else to `<sync folder>/.git/cts/test/<application>.log`;
 the line names it as `log=`.
 
 ```bash
 cts test                        # TestApp
-cts test --app UnitTests --wait 60 --output results/
+cts test --app UnitTests --wait 60 --out results/
 ```
 
 ```text

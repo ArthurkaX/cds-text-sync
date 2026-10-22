@@ -220,7 +220,7 @@ namespace Cts.Cli
                     + "(Done, Passed, Failed) and logs each one to the runtime's log (CTS|M|TEST_PASS|name|, CTS|M|TEST_FAIL|name|k=v; "
                     + "cts guide tests). cts makes that application the active one, downloads it to the simulation, starts it, "
                     + "waits for TestResult.Done, reads the counts and the simulation's log from the run's CTS|M|TEST_START| on, "
-                    + "logs it out and makes the earlier application active again. The run's log is always saved: --output, else "
+                    + "logs it out and makes the earlier application active again. The run's log is always saved: --out, else "
                     + "the sync folder's .git/cts/test/<application>.log. A device that is not in simulation is refused unless "
                     + "--plc: then the application is downloaded to that PLC (the deny list's download applies) and the tests run "
                     + "there. --repeat N runs them N times, each run started again by a warm reset when the deny list allows "
@@ -233,7 +233,7 @@ namespace Cts.Cli
                 {
                     CliOption.Text("--app", "application", "NAME", "The test application (default: " + AppTests.DefaultApplication + ")"),
                     CliOption.Int("--wait", "wait", "Seconds to wait for TestResult.Done after the start (default: 30)"),
-                    CliOption.Text("--output", "output", "PATH", "Save the run's log here (a file, or a folder for <application>.log)"),
+                    CliOption.Text("--out", "output", "PATH", "Save the run's log here (a file, or a folder for <application>.log)"),
                     CliOption.Switch("--plc", "plc", "Run the tests on the application's PLC when its device is not in simulation"),
                     CliOption.Int("--repeat", "repeat", "Run the tests this many times (default: 1)"),
                 },
@@ -273,8 +273,7 @@ namespace Cts.Cli
                 Description = "Reads the PLC runtime log (CmpLog) from the online device's logger service: what the device "
                     + "editor's Log page shows, wherever the runtime keeps its log file; the IDE may be offline. "
                     + "With no options it prints the last 20 entries of the default logger and includes the runtime's logger list. --loggers lists loggers only. --logger picks one (default: the runtime's first, its "
-                    + "standard logger), --tail N prints its last N entries, --output PATH saves them all (after plc-log, "
-                    + "--output is the file; the output format goes before the command or as --json). Each entry is the line "
+                    + "standard logger), --tail N prints its last N entries, --out PATH saves them all. Each entry is the line "
                     + "the runtime's log file holds: '<time>, <cmpId>, <classId>, <errorId>, <infoId>, <text>', the time in UTC.\n\n"
                     + "--cts keeps only the entries whose text carries the generated 'CTS|<level>|<CODE>|<TAG>|k=v;k=v' marker; "
                     + "--json returns them parsed. --level and --code filter those records and imply --cts. A CTS line that "
@@ -286,14 +285,14 @@ namespace Cts.Cli
                     + "  cts plc-log --tail 200                        # last 200 entries\n"
                     + "  cts plc-log --cts --level M                   # minimal (always-on) events\n"
                     + "  cts plc-log --cts --code ALM_RAISE            # one event code\n"
-                    + "  cts plc-log --output C:/Temp/log --cts        # keep the entries too",
+                    + "  cts plc-log --out C:/Temp/log --cts           # keep the entries too",
                 TimeoutKey = "plc_log",
                 Options = new[]
                 {
                     CliOption.Text("--logger", "logger", "NAME", "Which runtime logger to read (default: the runtime's first)"),
                     CliOption.Switch("--loggers", "loggers", "List runtime loggers only"),
                     CliOption.Int("--tail", "tail", "Show or parse only the last N entries (0: all)"),
-                    CliOption.Text("--output", "output", "PATH", "Save every entry to this file, or into this folder"),
+                    CliOption.Text("--out", "output", "PATH", "Save every entry to this file, or into this folder"),
                     CliOption.Switch("--cts", "cts", "Keep only the CTS| entries, parsed"),
                     CliOption.Choice("--level", "level", "Only records of this level (M minimal, V verbose); implies --cts", "M", "V"),
                     CliOption.Text("--code", "code", "CODE", "Only records with this event code; implies --cts"),

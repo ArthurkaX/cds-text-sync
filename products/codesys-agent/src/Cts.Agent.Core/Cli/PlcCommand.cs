@@ -41,12 +41,12 @@ namespace Cts.Cli
             {
                 Name = "plc", Sub = "get",
                 Summary = "Copy a file from the PLC to this PC",
-                Description = "Copies FILE from the PLC into the current folder, or to --output (a file, or a folder to put it in), "
+                Description = "Copies FILE from the PLC into the current folder, or to --out (a file, or a folder to put it in), "
                     + "then checks the copy against the CRC32 the PLC gives for its file." + Offline + "\n\n"
-                    + "  cts plc get PlcLogic/Application/Application.crc --output C:/Temp",
+                    + "  cts plc get PlcLogic/Application/Application.crc --out C:/Temp",
                 Arguments = "FILE", ArgumentLimit = 1,
                 Seconds = 330,
-                Options = new[] { CliOption.Text("--output", "output", "PATH", "The file to write, or the folder to put it in (default: the current folder)") },
+                Options = new[] { CliOption.Text("--out", "output", "PATH", "The file to write, or the folder to put it in (default: the current folder)") },
                 Execute = Get,
                 Build = data => Checked(new Answer().Add("file", Value(data, "file")).Add("saved_to", Value(data, "saved_to")).Add("size", Value(data, "size")), data),
             },
