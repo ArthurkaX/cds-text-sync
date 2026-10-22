@@ -129,7 +129,7 @@ namespace Cts.Cli
             new CliCommand
             {
                 Name = "download",
-                Summary = "Full download of the active application to the PLC",
+                Summary = "Full download of the active application to the PLC, or an online change",
                 Description = "What the IDE's Online -> Download does, run by the in-IDE agent: the application stops and its "
                     + "variables start from their initial values, with no confirmation dialog. It needs no online session first: "
                     + "without one it logs in (logged_in=true), so the active application needs a reachable PLC gateway or "
@@ -141,12 +141,19 @@ namespace Cts.Cli
                     + "With --ready-var NAME it also needs that variable to change between two reads, which proves the task is "
                     + "cycling. The line says ready, the two readings that differed (was=, value=) and, when the wait failed, why; the command then exits 1. --no-wait skips "
                     + "the wait. The deny list key is download, and start_plc too when it starts.\n\n"
+                    + "--online-change changes the running application instead, what the IDE's login offers as Login with online "
+                    + "change: the application keeps running and its variables keep their values. Without a session it first logs "
+                    + "in as cts connect does. online_change=done says the PLC now runs the code built last; up_to_date that it "
+                    + "already did (cts build first). A change an online change cannot carry (the IDE would offer only a download) "
+                    + "is refused and the PLC is left as it was: a full cts download is then the way.\n\n"
                     + "When the IDE held exactly the sync folder (cts compare clean) and the folder had nothing uncommitted, the "
                     + "download records its commit (commit= on the line) for cts plc-crc; otherwise commit=unrecorded names why.",
                 TimeoutKey = DenyRules.Download,
                 Options = new[]
                 {
                     CliOption.Choice("--start", "start", "Start after download: 1 yes (default), 0 no", "0", "1"),
+                    CliOption.Switch("--online-change", "online_change", "Change the running application online instead of a full "
+                        + "download; refused when only a download can carry the change"),
                     CliOption.Text("--ready-var", "ready_var", "NAME", "Variable that must change between two reads before the PLC "
                         + "counts as ready (proves the task is cycling). Example: GVL_Bench.nHeartbeat"),
                     CliOption.Int("--ready-timeout", "ready_timeout", "Seconds to wait for readiness after the download (default: 30)"),

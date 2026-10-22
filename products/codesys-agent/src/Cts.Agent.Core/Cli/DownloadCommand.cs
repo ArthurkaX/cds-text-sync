@@ -7,7 +7,8 @@ using static Cts.Agent.JsonMap;
 
 namespace Cts.Cli
 {
-    // `cts download`: the agent's full download (app.download), then the
+    // `cts download`: the agent's full download (app.download), or with
+    // --online-change its online change, then the
     // commit the PLC's new code came from recorded for cts plc-crc, then the
     // wait until the application runs. The wait is cts.exe's, as separate
     // short calls: inside the agent it would hold the IDE's UI thread.
@@ -21,7 +22,8 @@ namespace Cts.Cli
             var options = call.Options.Params;
             var start = !Equals(Value(options, "start"), "0");
             var watch = ProjectFileWatch.Start(call.Hello.ProjectPath);
-            var data = new Dictionary<string, object>(call.Call("app.download", new Dictionary<string, object> { { "start", start } }));
+            var parameters = new Dictionary<string, object> { { "start", start }, { "online_change", options.ContainsKey("online_change") } };
+            var data = new Dictionary<string, object>(call.Call("app.download", parameters));
             watch.Report(data);
             if (Equals(Value(data, "downloaded"), true)) data["source"] = Record(call);
             if (!start)
@@ -68,12 +70,15 @@ namespace Cts.Cli
         // After a login the IDE stays online, and the next project edit is refused.
         internal const string StaysOnline = "the IDE stays online: project edits (import, update-pou, delete-pou) are refused until cts disconnect, which leaves the PLC running";
 
+        internal const string UpToDate = "the PLC already runs the code the IDE generated last: nothing to change (cts build first when the project changed since)";
+
         static IDictionary<string, object> Unrecorded(string why) => new Dictionary<string, object> { { "unrecorded", why } };
 
         public static Answer Build(IDictionary<string, object> data)
         {
             var answer = new Answer()
                 .Add("downloaded", Value(data, "downloaded"))
+                .Add("online_change", Value(data, "online_change"))
                 .Add("started", Value(data, "started"))
                 .Add("ready", Value(data, "ready"))
                 .Add("ready_var", Value(data, "ready_var"))
@@ -87,6 +92,8 @@ namespace Cts.Cli
                 if (Value(source, "commit") is string commit && commit.Length > 0) answer.Add("commit", commit.Substring(0, Math.Min(8, commit.Length)));
                 else answer.Add("commit", "unrecorded").Detail("commit unrecorded: " + Value(source, "unrecorded"));
             }
+            if (Equals(Value(data, "online_change"), "up_to_date")) answer.Detail(UpToDate);
+            if (Equals(Value(data, "app_created"), true)) answer.Detail("the PLC had no such application; the login created it");
             foreach (var message in (Value(data, "messages") as IEnumerable<object> ?? new object[0]).OfType<IDictionary<string, object>>())
                 answer.Detail("[" + Value(message, "code") + "] " + Value(message, "text"));
             if (Equals(Value(data, "downloaded"), true)) answer.Detail(StaysOnline);

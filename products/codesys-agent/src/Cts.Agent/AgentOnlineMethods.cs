@@ -11,8 +11,8 @@ namespace Cts.Agent
             // Run or stop the logged-in application (`cts start` / `cts stop`).
             _router.Register("app.start", (req, s) => _ide.RunApplication(true, StartTimeout.Parse(req, UiTimeoutMs)));
             _router.Register("app.stop", (req, s) => _ide.RunApplication(false, StartTimeout.Parse(req, UiTimeoutMs)));
-            // A full download of the active application, logging in when needed (`cts download`).
-            _router.Register("app.download", (req, s) => _ide.DownloadApplication(req.Bool("start", true), StartTimeout.Parse(req, UiTimeoutMs)));
+            // A full download of the active application, or an online change, logging in when needed (`cts download`).
+            _router.Register("app.download", (req, s) => _ide.DownloadApplication(req.Bool("start", true), req.Bool("online_change", false), StartTimeout.Parse(req, UiTimeoutMs)));
             // Store the logged-in application as the PLC's boot application (`cts boot-app`).
             _router.Register("app.bootapp", (req, s) => _ide.OnUi("app.bootapp", StartTimeout.Parse(req, UiTimeoutMs), () => _ide.CreateBootApplication()));
             // Reset the logged-in application (`cts reset`).

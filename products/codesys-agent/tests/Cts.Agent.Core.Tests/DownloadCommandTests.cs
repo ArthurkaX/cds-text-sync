@@ -13,6 +13,7 @@ namespace Cts.Agent.Tests
         readonly CliCommand _command = CliCommands.All.Single(command => command.Name == "download");
         readonly List<string> _asked = new List<string>();
         bool _ideSaves;
+        IDictionary<string, object> _parameters;
 
         public DownloadCommandTests()
         {
@@ -101,11 +102,34 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void OnlineChangeAsksTheAgentForOne()
+        {
+            var data = _command.Execute(Call("download", "--online-change", "--no-wait"));
+            Assert.Equal(true, _parameters["online_change"]);
+            Assert.NotNull(data["source"]);
+            _command.Execute(Call("download", "--no-wait"));
+            Assert.Equal(false, _parameters["online_change"]);
+        }
+
+        [Fact]
+        public void AnOnlineChangeWithNothingToChangeSaysSo()
+        {
+            var answer = _command.Build(new Dictionary<string, object>
+            {
+                { "downloaded", false }, { "online_change", "up_to_date" }, { "started", true }, { "ready", true }, { "application", "Application" },
+            });
+            Assert.Equal(Verdict.Ok, answer.Status);
+            Assert.Contains(answer.Pairs, pair => pair.Key == "online_change" && Equals(pair.Value, "up_to_date"));
+            Assert.Equal(new[] { DownloadCommand.UpToDate }, answer.Details);
+        }
+
+        [Fact]
         public void TheHelpSaysWhatAFullDownloadDoes()
         {
             Assert.Contains("Online -> Download", _command.Description);
             Assert.Contains("variables start from their initial values", _command.Description);
             Assert.Contains("--start 0 leaves it stopped", _command.Description);
+            Assert.Contains("--online-change changes the running application", _command.Description);
         }
 
         CliCall Call(params string[] args)
@@ -116,6 +140,7 @@ namespace Cts.Agent.Tests
             return new CliCall(_command, options, hello, 30, (method, parameters) =>
             {
                 _asked.Add(method);
+                _parameters = parameters;
                 object answer;
                 if (method == "app.download" && _ideSaves) File.SetLastWriteTimeUtc(Path.Combine(_root, "sample.project"), DateTime.UtcNow);
                 if (method == "app.download") answer = new Dictionary<string, object> { { "downloaded", true }, { "started", parameters["start"] }, { "application", "Application" } };

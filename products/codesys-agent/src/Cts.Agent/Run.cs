@@ -29,6 +29,17 @@
 // failed: Unknown reason"); it is ended and logged in to again, which creates
 // the application.
 //
+// `app.download {online_change: true}` changes the running application
+// instead, what the IDE's login offers as "Login with online change".  Logged
+// out, it first logs in as `app.login` does, leaving the PLC as it is.  Then
+// OnlineCommandHelper.IsUpToDate(appGuid, out bOnlineChangePossible) says
+// whether the PLC runs the code generated last and, when not, whether an
+// online change can carry the difference; one that cannot is refused, never
+// turned into a download.  The change itself is OnlineCommandHelper.Download(
+// app, bOnlineChange: true, SuppressAllDialogs | SuppressAllErrorPopups,
+// BootProjectTransferMode.UseProjectSetting), and IsUpToDate afterwards
+// confirms it.
+//
 // `app.activate {application}` makes that application the project's active one
 // (IProject.ActiveApplication, what the IDE's Set Active Application sets); the
 // project does not count it as a change.
@@ -115,9 +126,9 @@ namespace Cts.Agent
         // Download on the UI thread and wait (off it) until the runtime reports
         // the stopped application, then start it when asked, waiting for it to
         // run like `app.start` does.
-        public Dictionary<string, object> DownloadApplication(bool start, int startMs)
+        public Dictionary<string, object> DownloadApplication(bool start, bool onlineChange, int startMs)
         {
-            var result = OnUi("app.download", startMs, () => DownloadOnUi(start));
+            var result = OnUi("app.download", startMs, () => DownloadOnUi(start, onlineChange));
             var timer = Stopwatch.StartNew();
             while ((string)result["application_state"] == NoApplication && timer.ElapsedMilliseconds < RunSettleMs)
             {
@@ -134,7 +145,7 @@ namespace Cts.Agent
             return result;
         }
 
-        Dictionary<string, object> DownloadOnUi(bool start)
+        Dictionary<string, object> DownloadOnUi(bool start, bool onlineChange)
         {
             RequireKey(DenyRules.Download);
             if (start) RequireKey(DenyRules.StartPlc);
@@ -144,6 +155,7 @@ namespace Cts.Agent
             var application = NameOf(ReadMeta(ProjectHandle(), guid));
             var helper = FindType("_3S.CoDeSys.OnlineCommands.OnlineCommandHelper");
             var loggedIn = IsLoggedIn(guid);
+            if (onlineChange) return OnlineChangeOnUi(helper, guid, application, loggedIn);
             if (loggedIn && ApplicationStateOf(guid) == NoApplication)
             {
                 NeedMethod(helper, "Logout", new[] { typeof(Guid) }, "OnlineCommandHelper.Logout is not present in this IDE")
@@ -162,6 +174,57 @@ namespace Cts.Agent
                 { "plc", PlcTarget() },
                 { "application_state", ApplicationStateOf(guid) },
             };
+        }
+
+        //: LoginServiceFlags SuppressAllDialogs | SuppressAllErrorPopups for the
+        //: online change, and BootProjectTransferMode.UseProjectSetting.
+        const int OnlineChangeFlags = 256 | 512;
+        const int UseProjectSetting = 0;
+
+        Dictionary<string, object> OnlineChangeOnUi(Type helper, Guid guid, string application, bool loggedIn)
+        {
+            var prompts = new LoginPrompts();
+            if (!loggedIn) LogInUnchanged(guid, application, prompts);
+            bool possible;
+            var changed = !UpToDate(helper, guid, out possible);
+            if (changed && !possible)
+                throw new ProtocolException(ErrorCodes.BadParams, "An online change cannot carry the change of " + application
+                    + " (the IDE offers only a download for it); the PLC was not changed. cts download replaces the application, which stops it and resets its variables.");
+            if (changed)
+            {
+                var flags = FindType("_3S.CoDeSys.OnlineCommands.LoginServiceFlags");
+                var mode = FindType("_3S.CoDeSys.Core.Online.BootProjectTransferMode");
+                var download = NeedMethod(helper, "Download", new[] { OnlineApplicationType, typeof(bool), flags, mode },
+                    "OnlineCommandHelper.Download(app, bOnlineChange, flags, transferMode) is not present in this IDE");
+                try { download.Invoke(null, new[] { ApplicationOf(guid), true, Enum.ToObject(flags, OnlineChangeFlags), Enum.ToObject(mode, UseProjectSetting) }); }
+                catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "Online change: " + Invocation.Cause(e).Message); }
+                if (!UpToDate(helper, guid, out _))
+                    throw new ProtocolException(ErrorCodes.Internal, "The online change of " + application
+                        + " ended without the PLC running the generated code; see cts messages and cts plc-log.");
+            }
+            return new Dictionary<string, object>
+            {
+                { "downloaded", changed },
+                { "online_change", changed ? "done" : "up_to_date" },
+                { "logged_in", !loggedIn },
+                { "application", application },
+                { "plc", PlcTarget() },
+                { "app_created", prompts.Created },
+                { "prompts", prompts.Asked.Cast<object>().ToList() },
+                { "application_state", ApplicationStateOf(guid) },
+            };
+        }
+
+        // Whether the PLC runs the code generated last, and when not, whether
+        // an online change can carry the difference.
+        static bool UpToDate(Type helper, Guid guid, out bool onlineChangePossible)
+        {
+            var check = NeedMethod(helper, "IsUpToDate", new[] { typeof(Guid), typeof(bool).MakeByRefType() },
+                "OnlineCommandHelper.IsUpToDate is not present in this IDE");
+            var args = new object[] { guid, false };
+            var upToDate = (bool)check.Invoke(null, args);
+            onlineChangePossible = (bool)args[1];
+            return upToDate;
         }
 
         void LogIn(Type helper, Guid guid, string application)

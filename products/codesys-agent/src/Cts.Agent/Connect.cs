@@ -90,27 +90,7 @@ namespace Cts.Agent
             var application = NameOf(ReadMeta(ProjectHandle(), guid));
             var reused = IsLoggedIn(guid);
             var prompts = new LoginPrompts();
-            if (!reused)
-            {
-                var helper = FindType("_3S.CoDeSys.OnlineCommands.OnlineCommandHelper");
-                var flags = FindType("_3S.CoDeSys.OnlineCommands.LoginServiceFlags");
-                var onlineChange = FindType("_3S.CoDeSys.OnlineCommands.OnlineChangeDialogHandlerDelegate");
-                var question = FindType("_3S.CoDeSys.OnlineCommands.LoginDialogHandlerDelegate");
-                var login = NeedMethod(helper, "LoginWithParameters", new[] { typeof(Guid), flags, onlineChange, question, typeof(bool) },
-                    "OnlineCommandHelper.LoginWithParameters is not present in this IDE");
-                object done;
-                try
-                {
-                    done = login.Invoke(null, new[] { guid, Enum.ToObject(flags, ConnectLoginFlags),
-                        Handler(onlineChange, prompts, "OnlineChange", 0), Handler(question, prompts, "Question", 1), false });
-                }
-                catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "Login to " + application + ": " + Invocation.Cause(e).Message); }
-                if (!(done is bool) || !(bool)done || !IsLoggedIn(guid))
-                    throw new ProtocolException(ErrorCodes.Internal, "Login to " + application + " failed; the PLC was not changed. "
-                        + (prompts.Asked.Count > 0
-                            ? "The IDE asked: " + string.Join(" | ", prompts.Asked.Select(p => p["prompt"] + " (" + p["text"] + ", " + p["choice"] + ") -> " + p["answer"])) + " -- `cts download` creates or replaces the application."
-                            : "Check that the PLC is reachable and its gateway is running."));
-            }
+            if (!reused) LogInUnchanged(guid, application, prompts);
             return new Dictionary<string, object>
             {
                 { "state", ApplicationStateOf(guid) },
@@ -120,6 +100,30 @@ namespace Cts.Agent
                 { "app_created", prompts.Created },
                 { "prompts", prompts.Asked.Cast<object>().ToList() },
             };
+        }
+
+        // Log in to the application leaving what the PLC runs as it is, every
+        // question the IDE asks answered by `prompts`.
+        void LogInUnchanged(Guid guid, string application, LoginPrompts prompts)
+        {
+            var helper = FindType("_3S.CoDeSys.OnlineCommands.OnlineCommandHelper");
+            var flags = FindType("_3S.CoDeSys.OnlineCommands.LoginServiceFlags");
+            var onlineChange = FindType("_3S.CoDeSys.OnlineCommands.OnlineChangeDialogHandlerDelegate");
+            var question = FindType("_3S.CoDeSys.OnlineCommands.LoginDialogHandlerDelegate");
+            var login = NeedMethod(helper, "LoginWithParameters", new[] { typeof(Guid), flags, onlineChange, question, typeof(bool) },
+                "OnlineCommandHelper.LoginWithParameters is not present in this IDE");
+            object done;
+            try
+            {
+                done = login.Invoke(null, new[] { guid, Enum.ToObject(flags, ConnectLoginFlags),
+                    Handler(onlineChange, prompts, "OnlineChange", 0), Handler(question, prompts, "Question", 1), false });
+            }
+            catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "Login to " + application + ": " + Invocation.Cause(e).Message); }
+            if (!(done is bool) || !(bool)done || !IsLoggedIn(guid))
+                throw new ProtocolException(ErrorCodes.Internal, "Login to " + application + " failed; the PLC was not changed. "
+                    + (prompts.Asked.Count > 0
+                        ? "The IDE asked: " + string.Join(" | ", prompts.Asked.Select(p => p["prompt"] + " (" + p["text"] + ", " + p["choice"] + ") -> " + p["answer"])) + " -- `cts download` creates or replaces the application."
+                        : "Check that the PLC is reachable and its gateway is running."));
         }
 
         // The PLC a login of the active application reaches, as its device's
