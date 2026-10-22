@@ -85,10 +85,12 @@ namespace Cts.Agent
             return Convert.ToString(Prop(_metaObjectIface, meta, "Name"));
         }
 
+        // V3.5 SP20 Patch 1 answers an empty ObjectTypeGuid for a task call;
+        // the object's class still carries its type.
         Guid TypeOf(object meta)
         {
-            if (_metaObject7Iface != null) return (Guid)Prop(_metaObject7Iface, meta, "ObjectTypeGuid");
-            return TypeGuidOf(Prop(_metaObjectIface, meta, "Object").GetType());
+            var guid = _metaObject7Iface != null ? (Guid)Prop(_metaObject7Iface, meta, "ObjectTypeGuid") : Guid.Empty;
+            return guid != Guid.Empty ? guid : TypeGuidOf(Prop(_metaObjectIface, meta, "Object").GetType());
         }
 
         // An object class's [TypeGuid], what ObjectTypeGuid answers on V3.5 SP17
@@ -160,9 +162,16 @@ namespace Cts.Agent
             var stub6Iface = FindTypeOrNull("_3S.CoDeSys.Core.Objects.IMetaObjectStub6");
             var stubIface = FindType("_3S.CoDeSys.Core.Objects.IMetaObjectStub");
             var getStub = NeedMethod(nodeIface, "GetMetaObjectStub", Type.EmptyTypes, "ISVNode.GetMetaObjectStub is not present in this IDE");
-            Func<object, Guid> typeOf = stub6Iface != null
-                ? (Func<object, Guid>)(n => (Guid)Prop(stub6Iface, getStub.Invoke(n, null), "ObjectTypeGuid"))
-                : n => TypeGuidOf((Type)Prop(stubIface, getStub.Invoke(n, null), "ObjectType"));
+            // An empty ObjectTypeGuid (a task call on V3.5 SP20 Patch 1) is read
+            // from the stub's ObjectType, as on an IDE without IMetaObjectStub6.
+            Func<object, Guid> typeOf = n =>
+            {
+                var stub = getStub.Invoke(n, null);
+                var guid = stub6Iface != null ? (Guid)Prop(stub6Iface, stub, "ObjectTypeGuid") : Guid.Empty;
+                if (guid != Guid.Empty) return guid;
+                var type = (Type)Prop(stubIface, stub, "ObjectType");
+                return type == null ? Guid.Empty : TypeGuidOf(type);
+            };
             var getView = ManagerMethod("GetStructuredView", typeof(int), typeof(Guid));
             Func<Guid, List<object>> rootsOf = guid => ((Array)Prop(viewIface, getView.Invoke(_objectManager, new object[] { handle, guid }), "Children")).Cast<object>().ToList();
             Func<object, bool> isDevice = IsDeviceNode;
