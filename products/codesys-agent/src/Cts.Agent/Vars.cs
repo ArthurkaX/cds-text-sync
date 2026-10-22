@@ -211,7 +211,7 @@ namespace Cts.Agent
             if (!isScalar)
                 return Vars.FailedResult(name, Vars.Codes.NotScalar,
                     name + " is " + (watch.IecType ?? typeName ?? "not a single value")
-                    + ": read its members or elements one by one", state);
+                    + ": read its elements (" + name + "[i]) or members (" + name + ".field) one by one", state);
             return Vars.ReadResult(name, json, typeName, state, watch.IecType, LiteralText(watch, value));
         }
 

@@ -152,6 +152,36 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Read_expands_a_member_deep_in_a_path_and_reads_the_names_after_it_as_given()
+        {
+            var host = new FakeHost(); var reads = 0;
+            host.Agents[1] = Agent(null, null, (method, p) =>
+            {
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new object[]
+                {
+                    new Dictionary<string, object> { { "name", "PRG_Tests" }, { "declaration", "PROGRAM PRG_Tests\nVAR\nfbPlants : FB_Plants;\nEND_VAR" } },
+                    new Dictionary<string, object> { { "name", "FB_Plants" }, { "declaration", "FUNCTION_BLOCK FB_Plants\nVAR\narM : ARRAY[1..2] OF REAL;\nasName : ARRAY[0..1] OF STRING(20);\naiErr : ARRAY[1..3] OF INT;\nEND_VAR" } },
+                } } };
+                Assert.Equal("vars.read", method); reads++;
+                var names = ((IEnumerable<object>)p["names"]).Cast<string>().ToArray();
+                if (reads == 1)
+                {
+                    Assert.Equal(new[] { "PRG_Tests.fbPlants.arM", "PRG_Tests.fbPlants.aiErr[2]", "PRG_Tests.fbPlants.asName" }, names);
+                    return new Dictionary<string, object> { { "logged_in", true }, { "results", new object[]
+                    {
+                        Row(names[0], false, code: "not_scalar", message: "array"), Row(names[1], true, "7"), Row(names[2], false, code: "not_scalar", message: "array"),
+                    } } };
+                }
+                Assert.Equal(new[] { "PRG_Tests.fbPlants.arM[1]", "PRG_Tests.fbPlants.arM[2]", "PRG_Tests.fbPlants.asName[0]", "PRG_Tests.fbPlants.asName[1]" }, names);
+                return new Dictionary<string, object> { { "logged_in", true }, { "results", names.Select(n => (object)Row(n, true, "1")).ToArray() } };
+            });
+            var (code, output, _) = Run(host, "read", "PRG_Tests.fbPlants.arM", "PRG_Tests.fbPlants.aiErr[2]", "PRG_Tests.fbPlants.asName");
+            Assert.True(code == 0, output);
+            Assert.Equal(new[] { "ok read count=5 failed=0", "PRG_Tests.fbPlants.arM[1] = 1", "PRG_Tests.fbPlants.arM[2] = 1", "PRG_Tests.fbPlants.aiErr[2] = 7",
+                "PRG_Tests.fbPlants.asName[0] = 1", "PRG_Tests.fbPlants.asName[1] = 1" }, output.Split('\n').Take(6));
+        }
+
+        [Fact]
         public void Build_reports_error_and_warning_counts()
         {
             var host = new FakeHost();

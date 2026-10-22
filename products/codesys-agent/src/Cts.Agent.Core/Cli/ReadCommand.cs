@@ -127,9 +127,9 @@ namespace Cts.Cli
                 foreach (var root in expanded)
                 {
                     var dot = root.IndexOf('.');
-                    if (dot <= 0 || dot == root.Length - 1 || !owners.TryGetValue(root.Substring(0, dot), out var owner)) { expandedByRoot[root] = new List<string>(); continue; }
-                    var key = root.Substring(dot + 1).Split('[', '.')[0];
-                    if (!owner.Members.TryGetValue(key, out var type)) { expandedByRoot[root] = new List<string>(); continue; }
+                    var owner = dot > 0 && dot < root.Length - 1 && owners.TryGetValue(root.Substring(0, dot), out var found) ? found : null;
+                    var type = owner?.TypeOf(root.Substring(dot + 1));
+                    if (type == null) { expandedByRoot[root] = new List<string>(); continue; }
                     var rootLeaves = owner.Leaves(root, type).Take(Math.Max(0, 5000 - leaves.Count)).ToList();
                     expandedByRoot[root] = rootLeaves;
                     leaves.AddRange(rootLeaves);
@@ -259,6 +259,55 @@ namespace Cts.Cli
                     foreach (var name in match.Groups[1].Value.Split(',').Select(x => x.Trim())) yield return new KeyValuePair<string, string>(name, type);
                 }
             }
+            // The declared type at *path* below an owner ("fb.arr[2].field"):
+            // each step a member, a structure's or a function block's field,
+            // or an array's element; null where the declarations do not say.
+            public string TypeOf(string path)
+            {
+                string type = null;
+                foreach (var step in Steps(path))
+                {
+                    var part = Regex.Match(step, "^\\s*([A-Za-z_]\\w*)\\s*((?:\\[[^\\]]*\\]\\s*)*)$");
+                    if (!part.Success) return null;
+                    var name = part.Groups[1].Value;
+                    type = type == null ? (Members.TryGetValue(name, out var member) ? member : null) : Field(type, name, 0);
+                    foreach (Match index in Regex.Matches(part.Groups[2].Value, "\\["))
+                    {
+                        var array = type == null ? null : Array.Match(type.Trim());
+                        type = array != null && array.Success ? array.Groups[2].Value.Trim() : null;
+                    }
+                    if (type == null) return null;
+                }
+                return type;
+            }
+
+            // *path* split at the dots outside brackets ("a[GVL.N].b": a[GVL.N], b).
+            static IEnumerable<string> Steps(string path)
+            {
+                var depth = 0; var start = 0;
+                for (var i = 0; i < path.Length; i++)
+                {
+                    if (path[i] == '[') depth++;
+                    else if (path[i] == ']') depth--;
+                    else if (path[i] == '.' && depth == 0) { yield return path.Substring(start, i - start); start = i + 1; }
+                }
+                yield return path.Substring(start);
+            }
+
+            // The type of *name* in *type*, through aliases.
+            string Field(string type, string name, int depth)
+            {
+                if (depth > 8 || !_types.TryGetValue(type.Trim(), out var fields)) return null;
+                foreach (var field in fields)
+                {
+                    if (field.Key.Length == 0) return Field(field.Value, name, depth + 1);
+                    if (field.Key.Equals(name, StringComparison.OrdinalIgnoreCase)) return field.Value;
+                }
+                return null;
+            }
+
+            static bool IsScalar(string type) => Scalars.Contains(type) || Regex.IsMatch(type, "(?i)^W?STRING\\s*(?:\\(.*\\)|\\[.*\\])$");
+
             public IEnumerable<string> Leaves(string path, string type, int depth = 0)
             {
                 if (depth > 8) yield break;
@@ -273,7 +322,7 @@ namespace Cts.Cli
                 }
                 var simple = Regex.Match(type.Trim(), "(?i)^(?:POINTER|REFERENCE)\\s+TO\\s+(.+)$");
                 if (simple.Success) { yield return path; yield break; }
-                if (Scalars.Contains(type.Trim())) { yield return path; yield break; }
+                if (IsScalar(type.Trim())) { yield return path; yield break; }
                 if (!_types.TryGetValue(type.Trim(), out var fields)) yield break;
                 if (fields.Count == 0) { yield return path; yield break; }
                 foreach (var field in fields)
@@ -318,7 +367,7 @@ namespace Cts.Cli
                         foreach (var leaf in TypedLeaves(path + "[" + suffix + "]", array.Groups[2].Value.Trim(), depth + 1)) yield return leaf;
                     yield break;
                 }
-                if (Scalars.Contains(type.Trim()) || Regex.IsMatch(type.Trim(), "(?i)^(?:W?STRING)\\s*(?:\\(.*\\))?$") || Regex.IsMatch(type.Trim(), "(?i)^(?:POINTER|REFERENCE)\\s+TO\\s+"))
+                if (IsScalar(type.Trim()) || Regex.IsMatch(type.Trim(), "(?i)^(?:POINTER|REFERENCE)\\s+TO\\s+"))
                 { yield return new KeyValuePair<string, string>(path, type.Trim()); yield break; }
                 if (!_types.TryGetValue(type.Trim(), out var fields) || fields.Count == 0)
                 { if (_types.ContainsKey(type.Trim())) yield return new KeyValuePair<string, string>(path, type.Trim()); yield break; }
