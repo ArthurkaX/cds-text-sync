@@ -7,6 +7,7 @@
 // A read answers
 //
 //   {"online": true, "logged_in": true, "application": "<guid>",
+//    "application_state": "run", "operating_state": "program_loaded",
 //    "results": [{"name","ok":true,"value":<json>,"type":"System.UInt32","state":"Good"}]}
 //
 // and a name that failed carries `ok:false`, the `state` it was in and an

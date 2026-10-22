@@ -48,6 +48,23 @@ namespace Cts.Agent
             return new Dictionary<string, object> { { "devices", devices }, { "count", devices.Count } };
         }
 
+        // The application's "Implicit boot application on download" (its
+        // Properties, Boot application): IOnlineApplicationObject5's
+        // BootApplicationSettings.CreateBootApplicationOnDownload; null when
+        // this IDE has none.
+        object BootOnDownload(Guid guid)
+        {
+            try
+            {
+                var application = Prop(_metaObjectIface, ReadMeta(ProjectHandle(), guid), "Object");
+                var owner = FindTypeOrNull("_3S.CoDeSys.Core.Online.IOnlineApplicationObject5");
+                if (application == null || owner == null || !owner.IsInstanceOfType(application)) return null;
+                var settings = Prop(owner, application, "BootApplicationSettings");
+                return settings == null ? null : Prop(FindType("_3S.CoDeSys.Core.Online.IBootApplicationSettings"), settings, "CreateBootApplicationOnDownload");
+            }
+            catch (Exception) { return null; }
+        }
+
         // The applications in a device's own subtree, not in a device below it.
         List<object> ApplicationsBelow(object device, StructuredView view, Func<object, bool> isApplication, Guid active)
         {
@@ -70,6 +87,8 @@ namespace Cts.Agent
                     { "online", loggedIn },
                 };
                 if (loggedIn) entry["application_state"] = Convert.ToString(Prop(OnlineApplicationType, online, "ApplicationState")).ToLowerInvariant();
+                var boot = BootOnDownload(guid);
+                if (boot != null) entry["boot_on_download"] = boot;
                 found.Add(entry);
             }
             return found;

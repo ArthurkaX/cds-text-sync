@@ -37,6 +37,8 @@ namespace Cts.Cli
             var shown = tail > 0 ? lines.Skip(Math.Max(0, lines.Count - tail.Value)).ToList() : lines;
 
             var data = new Dictionary<string, object> { { "logger", logger } };
+            var hints = Hints(shown);
+            if (hints.Count > 0) data["hints"] = hints.Cast<object>().ToList();
             if (options.Count == 0)
                 data["loggers"] = Items(call.Call("plc.loggers", new Dictionary<string, object>()), "loggers").ToList();
             if (output.Length > 0)
@@ -85,8 +87,24 @@ namespace Cts.Cli
                 answer.Detail("malformed (" + bad["parse_error"] + "): " + bad["raw"]);
             if (data.ContainsKey("records") && !Items(data, "records").Any() && !Items(data, "malformed").Any())
                 answer.Detail("No CTS| entries: only ST code that logs the CTS| marker writes them (cts test's test application does). Next: cts plc-log --tail N shows the raw log");
+            foreach (var hint in Items(data, "hints")) answer.Detail("hint: " + hint);
             return answer.Whole();
         }
+
+        // Runtime log lines whose cause is not in their text, and what it is.
+        static readonly KeyValuePair<string, string>[] Known =
+        {
+            new KeyValuePair<string, string>("Failed to save context", "the runtime ran out of TLS contexts (Failed to save context): it keeps part of every context "
+                + "created and freed, so code that creates one per connection uses them up; a restart of the runtime frees them, one context "
+                + "kept per client instance stops it"),
+            new KeyValuePair<string, string>("*EXCEPTION*", "an exception stopped an application (the entry names its kind; SOURCEPOSITION is a code "
+                + "offset): CODESYS shows the POU and line once logged in to it (Online -> Call Stack); a watchdog exception is a task "
+                + "that ran over its time, an endless loop say"),
+        };
+
+        // The hints for the known lines among *lines*, each once.
+        internal static List<string> Hints(IEnumerable<string> lines) =>
+            Known.Where(known => lines.Any(line => line.IndexOf(known.Key, StringComparison.OrdinalIgnoreCase) >= 0)).Select(known => known.Value).ToList();
 
         // One entry as the runtime's log file writes it:
         // `<time>, <cmpId>, <classId>, <errorId>, <infoId>, <text>`.

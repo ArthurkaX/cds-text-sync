@@ -129,6 +129,24 @@ namespace Cts.Agent.Tests
             Assert.Equal(new List<object> { RuntimeLog[11] }, json["tail"]);
         }
 
+        // A runtime line whose cause is not in its text comes with a hint.
+        [Fact]
+        public void Known_runtime_lines_come_with_a_hint_each_once()
+        {
+            var hints = PlcLogCommand.Hints(new[]
+            {
+                "2026-10-22T08:00:00.000Z, 0x00000002, 1, 0, 0, #### Exception: *EXCEPTION* [AccessViolation] occurred: App=[TestApp], Task=[TestTask]",
+                "2026-10-22T08:00:01.000Z, 0x0000005e, 4, 0, 0, TlsCreateContext2: Failed to save context",
+                "2026-10-22T08:00:02.000Z, 0x0000005e, 4, 0, 0, TlsCreateContext2: Failed to save context",
+            });
+
+            Assert.Equal(2, hints.Count);
+            var details = PlcLogCommand.Build(new Dictionary<string, object> { { "logger", "PlcLog" }, { "hints", hints.Cast<object>().ToList() } }).Details;
+            Assert.Contains("hint: the runtime ran out of TLS contexts (Failed to save context)", string.Join("\n", details));
+            Assert.Contains("hint: an exception stopped an application", string.Join("\n", details));
+            Assert.Empty(PlcLogCommand.Hints(RuntimeLog));
+        }
+
         [Fact]
         public void A_long_tail_is_shown_whole()
         {

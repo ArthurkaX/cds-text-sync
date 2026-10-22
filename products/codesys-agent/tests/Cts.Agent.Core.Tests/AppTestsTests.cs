@@ -22,6 +22,11 @@ namespace Cts.Agent.Core.Tests
         Func<long> _flaky;
         Action _late;
         Action _onStart;
+        int _reads;
+        // The application_state and operating_state of the n-th vars.read.
+        Func<int, string[]> _state;
+        Func<int, bool> _readFails;
+        bool _boot;
 
         Dictionary<string, object> Run(string application = "", long waitMs = 0, bool plc = false, int repeat = 1, bool reset = false)
         {
@@ -40,7 +45,7 @@ namespace Cts.Agent.Core.Tests
                         { "devices", new List<object>
                             {
                                 Device("PLC_Main", false, App(Main, "Application", true)),
-                                Device("Test", _simulation, App(Test, _testName, false)),
+                                Device("Test", _simulation, Boot(App(Test, _testName, false))),
                             } },
                     };
                 case "app.activate":
@@ -60,6 +65,8 @@ namespace Cts.Agent.Core.Tests
                     _late?.Invoke();
                     return new Dictionary<string, object> { { "entries", _log } };
                 case "vars.read":
+                    _reads++;
+                    if (_readFails != null && _readFails(_reads)) throw new ProtocolException(ErrorCodes.Internal, "Communication error #0x18b");
                     var rows = new List<object>();
                     foreach (string name in (IList<object>)parameters["names"])
                     {
@@ -68,7 +75,13 @@ namespace Cts.Agent.Core.Tests
                         else if (_plc.TryGetValue(name, out var value)) rows.Add(Ok(value));
                         else rows.Add(new Dictionary<string, object> { { "ok", false }, { "error", new Dictionary<string, object> { { "message", "not exported" } } } });
                     }
-                    return new Dictionary<string, object> { { "logged_in", true }, { "results", rows } };
+                    var read = new Dictionary<string, object> { { "logged_in", true }, { "results", rows } };
+                    if (_state != null)
+                    {
+                        read["application_state"] = _state(_reads)[0];
+                        read["operating_state"] = _state(_reads)[1];
+                    }
+                    return read;
             }
             throw new ProtocolException(ErrorCodes.UnknownMethod, method);
         }
@@ -86,6 +99,12 @@ namespace Cts.Agent.Core.Tests
         static Dictionary<string, object> App(string guid, string name, bool active)
         {
             return new Dictionary<string, object> { { "guid", guid }, { "name", name }, { "active", active } };
+        }
+
+        Dictionary<string, object> Boot(Dictionary<string, object> app)
+        {
+            if (_boot) app["boot_on_download"] = true;
+            return app;
         }
 
         void Counts(long passed, long failed)
@@ -186,6 +205,87 @@ namespace Cts.Agent.Core.Tests
             Assert.Contains(_calls, c => c.StartsWith("app.activate") && c.Contains(Main));
         }
 
+        // An exception stops the application: the wait ends at once and the
+        // run names the exception the runtime logged.
+        [Fact]
+        public void An_exception_ends_the_wait_at_once_and_names_the_log_entry()
+        {
+            Counts(1, 0);
+            _doneAfterReads = int.MaxValue;
+            _state = n => n < 5 ? new[] { "run", "program_loaded" } : new[] { "stop", "program_loaded, exception" };
+            Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|", "#### Exception: *EXCEPTION* [AccessViolation] occurred: App=[TestApp], Task=[TestTask]");
+
+            var answer = Run(waitMs: 120000);
+
+            Assert.Equal("FAIL", answer["status"]);
+            Assert.True(_now < 2000);
+            Assert.Equal("the application stopped on an exception 0.4 s after its start, with 1 tests counted", answer["error"]);
+            Assert.Equal(new object[] { "#### Exception: *EXCEPTION* [AccessViolation] occurred: App=[TestApp], Task=[TestTask]" }, (IList<object>)answer["exceptions"]);
+            Assert.Contains(_calls, c => c.StartsWith("app.logout"));
+        }
+
+        // Right after the start the application can still be stopped; only a
+        // stop after it ran ends the wait.
+        [Fact]
+        public void A_stop_ends_the_wait_only_after_the_application_ran()
+        {
+            Counts(0, 0);
+            _doneAfterReads = int.MaxValue;
+            _state = n => new[] { n < 3 || n > 6 ? "stop" : "run", "program_loaded" };
+
+            var answer = Run(waitMs: 60000);
+
+            Assert.StartsWith("the application left run (stop) 0.6 s after its start", (string)answer["error"]);
+        }
+
+        [Fact]
+        public void A_run_that_never_ends_says_when_the_counts_last_moved()
+        {
+            Counts(2, 0);
+            _doneAfterReads = int.MaxValue;
+            _state = n => new[] { "run", "program_loaded" };
+            _flaky = () => _reads > 3 ? 1L : 0L;
+
+            var error = (string)Run(waitMs: 5000)["error"];
+
+            Assert.StartsWith("TestResult.Done stayed FALSE for 5000 ms; the counts last moved 0.3 s after the start, at 3 tests: a test that never ends", error);
+            Assert.Contains("a watchdog on the test task makes that an exception", error);
+        }
+
+        [Fact]
+        public void Reads_that_stop_working_end_the_wait()
+        {
+            Counts(1, 0);
+            _doneAfterReads = int.MaxValue;
+            _readFails = n => n > 2;
+
+            var answer = Run(waitMs: 60000);
+
+            Assert.Equal("the application stopped answering the reads of TestResult (Communication error #0x18b): the runtime is busy or gone 0.2 s after its start, with 1 tests counted", answer["error"]);
+            Assert.Equal(1L, answer["passed"]);
+        }
+
+        // A boot application made on every download runs the tests again
+        // after a restart of the PLC: a test that never ends then holds it.
+        [Fact]
+        public void A_plc_run_names_a_boot_application_made_on_download()
+        {
+            Counts(1, 0);
+            _onStart = () => Logged("CTS|M|TEST_START|TestApp|", "CTS|M|TEST_PASS|a|", "TlsCreateContext2: Failed to save context");
+            _simulation = false;
+            _boot = true;
+
+            var answer = Run(plc: true);
+
+            Assert.Equal(true, answer["boot_on_download"]);
+            answer["hints"] = PlcLogCommand.Hints(Infos(answer["log"])).Cast<object>().ToList();
+            var lines = TestCommand.Build(answer).Details;
+            Assert.Contains(lines, line => line.StartsWith("TestApp makes a boot application on every download, so a restart of the PLC runs the tests again"));
+            Assert.Contains(lines, line => line.StartsWith("hint: the runtime ran out of TLS contexts"));
+            _simulation = true;
+            Assert.False(Run().ContainsKey("boot_on_download"));
+        }
+
         [Fact]
         public void A_device_not_in_simulation_is_refused_before_anything_changes()
         {
@@ -218,8 +318,8 @@ namespace Cts.Agent.Core.Tests
         public void Repeat_restarts_by_reset_when_allowed_and_any_failing_run_fails()
         {
             Counts(2, 0);
-            var reads = 0;
-            _flaky = () => ++reads == 2 ? 1L : 0L;
+            // The second run, the one after the first reset, fails one test.
+            _flaky = () => _calls.Count(c => c.StartsWith("app.reset")) == 1 ? 1L : 0L;
             var answer = Run(repeat: 3, reset: true);
             Assert.Equal("FAIL", answer["status"]);
             Assert.Equal("reset", answer["restart"]);

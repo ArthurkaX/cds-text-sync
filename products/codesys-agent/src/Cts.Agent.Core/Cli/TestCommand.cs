@@ -52,6 +52,8 @@ namespace Cts.Cli
             var target = Destination(options.TryGetValue("output", out var output) ? Convert.ToString(output, CultureInfo.InvariantCulture) : "",
                 call.Hello.SyncFolder, Convert.ToString(data.TryGetValue("application", out var named) ? named : AppTests.DefaultApplication, CultureInfo.InvariantCulture));
             File.WriteAllText(target, string.Concat(lines.Select(l => l + "\n")), new UTF8Encoding(false));
+            var hints = PlcLogCommand.Hints(lines);
+            if (hints.Count > 0) data["hints"] = hints.Cast<object>().ToList();
             data["log_file"] = target;
             data["log_lines"] = (long)lines.Count;
             return data;
@@ -106,8 +108,15 @@ namespace Cts.Cli
             foreach (var run in runs)
                 foreach (var key in new[] { "error", "log_error" })
                     if (Value(run, key) != null) answer.Detail("run " + Value(run, "run") + ": " + Value(run, key));
+            foreach (var line in Items(data, "exceptions").Concat(runs.SelectMany(run => Items(run, "exceptions"))).Distinct())
+                answer.Detail("runtime: " + line);
             foreach (var notice in Items(data, "runtime_notices").Concat(runs.SelectMany(run => Items(run, "runtime_notices"))).Distinct())
                 answer.Detail("runtime notice, not in the log file: " + notice);
+            foreach (var hint in Items(data, "hints")) answer.Detail("hint: " + hint);
+            if (Equals(Value(data, "boot_on_download"), true))
+                answer.Detail(Value(data, "application") + " makes a boot application on every download, so a restart of the PLC runs the tests again, "
+                    + "a test that never ends included: switch it off in CODESYS (" + Value(data, "application") + " -> Properties -> Boot application -> "
+                    + "Implicit boot application on download)");
             foreach (var tidy in new[] { "logout", "reactivate" })
                 if (Value(data, tidy) is string said && said != "ok") answer.Detail(tidy + ": " + said);
             return Equals(Value(data, "status"), "PASS") ? answer : answer.Failed();

@@ -17,8 +17,12 @@
 // TRUE, reads the counts, then the simulation's log from its last TEST_START
 // on (the run's log: what the tests wrote and what the runtime said meanwhile),
 // then logs that application out and makes the earlier application active
-// again, whatever happened.  An application on a device that is not in
-// simulation is refused unless `plc` says the tests may go to that PLC.
+// again, whatever happened.  The wait ends early when the application leaves
+// run (an exception, a stop) or the runtime stops answering the reads: the
+// run then names that, and the exception the log holds.  An application on a
+// device that is not in simulation is refused unless `plc` says the tests may
+// go to that PLC; one that makes a boot application on every download is
+// named (`boot_on_download`): a restart of the PLC runs the tests again.
 // `repeat` runs them again that many times in all: a warm reset and a start
 // when the deny list allows the reset, else another download.  Like test.run
 // it holds no UI thread: each call takes it for itself and the polling sleeps
@@ -67,7 +71,11 @@ namespace Cts.Agent
                 { "device", Text(found.Device, "path") },
                 { "status", "FAIL" },
             };
-            if (!Equals(Value(found.Device, "simulation"), true)) answer["plc"] = true;
+            if (!Equals(Value(found.Device, "simulation"), true))
+            {
+                answer["plc"] = true;
+                if (Equals(Value(found.Application, "boot_on_download"), true)) answer["boot_on_download"] = true;
+            }
             var previous = found.Previous;
             call("app.activate", new Dictionary<string, object> { { "application", guid } });
             try
@@ -88,7 +96,7 @@ namespace Cts.Agent
                     runs.Add(run);
                 }
                 var last = (Dictionary<string, object>)runs[runs.Count - 1];
-                foreach (var key in new[] { "done", "passed", "failed", "error", "log", "log_error", "runtime_notices" })
+                foreach (var key in new[] { "done", "passed", "failed", "error", "exceptions", "log", "log_error", "runtime_notices" })
                     if (last.ContainsKey(key)) answer[key] = last[key];
                 answer["status"] = runs.All(run => Equals(((IDictionary<string, object>)run)["status"], "PASS")) ? "PASS" : "FAIL";
                 if (runs.Count > 1)
@@ -110,30 +118,84 @@ namespace Cts.Agent
             return answer;
         }
 
-        // One run after the start: TestResult.Done awaited, the counts and the run's log.
+        // One run after the start: TestResult.Done awaited, the counts and the
+        // run's log.  The counts are read with Done, to say when they last moved.
         static Dictionary<string, object> Once(TestPlans.Call call, Action<long> sleep, Func<long> clockMs, long waitMs, ref string lastStart)
         {
-            var deadline = clockMs() + waitMs;
+            var started = clockMs();
+            var deadline = started + waitMs;
             var done = false;
+            var running = false;
+            string halted = null;
+            long moved = started, count = 0;
+            object[] counts = null;
             while (true)
             {
-                done = Equals(Read(call, new[] { Gvl + ".Done" })[0], true);
-                if (done || clockMs() >= deadline) break;
+                var values = Poll(call, counts != null, out var state);
+                if (values == null)
+                {
+                    halted = "stopped answering the reads of " + Gvl + " (" + state["error"] + "): the runtime is busy or gone";
+                    break;
+                }
+                done = Equals(values[0], true);
+                var now = Number(values[1]) + Number(values[2]);
+                if (counts == null || now != count) moved = clockMs();
+                counts = new[] { values[1], values[2] };
+                count = now;
+                halted = Halted(state, ref running);
+                if (done || halted != null || clockMs() >= deadline) break;
                 sleep(PollMs);
             }
-            var counts = Read(call, new[] { Gvl + ".Passed", Gvl + ".Failed" });
-            var failed = Convert.ToInt64(counts[1], CultureInfo.InvariantCulture);
+            if (halted == null) counts = Read(call, new[] { Gvl + ".Passed", Gvl + ".Failed" }, out _);
+            var failed = Number(counts[1]);
             var run = new Dictionary<string, object>
             {
                 { "done", done },
-                { "passed", Convert.ToInt64(counts[0], CultureInfo.InvariantCulture) },
+                { "passed", Number(counts[0]) },
                 { "failed", failed },
                 { "status", done && failed == 0 ? "PASS" : "FAIL" },
             };
-            if (!done) run["error"] = Gvl + ".Done stayed FALSE for " + waitMs + " ms: a test that never ends, or a task that does not call the tests";
+            if (halted != null)
+                run["error"] = "the application " + halted + " " + Seconds(clockMs() - started) + " s after its start, with " + count + " tests counted";
+            else if (!done)
+                run["error"] = Gvl + ".Done stayed FALSE for " + waitMs + " ms; the counts last moved " + Seconds(moved - started) + " s after the start, at "
+                    + count + " tests: a test that never ends (an endless loop holds its task; a watchdog on the test task makes that an exception, "
+                    + "which ends the wait at once), or a task that does not call the tests";
             lastStart = RunLog(call, sleep, clockMs, run, lastStart, (long)run["passed"] + failed);
+            var exceptions = (Value(run, "log") as IList<object> ?? new List<object>()).Select(Info)
+                .Where(info => !info.StartsWith("CTS|", StringComparison.Ordinal) && info.IndexOf("exception", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            if (exceptions.Count > 0) run["exceptions"] = exceptions.Cast<object>().ToList();
             return run;
         }
+
+        // Done, Passed and Failed with the application's state; null once a
+        // read that worked before fails (*state* then holds its error).
+        static object[] Poll(TestPlans.Call call, bool answered, out Dictionary<string, object> state)
+        {
+            try { return Read(call, new[] { Gvl + ".Done", Gvl + ".Passed", Gvl + ".Failed" }, out state); }
+            catch (ProtocolException e) when (answered)
+            {
+                state = new Dictionary<string, object> { { "error", e.Message } };
+                return null;
+            }
+        }
+
+        // What the application did instead of running, or null while it runs
+        // (or has not run yet: right after the start it can still be stopped).
+        static string Halted(IDictionary<string, object> state, ref bool running)
+        {
+            var operating = Text(state, "operating_state");
+            if (operating.Split(',').Any(flag => flag.Trim() == "exception")) return "stopped on an exception";
+            var application = Text(state, "application_state");
+            if (application == "run") running = true;
+            else if (running && application == "halt_on_bp") return "halted at a breakpoint";
+            else if (running && application.Length > 0) return "left run (" + application + ")";
+            return null;
+        }
+
+        static long Number(object value) => Convert.ToInt64(value, CultureInfo.InvariantCulture);
+
+        static string Seconds(long ms) => (ms / 1000.0).ToString("0.#", CultureInfo.InvariantCulture);
 
         sealed class Found
         {
@@ -246,10 +308,16 @@ namespace Cts.Agent
         static int Results(List<object> entries, int start) => entries.Skip(start).Count(entry => Info(entry).Contains(PassMarker) || Info(entry).Contains(FailMarker));
 
         // The values of *names*, each one required: a missing one means the
-        // application does not follow the TestResult convention.
-        static object[] Read(TestPlans.Call call, string[] names)
+        // application does not follow the TestResult convention.  *state* has
+        // the application's application_state and operating_state.
+        static object[] Read(TestPlans.Call call, string[] names, out Dictionary<string, object> state)
         {
             var answer = call(Vars.Read, new Dictionary<string, object> { { "names", names.Cast<object>().ToList() } });
+            state = new Dictionary<string, object>
+            {
+                { "application_state", Value(answer, "application_state") },
+                { "operating_state", Value(answer, "operating_state") },
+            };
             if (!Equals(Value(answer, "logged_in"), true)) throw Bad("The test application is not logged in after its download.");
             var rows = (Value(answer, "results") as IList<object> ?? new List<object>()).OfType<IDictionary<string, object>>().ToList();
             var values = new object[names.Length];

@@ -52,6 +52,16 @@ the log a moment after `TestResult.Done`: each run waits up to 5 s for its
 own `TEST_START` and as many results as the counts; a run whose `TEST_START`
 does not come did not run (its counts are an earlier run's) and fails. Exit 0 when every test of every run passed.
 
+The wait ends early when the application stops on an exception, leaves run
+after it ran, or stops answering the reads of `TestResult`: the line says
+which, how long after the start and how many tests had counted, and quotes
+the exception the runtime logged (`runtime: #### Exception: ...`). A test
+that never ends without an exception (an endless loop) holds its task until
+`--wait` runs out; the error then says when the counts last moved. A watchdog
+on the test task (Task Configuration, TestTask, Watchdog) turns such a loop
+into an exception, which ends the wait at once. Known runtime lines in the
+run's log come with a `hint:` (TLS contexts used up, an exception).
+
 Every run leaves its log: the records the tests wrote and whatever the
 runtime logged meanwhile (an exception, a watchdog), in the runtime's log
 file format. It goes to `--out` (a file, or a folder for
@@ -181,6 +191,15 @@ between the import and the test, and the test saves nothing.
 A test that needs several cycles (a timer, a state machine) keeps its own
 step counter in `PRG_Tests` and sets `Done` when the last step has checked;
 `--wait` (seconds, default 30) is how long cts waits for it.
+
+On a PLC (`--plc`), switch off the test application's boot application
+(TestApp -> Properties -> Boot application -> Implicit boot application on
+download); `cts test` names it while it is on. Otherwise every download
+leaves a boot application, and a restart of the runtime runs the tests
+again, a test that never ends included, so the restart does not free the
+PLC. To recover from such a loop: stop the runtime, move the test
+application's boot files (`<App>.app` and `<App>.crc` in the runtime's
+`PlcLogic/<App>/`) aside, start it, then `cts test --plc` downloads afresh.
 
 ## JSON test plans
 

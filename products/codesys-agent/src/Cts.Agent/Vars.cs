@@ -121,7 +121,21 @@ namespace Cts.Agent
                 }
                 results.Add(ReadOne(guid, name));
             }
-            return Vars.ReadEnvelope(online, loggedIn, guid == Guid.Empty ? null : guid.ToString(), results);
+            var envelope = Vars.ReadEnvelope(online, loggedIn, guid == Guid.Empty ? null : guid.ToString(), results);
+            if (loggedIn)
+            {
+                // run/stop/..., and flags such as "program_loaded, exception":
+                // what the IDE's status bar shows of the application.
+                envelope["application_state"] = State(application, "ApplicationState");
+                envelope["operating_state"] = State(application, "OperatingState");
+            }
+            return envelope;
+        }
+
+        string State(object application, string property)
+        {
+            try { return Convert.ToString(Ide.Prop(_ide.OnlineApplicationType, application, property), CultureInfo.InvariantCulture); }
+            catch (Exception) { return null; }
         }
 
         // Every value is prepared first and all go to the PLC in one
