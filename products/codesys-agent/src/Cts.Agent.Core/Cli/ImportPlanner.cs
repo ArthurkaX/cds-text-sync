@@ -135,7 +135,7 @@ namespace Cts.Cli
                 _work.FolderRecords = _work.Changed.Where(IsFolderRecord).ToList();
                 _work.Deleted = _work.StRecords.Where(record => record.Category == "deleted").OrderByDescending(record => RecordDepth(record, _work.Parsed)).ToList();
                 var tree = _call.Call("project.tree", new Dictionary<string, object>());
-                _work.IdeNodes = TreeObjects(tree);
+                _work.IdeNodes = TreeObjects(tree, out _work.IdePathByGuid);
                 _work.IdeByPath = _work.IdeNodes.ToDictionary(pair => pair.Key, pair => pair.Value.Guid, StringComparer.OrdinalIgnoreCase);
                 _work.NativeRecords = _work.Changed.Where(record => !IsFolderRecord(record)
                     && !record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)

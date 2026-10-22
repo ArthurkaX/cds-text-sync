@@ -20,7 +20,7 @@ namespace Cts.Cli
             internal string ToolNote;
             internal StViewResult Parsed;
             internal Dictionary<string, TreeObject> IdeNodes;
-            internal Dictionary<string, string> IdeByPath;
+            internal Dictionary<string, string> IdeByPath, IdePathByGuid;
             internal List<CompareRecord> ForceRecords, StRecords, FolderRecords, Deleted, NativeRecords, CsvRecords;
             // The deleted objects below another deleted one, which go with it.
             internal List<CompareRecord> DeletedMembers;

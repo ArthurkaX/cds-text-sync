@@ -133,7 +133,7 @@ namespace Cts.Cli
                     if (!File.Exists(fullPath) && (record.Category == "ide_changed" || record.Category == "modified"))
                     {
                         var missingKey = NativeKey(path);
-                        if (!_work.IdeByPath.TryGetValue(missingKey, out var missingGuid)) { _work.NativeGone.Add(record); continue; }
+                        if (!InIde(record, fullPath, ref missingKey, out var missingGuid)) { _work.NativeGone.Add(record); continue; }
                         if (!record.HasGuid) { record.Guid = missingGuid; record.HasGuid = true; }
                         if (_call.Options.Params.ContainsKey("force")) { _work.NativeDeletes.Add(record); continue; }
                         // ide_changed without a file is an object the IDE added: import leaves it, sync writes it to disk.
@@ -159,7 +159,7 @@ namespace Cts.Cli
                         var invalid = NativeEntryProblem(content);
                         if (invalid != null) return Refused(_call, _work.Data, path + ": " + invalid);
                     }
-                    var found = _work.IdeByPath.TryGetValue(key, out var guid);
+                    var found = InIde(record, fullPath, ref key, out var guid);
                     if (record.Category == "deleted")
                     {
                         if (!found) { _work.NativeGone.Add(record); continue; }
@@ -229,6 +229,24 @@ namespace Cts.Cli
                         else FileConflict(record);
                     }
                 return null;
+            }
+
+            // The IDE object a native file holds.  Same-named siblings share one
+            // IDE path, their files told apart by a __<guid> suffix, so the
+            // object is the one of the file's GUID (or compare's, for a file
+            // gone) when the IDE has it at the file's place; else the one at
+            // the file's path.
+            bool InIde(CompareRecord record, string fullPath, ref string key, out string guid)
+            {
+                var own = File.Exists(fullPath) ? NativeMetaValue(File.ReadAllText(fullPath), "Guid") : record.HasGuid ? record.Guid : null;
+                if (!string.IsNullOrWhiteSpace(own) && _work.IdePathByGuid.TryGetValue(GuidKey(own), out var idePath)
+                    && (string.Equals(key, idePath, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(key, idePath + "__" + GuidKey(own).Substring(0, 8), StringComparison.OrdinalIgnoreCase)))
+                {
+                    key = idePath; guid = own.Trim();
+                    return true;
+                }
+                return _work.IdeByPath.TryGetValue(key, out guid);
             }
 
             // The IDE path of the object a native file holds: a member of a POU

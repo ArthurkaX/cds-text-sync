@@ -612,6 +612,43 @@ namespace Cts.Agent.Tests
             Assert.True(!((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>().Any(), Json.Pretty(result));
         }
 
+        // Same-named siblings share one IDE path, their files told apart by a
+        // __<guid> suffix: the changed one is replaced by its GUID.
+        [Fact]
+        public void Replaces_a_changed_native_object_by_its_guid_when_a_sibling_has_its_name()
+        {
+            var view = ViewFolder.Of(_root);
+            var task = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var original = File.ReadAllText(task);
+            var guid = NativeValue(original, "Guid").Trim();
+            var twin = "22222222-2222-2222-2222-222222222222";
+            var copy = original.Replace(guid, twin);
+            var file = Path.Combine(Path.GetDirectoryName(task), "Task__" + guid.Substring(0, 8) + ".xml");
+            File.Move(task, file);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(task), "Task__22222222.xml"), copy);
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            var content = original.Replace("<Single Name=\"AllowEmpty\" Type=\"bool\">False</Single>",
+                "<Single Name=\"AllowEmpty\" Type=\"bool\">True</Single>");
+            File.WriteAllText(file, content);
+            var tree = Tree(ExportCommand.Relative(view, Path.GetDirectoryName(task)).Split('/'));
+            var parent = tree;
+            while (((IList<IDictionary<string, object>>)parent["children"]).Count > 0) parent = ((IList<IDictionary<string, object>>)parent["children"])[0];
+            foreach (var sibling in new[] { guid, twin })
+                ((IList<IDictionary<string, object>>)parent["children"]).Add(new Dictionary<string, object> { { "name", "Task" }, { "guid", sibling }, { "children", new List<IDictionary<string, object>>() } });
+            IDictionary<string, object> replace = null;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return tree;
+                if (method == "objects.replace") { replace = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, replace == null ? original : content, copy);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.False(result.ContainsKey("refused"), Json.Pretty(result));
+            Assert.Equal(guid, Convert.ToString(replace["guid"]), StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(content, replace["xml"]);
+        }
+
         // A device's own settings live in its container file, which names the device's path.
         [Fact]
         public void Replaces_a_device_whose_container_file_changed()
