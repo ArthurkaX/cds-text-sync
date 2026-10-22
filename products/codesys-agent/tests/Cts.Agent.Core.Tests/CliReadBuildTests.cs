@@ -193,6 +193,27 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void A_file_the_base_had_under_another_path_is_not_named_as_not_imported()
+        {
+            var task = System.Text.Encoding.UTF8.GetBytes("<task/>");
+            var edited = System.Text.Encoding.UTF8.GetBytes("PROGRAM MAIN");
+            var changed = new Dictionary<string, byte[]>
+            {
+                { "PLC Logic/App/Task Configuration/Task.xml", null },
+                { "Plc Logic/App/TaskConfiguration/Task.xml", task },
+                { "Plc Logic/App/MAIN.st", edited },
+                { "Plc Logic/App/OLD.st", null },
+            };
+            var bases = new Dictionary<string, string>
+            {
+                { "PLC Logic/App/Task Configuration/Task.xml", Cts.Sync.ViewExport.BlobId(task) },
+                { "Plc Logic/App/OLD.st", Cts.Sync.ViewExport.BlobId(System.Text.Encoding.UTF8.GetBytes("PROGRAM OLD")) },
+            };
+            Assert.Equal(new[] { "Plc Logic/App/MAIN.st", "Plc Logic/App/OLD.st" },
+                Cts.Cli.BuildCommand.Pending(changed, path => bases[path]).OrderBy(path => path, StringComparer.Ordinal));
+        }
+
+        [Fact]
         public void Build_all_objects_marks_diagnostics_of_objects_no_task_calls()
         {
             var host = new FakeHost();

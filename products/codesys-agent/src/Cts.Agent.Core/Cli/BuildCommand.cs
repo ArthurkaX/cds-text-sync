@@ -272,7 +272,8 @@ namespace Cts.Cli
                     return new List<object>();
                 var view = ExportCommand.Relative(folder, ViewFolder.Of(folder));
                 var prefix = view == "." ? "" : view + "/";
-                return SyncBase.Changed(folder, view, SyncBase.BaseRef).Keys
+                var changed = SyncBase.Changed(folder, view, SyncBase.BaseRef);
+                return Pending(changed, path => GitRun.In(folder, "rev-parse -q --verify " + ProcessArgs.Quote(SyncBase.BaseRef + ":" + prefix + path)).Output.Trim())
                     .Where(path => !path.Split('/').Any(part => part.StartsWith(".", StringComparison.Ordinal)))
                     .Select(path => prefix + path).OrderBy(path => path, StringComparer.Ordinal).Cast<object>().ToList();
             }
@@ -280,6 +281,24 @@ namespace Cts.Cli
             {
                 return new List<object>();
             }
+        }
+
+        // The paths of *changed* (the files changed on disk since the base, a
+        // removed one null) but the moves: a file the base had under another
+        // path, the same bytes, compiles the same (a view folder's spelling
+        // the IDE's names changed). *baseBlob* gives the base's blob of a path.
+        internal static IEnumerable<string> Pending(IDictionary<string, byte[]> changed, Func<string, string> baseBlob)
+        {
+            var added = changed.Where(pair => pair.Value != null).ToLookup(pair => ViewExport.BlobId(pair.Value), pair => pair.Key, StringComparer.Ordinal);
+            var moved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var removed in changed.Where(pair => pair.Value == null).Select(pair => pair.Key))
+            {
+                var target = added[baseBlob(removed)].FirstOrDefault(path => !moved.Contains(path));
+                if (target == null) continue;
+                moved.Add(removed);
+                moved.Add(target);
+            }
+            return changed.Keys.Where(path => !moved.Contains(path));
         }
 
         internal static List<IDictionary<string, object>> DistinctRows(IEnumerable<IDictionary<string, object>> source)
