@@ -30,7 +30,7 @@ namespace Cts.Analysis.Rules
                 if (!references.Contains(name)) continue;
                 Func<string, bool?> test = condition => IsValidTest(condition, name);
                 Func<string, bool?> otherwise = condition => !test(condition);
-                if (Guards.At(unit.Tree, offset, test, otherwise, start => true) == true || Guards.ExitsBefore(section, offset, otherwise, start => true)) continue;
+                if (Guards.At(unit.Tree, offset, test, otherwise, start => true) == true || Guards.ExitsBefore(section, offset, (condition, at) => otherwise(condition), start => true)) continue;
                 var expression = match.Value.Trim();
                 yield return Finding.In(unit, "reference '" + name + "' is used without a dominating __ISVALIDREF check",
                     offset, section.At(match.Index + match.Length), expression, expression);

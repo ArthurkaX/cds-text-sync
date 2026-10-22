@@ -46,7 +46,7 @@ namespace Cts.Agent
             var i = 0;
             while (i < chars.Length)
             {
-                if (chars[i] == '\'' || chars[i] == '"') { i = StringEnd(chars, i); continue; }
+                if (chars[i] == '\'' || chars[i] == '"') { i = StringEnd(text, i); continue; }
                 if (i + 1 < chars.Length && chars[i] == '/' && chars[i + 1] == '/')
                 { while (i < chars.Length && chars[i] != '\n') chars[i++] = ' '; continue; }
                 if (i + 1 < chars.Length && chars[i] == '(' && chars[i + 1] == '*')
@@ -85,25 +85,18 @@ namespace Cts.Agent
             while (i < chars.Length)
             {
                 if (chars[i] != '\'' && chars[i] != '"') { i++; continue; }
-                var quote = chars[i++];
-                while (i < chars.Length)
-                {
-                    if (chars[i] == quote)
-                    {
-                        if (i + 1 < chars.Length && chars[i + 1] == quote) { chars[i++] = ' '; chars[i++] = ' '; continue; }
-                        i++;
-                        break;
-                    }
-                    if (chars[i] != '\n') chars[i] = ' ';
-                    i++;
-                }
+                var end = StringEnd(text, i);
+                var close = end - 1 > i && text[end - 1] == text[i] ? end - 1 : end;
+                for (i++; i < close; i++) if (chars[i] != '\n') chars[i] = ' ';
+                i = end;
             }
             return new string(chars);
         }
 
         internal static string Blanked(string text) => TrimStrings(Blank(text));
 
-        static int StringEnd(char[] text, int i)
+        // The end of the string literal opening at i, after its closing quote.
+        internal static int StringEnd(string text, int i)
         {
             var quote = text[i++];
             while (i < text.Length)
@@ -117,7 +110,7 @@ namespace Cts.Agent
                 }
                 i++;
             }
-            return i;
+            return text.Length;
         }
 
         internal sealed class Comment
@@ -132,14 +125,13 @@ namespace Cts.Agent
         {
             var found = new List<Comment>();
             text = text ?? "";
-            var chars = text.ToCharArray();
             var n = text.Length;
             var i = 0;
             while (i < n)
             {
                 var c = text[i];
                 var next = i + 1 < n ? text[i + 1] : '\0';
-                if (c == '\'' || c == '"') { i = StringEnd(chars, i); continue; }
+                if (c == '\'' || c == '"') { i = StringEnd(text, i); continue; }
                 if (c == '/' && next == '/')
                 {
                     var start = i;

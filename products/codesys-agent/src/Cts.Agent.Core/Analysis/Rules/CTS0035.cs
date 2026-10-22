@@ -7,7 +7,7 @@ namespace Cts.Analysis.Rules
     internal sealed class CTS0035 : Rule
     {
         static readonly Regex ZeroDivisor = new Regex(
-            @"/(?<space>\s*)(?<zero>(?:(?:BOOL|BYTE|WORD|DWORD|LWORD|SINT|USINT|INT|UINT|DINT|UDINT|LINT|ULINT|REAL|LREAL)#)?0(?:\.0*)?(?:[eE][+-]?0+)?)\b",
+            @"/(?<space>\s*)(?<zero>(?:(?:BOOL|BYTE|WORD|DWORD|LWORD|SINT|USINT|INT|UINT|DINT|UDINT|LINT|ULINT|REAL|LREAL)#)?0(?:\.0*)?(?:[eE][+-]?0+)?)(?![\w.])",
             RegexOptions.IgnoreCase);
 
         internal CTS0035() : base("CTS0035", "Division by literal zero", Analysis.Severity.Danger, "Correctness", "Division expressions whose divisor is a literal zero.", "CALLABLE")

@@ -10,7 +10,7 @@ namespace Cts.Analysis.Rules
     // the result, to a member path, to an output, in-out, static, retained or
     // global variable, or to the function block's own variables from one of
     // its methods; or handed to a call or RETURN in the same statement, but
-    // not to a runtime library call (see Synchronous).
+    // not to a runtime library call (see KeepsNone).
     internal sealed class CTS0051 : Rule
     {
         static readonly Regex Target = new Regex(@"(?<target>[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*:=\s*$");
@@ -18,6 +18,8 @@ namespace Cts.Analysis.Rules
         // A runtime library call (SysFileOpen, sysfile.SysFileWrite,
         // MEMCPY, ...) uses a pointer during the call and keeps none.
         static readonly Regex Synchronous = new Regex(@"(?:^|[^\w.])(?:[A-Za-z_]\w*\s*\.\s*)*(?:Sys|Mem)\w*\s*$", RegexOptions.IgnoreCase);
+        static readonly Regex Callee = new Regex(@"(?<![\w.])(?<head>[A-Za-z_]\w*)(?<tail>(?:\s*\.\s*[A-Za-z_]\w*)*)\s*$");
+        static readonly Regex Interface = new Regex(@"^I[A-Z]");
         static readonly Regex Return = new Regex(@"\bRETURN\s*$", RegexOptions.IgnoreCase);
         static readonly HashSet<string> LocalKinds = new HashSet<string> { Analysis.Kinds.Function, Analysis.Kinds.Method, Analysis.Kinds.Action, Analysis.Kinds.PropertyGet, Analysis.Kinds.PropertySet };
         static readonly HashSet<string> EscapingScopes = new HashSet<string> { "VAR_GLOBAL", "VAR_EXTERNAL", "VAR_OUTPUT", "VAR_IN_OUT", "VAR_STAT" };
@@ -48,10 +50,26 @@ namespace Cts.Analysis.Rules
                 string message;
                 if (target.Success && Escapes(Regex.Replace(target.Groups["target"].Value, @"\s+", ""), result, escaping, ownNames, ownerNames, context))
                     message = "address of local '" + local + "' escapes through destination '" + target.Groups["target"].Value.Replace(" ", "") + "'";
-                else if (!Call.IsMatch(prefix) && !Return.IsMatch(prefix) || Synchronous.IsMatch(prefix.Substring(0, Math.Max(StCalls.Opening(prefix, prefix.Length), 0)))) continue;
+                else if (!Call.IsMatch(prefix) && !Return.IsMatch(prefix) || KeepsNone(prefix.Substring(0, Math.Max(StCalls.Opening(prefix, prefix.Length), 0)), unit, context)) continue;
                 else message = "address of local '" + local + "' is passed out of its lifetime through a call";
                 yield return Finding.In(unit, message, unit.Body.At(match.Index), unit.Body.At(match.Index + match.Length), "ADR(" + local + ")", match.Value);
             }
+        }
+
+        // A call that uses the pointer while it runs and keeps none: a runtime
+        // library's (SysFileOpen, MEMCPY, CmpIecVarAccess.IecVarAccGetFirstInterface),
+        // or a method of a library interface a variable holds (itfAcc.VarAccGetNode,
+        // itfAcc an IIecVarAccess3 the project does not declare).
+        static bool KeepsNone(string before, Unit unit, RuleContext context)
+        {
+            if (Synchronous.IsMatch(before)) return true;
+            var callee = Callee.Match(before);
+            if (!callee.Success) return false;
+            var head = callee.Groups["head"].Value;
+            if (context.Snapshot.LibraryProvides(head + Regex.Replace(callee.Groups["tail"].Value, @"\s+", ""))) return true;
+            if (callee.Groups["tail"].Length == 0) return false;
+            var type = context.Snapshot.MembersSeenBy(unit).FirstOrDefault(member => member.Name.Equals(head, StringComparison.OrdinalIgnoreCase))?.Type?.Trim();
+            return type != null && Interface.IsMatch(Snapshot.LastSegment(type)) && context.Snapshot.ByName(Snapshot.LastSegment(type)).Count == 0;
         }
 
         static bool Escapes(string target, string result, HashSet<string> escaping, HashSet<string> own, HashSet<string> owner, RuleContext context) =>

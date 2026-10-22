@@ -433,6 +433,65 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void A_fraction_is_no_literal_zero_divisor()
+        {
+            var rule = RuleCatalog.All.Single(r => r.Id == "CTS0035");
+            var findings = Snippet(rule, "PROGRAM P\nVAR\n    x : LREAL;\nEND_VAR\nIMPLEMENTATION\nx := x / 0.001;\nx := x / 0.0;\n");
+            Assert.Equal(new[] { "0.0" }, findings.Select(f => f.Anchor));
+        }
+
+        [Fact]
+        public void A_quote_escaped_with_a_dollar_does_not_end_a_string_before_a_case_label()
+        {
+            var rule = RuleCatalog.All.Single(r => r.Id == "CTS0015");
+            Assert.Empty(Snippet(rule, "PROGRAM P\nVAR\n    n : INT;\n    s : STRING;\nEND_VAR\nIMPLEMENTATION\nCASE n OF\n1: s := 'at $'2023-11-14 22:13:20$' x';\n22: s := 'b';\n13: s := 'c';\nEND_CASE;\n"));
+        }
+
+        [Fact]
+        public void A_field_or_an_operand_of_arithmetic_is_no_self_comparison()
+        {
+            var rule = RuleCatalog.All.Single(r => r.Id == "CTS0047");
+            var program = "PROGRAM P\nVAR\n    r : REAL;\n    u : REAL;\n    hi : REAL;\n    lo : REAL;\n    a : ARRAY[0..1] OF ST_M;\n    i : INT;\nEND_VAR\nIMPLEMENTATION\n";
+            Assert.Empty(Snippet(rule, program + "IF a[i].r <= r THEN\n    i := 0;\nEND_IF;\nIF hi - u >= u - lo THEN\n    i := 1;\nEND_IF;\nIF NOT u = u THEN\n    i := 2;\nEND_IF;\n"));
+            Assert.Equal(new[] { "r <= r" }, Snippet(rule, program + "IF r <= r THEN\n    i := 0;\nEND_IF;\n").Select(f => f.Anchor));
+        }
+
+        [Fact]
+        public void A_pointer_field_read_through_a_pointer_has_the_field_type()
+        {
+            var rule = RuleCatalog.All.Single(r => r.Id == "CTS0091");
+            var program = "PROGRAM P\nVAR\n    pAsk : POINTER TO ST_Ask;\n    pReply : POINTER TO ST_Reply;\nEND_VAR\nIMPLEMENTATION\n";
+            Assert.Empty(Snippet(rule, program + "pReply := pAsk^.pReply;\n"));
+            Assert.Single(Snippet(rule, program + "pReply := pAsk;\n"));
+        }
+
+        [Fact]
+        public void An_early_return_on_a_flag_set_from_the_divisor_check_guards_the_division()
+        {
+            var rule = RuleCatalog.All.Single(r => r.Id == "CTS0050");
+            var block = "FUNCTION_BLOCK FB_Lag\nVAR_INPUT\n    rC : REAL;\n    rT : REAL;\nEND_VAR\nVAR\n    y : REAL;\n    xError : BOOL;\nEND_VAR\nIMPLEMENTATION\n";
+            var check = "xError := NOT (rC > 0.0) OR rT <= 0.0;\nIF xError THEN\n    RETURN;\nEND_IF;\n";
+            Assert.Empty(Snippet(rule, block + check + "y := y / rC + y / rT;\n"));
+            Assert.Equal(new[] { "rC" }, Snippet(rule, block + "xError := rT <= 0.0;\nIF xError THEN\n    RETURN;\nEND_IF;\ny := y / rC;\n").Select(f => f.Anchor));
+            Assert.Equal(new[] { "rC" }, Snippet(rule, block + "xError := NOT (rC > 0.0);\nrC := y;\nIF xError THEN\n    RETURN;\nEND_IF;\ny := y / rC;\n").Select(f => f.Anchor));
+            Assert.Equal(new[] { "rC" }, Snippet(rule, block + "IF rT > 0.0 THEN\n    xError := NOT (rC > 0.0);\nEND_IF;\nIF xError THEN\n    RETURN;\nEND_IF;\ny := y / rC;\n").Select(f => f.Anchor));
+        }
+
+        [Fact]
+        public void A_method_of_a_library_interface_keeps_no_local_address()
+        {
+            var rule = RuleCatalog.All.Single(r => r.Id == "CTS0051");
+            var text = "FUNCTION F : DINT\nVAR\n    itfAcc : IIecVarAccess3;\n    fbKeep : FB_Keep;\n    r : DINT;\nEND_VAR\n// --- implementation ---\n{0}\nEND_FUNCTION\n\nFUNCTION_BLOCK FB_Keep\n// --- implementation ---\nEND_FUNCTION_BLOCK\n";
+            List<Finding> InFunction(string body)
+            {
+                var snapshot = Snapshot.Build(".", new Dictionary<string, string> { ["F.st"] = string.Format(text, body) });
+                return rule.Check(snapshot.Find("F.st#F"), new RuleContext(snapshot, new AnalyzeConfig()) { Active = rule }).ToList();
+            }
+            Assert.Empty(InFunction("itfAcc.VarAccGetNode(ADR(r));"));
+            Assert.Single(InFunction("fbKeep.Hold(ADR(r));"));
+        }
+
+        [Fact]
         public void A_local_address_escapes_into_the_owner_or_a_call_but_not_into_a_runtime_library_call()
         {
             var rule = RuleCatalog.All.Single(r => r.Id == "CTS0051");
@@ -486,6 +545,9 @@ namespace Cts.Agent.Tests
                 Assert.Contains("[CTS0013] suspicious  POUs/PRG_Main.st:4:5  declared symbol 'nUnused'", output);
                 Assert.EndsWith("\nby rule: CTS0001 1, CTS0013 1\n", output);
                 Assert.Contains("\"ruleId\": \"CTS0013\"", File.ReadAllText(sarif));
+                var (dangerOnly, danger, _) = CliTests.RunLocal("analyze", "--workspace", folder, "--severity", "danger");
+                Assert.Equal(0, dangerOnly);
+                Assert.StartsWith("ok analyze findings=0 danger=0 suspicious=0 style=0", danger);
 
                 Assert.Equal(0, CliTests.RunLocal("analyze", "baseline", "create", "--workspace", folder).code);
                 var (after, quiet, _) = CliTests.RunLocal("analyze", "--workspace", folder);

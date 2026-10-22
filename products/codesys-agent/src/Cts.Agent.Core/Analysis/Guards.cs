@@ -45,12 +45,13 @@ namespace Cts.Analysis
 
         // "IF <condition> THEN ... RETURN/EXIT/CONTINUE ... END_IF" before the
         // use (absolute offset) in section whose failing implies the guard,
-        // the value unchanged since.
-        internal static bool ExitsBefore(Section section, int offset, Func<string, bool?> otherwise, Func<int, bool> unchanged)
+        // the value unchanged since. otherwise gets the condition and the IF's
+        // absolute offset.
+        internal static bool ExitsBefore(Section section, int offset, Func<string, int, bool?> otherwise, Func<int, bool> unchanged)
         {
             var text = section.Text.Substring(0, offset - section.Base);
             return If.Matches(text).Cast<Match>().Select(keyword => Exit.Match(text, keyword.Index))
-                .Any(guard => guard.Success && otherwise(guard.Groups["condition"].Value.Trim()) == true && Terminal.IsMatch(guard.Groups["body"].Value) && unchanged(section.At(guard.Index + guard.Length)));
+                .Any(guard => guard.Success && otherwise(guard.Groups["condition"].Value.Trim(), section.At(guard.Index)) == true && Terminal.IsMatch(guard.Groups["body"].Value) && unchanged(section.At(guard.Index + guard.Length)));
         }
 
         // No "name := ...;" in section between the absolute offsets start and

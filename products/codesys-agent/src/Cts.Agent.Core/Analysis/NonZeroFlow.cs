@@ -52,7 +52,7 @@ namespace Cts.Analysis
             var unchanged = Guards.Unchanged(_section, name, offset);
             var state = Guards.At(_unit.Tree, offset, test, otherwise, unchanged);
             if (state != null) return state;
-            if (Guards.ExitsBefore(_section, offset, otherwise, unchanged)) return true;
+            if (Guards.ExitsBefore(_section, offset, (condition, at) => Fails(condition, name, at, depth), unchanged)) return true;
             return depth < Deepest && Assigned(name, offset, depth) ? true : (bool?)null;
         }
 
@@ -108,6 +108,69 @@ namespace Cts.Analysis
             if (holds != true) return holds == false ? true : (bool?)null;
             var comparison = Compared(condition, name).Value;
             return comparison.Key == "=" && comparison.Value == 0 ? false : (bool?)null;
+        }
+
+        // What an early exit's condition failing at the absolute offset at
+        // proves, through OR (each operand fails), NOT (its operand holds)
+        // and a BOOL set on the path before it to such a condition, with name
+        // unchanged since ("xError := NOT (rC > 0.0) OR ...; IF xError THEN RETURN").
+        bool? Fails(string condition, string name, int at, int depth)
+        {
+            condition = Unwrapped(condition);
+            var operands = TopLevel(condition, "OR");
+            if (operands.Count > 1)
+            {
+                var states = operands.Select(operand => Fails(operand, name, at, depth)).ToList();
+                return states.Contains(false) ? false : states.Contains(true) ? true : (bool?)null;
+            }
+            var negated = Not.Match(condition);
+            if (negated.Success)
+            {
+                var operand = Unwrapped(negated.Groups["operand"].Value);
+                return TopLevel(operand, "AND").Select(part => RulesOutZero(Unwrapped(part), name)).FirstOrDefault(state => state != null);
+            }
+            if (StText.IsIdentifier(condition) && depth < Deepest)
+            {
+                var set = Guards.Assignment(condition).Matches(_section.Text.Substring(0, at - _section.Base)).Cast<Match>().LastOrDefault();
+                if (set == null) return null;
+                var setAt = _section.At(set.Index);
+                if (!_unit.Tree.PathTo(at, _end).StartsWith(_unit.Tree.PathTo(setAt, _end), StringComparison.Ordinal) || !Guards.Unchanged(_section, name, at)(setAt)) return null;
+                return Fails(set.Groups["value"].Value, name, setAt, depth + 1);
+            }
+            return Failing(condition, name);
+        }
+
+        static readonly Regex Not = new Regex(@"^NOT\b\s*(?<operand>.+)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // condition without the parentheses around all of it.
+        static string Unwrapped(string condition)
+        {
+            condition = condition.Trim();
+            while (condition.StartsWith("(") && StCalls.Close(condition, 0) == condition.Length - 1) condition = condition.Substring(1, condition.Length - 2).Trim();
+            return condition;
+        }
+
+        // The operands of the keyword operator outside parentheses ("a OR (b OR c)": a, (b OR c)).
+        static List<string> TopLevel(string condition, string keyword)
+        {
+            var parts = new List<string>();
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < condition.Length; i++)
+            {
+                var c = condition[i];
+                if (c == '(') depth++;
+                else if (c == ')') depth--;
+                else if (depth == 0 && (i == 0 || !char.IsLetterOrDigit(condition[i - 1]) && condition[i - 1] != '_')
+                    && string.Compare(condition, i, keyword, 0, keyword.Length, StringComparison.OrdinalIgnoreCase) == 0
+                    && (i + keyword.Length == condition.Length || !char.IsLetterOrDigit(condition[i + keyword.Length]) && condition[i + keyword.Length] != '_'))
+                {
+                    parts.Add(condition.Substring(start, i - start));
+                    start = i + keyword.Length;
+                }
+            }
+            parts.Add(condition.Substring(start));
+            return parts.Select(part => part.Trim()).ToList();
         }
 
         // What a comparison of name failing proves: non-zero when zero meets

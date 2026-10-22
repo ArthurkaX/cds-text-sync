@@ -6,7 +6,9 @@ namespace Cts.Analysis.Rules
     // Assignments between differently typed pointers lack an explicit conversion.
     internal sealed class CTS0091 : Rule
     {
-        static readonly Regex Assignment = new Regex(@"\b(?<left>[A-Za-z_]\w*)\s*:=\s*(?<right>[A-Za-z_]\w*)\b");
+        // Whole names on both sides: not a field (p^.q, a.b) nor what is
+        // read through one (p^, a[i], f(x)).
+        static readonly Regex Assignment = new Regex(@"(?<![\w.])(?<!\.\s*)(?<left>[A-Za-z_]\w*)\s*:=\s*(?<right>[A-Za-z_]\w*)\b(?!\s*[\^.\[(])");
 
         internal CTS0091() : base("CTS0091", "Implicit pointer conversion", Analysis.Severity.Danger, "Correctness", "Incompatible pointer bases are assigned without an explicit conversion.", "CALLABLE")
         {

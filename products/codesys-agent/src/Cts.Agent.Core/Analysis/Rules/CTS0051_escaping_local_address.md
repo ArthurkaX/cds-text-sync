@@ -36,6 +36,21 @@ IMPLEMENTATION
 StoreBuffer := StoreForLater(ADR(localByte)); // cts:here
 ```
 
+A runtime library call (through its namespace, or named after a system
+component the project references, `SysFileOpen`, `MEMCPY`) and a method of a
+library interface a variable holds use the address while they run and keep
+none:
+
+```st good
+FUNCTION ReadNode : BOOL
+VAR
+    itfAccess : IIecVarAccess3;
+    result : DINT;
+END_VAR
+IMPLEMENTATION
+itfAccess.VarAccGetNode(ADR(result));
+```
+
 ## When ignoring is legitimate
 
 - The address is consumed synchronously and the called API is documented not

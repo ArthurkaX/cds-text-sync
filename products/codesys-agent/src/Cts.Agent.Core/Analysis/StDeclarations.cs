@@ -156,7 +156,7 @@ namespace Cts.Analysis
             while (i < text.Length)
             {
                 var c = text[i];
-                if (c == '\'' || c == '"') { i = SkipString(text, i); continue; }
+                if (c == '\'' || c == '"') { i = StText.StringEnd(text, i); continue; }
                 if (c == '(' || c == '[') depth++;
                 else if (c == ')' || c == ']') depth = Math.Max(0, depth - 1);
                 else if (depth == 0 && string.CompareOrdinal(text, i, separator, 0, separator.Length) == 0)
@@ -168,21 +168,6 @@ namespace Cts.Analysis
             return -1;
         }
 
-        static int SkipString(string text, int i)
-        {
-            var quote = text[i++];
-            while (i < text.Length)
-            {
-                if (text[i] == quote)
-                {
-                    if (i + 1 < text.Length && text[i + 1] == quote) { i += 2; continue; }
-                    return i + 1;
-                }
-                i++;
-            }
-            return i;
-        }
-
         // The ';'-separated statements of a block body, with their offsets.
         static IEnumerable<KeyValuePair<string, int>> SplitStatements(string body)
         {
@@ -192,7 +177,7 @@ namespace Cts.Analysis
             while (i < body.Length)
             {
                 var c = body[i];
-                if (c == '\'' || c == '"') { i = SkipString(body, i); continue; }
+                if (c == '\'' || c == '"') { i = StText.StringEnd(body, i); continue; }
                 if (c == '(' || c == '[') depth++;
                 else if (c == ')' || c == ']') depth = Math.Max(0, depth - 1);
                 else if (c == ';' && depth == 0)
@@ -324,17 +309,17 @@ namespace Cts.Analysis
             var items = new List<string>();
             var current = new StringBuilder();
             var depth = 0;
-            char quote = '\0';
-            foreach (var c in text)
+            for (var i = 0; i < text.Length; i++)
             {
-                if (quote != '\0')
+                var c = text[i];
+                if (c == '\'' || c == '"')
                 {
-                    current.Append(c);
-                    if (c == quote) quote = '\0';
+                    var end = StText.StringEnd(text, i);
+                    current.Append(text, i, end - i);
+                    i = end - 1;
                     continue;
                 }
-                if (c == '\'' || c == '"') quote = c;
-                else if (c == '(' || c == '[' || c == '{') depth++;
+                if (c == '(' || c == '[' || c == '{') depth++;
                 else if (c == ')' || c == ']' || c == '}') depth = Math.Max(0, depth - 1);
                 if (c == ',' && depth == 0) { items.Add(current.ToString().Trim()); current.Clear(); }
                 else current.Append(c);

@@ -40,6 +40,17 @@ IF divisor <> 0 THEN
 END_IF;
 ```
 
+An early exit on a BOOL set before it from the check counts the same, through
+`OR` and `NOT`, while the divisor is not assigned between:
+
+```st good
+error := NOT (divisor > 0.0) OR span <= 0.0;
+IF error THEN
+    RETURN;
+END_IF;
+result := value / divisor;
+```
+
 A type conversion is looked through: its argument is the divisor. A constant
 declared with a non-zero value needs no guard, and another call's result is
 not a variable this rule follows:

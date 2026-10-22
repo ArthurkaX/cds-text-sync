@@ -39,6 +39,7 @@ namespace Cts.Cli
                 {
                     CliOption.Many("--path", "path", "PATH", "Only the findings in this file or folder of the view (repeatable); the whole project is still read"),
                     CliOption.Switch("--changed", "changed", "Only the findings in the view files git sees changed since the last commit (new ones too); the whole project is still read"),
+                    CliOption.Choice("--severity", "severity", "Only the findings this severe or worse (danger: the likely faults alone); the exit code follows what is shown", Severity.All),
                     CliOption.Text("--sarif", "sarif", "FILE", "Also write the findings as SARIF 2.1.0 (code scanning)"),
                 }).ToArray(),
                 LocalExecute = Analyze, Build = BuildAnalyze,
@@ -123,6 +124,8 @@ namespace Cts.Cli
             var run = Run(options, work, "analyze", true);
             var within = Within(options, run.Item1.View, work);
             var changed = options.Params.ContainsKey("changed") ? Changed(run.Item1.View) : null;
+            var severity = options.Text("severity");
+            if (severity != null) run.Item3.Findings = run.Item3.Findings.Where(finding => Severity.Rank(finding.Severity) <= Severity.Rank(severity)).ToList();
             if (within.Count > 0 || changed != null)
             {
                 bool Inside(Location location) => (within.Count == 0 || within.Any(path => path.Length == 0 || location.Path.Equals(path, StringComparison.OrdinalIgnoreCase) || location.Path.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase)))

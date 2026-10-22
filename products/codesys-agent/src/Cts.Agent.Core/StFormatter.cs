@@ -127,16 +127,7 @@ namespace Cts.Agent
             {
                 if (line[i] == '\'' || line[i] == '"')
                 {
-                    var quote = line[i++];
-                    while (i < line.Length)
-                    {
-                        if (line[i] == quote)
-                        {
-                            if (i + 1 < line.Length && line[i + 1] == quote) { i += 2; continue; }
-                            break;
-                        }
-                        i++;
-                    }
+                    i = StText.StringEnd(line, i) - 1;
                     continue;
                 }
                 if (i + 1 < line.Length && (line.Substring(i, 2) == "//" || line.Substring(i, 2) == "(*")) return i;

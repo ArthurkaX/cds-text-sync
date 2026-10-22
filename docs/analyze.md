@@ -39,7 +39,9 @@ variable used elsewhere is not reported unused. `--changed` keeps the findings
 of the view files git sees changed since the last commit, new files included
 (`changed_files=N` in the verdict): what an edit added, before it is committed.
 A finding an edit causes in an unchanged file (a variable no longer read
-anywhere) is left out, so run without it before the commit. The last line counts the
+anywhere) is left out, so run without it before the commit. `--severity danger`
+keeps only the danger findings (`suspicious`: those and the suspicious ones),
+without a settings file; the counts and the exit code follow what is kept. The last line counts the
 findings by rule, most first. `--json` prints the
 findings, diagnostics and summary; `--sarif FILE` also writes them as SARIF
 2.1.0 for CI and code scanning.

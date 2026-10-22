@@ -223,7 +223,7 @@ namespace Cts.Agent
             {
                 if (chars[i] == '/' && i + 1 < chars.Length && chars[i + 1] == '/') { while (i < chars.Length && chars[i] != '\n') chars[i++] = ' '; }
                 else if (chars[i] == '(' && i + 1 < chars.Length && chars[i + 1] == '*') { chars[i++] = ' '; chars[i++] = ' '; while (i < chars.Length && !(text[i - 1] == '*' && text[i] == ')')) { chars[i] = chars[i] == '\n' ? '\n' : ' '; i++; } if (i < chars.Length) chars[i++] = ' '; }
-                else if (chars[i] == '\'' || chars[i] == '"') { var quote = chars[i++]; while (i < chars.Length && chars[i] != quote) { if (chars[i] != '\n') chars[i] = ' '; i++; } if (i < chars.Length) i++; }
+                else if (chars[i] == '\'' || chars[i] == '"') { var end = StText.StringEnd(text, i); for (i++; i < end - 1; i++) if (chars[i] != '\n') chars[i] = ' '; i = end; }
                 else i++;
             }
             return new string(chars);
