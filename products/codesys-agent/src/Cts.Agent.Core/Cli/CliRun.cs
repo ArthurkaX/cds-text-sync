@@ -427,7 +427,7 @@ namespace Cts.Cli
             Group("IDE and its state", "ping", "status", "agent list", "dialog", "dialog answer", "read-log", "permissions", "project new", "project open", "project close", "project list"),
             Group("folder and IDE", "export", "compare", "import", "sync", "save", "set-sync-folder", "new", "fmt", "tool"),
             Group("git", "branch", "checkout", "commit", "merge", "push", "log", "project update", "open", "hook"),
-            Group("project", "project-tree", "read-object", "project list-devices", "project device-types", "project change-device", "project simulate", "project set-credentials", "lib", "lib set", "lib add", "lib remove"),
+            Group("project", "project-tree", "read-object", "project list-devices", "project device-types", "project change-device", "project simulate", "project set-credentials", "lib", "lib set", "lib add", "lib redirect", "lib remove"),
             Group("build and PLC", "build", "verify", "test", "scan", "connect", "download", "disconnect", "start", "stop", "reset", "boot-app", "wait-ready", "plc-log", "plc-crc", "plc-crc-headless",
                 "plc info", "plc ls", "plc get", "plc put", "plc rm", "plc mkdir", "plc mv"),
             Group("variables", "read", "write", "snapshooter tree", "snapshooter take", "snapshooter diff", "snapshooter restore"),

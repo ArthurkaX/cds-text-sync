@@ -363,7 +363,8 @@ namespace Cts.Docs
         // by its namespace or by its library's name (Standard.TON), with what is
         // documented below it (TON.Method; a library's or namespace's name alone
         // shows all of it). Without a match, `near` has up to 10 names that hold
-        // its last part.
+        // its last part and `installed_in` the installed libraries that hold an
+        // object so called (one a referenced library depends on, say).
         internal static IDictionary<string, object> Show(string view, string libraries, string name)
         {
             var wanted = name.Trim();
@@ -390,6 +391,7 @@ namespace Cts.Docs
             if (found.Count == 0)
             {
                 data["near"] = near.Take(10).Cast<object>().ToList();
+                data["installed_in"] = (LibraryRepository.Holding(libraries, new[] { last }).TryGetValue(last, out var holders) ? holders : new List<string>()).Cast<object>().ToList();
                 data["undocumented"] = entries.Where(entry => entry.Missing != null && LibDoc.Explained.ContainsKey(entry.Missing))
                     .Select(entry => (object)(entry.Reference.Name + ", " + entry.Reference.Version + ": " + LibDoc.Explained[entry.Missing])).Distinct().ToList();
             }

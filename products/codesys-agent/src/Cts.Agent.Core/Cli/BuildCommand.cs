@@ -83,8 +83,29 @@ namespace Cts.Cli
                     data["qualified_only"] = namespaces.Cast<object>().ToList();
                 }
             }
+            if (unknown > 0) Unknowns(call, messages, data);
             if (previous != null) data["previous_application"] = previous;
             return data;
+        }
+
+        // What says where the unknown names are: the installed libraries that
+        // hold a bare one, and the Library Manager's lines on a library it could
+        // not open (a placeholder the device resolves to a version not installed).
+        static void Unknowns(CliCall call, List<IDictionary<string, object>> messages, IDictionary<string, object> data)
+        {
+            var names = messages.Where(m => Severity(Value(m, "severity")) == "error")
+                .Select(m => UnknownName.Match(Convert.ToString(Value(m, "text"), CultureInfo.InvariantCulture) ?? ""))
+                .Where(match => match.Success && !match.Groups["name"].Value.Contains(".")).Select(match => match.Groups["name"].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToList();
+            var holding = Docs.LibraryRepository.Holding(call.Options.Text("libraries") ?? Docs.DocsBundle.DefaultLibraries, names);
+            if (holding.Count > 0)
+                data["defined_in"] = names.Where(holding.ContainsKey).ToDictionary(name => name, name => (object)holding[name].Cast<object>().ToList());
+            IDictionary<string, object> log;
+            try { log = call.Call("messages.read", new Dictionary<string, object> { ["category"] = "Library Manager" }, Math.Min(call.Seconds, 10)); }
+            catch (CliFailure) { return; }
+            var failures = Items(log, "messages").Select(line => Convert.ToString(line, CultureInfo.InvariantCulture) ?? "")
+                .Where(line => line.IndexOf("Could not open library", StringComparison.OrdinalIgnoreCase) >= 0).Distinct().Take(5).ToList();
+            if (failures.Count > 0) data["library_failures"] = failures.Cast<object>().ToList();
         }
 
         // The referenced libraries whose installed files are newer than the IDE:
@@ -105,7 +126,7 @@ namespace Cts.Cli
         }
 
         static readonly System.Text.RegularExpressions.Regex UnknownName =
-            new System.Text.RegularExpressions.Regex(@"^\s*(Unknown type: '|Identifier '[^']*' not defined)");
+            new System.Text.RegularExpressions.Regex(@"^\s*(Unknown type: '(?<name>[^']*)'|Identifier '(?<name>[^']*)' not defined)");
 
         // The namespaces of the libraries the sync folder's Library Manager of
         // *application* (any Library Manager when none is in a folder of that
@@ -231,6 +252,16 @@ namespace Cts.Cli
             if (Value(data, "qualified_only") is IEnumerable<object> qualified)
                 answer.Detail(Value(data, "unknown_names") + " errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): "
                     + string.Join(", ", qualified) + ". Write the prefix, or cts lib set NAMESPACE --qualified-only off, then cts import");
+            if (Value(data, "defined_in") is IDictionary<string, object> definedIn)
+                foreach (var pair in definedIn)
+                {
+                    var holders = ((IEnumerable<object>)pair.Value).Select(holder => Convert.ToString(holder, CultureInfo.InvariantCulture)).ToList();
+                    answer.Detail(pair.Key + " is in " + string.Join(", ", holders) + ". Next: " + Docs.LibraryRepository.AddHint(holders[0])
+                        + " if the project does not reference it yet, then cts import");
+                }
+            if (Value(data, "library_failures") is IEnumerable<object> failures)
+                answer.Detail("The Library Manager could not open a library: " + string.Join("; ", failures)
+                    + ". A placeholder resolves to a version not installed: cts lib redirect PLACEHOLDER \"Name, Version (Vendor)\" fixes it, then cts import");
             foreach (var item in Rows(errors, 12, "", "errors")) answer.Detail(item);
             foreach (var item in Rows(warnings, errors.Count > 0 ? 5 : 15, "warning ", "warnings")) answer.Detail(item);
             if (errors.Count > 0 || Equals(Value(data, "diagnostics_complete"), false) || data.ContainsKey("install_error")) answer.Failed();

@@ -239,6 +239,29 @@ END_ACTION
             Assert.Contains("no referenced library documents TO; names that hold it: TON.", output);
         }
 
+        // A type of a library a referenced one depends on has no page; the
+        // repository's browsercache says which installed library holds it.
+        [Fact]
+        public void Show_names_the_installed_library_that_holds_a_name_no_page_documents()
+        {
+            Project();
+            void Cache(string version, string nodes)
+            {
+                var directory = Path.Combine(libraries, "Managed Libraries", "System", "SysTypes2 Interfaces", version);
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "browsercache"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Library Name=\"SysTypes2 Interfaces, " + version + " (System)\">" + nodes + "</Library>");
+            }
+            Cache("3.5.4.0", "<Node Name=\"RTS_IEC_HANDLE\" /><Node Name=\"FB_Timer\"><Node Name=\"Execute\" /></Node>");
+            Cache("3.5.10.0", "<Node Name=\"RTS_IEC_HANDLE\" />");
+            var workspace = Path.Combine(folder, "sync");
+
+            var (code, output, _) = CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries, "--show", "RTS_IEC_HANDLE");
+
+            Assert.Equal(1, code);
+            Assert.Contains("\nRTS_IEC_HANDLE is in SysTypes2 Interfaces, 3.5.10.0 (System), installed on this PC. Next: cts lib add \"SysTypes2 Interfaces, * (System)\" if the project does not reference it yet, then cts docs --show RTS_IEC_HANDLE", output);
+            Assert.DoesNotContain(" is in ", CliTests.RunLocal("docs", "--workspace", workspace, "--libraries", libraries, "--show", "Execute").output);
+        }
+
         // CODESYS writes pages only for a library in reStructuredText, and
         // only once a Library Manager shows it: its projectinfo says which.
         [Fact]

@@ -58,6 +58,10 @@ namespace Cts.Cli
                 var near = (IList<object>)data["near"];
                 shown.Failed().Detail("no referenced library documents " + show + (near.Count > 0 ? "; names that hold it: " + string.Join(", ", near) : "")
                     + ". cts docs writes every referenced library's page, and its index.md names the libraries with no LibDoc on this PC");
+                var installed = (IList<object>)data["installed_in"];
+                if (installed.Count > 0)
+                    shown.Detail(Snapshot.LastSegment((string)show) + " is in " + string.Join(", ", installed) + ", installed on this PC. Next: "
+                        + LibraryRepository.AddHint((string)installed[0]) + " if the project does not reference it yet, then cts docs --show " + show);
                 foreach (var library in (IList<object>)data["undocumented"]) shown.Detail("no pages for " + library);
                 return shown;
             }

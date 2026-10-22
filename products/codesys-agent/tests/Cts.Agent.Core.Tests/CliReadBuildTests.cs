@@ -286,6 +286,46 @@ namespace Cts.Agent.Tests
             finally { Directory.Delete(folder, true); }
         }
 
+        // An unknown name comes with the installed libraries that hold it, and
+        // an unknown namespace with the Library Manager's lines on a library it
+        // could not open.
+        [Fact]
+        public void Build_names_the_library_that_holds_an_unknown_name_and_one_that_did_not_load()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "cts-build-lib-" + Guid.NewGuid().ToString("N"));
+            var libraries = Path.Combine(folder, "codesys");
+            foreach (var (name, version) in new[] { ("ISysTypes2", "3.5.0.0"), ("SysTypes2 Interfaces", "3.5.4.0") })
+            {
+                var cache = Path.Combine(libraries, "Managed Libraries", "System", name, version);
+                Directory.CreateDirectory(cache);
+                File.WriteAllText(Path.Combine(cache, "browsercache"), "<Library Name=\"" + name + ", " + version + " (System)\"><Node Name=\"RTS_IEC_HANDLE\" /></Library>");
+            }
+            try
+            {
+                var host = new FakeHost();
+                host.Agents[1] = Agent(Path.Combine(folder, "Plant.project"), folder, (method, p) => method == "messages.read"
+                    ? new Dictionary<string, object>
+                    {
+                        { "messages", new object[] { "Library 'CAA File' loaded", "Could not open library '#CAA Async Manager'. Library 'CAA Async Manager, 3.5.17.0 (CAA Technical Workgroup)' is not installed" } },
+                    }
+                    : new Dictionary<string, object>
+                    {
+                        { "application", "Application" }, { "compiled", true },
+                        { "messages", new object[]
+                            {
+                                new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0077" }, { "text", "Unknown type: 'RTS_IEC_HANDLE'" }, { "object", "PRG" } },
+                                new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0046" }, { "text", "Identifier 'ASM.STATE' not defined" }, { "object", "PRG" } },
+                            } },
+                    });
+                var (code, output, _) = Run(host, "build", "--libraries", libraries);
+                Assert.Equal(1, code);
+                Assert.Contains("\nRTS_IEC_HANDLE is in SysTypes2 Interfaces, 3.5.4.0 (System), ISysTypes2, 3.5.0.0 (System). Next: cts lib add \"SysTypes2 Interfaces, * (System)\" if the project does not reference it yet, then cts import\n", output);
+                Assert.Contains("\nThe Library Manager could not open a library: Could not open library '#CAA Async Manager'. Library 'CAA Async Manager, 3.5.17.0 (CAA Technical Workgroup)' is not installed. A placeholder resolves", output);
+                Assert.DoesNotContain("CAA File", output);
+            }
+            finally { Directory.Delete(folder, true); }
+        }
+
         // A library installed again while the IDE runs is not loaded again:
         // unknown names then come with the libraries newer than the IDE.
         [Fact]

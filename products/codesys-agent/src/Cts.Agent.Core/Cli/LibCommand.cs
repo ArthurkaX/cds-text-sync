@@ -25,6 +25,8 @@ namespace Cts.Cli
         static readonly Regex Identifier = new Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
         static readonly Regex Newest = new Regex(@"^\s*(?<name>[^,]+?),\s*\*\s*\((?<vendor>[^()]+)\)\s*$");
 
+        static readonly CliOption Libraries = CliOption.Text("--libraries", "libraries", "DIR", @"The CODESYS library root (default: C:\ProgramData\CODESYS)");
+
         static readonly CliOption[] Where =
         {
             CliOption.Text("--workspace", "workspace", "DIR", "The sync folder (default: the one around the current folder)"),
@@ -41,7 +43,7 @@ namespace Cts.Cli
                     + "front (Standard.TON), and for a direct reference to version * the newest version installed on this PC, which "
                     + "CODESYS takes: CODESYS versions on one PC share the library repository, so it can be one an older CODESYS cannot "
                     + "compile. cts lib set, add and remove change the files; cts import then loads them in the IDE.",
-                Options = Where.Concat(new[] { CliOption.Text("--libraries", "libraries", "DIR", @"The CODESYS library root (default: C:\ProgramData\CODESYS)") }).ToArray(),
+                Options = Where.Concat(new[] { Libraries }).ToArray(),
                 LocalExecute = List, Build = BuildList,
             },
             new CliCommand
@@ -59,17 +61,29 @@ namespace Cts.Cli
                 Name = "lib", Sub = "add", Summary = "Reference a library on disk",
                 Description = "Adds \"Name, Version (Vendor)\" (version * for the newest installed) to the application's Library Manager "
                     + "as a direct reference, or through --placeholder, which lets the device pick the version (CAA Net Base Services "
-                    + "goes through CAA NetBaseSrv); --namespace is the prefix its names take (the library's documentation names it, cts docs "
-                    + "--show). With several applications --app picks one; a project with none (a new library) gets one at its root. cts import "
-                    + "then loads the library; it names one that does not load.",
+                    + "goes through CAA NetBaseSrv); --namespace is the prefix its names take, by default the one the installed library "
+                    + "names, as the Library Manager offers it. With several applications --app picks one; a project with none (a new library) "
+                    + "gets one at its root. cts import then loads the library; it names one that does not load.",
                 Arguments = "LIBRARY", ArgumentLimit = 1, ArgumentHelp = "\"Name, Version (Vendor)\", e.g. \"CAA Net Base Services, * (CAA Technical Workgroup)\"",
                 Options = Where.Concat(new[]
                 {
-                    CliOption.Needed("--namespace", "namespace", "NS", "The namespace its names take, e.g. NBS"),
+                    CliOption.Text("--namespace", "namespace", "NS", "The namespace its names take, e.g. NBS (default: the library's own)"),
                     CliOption.Switch("--qualified-only", "qualified_only", "Its names need the namespace in front"),
                     CliOption.Text("--placeholder", "placeholder", "NAME", "Reference it through this placeholder; the library is its default resolution"),
+                    Libraries,
                 }).ToArray(),
                 LocalExecute = Add, Build = Edited,
+            },
+            new CliCommand
+            {
+                Name = "lib", Sub = "redirect", Summary = "Fix the library a placeholder resolves to, on disk",
+                Description = "Sets the Library Manager's placeholder redirection: PLACEHOLDER resolves to LIBRARY (\"Name, Version (Vendor)\") "
+                    + "in this application, wherever it is referenced, the project or a library it uses; without LIBRARY the redirection "
+                    + "goes and the device's resolution applies again. With several applications --app picks one. cts lib lists the "
+                    + "redirections; cts import then loads the change in the IDE.",
+                Arguments = "PLACEHOLDER [LIBRARY]", ArgumentLimit = 2,
+                ArgumentHelp = "The placeholder, then \"Name, Version (Vendor)\", e.g. Standard \"Standard, 3.5.17.0 (System)\"",
+                Options = Where, LocalExecute = Redirection, Build = Edited,
             },
             new CliCommand
             {
@@ -95,13 +109,24 @@ namespace Cts.Cli
                 + (QualifiedOnly ? "  qualified-only" : "") + (Resolved != null ? "  * is " + Resolved + " here" : "");
         }
 
+        // An entry of the PlaceholderRedirectionTable: the library a
+        // placeholder resolves to in this application, whoever references it.
+        sealed class Redirect
+        {
+            internal int Start, End;
+            internal string Placeholder, Library;
+
+            internal string Line() => "placeholder " + Placeholder + " -> " + Library;
+        }
+
         sealed class Manager
         {
             internal string File, Relative, App;
             internal bool Bom;
             internal List<string> Lines;
             internal List<Item> Items = new List<Item>();
-            internal int ListEnd = -1;
+            internal List<Redirect> Redirects = new List<Redirect>();
+            internal int ListEnd = -1, TableStart = -1, TableEnd = -1;
 
             internal void Save()
             {
@@ -179,6 +204,20 @@ namespace Cts.Cli
                 if (item.End >= 0) manager.Items.Add(item);
             }
             if (!list.IsEmpty) manager.ListEnd = Closing(manager.Lines, ((IXmlLineInfo)list).LineNumber - 1, "</List>");
+            var table = list.Parent.Elements("Dictionary").FirstOrDefault(element => (string)element.Attribute("Name") == "PlaceholderRedirectionTable");
+            if (table == null) return manager;
+            manager.TableStart = ((IXmlLineInfo)table).LineNumber - 1;
+            if (!table.IsEmpty) manager.TableEnd = Closing(manager.Lines, manager.TableStart, "</Dictionary>");
+            foreach (var entry in table.Elements("Entry"))
+            {
+                var start = ((IXmlLineInfo)entry).LineNumber - 1;
+                var redirect = new Redirect
+                {
+                    Start = start, End = Closing(manager.Lines, start, "</Entry>"),
+                    Placeholder = ((string)entry.Element("Key") ?? "").Trim(), Library = ((string)entry.Element("Value") ?? "").Trim(),
+                };
+                if (redirect.End >= 0) manager.Redirects.Add(redirect);
+            }
             return manager;
         }
 
@@ -209,6 +248,10 @@ namespace Cts.Cli
                         ["kind"] = item.Kind, ["library"] = item.Library, ["placeholder"] = item.Placeholder, ["namespace"] = item.Namespace,
                         ["qualified_only"] = item.QualifiedOnly, ["resolved"] = item.Resolved, ["line"] = item.Line(),
                     }).ToList(),
+                    ["redirects"] = manager.Redirects.Select(redirect => (object)new Dictionary<string, object>
+                    {
+                        ["placeholder"] = redirect.Placeholder, ["library"] = redirect.Library, ["line"] = redirect.Line(),
+                    }).ToList(),
                 }).ToList(),
             };
         }
@@ -222,6 +265,7 @@ namespace Cts.Cli
             {
                 answer.Detail(manager["file"] + ":");
                 foreach (IDictionary<string, object> item in (IList<object>)manager["libraries"]) answer.Detail("  " + item["line"]);
+                foreach (IDictionary<string, object> redirect in (IList<object>)manager["redirects"]) answer.Detail("  " + redirect["line"]);
             }
             return answer;
         }
@@ -276,7 +320,15 @@ namespace Cts.Cli
             var library = Argument(options, "lib-add", "LIBRARY").Trim();
             if (!Resolution.IsMatch(library))
                 throw new CliFailure("lib-add", "usage", "LIBRARY is \"Name, Version (Vendor)\", e.g. \"CAA Net Base Services, * (CAA Technical Workgroup)\"", "cts lib add --help", 2);
-            var ns = options.Text("namespace").Trim();
+            var parts = Docs.LibraryReferences.Parse(library);
+            var root = options.Text("libraries") ?? Docs.DocsBundle.DefaultLibraries;
+            var folder = InstalledFolder(root, parts[0], parts[1], parts[2]);
+            var own = folder == null ? null : Docs.LibraryRepository.DefaultNamespace(folder);
+            var ns = options.Text("namespace")?.Trim() ?? own;
+            if (ns == null)
+                throw new CliFailure("lib-add", "usage", folder == null
+                    ? library + " is not installed under " + root + ", so its namespace is unknown: give --namespace"
+                    : library + " names no default namespace: give --namespace (its documentation names the prefix, cts docs --show)", "cts lib add --help", 2);
             if (!Identifier.IsMatch(ns)) throw new CliFailure("lib-add", "usage", "--namespace is an identifier, e.g. NBS", "cts lib add --help", 2);
             var managers = Managers(options, work, "lib-add", true);
             if (managers.Count > 1)
@@ -323,7 +375,55 @@ namespace Cts.Cli
             }).Select(line => line + cr);
             target.Lines.InsertRange(target.ListEnd, block);
             target.Save();
-            return new Dictionary<string, object> { ["changed"] = new List<object> { target.Relative + ": " + library + (placeholder == null ? "" : " through placeholder " + placeholder) } };
+            var named = ns == own ? " (the library's own)" : own != null ? " (the library's own is " + own + ")" : "";
+            return new Dictionary<string, object> { ["changed"] = new List<object> { target.Relative + ": " + library + (placeholder == null ? "" : " through placeholder " + placeholder) + ", namespace " + ns + named } };
+        }
+
+        static IDictionary<string, object> Redirection(CliOptions options, IAgentHost host, string work)
+        {
+            var placeholder = Argument(options, "lib-redirect", "PLACEHOLDER").Trim();
+            var library = options.Arguments.Count > 1 ? options.Arguments[1].Trim() : null;
+            if (placeholder.Length == 0) throw new CliFailure("lib-redirect", "usage", "PLACEHOLDER names the placeholder, e.g. Standard", "cts lib redirect --help", 2);
+            if (library != null && !Resolution.IsMatch(library))
+                throw new CliFailure("lib-redirect", "usage", "LIBRARY is \"Name, Version (Vendor)\", e.g. \"Standard, 3.5.17.0 (System)\"", "cts lib redirect --help", 2);
+            var managers = Managers(options, work, "lib-redirect");
+            if (managers.Count > 1)
+                throw new CliFailure("lib-redirect", "several Library Managers", "several Library Managers: pick one with --app (" + string.Join(", ", managers.Select(manager => manager.App)) + ")", "cts lib", 1);
+            var target = managers[0];
+            if (target.TableStart < 0) throw new CliFailure("lib-redirect", "no redirection table", target.Relative + " has no placeholder redirection table", "cts lib", 1);
+            var old = target.Redirects.FirstOrDefault(redirect => redirect.Placeholder.Equals(placeholder, StringComparison.OrdinalIgnoreCase));
+            if (old != null && library != null && old.Library == library || old == null && library == null)
+                return new Dictionary<string, object> { ["changed"] = new List<object>() };
+            var at = old?.Start ?? target.TableEnd;
+            if (old != null) target.Lines.RemoveRange(old.Start, old.End - old.Start + 1);
+            if (library != null)
+            {
+                var table = target.Lines[target.TableStart];
+                var cr = table.EndsWith("\r", StringComparison.Ordinal) ? "\r" : "";
+                var indent = Indent(table) + "  ";
+                if (at < 0)
+                {
+                    // <Dictionary ... /> opens to take its first entry.
+                    var open = table.TrimEnd('\r').TrimEnd();
+                    target.Lines[target.TableStart] = open.Substring(0, open.Length - 2).TrimEnd() + ">" + cr;
+                    at = target.TableStart + 1;
+                    target.Lines.Insert(at, Indent(table) + "</Dictionary>" + cr);
+                }
+                target.Lines.InsertRange(at, new[]
+                {
+                    indent + "<Entry>",
+                    indent + "  <Key>",
+                    indent + "    <Single Type=\"string\">" + Escaped(placeholder) + "</Single>",
+                    indent + "  </Key>",
+                    indent + "  <Value>",
+                    indent + "    <Single Type=\"string\">" + Escaped(library) + "</Single>",
+                    indent + "  </Value>",
+                    indent + "</Entry>",
+                }.Select(line => line + cr));
+            }
+            target.Save();
+            var line = target.Relative + ": placeholder " + placeholder + (library != null ? " -> " + library : " no longer redirected (was " + old.Library + ")");
+            return new Dictionary<string, object> { ["changed"] = new List<object> { line } };
         }
 
         static IDictionary<string, object> Remove(CliOptions options, IAgentHost host, string work)
