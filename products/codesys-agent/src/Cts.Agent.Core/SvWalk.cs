@@ -1,7 +1,8 @@
 // The order and placement of a structured view's entries in an export: a
 // depth-first walk of the view's nodes in children order, each entry carrying
-// the display names of its ancestors (Path -- "PLC Logic" even when the object
-// is named "Plc Logic"), its parent node's object and whether it is a root.
+// its ancestors' object names (Path -- "Plc Logic", not the label "PLC Logic",
+// which another IDE spells otherwise, so a file reads the same from every PC),
+// its parent node's object and whether it is a root.
 // The same nodes also make `project.tree` (Tree).  The IDE's node type is
 // reached through the delegates, so the walk itself is tested on Linux
 // against plain stand-ins.
@@ -78,7 +79,7 @@ namespace Cts.Agent
                 Path = path.ToArray(),
                 Index = access.IndexOf == null ? -1 : access.IndexOf(node),
             };
-            path.Add(access.NameOf(node) ?? "");
+            path.Add((access.ObjectNameOf == null ? null : access.ObjectNameOf(node)) ?? access.NameOf(node) ?? "");
             foreach (var child in access.ChildrenOf(node) ?? new object[0])
                 foreach (var placement in Visit(child, access, guid, path))
                     yield return placement;

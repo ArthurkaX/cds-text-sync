@@ -10,7 +10,7 @@ namespace Cts.Agent.Tests
         sealed class Node
         {
             public Guid Guid = Guid.NewGuid();
-            public string Name;
+            public string Name, ObjectName;
             public int Index = -1;
             public bool TaskCall;
             public Guid Type = Guid.NewGuid();
@@ -22,6 +22,7 @@ namespace Cts.Agent.Tests
         {
             ObjectOf = n => ((Node)n).Guid,
             NameOf = n => ((Node)n).Name,
+            ObjectNameOf = n => ((Node)n).ObjectName,
             ChildrenOf = n => ((Node)n).Children.Cast<object>(),
             IndexOf = n => ((Node)n).Index,
             Skip = n => ((Node)n).TaskCall,
@@ -29,11 +30,11 @@ namespace Cts.Agent.Tests
         };
 
         [Fact]
-        public void EntriesComeDepthFirstWithTheirAncestorsNamesAsPath()
+        public void EntriesComeDepthFirstWithTheirAncestorsObjectNamesAsPath()
         {
             var main = new Node("MAIN");
             var app = new Node("Application", main);
-            var logic = new Node("PLC Logic", app) { Index = 0 };
+            var logic = new Node("PLC Logic", app) { Index = 0, ObjectName = "Plc Logic" };
             var device = new Node("PLC_Stabur", logic);
 
             var placements = SvWalk.Walk(new object[] { device, new Node("GlobalTextList") }, Access).ToList();
@@ -45,7 +46,8 @@ namespace Cts.Agent.Tests
             Assert.Empty(placements[0].Path);
             Assert.False(placements[3].IsRoot);
             Assert.Equal(app.Guid, placements[3].ParentNode);
-            Assert.Equal(new[] { "PLC_Stabur", "PLC Logic", "Application" }, placements[3].Path);
+            // The object's name, not the label the IDE shows.
+            Assert.Equal(new[] { "PLC_Stabur", "Plc Logic", "Application" }, placements[3].Path);
             Assert.Equal(0, placements[1].Index);
             Assert.Equal(-1, placements[3].Index);
             // The second root starts again with an empty path.
