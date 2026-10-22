@@ -129,7 +129,25 @@ namespace Cts.Agent.Core.Tests
                 Assert.Null(cache.Get("blob", "xml"));
                 cache.Put("blob", "xml", "xml:key");
                 cache.Save();
-                Assert.Equal("blob xml xml:key", File.ReadAllText(cachePath).Trim());
+                Assert.Equal("build " + CliRun.Build() + "\nblob xml xml:key", File.ReadAllText(cachePath).Trim().Replace("\r\n", "\n"));
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        // A key an older build made for a blob may follow a rule since
+        // changed; the blob never changes, so the key would stay wrong.
+        [Fact]
+        public void KeysAnotherBuildMadeAreNotUsed()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-keys-" + System.Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var cachePath = Path.Combine(root, "content-keys");
+                File.WriteAllText(cachePath, "build other\nblob xml xml:key\n");
+                Assert.Null(new ComparePlanner.ContentKeyCache(cachePath).Get("blob", "xml"));
+                File.WriteAllText(cachePath, "build " + CliRun.Build() + "\nblob xml xml:key\n");
+                Assert.Equal("xml:key", new ComparePlanner.ContentKeyCache(cachePath).Get("blob", "xml"));
             }
             finally { Directory.Delete(root, true); }
         }

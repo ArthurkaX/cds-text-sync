@@ -342,8 +342,7 @@ namespace Cts.Sync
         // The pairs hold for the project they were found in: another project
         // file with the same object and TimeStamp can export it differently
         // (a visualization renders the library versions that project resolves).
-        // A new NativesFormat drops the pairs a cts that wrote files otherwise kept.
-        const string NativesFormat = "3.5.0";
+        // Another build of cts drops them: it may write or compare files otherwise.
 
         public static void SaveNatives(string repo, string project, IList<NativeExport> items, string view)
         {
@@ -359,7 +358,7 @@ namespace Cts.Sync
             var part = path + ".part";
             try
             {
-                File.WriteAllText(part, Json.Pretty(new Dictionary<string, object> { { "cts", NativesFormat }, { "project", project }, { "objects", objects } }) + "\n", new UTF8Encoding(false));
+                File.WriteAllText(part, Json.Pretty(new Dictionary<string, object> { { "cts", Cli.CliRun.Build() }, { "project", project }, { "objects", objects } }) + "\n", new UTF8Encoding(false));
                 SafeFile.Replace(part, path);
             }
             catch (IOException) { if (File.Exists(part)) File.Delete(part); }
@@ -372,7 +371,7 @@ namespace Cts.Sync
             try
             {
                 var data = Json.Parse(File.ReadAllText(path)) as IDictionary<string, object>;
-                return data != null && Equals(data.ContainsKey("cts") ? data["cts"] : null, NativesFormat)
+                return data != null && Equals(data.ContainsKey("cts") ? data["cts"] : null, Cli.CliRun.Build())
                     && string.Equals(Convert.ToString(data.ContainsKey("project") ? data["project"] : null), project, StringComparison.OrdinalIgnoreCase)
                     ? data["objects"] as IDictionary<string, object> ?? new Dictionary<string, object>()
                     : new Dictionary<string, object>();

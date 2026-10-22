@@ -791,7 +791,7 @@ namespace Cts.Agent.Tests
                 SyncBase.SaveNatives(root, "C:\\projects\\a.project", result.Natives, Path.Combine(root, "project-view"));
                 var cachePath = Path.Combine(RunGit(root, "rev-parse --absolute-git-dir"), "cts", "same-natives.json");
                 var cache = Json.Parse(File.ReadAllText(cachePath)) as IDictionary<string, object>;
-                Assert.Equal("3.5.0", cache["cts"]);
+                Assert.Equal(CliRun.Build(), cache["cts"]);
                 var objects = cache["objects"] as IDictionary<string, object>;
                 var stored = result.Natives.Where(native => File.Exists(Path.Combine(root, "project-view", native.Path.Replace('/', Path.DirectorySeparatorChar))))
                     .GroupBy(native => native.Guid.Trim('{', '}').ToLowerInvariant()).Select(group => group.Last()).ToList();

@@ -9,19 +9,25 @@ namespace Cts.Cli
     // Content keys: whether two files of the view hold the same content, cached by blob.
     internal static partial class ComparePlanner
     {
+        // The keys a build of cts made, "build <build>" on the first line: a
+        // new build may compare otherwise, so it starts the cache anew rather
+        // than keep a key an older rule made for a blob that never changes.
         internal sealed class ContentKeyCache
         {
             readonly string path;
             readonly Dictionary<string, string> keys = new Dictionary<string, string>(StringComparer.Ordinal);
             readonly HashSet<string> used = new HashSet<string>(StringComparer.Ordinal);
             bool dirty;
+            static string Header => "build " + CliRun.Build();
 
             internal ContentKeyCache(string path)
             {
                 this.path = path;
                 try
                 {
-                    foreach (var line in File.ReadAllLines(path))
+                    var lines = File.ReadAllLines(path);
+                    if (lines.Length == 0 || lines[0] != Header) throw new FormatException();
+                    foreach (var line in lines.Skip(1))
                     {
                         var fields = line.Split(' ');
                         if (fields.Length != 3 || fields.Any(string.IsNullOrEmpty)) throw new FormatException();
@@ -57,7 +63,7 @@ namespace Cts.Cli
                 var entries = keys.Where(entry => used.Contains(entry.Key.Substring(0, entry.Key.IndexOf(' ')))).ToList();
                 if (entries.Count > 20000) entries = entries.Skip(entries.Count - 20000).ToList();
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllLines(path, entries.Select(entry => entry.Key + " " + entry.Value));
+                File.WriteAllLines(path, new[] { Header }.Concat(entries.Select(entry => entry.Key + " " + entry.Value)));
             }
         }
 
@@ -90,7 +96,7 @@ namespace Cts.Cli
         static string ContentKeyKind(string path)
         {
             var extension = Path.GetExtension(path).ToLowerInvariant();
-            if (extension == ".xml") return "xml2";   // a new normalization rule takes a new kind, so keys cached by the old one go unused
+            if (extension == ".xml") return "xml";
             if (extension == ".st" || extension == ".csv") return "text";
             return "bytes";
         }
