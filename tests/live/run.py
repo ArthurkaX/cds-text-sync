@@ -1843,8 +1843,9 @@ def _leave_native_branch(ctx, start, original):
 
 
 def scenario_commit(ctx):
-    """M_Toggle edited in the IDE only: `cts commit` syncs the edit into its
-    file and commits it on a branch with a tag; a second commit finds nothing,
+    """M_Toggle edited in the IDE only: `cts commit` commits the disk as it
+    is and warns that the IDE differs; after `cts sync` carries the edit into
+    its file, it commits it on a branch with a tag; a second commit finds nothing,
     `cts log` lists it, and `cts checkout` of the start branch takes the edit
     out of the IDE."""
     start = ctx.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
@@ -1856,9 +1857,14 @@ def scenario_commit(ctx):
                 if item.get("guid", "").strip("{}").lower() == guid.lower()][0]["implementation"]
     _agent_call("objects.settext", {"guid": guid, "implementation": original.rstrip() + "\n// live runner: commit"})
 
+    _code, out, err = ctx.cts_ok("commit", "-m", "before the sync")
+    line = ctx.verdict(out)
+    assert "files=0" in line and "ide_differs=1" in line, line
+    assert "the IDE and the disk differ in 1 object(s)" in out + err, out + err
+    ctx.cts_ok("sync")
     _code, out, _err = ctx.cts_ok("commit", "-m", "live commit", "--tag", "live-commit-tag")
     line = ctx.verdict(out)
-    assert line.startswith("ok commit branch=live-commit") and "to_disk=1" in line, line
+    assert line.startswith("ok commit branch=live-commit") and "files=1" in line and "ide_differs" not in line, line
     assert "tag=live-commit-tag" in line, line
     committed = [path for path in ctx.git("show", "--name-only", "--format=", "HEAD").stdout.splitlines() if path]
     assert os.path.basename(ctx.st_path("M_Toggle")) in [path.rsplit("/", 1)[-1] for path in committed], committed
