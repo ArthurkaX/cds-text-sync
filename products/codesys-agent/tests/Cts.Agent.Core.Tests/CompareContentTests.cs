@@ -26,6 +26,17 @@ namespace Cts.Agent.Core.Tests
             Assert.True(ExportCommand.SameContent("A.xml", Bytes("<Root><Single Name='Comment' /></Root>"), Bytes("<Root><Single Name='Comment'></Single></Root>")));
         }
 
+        // Path names the IDE's nodes above the entry, which one IDE labels
+        // "PLC Logic" and another "Plc Logic"; the file's place says where it is.
+        [Fact]
+        public void AnEntryReadsTheSameWhateverPathItsIdeWrote()
+        {
+            const string entry = "<Single><Single Name='IsRoot'>False</Single><Single Name='Object'><Single Name='Id'>1</Single></Single>"
+                + "<Array Name='Path' Type='string'><Single Type='string'>Device</Single><Single Type='string'>Plc Logic</Single></Array></Single>";
+            Assert.True(ExportCommand.SameContent("A.xml", Bytes(entry), Bytes(entry.Replace("Plc Logic", "PLC Logic"))));
+            Assert.False(ExportCommand.SameContent("A.xml", Bytes(entry), Bytes(entry.Replace(">1<", ">2<"))));
+        }
+
         // A Library Manager saved by SP16 and exported again by SP22: the
         // versions write an unset field differently, and the content is one.
         [Fact]

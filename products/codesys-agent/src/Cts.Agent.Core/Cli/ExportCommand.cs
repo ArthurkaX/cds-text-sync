@@ -303,7 +303,8 @@ namespace Cts.Cli
             foreach (var child in element.Elements().ToList())
             {
                 var name = (string)child.Attribute("Name");
-                if ((root && name == "Index") || IgnoredXmlNames.Contains(name) || DerivedProperty(element, child)) { child.Remove(); continue; }
+                // An entry's Index and Path say where the IDE showed it; the file's place says that.
+                if ((root && (name == "Index" || name == "Path")) || IgnoredXmlNames.Contains(name) || DerivedProperty(element, child)) { child.Remove(); continue; }
                 NormalizeElement(child, false);
                 if (name != null && NoValue(child)) child.Remove();
             }
