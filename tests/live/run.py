@@ -955,7 +955,7 @@ def scenario_new_pou_import(ctx):
 def scenario_build_all_objects(ctx):
     """A new block nothing calls is left out of the compile, so its error
     builds `ok`; `cts build --all-objects` checks it too and fails, the
-    message marked not compiled, at its file and line."""
+    message marked not called by any task, at its file and line."""
     ctx.cts_ok("new", "pou", "FB_LiveUnused", "--kind", "function-block",
                "--text", "nUnknown := 1;", "--sync-folder", ctx.root)
     ctx.cleanup_hooks.append(lambda: _delete_in_ide("FB_LiveUnused"))
@@ -965,7 +965,7 @@ def scenario_build_all_objects(ctx):
     code, out, err = ctx.cts("build", "--all-objects")
     # cts new writes the header, VAR, END_VAR and the marker: the body is line 5.
     expected = "[C0046] Identifier 'nUnknown' not defined (in FB_LiveUnused at project-view/PLC_Stabur/" \
-               "Plc Logic/Application/FB_LiveUnused.st:5:1, not compiled)"
+               "Plc Logic/Application/FB_LiveUnused.st:5:1, not called by any task)"
     assert code != 0 and expected in out, out + err
     return "plain build ok, --all-objects: {0}".format(ctx.verdict(out))
 
