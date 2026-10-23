@@ -15,8 +15,8 @@ namespace Cts.Sync
         internal XElement Entry;
         internal List<string> Parts(ProjectModel model)
         {
-            var result = DisplayPath.Where(p => p.Length != 0).Select(model.SafeComponent).ToList();
-            result.Add(model.SafeComponent(OutputName ?? Name));
+            var result = DisplayPath.Where(p => p.Length != 0).Select(ProjectModel.SafeComponent).ToList();
+            result.Add(ProjectModel.SafeComponent(OutputName ?? Name));
             if (model.HasCollision(this)) result[result.Count - 1] += "__" + Guid.Substring(0, 8);
             return result;
         }
@@ -44,7 +44,7 @@ namespace Cts.Sync
         internal string Namespace;
         static readonly HashSet<string> Collapsed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             "6f9dac99-8de1-4efc-8465-68ac443b7d08", "6654496c-404d-479a-aad2-8551054e5f1e" };
-        internal string SafeComponent(string value)
+        internal static string SafeComponent(string value)
         {
             var safe = new StringBuilder(value ?? "object");
             for (var i = 0; i < safe.Length; i++)

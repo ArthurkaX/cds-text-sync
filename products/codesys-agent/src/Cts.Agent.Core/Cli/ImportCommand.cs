@@ -482,8 +482,8 @@ namespace Cts.Cli
             internal string Type;
         }
 
-        // Keyed by path, where same-named siblings share one key; pathByGuid
-        // keeps each of them.
+        // Keyed by view path, each name as its file names it ("A/B" is A_B),
+        // where same-named siblings share one key; pathByGuid keeps each of them.
         static Dictionary<string, TreeObject> TreeObjects(IDictionary<string, object> tree, out Dictionary<string, string> pathByGuid)
         {
             var result = new Dictionary<string, TreeObject>(StringComparer.OrdinalIgnoreCase);
@@ -497,7 +497,7 @@ namespace Cts.Cli
             if (!node.TryGetValue("children", out var raw) || !(Items(raw) is var children && children.Any())) return;
             foreach (var child in children)
             {
-                var name = Convert.ToString(child.ContainsKey("object_name") ? child["object_name"] : child["name"]);
+                var name = ProjectModel.SafeComponent(Convert.ToString(child.ContainsKey("object_name") ? child["object_name"] : child["name"]));
                 var type = child.ContainsKey("type") ? Convert.ToString(child["type"]) : null;
                 // Keyed by view path: a project-level text list, library manager, ... sits under POUs/ there.
                 var childPath = (path.Count == 0 && SnapshotReader.UnderPous(type) ? new[] { "POUs" } : path).Concat(new[] { name }).ToList();

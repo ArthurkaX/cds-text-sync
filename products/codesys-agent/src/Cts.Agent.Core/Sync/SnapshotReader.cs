@@ -132,8 +132,8 @@ namespace Cts.Sync
                 var parent = ParentOf(model, node);
                 var recorded = node.DisplayPath.Where(p => p.Length > 0).ToList();
                 if (parent == null || recorded.Count == 0) continue;
-                var derived = parent.DisplayPath.Where(p => p.Length > 0).Select(model.SafeComponent)
-                    .Concat(new[] { model.SafeComponent(parent.OutputName ?? parent.Name) }).ToList();
+                var derived = parent.DisplayPath.Where(p => p.Length > 0).Select(ProjectModel.SafeComponent)
+                    .Concat(new[] { ProjectModel.SafeComponent(parent.OutputName ?? parent.Name) }).ToList();
                 var shared = Math.Min(recorded.Count, derived.Count);
                 if (recorded.Count != derived.Count && !recorded.Take(shared).SequenceEqual(derived.Take(shared), StringComparer.OrdinalIgnoreCase)) continue;
                 SetPath(node, derived.Take(recorded.Count).Concat(recorded.Skip(derived.Count)));

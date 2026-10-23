@@ -675,6 +675,31 @@ namespace Cts.Agent.Tests
             Assert.False(result.ContainsKey("refused"), Json.Pretty(result));
         }
 
+        // A name the file system cannot hold ("PLC/Stabur") is the file's
+        // PLC_Stabur; the IDE's object is found under it all the same.
+        [Fact]
+        public void Replaces_a_device_whose_name_its_folder_spells_otherwise()
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Path.Combine(view, "PLC_Stabur", ".cds-object.xml");
+            var before = Path.Combine(_root, "before.xml");
+            File.Copy(file, before);
+            var content = File.ReadAllText(file).Replace("<Single Name=\"Disable\" Type=\"bool\">False</Single>",
+                "<Single Name=\"Disable\" Type=\"bool\">True</Single>");
+            File.WriteAllText(file, content);
+            IDictionary<string, object> replace = null;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(new[] { "PLC/Stabur" });
+                if (method == "objects.replace") { replace = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.export") return NativeReply(replace == null ? before : file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.False(result.ContainsKey("refused"), Json.Pretty(result));
+            Assert.Equal("11111111-1111-1111-1111-111111111111", replace["guid"]);
+        }
+
         [Fact]
         public void A_library_the_replaced_Library_Manager_could_not_load_is_named()
         {
