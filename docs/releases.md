@@ -13,7 +13,7 @@ We maintain **stable, manually tested releases** for safe production use.
 ## Version policy
 
 - **Tags `vX.Y.Z`**: stable releases (e.g. `v3.4.1`)
-- **Tags with a suffix** (e.g. `v4.0.0-beta.2`): pre-releases; the installer
+- **Tags with a suffix** (e.g. `v4.0.0-beta.3`): pre-releases; the installer
   does not list them, `main` carries the latest (a Git clone checks out the tag)
 - **`main` branch**: the quick installer's default; now the 4.0 beta
   ([Upgrading to 4.0](upgrade-4.md))

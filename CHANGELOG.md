@@ -4,6 +4,55 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 4.0.0-beta.3 (2026-10-23)
+
+_What changes against 4.0.0-beta.2._
+
+**Upgrading: what changes**
+
+- An entry's `Path` in a native `.xml` file holds its ancestors' object names, not the labels the IDE shows (`Plc Logic`, not `PLC Logic`), so a file reads the same from every PC. The first `cts export` after the update rewrites `Path` in the native files of a repository exported where the two differ: a one-time diff to commit, with no change to the objects. `cts compare` leaves `Path` out of a native file's content, so a file another PC wrote with other labels is unchanged, not a modified one an import replaces or refuses.
+- A project's files never carry its id: `Project Information.xml` leaves `cts-project-id` out as it does `cts-source`, so the first export after the update drops that entry from it. Importing a copied folder no longer gives the copy the original's id, and `cts set-sync-folder --new-id` takes a copied folder whose `cds-text-sync.json` still names the project.
+- `cts plc-log`, `cts plc get` and `cts test` take the file to save as `--out PATH`, as `cts docs` does; `--output` is only the answer's format.
+
+**Sync and merge**
+
+- Objects whose edits on disk and in the IDE overlap open a conflict window from the quick window's `1` and `2`: it lists them, shows one side by side with the differing lines marked, and takes Disk wins, IDE wins or Merge by hand for each, or Force for all. `cts import`, `cts sync` and `cts export` take `--take [KEY=]disk|ide`, repeatable, for one object's side or every one's.
+- A text list or an `.xml` object both sides changed is merged; an overlap is a conflict carrying both texts, which `--take` settles and the conflict window shows.
+- A removed and an added object whose texts are alike are one rename: the object keeps its GUID, and its members move with it (one at its old place keeps its GUID and takes the new text, one it lost is deleted, a new one is made below it).
+- The IDE's tree is keyed by the names its files carry, so an object named `A/B` is found under `A_B`, not refused as not in the IDE; a changed native object whose file has a `__<guid>` suffix is found by its GUID when a sibling has its name.
+- A new native object at the view's top, or a project-level one in `POUs/`, goes to the project root. A plain folder whose directory left the disk with its objects is deleted, and one whose directory a move left empty goes with its objects.
+- An import or sync gives the sync base every file the disk and the IDE already agree on, so `cts build` no longer names such a file as not imported after every sync; a file only moved since the base is not named either. `cts import --dry-run` lists the folders the import would delete.
+- A project file older than the folder (saved before the last import, or a pull came since) is brought up to date, not taken for IDE edits, and `cts status` says how many commits it is behind.
+- A view read that fails is tried once more, then named as `read_failed` with its file, not refused.
+- A task call whose ObjectTypeGuid is empty (V3.5 SP20 Patch 1) is known by its class: the view leaves it out, and the calls a load adds are no IDE edit.
+
+**PLC and tests**
+
+- `cts download --online-change` changes the running application, logging in unchanged first; a change only a download can carry is refused.
+- `cts test` ends its wait on an exception, a stop or reads that stop answering, and quotes the exception; it names a boot application made on download. `--repeat N` counts every run in `passed=` and `failed=` (`per_run=` is one run's tests). `cts plc-log` hints at known runtime lines.
+- `cts read` expands a name deep in a path (`fb.array`) by its own type, an `ARRAY OF STRING(n)` to its elements.
+- `cts raw` sends a value like a GUID that starts as an out-of-range number as a string; a create into a folder names the folder (`folder_guid`).
+
+**Libraries, build and analysis**
+
+- `cts lib add` takes the library's own namespace and `--placeholder` references it through a placeholder (a project with no Library Manager gets one at its root); `cts lib redirect` fixes a placeholder's version; a reference to version `*` names the newest version installed on this PC.
+- `cts build` and `cts docs --show` name the installed library that holds an unknown name, including libraries installed after the IDE started. `cts docs` says of a library with no pages whether its comments are plain text or its pages are not written yet.
+- New `cts project new` makes an empty project or library from the installation's template, with no IDE.
+- `cts analyze` reports fewer false findings (CTS0015, CTS0035, CTS0047, CTS0050, CTS0051, CTS0091) and takes `--severity danger|suspicious|style` to keep only findings that severe or worse; new CTS0101: a `///` comment after a declaration documents the one below it.
+
+**Answers**
+
+- `cts verify --json` carries every problem of a stage (the text answer still shows the first 20 and names the rest); `cts new` and `cts verify` name their next commands as `Next:` lines, as the other commands do, and `cts new` prints its note.
+- `cts status` no longer promises an import when `cts compare` finds nothing to bring in; `cts compare` without a sync base says its counts cannot tell which side changed.
+- A command run inside another sync folder than the IDE project's warns and names the folder it works on. `cts agent list` names the `cts dialog answer` line for an IDE a dialog blocks.
+
+**Install**
+
+- `cts install` updates and checks every ScriptDir that holds an install, held files included; the warning about an agent of another build names the IDE's ScriptDir.
+- The setup archive leaves out the tests, whose paths passed Windows' 260-character limit when setup unpacked a commit from `main`.
+
+---
+
 ### Version 4.0.0-beta.2 (2026-10-20)
 
 _What changes against 4.0.0-beta.1._
