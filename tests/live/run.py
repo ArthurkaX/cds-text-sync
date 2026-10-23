@@ -106,6 +106,21 @@ class Context(object):
             )
         return code, out, err
 
+    def open_project(self, path):
+        """`cts project open --path PATH`, which must succeed.  A CODESYS
+        newer than the project's compiler asks on every load whether to update
+        it (Project Environment): answered Cancel, the project's versions kept,
+        as an engineer who does not upgrade answers it.  The open names the
+        dialog in its answer, or fails on it when it came first: then it runs again."""
+        code, out, err = self.cts("project", "open", "--path", path)
+        if "Project Environment" in out + err:
+            self.cts_ok("dialog", "answer", "--press", "Cancel")
+            if code != 0:
+                code, out, err = self.cts("project", "open", "--path", path)
+        if code != 0:
+            raise AssertionError("`cts project open --path {0}` exited {1}, not 0".format(path, code))
+        return code, out, err
+
     def verdict(self, stdout):
         """The first stdout line, which every `cts` command answers with."""
         for line in stdout.splitlines():
@@ -740,13 +755,14 @@ def scenario_project_reopen(ctx):
         empty = ctx.json_of(ctx.cts_ok("project", "list", "--json")[1])
         assert empty["count"] == 0, empty
     finally:
-        opened = ctx.json_of(ctx.cts_ok("project", "open", "--path", path, "--json")[1])
+        ctx.open_project(path)
         # The save rewrote the .project; the IDE holds what git has again.
         ctx.git("checkout", "--", ".project")
-    assert opened.get("opened") == path and "already_open" not in opened, opened
+    reopened = ctx.json_of(ctx.cts_ok("project", "list", "--json")[1])
+    assert [p["path"] for p in reopened["projects"] if p["primary"]] == [path], reopened
     again = ctx.json_of(ctx.cts_ok("project", "open", "--path", path, "--json")[1])
     assert again.get("already_open") is True, again
-    return "closed and opened {0}".format(opened.get("name"))
+    return "closed and opened {0}".format(primary[0]["name"])
 
 
 def scenario_build_errors(ctx):
@@ -824,7 +840,7 @@ def scenario_library_build(ctx):
     ctx.cts_ok("save")
     ctx.cts_ok("project", "close")
     try:
-        ctx.cts_ok("project", "open", "--path", library)
+        ctx.open_project(library)
         clean = ctx.json_of(ctx.cts_ok("build", "--json")[1])
         assert clean.get("kind") == "library" and clean.get("errors") == 0, clean
         assert clean.get("application") == "CtsLiveLib" and "installed" not in clean, clean
@@ -848,7 +864,7 @@ def scenario_library_build(ctx):
     finally:
         ctx.cts("save")   # a step that failed half-way leaves the copy changed
         ctx.cts("project", "close")
-        ctx.cts_ok("project", "open", "--path", fixture)
+        ctx.open_project(fixture)
         # The save rewrote the .project; the IDE holds what git has again.
         ctx.git("checkout", "--", ".project")
         shutil.rmtree(work, ignore_errors=True)
