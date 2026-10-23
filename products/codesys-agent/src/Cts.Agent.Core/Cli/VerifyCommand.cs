@@ -17,8 +17,8 @@ namespace Cts.Cli
     {
         const string Pass = "pass", Fail = "fail", Skipped = "skipped", Error = "error", NothingToCheck = "nothing_to_check";
         const int SchemaVersion = 2;
-        // Per stage: three hundred findings in an agent's context make the
-        // verdict less useful, not more; problem_count keeps the total.
+        // Per stage in the text answer: three hundred findings in an agent's
+        // context make the verdict less useful, not more; --json carries them all.
         const int MaxProblems = 20;
         // A reason is read by an agent: the first line, capped.
         const int MaxReason = 200;
@@ -160,9 +160,8 @@ namespace Cts.Cli
                 if (Summary.Count > 0) data["summary"] = Summary;
                 if (Problems.Count > 0)
                 {
-                    data["problems"] = Problems.Take(MaxProblems).Cast<object>().ToList();
+                    data["problems"] = Problems.Cast<object>().ToList();
                     data["problem_count"] = Problems.Count;
-                    data["truncated"] = Problems.Count > MaxProblems;
                 }
                 return data;
             }
@@ -183,12 +182,12 @@ namespace Cts.Cli
                     && Int(found, "findings") > 0)
                     answer.Detail("analyze: " + found["findings"] + " finding(s), " + string.Join(", ", Severity.All.Where(level => Int(bySeverity, level) > 0).Select(level => level + " " + bySeverity[level]))
                         + "; fails on " + found["fail_on"] + "; most: " + string.Join(", ", ((IDictionary<string, object>)found["by_rule"]).Take(4).Select(rule => rule.Key + " x" + rule.Value)));
-                foreach (var problem in Maps(stage, "problems")) answer.Detail(name + ": " + Line(problem));
-                if (Equals(Value(stage, "truncated"), true))
-                    answer.Detail(name + ": ... and " + (Int(stage, "problem_count") - MaxProblems) + " more");
+                foreach (var problem in Maps(stage, "problems").Take(MaxProblems)) answer.Detail(name + ": " + Line(problem));
+                if (Int(stage, "problem_count") > MaxProblems)
+                    answer.Detail(name + ": ... and " + (Int(stage, "problem_count") - MaxProblems) + " more, all of them in --json");
             }
             answer.Detail(Value(data, "note"));
-            foreach (var step in (Value(data, "next") as IEnumerable<object> ?? new object[0])) answer.Detail("next: " + step);
+            foreach (var step in (Value(data, "next") as IEnumerable<object> ?? new object[0])) answer.Detail("Next: " + step);
             if (Equals(data["verdict"], Fail)) answer.Failed();
             else if (!Equals(data["complete"], true)) answer.Partial();
             return answer.WithExitCode(Int(data, "exit_code"));

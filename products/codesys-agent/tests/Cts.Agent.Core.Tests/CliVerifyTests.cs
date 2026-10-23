@@ -115,7 +115,7 @@ namespace Cts.Agent.Tests
                 Assert.StartsWith("partial verify verdict=pass analyze=pass visu-sketch=skipped build=skipped\n", output);
                 Assert.Contains("build skipped: no in-IDE agent answers", output);
                 Assert.Contains("Incomplete: build delivered no verdict", output);
-                Assert.Contains("next: cts project open --path <project> --launch", output);
+                Assert.Contains("Next: cts project open --path <project> --launch", output);
 
                 var report = Report(RunLocal("verify", "--sync-folder", plant.Root, "--json").output);
                 Assert.Equal(2, Convert.ToInt32(report["schema_version"]));
@@ -138,9 +138,9 @@ namespace Cts.Agent.Tests
                 Assert.Equal(1, code);
                 Assert.StartsWith("error verify verdict=fail analyze=fail\n", output);
                 Assert.Contains("analyze: POUs/PRG_Main.st:8 [CTS0001] commented-out code: n := 0;", output);
-                Assert.Contains("next: cts analyze", output);
+                Assert.Contains("Next: cts analyze", output);
                 Assert.Contains("\nanalyze: 1 finding(s), suspicious 1; fails on suspicious; most: CTS0001 x1\n", output);
-                Assert.Contains("next: cts analyze baseline create", output);
+                Assert.Contains("Next: cts analyze baseline create", output);
                 Assert.Equal(0, RunLocal("verify", "--sync-folder", plant.Root, "--only", "analyze", "--fail-on", "danger").code);
             }
         }
@@ -163,9 +163,10 @@ namespace Cts.Agent.Tests
                 var sketches = Stage(report, "visu-sketch");
                 Assert.Equal("fail", sketches["status"]);
                 var problems = ((IList<object>)sketches["problems"]).Cast<IDictionary<string, object>>().ToList();
-                Assert.Equal(20, problems.Count);
-                Assert.True(Convert.ToInt32(sketches["problem_count"]) > 25);
-                Assert.Equal(true, sketches["truncated"]);
+                // --json carries every problem; the text answer shows the first ones.
+                Assert.True(problems.Count > 25);
+                Assert.Equal(problems.Count, Convert.ToInt32(sketches["problem_count"]));
+                Assert.Contains(" more, all of them in --json", RunLocal("verify", "--sync-folder", plant.Root, "--only", "visu-sketch").output);
                 Assert.Equal("sketch-unreadable", problems[0]["rule"]);
                 Assert.Equal(".visu/broken.svg", problems[0]["file"]);
                 Assert.Contains(problems, problem => Equals(problem["rule"], "bounds") && Equals(problem["file"], ".visu/screens/wide.svg")
@@ -187,7 +188,7 @@ namespace Cts.Agent.Tests
                 Assert.Equal(0, code);
                 Assert.StartsWith("partial verify verdict=pass build=skipped", output);
                 Assert.Contains("build skipped: the IDE differs from the sync folder (", output);
-                Assert.Contains("next: cts compare", output);
+                Assert.Contains("Next: cts compare", output);
                 Assert.DoesNotContain("app.build", plant.Asked);
             }
         }

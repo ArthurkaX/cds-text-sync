@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Cts.Agent;
 using Cts.Sync;
+using static Cts.Agent.JsonMap;
 
 namespace Cts.Cli
 {
@@ -98,7 +99,7 @@ namespace Cts.Cli
                 reportedBody = content;
                 File.WriteAllText(path, content, new UTF8Encoding(false));
             }
-            var next = member
+            var hint = member
                 ? (kind == "property" ? "Read or write " + owner + "." + objectName + " from code the task reaches, or the PLC never runs its accessors." : "Call " + owner + "." + objectName + "() from code the task reaches, or the PLC never runs it.")
                 : parent.Length == 0 ? "At the project root it is shared by every application: an application gets it once code its task calls uses it; to test it, call it from the test program and run cts test (cts guide tests)."
                 : kind == "dut" ? "Reference it from a variable in code the task calls, or the PLC never gets it."
@@ -106,7 +107,7 @@ namespace Cts.Cli
             var result = new Dictionary<string, object> {
                 { "kind", kind }, { "name", objectName }, { "parent", parent }, { "view_root", Path.GetFullPath(view) },
                 { "path", relative }, { "files", new List<string> { path } }, { "type_guid", TypeKinds.All.TypeGuid(kind) },
-                { "bytes", Encoding.UTF8.GetByteCount(reportedBody) }, { "next", new List<string> { "cts compare", "cts import", "cts build --all-objects  # checks it while nothing calls it yet; a plain build leaves it out", next } },
+                { "bytes", Encoding.UTF8.GetByteCount(reportedBody) }, { "next", new List<string> { "cts compare", "cts import", "cts build --all-objects  # checks it while nothing calls it yet; a plain build leaves it out" } }, { "hint", hint },
             };
             if (member) result["owner"] = owner;
             if (!member && kind == "pou" && Split(body).Value.Length == 0) result["note"] = "The POU was created with an empty body; add statements between the implementation marker and its END line before importing.";
@@ -127,8 +128,8 @@ namespace Cts.Cli
             var answer = new Answer();
             if (data.ContainsKey("path")) answer.Detail("Created " + data["path"]);
             if (data.TryGetValue("next", out var next) && next is IList<string> steps)
-                foreach (var step in steps) answer.Detail(step);
-            return answer;
+                foreach (var step in steps) answer.Detail("Next: " + step);
+            return answer.Detail(Value(data, "hint")).Detail(Value(data, "note"));
         }
         // A POU's or method's --text as {declaration, implementation}: the
         // VAR...END_VAR blocks it starts with are declaration, the rest is code.

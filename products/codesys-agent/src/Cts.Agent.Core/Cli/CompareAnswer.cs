@@ -65,7 +65,7 @@ namespace Cts.Cli
             answer.Add("ide_edit", lastEdit != null && lastEdit.ContainsKey("ide") ? lastEdit["ide"] : null)
                 .Add("disk_edit", lastEdit != null && lastEdit.ContainsKey("disk") ? lastEdit["disk"] : null);
             answer.Add("ide", data["ide"]);
-            if (!Equals(data["base"], true) && !other) answer.Detail("no sync base yet: cts export writes the project to disk and records it");
+            if (!Equals(data["base"], true) && !other) answer.Detail("no sync base yet: the counts say only whether the IDE and the files agree, not which side changed, and cts import refuses; cts export writes the project to disk and records the base");
             var objects = data["objects"] as IDictionary<string, object>;
             IList<IDictionary<string, object>> Rows(string category) => (objects != null && objects.ContainsKey(category) ? objects[category] as IEnumerable<IDictionary<string, object>> : null)?.ToList() ?? new List<IDictionary<string, object>>();
             foreach (var category in new[] { "modified", "added", "deleted", "not_importable", "ide_changed" }.Concat(objects != null && objects.ContainsKey("unchanged") ? new[] { "unchanged" } : new string[0]))

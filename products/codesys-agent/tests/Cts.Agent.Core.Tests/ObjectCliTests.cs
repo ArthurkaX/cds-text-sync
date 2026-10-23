@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Cts.Cli;
 using Xunit;
 
@@ -24,7 +25,7 @@ namespace Cts.Agent.Tests
                 Assert.Equal(path, ((System.Collections.Generic.List<string>)result["files"])[0]);
                 Assert.Equal("VAR_GLOBAL\n    x : BOOL;\nEND_VAR\n", File.ReadAllText(path));
                 Assert.Equal("gvl", result["kind"]);
-                Assert.DoesNotContain("cts test", string.Join("\n", (IList<string>)result["next"]));
+                Assert.DoesNotContain("cts test", (string)result["hint"]);
             }
             finally { Directory.Delete(root, true); }
         }
@@ -61,9 +62,13 @@ namespace Cts.Agent.Tests
                 Assert.Equal("FUNCTION F_Lerp : REAL\nVAR_INPUT\n    a : REAL;\n    b : REAL;\nEND_VAR\nVAR\n    k : REAL;\nEND_VAR\n// --- implementation ---\nF_Lerp := a + (b - a) * k;\nEND_FUNCTION\n",
                     File.ReadAllText(Path.Combine(root, "project-view", "F_Lerp.st")));
                 // A shared POU is tested, not downloaded.
-                var next = string.Join("\n", (IList<string>)result["next"]);
-                Assert.Contains("cts test", next);
-                Assert.DoesNotContain("download", next);
+                var hint = (string)result["hint"];
+                Assert.Contains("cts test", hint);
+                Assert.DoesNotContain("download", hint);
+                Assert.Equal(new[] { "cts compare", "cts import" }, ((IList<string>)result["next"]).Take(2));
+                var details = NewObjectCommand.Build(result).Details;
+                Assert.Contains("Next: cts import", details);
+                Assert.Contains(hint, details);
             }
             finally { Directory.Delete(root, true); }
         }

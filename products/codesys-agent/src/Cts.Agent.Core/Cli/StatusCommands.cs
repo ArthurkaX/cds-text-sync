@@ -77,7 +77,7 @@ namespace Cts.Cli
             if (Value(data, "git") is IDictionary<string, object> git) answer.Detail(GitLine(git));
             if (Value(data, "project") is string project) answer.Detail("project " + project);
             if (Value(data, "source") is string source) answer.Detail("source " + source + (Value(data, "source_behind") is long behind
-                ? ", " + behind + " commit(s) behind the folder's HEAD: the project file is older than the folder (saved before the last import, or a pull came since); cts compare names what it lacks, cts import brings it in"
+                ? ", " + behind + " commit(s) behind the folder's HEAD: the project file is older than the folder (saved before the last import, or a pull came since); cts compare names what of those commits the IDE lacks and cts import brings it in, nothing to compare means they changed nothing the IDE holds"
                 : " (the commit the IDE's code came from at its last import or commit; cts compare shows edits since)"));
             if (Equals(Value(data, "unsaved_changes"), true))
                 answer.Detail("unsaved: the IDE holds edits its project file lacks; cts compare shows whether the folder has them, cts save saves the project");
