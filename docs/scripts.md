@@ -124,6 +124,8 @@ changes until a command is chosen.
 <p><img src="../img/quick-window.png" alt="The quick window" width="380">
    <img src="../img/quick-more.png" alt="The quick window's More page" width="380"></p>
 
+<p><img src="../img/conflict-window.png" alt="The conflict window that 1 and 2 open when both sides changed the same lines" width="100%"></p>
+
 A digit, a click or the arrows and Enter run an item; a row that asks opens a
 line in the footer (Enter runs it, Esc cancels). While a command runs the
 window shows a spinner with the seconds and the stage reached, then the

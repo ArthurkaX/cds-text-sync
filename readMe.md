@@ -82,10 +82,13 @@ the important path is:
    width="420"></p>
 
 `cts compare` shows what differs between disk, the IDE and the last sync before
-either; `3` in the quick window opens the same difference in your git program:
+either; `3` in the quick window opens the same difference in your diff program.
+An object both sides changed is merged; when the edits overlap, `1` and `2`
+open the conflict window first: each such object side by side, the lines that
+differ marked, and for each **Disk wins**, **IDE wins** or **Merge by hand...**:
 
-<p><img src="img/compare-github-desktop.png"
-   alt="Compare: the IDE's changes to F_Scale.st against the disk, shown in GitHub Desktop"
+<p><img src="img/conflict-window.png"
+   alt="The conflict window: FB_Motor changed in the IDE and on disk in the same line, side by side"
    width="100%"></p>
 
 The quick window's Settings page covers the sync folder, the program
