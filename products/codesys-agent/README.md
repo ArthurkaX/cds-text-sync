@@ -11,7 +11,7 @@ process and talks to `cts` over a named pipe. Design:
 | `src/Cts.Cli` | `cts.exe`, `net48`: the `cts` command line. Every command (`Cts.Agent.Core/Cli/CliCommands.cs`) talks to the agent's pipe or works on the folder alone. |
 | `tests/Cts.Agent.Core.Tests` | xunit tests of the core; run on Linux. |
 | `loader/agent-client.ps1` | Developer client: send one request, or listen to events. |
-| `dist/` | The two DLLs and `cts.exe` prebuilt, in Git LFS: `dist\cts.exe install` deploys them, so a download needs no .NET SDK. `python tools/dist.py` rebuilds and refreshes them from the committed source, for a commit of their own: the build names the commit it came from. |
+| `dist/` | The two DLLs and `cts.exe` prebuilt, in Git LFS: `dist\cts.exe install` deploys them, so a download needs no .NET SDK. `python tools/dist.py` rebuilds and refreshes them from the committed source once the tests and checks pass, for a commit of their own: the build names the commit it came from. |
 | `tools/DeadSymbols` | Lists members nothing calls (or only tests call); `allow.txt` names the ones used by reflection or the loader. |
 | `tools/ApiCheck` | Pre-live check: compares the CODESYS types and statically named members used by the agent with an installation's assemblies. Missing names in `optional.txt` are deliberate probes with fallbacks. |
 
