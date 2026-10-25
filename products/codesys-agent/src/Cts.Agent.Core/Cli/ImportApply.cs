@@ -55,6 +55,39 @@ namespace Cts.Cli
                 return touched;
             }
 
+            // Refused when an object this import writes, deletes or renames is
+            // not as the plan read it: someone edited it in the IDE meanwhile
+            // (a merge window stays open as long as it takes), and writing the
+            // plan would lose that edit. Nothing is written yet. A plan that
+            // took the IDE for its base (the IDE's journal said nothing changed)
+            // holds no object's TimeStamp: the journal must still say so.
+            internal IDictionary<string, object> RefuseIdeEdited()
+            {
+                if (Equals(_work.Data.TryGetValue("ide", out var ide) ? ide : null, "unchanged"))
+                {
+                    var now = _call.Call("hello", new Dictionary<string, object>());
+                    return Equals(now.TryGetValue("ide_stamp", out var stamp) ? stamp : null, _call.Hello.Data.TryGetValue("ide_stamp", out var planned) ? planned : null) ? null
+                        : Refused(_call, _work.Data, "the project changed in the IDE since cts read it; nothing was written: run it again to carry that change too");
+                }
+                var touched = _work.Changed.Where(record => record.HasGuid && record.Timestamp.HasValue
+                    && (record.Category != "ide_changed" || _work.ForceRecords.Contains(record)))
+                    .GroupBy(record => record.Guid, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).ToList();
+                if (touched.Count == 0) return null;
+                var known = touched.ToDictionary(record => record.Guid, record => (object)record.Timestamp.Value, StringComparer.OrdinalIgnoreCase);
+                List<IDictionary<string, object>> exported;
+                try { exported = ExportedObjects(_call, touched.Select(record => record.Guid).ToList(), known); }
+                catch (CliFailure failure) when (failure.Message.Contains("unknown object"))
+                {
+                    return Refused(_call, _work.Data, "an object this import changes is gone from the IDE since cts read it: run it again");
+                }
+                var same = new HashSet<Guid>(exported.Where(item => Equals(item.TryGetValue("unchanged", out var flag) ? flag : null, true))
+                    .Select(item => Guid.Parse(Convert.ToString(item["guid"]))));
+                var edited = touched.Where(record => !same.Contains(Guid.Parse(record.Guid))).Select(record => record.Name).Distinct().ToList();
+                if (edited.Count == 0) return null;
+                return Refused(_call, _work.Data, "edited in the IDE since cts read it: " + string.Join(", ", edited.Take(10)) + (edited.Count > 10 ? " and " + (edited.Count - 10) + " more" : "")
+                    + "; nothing was written: run it again to carry that edit too");
+            }
+
             // --force keeps the IDE's text on refs/cts/overwritten before anything is written.
             internal IDictionary<string, object> Preserve()
             {

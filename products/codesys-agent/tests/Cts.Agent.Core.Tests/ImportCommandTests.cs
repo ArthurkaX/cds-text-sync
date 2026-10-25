@@ -164,6 +164,32 @@ namespace Cts.Agent.Tests
             Assert.False(File.Exists(StampPath()));
         }
 
+        // A plan the IDE's export gave names the object; one that took the
+        // IDE for its base (its journal stamp unchanged) has only the stamp.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void An_edit_made_in_the_IDE_after_the_plan_read_it_is_refused_before_any_write(bool exported)
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories)
+                .First(path => File.ReadAllText(path).Contains("END_PROGRAM"));
+            File.WriteAllText(file, File.ReadAllText(file).Replace("END_PROGRAM", "// disk edit\nEND_PROGRAM"));
+            var parsed = StViewReader.Read(view).Objects.First(item => Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar)) == file);
+            _editedMeanwhile = true;
+            var calls = new List<string>();
+            var failure = Assert.Throws<CliFailure>(() => ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(parsed.Path);
+                if (method == "project.export") return ExportSnapshot(args);
+                throw new InvalidOperationException("unexpected agent mutation " + method);
+            }, ideStamp: exported ? "another" : null)));
+            Assert.Equal("refused", failure.Cause);
+            Assert.StartsWith(exported ? "edited in the IDE since cts read it: " + parsed.Path.Last() + ";" : "the project changed in the IDE since cts read it;", failure.Message);
+            Assert.Equal(exported ? new[] { "project.export", "project.tree" } : new[] { "project.tree" }, calls);
+        }
+
         [Fact]
         public void ProjectUpdatePullsImportsAndSavesAnOwnersProject()
         {
@@ -208,6 +234,8 @@ namespace Cts.Agent.Tests
                     : method == "project.permissions" ? new Dictionary<string, object> { { "deny", new List<object>() } }
                     : method == "project.source" ? Marked(Convert.ToString(args["source"]))
                     : method == "project.export" ? ExportSnapshot(args)
+                    : method == "objects.export" ? Restamped((IDictionary<string, object>)args["known"])
+                    : method == "hello" ? new Dictionary<string, object> { { "ide_stamp", _stamp } }
                     : method == "project.tree" ? Tree(item.Path)
                     : method == "objects.settext" ? SetText(args, current, ref writes)
                     : method == "objects.texts" ? Texts(current, args)
@@ -299,6 +327,8 @@ namespace Cts.Agent.Tests
                     : method == "project.open" ? OpenAfterCheckingBase(args, openProject, viewFolder, item.File, publishedCommit, ref opened, ref baseWasPublishViewWhenOpened)
                     : method == "project.permissions" ? new Dictionary<string, object> { { "deny", new List<object>() } }
                     : method == "project.export" ? ExportSnapshot(args)
+                    : method == "objects.export" ? Restamped((IDictionary<string, object>)args["known"])
+                    : method == "hello" ? new Dictionary<string, object> { { "ide_stamp", _stamp } }
                     : method == "project.tree" ? Tree(item.Path)
                     : method == "objects.settext" ? SetText(args, current, ref writes)
                     : method == "objects.texts" ? Texts(current, args)
@@ -3095,8 +3125,22 @@ namespace Cts.Agent.Tests
                 ? new Dictionary<string, object> { { "plc", new Dictionary<string, object> { { "online", online } } } }
                 : method == "project.permissions" ? new Dictionary<string, object> { { "deny", (deny ?? Enumerable.Empty<string>()).Cast<object>().ToList() } }
                 : method == "project.source" ? Marked(Convert.ToString(args["source"]))
+                : method == "objects.export" && args.ContainsKey("known") ? Restamped((IDictionary<string, object>)args["known"])
+                : method == "hello" ? new Dictionary<string, object> { { "ide_stamp", _editedMeanwhile ? "edited" : ideStamp ?? _stamp } }
                 : fake(method, args))));
         }
+
+        // Someone edits every object in the IDE while an import plans.
+        bool _editedMeanwhile;
+
+        // The check before an import writes: each object as the plan read it,
+        // or restamped by _editedMeanwhile.
+        IDictionary<string, object> Restamped(IDictionary<string, object> known) => new Dictionary<string, object>
+        {
+            { "objects", known.Select(pair => (object)(_editedMeanwhile
+                ? new Dictionary<string, object> { { "guid", pair.Key }, { "timestamp", Convert.ToInt64(pair.Value) + 1 }, { "meta", "" }, { "object", "" } }
+                : new Dictionary<string, object> { { "guid", pair.Key }, { "timestamp", pair.Value }, { "unchanged", true } })).ToList() },
+        };
 
         // The labels `project.source` was given, in order.
         readonly List<string> _sources = new List<string>();

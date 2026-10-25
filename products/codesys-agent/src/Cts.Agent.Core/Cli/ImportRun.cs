@@ -31,6 +31,8 @@ namespace Cts.Cli
                 if (stop != null) return stop;
                 planner.MatchRenames();
                 planner.PlanFolderDeletes();
+                stop = apply.RefuseIdeEdited();
+                if (stop != null) return stop;
                 try
                 {
                     apply.ApplyTexts();

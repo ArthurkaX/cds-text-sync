@@ -436,7 +436,7 @@ namespace Cts.Cli
                 if (diskObject != null && ideObject == null && diskBaseParts.Count > 0) { AddRecord(records, counts, "not_importable", name, entry.File, diskObject, "changed on disk, not in the IDE", diskBaseParts); continue; }
                 var diskChanged = diskBaseParts.Count > 0; var ideChanged = ideBaseParts.Count > 0;
                 if (!diskChanged && !ideChanged) { if (all) AddRecord(records, counts, "unchanged", name, entry.File, diskObject, null, snapshotTimes: snapshotTimes); else counts["unchanged"]++; continue; }
-                if (diskChanged && !ideChanged) { if (diskObject == null) AddRecord(records, counts, "deleted", name, entry.File, baseObject, null); else AddRecord(records, counts, "modified", name, entry.File, diskObject, null, diskBaseParts, snapshotTimes: snapshotTimes); }
+                if (diskChanged && !ideChanged) { if (diskObject == null) AddRecord(records, counts, "deleted", name, entry.File, baseObject, null, snapshotTimes: snapshotTimes); else AddRecord(records, counts, "modified", name, entry.File, diskObject, null, diskBaseParts, snapshotTimes: snapshotTimes); }
                 else if (!diskChanged && ideChanged) AddRecord(records, counts, "ide_changed", name, entry.File, ideObject ?? baseObject, ideObject == null ? "deleted in the IDE; cts sync removes the file" : "changed in the IDE; cts sync writes it to disk", ideBaseParts, snapshotTimes: snapshotTimes);
                 else AddRecord(records, counts, "modified", name, entry.File, diskObject ?? ideObject, null, diskIdeParts, true, snapshotTimes);
             }

@@ -112,14 +112,17 @@ namespace Cts.Cli
 
         // `objects.export` of *guids*, every page: a reply stops once it holds
         // a few megabytes of XML and names the guids it did not export as
-        // `rest`, which are asked again until none is left.
-        internal static List<IDictionary<string, object>> ExportedObjects(CliCall call, IList<string> guids)
+        // `rest`, which are asked again until none is left. An object whose
+        // TimeStamp is still the one *known* gives it comes back `unchanged`.
+        internal static List<IDictionary<string, object>> ExportedObjects(CliCall call, IList<string> guids, IDictionary<string, object> known = null)
         {
             var objects = new List<IDictionary<string, object>>();
             var asked = guids.ToArray();
             while (asked.Length > 0)
             {
-                var reply = call.Call("objects.export", new Dictionary<string, object> { { "guids", asked } });
+                var parameters = new Dictionary<string, object> { { "guids", asked } };
+                if (known != null) parameters["known"] = known;
+                var reply = call.Call("objects.export", parameters);
                 objects.AddRange(Items(reply.ContainsKey("objects") ? reply["objects"] : null));
                 var rest = (reply.ContainsKey("rest") ? reply["rest"] as IEnumerable<object> : null)?.Select(Convert.ToString).ToArray() ?? new string[0];
                 if (rest.Length >= asked.Length)

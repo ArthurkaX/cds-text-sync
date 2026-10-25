@@ -1462,6 +1462,64 @@ def scenario_merge_import(ctx):
     return "merged=1"
 
 
+def scenario_merge_tool_ide_edit_import(ctx):
+    """M_Toggle edited on one line in the IDE and on disk: `cts import --tool`
+    opens the merge program, and while it is open the IDE's text changes once
+    more.  The import is refused before it writes anything, so that edit is not
+    lost; the next run with `--take ide` carries it to disk."""
+    guid = ctx.guid("M_Toggle")
+    texts = _agent_call("objects.texts", {"guids": [guid]})
+    ide = [item for item in texts.get("objects") or [] if item.get("guid", "").strip("{}").lower() == guid.lower()]
+    assert ide, texts
+    original = ide[0]["implementation"]
+    line = "xOpen := NOT xOpen;"
+    assert line in original, original
+    ctx.cleanup_hooks.append(lambda: _agent_call("objects.settext", {"guid": guid, "implementation": original}))
+    _agent_call("objects.settext", {"guid": guid, "implementation": original.replace(line, line + " // ide edit")})
+    st_path = ctx.st_path("M_Toggle")
+    with open(st_path, encoding="utf-8") as handle:
+        text = handle.read()
+    with open(st_path, "w", encoding="utf-8") as handle:
+        handle.write(text.replace(line, line + " // disk edit"))
+    # The merge program: the IDE edit someone makes while it is open, then
+    # the right side saved as it is.
+    tool = tempfile.mkdtemp(prefix="cts-live-tool-")
+    ctx.cleanup_hooks.append(lambda: shutil.rmtree(tool, ignore_errors=True))
+    ctx.cleanup_hooks.append(lambda: [ctx.git("config", "--unset", key) for key in ("merge.tool", "mergetool.kdiff3.path")])
+    edit = cts_command() + ["raw", "objects.settext", "--guid", json.dumps(guid),
+                            "--implementation", json.dumps(original.replace(line, line + " // late ide edit"))]
+    with open(os.path.join(tool, "edit.json"), "w", encoding="utf-8") as handle:
+        json.dump(edit, handle)
+    with open(os.path.join(tool, "tool.py"), "w", encoding="utf-8") as handle:
+        handle.write("import json, os, subprocess, sys\n"
+                     "with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'edit.json'), encoding='utf-8') as handle:\n"
+                     "    subprocess.run(json.load(handle), check=True, capture_output=True)\n"
+                     "right = sys.argv[sys.argv.index('-o') + 1]\n"
+                     "with open(right, 'rb') as handle:\n"
+                     "    data = handle.read()\n"
+                     "with open(right, 'wb') as handle:\n"
+                     "    handle.write(data)\n")
+    with open(os.path.join(tool, "tool.cmd"), "w", encoding="utf-8") as handle:
+        handle.write('@"{0}" "{1}" %*\r\n'.format(sys.executable, os.path.join(tool, "tool.py")))
+    ctx.git("config", "merge.tool", "kdiff3")
+    ctx.git("config", "mergetool.kdiff3.path", os.path.join(tool, "tool.cmd"))
+
+    code, out, err = ctx.cts("import", "--tool")
+    assert code == 1 and "edited in the IDE since cts read it: M_Toggle" in out + err, (code, out, err)
+    with open(st_path, encoding="utf-8") as handle:
+        assert line + " // disk edit" in handle.read(), "the refused import wrote the file"
+    texts = _agent_call("objects.texts", {"guids": [guid]})
+    assert "// late ide edit" in texts["objects"][0]["implementation"], texts
+    _code, out, _err = ctx.cts_ok("import", "--take", "ide")
+    assert ctx.verdict(out).startswith("ok "), out
+    with open(st_path, encoding="utf-8") as handle:
+        carried = handle.read()
+    assert line + " // late ide edit" in carried and "// disk edit" not in carried, carried
+    report = ctx.text_status()
+    assert not report["changed"], report["changed"]
+    return "refused, then take ide"
+
+
 def scenario_task_conflict_import(ctx):
     """Task.xml changed in the IDE and on disk since the base: a conflict, then --force."""
     ctx.load_objects()
@@ -1991,6 +2049,7 @@ SCENARIOS = [
     ("delete_import", scenario_delete_import),
     ("import_without_base", scenario_import_without_base),
     ("merge_import", scenario_merge_import),
+    ("merge_tool_ide_edit_import", scenario_merge_tool_ide_edit_import),
     ("sync_to_disk", scenario_sync_to_disk),
     ("sync_native_to_disk", scenario_sync_native_to_disk),
     ("sync_new_in_ide", scenario_sync_new_in_ide),
