@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Cts.Sync;
 using Xunit;
@@ -43,6 +44,18 @@ namespace Cts.Agent.Tests
             Assert.True(stamps.Delete("POUs/A.st"));
             Assert.False(stamps.Moved("POUs/A.st"));
             Assert.False(stamps.Moved("POUs/New/D.st"));
+        }
+
+        // The file beside it that a write goes through takes its place.
+        [Fact]
+        public void A_write_leaves_the_file_it_wrote_and_nothing_beside_it()
+        {
+            var stamps = ViewStamps.Take(_view);
+            Assert.True(stamps.Write("POUs/A.st", Encoding.UTF8.GetBytes("from the IDE")));
+            Assert.True(stamps.Write("POUs/C.st", Encoding.UTF8.GetBytes("new")));
+            Assert.Equal("from the IDE", File.ReadAllText(Path.Combine(_view, "POUs", "A.st")));
+            Assert.Equal(new[] { "A.st", "B.st", "C.st" }, Directory.GetFiles(Path.Combine(_view, "POUs")).Select(Path.GetFileName).OrderBy(name => name).ToArray());
+            Assert.Empty(stamps.Recheck());
         }
     }
 }

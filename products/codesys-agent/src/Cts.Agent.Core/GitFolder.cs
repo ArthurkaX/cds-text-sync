@@ -8,7 +8,7 @@ namespace Cts.Agent
 {
     public static class GitFolder
     {
-        static readonly string[] Ignore = { ".cts-docs/", "*.~u", "*.~u~", "*.opt", "*.precompilecache", "*.compileinfo", "*.compileinfo~", "*.bootinfo", "*.bootinfo_guids" };
+        static readonly string[] Ignore = { ".cts-docs/", "*.~u", "*.~u~", "*.opt", "*.precompilecache", "*.compileinfo", "*.compileinfo~", "*.bootinfo", "*.bootinfo_guids", "~cts-*.tmp" };
 
         public static IDictionary<string, object> Prepare(string syncFolder, string projectId)
         {

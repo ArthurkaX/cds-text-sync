@@ -162,7 +162,7 @@ namespace Cts.Agent.Tests
             Assert.Equal(false, result["initialized"]);
             Assert.Null(result["commit"]);
             var added = result["added"] as IDictionary<string, object>;
-            Assert.Equal(new[] { ".cts-docs/", "*.~u", "*.~u~", "*.opt", "*.precompilecache", "*.compileinfo", "*.compileinfo~", "*.bootinfo", "*.bootinfo_guids" },
+            Assert.Equal(new[] { ".cts-docs/", "*.~u", "*.~u~", "*.opt", "*.precompilecache", "*.compileinfo", "*.compileinfo~", "*.bootinfo", "*.bootinfo_guids", "~cts-*.tmp" },
                 Assert.IsType<List<string>>(added[".gitignore"]));
         }
 

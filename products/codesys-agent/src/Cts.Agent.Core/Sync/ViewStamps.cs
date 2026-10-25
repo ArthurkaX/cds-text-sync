@@ -59,13 +59,23 @@ namespace Cts.Sync
             return moved;
         }
 
-        // Writes *bytes* to *path* unless it Moved; false when it did.
+        // Writes *bytes* to *path* unless it Moved; false when it did. The
+        // bytes go to a file beside it that then takes its place: a write cut
+        // short leaves the old file whole, never half of the new one (and at
+        // worst that file beside it, which the sync folder's .gitignore names).
         internal bool Write(string path, byte[] bytes)
         {
             if (Moved(path)) return false;
             var full = Full(Relative(path));
             Directory.CreateDirectory(Path.GetDirectoryName(full));
-            File.WriteAllBytes(full, bytes);
+            var next = Path.Combine(Path.GetDirectoryName(full), "~cts-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                File.WriteAllBytes(next, bytes);
+                if (File.Exists(full)) File.Replace(next, full, null);
+                else File.Move(next, full);
+            }
+            finally { if (File.Exists(next)) File.Delete(next); }
             Saw(path, bytes);
             return true;
         }
