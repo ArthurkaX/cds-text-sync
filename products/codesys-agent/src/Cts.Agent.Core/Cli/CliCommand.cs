@@ -183,7 +183,7 @@ namespace Cts.Cli
             // The agent refuses the call when the IDE has another project open by then.
             if (Hello.ProjectPath != null) request["project_path"] = Hello.ProjectPath;
             object result;
-            try { result = _callOverride != null ? _callOverride(method, parameters) : Watched(method, request, ms); }
+            try { result = _callOverride != null ? _callOverride(method, request) : Watched(method, request, ms); }
             catch (AgentException e) { throw Failure(method, e); }
             var answer = result as IDictionary<string, object> ?? new Dictionary<string, object> { { "result", result } };
             if (answer.ContainsKey("dialogs_seen"))

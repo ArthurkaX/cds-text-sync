@@ -403,6 +403,23 @@ namespace Cts.Agent.Tests
             }
         }
 
+        // A command's tests stand in for the agent with the request the agent
+        // would get: its wait for the IDE and its project are in it.
+        [Fact]
+        public void A_stand_in_agent_gets_the_request_the_agent_would()
+        {
+            var command = CliCommands.All.Single(item => item.Name == "build");
+            var options = CliOptions.Parse(new[] { "build" }, null, command);
+            var project = new Dictionary<string, object> { { "path", @"C:\work\plant\A.project" } };
+            IDictionary<string, object> sent = null;
+            var call = new CliCall(command, options, new Hello(7144, new Dictionary<string, object> { { "project", project } }), 30,
+                (method, p) => { sent = p; return new Dictionary<string, object>(); });
+            call.Call("project.build", new Dictionary<string, object> { { "clean", true } }, 2.5);
+            Assert.Equal(true, sent["clean"]);
+            Assert.Equal(2500L, sent["start_timeout_ms"]);
+            Assert.Equal(@"C:\work\plant\A.project", sent["project_path"]);
+        }
+
         // Each call names the project its command began with; the agent that
         // has another open by then refuses it, and the command ends there.
         [Fact]
