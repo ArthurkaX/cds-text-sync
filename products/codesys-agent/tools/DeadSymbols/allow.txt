@@ -6,9 +6,6 @@ Cts.Agent.AgentHost.Menu()
 # Called by name from Menu through the AppDomain anchor: the agent running
 # may come from another build.
 Cts.Agent.AgentHost.ShowQuick()
-# Reflection: a newer agent's Start stops the one it replaces (dev.reload,
-# a redeploy); the two are different assemblies.
-Cts.Agent.AgentHost.Stop()
 # Reflection: bound with Delegate.CreateDelegate to an IDE event.
 Cts.Agent.IdeEvents.Sink.Handle(object, System.EventArgs)
 # Reflection: Ide.Handler wraps them, by name, in the IDE's login and

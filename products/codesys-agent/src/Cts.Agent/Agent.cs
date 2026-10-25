@@ -111,7 +111,7 @@ namespace Cts.Agent
                 }
                 catch (Exception e)
                 {
-                    notes = "previous agent did not stop cleanly (" + e.Message + "); ";
+                    notes = "previous agent did not stop cleanly (" + (e.InnerException ?? e).Message + "); ";
                 }
             }
             var host = new AgentHost(logPath, options);
@@ -119,36 +119,62 @@ namespace Cts.Agent
                 + " clr=" + Environment.Version + " 64bit=" + Environment.Is64BitProcess
                 + " version=" + Cts.Cli.CliRun.Build()
                 + " asm=" + typeof(AgentHost).Assembly.Location);
-            if (!host._noEvents)
+            try
             {
-                host._online.Start();
-                host._objectEvents.Start();
+                if (!host._noEvents)
+                {
+                    host._online.Start();
+                    host._objectEvents.Start();
+                }
+                else host._log.Write("online and object events disabled by option no-events");
+                host._modalWatcher.Start();
+                host._pipe.Start();
+                host._widget.Start();
+                host._mirror.Start();
             }
-            else host._log.Write("online and object events disabled by option no-events");
-            host._modalWatcher.Start();
-            host._pipe.Start();
-            host._widget.Start();
-            host._mirror.Start();
+            catch (Exception e)
+            {
+                // No part keeps running when another did not start: nothing
+                // would stop it, as the next start finds no agent here.
+                host._log.Write("start failed: " + e);
+                try { host.Stop(); }
+                catch (Exception stop) { host._log.Write("stop after the failed start: " + stop.Message); }
+                throw;
+            }
             AppDomain.CurrentDomain.SetData(AnchorKey, host);
             host._log.Write("pipe " + host._pipeName + " ready");
             return notes + "agent " + Cts.Cli.CliRun.Build() + " listening on \\\\.\\pipe\\" + host._pipeName
                 + ", " + host._online.Count + " online events" + (string.IsNullOrEmpty(options) ? "" : " [" + options + "]");
         }
 
+        // Each part stops whether or not one before it did; the parts that
+        // failed are named after all were stopped.
         public void Stop()
         {
             if (_stopped) return;
             _stopped = true;
-            _online.Stop();
-            _objectEvents.Stop();
-            _modalWatcher.Stop();
-            if (_dev != null) _dev.Stop();
-            _mirror.Stop();
-            _widget.Stop();
-            _pipe.Stop();
+            var failed = new List<string>();
+            StopPart("online events", _online.Stop, failed);
+            StopPart("object events", _objectEvents.Stop, failed);
+            StopPart("modal watcher", _modalWatcher.Stop, failed);
+            if (_dev != null) StopPart("dev tools", _dev.Stop, failed);
+            StopPart("mirror", _mirror.Stop, failed);
+            StopPart("quick window", _widget.Stop, failed);
+            StopPart("pipe", _pipe.Stop, failed);
             if (ReferenceEquals(AppDomain.CurrentDomain.GetData(AnchorKey), this))
                 AppDomain.CurrentDomain.SetData(AnchorKey, null);
             _log.Write("==== stop");
+            if (failed.Count > 0) throw new InvalidOperationException("did not stop: " + string.Join("; ", failed));
+        }
+
+        void StopPart(string name, Action stop, List<string> failed)
+        {
+            try { stop(); }
+            catch (Exception e)
+            {
+                _log.Write(name + " did not stop: " + e);
+                failed.Add(name + " (" + e.Message + ")");
+            }
         }
 
         // The menu entry, the toolbar button and the startup script of an IDE
