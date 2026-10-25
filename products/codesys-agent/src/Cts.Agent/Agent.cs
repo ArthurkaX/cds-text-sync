@@ -217,6 +217,14 @@ namespace Cts.Agent
             return "";
         }
 
+        // The agent lies in ScriptDir\cds-text-sync\agent; one dev.reload
+        // loaded from bytes lies nowhere: null.
+        static string ScriptDir()
+        {
+            var location = typeof(AgentHost).Assembly.Location;
+            return location.Length == 0 ? null : Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(location)));
+        }
+
         // The chord that opens the quick window, as the user's defaults.json names it.
         static string Key()
         {
@@ -474,8 +482,7 @@ namespace Cts.Agent
             {
                 { "protocol", Protocol.Version },
                 { "agent_version", Cts.Cli.CliRun.Build() },
-                // The agent lies in ScriptDir\cds-text-sync\agent.
-                { "script_dir", Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(typeof(AgentHost).Assembly.Location))) },
+                { "script_dir", ScriptDir() },
                 { "pid", proc.Id },
                 { "process", proc.ProcessName },
                 { "product", product },
