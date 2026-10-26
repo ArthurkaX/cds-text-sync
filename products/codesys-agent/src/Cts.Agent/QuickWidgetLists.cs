@@ -93,6 +93,21 @@ namespace Cts.Agent
             });
         }
 
+        // Once a session per folder, when git on this PC changes its line
+        // endings: whether to keep its files as written.  Asked only while
+        // the menu shows, idle.
+        void OfferLineEndings(WidgetView view, string folder)
+        {
+            lock (_eolAsked) if (!_eolAsked.Add(folder)) return;
+            Task.Run(() =>
+            {
+                if (!GitFolder.ConvertsLineEndings(folder)) return;
+                string question;
+                var answers = WidgetMenu.LineEndings(folder, out question);
+                WindowThread.Later(view, () => { if (view.OnMenu) view.ShowChoice(answers, question, AsksNextSession); });
+            });
+        }
+
         // The local branches, most recent first, read off the UI thread.
         void ListBranches(WidgetView view, string folder, string note)
         {

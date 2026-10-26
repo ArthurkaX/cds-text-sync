@@ -138,6 +138,8 @@ namespace Cts.Agent
         };
 
         public bool Running { get; private set; }
+        //: The menu shows and nothing runs: the window may ask a question of its own.
+        internal bool OnMenu => !_inList && !Running && _asking == null;
 
         //: WidgetMenu.Busy while a compare of the folder runs, else null.
         string _busy;

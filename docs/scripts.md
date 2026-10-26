@@ -35,9 +35,14 @@ from a shell.
   folder without a repository gets `git init`, a `.gitignore` for what cts and
   CODESYS generate there (`.cts-docs/`, the `.project`'s lock, option
   and build files), a `.gitattributes` that keeps native `.xml` objects out of
-  line merges, the `cds-text-sync.json` above, and a first commit of those
+  line merges and every file as written (`* -text`: git converting line
+  endings, `core.autocrlf`, would list files as changed though their content is
+  the same), the `cds-text-sync.json` above, and a first commit of those
   files. A folder that is already
-  a repository root only gets the missing lines, uncommitted. A folder inside
+  a repository root only gets the missing lines, uncommitted, and the files
+  git checked out with CRLF where it holds LF get LF back. The quick window
+  (Alt+Q) offers this once an IDE session when git on the PC converts the
+  folder's line endings. A folder inside
   another repository, not at its root, is refused: the sync base
   needs the repository root to be the sync folder.
 - The selected sync root is then resolved into the editable view root such as

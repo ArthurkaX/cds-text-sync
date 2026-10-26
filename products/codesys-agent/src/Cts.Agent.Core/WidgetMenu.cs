@@ -191,6 +191,17 @@ namespace Cts.Agent
             return new List<WidgetItem> { Item('1', "Pull and update the project", online ? Online : null, "project", "update") };
         }
 
+        // When git on this PC changes the line endings of the sync folder
+        // *syncFolder* (GitFolder.ConvertsLineEndings): keep its files as
+        // written (`cts set-sync-folder`), the one answer; Esc asks again in
+        // the IDE's next session.
+        public static List<WidgetItem> LineEndings(string syncFolder, out string question)
+        {
+            question = "Git on this PC changes line endings (core.autocrlf), so it lists files cts writes as changed though their content is the same."
+                + "\nKeep the files as written (* -text in .gitattributes) and give LF back to those git converted? Commit .gitattributes then, for the team's PCs.";
+            return new List<WidgetItem> { Hinted(Item('1', "Keep line endings as written", null, "set-sync-folder", syncFolder), "cts set-sync-folder") };
+        }
+
         // The header's state line from `cts compare`'s *verdict*: how many
         // objects changed on the disk, in the IDE and on both sides since the
         // last sync, or "in sync"; "not on disk yet" for a folder with no sync

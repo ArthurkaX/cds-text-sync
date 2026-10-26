@@ -166,6 +166,41 @@ namespace Cts.Agent.Tests
                 Assert.IsType<List<string>>(added[".gitignore"]));
         }
 
+        // A clone git checked out with CRLF (core.autocrlf true) lists every
+        // file cts writes again with LF as changed: set-sync-folder keeps the
+        // files as written and gives those git converted their LF back; a
+        // file committed with CRLF keeps it.
+        [Fact]
+        public void ACloneWithConvertedLineEndingsGetsItsFilesAsCommitted()
+        {
+            var root = Temp();
+            var team = Path.Combine(root, "team");
+            Directory.CreateDirectory(team);
+            GitRepository.Run(team, "init --quiet");
+            File.WriteAllText(Path.Combine(team, "a.st"), "PROGRAM P\nEND_PROGRAM\n");
+            File.WriteAllText(Path.Combine(team, "b.st"), "PROGRAM Q\r\nEND_PROGRAM\r\n");
+            File.WriteAllText(Path.Combine(team, "c.st"), "PROGRAM R\nEND_PROGRAM\n");
+            GitRepository.Run(team, "add .");
+            GitRepository.Run(team, "-c user.name=t -c user.email=t@t commit --quiet -m files");
+            var clone = Path.Combine(root, "clone");
+            GitRepository.Run(root, "clone --quiet -c core.autocrlf=true team clone");
+            Assert.Equal("PROGRAM P\r\nEND_PROGRAM\r\n", File.ReadAllText(Path.Combine(clone, "a.st")));
+            Assert.True(GitFolder.ConvertsLineEndings(clone));
+            File.WriteAllText(Path.Combine(clone, "c.st"), "PROGRAM R\r\nx := 1;\r\nEND_PROGRAM\r\n");
+            var result = GitFolder.Prepare(clone, "id");
+            Assert.Equal(2, result["lf_restored"]);
+            Assert.Contains("* -text", (IList<string>)((IDictionary<string, object>)result["added"])[".gitattributes"]);
+            Assert.Equal("PROGRAM P\nEND_PROGRAM\n", File.ReadAllText(Path.Combine(clone, "a.st")));
+            Assert.Equal("PROGRAM Q\r\nEND_PROGRAM\r\n", File.ReadAllText(Path.Combine(clone, "b.st")));
+            // An edit is left to its author, unstaged.
+            Assert.Equal(" M c.st", GitRepository.Run(clone, "status --porcelain -- *.st").TrimEnd());
+            Assert.Equal("PROGRAM R\nx := 1;\nEND_PROGRAM\n", File.ReadAllText(Path.Combine(clone, "c.st")));
+            Assert.False(GitFolder.ConvertsLineEndings(clone));
+            // A file still with git's CRLF after the rule came (a colleague pulled it) is asked about again.
+            File.WriteAllText(Path.Combine(clone, "a.st"), "PROGRAM P\r\nEND_PROGRAM\r\n");
+            Assert.True(GitFolder.ConvertsLineEndings(clone));
+        }
+
         // A sync folder reached through another spelling of the repository's
         // root (a mapped drive on Windows, a link here) is that root: git's
         // --show-toplevel names the target, and the folder keeps its own path.

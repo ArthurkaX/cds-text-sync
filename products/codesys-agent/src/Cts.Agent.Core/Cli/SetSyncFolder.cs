@@ -52,6 +52,8 @@ namespace Cts.Cli
                 answer.Add("git", Equals(Value(git, "initialized"), true) ? "created" : "repository")
                     .Add("commit", (Text(git, "commit").Length > 8 ? Text(git, "commit").Substring(0, 8) : Text(git, "commit")) is string commit && commit != "" ? commit : null)
                     .Add("ignore_added", added != null && Value(added, ".gitignore") is System.Collections.ICollection lines ? (object)(long)lines.Count : 0L);
+                if (Value(git, "lf_restored") is int restored && restored > 0)
+                    answer.Add("lf_restored", (long)restored).Detail(restored + " file(s) git had checked out with CRLF have LF again, as committed; .gitattributes keeps every file as written (* -text): commit it so the team's PCs do the same");
             }
             var guard = Value(data, "guard") as IDictionary<string, object>;
             if (guard != null) answer.Add("hook", Value(guard, "hook"));

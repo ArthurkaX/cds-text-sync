@@ -85,6 +85,8 @@ namespace Cts.Agent
         DateTime _keyRead = DateTime.MinValue;
         // When each sync folder's remote was last fetched for the header.
         readonly Dictionary<string, DateTime> _fetched = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        // The folders asked about their line endings this session (OfferLineEndings).
+        readonly HashSet<string> _eolAsked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         static readonly TimeSpan FetchEvery = TimeSpan.FromMinutes(1);
         SynchronizationContext _ui;
         //: The compares of the state running now, counted on the UI thread.
@@ -176,6 +178,7 @@ namespace Cts.Agent
         const string BoxesHint = "Space or digit: allow / block   ← back";
         const string KeepsHere = "digit or ↑↓ Enter   Esc keeps it on this PC";
         const string PullsLater = "digit or ↑↓ Enter   Esc pulls later";
+        const string AsksNextSession = "digit or ↑↓ Enter   Esc: not now, asked again after the IDE restarts";
 
         void Toggle()
         {
@@ -231,6 +234,7 @@ namespace Cts.Agent
             }
             ReadWhere(view, folder, true);
             ReadState(view, folder);
+            OfferLineEndings(view, folder);
             return view;
         }
 

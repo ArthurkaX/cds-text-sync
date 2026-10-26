@@ -443,6 +443,17 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void LineEndingsGitConvertsAreKeptAsWrittenBySetSyncFolder()
+        {
+            string question;
+            var answer = Assert.Single(WidgetMenu.LineEndings("C:\\sync", out question));
+            Assert.Equal(new[] { "set-sync-folder", "C:\\sync" }, answer.Args);
+            Assert.Equal('1', answer.Key);
+            Assert.Contains("core.autocrlf", question);
+            Assert.Contains("Commit .gitattributes", question);
+        }
+
+        [Fact]
         public void APushTheTeamRefusedOffersToPullFirst()
         {
             string question;
