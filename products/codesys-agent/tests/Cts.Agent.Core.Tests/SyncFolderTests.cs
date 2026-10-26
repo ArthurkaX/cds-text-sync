@@ -180,6 +180,7 @@ namespace Cts.Agent.Tests
             File.WriteAllText(Path.Combine(team, "a.st"), "PROGRAM P\nEND_PROGRAM\n");
             File.WriteAllText(Path.Combine(team, "b.st"), "PROGRAM Q\r\nEND_PROGRAM\r\n");
             File.WriteAllText(Path.Combine(team, "c.st"), "PROGRAM R\nEND_PROGRAM\n");
+            File.WriteAllText(Path.Combine(team, "d.st"), "PROGRAM S\nEND_PROGRAM\n");
             GitRepository.Run(team, "add .");
             GitRepository.Run(team, "-c user.name=t -c user.email=t@t commit --quiet -m files");
             var clone = Path.Combine(root, "clone");
@@ -187,6 +188,9 @@ namespace Cts.Agent.Tests
             Assert.Equal("PROGRAM P\r\nEND_PROGRAM\r\n", File.ReadAllText(Path.Combine(clone, "a.st")));
             Assert.True(GitFolder.ConvertsLineEndings(clone));
             File.WriteAllText(Path.Combine(clone, "c.st"), "PROGRAM R\r\nx := 1;\r\nEND_PROGRAM\r\n");
+            // An export wrote this one again, with LF: git calls it changed by the CRLF size it recorded.
+            File.WriteAllText(Path.Combine(clone, "d.st"), "PROGRAM S\nEND_PROGRAM\n");
+            Assert.Contains("d.st", GitRepository.Run(clone, "status --porcelain"));
             var result = GitFolder.Prepare(clone, "id");
             Assert.Equal(2, result["lf_restored"]);
             Assert.Contains("* -text", (IList<string>)((IDictionary<string, object>)result["added"])[".gitattributes"]);

@@ -57,12 +57,13 @@ namespace Cts.Agent
 
         // Does git on this PC change the line endings of *folder*'s files
         // (core.autocrlf true, no rule keeping them as written), or did it
-        // before the rule came, leaving files with CRLF that git holds with LF?
+        // before the rule came, leaving files with CRLF that git holds with
+        // LF, or files it calls changed by the CRLF size it recorded?
         public static bool ConvertsLineEndings(string folder)
         {
             var text = GitRun.In(folder, "check-attr text -- cds-text-sync.json");
             if (text.ExitCode != 0) return false;
-            if (text.Output.TrimEnd().EndsWith(": unset", StringComparison.Ordinal)) return Converted(folder).Count > 0;
+            if (text.Output.TrimEnd().EndsWith(": unset", StringComparison.Ordinal)) return Converted(folder).Count > 0 || Unchanged(folder).Count > 0;
             var autocrlf = GitRun.In(folder, "config --type=bool --get core.autocrlf");
             return autocrlf.ExitCode == 0 && autocrlf.Output.Trim() == "true";
         }
@@ -80,10 +81,21 @@ namespace Cts.Agent
             return files;
         }
 
-        // Those files get LF back, what they had before git converted them: their number.
-        // git's index still holds their CRLF size, by which git calls them
-        // changed unread: the ones whose content is the committed one are
-        // added, which only records their size.
+        // The files git calls changed by their size and time alone, their
+        // content the committed one: git's index holds the size of the CRLF
+        // file it checked out, so one written again with LF is changed unread.
+        static List<string> Unchanged(string folder)
+        {
+            var edited = new HashSet<string>(Names(folder, "diff --name-only -z"), StringComparer.Ordinal);
+            return Names(folder, "diff-files --name-only -z").Where(file => !edited.Contains(file)).ToList();
+        }
+
+        static IEnumerable<string> Names(string folder, string args)
+            => Run(folder, args).Output.Split(new[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
+
+        // Those files get LF back, what they had before git converted them,
+        // and git's index the size of every file whose content is the
+        // committed one (an add, which changes nothing else): the number given LF.
         static int RestoreLf(string folder)
         {
             var files = Converted(folder);
@@ -93,8 +105,7 @@ namespace Cts.Agent
                 var bytes = File.ReadAllBytes(path);
                 File.WriteAllBytes(path, bytes.Where((b, i) => b != (byte)'\r' || i + 1 >= bytes.Length || bytes[i + 1] != (byte)'\n').ToArray());
             }
-            var edited = new HashSet<string>(Run(folder, "diff --name-only -z").Output.Split(new[] { '\0' }, StringSplitOptions.RemoveEmptyEntries), StringComparer.Ordinal);
-            var same = files.Where(file => !edited.Contains(file)).ToList();
+            var same = Unchanged(folder);
             if (same.Count > 0) GitRepository.RunWithInput(folder, "--literal-pathspecs add --pathspec-from-file=- --pathspec-file-nul", null, string.Join("\0", same));
             return files.Count;
         }
