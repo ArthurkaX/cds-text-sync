@@ -593,6 +593,22 @@ namespace Cts.Agent.Tests
             Assert.Equal(expected, ViewExport.SelfClose(xml));
         }
 
+        [Theory]
+        [InlineData("COM1", "COM1_")]
+        [InlineData("com3", "com3_")]
+        [InlineData("LPT9", "LPT9_")]
+        [InlineData("NUL", "NUL_")]
+        [InlineData("COM1.Member", "COM1_.Member")]
+        [InlineData("COM10", "COM10")]
+        [InlineData("COM1_", "COM1_")]
+        [InlineData("COMx", "COMx")]
+        [InlineData("Console", "Console")]
+        [InlineData("A/B", "A_B")]
+        public void A_windows_device_name_gets_a_file_name_of_its_own(string name, string expected)
+        {
+            Assert.Equal(expected, ProjectModel.SafeComponent(name));
+        }
+
         [Fact]
         public void ReaderAcceptsEveryGoldenExportTextFile()
         {

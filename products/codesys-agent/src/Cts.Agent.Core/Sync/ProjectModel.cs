@@ -55,7 +55,23 @@ namespace Cts.Sync
                 }
             }
             var trimmed = safe.ToString().Trim(' ', '.');
-            return trimmed.Length > 0 ? trimmed : "object";
+            return trimmed.Length > 0 ? NotReserved(trimmed) : "object";
+        }
+
+        // Windows opens a device, not a file, for CON, PRN, AUX, NUL, COM1-9 and
+        // LPT1-9, with any extension (a WAGO PFC's serial interface is "COM1"):
+        // the file name gets a "_" after that stem, the object keeps its name.
+        static readonly HashSet<string> ReservedStems = new HashSet<string>(
+            new[] { "CON", "PRN", "AUX", "NUL" }
+                .Concat(Enumerable.Range(1, 9).Select(n => "COM" + n))
+                .Concat(Enumerable.Range(1, 9).Select(n => "LPT" + n)),
+            StringComparer.OrdinalIgnoreCase);
+
+        static string NotReserved(string component)
+        {
+            var dot = component.IndexOf('.');
+            var stem = (dot < 0 ? component : component.Substring(0, dot)).TrimEnd(' ');
+            return ReservedStems.Contains(stem) ? stem + "_" + component.Substring(stem.Length) : component;
         }
         internal bool HasCollision(ProjectNode node)
         {
