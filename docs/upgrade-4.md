@@ -1,6 +1,6 @@
-# Upgrading to 4.0 (beta)
+# Upgrading to 4.0
 
-4.0 is a new cds-text-sync: `cts.exe` and an agent DLL running inside CODESYS replace the Python package and the `Project_*.py` scripts. It is a beta: it is tested on the versions listed under [Known limits](#known-limits), and the last 3.x release, 3.4.1, stays one menu choice away. `cts --version` prints the version and the build commit; please include both in reports.
+4.0 is a new cds-text-sync: `cts.exe` and an agent DLL running inside CODESYS replace the Python package and the `Project_*.py` scripts. It is tested on the versions listed under [Known limits](#known-limits), and the last 3.x release, 3.4.1, stays one menu choice away. `cts --version` prints the version and the build commit; please include both in reports.
 
 ## Install, update and go back
 
@@ -10,9 +10,9 @@ Close CODESYS, then run in PowerShell:
 irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1 | iex
 ```
 
-Enter (`L`, the `main` branch) installs the beta; running the same line again updates it. The `T` entries of the menu are the tagged beta builds, for staying on one of them.
+Enter (`L`, the `main` branch) installs the latest 4.x; running the same line again updates it. The numbered entries are the stable releases (`v4.0.0` and on, then 3.4.1), for staying on one of them; the `T` entries are the tagged betas.
 
-To go back to 3.4.1, run the same line and pick `1` (3.4.1). A release up to 3.4.1 has its own installer: this one takes the agent out of the menu folder, starts that installer, and you pick 3.4.1 again in its menu. The sync folder each project remembers (`projects.json`) is kept for a later update. Running the 3.4.1 installer directly instead leaves the 4.0 `agent` folder in the menu folder, reports it as a problem, and forgets `projects.json`.
+To go back to 3.4.1, run the same line and pick 3.4.1 in the stable list (`2`, below `v4.0.0`). A release up to 3.4.1 has its own installer: this one takes the agent out of the menu folder, starts that installer, and you pick 3.4.1 again in its menu. The sync folder each project remembers (`projects.json`) is kept for a later update. Running the 3.4.1 installer directly instead leaves the 4.0 `agent` folder in the menu folder, reports it as a problem, and forgets `projects.json`.
 
 A build handed over as a `*-setup.zip` installs without GitHub: unzip it and run `install.cmd`.
 

@@ -15,8 +15,8 @@ We maintain **stable, manually tested releases** for safe production use.
 - **Tags `vX.Y.Z`**: stable releases (e.g. `v3.4.1`)
 - **Tags with a suffix** (e.g. `v4.0.0-beta.3`): pre-releases; the installer
   does not list them, `main` carries the latest (a Git clone checks out the tag)
-- **`main` branch**: the quick installer's default; now the 4.0 beta
-  ([Upgrading to 4.0](upgrade-4.md))
+- **`main` branch**: the quick installer's default: the latest 4.x, ahead of
+  the last tag by the fixes made since ([Upgrading to 4.0](upgrade-4.md))
 - **Testing**: all stable releases are manually tested before tagging
 
 ## Rolling back to a stable version

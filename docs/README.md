@@ -25,7 +25,7 @@ start. These pages are the detail.
 
 ## Working with others
 
-- **[Upgrading to 4.0 (beta)](upgrade-4.md)** — install, update and go back to 3.4.1; what changes on upgrade, known limits, reporting problems.
+- **[Upgrading to 4.0](upgrade-4.md)** — install, update and go back to 3.4.1; what changes on upgrade, known limits, reporting problems.
 - **[Working as a team](team.md)** — the owner and colleagues on one repository:
   setting it up, committing, taking the team's work, and same-line edits.
 - **[Releases & rollback](releases.md)** — stable tags, version policy, and how to

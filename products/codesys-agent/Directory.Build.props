@@ -5,7 +5,7 @@
   <PropertyGroup>
     <!-- The release version, one for cts.exe and the agent: cts prints it
          when asked for its version, and the top CHANGELOG entry names it. -->
-    <Version>4.0.0-beta.3</Version>
+    <Version>4.0.0</Version>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest</AnalysisLevel>
     <!-- IDE0005 (unnecessary using) runs in the build only with XML docs on. -->

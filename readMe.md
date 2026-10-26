@@ -33,7 +33,7 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 ```
 
 > [!IMPORTANT]
-> **4.0 beta.** cds-text-sync is now `cts.exe` and an agent inside CODESYS;
+> **4.0.** cds-text-sync is now `cts.exe` and an agent inside CODESYS;
 > the `Project_*.py` scripts are gone. A 3.x sync folder is not taken over,
 > and the last 3.x release, 3.4.1, stays one choice away in the installer's
 > menu. [Upgrading to 4.0](docs/upgrade-4.md) lists what changes, what to
@@ -308,7 +308,7 @@ Details: [HMI screens from SVG](docs/visu.md).
 - [Static analysis](docs/analyze.md)
 - [HMI screens from SVG](docs/visu.md)
 - [Releases and rollback](docs/releases.md)
-- [Upgrading to 4.0 (beta)](docs/upgrade-4.md)
+- [Upgrading to 4.0](docs/upgrade-4.md)
 
 Issues, friction reports and feature requests are welcome in the [GitHub issue
 tracker](https://github.com/ArthurkaX/cds-text-sync/issues). See the

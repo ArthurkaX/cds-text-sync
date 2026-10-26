@@ -304,7 +304,7 @@ if ($archive) {
 
     # 3. Show version selection menu
     Write-Host "`n--- Version Selection ---" -ForegroundColor Cyan
-    Write-Host "[L] 4.0 beta, the latest (main branch) [DEFAULT]" -ForegroundColor Green
+    Write-Host "[L] 4.x, the latest (main branch) [DEFAULT]" -ForegroundColor Green
 
     if ($stableTags.Count -gt 0) {
         Write-Host "Stable Releases (last $($stableTags.Count)):" -ForegroundColor Cyan

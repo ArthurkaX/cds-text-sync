@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Version 4.0.0 (2026-10-26)
+
+_What changes against 4.0.0-beta.3. Coming from 3.4: [docs/upgrade-4.md](docs/upgrade-4.md) is the short version, the three beta sections below are the whole of it._
+
+**Upgrading: what changes**
+
+- The sync folder's `.gitattributes` keeps every file as written (`* -text`). Before, on a PC whose git converts line endings (`core.autocrlf true`, Git for Windows' default), git listed the files an export wrote as changed though their content was the same. `cts set-sync-folder` adds the line to an existing repository and gives the files git checked out with CRLF their LF back; the quick window offers that once an IDE session where git converts them. Commit `.gitattributes` so every PC of the team gets it.
+
+**Sync**
+
+- An import is refused before it writes anything when an object it would change was edited in the IDE after its plan read it (an edit made while a merge window was open, say); run it again to carry the edit.
+- A view file is written to a file beside it that then replaces it, so a write cut short leaves the old file whole (`~cts-*.tmp`, which the sync folder's `.gitignore` names).
+
+**Agent**
+
+- A start that fails part way stops what it started, and a stop stops every part though one fails, naming the failed ones.
+
+---
+
 ### Version 4.0.0-beta.3 (2026-10-23)
 
 _What changes against 4.0.0-beta.2._
