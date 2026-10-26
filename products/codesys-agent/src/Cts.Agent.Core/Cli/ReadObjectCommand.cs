@@ -65,6 +65,8 @@ namespace Cts.Cli
                 ViewExport.WriteTo(snapshot, root, new Dictionary<string, object>(), output);
                 var basis = Parts(objPath).LastOrDefault() ?? objName;
                 if (basis.Contains('.')) basis = basis.Split('.').First();
+                // The file carries the name as the export spells it ("A/B" is A_B, COM1 is COM1_).
+                basis = ProjectModel.SafeComponent(basis);
                 // A container with no text form (a folder, the Visualization Manager) is its folder's .cds-object.xml.
                 var relative = output.Paths.FirstOrDefault(path => Path.GetFileName(path).Equals(basis + ".st", StringComparison.OrdinalIgnoreCase))
                     ?? output.Paths.FirstOrDefault(path => Path.GetFileName(path).Equals(basis + ".xml", StringComparison.OrdinalIgnoreCase))
