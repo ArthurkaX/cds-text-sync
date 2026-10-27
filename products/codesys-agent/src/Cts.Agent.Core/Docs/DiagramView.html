@@ -111,7 +111,7 @@ $("made").textContent = "drawn " + data.made + " by cts diagram view";
 document.title = data.project + " - cts diagrams";
 document.querySelectorAll("#tabs button").forEach(b => {
   b.insertAdjacentHTML("beforeend", ` <small>${count(b.dataset.mode)}</small>`);
-  b.onclick = () => go({ mode: b.dataset.mode, name: "", depth: middle(b.dataset.mode) });
+  b.onclick = () => go({ mode: b.dataset.mode, name: "", depth: opens(b.dataset.mode) });
 });
 $("filter").oninput = list;
 $("fit").onclick = fit;
@@ -130,13 +130,13 @@ canvasEvents();
 fromHash();
 
 function count(mode) { return mode === "calls" ? data.roots.length : mode === "classes" ? data.classes.length : data.fsm.length; }
-function middle(mode) { const d = D[mode]; return d ? d[Math.min(1, d.length - 1)] : 0; }
+function opens(mode) { return data.opens[mode] || 0; }
 
 function fromHash() {
   const [mode, name, depth] = decodeURIComponent(location.hash.slice(1)).split("|");
   const first = count("calls") ? "calls" : count("classes") ? "classes" : count("fsm") ? "fsm" : "calls";
   const m = ["calls", "classes", "fsm"].includes(mode) ? mode : first;
-  state = { mode: m, name: name || "", depth: D[m] && D[m].includes(+depth) ? +depth : middle(m) };
+  state = { mode: m, name: name || "", depth: D[m] && D[m].includes(+depth) ? +depth : opens(m) };
   if (m === "fsm" && !state.name && data.fsm.length) state.name = data.fsm[0].name;
   render();
 }
@@ -259,8 +259,8 @@ function title() {
 // The same object in the other view, when it has one there.
 function otherView() {
   if (!state.name || state.mode === "fsm") return null;
-  if (state.mode === "calls" && data.classes.some(c => c.name === state.name)) return { label: "Classes →", to: { mode: "classes", depth: middle("classes") } };
-  if (state.mode === "classes" && data.roots.some(r => r.name === state.name)) return { label: "Calls →", to: { mode: "calls", depth: middle("calls") } };
+  if (state.mode === "calls" && data.classes.some(c => c.name === state.name)) return { label: "Classes →", to: { mode: "classes", depth: opens("classes") } };
+  if (state.mode === "classes" && data.roots.some(r => r.name === state.name)) return { label: "Calls →", to: { mode: "calls", depth: opens("calls") } };
   return null;
 }
 
@@ -376,7 +376,7 @@ function canvasEvents() {
     const g = p.target.closest && p.target.closest(".node, g[id^='classId-']");
     const name = g && nodeName(g, e);
     if (name && name !== state.name && (data.roots.some(r => r.name === name) || data.classes.some(cl => cl.name === name)))
-      go(state.mode === "calls" && !data.roots.some(r => r.name === name) ? { mode: "classes", name, depth: middle("classes") } : { name });
+      go(state.mode === "calls" && !data.roots.some(r => r.name === name) ? { mode: "classes", name, depth: opens("classes") } : { name });
   });
   c.addEventListener("dblclick", fit);
 }

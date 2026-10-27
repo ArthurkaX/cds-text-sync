@@ -18,8 +18,8 @@ namespace Cts.Cli
     // that browses them all with the state machines.
     internal static class DiagramCommand
     {
-        const int ClassDepth = 1;
-        const int CallDepth = 3;
+        const int ClassDepth = DiagramView.ClassDepth;
+        const int CallDepth = DiagramView.CallDepth;
         //: Mermaid's defaults, maxTextSize and maxEdges: a larger diagram is not drawn.
         const int MermaidLimit = 50000;
         const int MermaidEdges = 500;

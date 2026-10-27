@@ -13,8 +13,10 @@ namespace Cts.Docs
     // ClassDiagram, FsmSvg).
     internal static class DiagramView
     {
-        //: The depths the viewer offers; the middle one opens.
-        static readonly int[] CallDepths = { 2, 3, 5 }, ClassDepths = { 1, 2 };
+        //: The depths the diagram commands draw by default, where the page opens too.
+        internal const int CallDepth = 3, ClassDepth = 1;
+        //: The depths the page offers.
+        static readonly int[] CallDepths = { 2, CallDepth, 5 }, ClassDepths = { ClassDepth, 2 };
         static readonly string[] ClassKinds = { "FUNCTION_BLOCK", "INTERFACE", "STRUCT", "UNION", "PROGRAM" };
         static readonly string[] CallerKinds = { "PROGRAM", "FUNCTION_BLOCK", "FUNCTION" };
 
@@ -64,6 +66,7 @@ namespace Cts.Docs
                 ["project"] = project,
                 ["made"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
                 ["depths"] = new Dictionary<string, object> { ["calls"] = CallDepths.Cast<object>().ToList(), ["classes"] = ClassDepths.Cast<object>().ToList() },
+                ["opens"] = new Dictionary<string, object> { ["calls"] = CallDepth, ["classes"] = ClassDepth },
                 ["classes"] = classes,
                 ["roots"] = roots,
                 ["fsm"] = machines.Select(machine => (object)new Dictionary<string, object> { ["name"] = machine.Key, ["svg"] = machine.Value }).ToList(),
