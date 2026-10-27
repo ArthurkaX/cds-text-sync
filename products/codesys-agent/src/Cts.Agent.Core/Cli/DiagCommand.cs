@@ -41,7 +41,7 @@ namespace Cts.Cli
                 { "git_lfs", git == null ? "not found" : FirstLine(here, "lfs version") ?? "not found" },
                 { "script_dirs", InstallCommand.ScriptDirs().Select(dir => (object)ScriptDir(dir)).ToList() },
                 { "agents", AgentChoice.Discover(host, 3).Select(entry => (object)Agent(entry)).ToList() },
-                { "folder", git == null ? new Dictionary<string, object>() : Folder(folder) },
+                { "folder", git == null ? NoGit(folder) : Folder(folder) },
             };
         }
 
@@ -89,6 +89,9 @@ namespace Cts.Cli
                 { "dialogs", Items(hello, "dialogs").Count() },
             };
         }
+
+        static IDictionary<string, object> NoGit(string folder) =>
+            new Dictionary<string, object> { { "exists", Directory.Exists(folder) }, { "git_state", "not checked: git not found" } };
 
         static IDictionary<string, object> Folder(string folder)
         {
