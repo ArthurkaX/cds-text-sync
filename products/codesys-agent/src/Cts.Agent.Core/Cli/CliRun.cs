@@ -434,7 +434,7 @@ namespace Cts.Cli
             Group("analysis and documentation", "analyze", "analyze rules", "analyze explain", "analyze baseline", "analyze triage", "fsm", "docs"),
             Group("HMI screens (cts guide visu-svg)", "visu new", "visu lint", "visu bind", "visu preview", "visu from-svg", "visu to-svg", "visu create-screen", "visu add",
                 "visu list", "visu describe", "visu check", "visu types", "visu capture-frame"),
-            Group("setup and reference", "guide", "install", "config show", "config set", "config unset", "raw"),
+            Group("setup and reference", "guide", "install", "diag", "config show", "config set", "config unset", "raw"),
         };
 
         static KeyValuePair<string, string[]> Group(string title, params string[] words) => new KeyValuePair<string, string[]>(title, words);

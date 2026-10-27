@@ -100,6 +100,7 @@ namespace Cts.Cli
             ProjectOpenCommand.Command,
             ProjectNewCommand.Command,
             InstallCommand.Command,
+            DiagCommand.Command,
             ToolCommand.Command,
             TeamGuard.Command,
             OpenCommand.Command,
