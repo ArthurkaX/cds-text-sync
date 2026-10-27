@@ -195,6 +195,10 @@ transition to read the Structured Text behind it. While the IDE is logged in,
 the instance you choose. From the shell, `cts fsm`
 lists the same machines, `cts fsm --disk` reads them from the exported files.
 
+<p><img src="img/fsm-live.gif"
+   alt="The FSM window in Live mode: a traffic light function block on a running PLC, the active step and the transition taken lit up"
+   width="100%"></p>
+
 More details: [Script overview](docs/scripts.md#4-more-page-4-fsm-map-fsm-transition-map)
 and `cts fsm --help`.
 </details>
