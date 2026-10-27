@@ -10,7 +10,7 @@ namespace Cts.Agent.Tests
 
         static object FsmTexts() => new Dictionary<string, object> { { "objects", new object[]
         {
-            new Dictionary<string, object> { { "guid", "g-prg" }, { "name", "PRG_Main" }, { "parent", "" }, { "implementation", Machine } },
+            new Dictionary<string, object> { { "guid", "g-prg" }, { "name", "PRG_Main" }, { "parent", "" }, { "declaration", "PROGRAM PRG_Main\nVAR\n    state : INT;\nEND_VAR\n" }, { "implementation", Machine } },
             new Dictionary<string, object> { { "guid", "g-fb" }, { "name", "FB_Valve" }, { "parent", "" }, { "implementation", "x := 1;" } },
         } } };
 
@@ -22,7 +22,7 @@ namespace Cts.Agent.Tests
             var (code, output, _) = Run(host, "fsm");
             Assert.Equal(0, code);
             Assert.Contains("ok fsm objects=2 with_fsm=1 machines=1", output);
-            Assert.Contains("PRG_Main: state (2 states, 2 transitions in source order)", output);
+            Assert.Contains("PRG_Main: state (2 states, 2 transitions in source order, starts in 0, INT's default 0)", output);
             var (_, json, _) = Run(host, "fsm", "--layout", "--json");
             var objects = FsmMap.Parse(json);
             Assert.Equal("PRG_Main", Assert.Single(objects).Label);
@@ -37,8 +37,9 @@ namespace Cts.Agent.Tests
             var (code, output, _) = Run(host, "fsm", "PRG_Main", "--mermaid");
             Assert.Equal(0, code);
             Assert.Contains("  0 -> 10 when xStart  line 3", output);
-            Assert.Contains("transitions in source order), lines count from the implementation's first line", output);
+            Assert.Contains("INT's default 0), lines count from the implementation's first line", output);
             Assert.Contains("stateDiagram-v2", output);
+            Assert.Contains("  read it online: cts read PRG_Main.state", output);
             var (missing, _, error) = Run(host, "fsm", "Nothing");
             Assert.Equal(1, missing);
             Assert.Contains("no text object is named Nothing", error);

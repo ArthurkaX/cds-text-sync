@@ -5,7 +5,10 @@
 // bars, arrows -- the geometry is FsmGrafcet's), and a click on a step or a
 // transition shows the code behind it with its line.  The chart moves like a canvas: the wheel zooms
 // at the pointer, a drag anywhere pans; Ctrl+plus/minus zoom, Ctrl+0 fits.
-// The splitters between the list, the chart and the code move.
+// The splitters between the list, the chart and the code move.  Live, while
+// the IDE is logged in, reads the machine's variable in one instance a few
+// times a second and marks the step it is in and the transition that led
+// there (FsmViewLive.cs).
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -37,9 +40,10 @@ namespace Cts.Agent
         List<Row> _shown = new List<Row>();
         bool _busy;
 
-        public FsmView(string title, Action<string[], bool, Action<bool, string>> cts)
+        public FsmView(string title, Action<string[], bool, Action<bool, string>> cts, Func<IList<string>, IDictionary<string, object>> read)
             : base(title, new Size(1280, 760), cts)
         {
+            _read = read;
             _filter = FilterBox(DockStyle.Top);
             _filter.TextChanged += (s, e) => Fill(Selected());
             _list = RowList(18, DrawRow);
@@ -49,6 +53,7 @@ namespace Cts.Agent
             _heading = new Label { Dock = DockStyle.Top, Height = 24, ForeColor = Muted, Font = Mono, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0) };
             var middle = new Panel { Dock = DockStyle.Fill };
             middle.Controls.Add(_chart);
+            middle.Controls.Add(WatchBar());
             middle.Controls.Add(_heading);
             _what = new Label { Dock = DockStyle.Top, ForeColor = Ink, Font = Mono, Padding = new Padding(6, 4, 6, 4) };
             _code = CodePane();
@@ -65,12 +70,15 @@ namespace Cts.Agent
             outer.Panel2.Controls.Add(inner);
             _reload = FlatButton("&Reload", Reload);
             _reload.Dock = DockStyle.Right;
+            _live = FlatButton("&Live", ToggleLive);
+            _live.Dock = DockStyle.Right;
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 34, BackColor = Bar, Padding = new Padding(8, 4, 8, 4) };
             bottom.Controls.Add(Status);
+            bottom.Controls.Add(_live);
             bottom.Controls.Add(_reload);
             Controls.Add(outer);
             Controls.Add(bottom);
-            FormClosed += (s, e) => _chart.Dispose();
+            FormClosed += (s, e) => { _tick.Dispose(); _chart.Dispose(); };
         }
 
         // A SplitContainer clamps the distance to its size, and a fixed second
@@ -178,6 +186,7 @@ namespace Cts.Agent
         void Draw(Row row)
         {
             _chart.Display(row?.Machine);
+            Watch(row);
             ShowCode(null);
             if (row == null) { _heading.Text = ""; return; }
             var machine = row.Machine;

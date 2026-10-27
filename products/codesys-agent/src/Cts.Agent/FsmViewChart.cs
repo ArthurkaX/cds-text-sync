@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -12,7 +13,8 @@ namespace Cts.Agent
     {
         // The GRAFCET chart of one machine on a canvas: the wheel zooms at the
         // pointer, a drag (left or middle button) pans, a click without a drag
-        // picks the step or the transition under it.
+        // picks the step or the transition under it.  Live, the step the PLC
+        // is in and the transitions that led there are green.
         sealed class Chart : Control
         {
             static readonly Color Paper = Color.FromArgb(24, 26, 30);
@@ -25,6 +27,8 @@ namespace Cts.Agent
             static readonly Color ChipFill = Color.FromArgb(60, 36, 38);
             static readonly Color Jump = Color.FromArgb(230, 160, 80);
             static readonly Color Chosen = Color.FromArgb(240, 200, 90);
+            static readonly Color ActiveFill = Color.FromArgb(30, 78, 50);
+            static readonly Color Active = Color.FromArgb(96, 210, 130);
             //: Pixels a press may move and still be a click.
             const int Slop = 4;
             const float MinScale = 0.1f;
@@ -35,6 +39,8 @@ namespace Cts.Agent
             readonly Font _small = new Font("Consolas", 11f, GraphicsUnit.Pixel);
             FsmStep _step;
             int _transition = -1;
+            FsmStep _active;
+            List<int> _taken = new List<int>();
             float _scale = 1f;
             //: Where the chart's (0, 0) falls on the control.
             PointF _origin;
@@ -61,6 +67,15 @@ namespace Cts.Agent
                 _step = null;
                 _transition = -1;
                 Fit();
+            }
+
+            // The step whose label is *state*, and the transitions *taken*
+            // into it; null and none clear them.
+            public void Live(string state, List<int> taken)
+            {
+                _active = state == null ? null : Machine?.Layout?.Steps.FirstOrDefault(step => step.FullLabel == state);
+                _taken = taken;
+                Invalidate();
             }
 
             // The whole chart in view and centred, never larger than it is.
@@ -191,8 +206,9 @@ namespace Cts.Agent
                 if (layout.AnyBox != null) DrawAny(g, layout.AnyBox);
                 foreach (var chip in layout.Chips) DrawChip(g, chip, layout);
                 foreach (var step in layout.Steps) DrawStep(g, step, layout);
-                foreach (var link in layout.Links.Where(link => link.Transition != _transition)) DrawLink(g, link, layout, false);
-                foreach (var link in layout.Links.Where(link => link.Transition == _transition && _transition >= 0)) DrawLink(g, link, layout, true);
+                foreach (var link in layout.Links.Where(link => link.Transition != _transition && !_taken.Contains(link.Transition))) DrawLink(g, link, layout, null);
+                foreach (var link in layout.Links.Where(link => link.Transition != _transition && _taken.Contains(link.Transition))) DrawLink(g, link, layout, Active);
+                foreach (var link in layout.Links.Where(link => link.Transition == _transition && _transition >= 0)) DrawLink(g, link, layout, Chosen);
             }
 
             void DrawAny(Graphics g, int[] box)
@@ -213,8 +229,9 @@ namespace Cts.Agent
             void DrawStep(Graphics g, FsmStep step, FsmLayout layout)
             {
                 var picked = step == _step;
-                using (var fill = new SolidBrush(StepFill)) g.FillRectangle(fill, step.X, step.Y, step.W, step.H);
-                using (var pen = new Pen(picked ? Chosen : Stroke, picked ? 2 : 1))
+                var active = step == _active;
+                using (var fill = new SolidBrush(active ? ActiveFill : StepFill)) g.FillRectangle(fill, step.X, step.Y, step.W, step.H);
+                using (var pen = new Pen(picked ? Chosen : active ? Active : Stroke, picked || active ? 2 : 1))
                 {
                     g.DrawRectangle(pen, step.X, step.Y, step.W, step.H);
                     if (step.Initial) g.DrawRectangle(pen, step.X + 3, step.Y + 3, step.W - 6, step.H - 6);
@@ -234,9 +251,11 @@ namespace Cts.Agent
                 Write(g, box.Label, _label, Ink, divider + 10, box.Y + (box.H - layout.TextH) / 2);
             }
 
-            void DrawLink(Graphics g, FsmLink link, FsmLayout layout, bool picked)
+            // *marked*: the colour of a picked or a taken transition, null for its own.
+            void DrawLink(Graphics g, FsmLink link, FsmLayout layout, Color? marked)
             {
-                var colour = picked ? Chosen : link.Kind == "global" ? Priority : link.Kind == "jump" ? Jump : Link;
+                var picked = marked != null;
+                var colour = marked ?? (link.Kind == "global" ? Priority : link.Kind == "jump" ? Jump : Link);
                 if (link.Points.Count > 1)
                     using (var pen = new Pen(colour, picked ? 3 : 2))
                         g.DrawLines(pen, link.Points.Select(point => new Point(point[0], point[1])).ToArray());
@@ -247,7 +266,7 @@ namespace Cts.Agent
                         else g.DrawLine(pen, link.Bar.X, link.Bar.Y - 9, link.Bar.X, link.Bar.Y + 9);
                     }
                 if (link.Arrow != null) Arrow(g, link.Arrow.X, link.Arrow.Y, link.Arrow.Way, colour);
-                if (link.GuardAt != null) Write(g, link.GuardText, _guard, picked ? Chosen : Guard, link.GuardAt[0], link.GuardAt[1]);
+                if (link.GuardAt != null) Write(g, link.GuardText, _guard, marked ?? Guard, link.GuardAt[0], link.GuardAt[1]);
                 if (link.NoteAt != null && !string.IsNullOrEmpty(link.NoteText)) Write(g, link.NoteText, _guard, Jump, link.NoteAt[0], link.NoteAt[1]);
             }
 

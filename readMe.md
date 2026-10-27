@@ -190,7 +190,9 @@ window and choose More, `4` FSM map (Alt+Q, `0`, `4`). The agent's window lists 
 (unsaved edits included) and draws the one chosen as a GRAFCET diagram:
 numbered steps, one bar per transition with its receptivity beside it, and a
 step with several ways out fanned out as a divergence. Click a step or a
-transition to read the Structured Text behind it. From the shell, `cts fsm`
+transition to read the Structured Text behind it. While the IDE is logged in,
+**Live** paints the step the PLC is in and the transition that led there, for
+the instance you choose. From the shell, `cts fsm`
 lists the same machines, `cts fsm --disk` reads them from the exported files.
 
 More details: [Script overview](docs/scripts.md#4-more-page-4-fsm-map-fsm-transition-map)

@@ -11,6 +11,11 @@ All notable changes to this project will be documented in this file.
 - `cts diag` prints what a bug report needs: the cts, Windows and git versions, whether the CODESYS menu entry is up to date, the IDEs with an agent and the sync folder's git state as settings and counts. It names no file, object, branch, project or path.
 - The quick window's More > `6` Report a problem makes a report for a GitHub issue or the Discord server: `cts diag`, the failure shown and this IDE session's cts runs and agent errors, with the names the agent knows, paths and quoted text replaced. It goes onto the clipboard and into a text file to read before sending. The link under a failure is now Report and makes the same report; it no longer copies the run's whole output with names.
 
+**FSM**
+
+- The FSM window's Live button paints the step the PLC is in and the transition that led there, read a few times a second while the IDE is logged in. It offers the state variable's path in each instance of the block the declarations make, or takes a typed one; a state written as a constant or an enumeration member is found by its number.
+- `cts fsm` gives each machine the paths to read online (`watch`) and each state the numbers it stands for (`values`); `cts fsm NAME` names the `cts read` that shows the state.
+
 ---
 
 ### Version 4.0.0 (2026-10-26)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -209,7 +210,8 @@ namespace Cts.Agent
         internal void ShowFsm()
         {
             if (_fsm != null) { _fsm.Activate(); return; }
-            _fsm = Open("cts fsm", (title, cts) => new FsmView(title, cts));
+            _fsm = Open("cts fsm", (title, cts) => new FsmView(title, cts,
+                names => _router.Call("vars.read", new Dictionary<string, object> { { "names", names.Cast<object>().ToList() } }, null)));
             _fsm.FormClosed += (s, e) => _fsm = null;
         }
 

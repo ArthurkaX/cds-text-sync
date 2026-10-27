@@ -47,7 +47,8 @@ namespace Cts.Cli
                 Label = names.TryGetValue(Text(record, "parent"), out var parent) && parent.Length > 0 ? parent + "." + Text(record, "name") : Text(record, "name"),
                 Declaration = Text(record, "declaration"), Text = Text(record, "implementation"),
             });
-            return Answer(call.Options, "ide", sources.ToList());
+            var watch = new FsmWatch(records.Select(r => new KeyValuePair<string, string>(Text(r, "name"), Text(r, "declaration"))));
+            return Answer(call.Options, "ide", sources.ToList(), watch);
         }
 
         static IDictionary<string, object> Disk(CliOptions options, IAgentHost host, string work)
@@ -62,7 +63,8 @@ namespace Cts.Cli
                 var depth = (Path.GetDirectoryName(item.File) ?? "").Replace('\\', '/').Split('/').Count(part => part.Length > 0);
                 return new Source { Label = string.Join(".", item.Path.Skip(depth)), Name = item.Path.Last(), File = item.File.Replace('\\', '/'), Declaration = item.Declaration, Text = item.Implementation, FirstLine = item.ImplementationLine ?? 1 };
             }).ToList();
-            var data = Answer(options, "disk", sources);
+            var watch = new FsmWatch(read.Objects.Select(item => new KeyValuePair<string, string>(item.Path.Last(), item.Declaration)));
+            var data = Answer(options, "disk", sources, watch);
             data["sync_folder"] = folder;
             if (read.Errors.Count > 0)
                 data["failed"] = (data.TryGetValue("failed", out var failed) ? (List<object>)failed : new List<object>())
@@ -84,8 +86,9 @@ namespace Cts.Cli
         }
 
         // The objects with a machine, by label; one that cannot be read is
-        // named in failed and the rest still answer.
-        static Dictionary<string, object> Answer(CliOptions options, string from, List<Source> sources)
+        // named in failed and the rest still answer.  Each machine says what
+        // to read online (watch) and what number a constant state stands for.
+        static Dictionary<string, object> Answer(CliOptions options, string from, List<Source> sources, FsmWatch watch)
         {
             var name = options.Arguments.FirstOrDefault() ?? "";
             if (name.Length > 0)
@@ -111,6 +114,13 @@ namespace Cts.Cli
                 {
                     var initial = FsmDetector.Initial(source.Declaration, machine, out var basis);
                     if (initial != null) { machine["initial"] = initial; machine["initial_from"] = basis; }
+                    var paths = watch.Paths(source.Label, source.Declaration, Convert.ToString(machine["selector"]));
+                    if (paths.Count > 0) machine["watch"] = paths.Cast<object>().ToList();
+                    foreach (var state in (List<Dictionary<string, object>>)machine["states"])
+                    {
+                        var values = watch.Values(Convert.ToString(state["label"]), source.Label.Split('.')[0], source.Declaration);
+                        if (values.Count > 0) state["values"] = values.Cast<object>().ToList();
+                    }
                     if (options.Params.ContainsKey("mermaid")) machine["mermaid"] = FsmMermaid.Render(machine);
                     if (options.Params.ContainsKey("layout")) machine["layout"] = FsmGrafcet.Layout(machine);
                     if (source.FirstLine != 1) Shift(machine, source.FirstLine - 1);
@@ -162,6 +172,9 @@ namespace Cts.Cli
                     answer.Detail(Text(item, "label") + ": " + Text(machine, "selector") + " (" + states.Count + " states, " + transitions.Count + " transitions in source order" + (Text(machine, "initial").Length > 0 ? ", starts in " + Text(machine, "initial") + ", " + Text(machine, "initial_from") : "") + ")" + where
                         + (full && where.Length == 0 ? ", lines count from the implementation's first line" : ""));
                     if (!full) continue;
+                    var watch = Items(machine, "watch").Select(Convert.ToString).ToList();
+                    if (watch.Count > 0)
+                        answer.Detail("  read it online: cts read " + watch[0] + (watch.Count > 1 ? "  (" + watch.Count + " instances, --json lists them)" : ""));
                     foreach (var transition in transitions)
                     {
                         var guard = Text(transition, "guard");

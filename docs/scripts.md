@@ -195,8 +195,17 @@ Text as a diagram. The quick window opens the agent's FSM window: Alt+Q, `0`
    line of the implementation it starts on.
 4. Ctrl+wheel or Ctrl+plus/minus zooms, Ctrl+0 fits the chart; **Reload** (F5)
    reads the IDE again; Esc closes the window.
+5. **Live** (Alt+L), while the IDE is logged in, reads the machine's state
+   variable a few times a second and paints the step it is in green, with the
+   transition that led there. The **read** box above the chart offers the
+   variable's path in each instance the declarations make (programs, global
+   variable lists, the function blocks, structures and arrays inside them);
+   type another path the way `cts read` takes it. A state written as a
+   constant (`ST_IDLE : INT := 0`) or an enumeration member is found by its
+   number. The bottom line shows the value and how long the window has seen
+   the step.
 
-The window is read-only: it never writes to any project object. It detects
+The window is read-only: it never writes to any project object or variable. It detects
 state machines implemented as a `CASE` over a state variable whose branches
 assign to the same variable (or its `next_`/`new_` twin). An agent started
 before this window existed cannot open it; restarting CODESYS loads the

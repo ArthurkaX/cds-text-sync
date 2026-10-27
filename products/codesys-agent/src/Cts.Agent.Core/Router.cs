@@ -78,6 +78,24 @@ namespace Cts.Agent
             }
         }
 
+        // One method called from inside the agent (test.run's steps, the FSM
+        // window's live read): the same modal gate and activity line as a
+        // request on the pipe, and a refusal comes back as the
+        // ProtocolException it was.
+        public IDictionary<string, object> Call(string method, Dictionary<string, object> parameters, Session session)
+        {
+            var request = new Dictionary<string, object> { { "id", method }, { "method", method }, { "params", parameters } };
+            var reply = Json.Parse(Handle(Json.Serialize(request), session)) as IDictionary<string, object>;
+            object value;
+            if (reply != null && reply.TryGetValue("ok", out value) && Equals(value, true))
+                return reply.TryGetValue("result", out value) && value is IDictionary<string, object> ? (IDictionary<string, object>)value : new Dictionary<string, object>();
+            var error = reply != null && reply.TryGetValue("error", out value) ? value as IDictionary<string, object> : null;
+            object code = null, message = null;
+            error?.TryGetValue("code", out code);
+            error?.TryGetValue("message", out message);
+            throw new ProtocolException(code as string ?? ErrorCodes.Internal, message as string ?? method + " gave no answer");
+        }
+
         // The requests being answered now, each with how long it has run, longest first.
         public List<KeyValuePair<string, long>> Running()
         {

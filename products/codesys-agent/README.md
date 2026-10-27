@@ -388,6 +388,13 @@ chart, `FsmGrafcet`) and lists every machine; the one chosen is drawn
 (`FsmMap` holds the answer and finds what a click falls on), and a step or a
 transition clicked shows the code behind it with its line.  Ctrl+wheel and
 Ctrl+plus/minus zoom, Ctrl+0 fits the chart; Reload (F5) reads the IDE again.
+Live (`FsmViewLive`) reads the machine's variable every 250 ms through
+`Router.Call("vars.read")` in the agent itself, not a cts run, so neither the
+runs a report keeps nor the agent log fill with reads.  The paths come from
+`cts fsm` (`watch`, `FsmWatch`: the variable in each instance the declarations
+make); `FsmMap.StateOf` finds the step by the IDE's spelling of the value or by
+the numbers a state's constants stand for (`values`), and `FsmMap.Taken` the
+transition that led there.
 
 `2` opens `ActivityView`, one per IDE: the agent's actions live. It
 starts with `FileLog.Recent()` (the last lines this IDE's agent wrote) and

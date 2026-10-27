@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using static Cts.Agent.JsonMap;
 
 namespace Cts.Agent
@@ -27,13 +28,19 @@ namespace Cts.Agent
         //: In the answer's order: an FsmLink's Transition indexes it.
         public List<FsmCode> Transitions { get; } = new List<FsmCode>();
         public FsmLayout Layout { get; internal set; }
+        //: What reads the selector online, one path per instance.
+        public List<string> Watch { get; } = new List<string>();
     }
 
-    //: A state (Title its label) or a transition (Title `A → B`, Guard its condition)
-    //: with the code behind it and the line of the implementation it starts on.
+    //: A state (Title its label, Values the numbers it stands for) or a
+    //: transition (Title `A → B`, Guard its condition) with the code behind
+    //: it and the line of the implementation it starts on.
     public sealed class FsmCode
     {
         public string Title { get; internal set; }
+        public string Source { get; internal set; }
+        public string Target { get; internal set; }
+        public List<string> Values { get; } = new List<string>();
         public string Guard { get; internal set; }
         public string Code { get; internal set; }
         public int Line { get; internal set; }
@@ -123,15 +130,21 @@ namespace Cts.Agent
         static FsmMachine Machine(Dictionary<string, object> entry)
         {
             var machine = new FsmMachine { Selector = Text(entry, "selector"), Layout = Layout(Dict(entry, "layout")) };
+            machine.Watch.AddRange(Values(entry, "watch").Select(Convert.ToString));
             foreach (var warning in List(entry, "warnings"))
                 machine.Warnings.Add("line " + Int(warning, "line") + ": " + Text(warning, "text"));
             foreach (var state in List(entry, "states"))
-                machine.States.Add(new FsmCode { Title = Text(state, "label"), Code = Text(state, "code"), Line = Int(state, "line") });
+            {
+                var code = new FsmCode { Title = Text(state, "label"), Code = Text(state, "code"), Line = Int(state, "line") };
+                code.Values.AddRange(Values(state, "values").Select(Convert.ToString));
+                machine.States.Add(code);
+            }
             foreach (var transition in List(entry, "transitions"))
             {
                 machine.Transitions.Add(new FsmCode
                 {
                     Title = SourceLabel(transition) + " → " + Text(transition, "target"),
+                    Source = Text(transition, "source"), Target = Text(transition, "target"),
                     Guard = Text(transition, "guard"),
                     Code = Text(transition, "code"),
                     Line = Int(transition, "line"),
@@ -240,6 +253,79 @@ namespace Cts.Agent
             var t = length == 0 ? 0 : Math.Max(0, Math.Min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / length));
             double px = a[0] + t * dx - x, py = a[1] + t * dy - y;
             return Math.Sqrt(px * px + py * py);
+        }
+
+        // ---- the state a value read online stands for
+
+        static readonly Regex TypePrefix = new Regex(@"^[A-Za-z_]\w*#(?=[-+\d])");
+        static readonly Regex Based = new Regex(@"^(2|8|16)#([0-9A-Fa-f_]+)$");
+
+        // The state (its label) the selector's value *text* (as the IDE
+        // spells it: `5`, `INT#5`, `E_Step.Run`) is in; null for none.
+        public static string StateOf(FsmMachine machine, string text)
+        {
+            var value = (text ?? "").Trim();
+            var number = Integer(TypePrefix.Replace(value, ""));
+            foreach (var state in machine.States)
+            {
+                foreach (var alias in state.Title.Split(',').Select(alias => alias.Trim()))
+                    if (alias.Equals(value, StringComparison.OrdinalIgnoreCase)
+                        || alias.Contains('.') != value.Contains('.') && Last(alias).Equals(Last(value), StringComparison.OrdinalIgnoreCase) && !char.IsDigit(Last(value).FirstOrDefault())
+                        || number != null && Integer(alias) == number)
+                        return state.Title;
+                if (number != null && state.Values.Any(entry => Holds(entry, number.Value))) return state.Title;
+            }
+            return null;
+        }
+
+        // The value one name of a `vars.read` answer has, as the IDE spells
+        // it; null, and *failure* why, when there is none to show.
+        public static string LiveValue(IDictionary<string, object> answer, out string failure)
+        {
+            failure = null;
+            if (!Equals(Value(answer, "logged_in"), true))
+            {
+                failure = Equals(Value(answer, "online"), true) ? "not logged in" : "no application to read";
+                return null;
+            }
+            var result = Maps(answer, "results").FirstOrDefault();
+            if (result != null && Equals(Value(result, "ok"), true)) return Convert.ToString(Value(result, "text") ?? Value(result, "value"), System.Globalization.CultureInfo.InvariantCulture);
+            var error = Value(result, "error") as IDictionary<string, object>;
+            failure = Text(error, "code") == "not_exported" ? "not in the application on the PLC: misspelled, or never compiled in"
+                : Text(error, "message", "the IDE answered no value");
+            return null;
+        }
+
+        static string Last(string name) => name.Substring(name.LastIndexOf('.') + 1);
+
+        // "5" or "3..7" holds *number*.
+        static bool Holds(string entry, long number)
+        {
+            var parts = entry.Split(new[] { ".." }, StringSplitOptions.None);
+            var low = Integer(parts[0]);
+            var high = Integer(parts[parts.Length - 1]);
+            return low != null && high != null && number >= low && number <= high;
+        }
+
+        static long? Integer(string text)
+        {
+            text = (text ?? "").Trim().Replace("_", "");
+            var based = Based.Match(text);
+            if (based.Success)
+            {
+                try { return Convert.ToInt64(based.Groups[2].Value, int.Parse(based.Groups[1].Value)); }
+                catch (Exception error) when (error is FormatException || error is OverflowException || error is ArgumentException) { return null; }
+            }
+            return long.TryParse(text, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : (long?)null;
+        }
+
+        // The transitions (their indexes) that lead from state *from* to
+        // state *to*: its own, else those written outside the CASE.
+        public static List<int> Taken(FsmMachine machine, string from, string to)
+        {
+            var into = machine.Transitions.Select((transition, i) => new { transition, i }).Where(item => item.transition.Target == to).ToList();
+            var own = into.Where(item => item.transition.Source == from).ToList();
+            return (own.Count > 0 ? own : into.Where(item => item.transition.Source.Length == 0)).Select(item => item.i).ToList();
         }
 
         // ---- reading the answer
