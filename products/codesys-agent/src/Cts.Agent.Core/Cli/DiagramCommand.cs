@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using Cts.Agent;
 using Cts.Analysis;
 using Cts.Docs;
 using static Cts.Agent.JsonMap;
@@ -84,7 +85,10 @@ namespace Cts.Cli
             var workspace = Resolve(options, work, "view");
             var mermaid = DiagramView.Mermaid();
             if (mermaid == null) throw Failure("view", "assets/mermaid.min.js is not in the install above " + AppDomain.CurrentDomain.BaseDirectory + ": reinstall cts");
-            var project = Path.GetFileName(workspace.Root.TrimEnd('\\', '/'));
+            // The name this PC registered the project under, else the sync folder's.
+            var id = ProjectInfo.ProjectIdOf(workspace.Root);
+            var known = ProjectInfo.Known().FirstOrDefault(entry => entry.Id == id && entry.Name.Length > 0);
+            var project = known != null ? known.Name : Path.GetFileName(workspace.Root.TrimEnd('\\', '/'));
             var model = DiagramView.Model(project, ProjectDocs.Build(Snapshot.Read(workspace.View), name => name), ProjectDocs.TaskRoots(workspace.View), FsmCommand.Drawings(workspace.View));
             var file = Path.GetFullPath(options.Text("out") ?? Path.Combine(Path.GetTempPath(), "cts-diagrams", Unsafe.Replace(project, "_") + ".html"));
             Directory.CreateDirectory(Path.GetDirectoryName(file));
