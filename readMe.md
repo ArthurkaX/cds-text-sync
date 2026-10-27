@@ -283,6 +283,14 @@ it; `--out` writes elsewhere.
 
 Details: `cts docs --help`.
 
+The same reading draws the project as mermaid, to paste into a document or a
+pull request:
+
+```powershell
+cts diagram classes FB_Conveyor     # what it extends, implements, holds and refers to
+cts diagram calls --from MainTask   # the task's programs and what they call
+```
+
 ### Generate visualization screens from SVG
 
 An agent can create an SVG sketch as plain text, lint and preview it, compile it

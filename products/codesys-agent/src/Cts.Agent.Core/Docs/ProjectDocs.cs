@@ -287,7 +287,7 @@ namespace Cts.Docs
 
         // Each task (its file's name) with the programs it calls, from the
         // task configuration's XML (PouList).
-        static Dictionary<string, List<string>> TaskRoots(string view)
+        internal static Dictionary<string, List<string>> TaskRoots(string view)
         {
             var tasks = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             foreach (var path in Directory.EnumerateFiles(view, "*.xml", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal))

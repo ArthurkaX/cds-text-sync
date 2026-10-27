@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 - `cts fsm` gives each machine the paths to read online (`watch`) and each state the numbers it stands for (`values`); `cts fsm NAME` names the `cts read` that shows the state.
 - `cts fsm --svg FOLDER` writes the FSM window's GRAFCET drawing of each machine as an SVG file on white, for a document or a review; hovering a step or a transition shows its line. It works with `--disk`, so no IDE is needed.
 
+**Diagrams**
+
+- `cts diagram classes [NAME]` prints a mermaid classDiagram of the sync folder's project, offline: inheritance, interfaces, the blocks and structures a block holds and the ones it only refers to, with each class's inputs, outputs, methods and properties. With NAME the classes around it; without it the inheritance alone.
+- `cts diagram calls [--from TASK|NAME]` prints a mermaid flowchart of who calls whom from the tasks down, `--depth` calls deep; a node says how many callees it leaves out, and a task's graphical program shows as having no text.
+
 ---
 
 ### Version 4.0.0 (2026-10-26)
