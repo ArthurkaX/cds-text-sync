@@ -298,6 +298,7 @@ cts diagram view                    # every call, class and state machine drawin
 
 The page opens in the browser and needs no network: pick a task, a class or a
 state machine on the left, drag and zoom the drawing, click a node to go to it.
+In the IDE, quick window More, `7` Diagrams writes and opens it.
 
 ### Generate visualization screens from SVG
 

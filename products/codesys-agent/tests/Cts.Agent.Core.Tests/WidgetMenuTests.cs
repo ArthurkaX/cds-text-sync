@@ -138,17 +138,19 @@ namespace Cts.Agent.Tests
             Assert.Equal(WidgetMenu.NoSyncFolder, WidgetMenu.ForKey(items, '1').Disabled);
             Assert.Equal(WidgetMenu.NoSyncFolder, WidgetMenu.ForKey(items, '6').Disabled);
             var more = WidgetMenu.ForKey(items, '0').Choices;
-            Assert.All(more.Where(item => item.Key != '5'), item => Assert.Null(item.Disabled));
+            // Static analysis and the diagrams read the sync folder.
+            Assert.All(more.Where(item => item.Key != '5' && item.Key != '7'), item => Assert.Null(item.Disabled));
             Assert.Equal(WidgetMenu.NoSyncFolder, WidgetMenu.ForKey(more, '5').Disabled);
+            Assert.Equal(WidgetMenu.NoSyncFolder, WidgetMenu.ForKey(more, '7').Disabled);
         }
 
         [Fact]
-        public void ZeroOpensFormatActivityTheAgentLineAndTheFsmMap()
+        public void ZeroOpensFormatActivityTheAgentLineTheFsmMapAndTheDiagrams()
         {
             var more = WidgetMenu.ForKey(WidgetMenu.Items(false, "C:\\work", 6128, "example_lib", false), '0');
             Assert.Null(more.Args);
             Assert.Equal(WidgetPage.More, more.Opens);
-            Assert.Equal("123456", new string(more.Choices.Select(item => item.Key).ToArray()));
+            Assert.Equal("1234567", new string(more.Choices.Select(item => item.Key).ToArray()));
             Assert.Equal(WidgetPage.Report, WidgetMenu.ForKey(more.Choices, '6').Opens);
             Assert.Equal(WidgetPage.Format, WidgetMenu.ForKey(more.Choices, '1').Opens);
             Assert.Equal(WidgetPage.Activity, WidgetMenu.ForKey(more.Choices, '2').Opens);
@@ -157,10 +159,14 @@ namespace Cts.Agent.Tests
             Assert.Equal("Static analysis", analysis.Label);
             Assert.Equal(WidgetPage.StaticAnalysis, analysis.Opens);
             Assert.Equal("cts analyze, window", analysis.Hint);
+            var diagrams = WidgetMenu.ForKey(more.Choices, '7');
+            Assert.Equal(new[] { "diagram", "view" }, diagrams.Args);
+            Assert.Equal("calls, classes, FSM: a page in the browser", diagrams.Hint);
             var closed = WidgetMenu.ForKey(WidgetMenu.Items(false, "C:\\work", 5, "", false), '0').Choices;
             Assert.Equal("no project is open", WidgetMenu.ForKey(closed, '1').Disabled);
             Assert.Equal("no project is open", WidgetMenu.ForKey(closed, '4').Disabled);
             Assert.Null(WidgetMenu.ForKey(closed, '5').Disabled);
+            Assert.Null(WidgetMenu.ForKey(closed, '7').Disabled);
         }
 
         [Fact]

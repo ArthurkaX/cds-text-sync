@@ -380,7 +380,7 @@ namespace Cts.Agent
         // The row of what is used now and then, a page of its own.
         static WidgetItem More(int pid, string project, string noFolder, bool noProject = false)
         {
-            var item = Page('0', "More", WidgetPage.More, null, noProject ? "activity, AI line, report" : "format, FSM, analysis, report, …");
+            var item = Page('0', "More", WidgetPage.More, null, noProject ? "activity, AI line, report" : "format, FSM, analysis, diagrams, …");
             if (noProject)
             {
                 item.Choices = new List<WidgetItem>
@@ -399,6 +399,7 @@ namespace Cts.Agent
                 Page('4', "FSM map", WidgetPage.Fsm, project.Length == 0 ? "no project is open" : null, "state machines in the ST, window"),
                 Page('5', "Static analysis", WidgetPage.StaticAnalysis, noFolder, "cts analyze, window"),
                 Reporter(),
+                Hinted(Item('7', "Diagrams", noFolder, "diagram", "view"), "calls, classes, FSM: a page in the browser"),
             };
             return item;
         }
