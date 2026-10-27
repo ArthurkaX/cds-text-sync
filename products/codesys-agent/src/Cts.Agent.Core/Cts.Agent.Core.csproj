@@ -27,6 +27,7 @@
     <EmbeddedResource Include="Analysis\Rules\*.md" LogicalName="Cts.Analysis.Rules.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Visu\themes\*.json" Link="Visu\Themes\%(Filename)%(Extension)" LogicalName="Cts.Visu.Themes.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Visu\stylesheet.css" Link="Visu\stylesheet.css" LogicalName="Cts.Visu.stylesheet.css" />
+    <EmbeddedResource Include="Docs\DiagramView.html" LogicalName="Cts.Docs.DiagramView.html" />
   </ItemGroup>
   <ItemGroup>
     <!-- Reflection.Emit (DevListen: a handler the IDE can invoke reflectively) is

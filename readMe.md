@@ -288,12 +288,16 @@ it; `--out` writes elsewhere.
 Details: `cts docs --help`.
 
 The same reading draws the project as mermaid, to paste into a document or a
-pull request:
+pull request, or as one page to browse:
 
 ```powershell
 cts diagram classes FB_Conveyor     # what it extends, implements, holds and refers to
 cts diagram calls --from MainTask   # the task's programs and what they call
+cts diagram view                    # every call, class and state machine drawing in one HTML page
 ```
+
+The page opens in the browser and needs no network: pick a task, a class or a
+state machine on the left, drag and zoom the drawing, click a node to go to it.
 
 ### Generate visualization screens from SVG
 

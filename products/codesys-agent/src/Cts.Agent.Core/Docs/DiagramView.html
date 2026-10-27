@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cts diagrams</title>
+<!-- cts diagram view writes this page: mermaid and the project's drawings go in below, the page needs nothing else. -->
+<style>
+  :root { --bg:#ffffff; --side:#f6f8fa; --raised:#ffffff; --ink:#1f2328; --muted:#6e7781; --line:#d0d7de; --hover:#eaeef2;
+    --sel:#0969da; --selbg:#ddf4ff; --dot:#d8dee4; --veil:#ffffffd0; color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1117; --side:#161b22; --raised:#21262d; --ink:#e6edf3; --muted:#8d96a0; --line:#30363d; --hover:#262c36;
+      --sel:#2f81f7; --selbg:#1f3a5f; --dot:#2a313b; --veil:#0d1117d0; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px system-ui, "Segoe UI", sans-serif; }
+  #app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+  #side { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  #side header { padding: 10px 12px 4px; }
+  #project { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #made { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  #tabs { display: flex; gap: 4px; padding: 6px 12px; }
+  #tabs button { flex: 1; padding: 5px 0; border: 1px solid var(--line); background: var(--raised); color: var(--ink); border-radius: 6px; cursor: pointer; font: inherit; }
+  #tabs button.on { background: var(--sel); border-color: var(--sel); color: #fff; }
+  #tabs button small { opacity: .7; }
+  #filter { margin: 4px 12px 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: var(--raised); color: var(--ink); }
+  #kinds { padding: 0 12px 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  #kinds label { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 1px 7px; cursor: pointer; user-select: none; }
+  #kinds input { display: none; }
+  #kinds label:has(input:checked) { color: var(--ink); background: var(--raised); }
+  #list { flex: 1; overflow: auto; border-top: 1px solid var(--line); }
+  #list div { padding: 4px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; }
+  #list div span:first-child { overflow: hidden; text-overflow: ellipsis; font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
+  #list div span:last-child { color: var(--muted); font-size: 11px; }
+  #list div:hover { background: var(--hover); }
+  #list div.on { background: var(--selbg); }
+  #list .more { color: var(--muted); font-size: 11px; cursor: default; }
+  #list .more:hover { background: none; }
+  #main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #title { font-family: Consolas, "DejaVu Sans Mono", monospace; font-weight: 600; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #bar button { padding: 3px 9px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); border-radius: 6px; cursor: pointer; font: inherit; }
+  #bar button.on { background: var(--sel); border-color: var(--sel); color: #fff; }
+  #depths { display: flex; gap: 2px; align-items: center; color: var(--muted); }
+  #zoom { color: var(--muted); width: 44px; text-align: right; }
+  #canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; touch-action: none;
+    background: radial-gradient(circle, var(--dot) 1px, transparent 1px) 0 0 / 20px 20px; }
+  #canvas.drag { cursor: grabbing; }
+  #canvas.paper { background: #fff; }
+  #canvas > svg { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none !important; }
+  #canvas .node, #canvas g[id^="classId-"] { cursor: pointer; }
+  #canvas .node:hover rect, #canvas .node:hover polygon, #canvas .node:hover path,
+  #canvas g[id^="classId-"]:hover rect, #canvas g[id^="classId-"]:hover path { stroke: var(--sel) !important; stroke-width: 2px !important; }
+  #note { position: absolute; left: 12px; bottom: 10px; color: var(--muted); font-size: 12px; background: var(--veil); padding: 2px 6px; border-radius: 4px; pointer-events: none; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); padding: 24px; text-align: center; }
+  @media (max-width: 700px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 40vh 1fr; }
+    #side { border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <header><div id="project"></div><div id="made"></div></header>
+    <div id="tabs">
+      <button data-mode="calls">Calls</button>
+      <button data-mode="classes">Classes</button>
+      <button data-mode="fsm">FSM</button>
+    </div>
+    <input id="filter" placeholder="Filter by name  ( / )" autocomplete="off" spellcheck="false">
+    <div id="kinds"></div>
+    <div id="list"></div>
+  </aside>
+  <section id="main">
+    <div id="bar">
+      <span id="title"></span>
+      <span id="depths"></span>
+      <button id="dir" title="Lay the drawing out top-down or left-right"></button>
+      <button id="other" title="The same object in the other view"></button>
+      <button id="fit" title="Fit it all (0, or double-click the canvas)">Fit</button>
+      <button id="out" title="Zoom out (-)">&minus;</button>
+      <span id="zoom"></span>
+      <button id="in" title="Zoom in (+)">+</button>
+      <button id="save" title="Download this drawing as an SVG file">SVG</button>
+    </div>
+    <div id="canvas"><div id="empty"></div><div id="note"></div></div>
+  </section>
+</div>
+<script>/*cts:mermaid*/</script>
+<script>window.CTS_DATA = /*cts:data*/null;</script>
+<script>
+"use strict";
+const data = window.CTS_DATA;
+const D = data.depths;
+const KINDS = {
+  calls: ["TASK", "PROGRAM", "FUNCTION_BLOCK", "FUNCTION"],
+  classes: ["FUNCTION_BLOCK", "STRUCT", "INTERFACE", "PROGRAM", "UNION"],
+};
+const SHORT = { TASK: "task", PROGRAM: "prg", FUNCTION_BLOCK: "fb", FUNCTION: "fun", STRUCT: "struct", INTERFACE: "itf", UNION: "union" };
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+let dirChoice = null, dirShown = "TD", drawing = 0;
+let state = { mode: "calls", name: "", depth: 3 }, hidden = new Set(), vb = null, base = null;
+const $ = id => document.getElementById(id);
+
+mermaid.initialize({ startOnLoad: false, maxEdges: 100000, maxTextSize: 10000000, securityLevel: "strict",
+  theme: dark ? "dark" : "default", flowchart: { useMaxWidth: false }, class: { useMaxWidth: false } });
+
+$("project").textContent = data.project;
+$("made").textContent = "drawn " + data.made + " by cts diagram view";
+document.title = data.project + " - cts diagrams";
+document.querySelectorAll("#tabs button").forEach(b => {
+  b.insertAdjacentHTML("beforeend", ` <small>${count(b.dataset.mode)}</small>`);
+  b.onclick = () => go({ mode: b.dataset.mode, name: "", depth: middle(b.dataset.mode) });
+});
+$("filter").oninput = list;
+$("fit").onclick = fit;
+$("in").onclick = () => zoomAt(0.5, 0.5, 1 / 1.25);
+$("out").onclick = () => zoomAt(0.5, 0.5, 1.25);
+$("save").onclick = save;
+$("dir").onclick = () => { dirChoice = dirShown === "TD" ? "LR" : "TD"; render(); };
+addEventListener("hashchange", fromHash);
+addEventListener("resize", () => vb && fitAspect());
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") { if (e.key === "Escape") e.target.blur(); return; }
+  if (e.key === "0") fit(); else if (e.key === "+" || e.key === "=") $("in").click(); else if (e.key === "-") $("out").click();
+  else if (e.key === "/") { e.preventDefault(); $("filter").focus(); }
+});
+canvasEvents();
+fromHash();
+
+function count(mode) { return mode === "calls" ? data.roots.length : mode === "classes" ? data.classes.length : data.fsm.length; }
+function middle(mode) { const d = D[mode]; return d ? d[Math.min(1, d.length - 1)] : 0; }
+
+function fromHash() {
+  const [mode, name, depth] = decodeURIComponent(location.hash.slice(1)).split("|");
+  const first = count("calls") ? "calls" : count("classes") ? "classes" : count("fsm") ? "fsm" : "calls";
+  const m = ["calls", "classes", "fsm"].includes(mode) ? mode : first;
+  state = { mode: m, name: name || "", depth: D[m] && D[m].includes(+depth) ? +depth : middle(m) };
+  if (m === "fsm" && !state.name && data.fsm.length) state.name = data.fsm[0].name;
+  render();
+}
+
+function go(next) {
+  const s = { ...state, ...next };
+  dirChoice = null;
+  location.hash = encodeURIComponent([s.mode, s.name, s.depth].join("|"));
+}
+
+function items() {
+  if (state.mode === "fsm") return data.fsm.map(f => ({ name: f.name, kind: "", note: "" }));
+  if (state.mode === "classes") return [{ name: "", kind: "", note: "", label: "Inheritance (whole project)" }]
+    .concat(data.classes.map(c => ({ name: c.name, kind: c.kind, note: c.relations ? c.relations + " rel" : "" })));
+  return [{ name: "", kind: "", note: "", label: data.roots.some(r => r.kind === "TASK") ? "All tasks" : "All programs" }]
+    .concat(data.roots.map(r => ({ name: r.name, kind: r.kind, note: r.calls + (r.calls === 1 ? " call" : " calls") })));
+}
+
+function list() {
+  const kinds = (KINDS[state.mode] || []).filter(k => items().some(i => i.kind === k));
+  $("kinds").innerHTML = kinds.length > 1 ? kinds.map(k => `<label><input type="checkbox" data-k="${k}" ${hidden.has(k) ? "" : "checked"}>${SHORT[k]}</label>`).join("") : "";
+  $("kinds").querySelectorAll("input").forEach(i => i.onchange = () => { i.checked ? hidden.delete(i.dataset.k) : hidden.add(i.dataset.k); list(); });
+  const f = $("filter").value.trim().toLowerCase();
+  const rows = items().filter(i => (!i.kind || !hidden.has(i.kind)) && (!f || (i.label || i.name).toLowerCase().includes(f)));
+  const shown = rows.slice(0, 1500);
+  $("list").innerHTML = shown.map(i => `<div data-n="${esc(i.name)}" title="${esc(i.label || i.name)}" class="${i.name === state.name ? "on" : ""}"><span>${esc(i.label || i.name)}</span><span>${i.kind ? SHORT[i.kind] || "" : ""}${i.note ? " · " + i.note : ""}</span></div>`).join("")
+    + (rows.length > shown.length ? `<div class="more">${rows.length - shown.length} more: filter to see them</div>` : "")
+    + (!rows.length ? `<div class="more">${state.mode === "fsm" ? "No CASE state machine in the project's text" : "Nothing matches"}</div>` : "");
+  $("list").querySelectorAll("div[data-n]").forEach(d => d.onclick = () => go({ name: d.dataset.n }));
+  $("list").querySelector(".on")?.scrollIntoView({ block: "nearest" });
+}
+
+function key() { return state.mode + "|" + state.name + "|" + (state.mode === "classes" && !state.name ? 0 : state.depth); }
+
+async function render() {
+  const mine = ++drawing;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.mode === state.mode));
+  list();
+  const depths = state.mode === "classes" && !state.name ? [] : D[state.mode] || [];
+  $("depths").innerHTML = depths.length ? "depth " + depths.map(d => `<button data-d="${d}" class="${d === state.depth ? "on" : ""}">${d}</button>`).join("") : "";
+  $("depths").querySelectorAll("button").forEach(b => b.onclick = () => go({ depth: +b.dataset.d }));
+  const other = otherView();
+  $("other").textContent = other ? other.label : "";
+  $("other").style.display = other ? "" : "none";
+  $("other").onclick = () => other && go(other.to);
+  $("title").textContent = title();
+  $("dir").style.display = state.mode === "fsm" ? "none" : "";
+  const canvas = $("canvas");
+  canvas.classList.toggle("paper", state.mode === "fsm");
+  canvas.querySelector("svg")?.remove();
+  $("note").textContent = "";
+  let svgText = null;
+  if (state.mode === "fsm") {
+    const f = data.fsm.find(f => f.name === state.name);
+    svgText = f ? f.svg : null;
+    $("empty").textContent = data.fsm.length ? "Pick a machine on the left" : "No CASE state machine in the project's text";
+  } else {
+    const text = data.diagrams[key()];
+    if (text) {
+      $("empty").textContent = "Drawing…";
+      $("empty").style.display = "";
+      try { svgText = await layout(text); }
+      catch (e) { $("empty").textContent = "mermaid could not draw this: " + e.message; return; }
+      if (mine !== drawing) return;
+    } else if (state.mode === "classes") {
+      $("empty").textContent = state.name ? "Pick a class on the left" : "No class extends or implements another: pick one on the left to see what it holds and who holds it";
+    } else $("empty").textContent = data.roots.length ? "Pick a task or an object on the left" : "Nothing calls anything: no task configuration and no program with calls in the folder";
+  }
+  if (!svgText) { $("empty").style.display = ""; vb = null; base = null; zoomLabel(); return; }
+  $("empty").style.display = "none";
+  canvas.insertAdjacentHTML("afterbegin", svgText);
+  const svg = canvas.querySelector("svg");
+  svg.removeAttribute("width"); svg.removeAttribute("height"); svg.style.maxWidth = "none";
+  svg.setAttribute("preserveAspectRatio", "none");
+  // A list node ("27 function blocks" and their names) reads down the left.
+  svg.querySelectorAll(".nodeLabel").forEach(l => { if (l.querySelector("br")) l.style.textAlign = "left"; });
+  const box = svg.getBBox();
+  base = { x: box.x, y: box.y, w: Math.max(box.width, 1), h: Math.max(box.height, 1) };
+  fit();
+  if (state.mode === "fsm") { $("note").textContent = "hover a step or a transition for its code · drag to move · wheel to zoom"; return; }
+  $("dir").textContent = dirShown === "TD" ? "↓ top-down" : "→ left-right";
+  $("note").textContent = nodeCount(svg) + " nodes · click one to go to it · drag to move · wheel to zoom · 0 fits it all";
+  if ($("canvas").clientWidth / vb.w < 0.6) focusRoot(svg);
+}
+
+// The text laid out one way: TD as cts writes it, LR turned.
+function turned(text, dir) {
+  if (dir === "TD") return text;
+  if (text.startsWith("flowchart TD")) return "flowchart LR" + text.slice(12);
+  if (text.startsWith("classDiagram")) return "classDiagram\n    direction LR" + text.slice(12);
+  return text;
+}
+// How large a drawing shows when fitted to the canvas.
+function fitScale(svgText) {
+  const box = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(svgText);
+  if (!box) return 0;
+  const c = $("canvas");
+  return Math.min((c.clientWidth - 48) / +box[3], (c.clientHeight - 48) / +box[4]);
+}
+// Both ways unless the viewer chose one; the one that shows larger wins.
+async function layout(text) {
+  const ways = dirChoice ? [dirChoice] : ["TD", "LR"];
+  let best = null;
+  for (const dir of ways) {
+    const svg = (await mermaid.render("m" + drawing + dir, turned(text, dir))).svg;
+    const scale = fitScale(svg);
+    if (!best || scale > best.scale * 1.15) best = { dir, svg, scale };
+  }
+  dirShown = best.dir;
+  return best.svg;
+}
+
+function title() {
+  if (state.mode === "fsm") return state.name || "FSM";
+  if (state.mode === "classes") return state.name ? "cts diagram classes " + state.name + " --depth " + state.depth : "cts diagram classes";
+  return "cts diagram calls" + (state.name ? " --from " + state.name : "") + " --depth " + state.depth;
+}
+
+// The same object in the other view, when it has one there.
+function otherView() {
+  if (!state.name || state.mode === "fsm") return null;
+  if (state.mode === "calls" && data.classes.some(c => c.name === state.name)) return { label: "Classes →", to: { mode: "classes", depth: middle("classes") } };
+  if (state.mode === "classes" && data.roots.some(r => r.name === state.name)) return { label: "Calls →", to: { mode: "calls", depth: middle("calls") } };
+  return null;
+}
+
+function nodeCount(svg) { return svg.querySelectorAll(".node, g[id^='classId-']").length; }
+
+// The line of text under the pointer: one name of a list node.
+function lineAt(e) {
+  const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
+  const pos = !range && document.caretPositionFromPoint ? document.caretPositionFromPoint(e.clientX, e.clientY) : null;
+  const node = range ? range.startContainer : pos && pos.offsetNode;
+  return node && node.nodeType === 3 ? node.textContent.trim() : "";
+}
+
+// A name a list node shows: not its "9 function blocks" head or "... N more".
+function listed(line) {
+  if (!line || /^\d+ [a-z ]+$/.test(line) || /^\.\.\. \d+ more$/.test(line)) return null;
+  return line.replace(/ : .*$/, "").replace(/ \+\d+$/, "");
+}
+
+// The project object a drawn node stands for.
+function nodeName(g, e) {
+  if (/^classId-list__\d+-/.test(g.id)) return listed(lineAt(e));
+  let m = /^flowchart-(n\d+)-/.exec(g.id);
+  if (m) {
+    const line = (data.diagrams[key()] || "").split("\n").map(l => l.trimStart()).find(l => new RegExp("^" + m[1] + "[\\[({]").test(l));
+    const label = line && /"([^"]*)"/.exec(line);
+    if (!label) return null;
+    const raw = label[1].replace(/#quot;/g, '"');
+    if (raw.includes("<br>")) return listed(lineAt(e));
+    if (raw.startsWith("task ")) return raw.slice(5);
+    return raw.replace(/ \+\d+$/, "").replace(/ \(no text\)$/, "");
+  }
+  m = /^classId-(.+)-\d+$/.exec(g.id);
+  if (m) {
+    const hit = data.classes.find(c => c.name.replace(/\W/g, "_") === m[1]);
+    return hit ? hit.name : null;
+  }
+  return null;
+}
+
+// Pan and zoom by the viewBox, so text stays sharp at any scale.
+function apply() {
+  const svg = $("canvas").querySelector("svg");
+  if (!svg || !vb) return;
+  svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  zoomLabel();
+}
+function zoomLabel() { $("zoom").textContent = vb ? Math.round($("canvas").clientWidth / vb.w * 100) + "%" : ""; }
+function fit() {
+  if (!base) return;
+  const c = $("canvas"), pad = 24;
+  const k = Math.max(base.w / (c.clientWidth - 2 * pad), base.h / (c.clientHeight - 2 * pad), 1 / 1.5);
+  const w = c.clientWidth * k, h = c.clientHeight * k;
+  vb = { x: base.x + base.w / 2 - w / 2, y: base.y + base.h / 2 - h / 2, w, h };
+  apply();
+}
+// Too large to read fitted: start at 100% on the node the drawing is about,
+// as a map opens on a place rather than on the whole country.
+function focusRoot(svg) {
+  const id = state.mode === "calls" ? "flowchart-n1-" : "classId-" + state.name.replace(/\W/g, "_") + "-";
+  const g = [...svg.querySelectorAll("g[id]")].find(g => g.id.startsWith(id));
+  if (!g) return;
+  const c = $("canvas"), r = g.getBoundingClientRect(), cr = c.getBoundingClientRect(), k = vb.w / c.clientWidth;
+  const x0 = vb.x + (r.left - cr.left) * k, y0 = vb.y + (r.top - cr.top) * k, w = r.width * k, h = r.height * k;
+  vb.w = c.clientWidth; vb.h = c.clientHeight;
+  if (state.mode === "classes" || !state.name && dirShown === "TD") { vb.x = x0 + w / 2 - vb.w / 2; vb.y = y0 + h / 2 - vb.h / 2; }
+  else if (dirShown === "LR") { vb.x = x0 - 40; vb.y = y0 + h / 2 - vb.h / 2; }
+  else { vb.x = x0 + w / 2 - vb.w / 2; vb.y = y0 - 40; }
+  apply();
+  $("note").textContent = "opened at 100% on " + (state.name || "the first task") + " · 0 fits it all · drag to move · wheel to zoom";
+}
+
+function fitAspect() {
+  const c = $("canvas");
+  const h = vb.w * c.clientHeight / c.clientWidth;
+  vb.y += (vb.h - h) / 2; vb.h = h; apply();
+}
+function zoomAt(fx, fy, factor) {
+  if (!vb) return;
+  const k = $("canvas").clientWidth / (vb.w * factor);
+  if (k > 8 || k < 0.02) return;
+  const px = vb.x + fx * vb.w, py = vb.y + fy * vb.h;
+  vb.w *= factor; vb.h *= factor;
+  vb.x = px - fx * vb.w; vb.y = py - fy * vb.h;
+  apply();
+}
+function canvasEvents() {
+  const c = $("canvas");
+  let press = null;
+  c.addEventListener("wheel", e => {
+    e.preventDefault();
+    const r = c.getBoundingClientRect();
+    zoomAt((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, Math.pow(1.0015, e.deltaY));
+  }, { passive: false });
+  c.addEventListener("pointerdown", e => {
+    if (e.button !== 0 && e.button !== 1 || !vb) return;
+    press = { x: e.clientX, y: e.clientY, vb: { ...vb }, moved: false, target: e.target };
+    c.setPointerCapture(e.pointerId);
+  });
+  c.addEventListener("pointermove", e => {
+    if (!press) return;
+    const dx = e.clientX - press.x, dy = e.clientY - press.y;
+    if (!press.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    press.moved = true; c.classList.add("drag");
+    const k = vb.w / c.clientWidth;
+    vb.x = press.vb.x - dx * k; vb.y = press.vb.y - dy * k;
+    apply();
+  });
+  c.addEventListener("pointerup", e => {
+    if (!press) return;
+    const p = press; press = null; c.classList.remove("drag");
+    if (p.moved || state.mode === "fsm") return;
+    const g = p.target.closest && p.target.closest(".node, g[id^='classId-']");
+    const name = g && nodeName(g, e);
+    if (name && name !== state.name && (data.roots.some(r => r.name === name) || data.classes.some(cl => cl.name === name)))
+      go(state.mode === "calls" && !data.roots.some(r => r.name === name) ? { mode: "classes", name, depth: middle("classes") } : { name });
+  });
+  c.addEventListener("dblclick", fit);
+}
+
+function save() {
+  const svg = $("canvas").querySelector("svg");
+  if (!svg || !base) return;
+  const copy = svg.cloneNode(true);
+  copy.setAttribute("viewBox", `${base.x - 10} ${base.y - 10} ${base.w + 20} ${base.h + 20}`);
+  copy.setAttribute("width", base.w + 20); copy.setAttribute("height", base.h + 20);
+  copy.removeAttribute("preserveAspectRatio");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([copy.outerHTML], { type: "image/svg+xml" }));
+  a.download = (data.project + "-" + state.mode + "-" + (state.name || "all")).replace(/[^\w.-]+/g, "_") + ".svg";
+  a.click();
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+</script>
+</body>
+</html>

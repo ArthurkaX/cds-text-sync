@@ -27,3 +27,7 @@ products/codesys-agent/tests/Cts.Agent.Core.Tests/Golden/ExportFixture/** -text
 # without a .NET SDK; Git LFS keeps each refresh out of the history a clone pulls.
 products/codesys-agent/dist/*.dll filter=lfs diff=lfs merge=lfs -text
 products/codesys-agent/dist/*.exe filter=lfs diff=lfs merge=lfs -text
+
+# Mermaid 11.4.1 (MIT, mermaid.LICENSE beside it), minified: cts diagram view
+# puts it into the page it writes. Not ours to diff or count.
+products/codesys-agent/assets/*.js -diff linguist-vendored

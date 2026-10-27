@@ -49,7 +49,7 @@ namespace Cts.Cli
                 Declaration = Text(record, "declaration"), Text = Text(record, "implementation"),
             });
             var watch = new FsmWatch(records.Select(r => new KeyValuePair<string, string>(Text(r, "name"), Text(r, "declaration"))));
-            return Answer(call.Options, "ide", sources.ToList(), watch);
+            return Answer(call.Options, "ide", sources.ToList(), watch, null);
         }
 
         static IDictionary<string, object> Disk(CliOptions options, IAgentHost host, string work)
@@ -58,20 +58,37 @@ namespace Cts.Cli
             var view = ViewFolder.Of(folder);
             if (!Directory.Exists(view)) throw Failure("the sync folder has no " + view);
             var read = StViewReader.Read(view);
-            var sources = read.Objects.Where(item => item.Implementation != null).Select(item =>
-            {
-                // The file's own names: the POU, then a member inside its file.
-                var depth = (Path.GetDirectoryName(item.File) ?? "").Replace('\\', '/').Split('/').Count(part => part.Length > 0);
-                return new Source { Label = string.Join(".", item.Path.Skip(depth)), Name = item.Path.Last(), File = item.File.Replace('\\', '/'), Declaration = item.Declaration, Text = item.Implementation, FirstLine = item.ImplementationLine ?? 1 };
-            }).ToList();
-            var watch = new FsmWatch(read.Objects.Select(item => new KeyValuePair<string, string>(item.Path.Last(), item.Declaration)));
-            var data = Answer(options, "disk", sources, watch);
+            var data = Answer(options, "disk", Sources(read), Watch(read), null);
             data["sync_folder"] = folder;
             if (read.Errors.Count > 0)
                 data["failed"] = (data.TryGetValue("failed", out var failed) ? (List<object>)failed : new List<object>())
                     .Concat(read.Errors.Select(error => (object)new Dictionary<string, object> { ["label"] = error.File, ["error"] = error.Reason })).ToList();
             return data;
         }
+
+        // Each machine in the files of *view* drawn as the FSM window draws it,
+        // for the diagram page: "Object: selector" and its SVG.
+        internal static List<KeyValuePair<string, string>> Drawings(string view)
+        {
+            var read = StViewReader.Read(view);
+            var drawings = new List<KeyValuePair<string, string>>();
+            Answer(new CliOptions(), "disk", Sources(read), Watch(read), (label, machine) =>
+            {
+                var caption = label + ": " + machine["selector"];
+                drawings.Add(new KeyValuePair<string, string>(caption, FsmSvg.Render(FsmMap.Read(machine), caption)));
+                return caption;
+            });
+            return drawings;
+        }
+
+        static List<Source> Sources(StViewResult read) => read.Objects.Where(item => item.Implementation != null).Select(item =>
+        {
+            // The file's own names: the POU, then a member inside its file.
+            var depth = (Path.GetDirectoryName(item.File) ?? "").Replace('\\', '/').Split('/').Count(part => part.Length > 0);
+            return new Source { Label = string.Join(".", item.Path.Skip(depth)), Name = item.Path.Last(), File = item.File.Replace('\\', '/'), Declaration = item.Declaration, Text = item.Implementation, FirstLine = item.ImplementationLine ?? 1 };
+        }).ToList();
+
+        static FsmWatch Watch(StViewResult read) => new FsmWatch(read.Objects.Select(item => new KeyValuePair<string, string>(item.Path.Last(), item.Declaration)));
 
         // --sync-folder, else the sync folder around the current folder, else
         // the open project's.
@@ -88,8 +105,9 @@ namespace Cts.Cli
 
         // The objects with a machine, by label; one that cannot be read is
         // named in failed and the rest still answer.  Each machine says what
-        // to read online (watch) and what number a constant state stands for.
-        static Dictionary<string, object> Answer(CliOptions options, string from, List<Source> sources, FsmWatch watch)
+        // to read online (watch) and what number a constant state stands for;
+        // *draw* (else --svg's folder) draws each and names the drawing.
+        static Dictionary<string, object> Answer(CliOptions options, string from, List<Source> sources, FsmWatch watch, Func<string, IDictionary<string, object>, string> draw)
         {
             var name = options.Arguments.FirstOrDefault() ?? "";
             if (name.Length > 0)
@@ -101,6 +119,7 @@ namespace Cts.Cli
             var failed = new List<object>();
             var drawings = options.Params.TryGetValue("svg", out var svg) ? Path.GetFullPath(Convert.ToString(svg)) : null;
             var drawn = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (drawings != null) draw = (label, drawing) => FsmSvg.Write(drawings, label, drawing, drawn);
             foreach (var source in sources.OrderBy(s => s.Label, StringComparer.OrdinalIgnoreCase))
             {
                 var text = StText.Lf(source.Text);
@@ -127,9 +146,9 @@ namespace Cts.Cli
                     if (options.Params.ContainsKey("mermaid")) machine["mermaid"] = FsmMermaid.Render(machine);
                     if (options.Params.ContainsKey("layout")) machine["layout"] = FsmGrafcet.Layout(machine);
                     if (source.FirstLine != 1) Shift(machine, source.FirstLine - 1);
-                    if (drawings == null) continue;
+                    if (draw == null) continue;
                     var drawing = new Dictionary<string, object>(machine) { ["layout"] = machine.TryGetValue("layout", out var layout) ? layout : FsmGrafcet.Layout(machine) };
-                    machine["svg"] = FsmSvg.Write(drawings, source.Label, drawing, drawn);
+                    machine["svg"] = draw(source.Label, drawing);
                 }
                 var item = new Dictionary<string, object> { ["label"] = source.Label };
                 if (source.Guid != null) item["guid"] = source.Guid;

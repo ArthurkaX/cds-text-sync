@@ -1,5 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using Cts.Analysis;
 using Cts.Docs;
@@ -7,9 +11,10 @@ using static Cts.Agent.JsonMap;
 
 namespace Cts.Cli
 {
-    // `cts diagram classes|calls`: mermaid diagrams of the sync folder's
-    // project, offline, from what `cts docs` reads: the class structure
-    // around a block, and who calls whom from a task down.
+    // `cts diagram classes|calls|view`: mermaid diagrams of the sync
+    // folder's project, offline, from what `cts docs` reads: the class
+    // structure around a block, who calls whom from a task down, and a page
+    // that browses them all with the state machines.
     internal static class DiagramCommand
     {
         const int ClassDepth = 1;
@@ -18,6 +23,7 @@ namespace Cts.Cli
         const int MermaidLimit = 50000;
         const int MermaidEdges = 500;
 
+        static readonly Regex Unsafe = new Regex(@"[^A-Za-z0-9_.\-]+");
         static readonly Regex Arrow = new Regex(@" (?:<\|--|<\|\.\.|\*--|-->) ");
         static readonly CliOption Workspace = CliOption.Text("--workspace", "workspace", "DIR", "The sync folder or its project-view (default: the one around the current folder)");
 
@@ -54,19 +60,79 @@ namespace Cts.Cli
                 },
                 LocalExecute = (options, host, work) => Draw(options, work, "calls"), Build = Build,
             },
+            new CliCommand
+            {
+                Name = "diagram", Sub = "view",
+                Summary = "Write every diagram of the project into one HTML page and open it (offline)",
+                Description = "One HTML file that browses the sync folder's project: the calls from each task and object, the classes around each "
+                    + "function block, structure and interface, and each state machine as the FSM window draws it, at the depths the other "
+                    + "diagram commands take. Pick on the left, drag to move, the wheel zooms, a click on a node goes to it. The page holds mermaid "
+                    + "and every drawing, so it opens without a network and travels as one file. Written to --out (default: cts-diagrams in the "
+                    + "temporary folder) and opened in the default browser unless --no-open. Needs no IDE.",
+                Options = new[]
+                {
+                    CliOption.Text("--out", "out", "FILE", "Write the page here"),
+                    CliOption.Switch("--no-open", "no_open", "Only write the page"),
+                    Workspace,
+                },
+                LocalExecute = (options, host, work) => View(options, work), Build = BuildView,
+            },
         };
 
-        static IDictionary<string, object> Draw(CliOptions options, string work, string kind)
+        static IDictionary<string, object> View(CliOptions options, string work)
         {
-            AnalyzeWorkspace workspace;
+            var workspace = Resolve(options, work, "view");
+            var mermaid = DiagramView.Mermaid();
+            if (mermaid == null) throw Failure("view", "assets/mermaid.min.js is not in the install above " + AppDomain.CurrentDomain.BaseDirectory + ": reinstall cts");
+            var project = Path.GetFileName(workspace.Root.TrimEnd('\\', '/'));
+            var model = DiagramView.Model(project, ProjectDocs.Build(Snapshot.Read(workspace.View), name => name), ProjectDocs.TaskRoots(workspace.View), FsmCommand.Drawings(workspace.View));
+            var file = Path.GetFullPath(options.Text("out") ?? Path.Combine(Path.GetTempPath(), "cts-diagrams", Unsafe.Replace(project, "_") + ".html"));
+            Directory.CreateDirectory(Path.GetDirectoryName(file));
+            File.WriteAllText(file, DiagramView.Page(Template(), File.ReadAllText(mermaid), model), new UTF8Encoding(false));
+            var opened = false;
+            if (!options.Params.ContainsKey("no_open"))
+            {
+                // The shell starts the browser: a child of cts would hold the pipe the quick window reads cts' answer from.
+                try { Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); opened = true; }
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception || error is InvalidOperationException) { }
+            }
+            return new Dictionary<string, object>
+            {
+                ["diagram"] = "view", ["file"] = file, ["opened"] = opened, ["project_view"] = workspace.View,
+                ["classes"] = ((List<object>)model["classes"]).Count, ["roots"] = ((List<object>)model["roots"]).Count,
+                ["machines"] = ((List<object>)model["fsm"]).Count, ["kb"] = new FileInfo(file).Length / 1024,
+            };
+        }
+
+        static Answer BuildView(IDictionary<string, object> data)
+        {
+            var answer = new Answer();
+            foreach (var key in new[] { "classes", "roots", "machines", "kb", "file" }) answer.Add(key, data[key]);
+            if (!Equals(data["opened"], true)) answer.Detail("open " + Text(data, "file") + " in a browser");
+            return answer;
+        }
+
+        static string Template()
+        {
+            using (var stream = typeof(DiagramCommand).Assembly.GetManifestResourceStream("Cts.Docs.DiagramView.html"))
+            using (var reader = new StreamReader(stream, Encoding.UTF8)) return reader.ReadToEnd();
+        }
+
+        static AnalyzeWorkspace Resolve(CliOptions options, string work, string kind)
+        {
             try
             {
-                workspace = AnalyzeWorkspace.Resolve(options.Text("workspace"), null, work);
+                return AnalyzeWorkspace.Resolve(options.Text("workspace"), null, work);
             }
             catch (AnalyzeException error)
             {
                 throw Failure(kind, error.Message);
             }
+        }
+
+        static IDictionary<string, object> Draw(CliOptions options, string work, string kind)
+        {
+            var workspace = Resolve(options, work, kind);
             var symbols = ProjectDocs.Build(Snapshot.Read(workspace.View), name => name);
             Dictionary<string, object> data;
             if (kind == "classes")

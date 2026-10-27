@@ -107,5 +107,22 @@ namespace Cts.Agent.Tests
             Assert.Equal(1, code);
             Assert.Contains("no task or object is named Nothing", error);
         }
+
+        [Fact]
+        public void The_view_is_one_page_with_mermaid_and_every_drawing_in_it()
+        {
+            var page = Path.Combine(folder, "page.html");
+            var (code, output, _) = CliTests.RunLocal("diagram", "view", "--out", page, "--no-open", "--workspace", folder);
+            Assert.True(code == 0, output);
+            Assert.Contains("ok diagram-view classes=", output);
+            Assert.Contains("open " + page + " in a browser", output);
+            var html = File.ReadAllText(page);
+            Assert.Contains("mermaid", html);
+            Assert.DoesNotContain("/*cts:", html);
+            Assert.Contains("\"calls|MainTask|3\":\"flowchart TD", html);
+            Assert.Contains("\"classes|FB_Line|1\":\"classDiagram", html);
+            // Every "<" escaped: no text in the data can close the script it sits in.
+            Assert.Contains("9 function blocks\\u003cbr>FB_Valve1", html);
+        }
     }
 }
