@@ -11,6 +11,7 @@
 
 [![Release](https://img.shields.io/github/v/release/ArthurkaX/cds-text-sync?include_prereleases&sort=semver)](https://github.com/ArthurkaX/cds-text-sync/releases)
 [![License](https://img.shields.io/github/license/ArthurkaX/cds-text-sync)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/TYJTeW64Kv)
 
 Turn a binary CODESYS project into a folder that Git, editors, CI tools and
 LLM agents can understand. Export the project, review or change its text on
