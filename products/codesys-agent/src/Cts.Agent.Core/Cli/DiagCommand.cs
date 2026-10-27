@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using Cts.Agent;
+using Cts.Docs;
 using static Cts.Agent.JsonMap;
 
 namespace Cts.Cli
@@ -68,7 +69,7 @@ namespace Cts.Cli
             var data = new Dictionary<string, object> { { "ide", place }, { "installed", File.Exists(Path.Combine(dir, "cds-text-sync", "cds-text-sync.py")) } };
             var source = InstallCommand.Sources(AppDomain.CurrentDomain.BaseDirectory);
             if (!Equals(data["installed"], true) || source == null) return data;
-            var check = InstallCommand.Install(source, dir, true, false, Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+            var check = InstallCommand.Install(source, dir, true, false, Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), DiagramView.Mermaid());
             data["differs_from_this_cts"] = ((IList<object>)check["written"]).Count;
             data["problems"] = ((IList<object>)check["problems"]).Count;
             return data;

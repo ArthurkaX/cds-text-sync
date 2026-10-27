@@ -77,13 +77,16 @@ namespace Cts.Docs
         static IEnumerable<DocSymbol> Unique(IEnumerable<DocSymbol> symbols) => symbols.Where(symbol => !symbol.Excluded)
             .GroupBy(symbol => symbol.Name, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).OrderBy(symbol => symbol.Name, StringComparer.OrdinalIgnoreCase);
 
-        // mermaid.min.js of the install, in an assets folder above this cts.exe
-        // (products/codesys-agent/assets beside dist); null when there is none.
+        internal const string Assets = "assets", MermaidFile = "mermaid.min.js";
+
+        // mermaid.min.js in an assets folder at or above this cts.exe: the
+        // install's products/codesys-agent/assets beside dist, or the copy
+        // `cts install` puts beside the agent; null when there is none.
         internal static string Mermaid()
         {
             for (var folder = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory); folder != null; folder = folder.Parent)
             {
-                var candidate = Path.Combine(folder.FullName, "assets", "mermaid.min.js");
+                var candidate = Path.Combine(folder.FullName, Assets, MermaidFile);
                 if (File.Exists(candidate)) return candidate;
             }
             return null;

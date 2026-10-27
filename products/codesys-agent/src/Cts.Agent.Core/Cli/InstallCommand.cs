@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Cts.Agent;
+using Cts.Docs;
 
 namespace Cts.Cli
 {
@@ -55,7 +56,7 @@ namespace Cts.Cli
             Name = "install",
             Summary = "Install the CODESYS menu entry and the in-IDE agent",
             Description = "Writes Tools > Scripting > Scripts > C > cds-text-sync into the CODESYS ScriptDir with the agent and "
-                + "cts.exe beside it, and the same entry as a Script Command for a toolbar button; --toolbar also puts that button on "
+                + "cts.exe beside it (and the mermaid of cts diagram view's page), and the same entry as a Script Command for a toolbar button; --toolbar also puts that button on "
                 + "each profile's Standard toolbar. The files come from beside this cts.exe (a download's dist folder, an installed "
                 + "agent) or, in a build tree, from the agent built with it. Only files that differ are written; CODESYS must be "
                 + "closed while the agent changes. The ScriptDirs are every one that already holds cds-text-sync, or the first found "
@@ -96,7 +97,7 @@ namespace Cts.Cli
             {
                 { "check", check },
                 { "source", Path.GetDirectoryName(source[0]) },
-                { "script_dirs", dirs.Select(dir => (object)Install(source, dir, check, toolbar, appData)).ToList() },
+                { "script_dirs", dirs.Select(dir => (object)Install(source, dir, check, toolbar, appData, DiagramView.Mermaid())).ToList() },
             };
         }
 
@@ -159,7 +160,7 @@ namespace Cts.Cli
         // Install into *scriptDir* from *source* (Sources), or with *check*
         // only say what would change. Each part is written only when its
         // bytes differ, so a second run changes nothing.
-        internal static IDictionary<string, object> Install(IList<string> source, string scriptDir, bool check, bool toolbar, string appData)
+        internal static IDictionary<string, object> Install(IList<string> source, string scriptDir, bool check, bool toolbar, string appData, string mermaid)
         {
             var menu = Path.Combine(scriptDir, Folder);
             var agentDir = Path.Combine(menu, AgentFolder);
@@ -208,6 +209,9 @@ namespace Cts.Cli
                 removed.Add(stray);
                 if (!check) File.Delete(stray);
             }
+            // The diagram page's mermaid (*mermaid*, the install's), where `cts
+            // diagram view` run from this copy, as the quick window runs it, finds it.
+            if (mermaid != null) Write(Path.Combine(agentDir, DiagramView.Assets, DiagramView.MermaidFile), File.ReadAllBytes(mermaid), check, written);
 
             var stub = StubText(agentDir);
             Write(Path.Combine(menu, Stub), Encoding.UTF8.GetBytes(stub), check, written);

@@ -31,9 +31,9 @@ namespace Cts.Agent.Tests
             return Path.Combine(_root, "local", ide, "ScriptDir");
         }
 
-        IDictionary<string, object> Install(IList<string> source, string scriptDir, bool check = false, bool toolbar = false)
+        IDictionary<string, object> Install(IList<string> source, string scriptDir, bool check = false, bool toolbar = false, string mermaid = null)
         {
-            return InstallCommand.Install(source, scriptDir, check, toolbar, Path.Combine(_root, "roaming"));
+            return InstallCommand.Install(source, scriptDir, check, toolbar, Path.Combine(_root, "roaming"), mermaid);
         }
 
         static IList<object> List(IDictionary<string, object> result, string key)
@@ -68,6 +68,24 @@ namespace Cts.Agent.Tests
             var check = Install(Source("build 2"), scriptDir, check: true);
             Assert.Equal(Names.Select(name => Path.Combine(menu, "agent", name)), List(check, "written").Cast<string>());
             Assert.Equal("cts.exe build 1", File.ReadAllText(Path.Combine(menu, "agent", "cts.exe")));
+        }
+
+        [Fact]
+        public void Install_puts_the_diagram_page_mermaid_beside_the_agent_and_keeps_it()
+        {
+            var scriptDir = ScriptDir();
+            var mermaid = Path.Combine(_root, "assets", "mermaid.min.js");
+            Directory.CreateDirectory(Path.GetDirectoryName(mermaid));
+            File.WriteAllText(mermaid, "mermaid 1");
+            Install(Source(), scriptDir, mermaid: mermaid);
+            var copy = Path.Combine(scriptDir, "cds-text-sync", "agent", "assets", "mermaid.min.js");
+            Assert.Equal("mermaid 1", File.ReadAllText(copy));
+            var again = Install(Source(), scriptDir, mermaid: mermaid);
+            Assert.Empty(List(again, "written"));
+            Assert.Empty(List(again, "removed"));
+            File.WriteAllText(mermaid, "mermaid 2");
+            Assert.Equal(new[] { copy }, List(Install(Source(), scriptDir, mermaid: mermaid), "written").Cast<string>());
+            Assert.Equal("mermaid 2", File.ReadAllText(copy));
         }
 
         [Fact]
