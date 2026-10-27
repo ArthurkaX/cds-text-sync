@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 **Diagrams**
 
-- `cts diagram classes [NAME]` prints a mermaid classDiagram of the sync folder's project, offline: inheritance, interfaces, the blocks and structures a block holds and the ones it only refers to, with each class's inputs, outputs, methods and properties. With NAME the classes around it; without it the inheritance alone.
+- `cts diagram classes [NAME]` prints a mermaid classDiagram of the sync folder's project, offline: inheritance, interfaces, the blocks and structures a block holds and the ones it only refers to (one line per pair of classes, naming the members), with each class's inputs, outputs, methods and properties. With NAME the classes around it; without it the inheritance alone.
 - `cts diagram calls [--from TASK|NAME]` prints a mermaid flowchart of who calls whom from the tasks down, `--depth` calls deep; a node says how many callees it leaves out, and a task's graphical program shows as having no text.
 
 ---

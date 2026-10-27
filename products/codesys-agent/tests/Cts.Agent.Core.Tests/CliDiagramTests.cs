@@ -21,7 +21,7 @@ namespace Cts.Agent.Tests
             Source("App/FB_Motor.st", "FUNCTION_BLOCK FB_Motor EXTENDS FB_Base IMPLEMENTS I_Drive\nVAR_IN_OUT\n    stCell : ST_Cell;\nEND_VAR\n// --- implementation ---\nEND_FUNCTION_BLOCK\n");
             Source("App/I_Drive.st", "INTERFACE I_Drive\nEND_INTERFACE\n");
             Source("App/ST_Cell.st", "TYPE ST_Cell :\nSTRUCT\n    rLevel : REAL;\nEND_STRUCT\nEND_TYPE\n");
-            Source("App/FB_Line.st", "FUNCTION_BLOCK FB_Line\nVAR_INPUT\n    xStart : BOOL;\nEND_VAR\nVAR\n    aMotors : ARRAY[1..2] OF FB_Motor;\n    fbFirst : FB_Base;\n    pDrive : POINTER TO FB_Base;\n    itfDrive : I_Drive;\n    tonWait : TON;\nEND_VAR\n"
+            Source("App/FB_Line.st", "FUNCTION_BLOCK FB_Line\nVAR_INPUT\n    xStart : BOOL;\nEND_VAR\nVAR\n    aMotors : ARRAY[1..2] OF FB_Motor;\n    fbFirst : FB_Base;\n    fbSecond : FB_Base;\n    fbThird : FB_Base;\n    fbFourth : FB_Base;\n    pDrive : POINTER TO FB_Base;\n    itfDrive : I_Drive;\n    tonWait : TON;\nEND_VAR\n"
                 + "// --- implementation ---\nfbFirst(xStart := xStart);\nEND_FUNCTION_BLOCK\n");
             Source("App/F_Scale.st", "FUNCTION F_Scale : REAL\nVAR_INPUT\n    rIn : REAL;\nEND_VAR\n// --- implementation ---\nF_Scale := rIn;\nEND_FUNCTION\n");
         }
@@ -43,6 +43,8 @@ namespace Cts.Agent.Tests
             Assert.Contains("    FB_Line --> FB_Base : pDrive", output);
             Assert.Contains("    FB_Line --> I_Drive : itfDrive", output);
             Assert.Contains("    MAIN *-- FB_Line : fbLine", output);
+            // Four blocks of one type: one line, three names and the count of the rest.
+            Assert.Contains("    FB_Line *-- FB_Base : fbFirst, fbSecond, fbThird +1", output);
             // Two relations away: not drawn at depth 1.
             Assert.DoesNotContain("class ST_Cell", output);
             (_, output, _) = CliTests.RunLocal("diagram", "classes", "FB_Motor", "--workspace", folder);

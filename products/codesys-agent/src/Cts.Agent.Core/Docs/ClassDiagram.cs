@@ -18,6 +18,8 @@ namespace Cts.Docs
     {
         //: Lines a class lists before "... N more".
         const int MostLines = 12;
+        //: Member names a line carries before "+N".
+        const int MostLabels = 3;
         static readonly string[] Kinds = { "FUNCTION_BLOCK", "INTERFACE", "STRUCT", "UNION", "PROGRAM" };
         static readonly string[] Shown = { "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "FIELD" };
         static readonly Regex Array = new Regex(@"^ARRAY\s*\[(?<bounds>[^\]]*)\]\s*OF\s+", RegexOptions.IgnoreCase);
@@ -53,7 +55,12 @@ namespace Cts.Docs
                 }
             }
             else drawn = new HashSet<string>(relations.SelectMany(relation => new[] { relation.From, relation.To }), StringComparer.OrdinalIgnoreCase);
-            var edges = relations.Where(relation => drawn.Contains(relation.From) && drawn.Contains(relation.To)).ToList();
+            // One line per pair and kind: a block holding three buffers draws one
+            // line, not three on top of each other.
+            var edges = relations.Where(relation => drawn.Contains(relation.From) && drawn.Contains(relation.To))
+                .GroupBy(relation => relation.From + " " + relation.Arrow + " " + relation.To, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new Relation { From = group.First().From, To = group.First().To, Arrow = group.First().Arrow, Label = Labels(group.Select(relation => relation.Label).ToList()) })
+                .ToList();
             var lines = new List<string> { "classDiagram" };
             foreach (var key in drawn.OrderBy(key => key, StringComparer.OrdinalIgnoreCase)) lines.AddRange(Class(classes[key], !whole));
             lines.AddRange(edges.Select(edge => "    " + Id(edge.From) + " " + edge.Arrow + " " + Id(edge.To) + (edge.Label.Length > 0 ? " : " + edge.Label : "")));
@@ -92,6 +99,9 @@ namespace Cts.Docs
             }
             return relations;
         }
+
+        static string Labels(List<string> labels) =>
+            string.Join(", ", labels.Take(MostLabels)) + (labels.Count > MostLabels ? " +" + (labels.Count - MostLabels) : "");
 
         static DocSymbol Find(Dictionary<string, DocSymbol> classes, string name)
         {
