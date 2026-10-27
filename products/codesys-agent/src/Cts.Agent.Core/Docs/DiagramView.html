@@ -101,6 +101,8 @@ const SHORT = { TASK: "task", PROGRAM: "prg", FUNCTION_BLOCK: "fb", FUNCTION: "f
 const dark = matchMedia("(prefers-color-scheme: dark)").matches;
 let dirChoice = null, dirShown = "TD", drawing = 0;
 let state = { mode: "calls", name: "", depth: 3 }, hidden = new Set(), vb = null, base = null;
+// The note under a fitted drawing; a drawing opened at 100% says so instead until fitted.
+let hint = "";
 const $ = id => document.getElementById(id);
 
 mermaid.initialize({ startOnLoad: false, maxEdges: 100000, maxTextSize: 10000000, securityLevel: "strict",
@@ -187,6 +189,7 @@ async function render() {
   const canvas = $("canvas");
   canvas.classList.toggle("paper", state.mode === "fsm");
   canvas.querySelector("svg")?.remove();
+  hint = "";
   $("note").textContent = "";
   let svgText = null;
   if (state.mode === "fsm") {
@@ -216,10 +219,10 @@ async function render() {
   const box = svg.getBBox();
   base = { x: box.x, y: box.y, w: Math.max(box.width, 1), h: Math.max(box.height, 1) };
   fit();
-  if (state.mode === "fsm") { $("note").textContent = "hover a step or a transition for its code · drag to move · wheel to zoom"; return; }
+  if (state.mode === "fsm") { $("note").textContent = hint = "hover a step or a transition for its code · drag to move · wheel to zoom"; return; }
   $("dir").textContent = dirShown === "TD" ? "↓ top-down" : "→ left-right";
   const nodes = nodeCount(svg);
-  $("note").textContent = nodes + (nodes === 1 ? " node" : " nodes") + " · click one to go to it · drag to move · wheel to zoom · 0 fits it all";
+  $("note").textContent = hint = nodes + (nodes === 1 ? " node" : " nodes") + " · click one to go to it · drag to move · wheel to zoom · 0 fits it all";
   if ($("canvas").clientWidth / vb.w < 0.6) focusRoot(svg);
 }
 
@@ -316,6 +319,7 @@ function fit() {
   const w = c.clientWidth * k, h = c.clientHeight * k;
   vb = { x: base.x + base.w / 2 - w / 2, y: base.y + base.h / 2 - h / 2, w, h };
   apply();
+  $("note").textContent = hint;
 }
 // Too large to read fitted: start at 100% on the node the drawing is about,
 // as a map opens on a place rather than on the whole country.
