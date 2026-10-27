@@ -51,9 +51,12 @@ namespace Cts.Docs
                 roots.Add(new Dictionary<string, object> { ["name"] = task, ["kind"] = "TASK", ["calls"] = tasks[task].Count });
                 foreach (var depth in CallDepths) diagrams["calls|" + task + "|" + depth] = CallDiagram.Render(symbols, tasks, task, depth)["mermaid"];
             }
+            // An object that calls only library code draws as itself alone: not listed.
             foreach (var symbol in Unique(symbols.Where(symbol => CallerKinds.Contains(symbol.Kind) && symbol.Calls.Count > 0 && !tasks.ContainsKey(symbol.Name))))
             {
-                roots.Add(new Dictionary<string, object> { ["name"] = symbol.Name, ["kind"] = symbol.Kind, ["calls"] = symbol.Calls.Count });
+                var calls = (int)CallDiagram.Render(symbols, tasks, symbol.Name, 1)["calls"];
+                if (calls == 0) continue;
+                roots.Add(new Dictionary<string, object> { ["name"] = symbol.Name, ["kind"] = symbol.Kind, ["calls"] = calls });
                 foreach (var depth in CallDepths) diagrams["calls|" + symbol.Name + "|" + depth] = CallDiagram.Render(symbols, tasks, symbol.Name, depth)["mermaid"];
             }
             return new Dictionary<string, object>

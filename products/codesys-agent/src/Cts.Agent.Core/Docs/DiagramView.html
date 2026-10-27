@@ -218,7 +218,8 @@ async function render() {
   fit();
   if (state.mode === "fsm") { $("note").textContent = "hover a step or a transition for its code · drag to move · wheel to zoom"; return; }
   $("dir").textContent = dirShown === "TD" ? "↓ top-down" : "→ left-right";
-  $("note").textContent = nodeCount(svg) + " nodes · click one to go to it · drag to move · wheel to zoom · 0 fits it all";
+  const nodes = nodeCount(svg);
+  $("note").textContent = nodes + (nodes === 1 ? " node" : " nodes") + " · click one to go to it · drag to move · wheel to zoom · 0 fits it all";
   if ($("canvas").clientWidth / vb.w < 0.6) focusRoot(svg);
 }
 

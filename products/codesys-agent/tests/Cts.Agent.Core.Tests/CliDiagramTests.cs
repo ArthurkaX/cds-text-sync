@@ -121,6 +121,8 @@ namespace Cts.Agent.Tests
             Assert.DoesNotContain("/*cts:", html);
             Assert.Contains("\"calls|MainTask|3\":\"flowchart TD", html);
             Assert.Contains("\"classes|FB_Line|1\":\"classDiagram", html);
+            // A caller counts the project's objects it calls.
+            Assert.Contains("{\"name\":\"MAIN\",\"kind\":\"PROGRAM\",\"calls\":2}", html);
             // Every "<" escaped: no text in the data can close the script it sits in.
             Assert.Contains("9 function blocks\\u003cbr>FB_Valve1", html);
         }
