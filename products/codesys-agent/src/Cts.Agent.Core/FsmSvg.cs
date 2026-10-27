@@ -18,6 +18,8 @@ namespace Cts.Agent
         const int CaptionH = 30;
         //: Font sizes whose characters are no wider than the geometry's 7 pixels in a common monospace font.
         const int LabelSize = 12, GuardSize = 11, SmallSize = 10;
+        //: Lines of code a hover shows before "... N more lines".
+        const int MostCodeLines = 40;
         const string Font = "Consolas, 'DejaVu Sans Mono', 'Courier New', monospace";
         const string Paper = "#ffffff", Ink = "#1f2328", Muted = "#6e7781", StepFill = "#f6f8fa", Divider = "#afb8c1";
         const string Line = "#57606a", Guard = "#0550ae", Priority = "#cf222e", ChipFill = "#ffebe9", Jump = "#bc4c00";
@@ -62,7 +64,7 @@ namespace Cts.Agent
             foreach (var step in layout.Steps)
             {
                 var state = machine.States.FirstOrDefault(code => code.Title == step.FullLabel);
-                svg.Append("<g><title>").Append(Escape(step.FullLabel + (state != null ? ", line " + state.Line : ""))).Append("</title>\n");
+                svg.Append("<g><title>").Append(Escape(state != null ? Hover(step.FullLabel + ", line " + state.Line, state.Code) : step.FullLabel)).Append("</title>\n");
                 Rect(svg, step.X, step.Y, step.W, step.H, StepFill, Ink, 1, null);
                 if (step.Initial) Rect(svg, step.X + 3, step.Y + 3, step.W - 6, step.H - 6, "none", Ink, 1, null);
                 Cell(svg, step, layout);
@@ -90,7 +92,7 @@ namespace Cts.Agent
             var colour = link.Kind == "global" ? Priority : link.Kind == "jump" ? Jump : Line;
             svg.Append("<g>");
             if (transition != null)
-                svg.Append("<title>").Append(Escape(transition.Title + (transition.Guard.Length > 0 ? " when " + StText.Squeezed(transition.Guard) : "") + ", line " + transition.Line)).Append("</title>");
+                svg.Append("<title>").Append(Escape(Hover(transition.Title + (transition.Guard.Length > 0 ? " when " + StText.Squeezed(transition.Guard) : "") + ", line " + transition.Line, transition.Code))).Append("</title>");
             svg.Append('\n');
             if (link.Points.Count > 1)
                 svg.Append("<polyline points=\"").Append(string.Join(" ", link.Points.Select(point => point[0] + "," + point[1])))
@@ -136,6 +138,15 @@ namespace Cts.Agent
                 .Append("\" fill=\"").Append(colour).Append("\" text-anchor=\"middle\">").Append(Escape(text)).Append("</text>\n");
         }
 
+        // A hover's text: *head*, then the code behind it as the window shows it on a click.
+        static string Hover(string head, string code)
+        {
+            var lines = (code ?? "").Replace("\r", "").TrimEnd('\n').Split('\n');
+            if (lines.All(line => line.Trim().Length == 0)) return head;
+            return head + "\n\n" + string.Join("\n", lines.Take(MostCodeLines))
+                + (lines.Length > MostCodeLines ? "\n... " + (lines.Length - MostCodeLines) + " more lines" : "");
+        }
+
         static string Escape(string text)
         {
             var escaped = new StringBuilder();
@@ -145,7 +156,7 @@ namespace Cts.Agent
                 else if (c == '<') escaped.Append("&lt;");
                 else if (c == '>') escaped.Append("&gt;");
                 else if (c == '"') escaped.Append("&quot;");
-                else if (c < ' ' && c != '\t') escaped.Append(' ');
+                else if (c < ' ' && c != '\t' && c != '\n') escaped.Append(' ');
                 else escaped.Append(c);
             }
             return escaped.ToString();

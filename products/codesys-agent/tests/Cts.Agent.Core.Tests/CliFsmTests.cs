@@ -68,7 +68,10 @@ namespace Cts.Agent.Tests
                 Assert.Contains("drawn in PRG_Main.state.svg", output);
                 var svg = XDocument.Load(Path.Combine(drawings, "PRG_Main.state.svg"));
                 Assert.Equal("PRG_Main: state", svg.Root.Elements().First().Value);
-                Assert.Contains(svg.Descendants(), element => element.Name.LocalName == "title" && element.Value == "0 → 10 when xStart, line 9");
+                // A hover names the line and shows the code behind a step or a transition.
+                var hovers = svg.Descendants().Where(element => element.Name.LocalName == "title").Select(element => element.Value).ToList();
+                Assert.Contains(hovers, hover => hover.StartsWith("0 → 10 when xStart, line 9\n\n") && hover.Contains("state := 10;"));
+                Assert.Contains(hovers, hover => hover.StartsWith("10, line 12\n\n") && hover.Contains("state := 0;"));
             }
             finally { Directory.Delete(folder, true); }
         }

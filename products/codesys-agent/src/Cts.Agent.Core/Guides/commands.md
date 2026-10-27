@@ -571,7 +571,7 @@ file's and each object names its `file`. `--json` gives every machine's states
 and transitions with the code behind them; `--layout` adds the GRAFCET geometry
 the agent's FSM window draws (Alt+Q, `0`, `4`), and `--svg FOLDER` writes that
 drawing on white, one `Object.selector.svg` per machine (hovering a step or a
-transition in a browser shows its line); each machine names its file as `svg`. Each machine's `watch` lists
+transition in a browser shows its line and the code behind it); each machine names its file as `svg`. Each machine's `watch` lists
 the path of its state variable in every instance the declarations make (a
 program's own, or each instance of a function block in the programs and global
 variable lists), and a state's `values` the numbers its constants or
