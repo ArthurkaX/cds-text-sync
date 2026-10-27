@@ -43,13 +43,14 @@ using System.Linq;
 // (`cts fmt`, the IDE's Structured Text laid out), the agent's activity, and
 // the line that points an AI agent at this IDE and its project, put on the
 // clipboard: `!cts --target ide-<pid> --expect-project <name> --help`,
-// pasted into the agent's chat, so its every command lands here.
+// pasted into the agent's chat, so its every command lands here; and the
+// problem report (WidgetReport), said first what it holds and where it goes.
 //
 // Pure: the agent draws it (QuickWidget); the rules are unit tests.
 
 namespace Cts.Agent
 {
-    public enum WidgetPage { None, Activity, Branches, Compare, Settings, Choices, Permissions, More, Format, Fsm, StaticAnalysis }
+    public enum WidgetPage { None, Activity, Branches, Compare, Settings, Choices, Permissions, More, Format, Fsm, StaticAnalysis, Report, MakeReport }
 
     //: How the header's state line reads: nothing to carry, changes, edits on both sides, not known.
     public enum WidgetTone { InSync, Changed, Both, Unknown }
@@ -87,6 +88,8 @@ namespace Cts.Agent
         public string OpensProject { get; internal set; }
         public bool PicksProject { get; internal set; }
         public string WorkingFolder { get; internal set; }
+        //: The file or web page the row opens in the program Windows has for it; null for another row.
+        public string Launches { get; internal set; }
     }
 
     public static partial class WidgetMenu
@@ -377,13 +380,14 @@ namespace Cts.Agent
         // The row of what is used now and then, a page of its own.
         static WidgetItem More(int pid, string project, string noFolder, bool noProject = false)
         {
-            var item = Page('0', "More", WidgetPage.More, null, noProject ? "activity, AI line" : "format, activity, AI line, FSM, analysis");
+            var item = Page('0', "More", WidgetPage.More, null, noProject ? "activity, AI line, report" : "format, FSM, analysis, report, …");
             if (noProject)
             {
                 item.Choices = new List<WidgetItem>
                 {
                     Page('2', "Agent activity", WidgetPage.Activity, null, "live window"),
                     Target(pid, ""),
+                    Reporter(),
                 };
                 return item;
             }
@@ -394,8 +398,33 @@ namespace Cts.Agent
                 Target(pid, project),
                 Page('4', "FSM map", WidgetPage.Fsm, project.Length == 0 ? "no project is open" : null, "state machines in the ST, window"),
                 Page('5', "Static analysis", WidgetPage.StaticAnalysis, noFolder, "cts analyze, window"),
+                Reporter(),
             };
             return item;
+        }
+
+        static WidgetItem Reporter() => Page('6', "Report a problem", WidgetPage.Report, null, "no names, for an issue or Discord");
+
+        // What the problem report holds, asked before it is made.
+        public static List<WidgetItem> Reporting(out string question)
+        {
+            question = "Makes a report of this PC's setup and this IDE session's cts runs and errors, for a GitHub issue or Discord. "
+                + "Names, paths and quoted text the agent knows are replaced; free text may still hold one, so you read it before sending.";
+            return new List<WidgetItem> { Page('1', "Make the report", WidgetPage.MakeReport, null, "cts diag + this session") };
+        }
+
+        // Where the report made goes: it is on the clipboard and in *file*.
+        public static List<WidgetItem> Sending(string file, out string question)
+        {
+            question = "The report is on the clipboard and in " + System.IO.Path.GetFileName(file) + ". Read it before sending and remove "
+                + "what must not leave, then paste it into a GitHub issue (public) or Discord: #help, or a direct message to the maintainer "
+                + "to keep it private.";
+            return new List<WidgetItem>
+            {
+                new WidgetItem { Key = '1', Label = "Read it in Notepad", Launches = file, Hint = "edit before sending" },
+                new WidgetItem { Key = '2', Label = "New GitHub issue", Launches = WidgetReport.IssuesUrl, Hint = "public" },
+                new WidgetItem { Key = '3', Label = "Discord", Launches = WidgetReport.DiscordUrl, Hint = "#help, or a direct message" },
+            };
         }
 
         // The row that copies the line for an AI agent: the project is named

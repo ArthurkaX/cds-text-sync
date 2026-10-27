@@ -14,9 +14,9 @@
 // with what was typed, Esc puts the hint back.  The sync folder row opens the
 // folder dialog instead.  A question (Disk → IDE or IDE → Disk would
 // overwrite edits) is a page too: its rows are the answers, the footer says
-// what is at stake, Esc answers "neither".  A failure shown has a Copy link
-// at the footer's right (Ctrl+C does the same): the controller puts a report
-// with the run's whole output on the clipboard.
+// what is at stake, Esc answers "neither".  A failure shown has a Report
+// link at the footer's right (Ctrl+C does the same): the controller makes
+// the problem report, the failure in it.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -111,31 +111,18 @@ namespace Cts.Agent
         //: arguments it runs (null for a page of the agent's own).
         public event Action<WidgetItem, string[]> Chosen;
 
-        //: Raised by the Copy link of a failure shown, or Ctrl+C on it.
+        //: Raised by the Report link of a failure shown, or Ctrl+C on it.
         public event Action CopyAsked;
 
         //: The rows chosen since the menu, "5 Branches", "2 feature-x": the report's trail.
         readonly List<string> _trail = new List<string>();
-        //: The failure shown went to the clipboard.
-        bool _copied;
-
         public IList<string> Trail => _trail.ToList();
 
         //: The footer's text: the line the last run showed, or a hint.
         public string Footer => _footer;
 
-        // The footer shows a failure: the Copy link is there.
+        // The footer shows a failure: the Report link is there.
         bool CopyShown => !Running && _ok == false;
-
-        // What the header shows, for the report: the branch line, the last
-        // commit, the state and the sync folder line.
-        public IList<KeyValuePair<string, string>> Facts => new List<KeyValuePair<string, string>>
-        {
-            new KeyValuePair<string, string>("branch", _branch + (_commit != null ? "  " + _commit : "")),
-            new KeyValuePair<string, string>("state", _state),
-            new KeyValuePair<string, string>("sync folder", _place),
-            new KeyValuePair<string, string>("plc", _online ? "online" : "offline"),
-        };
 
         public bool Running { get; private set; }
         //: The menu shows and nothing runs: the window may ask a question of its own.
@@ -408,7 +395,7 @@ namespace Cts.Agent
             return new Rectangle(line.Right - BrowseWidth, line.Top, BrowseWidth, line.Height);
         }
 
-        // The Copy link at the footer's right, level with its first line.
+        // The Report link at the footer's right, level with its first line.
         Rectangle CopyRect()
         {
             var area = FooterRect();
@@ -418,11 +405,11 @@ namespace Cts.Agent
 
         int CopyWidth()
         {
-            return TextRenderer.MeasureText("Copied", _small, Size.Empty, TextFormatFlags.NoPadding).Width + 16;
+            return TextRenderer.MeasureText("Report", _small, Size.Empty, TextFormatFlags.NoPadding).Width + 16;
         }
 
         // The room at the footer's right the text keeps clear of: the seconds
-        // while a run goes, the Copy link under a failure.
+        // while a run goes, the Report link under a failure.
         int Reserved()
         {
             return Running ? ClockWidth() : CopyShown ? CopyWidth() + 8 : 0;

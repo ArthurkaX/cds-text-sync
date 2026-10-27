@@ -7,7 +7,7 @@
 //   "enter" "esc" "left" "right" "up" "down" "space" "backspace" "f4"
 //   "pgup" "pgdn" "ctrl+c"    those keys
 //   "type:TEXT"               TEXT typed into the line a row asks for
-//   "copy"                    a click on the Copy link of a failure
+//   "copy"                    a click on the Report link of a failure
 //   "wait:MS"                 MS milliseconds
 //   "idle"                    until no run goes and the window stays the same
 using System;

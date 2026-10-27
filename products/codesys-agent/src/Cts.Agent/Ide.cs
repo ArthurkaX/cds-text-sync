@@ -4,6 +4,7 @@
 // error reply naming it, not a crash.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 
@@ -159,6 +160,9 @@ namespace Cts.Agent
             }
             return names;
         }
+
+        // Every object's name in the open project, for the problem report to leave out.
+        public IEnumerable<string> ObjectNames() => NamesOf(AllGuids(ProjectHandle())).Values.Where(name => name != null);
 
         // Each object's declaration and implementation as one string, for telling
         // whether it changed; an object with neither, or not readable, is left out.

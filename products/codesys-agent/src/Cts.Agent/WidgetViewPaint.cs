@@ -6,7 +6,7 @@ using static Cts.Agent.Palette;
 
 namespace Cts.Agent
 {
-    // The window drawn by hand: header, rows, footer and the Copy button.
+    // The window drawn by hand: header, rows, footer and the Report link.
     internal sealed partial class WidgetView
     {
         protected override void OnPaint(PaintEventArgs e)
@@ -201,7 +201,7 @@ namespace Cts.Agent
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
 
-        // The Copy link: a pill, Accent under the mouse, "Copied" once used.
+        // The Report link: a pill, Accent under the mouse.
         void PaintCopy(Graphics g)
         {
             var link = CopyRect();
@@ -209,7 +209,7 @@ namespace Cts.Agent
             using (var pen = new Pen(hot ? Accent : Edge))
             using (var path = Rounded(link, 6))
                 g.DrawPath(pen, path);
-            TextRenderer.DrawText(g, _copied ? "Copied" : "Copy", _small, link, _copied ? Good : hot ? Accent : Muted,
+            TextRenderer.DrawText(g, "Report", _small, link, hot ? Accent : Muted,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
 

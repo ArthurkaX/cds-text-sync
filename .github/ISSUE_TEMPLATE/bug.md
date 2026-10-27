@@ -12,7 +12,9 @@ about: Something in cts does not work as expected
 **Steps to reproduce**
 
 
-**`cts diag` output** (run it in the sync folder; it names no files or projects)
+**Report** (in the IDE: quick window, `0` More > `6` Report a problem; or the
+output of `cts diag` run in the sync folder). Both leave names out; read before
+posting.
 
 ```
 paste here

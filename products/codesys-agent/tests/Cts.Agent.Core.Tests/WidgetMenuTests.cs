@@ -33,7 +33,7 @@ namespace Cts.Agent.Tests
             Assert.Equal("any .project file", items[3].Hint);
             Assert.True(items[3].PicksProject);
             Assert.Null(items[4].Disabled);
-            Assert.Equal(new[] { "Agent activity", "Copy the line for an AI agent" }, items[5].Choices.Select(row => row.Label));
+            Assert.Equal(new[] { "Agent activity", "Copy the line for an AI agent", "Report a problem" }, items[5].Choices.Select(row => row.Label));
             Assert.All(items[5].Choices, row => Assert.Null(row.Disabled));
         }
 
@@ -148,7 +148,8 @@ namespace Cts.Agent.Tests
             var more = WidgetMenu.ForKey(WidgetMenu.Items(false, "C:\\work", 6128, "example_lib", false), '0');
             Assert.Null(more.Args);
             Assert.Equal(WidgetPage.More, more.Opens);
-            Assert.Equal("12345", new string(more.Choices.Select(item => item.Key).ToArray()));
+            Assert.Equal("123456", new string(more.Choices.Select(item => item.Key).ToArray()));
+            Assert.Equal(WidgetPage.Report, WidgetMenu.ForKey(more.Choices, '6').Opens);
             Assert.Equal(WidgetPage.Format, WidgetMenu.ForKey(more.Choices, '1').Opens);
             Assert.Equal(WidgetPage.Activity, WidgetMenu.ForKey(more.Choices, '2').Opens);
             Assert.Equal(WidgetPage.Fsm, WidgetMenu.ForKey(more.Choices, '4').Opens);

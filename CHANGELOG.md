@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### Unreleased
+
+**Feedback**
+
+- `cts diag` prints what a bug report needs: the cts, Windows and git versions, whether the CODESYS menu entry is up to date, the IDEs with an agent and the sync folder's git state as settings and counts. It names no file, object, branch, project or path.
+- The quick window's More > `6` Report a problem makes a report for a GitHub issue or the Discord server: `cts diag`, the failure shown and this IDE session's cts runs and agent errors, with the names the agent knows, paths and quoted text replaced. It goes onto the clipboard and into a text file to read before sending. The link under a failure is now Report and makes the same report; it no longer copies the run's whole output with names.
+
+---
+
 ### Version 4.0.0 (2026-10-26)
 
 _What changes against 4.0.0-beta.3. Coming from 3.4: [docs/upgrade-4.md](docs/upgrade-4.md) is the short version, the three beta sections below are the whole of it._

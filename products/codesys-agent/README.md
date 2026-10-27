@@ -370,6 +370,17 @@ writing; Reload (F5) reads the IDE again.
 --help` on the clipboard, for the user to paste into an AI agent's chat; its
 hint names the IDE and the project.
 
+`6` (`WidgetPage.Report`) says what the problem report holds and where it
+goes; its one answer runs `cts diag` on the sync folder and builds the report
+(`WidgetReport`): the diag output, the failure the Report link was under with
+the rows that led to it, this IDE session's runs and the agent's logged errors.
+Everything goes through a `Redaction` of the names the agent knows (the
+project's objects from the IDE, the sync folder's tracked files and branches,
+the folder, the user, the PC) plus paths, addresses, e-mails and quoted text; a
+command keeps its words and flag names only.  The report goes onto the
+clipboard and into `%TEMP%\cts-report-*.txt`, and the window offers Notepad, a
+new GitHub issue and the Discord server (`Launches`).
+
 `4` opens `FsmView`, one per IDE: the state machines in the open project's
 Structured Text.  It runs `cts fsm --layout --json` (the agent reads the texts,
 cts.exe finds the machines, `FsmDetector`, and lays each out as a GRAFCET
@@ -644,12 +655,12 @@ has neither:
 
 | Method | What |
 |---|---|
-| `widget.snapshot {}` | what the window shows: `open`, `branch`, `commit`, `state`, `place`, `level`, `rows` (`key`, `label`, `hint`, `enabled`, `blocked`, `selected`, `current`), `footer`, `ok`, `running`, `busy`, `asking`/`typed` (a row's line), `copy` (the Copy link of a failure), `trail` (rows chosen), `comparing`, `dialog`. |
+| `widget.snapshot {}` | what the window shows: `open`, `branch`, `commit`, `state`, `place`, `level`, `rows` (`key`, `label`, `hint`, `enabled`, `blocked`, `selected`, `current`), `footer`, `ok`, `running`, `busy`, `asking`/`typed` (a row's line), `copy` (the Report link of a failure), `trail` (rows chosen), `comparing`, `dialog`. |
 | `widget.drive {steps, timeout_ms?}` | the steps in order, each on the UI thread through the handlers a key or a click reaches (window focus does not matter), then waits until the window is idle (no run, no compare, the same for a few polls) and answers the snapshot with `idle` and, after a `copy` or `ctrl+c`, `clipboard`. |
 
 Steps: `open` (then waits until idle: the window greys its rows while its first compare runs), `close`, a key (`1`..`9`, `0`, `+`, a letter), `enter`, `esc`, `left`, `right`, `up`,
 `down`, `space`, `backspace`, `f4`, `pgup`, `pgdn`, `ctrl+c`, `type:TEXT` (into the line a row
-asks for), `copy` (the Copy link), `wait:MS`, `idle`. Example:
+asks for), `copy` (the Report link), `wait:MS`, `idle`. Example:
 `{"method": "widget.drive", "params": {"steps": ["open", "5", "1", "type:try-this", "enter"]}}`.
 A step that opens a dialog (a question box, the folder dialog) answers with `dialog: true`;
 `dialog.probe` and `dialog.answer` take it from there.

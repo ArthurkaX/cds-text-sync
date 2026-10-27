@@ -86,7 +86,7 @@ namespace Cts.Agent
                     }
                 }
                 catch (Exception e) { line = "cts did not start: " + e.Message; }
-                Keep(new WidgetRun { Started = started, CommandLine = ProcessArgs.Join(args), ExitCode = exit, Milliseconds = clock.ElapsedMilliseconds, Output = said, Errors = told, Line = line });
+                Keep(new WidgetRun { Started = started, Args = args, ExitCode = exit, Milliseconds = clock.ElapsedMilliseconds, Output = said, Errors = told, Line = line });
                 if (ok && timed)
                     lock (_took) _took[WidgetMenu.Kind(args)] = clock.ElapsedMilliseconds;
                 _log.Write("widget: cts " + ProcessArgs.Join(args) + ": " + (whole && ok ? "read" : line));

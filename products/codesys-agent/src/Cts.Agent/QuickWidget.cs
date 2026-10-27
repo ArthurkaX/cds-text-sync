@@ -33,8 +33,9 @@
 // new key works at once (the run's CTS_IDE_PID names this IDE to cts).  The window
 // is modeless and owned by the IDE's main window, so the commands it runs can
 // still reach the IDE; while a dialog of the IDE is open it does not open.
-// Each run is kept whole (WidgetRun): a failure's Copy link puts a report of
-// it and the runs before it on the clipboard (WidgetReport).
+// Each run is kept whole (WidgetRun): a failure's Report link, or More >
+// Report a problem, makes the problem report of them (WidgetReport), the
+// names the agent knows left out (Redaction).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -179,6 +180,7 @@ namespace Cts.Agent
         const string KeepsHere = "digit or ↑↓ Enter   Esc keeps it on this PC";
         const string PullsLater = "digit or ↑↓ Enter   Esc pulls later";
         const string AsksNextSession = "digit or ↑↓ Enter   Esc: not now, asked again after the IDE restarts";
+        const string NotNow = "digit or ↑↓ Enter   Esc: not now";
 
         void Toggle()
         {
@@ -216,7 +218,7 @@ namespace Cts.Agent
             var place = _noProject ? "open a project to sync it" : folder.Length > 0 ? folder : "no sync folder";
             var view = new WidgetView(_noProject ? "no project open" : folder.Length > 0 ? "…" : WidgetMenu.Unconnected(_known), online, place, menu);
             view.Chosen += (item, args) => Run(view, item, args, folder);
-            view.CopyAsked += () => CopyReport(view, path);
+            view.CopyAsked += () => AskReport(view, view.Footer);
             view.FormClosed += (s, e) => _form = null;
             var main = Process.GetCurrentProcess().MainWindowHandle;
             var area = Screen.FromHandle(main).WorkingArea;
@@ -236,25 +238,6 @@ namespace Cts.Agent
             ReadState(view, folder);
             OfferLineEndings(view, folder);
             return view;
-        }
-
-        // The failure shown, with what led to it, onto the clipboard.
-        void CopyReport(WidgetView view, string project)
-        {
-            IList<WidgetRun> runs = _cts.Runs;
-            var facts = new List<KeyValuePair<string, string>>
-            {
-                new KeyValuePair<string, string>("project", project),
-                new KeyValuePair<string, string>("agent", "built " + File.GetLastWriteTime(typeof(QuickWidget).Assembly.Location).ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
-                    + ", CODESYS process " + Process.GetCurrentProcess().Id),
-            };
-            facts.AddRange(view.Facts);
-            try
-            {
-                Clipboard.SetText(WidgetReport.Build(DateTime.Now, facts, view.Trail, runs, view.Footer));
-                view.Copied();
-            }
-            catch (System.Runtime.InteropServices.ExternalException e) { _log.Write("widget: the clipboard refused the report: " + e.Message); }
         }
 
         static IDictionary<string, string> KnownProjectFiles(IEnumerable<KnownProject> projects)
@@ -283,6 +266,11 @@ namespace Cts.Agent
             if (item.WorkingFolder != null)
             {
                 Execute(view, args, item.WorkingFolder);
+                return;
+            }
+            if (item.Launches != null)
+            {
+                Launch(view, item.Launches);
                 return;
             }
             if (item.Copies != null)
@@ -332,6 +320,12 @@ namespace Cts.Agent
                 case WidgetPage.Settings:
                     if (_noProject) ListNoProjectSettings(view, null);
                     else ListSettings(view, folder, null);
+                    return;
+                case WidgetPage.Report:
+                    AskReport(view, null);
+                    return;
+                case WidgetPage.MakeReport:
+                    MakeReport(view, folder);
                     return;
                 case WidgetPage.Choices:
                     view.ShowList(item.Choices, ChoicesHint, null, 2, () => ListSettings(view, folder, null));

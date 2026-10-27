@@ -124,7 +124,12 @@ changes until a command is chosen.
 - `0` **More**: `1` Format ST (section 3), `2` the agent's activity as it
   happens, `3` copies the line that points an AI agent at this IDE
   (`!cts --target ide-<pid> --expect-project <project> --help`), `4` the FSM
-  map (section 4), `5` Static analysis over `cts analyze` (section 8).
+  map (section 4), `5` Static analysis over `cts analyze` (section 8), `6`
+  Report a problem: a report for a GitHub issue or Discord with this PC's
+  setup (`cts diag`) and this IDE session's cts runs and errors, the names of
+  objects, files, branches, folders and paths replaced. It goes onto the
+  clipboard and into a text file; read it before sending. The Report link under
+  a failure (or Ctrl+C) makes the same report, with that failure in it.
 
 <p><img src="../img/quick-window.png" alt="The quick window" width="380">
    <img src="../img/quick-more.png" alt="The quick window's More page" width="380"></p>

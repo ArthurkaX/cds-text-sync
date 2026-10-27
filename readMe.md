@@ -316,7 +316,9 @@ tracker](https://github.com/ArthurkaX/cds-text-sync/issues); questions and ideas
 also on [Discord](https://discord.gg/TYJTeW64Kv). Everything posted
 there is public: attach no project files or exports. Paste the output of
 `cts diag`, run in the sync folder, instead: it holds versions, settings and
-file counts, without file, object or project names. See the
+file counts, without file, object or project names. In the IDE, the quick
+window's More > `6` Report a problem adds this session's cts runs and errors
+with the names left out. See the
 [changelog](CHANGELOG.md) for release history.
 
 MIT License.
