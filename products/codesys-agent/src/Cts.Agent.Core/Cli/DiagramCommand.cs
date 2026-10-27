@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Cts.Analysis;
 using Cts.Docs;
 using static Cts.Agent.JsonMap;
@@ -17,6 +18,7 @@ namespace Cts.Cli
         const int MermaidLimit = 50000;
         const int MermaidEdges = 500;
 
+        static readonly Regex Arrow = new Regex(@" (?:<\|--|<\|\.\.|\*--|-->) ");
         static readonly CliOption Workspace = CliOption.Text("--workspace", "workspace", "DIR", "The sync folder or its project-view (default: the one around the current folder)");
 
         internal static IEnumerable<CliCommand> Commands => new[]
@@ -29,7 +31,8 @@ namespace Cts.Cli
                 Description = "A mermaid classDiagram of the sync folder's project: what a function block extends and implements, the blocks and "
                     + "structures it holds (composition, the member's name on the line) and the ones it only refers to (a POINTER, REFERENCE, "
                     + "VAR_IN_OUT or interface variable: association). A class lists its inputs, outputs, methods and properties, not its internals. "
-                    + "With NAME the classes up to --depth relations away from it (default " + ClassDepth + "); without it every class that has a relation. "
+                    + "With NAME the classes up to --depth relations away from it (default " + ClassDepth + "), a line only between classes a step apart; "
+                    + "without it every class that has a relation. More than eight classes tied to one class alone and the same way print as one list. "
                     + "Library types are not drawn. Needs no IDE; paste the text into a mermaid block of a document or a pull request.",
                 Options = new[] { CliOption.Int("--depth", "depth", "Relations away from NAME (default " + ClassDepth + ")"), Workspace },
                 LocalExecute = (options, host, work) => Draw(options, work, "classes"), Build = Build,
@@ -41,7 +44,8 @@ namespace Cts.Cli
                 Description = "A mermaid flowchart of the sync folder's project: each task calls its programs, each program the function blocks, "
                     + "functions, methods and actions its code calls, --depth calls down (default " + CallDepth + "). --from starts at one task or "
                     + "object instead of every task; with no task configuration in the folder, every program no one calls is a start. A node whose "
-                    + "callees lie deeper says how many (+N). Only the project's own objects are drawn. Needs no IDE.",
+                    + "callees lie deeper says how many (+N); more than eight objects of one kind a node calls that call nothing drawn are one node "
+                    + "listing them. Only the project's own objects are drawn. Needs no IDE.",
                 Options = new[]
                 {
                     CliOption.Text("--from", "from", "TASK|NAME", "Start at this task or object"),
@@ -93,7 +97,8 @@ namespace Cts.Cli
                 return answer.Detail(Equals(data["diagram"], "classes") ? "no class extends or implements another: name one (cts diagram classes NAME) to see what it holds and who holds it"
                     : "nothing to start from: no task configuration and no program in the folder; --from names an object");
             answer.Detail(mermaid);
-            var edges = data.ContainsKey("relations") ? Int(data, "relations") : Int(data, "calls");
+            // The lines drawn, a list of forty standing for forty.
+            var edges = mermaid.Split('\n').Count(line => Arrow.IsMatch(line));
             if (mermaid.Length > MermaidLimit || edges > MermaidEdges)
                 answer.Detail("[WARN] " + mermaid.Length + " characters, " + edges + " lines: mermaid draws " + MermaidLimit + " characters and " + MermaidEdges + " lines by default; "
                     + (Equals(data["diagram"], "classes") ? "name a class, or lower --depth" : "start --from one task or object, or lower --depth"));

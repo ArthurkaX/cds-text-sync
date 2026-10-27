@@ -159,6 +159,12 @@ namespace Cts.Docs
             return symbol;
         }
 
+        // "40 function blocks": *count* objects of *kind* (FUNCTION_BLOCK, PROPERTY...).
+        internal static string Many(int count, string kind)
+        {
+            var noun = kind.ToLowerInvariant().Replace('_', ' ');
+            return count + " " + (noun.EndsWith("y") ? noun.Substring(0, noun.Length - 1) + "ies" : noun + "s");
+        }
 
         // The doc comment of the object whose header starts at start: the
         // comment on the header line or right after it, else the run of comments

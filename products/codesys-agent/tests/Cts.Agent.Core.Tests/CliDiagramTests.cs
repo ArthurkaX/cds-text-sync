@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace Cts.Agent.Tests
@@ -23,6 +24,11 @@ namespace Cts.Agent.Tests
             Source("App/ST_Cell.st", "TYPE ST_Cell :\nSTRUCT\n    rLevel : REAL;\nEND_STRUCT\nEND_TYPE\n");
             Source("App/FB_Line.st", "FUNCTION_BLOCK FB_Line\nVAR_INPUT\n    xStart : BOOL;\nEND_VAR\nVAR\n    aMotors : ARRAY[1..2] OF FB_Motor;\n    fbFirst : FB_Base;\n    fbSecond : FB_Base;\n    fbThird : FB_Base;\n    fbFourth : FB_Base;\n    pDrive : POINTER TO FB_Base;\n    itfDrive : I_Drive;\n    tonWait : TON;\nEND_VAR\n"
                 + "// --- implementation ---\nfbFirst(xStart := xStart);\nEND_FUNCTION_BLOCK\n");
+            // Nine valves a program runs and that each hold a cell.
+            for (var valve = 1; valve <= 9; valve++)
+                Source("App/FB_Valve" + valve + ".st", "FUNCTION_BLOCK FB_Valve" + valve + "\nVAR\n    stCell : ST_Cell;\nEND_VAR\n// --- implementation ---\nEND_FUNCTION_BLOCK\n");
+            Source("App/PRG_Valves.st", "PROGRAM PRG_Valves\nVAR\n" + string.Concat(Enumerable.Range(1, 9).Select(valve => "    fbValve" + valve + " : FB_Valve" + valve + ";\n"))
+                + "END_VAR\n// --- implementation ---\n" + string.Concat(Enumerable.Range(1, 9).Select(valve => "fbValve" + valve + "();\n")));
             Source("App/F_Scale.st", "FUNCTION F_Scale : REAL\nVAR_INPUT\n    rIn : REAL;\nEND_VAR\n// --- implementation ---\nF_Scale := rIn;\nEND_FUNCTION\n");
         }
 
@@ -47,6 +53,8 @@ namespace Cts.Agent.Tests
             Assert.Contains("    FB_Line *-- FB_Base : fbFirst, fbSecond, fbThird +1", output);
             // Two relations away: not drawn at depth 1.
             Assert.DoesNotContain("class ST_Cell", output);
+            // Two of its neighbours: no line between them.
+            Assert.DoesNotContain("FB_Base <|-- FB_Motor", output);
             (_, output, _) = CliTests.RunLocal("diagram", "classes", "FB_Motor", "--workspace", folder);
             Assert.Contains("    FB_Base <|-- FB_Motor", output);
             Assert.Contains("    I_Drive <|.. FB_Motor", output);
@@ -55,6 +63,13 @@ namespace Cts.Agent.Tests
             Assert.Contains("        +out sError : STRING[80]", output);
             Assert.Contains("        +M_Clear() BOOL", output);
             Assert.Contains("        <<interface>>", output);
+            // Nine blocks that hold a cell and nothing else drawn: one list.
+            (_, output, _) = CliTests.RunLocal("diagram", "classes", "ST_Cell", "--workspace", folder);
+            Assert.Contains("classes=11 relations=10", output);
+            Assert.Contains("    class list__1[\"9 function blocks\"] {\n        FB_Valve1 : stCell\n", output);
+            Assert.Contains("    list__1 *-- ST_Cell", output);
+            Assert.Contains("    FB_Motor --> ST_Cell : stCell", output);
+            Assert.DoesNotContain("class FB_Valve1", output);
             // The whole project: inheritance only, no members.
             (_, output, _) = CliTests.RunLocal("diagram", "classes", "--workspace", folder);
             Assert.Contains("classes=3 relations=2", output);
@@ -82,6 +97,12 @@ namespace Cts.Agent.Tests
             (_, output, _) = CliTests.RunLocal("diagram", "calls", "--from", "MAIN", "--depth", "1", "--workspace", folder);
             Assert.Contains("ok diagram-calls tasks=0 objects=3 calls=2 cut=1", output);
             Assert.Contains("    n2[\"FB_Line +1\"]", output);
+            // Nine blocks the program runs that call nothing: one list.
+            (_, output, _) = CliTests.RunLocal("diagram", "calls", "--from", "PRG_Valves", "--workspace", folder);
+            Assert.Contains("ok diagram-calls tasks=0 objects=10 calls=9 cut=0", output);
+            Assert.Contains("    n2[\"9 function blocks<br>FB_Valve1<br>FB_Valve2", output);
+            Assert.Contains("    n1 --> n2\n", output + "\n");
+            Assert.DoesNotContain("n3", output);
             (code, _, var error) = CliTests.RunLocal("diagram", "calls", "--from", "Nothing", "--workspace", folder);
             Assert.Equal(1, code);
             Assert.Contains("no task or object is named Nothing", error);

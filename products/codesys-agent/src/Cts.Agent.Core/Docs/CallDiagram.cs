@@ -9,9 +9,15 @@ namespace Cts.Docs
     // functions, methods and actions its code calls.  Only the project's
     // own objects are drawn, and a task's program that has no text in the
     // folder (a graphical one) says so; a node whose callees lie deeper than
-    // asked says how many it leaves out.
+    // asked says how many it leaves out.  Many objects one node calls that
+    // call nothing drawn are one list, not a row of boxes.
     internal static class CallDiagram
     {
+        //: Leaves of one kind a node fans out to before they become one list.
+        const int MostFan = 8;
+        //: Names a list shows before "... N more".
+        const int MostNames = 20;
+
         // *tasks*: each task with the programs it calls (ProjectDocs.TaskRoots).
         // From *from* (a task or an object) or, without it, from every task
         // (every program no one calls when there are none), *depth* calls
@@ -61,6 +67,16 @@ namespace Cts.Docs
                     queue.Enqueue(callee);
                 }
             }
+            // A program running forty blocks that call nothing drawn: one list
+            // of the forty, under the first one's id.
+            var calls = taskOf.SelectMany(task => task.Value.Select(program => new KeyValuePair<string, string>("task " + task.Key, program))).Concat(edges).ToList();
+            var callers = calls.GroupBy(call => call.Value, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Select(call => call.Key).Distinct().ToList(), StringComparer.Ordinal);
+            var calling = new HashSet<string>(edges.Select(edge => edge.Key), StringComparer.Ordinal);
+            var fanOf = level.Keys.Where(name => byName.ContainsKey(name) && !calling.Contains(name) && callers.TryGetValue(name, out var by) && by.Count == 1)
+                .GroupBy(name => callers[name][0] + " " + byName[name].Kind, StringComparer.Ordinal).Where(fan => fan.Count() > MostFan)
+                .SelectMany(fan => fan.Select(name => new KeyValuePair<string, List<string>>(name, fan.ToList()))).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+            string Text(string name) => Label(name + (cut.TryGetValue(name, out var more) ? " +" + more : ""));
+
             // Ids, not names: a node called "end" ends a mermaid flowchart.
             var ids = new Dictionary<string, string>(StringComparer.Ordinal);
             string Id(string key) => ids.TryGetValue(key, out var id) ? id : ids[key] = "n" + (ids.Count + 1);
@@ -68,23 +84,29 @@ namespace Cts.Docs
             foreach (var task in taskOf.Keys) lines.Add("    " + Id("task " + task) + "{{\"" + Label("task " + task) + "\"}}");
             foreach (var name in level.Keys)
             {
-                var text = Label(name + (cut.TryGetValue(name, out var more) ? " +" + more : ""));
                 if (!byName.TryGetValue(name, out var symbol))
                 {
                     lines.Add("    " + Id(name) + "[\"" + Label(name) + " (no text)\"]");
                     continue;
                 }
+                var text = Text(name);
+                if (fanOf.TryGetValue(name, out var fan))
+                {
+                    if (fan[0] != name) continue;
+                    text = ProjectDocs.Many(fan.Count, symbol.Kind) + string.Concat(fan.Take(MostNames).Select(leaf => "<br>" + Text(leaf)))
+                        + (fan.Count > MostNames ? "<br>... " + (fan.Count - MostNames) + " more" : "");
+                }
                 var kind = symbol.Kind;
                 lines.Add("    " + Id(name) + (kind == "PROGRAM" ? "[[\"" + text + "\"]]" : kind == "FUNCTION" ? "(\"" + text + "\")"
                     : kind == "FUNCTION_BLOCK" ? "[\"" + text + "\"]" : "([\"" + text + "\"])"));
             }
-            foreach (var task in taskOf) foreach (var program in task.Value) lines.Add("    " + Id("task " + task.Key) + " --> " + Id(program));
-            foreach (var edge in edges) lines.Add("    " + Id(edge.Key) + " --> " + Id(edge.Value));
+            foreach (var call in calls.Where(call => !fanOf.TryGetValue(call.Value, out var fan) || fan[0] == call.Value))
+                lines.Add("    " + Id(call.Key) + " --> " + Id(call.Value));
             return new Dictionary<string, object>
             {
                 ["tasks"] = taskOf.Count,
                 ["objects"] = level.Count,
-                ["calls"] = edges.Count + taskOf.Values.Sum(programs => programs.Count),
+                ["calls"] = calls.Count,
                 ["cut"] = cut.Count,
                 ["mermaid"] = taskOf.Count + level.Count > 0 ? string.Join("\n", lines) : "",
             };

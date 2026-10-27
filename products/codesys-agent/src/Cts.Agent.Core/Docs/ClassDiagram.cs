@@ -13,13 +13,19 @@ namespace Cts.Docs
     // (a POINTER, REFERENCE, VAR_IN_OUT or interface variable: association).
     // A class shows its inputs, outputs, methods and properties, not its
     // internals.  The whole project is too much for one picture: without a
-    // name it is the inheritance alone, the classes without members.
+    // name it is the inheritance alone, the classes without members.  Around
+    // a name, a line joins classes a step apart, never two neighbours; many
+    // classes tied to one class alone and the same way are one list.
     internal static class ClassDiagram
     {
         //: Lines a class lists before "... N more".
         const int MostLines = 12;
         //: Member names a line carries before "+N".
         const int MostLabels = 3;
+        //: Classes tied to one class the same way before they become one list.
+        const int MostFan = 8;
+        //: Names a list shows before "... N more".
+        const int MostNames = 20;
         static readonly string[] Kinds = { "FUNCTION_BLOCK", "INTERFACE", "STRUCT", "UNION", "PROGRAM" };
         static readonly string[] Shown = { "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "FIELD" };
         static readonly Regex Array = new Regex(@"^ARRAY\s*\[(?<bounds>[^\]]*)\]\s*OF\s+", RegexOptions.IgnoreCase);
@@ -41,36 +47,64 @@ namespace Cts.Docs
                 if (!classes.ContainsKey(symbol.Name)) classes[symbol.Name] = symbol;
             var whole = string.IsNullOrEmpty(name);
             var relations = Relations(classes).Where(relation => !whole || relation.Label.Length == 0).ToList();
-            HashSet<string> drawn;
+            // Each drawn class's steps from *name*; a line joins two a step apart.
+            var steps = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             if (!whole)
             {
                 if (!classes.TryGetValue(name, out var start)) return null;
-                drawn = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { start.Name };
+                steps[start.Name] = 0;
                 var frontier = new List<string> { start.Name };
-                for (var step = 0; step < depth && frontier.Count > 0; step++)
+                for (var step = 1; step <= depth && frontier.Count > 0; step++)
                 {
                     var next = relations.SelectMany(relation => frontier.Contains(relation.From, StringComparer.OrdinalIgnoreCase) ? new[] { relation.To }
-                        : frontier.Contains(relation.To, StringComparer.OrdinalIgnoreCase) ? new[] { relation.From } : new string[0]).Where(drawn.Add).ToList();
+                        : frontier.Contains(relation.To, StringComparer.OrdinalIgnoreCase) ? new[] { relation.From } : new string[0])
+                        .Where(found => !steps.ContainsKey(found)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    foreach (var found in next) steps[found] = step;
                     frontier = next;
                 }
             }
-            else drawn = new HashSet<string>(relations.SelectMany(relation => new[] { relation.From, relation.To }), StringComparer.OrdinalIgnoreCase);
+            else foreach (var end in relations.SelectMany(relation => new[] { relation.From, relation.To })) steps[end] = 0;
             // One line per pair and kind: a block holding three buffers draws one
             // line, not three on top of each other.
-            var edges = relations.Where(relation => drawn.Contains(relation.From) && drawn.Contains(relation.To))
+            var edges = relations.Where(relation => steps.ContainsKey(relation.From) && steps.ContainsKey(relation.To) && (whole || steps[relation.From] != steps[relation.To]))
                 .GroupBy(relation => relation.From + " " + relation.Arrow + " " + relation.To, StringComparer.OrdinalIgnoreCase)
                 .Select(group => new Relation { From = group.First().From, To = group.First().To, Arrow = group.First().Arrow, Label = Labels(group.Select(relation => relation.Label).ToList()) })
                 .ToList();
+            // Forty blocks holding one structure: one list of the forty, the
+            // member each holds it by after its name.
+            var ends = edges.SelectMany(edge => new[] { edge.From, edge.To }).GroupBy(end => end, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+            bool Leaf(string end) => ends[end] == 1 && (whole || steps[end] > 0);
+            var fans = edges.Where(edge => Leaf(edge.From) != Leaf(edge.To))
+                .GroupBy(edge => Leaf(edge.From) ? edge.Arrow + " " + edge.To + " " + classes[edge.From].Kind : edge.From + " " + edge.Arrow + " " + classes[edge.To].Kind, StringComparer.OrdinalIgnoreCase)
+                .Where(fan => fan.Count() > MostFan).ToList();
+            var listed = new HashSet<Relation>(fans.SelectMany(fan => fan));
+            var inLists = new HashSet<string>(listed.Select(edge => Leaf(edge.From) ? edge.From : edge.To), StringComparer.OrdinalIgnoreCase);
             var lines = new List<string> { "classDiagram" };
-            foreach (var key in drawn.OrderBy(key => key, StringComparer.OrdinalIgnoreCase)) lines.AddRange(Class(classes[key], !whole));
-            lines.AddRange(edges.Select(edge => "    " + Id(edge.From) + " " + edge.Arrow + " " + Id(edge.To) + (edge.Label.Length > 0 ? " : " + edge.Label : "")));
+            foreach (var key in steps.Keys.Where(key => !inLists.Contains(key)).OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
+                lines.AddRange(Class(classes[key], !whole));
+            var listLines = new List<string>();
+            foreach (var fan in fans)
+            {
+                var first = fan.First();
+                var outward = Leaf(first.From);
+                // Two underscores: no ST name has them.
+                var id = "list__" + (listLines.Count + 1);
+                var names = fan.Select(edge => (outward ? edge.From : edge.To) + (edge.Label.Length > 0 ? " : " + edge.Label : "")).ToList();
+                lines.Add("    class " + id + "[\"" + ProjectDocs.Many(names.Count, classes[outward ? first.From : first.To].Kind) + "\"] {");
+                lines.AddRange(names.Take(MostNames).Select(line => "        " + line));
+                if (names.Count > MostNames) lines.Add("        ... " + (names.Count - MostNames) + " more");
+                lines.Add("    }");
+                listLines.Add("    " + (outward ? id : Id(first.From)) + " " + first.Arrow + " " + (outward ? Id(first.To) : id));
+            }
+            lines.AddRange(edges.Where(edge => !listed.Contains(edge)).Select(edge => "    " + Id(edge.From) + " " + edge.Arrow + " " + Id(edge.To) + (edge.Label.Length > 0 ? " : " + edge.Label : "")));
+            lines.AddRange(listLines);
             return new Dictionary<string, object>
             {
-                ["classes"] = drawn.Count,
+                ["classes"] = steps.Count,
                 ["relations"] = edges.Count,
-                ["left_out"] = whole ? classes.Count - drawn.Count : 0,
+                ["left_out"] = whole ? classes.Count - steps.Count : 0,
                 // An empty classDiagram is a mermaid syntax error.
-                ["mermaid"] = drawn.Count > 0 ? string.Join("\n", lines) : "",
+                ["mermaid"] = steps.Count > 0 ? string.Join("\n", lines) : "",
             };
         }
 
