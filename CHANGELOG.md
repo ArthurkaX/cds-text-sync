@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 
 - The FSM window's Live button paints the step the PLC is in and the transition that led there, read a few times a second while the IDE is logged in. It offers the state variable's path in each instance of the block the declarations make, or takes a typed one; a state written as a constant or an enumeration member is found by its number.
 - `cts fsm` gives each machine the paths to read online (`watch`) and each state the numbers it stands for (`values`); `cts fsm NAME` names the `cts read` that shows the state.
+- `cts fsm --svg FOLDER` writes the FSM window's GRAFCET drawing of each machine as an SVG file on white, for a document or a review; hovering a step or a transition shows its line. It works with `--disk`, so no IDE is needed.
 
 ---
 

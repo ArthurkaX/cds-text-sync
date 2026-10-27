@@ -210,8 +210,9 @@ state machines implemented as a `CASE` over a state variable whose branches
 assign to the same variable (or its `next_`/`new_` twin). An agent started
 before this window existed cannot open it; restarting CODESYS loads the
 installed one. From the shell, `cts fsm` lists the same machines, `cts fsm NAME`
-shows one object's transitions (`--mermaid` as a diagram), and `cts fsm --disk`
-reads them from the sync folder's files.
+shows one object's transitions (`--mermaid` as a diagram), `cts fsm --svg FOLDER`
+writes this window's drawings as SVG files, and `cts fsm --disk` reads them
+from the sync folder's files.
 
 ## 5. Settings page
 

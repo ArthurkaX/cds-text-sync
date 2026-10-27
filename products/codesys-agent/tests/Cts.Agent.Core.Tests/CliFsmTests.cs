@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Xml.Linq;
 using Xunit;
 
 namespace Cts.Agent.Tests
@@ -59,6 +61,14 @@ namespace Cts.Agent.Tests
                 Assert.Contains("\"file\": \"Application/PRG_Main.st\"", output);
                 // The IF of the first transition: line 3 of the implementation, line 9 of the file.
                 Assert.True(output.Contains("\"line\": 9,"), output);
+                // The window's drawing as a file, its lines the file's too.
+                var drawings = Path.Combine(folder, "drawings");
+                (code, output, _) = Run(new FakeHost(), "fsm", "--disk", "--sync-folder", folder, "--svg", drawings);
+                Assert.True(code == 0, output);
+                Assert.Contains("drawn in PRG_Main.state.svg", output);
+                var svg = XDocument.Load(Path.Combine(drawings, "PRG_Main.state.svg"));
+                Assert.Equal("PRG_Main: state", svg.Root.Elements().First().Value);
+                Assert.Contains(svg.Descendants(), element => element.Name.LocalName == "title" && element.Value == "0 → 10 when xStart, line 9");
             }
             finally { Directory.Delete(folder, true); }
         }

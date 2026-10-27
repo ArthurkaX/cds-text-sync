@@ -555,6 +555,7 @@ under `"analyze"`: `fail_on`, `incomplete`, `rules.<ID>.enabled`/`severity`/
 | One object's machines, every transition | `cts fsm NAME` |
 | The same from the sync folder's files, no IDE | `cts fsm --disk [NAME]` |
 | A machine as a mermaid stateDiagram | `cts fsm NAME --mermaid` |
+| The FSM window's drawing as files for a document | `cts fsm [NAME] --svg FOLDER` |
 | Which state a machine is in on the PLC | `cts fsm NAME`, then the `cts read` it names |
 
 `cts fsm` finds the `CASE` state machines in the IDE's Structured Text through
@@ -566,7 +567,9 @@ value no branch handles). `--disk` reads the `.st` files of the sync
 folder (`--sync-folder` names another) and needs no IDE; its lines are the
 file's and each object names its `file`. `--json` gives every machine's states
 and transitions with the code behind them; `--layout` adds the GRAFCET geometry
-the agent's FSM window draws (Alt+Q, `0`, `4`). Each machine's `watch` lists
+the agent's FSM window draws (Alt+Q, `0`, `4`), and `--svg FOLDER` writes that
+drawing on white, one `Object.selector.svg` per machine (hovering a step or a
+transition in a browser shows its line); each machine names its file as `svg`. Each machine's `watch` lists
 the path of its state variable in every instance the declarations make (a
 program's own, or each instance of a function block in the programs and global
 variable lists), and a state's `values` the numbers its constants or

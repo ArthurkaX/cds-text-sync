@@ -20,7 +20,7 @@ namespace Cts.Cli
             ArgumentLimit = 1,
             ArgumentHelp = "Only this object: Name or Parent.Name",
             Summary = "Find the state machines in the Structured Text",
-            Description = "The CASE state machines in the IDE's Structured Text, saved or not: each state with its code, each transition with its condition and code, the state it starts in when the declaration says, and what looks wrong (a state never entered or without a way out, a value no branch handles). Transitions are listed in source order, the order IF/ELSIF branches are tested; a transition from (any) is code outside the CASE, so it leaves every state; one from (other value) is the CASE's ELSE. Lines count from the implementation's first line; --disk reads the sync folder's files instead, needs no IDE, and its lines are the file's. Text without a machine is not an error.",
+            Description = "The CASE state machines in the IDE's Structured Text, saved or not: each state with its code, each transition with its condition and code, the state it starts in when the declaration says, and what looks wrong (a state never entered or without a way out, a value no branch handles). Transitions are listed in source order, the order IF/ELSIF branches are tested; a transition from (any) is code outside the CASE, so it leaves every state; one from (other value) is the CASE's ELSE. Lines count from the implementation's first line; --disk reads the sync folder's files instead, needs no IDE, and its lines are the file's. --svg FOLDER draws each machine as the FSM window does, on white, one SVG file per machine for a document or a review; hovering a step or a transition there shows its line. Text without a machine is not an error.",
             Seconds = 120,
             Options = new[]
             {
@@ -28,6 +28,7 @@ namespace Cts.Cli
                 CliOption.Text("--sync-folder", "sync_folder", "PATH", "With --disk: the sync folder (default: the one around the current folder, else the open project's)"),
                 CliOption.Switch("--mermaid", "mermaid", "Add each machine as a mermaid stateDiagram"),
                 CliOption.Switch("--layout", "layout", "Add each machine's GRAFCET geometry, as the FSM window draws it"),
+                CliOption.Text("--svg", "svg", "FOLDER", "Draw each machine as the FSM window does into FOLDER, one Object.selector.svg each"),
             },
             LocalExecute = Disk,
             LocalWhen = options => options.Params.ContainsKey("disk"),
@@ -98,6 +99,8 @@ namespace Cts.Cli
             }
             var items = new List<object>();
             var failed = new List<object>();
+            var drawings = options.Params.TryGetValue("svg", out var svg) ? Path.GetFullPath(Convert.ToString(svg)) : null;
+            var drawn = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var source in sources.OrderBy(s => s.Label, StringComparer.OrdinalIgnoreCase))
             {
                 var text = StText.Lf(source.Text);
@@ -124,6 +127,9 @@ namespace Cts.Cli
                     if (options.Params.ContainsKey("mermaid")) machine["mermaid"] = FsmMermaid.Render(machine);
                     if (options.Params.ContainsKey("layout")) machine["layout"] = FsmGrafcet.Layout(machine);
                     if (source.FirstLine != 1) Shift(machine, source.FirstLine - 1);
+                    if (drawings == null) continue;
+                    var drawing = new Dictionary<string, object>(machine) { ["layout"] = machine.TryGetValue("layout", out var layout) ? layout : FsmGrafcet.Layout(machine) };
+                    machine["svg"] = FsmSvg.Write(drawings, source.Label, drawing, drawn);
                 }
                 var item = new Dictionary<string, object> { ["label"] = source.Label };
                 if (source.Guid != null) item["guid"] = source.Guid;
@@ -139,6 +145,7 @@ namespace Cts.Cli
                 ["machines"] = items.Sum(item => ((List<object>)((Dictionary<string, object>)item)["machines"]).Count),
                 ["items"] = items,
             };
+            if (drawings != null) data["svg_folder"] = drawings;
             if (failed.Count > 0) data["failed"] = failed;
             return data;
         }
@@ -159,6 +166,7 @@ namespace Cts.Cli
             var answer = new Answer().Add("objects", data["objects"]).Add("with_fsm", data["with_fsm"]).Add("machines", data["machines"]);
             var items = Maps(data, "items").ToList();
             var failed = Maps(data, "failed").ToList();
+            if (data.ContainsKey("svg_folder")) answer.Add("svg_folder", data["svg_folder"]);
             if (failed.Count > 0) answer.Add("failed", failed.Count).Partial();
             // One object asked for, or a diagram: every machine in full.
             var full = items.Count == 1 || items.Any(item => Maps(item, "machines").Any(machine => machine.ContainsKey("mermaid")));
@@ -170,7 +178,8 @@ namespace Cts.Cli
                     var states = Maps(machine, "states").ToList();
                     var transitions = Maps(machine, "transitions").ToList();
                     answer.Detail(Text(item, "label") + ": " + Text(machine, "selector") + " (" + states.Count + " states, " + transitions.Count + " transitions in source order" + (Text(machine, "initial").Length > 0 ? ", starts in " + Text(machine, "initial") + ", " + Text(machine, "initial_from") : "") + ")" + where
-                        + (full && where.Length == 0 ? ", lines count from the implementation's first line" : ""));
+                        + (full && where.Length == 0 ? ", lines count from the implementation's first line" : "")
+                        + (Text(machine, "svg").Length > 0 ? ", drawn in " + Text(machine, "svg") : ""));
                     if (!full) continue;
                     var watch = Items(machine, "watch").Select(Convert.ToString).ToList();
                     if (watch.Count > 0)

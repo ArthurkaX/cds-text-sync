@@ -127,6 +127,13 @@ namespace Cts.Agent
             return objects;
         }
 
+        // One machine of `cts fsm`'s answer, its layout included, as the
+        // window reads it from the JSON.
+        internal static FsmMachine Read(IDictionary<string, object> machine)
+        {
+            return Machine((Dictionary<string, object>)Json.Parse(Json.Serialize(machine)));
+        }
+
         static FsmMachine Machine(Dictionary<string, object> entry)
         {
             var machine = new FsmMachine { Selector = Text(entry, "selector"), Layout = Layout(Dict(entry, "layout")) };
