@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and ideas on Discord
+    url: https://discord.gg/TYJTeW64Kv
+    about: Ask in #help or share ideas in #ideas. Paste `cts diag` output, never project files.

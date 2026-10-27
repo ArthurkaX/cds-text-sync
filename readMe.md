@@ -311,7 +311,8 @@ Details: [HMI screens from SVG](docs/visu.md).
 - [Upgrading to 4.0](docs/upgrade-4.md)
 
 Issues, friction reports and feature requests are welcome in the [GitHub issue
-tracker](https://github.com/ArthurkaX/cds-text-sync/issues). Everything posted
+tracker](https://github.com/ArthurkaX/cds-text-sync/issues); questions and ideas
+also on [Discord](https://discord.gg/TYJTeW64Kv). Everything posted
 there is public: attach no project files or exports. Paste the output of
 `cts diag`, run in the sync folder, instead: it holds versions, settings and
 file counts, without file, object or project names. See the
