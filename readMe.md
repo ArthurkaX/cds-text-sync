@@ -300,6 +300,10 @@ The page opens in the browser and needs no network: pick a task, a class or a
 state machine on the left, drag and zoom the drawing, click a node to go to it.
 In the IDE, quick window More, `7` Diagrams writes and opens it.
 
+<p><img src="img/diagram-view.gif"
+   alt="cts diagram view in a browser: the tasks' call tree, a click on a program shows what it calls, a click on a function block opens its class diagram, then a program's instances fitted on screen"
+   width="100%"></p>
+
 ### Generate visualization screens from SVG
 
 An agent can create an SVG sketch as plain text, lint and preview it, compile it
