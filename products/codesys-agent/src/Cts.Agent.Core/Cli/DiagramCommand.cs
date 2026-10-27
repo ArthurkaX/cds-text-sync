@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -8,6 +7,7 @@ using System.Text.RegularExpressions;
 using Cts.Agent;
 using Cts.Analysis;
 using Cts.Docs;
+using Cts.Visu;
 using static Cts.Agent.JsonMap;
 
 namespace Cts.Cli
@@ -69,7 +69,7 @@ namespace Cts.Cli
                     + "function block, structure and interface, and each state machine as the FSM window draws it, at the depths the other "
                     + "diagram commands take. Pick on the left, drag to move, the wheel zooms, a click on a node goes to it. The page holds mermaid "
                     + "and every drawing, so it opens without a network and travels as one file. Written to --out (default: cts-diagrams in the "
-                    + "temporary folder) and opened in the default browser unless --no-open. Needs no IDE.",
+                    + "temporary folder) and opened in the default browser, else Chrome or Edge, unless --no-open. Needs no IDE.",
                 Options = new[]
                 {
                     CliOption.Text("--out", "out", "FILE", "Write the page here"),
@@ -93,13 +93,7 @@ namespace Cts.Cli
             var file = Path.GetFullPath(options.Text("out") ?? Path.Combine(Path.GetTempPath(), "cts-diagrams", Unsafe.Replace(project, "_") + ".html"));
             Directory.CreateDirectory(Path.GetDirectoryName(file));
             File.WriteAllText(file, DiagramView.Page(Template(), File.ReadAllText(mermaid), model), new UTF8Encoding(false));
-            var opened = false;
-            if (!options.Params.ContainsKey("no_open"))
-            {
-                // The shell starts the browser: a child of cts would hold the pipe the quick window reads cts' answer from.
-                try { Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); opened = true; }
-                catch (Exception error) when (error is System.ComponentModel.Win32Exception || error is InvalidOperationException) { }
-            }
+            var opened = !options.Params.ContainsKey("no_open") && Browser.Open(file);
             return new Dictionary<string, object>
             {
                 ["diagram"] = "view", ["file"] = file, ["opened"] = opened, ["project_view"] = workspace.View,

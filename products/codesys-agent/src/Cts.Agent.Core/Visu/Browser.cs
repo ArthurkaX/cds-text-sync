@@ -60,5 +60,21 @@ namespace Cts.Visu
             }
             return File.Exists(fullPng) ? fullPng : null;
         }
+
+        // Opens the page *file* in the default browser, else in Chrome or Edge
+        // (a PC whose .html still belongs to the removed Internet Explorer);
+        // false when neither starts.  The shell starts it: a child of cts
+        // would hold the pipe the quick window reads cts' answer from.
+        internal static bool Open(string file)
+        {
+            foreach (var start in new[] { new ProcessStartInfo(file), Find() is string browser ? new ProcessStartInfo(browser, "\"" + new Uri(file).AbsoluteUri + "\"") : null })
+            {
+                if (start == null) continue;
+                start.UseShellExecute = true;
+                try { Process.Start(start); return true; }
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception || error is InvalidOperationException) { }
+            }
+            return false;
+        }
     }
 }
