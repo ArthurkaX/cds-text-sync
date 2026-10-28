@@ -463,7 +463,7 @@ PLC paths (the arguments of `cts plc`, except `put`'s SRC) name files on the dev
 | Watch values move | `cts read NAME [NAME ...] --samples N [--interval S]` |
 | Wait for a value | `cts read NAME --until VALUE [--interval S] [--within S]` |
 | Write one expression, or several in one PLC cycle | `cts write NAME VALUE [NAME VALUE ...]` |
-| List preset leaves | `cts snapshooter tree [--path PREFIX]` |
+| List the declared variables with their types | `cts snapshooter tree [--path PREFIX]` |
 | Read a JSON preset | `cts snapshooter take [--path P] [--prefix P] [--paths-file F] [--label L] [--out FILE]` |
 | Diff a preset against the PLC | `cts snapshooter diff --input PRESET.json` |
 | Restore a preset (dry-run unless `--apply`) | `cts snapshooter restore --input PRESET.json [--apply]` |

@@ -35,6 +35,9 @@ namespace Cts.Agent.Tests
             Assert.Contains("MAIN.fb.input", output);
             Assert.DoesNotContain("MAIN.fb.k", output);
             Assert.DoesNotContain("MAIN.fb.temp", output);
+            // The short answer names each leaf too, narrowed by --path.
+            var (_, shortAnswer, _) = Run(host, "snapshooter", "tree", "--path", "GVL.pair");
+            Assert.StartsWith("ok snapshooter-tree action=tree count=2 path=GVL.pair\nGVL.pair.x  INT\nGVL.pair.y  BOOL\n", shortAnswer);
         }
 
         [Fact]
@@ -77,6 +80,7 @@ namespace Cts.Agent.Tests
                 Assert.Equal(0, diffCode);
                 Assert.Contains("GVL.n", diff);
                 Assert.Contains("WORD#5", diff);
+                Assert.Contains("\nGVL.n  WORD#5 -> WORD#8\n", Run(host, "snapshooter", "diff", "--input", path).output);
                 var (dryCode, dry, _) = Run(host, "snapshooter", "restore", "--input", path, "--json");
                 Assert.Equal(0, dryCode);
                 Assert.Contains("\"would_write\": 1", dry);

@@ -772,7 +772,7 @@ namespace Cts.Agent.Tests
 
             Assert.Equal("ok read-log category=Build messages=25", lines[0]);
             Assert.Equal("line 20", lines[20]);
-            Assert.Equal("... and 5 more", lines[21]);
+            Assert.Equal("... and 5 more: --json has them all", lines[21]);
         }
 
         [Fact]

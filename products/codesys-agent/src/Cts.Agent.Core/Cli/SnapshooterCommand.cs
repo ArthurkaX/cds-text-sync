@@ -15,9 +15,10 @@ namespace Cts.Cli
         static CliCommand Make(string action)
         {
             var command = new CliCommand { Name = "snapshooter", Sub = action, Summary = Summary(action),
-                Description = "PLC value presets. tree reads IDE declarations without a PLC session; take, diff and restore read live values.",
+                Description = "PLC value presets. tree reads IDE declarations without a PLC session and lists each variable leaf with its type, "
+                    + "--path narrowing it; take, diff and restore read live values, and diff lists each difference.",
                 TimeoutKey = "read_variables", Seconds = 300, Execute = Execute, Build = Build };
-            if (action == "tree") command.Options = new[] { CliOption.Text("--path", "path", "PREFIX", "Only leaf paths starting with this prefix") };
+            if (action == "tree") command.Options = new[] { CliOption.Text("--path", "path", "PREFIX", "Only leaf paths starting with this prefix, e.g. GVL_Motors.") };
             if (action == "take")
             {
                 command.Options = new[] { CliOption.Many("--path", "path", "PATH", "Exact variable path (repeatable)"), CliOption.Many("--prefix", "prefix", "PREFIX", "Take paths starting with this prefix"), CliOption.Text("--paths-file", "paths_file", "FILE", "Paths to take, one per line (# comments ignored)"), CliOption.Text("--label", "label", "LABEL", "Preset label"), CliOption.Text("--out", "out", "FILE", "Save preset JSON to this path") };
@@ -140,19 +141,27 @@ namespace Cts.Cli
         static bool Bool(IDictionary<string, object> data, string key, bool fallback) { var value = Value(data, key); return value == null ? fallback : Equals(value, true); }
         static CliFailure Failure(string message) => new CliFailure("snapshooter", message, message, null, 1);
         // The line says what an agent decides on: how many, and for diff and
-        // restore whether the PLC matches the preset and what was written.
+        // restore whether the PLC matches the preset and what was written; a
+        // line follows per leaf of tree and per difference of diff.
         static Answer Build(IDictionary<string, object> data)
         {
             var answer = new Answer().Add("action", Value(data, "action")).Add("count", Value(data, "count")).Add("path", Value(data, "path"))
                 .Add("label", Value(data, "label")).Add("saved_to", Value(data, "saved_to"));
             if (Value(data, "report") is IDictionary<string, object> report)
+            {
                 answer.Add("identical", Value(report, "identical")).Add("value_changed", Count(report, "value_changed"))
                     .Add("type_changed", Count(report, "type_changed")).Add("missing", Count(report, "missing"));
+                foreach (var change in Rows(report, "value_changed")) answer.Detail(Text(change, "path", "") + "  " + Text(change, "was", "") + " -> " + Text(change, "now", ""));
+                foreach (var change in Rows(report, "type_changed")) answer.Detail(Text(change, "path", "") + "  type " + Text(change, "was", "") + " -> " + Text(change, "now", ""));
+                foreach (var path in Value(report, "missing") as IEnumerable<object> ?? new object[0]) answer.Detail(path + "  missing or not readable");
+            }
             if (Value(data, "result") is IDictionary<string, object> result)
                 answer.Add("applied", Value(data, "applied")).Add("written", Value(result, "written"))
                     .Add("would_write", Value(result, "would_write")).Add("skipped", Value(result, "skipped"));
+            foreach (var leaf in Rows(data, "leaves")) answer.Detail(Text(leaf, "path", "") + "  " + Text(leaf, "type", ""));
             return answer;
         }
+        static IEnumerable<IDictionary<string, object>> Rows(IDictionary<string, object> data, string key) => (Value(data, key) as IEnumerable<object> ?? new object[0]).OfType<IDictionary<string, object>>();
         static int? Count(IDictionary<string, object> data, string key) => (Value(data, key) as IEnumerable<object>)?.Count();
     }
 }

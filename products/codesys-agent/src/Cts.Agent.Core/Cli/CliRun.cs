@@ -264,7 +264,7 @@ namespace Cts.Cli
                     output.WriteLine(Verdict.Line(answer.Status, command.Verb, answer.Pairs));
                     var shown = answer.Uncapped ? answer.Details.Count : MaxDetailLines;
                     foreach (var line in answer.Details.Take(shown)) output.WriteLine(line);
-                    if (answer.Details.Count > shown) output.WriteLine("... and " + (answer.Details.Count - shown) + " more");
+                    if (answer.Details.Count > shown) output.WriteLine("... and " + (answer.Details.Count - shown) + " more: --json has them all");
                     foreach (var line in SeenLines(Dialogs.Of(data, "dialogs_seen"))) output.WriteLine(line);
                 }
                 output.WriteLine("ide-" + hello.Pid + " · " + (hello.ProjectName ?? (hello.UiBusy ? "project not read: the IDE was busy" : "no project")));
