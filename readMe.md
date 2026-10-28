@@ -347,6 +347,8 @@ PLC's ring buffer, around a trigger, with no download of the application:
 cts trace set GVL_IO.rLevel PLC_PRG.fbPump.xRun --trigger PLC_PRG.fbPump.xFault
 cts trace start                        # downloads only the trace; the IDE logged in
 cts trace pull --wait 600              # after the trigger: a CSV and what each variable did
+cts disconnect                         # when done: the IDE offline, the application keeps running
+cts trace remove                       # off the PLC and out of the project
 ```
 
 `cts guide trace` explains the trigger, the condition and the buffer.

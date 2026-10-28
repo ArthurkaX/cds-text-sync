@@ -106,8 +106,9 @@ namespace Cts.Agent
         //: it sets included.
         public const string Connect = "connect_to_device";
 
-        //: The key `trace.set`, `trace.start` and `trace.stop` answer to
-        //: (`cts trace set|start|stop`): the trace object and its run on the PLC.
+        //: The key `trace.set`, `trace.start`, `trace.stop` and `trace.remove`
+        //: answer to (`cts trace set|start|stop|remove`): the trace object and its
+        //: run on the PLC.
         public const string Trace = "trace";
 
         //: The key `app.download` answers to (`cts download`), a start after it
@@ -134,7 +135,8 @@ namespace Cts.Agent
                 case "project.close": return "project_close";
                 case "trace.set":
                 case "trace.start":
-                case "trace.stop": return Trace;
+                case "trace.stop":
+                case "trace.remove": return Trace;
                 case "objects.rename":
                 case "objects.move":
                 case "objects.settext":

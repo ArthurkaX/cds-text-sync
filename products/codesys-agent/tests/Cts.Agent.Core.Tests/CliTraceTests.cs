@@ -40,6 +40,49 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Trace_set_gives_the_time_the_buffer_and_the_post_samples_take_from_the_tasks_cycle()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-trace-" + Guid.NewGuid().ToString("N"));
+            var golden = Directory.GetDirectories(Path.Combine(AppContext.BaseDirectory, "Golden", "ExportFixture", "expected"), "Application", SearchOption.AllDirectories).Single();
+            foreach (var file in Directory.GetFiles(golden, "*", SearchOption.AllDirectories))
+            {
+                var copy = Path.Combine(root, "project-view", "Dev", "Plc Logic", "Application", file.Substring(golden.Length + 1));
+                Directory.CreateDirectory(Path.GetDirectoryName(copy));
+                File.Copy(file, copy);
+            }
+            var host = new FakeHost();
+            host.Agents[1] = Agent(Path.Combine(root, "Dev.project"), root, (method, p) => method == "trace.read"
+                ? Trace()
+                : Trace(("created", false), ("samples", 5000L), ("every", 2L), ("trigger", "GVL_IO.xRun"), ("edge", "rising"), ("post", 4500L)));
+            try
+            {
+                var (code, output, _) = Run(host, "trace", "set", "--samples", "5000", "--every", "2");
+
+                Assert.Equal(0, code);
+                Assert.StartsWith("ok trace-set application=Application created=false task=Task every=2 samples=5000 sample_ms=400\n", output);
+                Assert.Contains("\nthe buffer holds 2000 s = 33.3 min: 5000 samples, one each 400 ms\ntrigger GVL_IO.xRun rising, 4500 samples (1800 s = 30 min) after it\n", output);
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        [Fact]
+        public void Trace_remove_says_what_it_removed_and_whether_the_plc_was_reached()
+        {
+            var answers = new Queue<Dictionary<string, object>>(new[]
+            {
+                new Dictionary<string, object> { { "removed", false } },
+                new Dictionary<string, object> { { "removed", true }, { "plc_deleted", true } },
+                new Dictionary<string, object> { { "removed", true }, { "plc_error", "no route" } },
+            });
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, method => answers.Dequeue());
+
+            Assert.StartsWith("ok trace-remove removed=false\nthe application has no CtsTrace\n", Run(host, "trace", "remove").output);
+            Assert.StartsWith("ok trace-remove removed=true plc_deleted=true\n", Run(host, "trace", "remove").output);
+            Assert.Contains("\nthe PLC was not reached, and may still hold the trace: no route\n", Run(host, "trace", "remove").output);
+        }
+
+        [Fact]
         public void Trace_shows_the_plcs_state_or_how_to_get_one()
         {
             var answers = new Queue<Dictionary<string, object>>(new[]

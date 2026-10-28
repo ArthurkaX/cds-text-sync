@@ -15,6 +15,9 @@
 //     in the logged-in application and starts the trace);
 //   `trace.stop`: IDeviceTraceManager.StopPacket; the samples stay until the
 //     next start;
+//   `trace.remove`: the PLC's packet deleted, when the PLC is reached, and
+//     the object taken out of the project, with the IDE logged out (the IDE
+//     refuses to remove a trace of the application it is logged in to);
 //   `trace.samples`: IDeviceTraceManager3.ReadPacket2 of the PLC's own packet:
 //     the whole buffer, typed, while the trace runs or after.
 //
@@ -141,6 +144,40 @@ namespace Cts.Agent
                 Status(answer, ReadPacket(manager, PacketName(found, startMs)), true);
                 return answer;
             });
+        }
+
+        // The PLC's packet deleted when the PLC is reached, then the object
+        // taken out of the project: the project holds what it held before.
+        // The IDE keeps a trace's object while logged in to its application,
+        // so nothing is deleted then.
+        internal Dictionary<string, object> TraceRemove(int startMs)
+        {
+            var found = OnUi("trace.remove", startMs, () =>
+            {
+                RequirePermission("trace.remove");
+                var trace = FindTrace(false);
+                if (trace != null && IsLoggedIn(trace.Application))
+                    throw new ProtocolException(ErrorCodes.BadParams, "the IDE keeps " + TraceName + " while logged in to " + trace.ApplicationName
+                        + ": cts disconnect (the application keeps running), then cts trace remove");
+                return trace;
+            });
+            if (found == null) return new Dictionary<string, object> { { "removed", false } };
+            var answer = new Dictionary<string, object> { { "removed", true } };
+            try
+            {
+                Connected(DenyRules.PlcFiles, "trace.remove", startMs, online =>
+                {
+                    var manager = TraceManager(online, found, startMs);
+                    var name = PacketName(found, startMs);
+                    var held = PacketNames(manager).Contains(name);
+                    if (held) Invoke(OnlineIface("IDeviceTraceManager"), "DeletePacket", manager, name);
+                    answer["plc_deleted"] = held;
+                    return answer;
+                });
+            }
+            catch (ProtocolException e) when (e.Code == ErrorCodes.Unavailable) { answer["plc_error"] = e.Message; }
+            OnUi("trace.remove", startMs, () => { RemoveObject(ProjectHandle(), found.Guid); return true; });
+            return answer;
         }
 
         internal Dictionary<string, object> TraceSamples(int startMs)

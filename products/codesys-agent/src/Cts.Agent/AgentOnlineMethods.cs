@@ -39,6 +39,7 @@ namespace Cts.Agent
             _router.Register("trace.set", (req, s) => _ide.TraceSet(TraceRequest.Parse(req), StartTimeout.Parse(req, UiTimeoutMs)));
             _router.Register("trace.start", (req, s) => _ide.TraceStart(StartTimeout.Parse(req, UiTimeoutMs)));
             _router.Register("trace.stop", (req, s) => _ide.TraceStop(StartTimeout.Parse(req, UiTimeoutMs)));
+            _router.Register("trace.remove", (req, s) => _ide.TraceRemove(StartTimeout.Parse(req, UiTimeoutMs)));
             _router.Register("trace.samples", (req, s) => _ide.TraceSamples(StartTimeout.Parse(req, UiTimeoutMs)));
             // Log in without changing the PLC, pointed at `ip` first when given (`cts connect`).
             _router.Register("app.login", (req, s) => _ide.Login(req.String("ip", ""), req.String("gateway", ""), StartTimeout.Parse(req, UiTimeoutMs)));

@@ -555,7 +555,7 @@ under `"analyze"`: `fail_on`, `incomplete`, `rules.<ID>.enabled`/`severity`/
 
 ## PLC Trace
 
-`cts trace set VAR ...` makes or changes the Trace `CtsTrace` of the active application, online too: the task, `--every`, `--samples`, a `--trigger` (`--edge`, `--level`, `--post`) and a `--condition`. `cts trace start` downloads only the trace and starts it (the IDE logged in; the application keeps running), `cts trace stop` stops it, and `cts trace pull [--wait N]` reads the PLC's buffer into a CSV with a summary per variable, no login needed. `cts trace` shows the setup and the state on the PLC. `cts guide trace` explains the trigger and when to use the trace or the trend.
+`cts trace set VAR ...` makes or changes the Trace `CtsTrace` of the active application, online too: the task, `--every`, `--samples`, a `--trigger` (`--edge`, `--level`, `--post`) and a `--condition`. `cts trace start` downloads only the trace and starts it (the IDE logged in; the application keeps running), `cts trace stop` stops it, and `cts trace pull [--wait N]` reads the PLC's buffer into a CSV with a summary per variable, no login needed. `cts trace` shows the setup, the time the buffer holds and the state on the PLC. `cts trace remove` deletes the trace on the PLC and takes it out of the project when done, after `cts disconnect`. `cts guide trace` explains the trigger and when to use the trace or the trend.
 
 ## FSM Transition Maps
 

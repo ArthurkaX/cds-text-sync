@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -29,7 +30,8 @@ namespace Cts.Cli
                 Description = "Reads the Trace " + Name + " of the active application: the task whose cycle it records in, every how many "
                     + "cycles, how many samples its buffer holds, its variables and its trigger; and, when the PLC holds it, its state "
                     + "there (Started records, Stopped holds the samples), its trigger's state (WaitForTrigger, TriggerReached) and how "
-                    + "many samples it has. cts trace set makes or changes it, cts trace start starts it on the PLC.",
+                    + "many samples it has. With the task's cycle in the sync folder it says how much time the buffer holds. "
+                    + "cts trace set makes or changes it, cts trace start starts it on the PLC.",
                 Execute = Show, Build = Shown,
             },
             new CliCommand
@@ -41,6 +43,8 @@ namespace Cts.Cli
                     + "(default " + Agent.TraceRequest.DefaultSamples + " for a new trace). With --trigger it records until VAR changes "
                     + "(its --edge, or for a number its crossing of --level) and --post samples after that (default half the buffer), "
                     + "then stops: the samples before and after the moment. --condition records only the cycles the BOOL is TRUE in. "
+                    + "The answer gives the time those samples take, from the task's cycle: pick --samples and --post from the time "
+                    + "you need. "
                     + "A trace is not code: it is made and changed while online, with no download; the PLC keeps the trace it has "
                     + "until cts trace start.",
                 Arguments = "[VAR ...]", ArgumentLimit = 255, ArgumentHelp = "Variables as the IEC code names them, e.g. GVL_IO.rLevel PLC_PRG.fbPump.xRun",
@@ -85,14 +89,28 @@ namespace Cts.Cli
                     + "first: a trigger reached and its samples after it recorded.",
                 Options = new[]
                 {
-                    CliOption.Text("--csv", "csv", "FILE", "The CSV to write (default: this PC's trace folder, the same file each pull)"),
+                    CliOption.Text("--csv", "csv", "FILE", "The CSV to write on the PC that runs cts, a relative path from the current folder (default: this PC's trace folder, the same file each pull)"),
                     CliOption.Int("--wait", "wait", "Wait at most N seconds for the trace to stop first"),
                 },
                 Seconds = 60, Execute = Pull, Build = Pulled,
             },
+            new CliCommand
+            {
+                Name = "trace", Sub = "remove", Summary = "Delete the PLC trace and take it out of the project",
+                Description = "Deletes the trace on the PLC, when the PLC is reached, and takes the Trace " + Name + " out of the "
+                    + "project: the project holds what it held before cts trace set. Run it when done: " + Name + " is a project "
+                    + "object, and a saved project carries it into the sync folder and git like any other. The IDE keeps it while logged "
+                    + "in: cts disconnect first (the application keeps running); the PLC is reached without a login.",
+                Execute = Remove, Build = Removed,
+            },
         };
 
-        static IDictionary<string, object> Show(CliCall call) => call.Call("trace.read", null);
+        static IDictionary<string, object> Show(CliCall call)
+        {
+            var data = call.Call("trace.read", null);
+            if (Equals(Value(data, "exists"), true)) SampleTime(call, data);
+            return data;
+        }
 
         static IDictionary<string, object> Set(CliCall call)
         {
@@ -113,7 +131,23 @@ namespace Cts.Cli
                 if (!Equals(Value(trace, "exists"), true) || string.IsNullOrEmpty(Value(trace, "task") as string))
                     parameters["task"] = FastestTask(options, call.Hello.SyncFolder ?? Environment.CurrentDirectory, Value(trace, "application") as string);
             }
-            return call.Call("trace.set", parameters);
+            var data = call.Call("trace.set", parameters);
+            SampleTime(call, data);
+            return data;
+        }
+
+        // The time between two samples: the task's cycle, as the sync folder
+        // holds the task, times every. Nothing when the folder does not name it.
+        static void SampleTime(CliCall call, IDictionary<string, object> data)
+        {
+            if (!(Value(data, "task") is string task) || !(Value(data, "application") is string application)) return;
+            try
+            {
+                var workspace = AnalyzeWorkspace.Resolve(call.Options.Text("workspace"), null, call.Hello.SyncFolder ?? Environment.CurrentDirectory);
+                var found = TrendFiles.Of(workspace.View, application, out _)?.Tasks.FirstOrDefault(item => item.Name.Equals(task, StringComparison.OrdinalIgnoreCase));
+                if (found != null && found.IntervalMs > 0) data["sample_ms"] = found.IntervalMs * Convert.ToInt64(data["every"], CultureInfo.InvariantCulture);
+            }
+            catch (AnalyzeException) { }
         }
 
         // The fastest cyclic task that runs the program, as the sync folder
@@ -140,6 +174,8 @@ namespace Cts.Cli
         static IDictionary<string, object> Start(CliCall call) => call.Call("trace.start", null);
 
         static IDictionary<string, object> Stop(CliCall call) => call.Call("trace.stop", null);
+
+        static IDictionary<string, object> Remove(CliCall call) => call.Call("trace.remove", null);
 
         static IDictionary<string, object> Pull(CliCall call)
         {
@@ -195,11 +231,27 @@ namespace Cts.Cli
         static Answer Settings(Answer answer, IDictionary<string, object> data)
         {
             answer.Add("task", data["task"]).Add("every", data["every"]).Add("samples", data["samples"]);
+            var sample = Value(data, "sample_ms") as double?;
+            if (sample != null) answer.Add("sample_ms", sample);
             foreach (var name in (IList<object>)data["variables"]) answer.Detail(name);
+            data.TryGetValue("condition", out var condition);
+            if (sample != null)
+                answer.Detail("the buffer holds " + Duration(sample.Value * Convert.ToInt64(data["samples"], CultureInfo.InvariantCulture))
+                    + (condition == null ? "" : " of the cycles " + condition + " is TRUE in") + ": " + data["samples"] + " samples, one each " + Duration(sample.Value));
+            else answer.Detail("the task " + data["task"] + " is not in the sync folder: the time a sample takes is its cycle times every");
             if (data.TryGetValue("trigger", out var trigger))
-                answer.Detail("trigger " + trigger + " " + data["edge"] + (data.TryGetValue("level", out var level) ? " level " + level : "") + ", " + data["post"] + " samples after it");
-            if (data.TryGetValue("condition", out var condition)) answer.Detail("records while " + condition + " is TRUE");
+                answer.Detail("trigger " + trigger + " " + data["edge"] + (data.TryGetValue("level", out var level) ? " level " + level : "") + ", " + data["post"] + " samples"
+                    + (sample == null ? "" : " (" + Duration(sample.Value * Convert.ToInt64(data["post"], CultureInfo.InvariantCulture)) + ")") + " after it");
+            if (condition != null) answer.Detail("records while " + condition + " is TRUE");
             return answer;
+        }
+
+        static string Duration(double ms)
+        {
+            if (ms < 1000) return ms.ToString("0.###", CultureInfo.InvariantCulture) + " ms";
+            var seconds = ms / 1000;
+            var text = seconds.ToString("0.#", CultureInfo.InvariantCulture) + " s";
+            return seconds < 120 ? text : text + " = " + (seconds / 60).ToString("0.#", CultureInfo.InvariantCulture) + " min";
         }
 
         static Answer Started(IDictionary<string, object> data)
@@ -210,6 +262,15 @@ namespace Cts.Cli
                 answer.Detail(Equals(data["trigger_state"], "Disabled")
                     ? "recording: cts trace pull reads the samples while it records"
                     : "waiting for the trigger: cts trace pull --wait N reads the samples once the trace stopped after it");
+            return answer;
+        }
+
+        static Answer Removed(IDictionary<string, object> data)
+        {
+            var answer = new Answer().Add("removed", data["removed"]);
+            if (!Equals(data["removed"], true)) return answer.Detail("the application has no " + Name);
+            if (data.TryGetValue("plc_deleted", out var deleted)) answer.Add("plc_deleted", deleted);
+            if (data.TryGetValue("plc_error", out var error)) answer.Detail("the PLC was not reached, and may still hold the trace: " + error);
             return answer;
         }
 
