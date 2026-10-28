@@ -1228,6 +1228,36 @@ namespace Cts.Agent.Tests
             Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
         }
 
+        // The IDE makes a Trend Recording with its own storage interval; the
+        // file replaces it right after, so the interval is the file's.
+        [Fact]
+        public void A_new_trend_recording_is_replaced_by_its_file_after_the_import()
+        {
+            var view = ViewFolder.Of(_root);
+            var source = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var file = Path.Combine(Path.GetDirectoryName(source), "Trend.xml");
+            var task = File.ReadAllText(source);
+            File.WriteAllText(file, task.Replace("<Single Name=\"Name\" Type=\"string\">Task</Single>", "<Single Name=\"Name\" Type=\"string\">Trend</Single>")
+                .Replace(NativeValue(task, "TypeGuid"), "abf325da-edef-4010-9b49-0de4ec1bb653"));
+            var parent = ExportCommand.Relative(view, Path.GetDirectoryName(source)).Split('/');
+            var calls = new List<string>();
+            IDictionary<string, object> replaced = null;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(parent);
+                if (method == "objects.import") return new Dictionary<string, object> { { "guid", "22222222-2222-2222-2222-222222222222" }, { "parent_guid", args["parent_guid"] } };
+                if (method == "objects.replace") { replaced = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.Equal(calls.IndexOf("objects.import") + 1, calls.IndexOf("objects.replace"));
+            Assert.Equal("22222222-2222-2222-2222-222222222222", replaced["guid"]);
+            Assert.Equal("22222222-2222-2222-2222-222222222222", NativeValue(Convert.ToString(replaced["xml"]), "Guid"));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+        }
+
         [Fact]
         public void Deletes_a_removed_native_xml_object()
         {

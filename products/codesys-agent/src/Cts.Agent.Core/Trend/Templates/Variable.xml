@@ -1,0 +1,48 @@
+            <Single Type="{0eb41098-5220-4127-8787-fe04d49c366b}" Method="IArchivable">
+              <Single Name="VariableName" Type="string">{{VARIABLE}}</Single>
+              <Single Name="GraphColor" Type="int">-16776961</Single>
+              <Single Name="GraphType" Type="{0e8d58cb-4505-4601-a5ee-4e4820f6bc9a}">Lines</Single>
+              <Single Name="MaxWarningArea" Type="float">0</Single>
+              <Single Name="ActivateMaxWarning" Type="bool">False</Single>
+              <Single Name="MaxColor" Type="int">-65536</Single>
+              <Single Name="MinWarningArea" Type="float">0</Single>
+              <Single Name="ActivateMinWarning" Type="bool">False</Single>
+              <Single Name="MinColor" Type="int">-16777216</Single>
+              <Single Name="GraphStyleColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-16776961</Single>
+                <Single Name="CanonicalName" Type="string">Blue</Single>
+              </Single>
+              <Null Name="MaxStyleColor" />
+              <Null Name="MinStyleColor" />
+              <Single Name="VisibilityVariableName" Type="string" />
+              <Single Name="DisplayVariableName" Type="bool">True</Single>
+              <Single Name="DescriptionTextID" Type="string" />
+              <Null Name="AttachedYAxis" />
+              <Single Name="LineWidth" Type="byte">1</Single>
+              <Single Name="LineStyle" Type="{fc90b693-4d2e-42bf-a170-f857424e47d7}">Solid</Single>
+              <Single Name="DescriptionText" Type="string" />
+              <Single Name="CurveType" Type="{1b7e32d0-4091-4a15-b16c-c7d762d00e8d}">Line</Single>
+              <Single Name="CurveAreaFillingType" Type="{1158acaa-423d-40fe-8408-982445263105}">DrawBackground</Single>
+              <Single Name="CurveAreaFillStyleColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-16777216</Single>
+                <Single Name="CanonicalName" Type="string">Black</Single>
+              </Single>
+              <Single Name="CurveAreaFillAlphaColor" Type="int">255</Single>
+              <Single Name="CurveAreaUseFillColor" Type="bool">False</Single>
+              <Single Name="CurveAreaFillGradient" Type="{d0ce8b86-c7e0-4899-aab9-9c3594778c9d}" Method="IArchivable">
+                <Single Name="Color1" Type="int">-16777216</Single>
+                <Null Name="NamedColor1" />
+                <Single Name="Color2" Type="int">-1</Single>
+                <Null Name="NamedColor2" />
+                <Single Name="Angle" Type="int">0</Single>
+                <Single Name="CenterX" Type="int">0</Single>
+                <Single Name="CenterY" Type="int">0</Single>
+                <Single Name="GradientType" Type="int">1</Single>
+                <Single Name="UseTwoColors" Type="int">0</Single>
+                <Single Name="Brightness" Type="int">0</Single>
+                <Single Name="ColorBrightness" Type="int">-16777216</Single>
+                <Null Name="NamedColorBrightness" />
+                <Null Name="NamedColors" />
+              </Single>
+              <Single Name="RecordCondition" Type="string" />
+            </Single>

@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">69c02a54-e314-407b-881b-942749d76949</Single>
+        <Single Name="ParentGuid" Type="System.Guid">{{PARENT}}</Single>
+        <Single Name="Name" Type="string">Trend Recording Manager</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">49395b8d-29d2-40db-a655-eae6a5627611</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{49395b8d-29d2-40db-a655-eae6a5627611}" Method="IArchivable" />
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">{{PARENT}}</Single>
+      <Array Name="Path" Type="string">
+{{PATH}}
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

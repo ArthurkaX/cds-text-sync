@@ -342,6 +342,29 @@ namespace Cts.Cli
             if (already != null)
                 throw new CliFailure("lib-add", "already referenced", target.Relative + " already references " + already.Line() + ": cts lib set changes it, cts lib remove drops it", "cts lib", 1);
             if (target.ListEnd < 0) throw new CliFailure("lib-add", "no list of references", target.Relative + " has no list of references to add to", "cts lib", 1);
+            Insert(target, library, placeholder, ns, options.Params.ContainsKey("qualified_only"), false);
+            var named = ns == own ? " (the library's own)" : own != null ? " (the library's own is " + own + ")" : "";
+            return new Dictionary<string, object> { ["changed"] = new List<object> { target.Relative + ": " + library + (placeholder == null ? "" : " through placeholder " + placeholder) + ", namespace " + ns + named } };
+        }
+
+        // The Library Manager *managerFile* references *placeholder*, resolved
+        // by default to the newest *name* of *vendor* installed (or *), as the
+        // IDE adds a system library an object of its needs; false when it
+        // already did.
+        internal static bool ReferenceSystem(string managerFile, string view, string placeholder, string name, string vendor)
+        {
+            var target = Read(managerFile, view);
+            if (target == null || target.ListEnd < 0) throw new InvalidDataException(managerFile + " has no list of references");
+            if (target.Items.Any(item => item.Matches(placeholder))) return false;
+            var newest = InstalledFolder(Docs.DocsBundle.DefaultLibraries, name, "*", vendor);
+            Insert(target, name + ", " + (newest == null ? "*" : Path.GetFileName(newest)) + " (" + vendor + ")", placeholder, placeholder, false, true);
+            return true;
+        }
+
+        // *library* goes at the end of *target*'s references, through
+        // *placeholder* when it is given, and the file is saved.
+        static void Insert(Manager target, string library, string placeholder, string ns, bool qualifiedOnly, bool system)
+        {
             var sample = target.Items.FirstOrDefault();
             var indent = sample != null ? Indent(target.Lines[sample.Start]) : Indent(target.Lines[target.ListEnd]) + "  ";
             var step = sample != null && sample.End > sample.Start + 1 ? Indent(target.Lines[sample.Start + 1]).Substring(indent.Length) : "  ";
@@ -366,17 +389,15 @@ namespace Cts.Cli
             {
                 inner + "<Single Name=\"Id\" Type=\"long\">" + NewId(target) + "</Single>",
                 inner + "<Single Name=\"Namespace\" Type=\"string\">" + ns + "</Single>",
-                inner + "<Single Name=\"SystemLibrary\" Type=\"bool\">False</Single>",
+                inner + "<Single Name=\"SystemLibrary\" Type=\"bool\">" + (system ? "True" : "False") + "</Single>",
                 inner + "<Single Name=\"HideWhenReferencedAsDependency\" Type=\"bool\">False</Single>",
                 inner + "<Single Name=\"PublishSymbolsInContainer\" Type=\"bool\">False</Single>",
-                inner + "<Single Name=\"QualifiedOnly\" Type=\"bool\">" + (options.Params.ContainsKey("qualified_only") ? "True" : "False") + "</Single>",
+                inner + "<Single Name=\"QualifiedOnly\" Type=\"bool\">" + (qualifiedOnly ? "True" : "False") + "</Single>",
                 inner + "<Single Name=\"LinkAllContent\" Type=\"bool\">False</Single>",
                 indent + "</Single>",
             }).Select(line => line + cr);
             target.Lines.InsertRange(target.ListEnd, block);
             target.Save();
-            var named = ns == own ? " (the library's own)" : own != null ? " (the library's own is " + own + ")" : "";
-            return new Dictionary<string, object> { ["changed"] = new List<object> { target.Relative + ": " + library + (placeholder == null ? "" : " through placeholder " + placeholder) + ", namespace " + ns + named } };
         }
 
         static IDictionary<string, object> Redirection(CliOptions options, IAgentHost host, string work)

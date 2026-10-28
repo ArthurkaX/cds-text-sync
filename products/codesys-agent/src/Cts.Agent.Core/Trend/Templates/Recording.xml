@@ -1,0 +1,151 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Single Type="{6198ad31-4b98-445c-927f-3258a0e82fe3}" Method="IArchivable">
+      <Single Name="IsRoot" Type="bool">False</Single>
+      <Single Name="MetaObject" Type="{81297157-7ec9-45ce-845e-84cab2b88ade}" Method="IArchivable">
+        <Single Name="Guid" Type="System.Guid">72810f04-b68d-48bb-ab55-b2114ce1d6cc</Single>
+        <Single Name="ParentGuid" Type="System.Guid">{{PARENT}}</Single>
+        <Single Name="Name" Type="string">{{NAME}}</Single>
+        <Dictionary Type="{2c41fa04-1834-41c1-816e-303c7aa2c05b}" Name="Properties" />
+        <Single Name="TypeGuid" Type="System.Guid">abf325da-edef-4010-9b49-0de4ec1bb653</Single>
+        <Null Name="EmbeddedTypeGuids" />
+      </Single>
+      <Single Name="Object" Type="{abf325da-edef-4010-9b49-0de4ec1bb653}" Method="IArchivable">
+        <Single Name="Packet" Type="{fee3662d-4a4f-4476-a66f-bbab4723d827}" Method="IArchivable">
+          <Single Name="TriggerVariable" Type="string" />
+          <Single Name="TriggerEdge" Type="{d3dd5030-58dd-48b3-9062-526cde2565b8}">None</Single>
+          <Single Name="TriggerLevel" Type="string" />
+          <Single Name="PacketName" Type="string">{{NAME}}</Single>
+          <Single Name="PacketFlags" Type="{8b883827-26da-454c-9d5d-a93f879c8f70}">NotInitialised</Single>
+          <Single Name="TaskName" Type="string">Task</Single>
+          <Single Name="BufferEntries" Type="uint">10001</Single>
+          <Single Name="EveryNCycles" Type="uint">1</Single>
+          <Single Name="Comment" Type="string" />
+          <Single Name="Condition" Type="string" />
+          <Single Name="PostTriggerSamples" Type="uint">51</Single>
+          <Single Name="Appearance" Type="{4a4bf179-e738-4478-991d-e96eed876cf5}" Method="IArchivable">
+            <Single Name="tAxis" Type="{d04b0416-bb4a-4b04-ba29-a3eb4d359ff9}" Method="IArchivable">
+              <Single Name="Mode" Type="int">0</Single>
+              <Single Name="Min" Type="double">0</Single>
+              <Single Name="Max" Type="double">10000</Single>
+              <Single Name="Range" Type="double">10000</Single>
+              <Single Name="DrawDesc" Type="bool">False</Single>
+              <Single Name="Desc" Type="string" />
+              <Single Name="Col" Type="int">-16777216</Single>
+              <Single Name="StyleAxisColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-16777216</Single>
+                <Single Name="CanonicalName" Type="string">Black</Single>
+              </Single>
+              <Single Name="Font" Type="{1ce6363d-1be6-4e8c-bcb6-d71be28db94d}" Method="IArchivable">
+                <Single Name="Name" Type="string">Arial</Single>
+                <Single Name="Size" Type="float">12</Single>
+                <Single Name="Flags" Type="uint">0</Single>
+              </Single>
+              <Single Name="StyleFont" Type="{9e842eb2-1463-4af2-b605-4fbb17044f94}" Method="IArchivable">
+                <Single Name="FontStyle" Type="int">0</Single>
+                <Single Name="AdditionalFontStyle" Type="ushort">0</Single>
+                <Single Name="ExplicitColor" Type="int">-16777216</Single>
+                <Single Name="CanonicalName" Type="string">Font-Standard</Single>
+                <Single Name="FontName" Type="string">Arial</Single>
+                <Single Name="DisplayName" Type="string" />
+                <Single Name="FontSize" Type="int">12</Single>
+                <Single Name="ScriptIdentification" Type="int">0</Single>
+                <Single Name="DoubleFontSize" Type="double">0</Single>
+                <Null Name="NamedColor" />
+              </Single>
+              <Single Name="Grid" Type="bool">True</Single>
+              <Single Name="GridCol" Type="int">-8355712</Single>
+              <Single Name="StyleGridColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-8355712</Single>
+                <Single Name="CanonicalName" Type="string">Gray</Single>
+              </Single>
+              <Single Name="TickMarkFixedSpacing" Type="bool">False</Single>
+              <Single Name="TickMarkFixedDistance" Type="double">1000</Single>
+              <Single Name="TickMarkFixedSubdivisions" Type="int">1</Single>
+              <Null Name="MinimumVariable" />
+              <Null Name="MaximumVariable" />
+            </Single>
+            <Single Name="yAxisCommon" Type="{d04b0416-bb4a-4b04-ba29-a3eb4d359ff9}" Method="IArchivable">
+              <Single Name="Mode" Type="int">0</Single>
+              <Single Name="Min" Type="double">-12</Single>
+              <Single Name="Max" Type="double">12</Single>
+              <Single Name="Range" Type="double">24</Single>
+              <Single Name="DrawDesc" Type="bool">False</Single>
+              <Single Name="Desc" Type="string" />
+              <Single Name="Col" Type="int">-16777216</Single>
+              <Single Name="StyleAxisColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-16777216</Single>
+                <Single Name="CanonicalName" Type="string">Black</Single>
+              </Single>
+              <Single Name="Font" Type="{1ce6363d-1be6-4e8c-bcb6-d71be28db94d}" Method="IArchivable">
+                <Single Name="Name" Type="string">Arial</Single>
+                <Single Name="Size" Type="float">12</Single>
+                <Single Name="Flags" Type="uint">0</Single>
+              </Single>
+              <Single Name="StyleFont" Type="{9e842eb2-1463-4af2-b605-4fbb17044f94}" Method="IArchivable">
+                <Single Name="FontStyle" Type="int">0</Single>
+                <Single Name="AdditionalFontStyle" Type="ushort">0</Single>
+                <Single Name="ExplicitColor" Type="int">-16777216</Single>
+                <Single Name="CanonicalName" Type="string">Font-Standard</Single>
+                <Single Name="FontName" Type="string">Arial</Single>
+                <Single Name="DisplayName" Type="string" />
+                <Single Name="FontSize" Type="int">12</Single>
+                <Single Name="ScriptIdentification" Type="int">0</Single>
+                <Single Name="DoubleFontSize" Type="double">0</Single>
+                <Null Name="NamedColor" />
+              </Single>
+              <Single Name="Grid" Type="bool">True</Single>
+              <Single Name="GridCol" Type="int">-8355712</Single>
+              <Single Name="StyleGridColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-8355712</Single>
+                <Single Name="CanonicalName" Type="string">Gray</Single>
+              </Single>
+              <Single Name="TickMarkFixedSpacing" Type="bool">False</Single>
+              <Single Name="TickMarkFixedDistance" Type="double">1</Single>
+              <Single Name="TickMarkFixedSubdivisions" Type="int">1</Single>
+              <Null Name="MinimumVariable" />
+              <Null Name="MaximumVariable" />
+            </Single>
+            <Single Name="diagSettings" Type="{ad62e4a1-2e50-4264-800d-096cb544b9d0}" Method="IArchivable">
+              <Single Name="Color" Type="int">-1</Single>
+              <Single Name="UseBgColor" Type="bool">True</Single>
+              <Single Name="StyleColor" Type="{fa491db2-51ff-4bc1-9cd0-ce8c94ff6216}" Method="IArchivable">
+                <Single Name="Color" Type="int">-1</Single>
+                <Single Name="CanonicalName" Type="string">White</Single>
+              </Single>
+              <List Name="AdditionalYAxes" Type="System.Collections.ArrayList" />
+              <Single Name="DrawBackground" Type="{850772df-8869-4634-9069-d5440bb9a234}">FromStyle</Single>
+              <List2 Name="VariableSettings" />
+            </Single>
+          </Single>
+          <List Name="TraceMgrVariables" Type="System.Collections.ArrayList">
+{{VARIABLES}}
+          </List>
+          <Single Name="RefreshDuration" Type="int">0</Single>
+          <Single Name="OverrideRTSBufferSize " Type="bool">True</Single>
+          <Single Name="BufferPerVariable " Type="uint">10001</Single>
+          <Single Name="AdditionalRuntimeBufferForNMilliseconds" Type="uint">1000</Single>
+        </Single>
+        <Single Name="MaxNumberOfVariables" Type="byte">10</Single>
+        <Single Name="Limit" Type="{852d9f11-9705-4f18-a8b2-2505afbd9bf1}" Method="IArchivable">
+          <Single Name="Size" Type="ulong">16</Single>
+          <Single Name="Unit" Type="{36e2bf0a-e8a1-4414-8428-9c647a784fbe}">MB</Single>
+        </Single>
+        <Single Name="StoreEveryNMilliseconds" Type="uint">500</Single>
+        <Single Name="LanguageModelData" Type="{9f9702cf-3f39-45d3-bb11-69c02cbe37d2}" Method="IArchivable">
+          <Single Name="FbInstanceGuid" Type="System.Guid">884eb73f-966b-4d9e-a00b-606d08683d06</Single>
+          <Single Name="FB_InitGuid" Type="System.Guid">feb159f1-a3d8-4d16-9efd-b8cf179986ad</Single>
+          <Single Name="FbInhibitOnlineChangeInstanceGuid" Type="System.Guid">3d6aff29-c0bf-4d1f-a8e3-43a7a8266b03</Single>
+          <Single Name="FbGetInitializeVersionInstanceGuid" Type="System.Guid">4420b33f-0ce7-40c6-8d6d-74b9d02115d9</Single>
+        </Single>
+        <Single Name="IntervalTaskPriority" Type="short">15</Single>
+        <Single Name="IntervalTimeUnit" Type="{20b1a2de-6b3e-4a84-881b-7b7a0941c6d9}">Seconds</Single>
+        <Single Name="IntervalTimeValue" Type="uint">1</Single>
+        <Single Name="RecordingMode" Type="{24e447c8-7d5e-443f-b504-851a394b2784}">TaskSynchronous</Single>
+        <Single Name="MeasureSlowdownFactor" Type="string" />
+      </Single>
+      <Single Name="ParentSVNodeGuid" Type="System.Guid">{{PARENT}}</Single>
+      <Array Name="Path" Type="string">
+{{PATH}}
+      </Array>
+      <Single Name="Index" Type="int">-1</Single>
+    </Single>

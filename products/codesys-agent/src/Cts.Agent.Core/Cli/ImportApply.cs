@@ -228,6 +228,7 @@ namespace Cts.Cli
                         continue;
                     }
                     IDictionary<string, object> reply;
+                    var replaced = false;
                     try
                     {
                         reply = _call.Call("objects.import", Below(parentGuid, new Dictionary<string, object> { { "xml", WithRows(csv, content) } }));
@@ -243,16 +244,15 @@ namespace Cts.Cli
                         }
                         reply = new Dictionary<string, object> { { "guid", node.Guid } };
                         content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), node.Guid, parentGuid);
-                        try { _call.Call("objects.replace", new Dictionary<string, object> { { "guid", node.Guid }, { "xml", WithRows(csv, content) } }); }
-                        catch (CliFailure replaceError) when (replaceError.Declined)
-                        {
-                            _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", node.Guid }, { "name", record.Name }, { "path", path }, { "error", replaceError.Message } });
-                            continue;
-                        }
+                        if (!Replace(node.Guid, record.Name, path, csv, content)) continue;
+                        replaced = true;
                     }
                     var guid = Convert.ToString(reply["guid"]);
                     parentGuid = Convert.ToString(reply.ContainsKey("parent_guid") ? reply["parent_guid"] : parentGuid);
                     content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), guid, parentGuid);
+                    // A Trend Recording the IDE makes stores every 10 s whatever its file says; a replace sets the file's interval.
+                    if (!replaced && string.Equals(NativeMetaValue(content, "TypeGuid").Trim('{', '}'), TrendRecordingType, StringComparison.OrdinalIgnoreCase)
+                        && !Replace(guid, record.Name, path, csv, content)) continue;
                     if (path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)) _work.Created[FolderKey(path)] = guid;
                     _nativeWrites.Add(new NativeWrite { Guid = guid, Name = NativeMetaValue(content, "Name"), Path = path, Content = content, Created = true, Csv = csv });
                 }
@@ -302,6 +302,20 @@ namespace Cts.Cli
                 return SyncBase.Changed(_work.Folder, ExportCommand.Relative(_work.Folder, _work.View), SyncBase.BaseRef)
                     .Where(file => !differing.Contains(file.Key) && (file.Value != null || !_work.IdeFiles.ContainsKey(file.Key)))
                     .Select(file => file.Key).ToList();
+            }
+
+            const string TrendRecordingType = "abf325da-edef-4010-9b49-0de4ec1bb653";
+
+            // The object *guid* as its file has it; false, with the miss noted, when the IDE declines.
+            bool Replace(string guid, string name, string path, string csv, string content)
+            {
+                try { _call.Call("objects.replace", new Dictionary<string, object> { { "guid", guid }, { "xml", WithRows(csv, content) } }); }
+                catch (CliFailure error) when (error.Declined)
+                {
+                    _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", guid }, { "name", name }, { "path", path }, { "error", error.Message } });
+                    return false;
+                }
+                return true;
             }
 
             // The view key of a native file: a container's folder, else the file without its extension.
