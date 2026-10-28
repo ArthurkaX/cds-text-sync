@@ -107,13 +107,16 @@ namespace Cts.Cli
             Known.Where(known => lines.Any(line => line.IndexOf(known.Key, StringComparison.OrdinalIgnoreCase) >= 0)).Select(known => known.Value).ToList();
 
         // One entry as the runtime's log file writes it:
-        // `<time>, <cmpId>, <classId>, <errorId>, <infoId>, <text>`.
+        // `<time>, <cmpId>, <classId>, <errorId>, <infoId>, <text>`, on one
+        // line: a text the runtime ends with a line break ("Dynamic memory
+        // allocation started.") or breaks inside keeps its words on that line.
         public static string Line(IDictionary<string, object> entry)
         {
             Func<string, object> get = key => entry.TryGetValue(key, out var v) && v != null ? v : (object)0L;
+            var text = entry.TryGetValue("info", out var info) && info != null ? Convert.ToString(info, CultureInfo.InvariantCulture) : "";
             return string.Format(CultureInfo.InvariantCulture, "{0}, 0x{1:x8}, {2}, {3}, {4}, {5}",
                 entry.TryGetValue("time", out var time) ? time : "", Convert.ToInt64(get("cmp_id"), CultureInfo.InvariantCulture),
-                get("class"), get("error_id"), get("info_id"), entry.TryGetValue("info", out var info) ? info : "");
+                get("class"), get("error_id"), get("info_id"), Regex.Replace(text.TrimEnd('\r', '\n'), "[\r\n]+", " "));
         }
 
         // The file --out names: inside it when it is a folder, named after

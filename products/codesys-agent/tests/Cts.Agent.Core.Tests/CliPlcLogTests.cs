@@ -101,6 +101,16 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void An_entry_with_line_breaks_in_its_text_prints_as_one_line()
+        {
+            var entry = (IDictionary<string, object>)Entries()[0];
+            entry["info"] = "Dynamic memory allocation started.\n";
+            Assert.Equal("2026-04-22T18:23:47.110Z, 0x00008005, 1, 1, 0, Dynamic memory allocation started.", PlcLogCommand.Line(entry));
+            entry["info"] = "first\r\nsecond\n";
+            Assert.Equal("2026-04-22T18:23:47.110Z, 0x00008005, 1, 1, 0, first second", PlcLogCommand.Line(entry));
+        }
+
+        [Fact]
         public void Without_options_plc_log_prints_default_tail_and_lists_the_loggers()
         {
             var asked = new List<string>();
