@@ -322,6 +322,24 @@ cts import
 
 Details: [HMI screens from SVG](docs/visu.md).
 
+### Record the plant while commissioning, then let the agent analyse it
+
+The agent picks variables, and the PLC records them in a task's cycle into an
+SQLite file of its own (CODESYS' Trend Recording, made from files, no IDE
+clicks). Later the agent copies the samples to the PC and asks them with SQL:
+
+```powershell
+cts trend set GVL_IO.rLevel GVL_IO.rFlow PLC_PRG.fbPump.xRun
+cts import
+cts build
+cts download                           # the first time a full download, then online changes
+cts trend on                           # off after every download; also writable in the IDE
+cts trend pull                         # pauses the recording for a consistent copy
+cts trend query "SELECT name, min(value), max(value), avg(value) FROM samples GROUP BY name"
+```
+
+`cts guide trend` explains the slots, the tables and the analysis queries.
+
 ## Documentation
 
 - [Installation](docs/install.md)
