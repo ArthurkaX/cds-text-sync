@@ -180,8 +180,6 @@ namespace Cts.Cli
                         }
                         else
                         {
-                            if (path.EndsWith(".cds-object.xml", StringComparison.OrdinalIgnoreCase))
-                                return Refused(_call, _work.Data, "added " + path + ": a new container; make it in the IDE");
                             var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
                             if (!File.Exists(full)) return Refused(_call, _work.Data, path + ": deleted on disk, changed in the IDE; cts import --force deletes it, cts sync keeps the IDE's");
                             var xml = File.ReadAllText(full);
@@ -193,7 +191,7 @@ namespace Cts.Cli
                             var parent = NativeParentKey(key, xml);
                             if (parent.Length == 0) record.ParentGuid = "";
                             else if (_work.IdeByPath.TryGetValue(parent, out var parentGuid)) record.ParentGuid = parentGuid;
-                            else if (_work.FolderRecords.Any(container => container.Category == "added"
+                            else if (NewContainerAt(parent) || _work.FolderRecords.Any(container => container.Category == "added"
                                 && string.Equals(FolderKey(container.Path), parent, StringComparison.OrdinalIgnoreCase)))
                                 record.ParentKey = parent;
                             else return Refused(_call, _work.Data, "added " + path + ": none of its folders " + (Path.GetDirectoryName(path) ?? "").Replace('\\', '/') + " is in the IDE");

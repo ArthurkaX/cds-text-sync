@@ -213,14 +213,20 @@ namespace Cts.Cli
                 foreach (var record in _work.NativeDeletes)
                     _call.Call("objects.delete", new Dictionary<string, object> { { "guid", record.Guid } });
                 _nativeApplyMisses = new List<IDictionary<string, object>>();
-                foreach (var record in _work.NativeImports)
+                // A new container goes in before the objects below it.
+                foreach (var record in _work.NativeImports.OrderBy(record => ContainerOrSelf(record.Path).Count(ch => ch == '/')))
                 {
                     var path = record.Path;
                     var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
                     var content = File.ReadAllText(full);
                     var csv = CsvOf(path);
-                    var parentGuid = record.ParentKey != null && _work.Created.TryGetValue(Convert.ToString(record.ParentKey), out var createdParent)
-                        ? createdParent : Convert.ToString(record.ParentGuid);
+                    string parentGuid;
+                    if (record.ParentKey == null) parentGuid = Convert.ToString(record.ParentGuid);
+                    else if (!_work.Created.TryGetValue(Convert.ToString(record.ParentKey), out parentGuid))
+                    {
+                        _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", "its container " + record.ParentKey + " was not created" } });
+                        continue;
+                    }
                     IDictionary<string, object> reply;
                     try
                     {
@@ -228,12 +234,26 @@ namespace Cts.Cli
                     }
                     catch (CliFailure error) when (error.Declined)
                     {
-                        _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
-                        continue;
+                        // The IDE made it along with an earlier one (a Trend Recording Manager its task): the file replaces it.
+                        var made = TreeObjects(_call.Call("project.tree", new Dictionary<string, object>()), out _);
+                        if (!made.TryGetValue(ContainerOrSelf(path), out var node))
+                        {
+                            _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
+                            continue;
+                        }
+                        reply = new Dictionary<string, object> { { "guid", node.Guid } };
+                        content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), node.Guid, parentGuid);
+                        try { _call.Call("objects.replace", new Dictionary<string, object> { { "guid", node.Guid }, { "xml", WithRows(csv, content) } }); }
+                        catch (CliFailure replaceError) when (replaceError.Declined)
+                        {
+                            _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", node.Guid }, { "name", record.Name }, { "path", path }, { "error", replaceError.Message } });
+                            continue;
+                        }
                     }
                     var guid = Convert.ToString(reply["guid"]);
                     parentGuid = Convert.ToString(reply.ContainsKey("parent_guid") ? reply["parent_guid"] : parentGuid);
                     content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), guid, parentGuid);
+                    if (path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)) _work.Created[FolderKey(path)] = guid;
                     _nativeWrites.Add(new NativeWrite { Guid = guid, Name = NativeMetaValue(content, "Name"), Path = path, Content = content, Created = true, Csv = csv });
                 }
                 foreach (var record in _work.NativeReplaces)
@@ -283,6 +303,10 @@ namespace Cts.Cli
                     .Where(file => !differing.Contains(file.Key) && (file.Value != null || !_work.IdeFiles.ContainsKey(file.Key)))
                     .Select(file => file.Key).ToList();
             }
+
+            // The view key of a native file: a container's folder, else the file without its extension.
+            static string ContainerOrSelf(string path) => path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)
+                ? FolderKey(path) : Path.ChangeExtension(path, null).Replace('\\', '/');
 
             // The .csv beside the .xml at *path*, null when it has none.
             string CsvOf(string path)

@@ -1159,6 +1159,75 @@ namespace Cts.Agent.Tests
             Assert.Equal(new[] { ExportCommand.Relative(view, file) }, (IList<string>)result["to_disk"]);
         }
 
+        // A new directory whose .cds-object.xml is an object of its own (a Trend
+        // Recording Manager) is imported as that object, before what lies in it.
+        [Fact]
+        public void A_new_native_container_is_imported_before_the_objects_in_its_folder()
+        {
+            var view = ViewFolder.Of(_root);
+            var source = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            string Named(string name) => File.ReadAllText(source).Replace("<Single Name=\"Name\" Type=\"string\">Task</Single>",
+                "<Single Name=\"Name\" Type=\"string\">" + name + "</Single>");
+            var directory = Path.Combine(Path.GetDirectoryName(source), "Manager");
+            Directory.CreateDirectory(directory);
+            var container = Path.Combine(directory, ".cds-object.xml");
+            File.WriteAllText(container, Named("Manager"));
+            var child = Path.Combine(directory, "Recording.xml");
+            File.WriteAllText(child, Named("Recording"));
+            var parent = ExportCommand.Relative(view, Path.GetDirectoryName(source));
+            var imports = new List<IDictionary<string, object>>();
+            var calls = new List<string>();
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(parent.Split('/'));
+                if (method == "objects.import")
+                {
+                    imports.Add(new Dictionary<string, object>(args));
+                    return new Dictionary<string, object> { { "guid", "2222222" + imports.Count + "-2222-2222-2222-222222222222" }, { "parent_guid", args["parent_guid"] } };
+                }
+                if (method == "objects.export")
+                    return new Dictionary<string, object> { { "objects", ((IList<object>)args["guids"]).Select(Convert.ToString)
+                        .SelectMany(guid => (IList<object>)NativeReply(guid.StartsWith("22222221") ? container : child, guid)["objects"]).ToList() } };
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(container), File.ReadAllText(child));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.DoesNotContain("objects.create", calls);
+            Assert.Equal(2, imports.Count);
+            Assert.Contains("<Single Name=\"Name\" Type=\"string\">Manager</Single>", Convert.ToString(imports[0]["xml"]));
+            Assert.Equal("22222221-2222-2222-2222-222222222222", imports[1]["parent_guid"]);
+            Assert.Equal("Manager", NativeValue(File.ReadAllText(container), "Name"));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+        }
+
+        // The IDE makes some objects along with another (a Trend Recording
+        // Manager its task): the file of one the import finds made replaces it.
+        [Fact]
+        public void A_new_native_object_the_IDE_made_meanwhile_takes_its_file()
+        {
+            var view = ViewFolder.Of(_root);
+            var source = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var file = Path.Combine(Path.GetDirectoryName(source), "Made.xml");
+            File.WriteAllText(file, File.ReadAllText(source).Replace("<Single Name=\"Name\" Type=\"string\">Task</Single>",
+                "<Single Name=\"Name\" Type=\"string\">Made</Single>"));
+            var parent = ExportCommand.Relative(view, Path.GetDirectoryName(source)).Split('/');
+            var trees = 0;
+            IDictionary<string, object> replaced = null;
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(++trees == 1 ? parent : parent.Concat(new[] { "Made" }).ToArray());
+                if (method == "objects.import") throw new AgentException("bad_params", "An object with the name 'Made' already exists");
+                if (method == "objects.replace") { replaced = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.export") return NativeReply(file, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(file));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.NotNull(replaced);
+            Assert.Equal("11111111-1111-1111-1111-111111111111", replaced["guid"]);
+            Assert.Equal("11111111-1111-1111-1111-111111111111", NativeValue(File.ReadAllText(file), "Guid"));
+            Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
+        }
+
         [Fact]
         public void Deletes_a_removed_native_xml_object()
         {

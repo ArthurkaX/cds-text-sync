@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Cts.Agent;
 using Cts.Sync;
 
 namespace Cts.Cli
@@ -132,12 +133,12 @@ namespace Cts.Cli
                 _work.Stamps = ViewStamps.Take(_work.View);
                 _work.Parsed = StViewReader.Read(_work.View);
                 _work.StRecords = _work.Changed.Where(record => record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)).ToList();
-                _work.FolderRecords = _work.Changed.Where(IsFolderRecord).ToList();
+                _work.FolderRecords = _work.Changed.Where(record => IsFolderRecord(record) && !NewContainer(record)).ToList();
                 _work.Deleted = _work.StRecords.Where(record => record.Category == "deleted").OrderByDescending(record => RecordDepth(record, _work.Parsed)).ToList();
                 var tree = _call.Call("project.tree", new Dictionary<string, object>());
                 _work.IdeNodes = TreeObjects(tree, out _work.IdePathByGuid);
                 _work.IdeByPath = _work.IdeNodes.ToDictionary(pair => pair.Key, pair => pair.Value.Guid, StringComparer.OrdinalIgnoreCase);
-                _work.NativeRecords = _work.Changed.Where(record => !IsFolderRecord(record)
+                _work.NativeRecords = _work.Changed.Where(record => (!IsFolderRecord(record) || NewContainer(record))
                     && !record.Path.EndsWith(".st", StringComparison.OrdinalIgnoreCase)
                     && record.Path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).ToList();
                 _work.CsvRecords = _work.Changed.Where(record => record.Path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -150,12 +151,26 @@ namespace Cts.Cli
                     for (var depth = 1; depth <= segments.Length; depth++)
                     {
                         var key = string.Join("/", segments.Take(depth));
-                        if (!_work.IdeByPath.ContainsKey(key) && !_work.FolderRecords.Any(container =>
+                        if (!_work.IdeByPath.ContainsKey(key) && !NewContainerAt(key) && !_work.FolderRecords.Any(container =>
                             string.Equals(FolderKey(container.Path), key, StringComparison.OrdinalIgnoreCase)))
                             _work.FolderRecords.Add(new CompareRecord { Category = "added", Path = key + "/.cds-object.xml", Name = segments[depth - 1] });
                     }
                 }
             }
+
+            // A new directory whose .cds-object.xml is an object of its own (a
+            // Trend Recording Manager), not a folder: it is imported as the natives are.
+            bool NewContainer(CompareRecord record)
+            {
+                if (!IsFolderRecord(record) || record.Category != "added") return false;
+                var full = Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar));
+                var type = File.Exists(full) ? (NativeMetaValue(File.ReadAllText(full), "TypeGuid") ?? "").Trim().Trim('{', '}') : "";
+                return type.Length > 0 && !string.Equals(type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool NewContainerAt(string key) => _work.NativeRecords.Any(record => record.Category == "added"
+                && record.Path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(FolderKey(record.Path), key, StringComparison.OrdinalIgnoreCase));
 
             // Deleted text objects get their guids; new ones their kinds and parents, with the folders they need.
             IDictionary<string, object> PlanAdded()
@@ -190,7 +205,7 @@ namespace Cts.Cli
                     for (var depth = 1; depth < item.Path.Length; depth++)
                     {
                         var key = string.Join("/", item.Path.Take(depth));
-                        if (!_work.IdeByPath.ContainsKey(key) && !_addedKeys.Contains(key) && !_work.FolderRecords.Any(record => string.Equals(FolderKey(record.Path), key, StringComparison.OrdinalIgnoreCase))
+                        if (!_work.IdeByPath.ContainsKey(key) && !_addedKeys.Contains(key) && !NewContainerAt(key) && !_work.FolderRecords.Any(record => string.Equals(FolderKey(record.Path), key, StringComparison.OrdinalIgnoreCase))
                             && !_work.FolderRecords.Any(record => record.Category == "added" && string.Equals(FolderKey(record.Path), key, StringComparison.OrdinalIgnoreCase)))
                     _work.FolderRecords.Add(new CompareRecord { Category = "added", Path = key + "/.cds-object.xml", Name = Path.GetFileName(key) });
                     }
