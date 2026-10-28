@@ -14,7 +14,8 @@
     "Test logic without a PLC: the POU's .st at the top of project-view, its checks in PRG_Tests.st -> cts import -> cts test (cts guide tests sets the test application up).",
     "Run ST unit tests: cts test (cts guide tests explains the simulation test application).",
     "Put it on the PLC: cts build -> cts download; skip cts import when cts compare is clean (cts guide deploy).",
-    "Record how the plant runs, then analyse it: cts trend set VAR ... -> cts import -> cts build -> cts download -> cts trend on; later cts trend pull -> cts trend query SQL (cts guide trend)."
+    "Record how the plant runs, then analyse it: cts trend set VAR ... -> cts import -> cts build -> cts download -> cts trend on; later cts trend pull -> cts trend query SQL (cts guide trend).",
+    "Catch what happens now, before and after a fault: cts connect -> cts trace set VAR ... --trigger VAR -> cts trace start -> cts trace pull --wait N (cts guide trace)."
   ],
   "topics": [
     { "topic": "workflow", "summary": "Operating rules: state model, safety, git, mutation scope, reporting." },
@@ -28,6 +29,7 @@
     { "topic": "raw", "summary": "Call an agent method directly.", "section": "commands#Tests and Escape Hatch" },
     { "topic": "status", "summary": "Check the project and PLC state." },
     { "topic": "dialog", "summary": "Read the modal IDE dialog, and answer it without a click." },
-    { "topic": "trend", "summary": "Record variables on the PLC in a task's cycle, pull them to this PC and ask them with SQL." }
+    { "topic": "trend", "summary": "Record variables on the PLC in a task's cycle, pull them to this PC and ask them with SQL." },
+    { "topic": "trace", "summary": "Record variables on the PLC for a moment, around a trigger, and read the samples into a CSV with a summary." }
   ]
 }

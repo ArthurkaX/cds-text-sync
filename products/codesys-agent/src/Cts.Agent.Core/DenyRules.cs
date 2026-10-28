@@ -51,6 +51,7 @@ namespace Cts.Agent
             Plc(CreateBootApp, "Create the boot application"),
             Plc(WriteVariable, "Write PLC variables"),
             Plc(RunTests, "Run the .test plans on the PLC"),
+            Plc(Trace, "Record a trace on the PLC (cts trace)"),
             Plc(SetCredentials, "Give the IDE the PLC login"),
             Files(PlcUpload, "Change the PLC's files (put, rm, mkdir, mv)"),
             Files(PlcFetch, "Fetch a file from the PLC"),
@@ -105,6 +106,10 @@ namespace Cts.Agent
         //: it sets included.
         public const string Connect = "connect_to_device";
 
+        //: The key `trace.set`, `trace.start` and `trace.stop` answer to
+        //: (`cts trace set|start|stop`): the trace object and its run on the PLC.
+        public const string Trace = "trace";
+
         //: The key `app.download` answers to (`cts download`), a start after it
         //: answers to StartPlc as well.
         public const string Download = "download";
@@ -127,6 +132,9 @@ namespace Cts.Agent
                 case "project.change_device": return "change_device";
                 case "project.open": return "project_open";
                 case "project.close": return "project_close";
+                case "trace.set":
+                case "trace.start":
+                case "trace.stop": return Trace;
                 case "objects.rename":
                 case "objects.move":
                 case "objects.settext":

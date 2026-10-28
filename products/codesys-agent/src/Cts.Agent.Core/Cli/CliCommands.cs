@@ -120,6 +120,7 @@ namespace Cts.Cli
             commands.AddRange(DiagramCommand.Commands);
             commands.AddRange(LibCommand.Commands);
             commands.AddRange(TrendCommand.Commands);
+            commands.AddRange(TraceCommand.Commands);
             return commands;
         }
 

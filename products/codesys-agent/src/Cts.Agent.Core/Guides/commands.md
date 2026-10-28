@@ -553,6 +553,10 @@ under `"analyze"`: `fail_on`, `incomplete`, `rules.<ID>.enabled`/`severity`/
 
 `cts trend set VAR ...` writes a Trend Recording that records the variables on the PLC in a task's cycle, into an SQLite file there; `cts trend on` and `off` start and stop it, `cts trend pull` copies its samples into this PC's database of the trend and `cts trend query SQL` asks that, read-only. `cts guide trend` explains the setup, the slots that keep a change of variables an online change, and the tables.
 
+## PLC Trace
+
+`cts trace set VAR ...` makes or changes the Trace `CtsTrace` of the active application, online too: the task, `--every`, `--samples`, a `--trigger` (`--edge`, `--level`, `--post`) and a `--condition`. `cts trace start` downloads only the trace and starts it (the IDE logged in; the application keeps running), `cts trace stop` stops it, and `cts trace pull [--wait N]` reads the PLC's buffer into a CSV with a summary per variable, no login needed. `cts trace` shows the setup and the state on the PLC. `cts guide trace` explains the trigger and when to use the trace or the trend.
+
 ## FSM Transition Maps
 
 | Goal | Command |

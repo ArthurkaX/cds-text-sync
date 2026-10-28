@@ -429,6 +429,7 @@ namespace Cts.Cli
             Group("git", "branch", "checkout", "commit", "merge", "push", "log", "project update", "open", "hook"),
             Group("project", "project-tree", "read-object", "project list-devices", "project device-types", "project change-device", "project simulate", "project set-credentials", "lib", "lib set", "lib add", "lib redirect", "lib remove"),
             Group("PLC trend (cts guide trend)", "trend", "trend set", "trend on", "trend off", "trend pull", "trend query"),
+            Group("PLC trace (cts guide trace)", "trace", "trace set", "trace start", "trace stop", "trace pull"),
             Group("build and PLC", "build", "verify", "test", "scan", "connect", "download", "disconnect", "start", "stop", "reset", "boot-app", "wait-ready", "plc-log", "plc-crc", "plc-crc-headless",
                 "plc info", "plc ls", "plc get", "plc put", "plc rm", "plc mkdir", "plc mv"),
             Group("variables", "read", "write", "snapshooter tree", "snapshooter take", "snapshooter diff", "snapshooter restore"),

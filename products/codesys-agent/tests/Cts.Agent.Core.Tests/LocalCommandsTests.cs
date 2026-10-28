@@ -57,7 +57,7 @@ namespace Cts.Agent.Core.Tests
         public void Local_commands_print_verdicts_and_json_payloads()
         {
             var index = Run("guide");
-            Assert.StartsWith("ok guide rules=5 topics=12", index);
+            Assert.StartsWith("ok guide rules=5 topics=13", index);
             Assert.Contains("Rules:", index);
             Assert.True(index.IndexOf("Common jobs:", StringComparison.Ordinal) < index.IndexOf("Topics:", StringComparison.Ordinal));
             Assert.Contains("Run ST unit tests: cts test", index);

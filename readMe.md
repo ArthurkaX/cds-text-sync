@@ -340,6 +340,17 @@ cts trend query "SELECT name, min(value), max(value), avg(value) FROM samples GR
 
 `cts guide trend` explains the slots, the tables and the analysis queries.
 
+For a moment rather than a night, the trace records every cycle into the
+PLC's ring buffer, around a trigger, with no download of the application:
+
+```powershell
+cts trace set GVL_IO.rLevel PLC_PRG.fbPump.xRun --trigger PLC_PRG.fbPump.xFault
+cts trace start                        # downloads only the trace; the IDE logged in
+cts trace pull --wait 600              # after the trigger: a CSV and what each variable did
+```
+
+`cts guide trace` explains the trigger, the condition and the buffer.
+
 ## Documentation
 
 - [Installation](docs/install.md)

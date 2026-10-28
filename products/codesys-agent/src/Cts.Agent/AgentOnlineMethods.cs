@@ -1,4 +1,4 @@
-// AgentHost's registrations of the application and PLC methods (app.*, plc.*).
+// AgentHost's registrations of the application, PLC and trace methods (app.*, plc.*, trace.*).
 
 namespace Cts.Agent
 {
@@ -34,6 +34,12 @@ namespace Cts.Agent
             _router.Register("plc.move", (req, s) => _ide.PlcMove(req.String("from"), req.String("to"), StartTimeout.Parse(req, UiTimeoutMs)));
             // The PLC's runtime and the applications it holds (`cts plc info`).
             _router.Register("plc.info", (req, s) => _ide.PlcInfo(StartTimeout.Parse(req, UiTimeoutMs)));
+            // The Trace CtsTrace of the active application (`cts trace`).
+            _router.Register("trace.read", (req, s) => _ide.TraceRead(StartTimeout.Parse(req, UiTimeoutMs)));
+            _router.Register("trace.set", (req, s) => _ide.TraceSet(TraceRequest.Parse(req), StartTimeout.Parse(req, UiTimeoutMs)));
+            _router.Register("trace.start", (req, s) => _ide.TraceStart(StartTimeout.Parse(req, UiTimeoutMs)));
+            _router.Register("trace.stop", (req, s) => _ide.TraceStop(StartTimeout.Parse(req, UiTimeoutMs)));
+            _router.Register("trace.samples", (req, s) => _ide.TraceSamples(StartTimeout.Parse(req, UiTimeoutMs)));
             // Log in without changing the PLC, pointed at `ip` first when given (`cts connect`).
             _router.Register("app.login", (req, s) => _ide.Login(req.String("ip", ""), req.String("gateway", ""), StartTimeout.Parse(req, UiTimeoutMs)));
             _router.Register("app.scan", (req, s) => _ide.Scan(req.String("gateway", ""), StartTimeout.Parse(req, UiTimeoutMs)));

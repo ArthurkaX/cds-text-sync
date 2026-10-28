@@ -125,11 +125,15 @@ namespace Cts.Trend
         }
 
         // This PC's database of the trend of *app* in the sync folder *root*.
-        internal static string LocalFile(string root, string app)
+        internal static string LocalFile(string root, string app) => Path.Combine(LocalFolder(root, "trend"), app + ".sqlite");
+
+        // This PC's folder of *kind* (trend, trace) for the project of the
+        // sync folder *root*: by its project id, else by the folder's name.
+        internal static string LocalFolder(string root, string kind)
         {
             var id = ProjectInfo.IdOf(root);
             var key = id.Length > 0 ? id : string.Concat(Path.GetFileName(root.TrimEnd('/', '\\')).Select(ch => char.IsLetterOrDigit(ch) || ch == '-' ? ch : '_'));
-            return Path.Combine(Path.GetDirectoryName(ProjectInfo.RegistryPath()), "trend", key, app + ".sqlite");
+            return Path.Combine(Path.GetDirectoryName(ProjectInfo.RegistryPath()), kind, key);
         }
     }
 }
