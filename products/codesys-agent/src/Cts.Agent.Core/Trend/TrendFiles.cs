@@ -36,7 +36,7 @@ namespace Cts.Trend
         // asks for it (cts trend on, or a write of TRUE in the IDE).
         const string GvlText = "VAR_GLOBAL\n\txRecord : BOOL;\t// cts trend records while TRUE: cts trend on/off, or write it in the IDE\nEND_VAR\n";
 
-        internal string View, App, AppFolder, RecordingFile;
+        internal string Root, View, App, AppFolder, RecordingFile;
         internal List<TrendTask> Tasks;
 
         // The application *app* names (its folder's name), else the one with a
@@ -195,7 +195,7 @@ namespace Cts.Trend
     internal sealed class TrendSettings
     {
         internal string Task;
-        internal int Every = 1, Slots = TrendFiles.DefaultSlots, LimitMb = TrendFiles.DefaultLimitMb;
+        internal int Every = 1, Slots = TrendFiles.DefaultSlots, LimitMb = TrendFiles.DefaultLimitMb, StoreMs = TrendFiles.StoreMs;
         internal List<string> Variables = new List<string>();
 
         internal static TrendSettings Read(string xml)
@@ -207,6 +207,7 @@ namespace Cts.Trend
                 Every = int.TryParse(Value(xml, "EveryNCycles"), out var every) ? every : 1,
                 Slots = Regex.Matches(xml, "<Single Name=\"VariableName\" Type=\"string\">").Count,
                 LimitMb = int.TryParse(limit.Groups[1].Value, out var size) ? size : TrendFiles.DefaultLimitMb,
+                StoreMs = int.TryParse(Value(xml, "StoreEveryNMilliseconds"), out var store) ? store : TrendFiles.StoreMs,
                 Variables = Regex.Matches(xml, "<Single Name=\"VariableName\" Type=\"string\">([^<]*)</Single>").Cast<Match>()
                     .Select(match => match.Groups[1].Value).Where(name => name != TrendFiles.Gate).Select(Unescape).ToList(),
             };

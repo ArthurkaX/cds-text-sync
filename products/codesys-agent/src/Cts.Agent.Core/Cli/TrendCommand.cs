@@ -59,7 +59,36 @@ namespace Cts.Cli
                 + "records the trend's variables from the next cycle on, until cts trend off, a download or a restart."),
             Switch("off", false, "Stop the PLC trend recording", "Writes FALSE to " + TrendFiles.Gate + " in the online application: the "
                 + "PLC stops adding rows; its file keeps the ones recorded."),
+            new CliCommand
+            {
+                Name = "trend", Sub = "pull", Summary = "Copy the PLC trend's samples to this PC",
+                Description = "Copies the PLC's trend file and merges its samples into this PC's database of the trend, which keeps "
+                    + "what earlier pulls brought though the PLC's file drops its oldest rows at its size limit. While the recording runs "
+                    + "it pauses for the copy (" + TrendFiles.Gate + " FALSE, then TRUE again), so the file is settled: the pause, "
+                    + "the storage interval and the copy's time, shows as paused_s; the PLC keeps the last second before it back until "
+                    + "it records again, so the next pull brings that. gaps counts the cycles with no values: while the recording "
+                    + "was off (cts trend off, a pull's pause) or the PLC could not store them (too many variables for the task's "
+                    + "rate). cts trend query asks the database.",
+                Options = Where, Seconds = 330, Execute = Pull, Build = Pulled,
+            },
+            new CliCommand
+            {
+                Name = "trend", Sub = "query", Summary = "Ask the pulled trend samples with SQL (offline)",
+                Description = "Runs one SQL statement, read-only, on this PC's database of the trend that cts trend pull fills: "
+                    + TrendData.Schema + ". Values are as the variable's type reads them (a REAL as a number, a BOOL as 0 or 1). "
+                    + "A line per row, its values tab-separated, after a line naming the columns.\n\n"
+                    + "  cts trend query \"SELECT name, min(value), max(value), avg(value) FROM samples GROUP BY name\"\n"
+                    + "  cts trend query \"SELECT at, value FROM samples_at WHERE name = 'GVL_IO.rLevel' ORDER BY ts DESC LIMIT 20\"",
+                Arguments = "SQL ...", ArgumentLimit = 255, ArgumentHelp = "One SQL statement; its words may come quoted together or apart",
+                Options = Where.Concat(new[] { CliOption.Int("--limit", "limit", "Show at most N rows (default " + QueryRows + ")") }).ToArray(),
+                LocalExecute = Query, Build = Answered,
+            },
         };
+
+        const int QueryRows = 200;
+        // How long after the pause the PLC surely wrote its last rows: its
+        // storage interval and this much more.
+        const int SettleMs = 1000;
 
         static CliCommand Switch(string sub, bool on, string summary, string description) => new CliCommand
         {
@@ -74,6 +103,7 @@ namespace Cts.Cli
             catch (AnalyzeException error) { throw new CliFailure(verb, "refused", error.Message, "cts " + verb.Replace('-', ' ') + " --help", 2); }
             var trend = TrendFiles.Of(workspace.View, options.Text("app"), out var problem);
             if (trend == null) throw new CliFailure(verb, "no application", problem, "cts " + verb.Replace('-', ' ') + " --help", 1);
+            trend.Root = workspace.Root;
             return trend;
         }
 
@@ -155,7 +185,14 @@ namespace Cts.Cli
 
         static IDictionary<string, object> Record(CliCall call, bool on)
         {
-            var verb = on ? "trend-on" : "trend-off";
+            var data = Switched(call, on, on ? "trend-on" : "trend-off");
+            data["recording"] = on;
+            return data;
+        }
+
+        // The gate written *on* and read back.
+        static Dictionary<string, object> Switched(CliCall call, bool on, string verb)
+        {
             var value = on ? "TRUE" : "FALSE";
             var answer = call.Call("vars.write", new Dictionary<string, object> { { "values", new Dictionary<string, object> { { TrendFiles.Gate, value } } } });
             if (!Equals(Value(answer, "logged_in"), true)) throw new CliFailure(verb, "not connected", WriteCommand.NotConnected, "cts connect", 1);
@@ -163,10 +200,85 @@ namespace Cts.Cli
             if (!Equals(Value(row, "ok"), true))
                 throw new CliFailure(verb, "no trend", "the PLC has no " + TrendFiles.Gate + ": cts trend set, then " + Next, "cts trend set --help", 1);
             var watch = Stopwatch.StartNew();
-            var data = WriteCommand.Confirm(TrendFiles.Gate, value, value, name => WriteCommand.ReadBack(call, name),
+            return WriteCommand.Confirm(TrendFiles.Gate, value, value, name => WriteCommand.ReadBack(call, name),
                 () => watch.Elapsed.TotalSeconds, seconds => Thread.Sleep(TimeSpan.FromSeconds(seconds)));
-            data["recording"] = on;
+        }
+
+        static IDictionary<string, object> Pull(CliCall call)
+        {
+            var trend = Trend(call.Options, call.Hello.SyncFolder ?? Environment.CurrentDirectory, "trend-pull");
+            var settings = trend.Settings() ?? throw new CliFailure("trend-pull", "no trend", "the application " + trend.App
+                + " has no trend: cts trend set, then " + Next, "cts trend set --help", 1);
+            var gate = WriteCommand.ReadBack(call, TrendFiles.Gate);
+            if (gate.TryGetValue("unavailable", out var why))
+                throw Equals(why, WriteCommand.NotConnected)
+                    ? new CliFailure("trend-pull", "not connected", WriteCommand.NotConnected, "cts connect", 1)
+                    : new CliFailure("trend-pull", "no trend", why + " (cts trend set, then " + Next + ")", "cts trend", 1);
+            var recording = string.Equals(Convert.ToString(gate["value"], CultureInfo.InvariantCulture), "TRUE", StringComparison.OrdinalIgnoreCase);
+            var copy = Path.Combine(Path.GetTempPath(), "cts-trend-" + Guid.NewGuid().ToString("N") + ".sqlite");
+            var paused = Stopwatch.StartNew();
+            try
+            {
+                if (recording)
+                {
+                    Switched(call, false, "trend-pull");
+                    Thread.Sleep(settings.StoreMs + SettleMs);
+                }
+                var file = "PlcLogic/trend/" + trend.App + "." + TrendFiles.Name + ".1.sqlite";
+                try { call.Call("plc.fetch", new Dictionary<string, object> { { "file", file }, { "output", copy } }); }
+                catch (CliFailure error) when (error.Declined)
+                {
+                    call.Call("plc.fetch", new Dictionary<string, object> { { "file", file }, { "output", copy } });
+                }
+            }
+            finally
+            {
+                if (recording) Switched(call, true, "trend-pull");
+                paused.Stop();
+            }
+            var local = TrendData.LocalFile(trend.Root, trend.App);
+            Directory.CreateDirectory(Path.GetDirectoryName(local));
+            TrendData.Merged merged;
+            try { merged = TrendData.Merge(copy, local, TrendFiles.Gate); }
+            catch (InvalidOperationException error) { throw new CliFailure("trend-pull", "unreadable", "the PLC's trend file: " + error.Message, "cts trend pull", 1); }
+            finally { File.Delete(copy); }
+            var data = new Dictionary<string, object>
+            {
+                ["app"] = trend.App, ["rows"] = merged.Rows, ["gaps"] = merged.Gaps, ["added"] = merged.Added, ["recording"] = recording,
+                ["variables"] = merged.Variables.Cast<object>().ToList(), ["database"] = local,
+            };
+            if (merged.Rows > 0)
+            {
+                data["gaps_pct"] = Math.Round(100.0 * merged.Gaps / merged.Rows, 1);
+                data["from"] = Moment(merged.From.Value);
+                data["to"] = Moment(merged.To.Value);
+            }
+            if (recording) data["paused_s"] = Math.Round(paused.Elapsed.TotalSeconds, 1);
             return data;
+        }
+
+        static string Moment(long us) => new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(us * 10).ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+
+        static IDictionary<string, object> Query(CliOptions options, IAgentHost host, string work)
+        {
+            var trend = Trend(options, work, "trend-query");
+            if (options.Arguments.Count == 0) throw new CliFailure("trend-query", "usage", "SQL is required", "cts trend query --help", 2);
+            var local = TrendData.LocalFile(trend.Root, trend.App);
+            if (!File.Exists(local)) throw new CliFailure("trend-query", "nothing pulled", "no samples of " + trend.App + " on this PC yet: cts trend pull copies them", "cts trend pull", 1);
+            var limit = options.Number("limit", QueryRows);
+            if (limit < 1) throw new CliFailure("trend-query", "usage", "--limit takes 1 or more", "cts trend query --help", 2);
+            try
+            {
+                using (var database = Sqlite.Open(local, false))
+                {
+                    var rows = database.Rows(string.Join(" ", options.Arguments), limit, out var columns, out var more);
+                    return new Dictionary<string, object>
+                    {
+                        ["columns"] = columns.Cast<object>().ToList(), ["rows"] = rows.Select(row => (object)row.ToList()).ToList(), ["more"] = more,
+                    };
+                }
+            }
+            catch (InvalidOperationException error) { throw new CliFailure("trend-query", "refused", error.Message, "cts trend query --help", 1); }
         }
 
         static Answer Shown(IDictionary<string, object> data)
@@ -193,6 +305,28 @@ namespace Cts.Cli
             var variables = (IList<object>)data["variables"];
             for (var slot = 0; slot < variables.Count; slot++) answer.Detail("Val" + (slot + 1) + "  " + variables[slot]);
             return answer;
+        }
+
+        static Answer Pulled(IDictionary<string, object> data)
+        {
+            var answer = new Answer().Add("app", data["app"]).Add("rows", data["rows"]).Add("gaps", data["gaps"]);
+            if (data.ContainsKey("gaps_pct")) answer.Add("gaps_pct", data["gaps_pct"]);
+            answer.Add("added", data["added"]);
+            if (data.ContainsKey("paused_s")) answer.Add("paused_s", data["paused_s"]);
+            if (data.ContainsKey("from")) answer.Detail("from " + data["from"] + " to " + data["to"] + " UTC (the PLC's clock)");
+            answer.Detail("variables " + string.Join(" ", (IList<object>)data["variables"]));
+            answer.Detail("database " + data["database"]);
+            return answer.Detail("Next: cts trend query \"SELECT name, count(*), min(value), max(value) FROM samples GROUP BY name\"");
+        }
+
+        static Answer Answered(IDictionary<string, object> data)
+        {
+            var rows = (IList<object>)data["rows"];
+            var answer = new Answer().Add("rows", rows.Count).Add("more", data["more"]);
+            answer.Detail(string.Join("\t", (IList<object>)data["columns"]));
+            foreach (IList<object> row in rows)
+                answer.Detail(string.Join("\t", row.Select(value => value == null ? "NULL" : value is double number ? number.ToString("R", CultureInfo.InvariantCulture) : Convert.ToString(value, CultureInfo.InvariantCulture))));
+            return answer.Whole();
         }
 
         static Answer Recorded(IDictionary<string, object> data)
