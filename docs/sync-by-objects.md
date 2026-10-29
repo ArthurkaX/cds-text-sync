@@ -46,6 +46,10 @@ Status: implemented; import, export, sync and compare work this way.
   `ACTION A_Reset:` for an action, which has no declaration). An object with
   a setting the pragma does not know keeps an `.xml` beside the file, without
   the text (`StPragma.cs` lists what counts as a setting).
+- **A folder below a POU** is its members' `Folder="..."` in that pragma,
+  not a directory: the IDE's tree path of such a member leaves the folder
+  out, so it is found by its POU, and an import moves it into the folder the
+  pragma names (`objects.move`), making the folder first.
 - **Tables** (text lists) are `.csv`, with an `.xml` for the rest of the list
   and no rows. **Everything else** (devices,
   visualisations, tasks, image pools) is `.xml`, without volatile fields.

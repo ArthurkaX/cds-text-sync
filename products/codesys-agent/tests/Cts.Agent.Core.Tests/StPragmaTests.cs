@@ -15,19 +15,31 @@ namespace Cts.Agent.Core.Tests
             {
                 { "POULevel", "Global" }, { "CompilerDefines", "SIM,DEBUG" }, { "External", "True" }, { "LinkAlways", "False" }, { "SpecialFunc", "None" },
             };
-            var line = StPragma.Format(null, settings);
+            var line = StPragma.Format(null, settings, "");
             Assert.Equal("(* cds-text-sync: External CompilerDefines=\"SIM,DEBUG\" POULevel=\"Global\" *)", line);
-            var parsed = StPragma.Parse(line, out var typeGuid);
+            var parsed = StPragma.Parse(line, out var typeGuid, out var folder);
             Assert.Null(typeGuid);
+            Assert.Equal("", folder);
             Assert.Equal(new Dictionary<string, string> { { "External", "True" }, { "CompilerDefines", "SIM,DEBUG" }, { "POULevel", "Global" } }, parsed);
         }
 
         [Fact]
         public void AnUnknownNameAndADefaultValueAreDropped()
         {
-            var parsed = StPragma.Parse("(* cds-text-sync: TypeGuid=\"{C2CDA7A9-0BA4-4146-B563-22A42FA0EB72}\" Shiny ExcludeFromBuild MemoryReserveForOnlineChange=\"0\" linkalways=\"false\" *)", out var typeGuid);
+            var parsed = StPragma.Parse("(* cds-text-sync: TypeGuid=\"{C2CDA7A9-0BA4-4146-B563-22A42FA0EB72}\" Shiny ExcludeFromBuild MemoryReserveForOnlineChange=\"0\" linkalways=\"false\" *)", out var typeGuid, out _);
             Assert.Equal("c2cda7a9-0ba4-4146-b563-22a42fa0eb72", typeGuid);
             Assert.Equal(new Dictionary<string, string> { { "ExcludeFromBuild", "True" } }, parsed);
+        }
+
+        [Fact]
+        public void AMembersFolderBelowItsPouGoesThroughThePragmaAfterTheTypeGuid()
+        {
+            var line = StPragma.Format("C2CDA7A9-0BA4-4146-B563-22A42FA0EB72", new Dictionary<string, string> { { "ExcludeFromBuild", "True" } }, "Service members/Old");
+            Assert.Equal("(* cds-text-sync: TypeGuid=\"{c2cda7a9-0ba4-4146-b563-22a42fa0eb72}\" Folder=\"Service members/Old\" ExcludeFromBuild *)", line);
+            Assert.Equal(new Dictionary<string, string> { { "ExcludeFromBuild", "True" } }, StPragma.Parse(line, out _, out var folder));
+            Assert.Equal("Service members/Old", folder);
+            StPragma.Parse("(* cds-text-sync: Folder=\" Service members / /Old \" *)", out _, out folder);
+            Assert.Equal("Service members/Old", folder);
         }
 
         [Fact]

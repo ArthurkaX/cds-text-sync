@@ -67,10 +67,12 @@ namespace Cts.Sync
         internal static bool Is(string line) => Head.IsMatch((line ?? "").Trim());
 
         // The settings a pragma line names, by their catalog spelling; a name
-        // cts does not know is left out.
-        internal static IDictionary<string, string> Parse(string text, out string typeGuid)
+        // cts does not know is left out.  *folder* is the folder below its POU
+        // a member lies in ("Service/Old"), "" for none.
+        internal static IDictionary<string, string> Parse(string text, out string typeGuid, out string folder)
         {
             typeGuid = null;
+            folder = "";
             var settings = new Dictionary<string, string>(StringComparer.Ordinal);
             var match = Pragma.Match(text ?? "");
             if (!match.Success) return settings;
@@ -79,6 +81,7 @@ namespace Cts.Sync
                 var name = token.Groups[1].Value;
                 var value = token.Groups[2].Success ? token.Groups[2].Value : null;
                 if (name.Equals("TypeGuid", StringComparison.OrdinalIgnoreCase)) { typeGuid = value?.Trim().Trim('{', '}').ToLowerInvariant(); continue; }
+                if (name.Equals("Folder", StringComparison.OrdinalIgnoreCase)) { folder = FolderPath(value); continue; }
                 var setting = Settings.FirstOrDefault(candidate => candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
                 if (setting == null) continue;
                 var given = value ?? (setting.Flag ? "True" : null);
@@ -93,15 +96,20 @@ namespace Cts.Sync
         {
             switch (kind) { case "PROGRAM": return "END_PROGRAM"; case "FUNCTION_BLOCK": return "END_FUNCTION_BLOCK"; case "FUNCTION": return "END_FUNCTION"; case "INTERFACE": return "END_INTERFACE"; case "METHOD": return "END_METHOD"; case "PROPERTY": return "END_PROPERTY"; case "ACTION": return "END_ACTION"; case "GET": return "END_GET"; case "SET": return "END_SET"; default: return null; }
         }
-        public static string Format(string typeGuid, IDictionary<string, string> settings)
+        public static string Format(string typeGuid, IDictionary<string, string> settings, string folder)
         {
             var parts = new List<string>();
             if (!string.IsNullOrEmpty(typeGuid)) parts.Add("TypeGuid=\"{" + typeGuid.Trim().Trim('{', '}').ToLowerInvariant() + "}\"");
+            if (!string.IsNullOrEmpty(folder)) parts.Add("Folder=\"" + folder + "\"");
             foreach (var setting in Settings)
                 if (settings != null && settings.TryGetValue(setting.Name, out var value) && value != setting.Default)
                     parts.Add(setting.Flag ? setting.Name : setting.Name + "=\"" + value + "\"");
             return parts.Count == 0 ? null : "(* cds-text-sync: " + string.Join(" ", parts) + " *)";
         }
+
+        // A folder path as the pragma holds it: its names joined by "/", blank ones dropped.
+        internal static string FolderPath(string value) =>
+            string.Join("/", (value ?? "").Split('/').Select(name => name.Trim()).Where(name => name.Length > 0));
 
         // A setting's value in *settings*, its default when absent.
         internal static string Value(IDictionary<string, string> settings, Setting setting) =>

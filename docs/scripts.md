@@ -259,7 +259,9 @@ properties `ExcludeFromBuild`, `LinkAlways`, `External`, `EnableSystemCall`,
 `CompilerDefines`, `MemoryReserveForOnlineChange`, and `POULevel`,
 `SpecialFunc`, `AddAttributeSubsequent`, `ParameterList`, `TaskForWrite`).
 `cts import` sets them in the IDE, and a removed one goes back to its default.
-A setting the line cannot hold keeps an `.xml` beside the `.st`.
+A setting the line cannot hold keeps an `.xml` beside the `.st`. A member
+in a folder below its POU has `Folder="Service members"` in the line above
+it; `cts import` moves it into that folder, made first when the POU lacks it.
 
 ## 8. Diagnostics
 

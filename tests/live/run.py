@@ -1752,6 +1752,38 @@ def scenario_import_force_ide_only(ctx):
 
 
 
+def scenario_member_folder_import(ctx):
+    """A method in a folder below its POU: cts sync writes the folder into the
+    pragma line above it, and an import of its edited text with another folder
+    in that line writes the text and moves it there, the folder made first."""
+    ctx.load_objects()
+    valve, toggle = ctx.guid("FB_Valve"), ctx.guid("M_Toggle")
+
+    def put_back():
+        _agent_call("objects.move", {"guid": toggle, "parent_guid": valve})
+        for name in ("LiveMembers", "LiveOther"):
+            _delete_in_ide(name)
+    ctx.cleanup_hooks.append(put_back)
+    folder = _agent_call("objects.create", {"kind": "folder", "name": "LiveMembers", "parent_guid": valve})
+    _agent_call("objects.move", {"guid": toggle, "parent_guid": folder["guid"]})
+
+    ctx.cts_ok("sync")
+    path = ctx.st_path("M_Toggle")
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    assert '(* cds-text-sync: Folder="LiveMembers" *)\nMETHOD M_Toggle' in text, text
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text.replace('Folder="LiveMembers"', 'Folder="LiveOther"').replace("M_Toggle := xOpen;", "M_Toggle := xOpen; // live runner"))
+    _code, out, _err = ctx.cts_ok("import")
+    assert ctx.verdict(out).startswith("ok import text=1"), out
+    other = _tree_node("LiveOther")
+    assert other and any(child.get("guid") == toggle for child in other.get("children") or []), other
+    assert "// live runner" in _agent_call("objects.text", {"guid": toggle})["implementation"]
+    report = ctx.text_status()
+    assert not report["changed"] and not report["ide_only"] and not report["disk_only"], report
+    return "M_Toggle LiveMembers -> LiveOther, text carried"
+
+
 _LIVE_TOOL = (
     "import os, sys\n"
     "rows = []\n"
@@ -2010,6 +2042,7 @@ SCENARIOS = [
     ("import_text_via_agent", scenario_import_text_via_agent),
     ("export_fast", scenario_export_fast),
     ("rename_import", scenario_rename_import),
+    ("member_folder_import", scenario_member_folder_import),
     ("task_import", scenario_task_import),
     ("task_conflict_import", scenario_task_conflict_import),
     ("task_add_remove_import", scenario_task_add_remove_import),

@@ -43,7 +43,7 @@ namespace Cts.Cli
                     File = disk.File, Path = disk.Path, Kind = disk.Kind,
                     Declaration = pragma == null ? declaration : pragma + "\n" + declaration,
                     Implementation = hasBody ? string.Join("\n", lines.Skip(markers[0] + 1)) : null,
-                    TypeGuid = disk.TypeGuid, Settings = disk.Settings,
+                    TypeGuid = disk.TypeGuid, Settings = disk.Settings, Folder = disk.Folder,
                 };
             }
 

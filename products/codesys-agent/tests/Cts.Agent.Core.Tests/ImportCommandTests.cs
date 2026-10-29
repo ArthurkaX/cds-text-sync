@@ -2245,6 +2245,40 @@ namespace Cts.Agent.Tests
             Assert.All(files, file => Assert.DoesNotContain(file, baseFiles));
         }
 
+        // A member's folder below its POU is its pragma's Folder: an import
+        // finds a member in a folder by its POU, writes its text and puts it
+        // into the folder the pragma names, made first when the POU lacks it.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ImportPutsAMemberIntoTheFolderItsPragmaNames(bool ideHasTheFolder)
+        {
+            var view = ViewFolder.Of(_root);
+            var file = Path.Combine(view, "PLC_Stabur", "Plc Logic", "Application", "FB_Valve.st");
+            File.WriteAllText(file, File.ReadAllText(file).Replace("METHOD M_Toggle : BOOL", "(* cds-text-sync: Folder=\"Service members\" *)\nMETHOD M_Toggle : BOOL")
+                .Replace("M_Toggle := xOpen;", "M_Toggle := xOpen; // disk edit"));
+            var toggle = StViewReader.Read(view).Objects.Single(item => item.Path.Last() == "M_Toggle");
+            Assert.Equal("Service members", toggle.Folder);
+            var tree = ideHasTheFolder ? TreeWithToggleInFolder(view) : ViewTree(view);
+            var calls = new List<string>();
+            var current = new Dictionary<string, object> { { "declaration", toggle.Declaration }, { "implementation", toggle.Implementation } };
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method + " " + string.Join(" ", args.Where(pair => pair.Key != "declaration" && pair.Key != "implementation").OrderBy(pair => pair.Key).Select(pair => pair.Key + "=" + pair.Value)));
+                if (method == "project.tree") return tree;
+                if (method == "objects.settext") return new Dictionary<string, object>();
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new[] { new Dictionary<string, object>(current) { { "guid", Convert.ToString(((IEnumerable<object>)args["guids"]).Single()) } } } } };
+                if (method == "objects.create") return new Dictionary<string, object> { { "guid", "f0000000-0000-0000-0000-000000000002" } };
+                if (method == "objects.move") return new Dictionary<string, object>();
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.False(result.ContainsKey("refused"), Json.Pretty(result));
+            var guid = calls.Single(call => call.StartsWith("objects.settext ", StringComparison.Ordinal)).Split(' ').Single(part => part.StartsWith("guid=", StringComparison.Ordinal));
+            var folder = ideHasTheFolder ? "f0000000-0000-0000-0000-000000000001" : "f0000000-0000-0000-0000-000000000002";
+            Assert.Equal(ideHasTheFolder ? 0 : 1, calls.Count(call => call.StartsWith("objects.create kind=folder name=Service members parent_guid=", StringComparison.Ordinal)));
+            Assert.Single(calls, call => call.StartsWith("objects.move " + guid + " parent_guid=" + folder + " ", StringComparison.Ordinal));
+        }
+
         // An import leaves an object the IDE deleted since the last sync as it is
         // and names it: what the IDE did is not lost, and --force is the way back.
         [Fact]
@@ -2324,6 +2358,31 @@ namespace Cts.Agent.Tests
                 throw new InvalidOperationException("unexpected agent call " + method);
             }, ideStamp: "session:changed"));
             Assert.Equal(exported.Replace(">2</Single>", ">3</Single>"), File.ReadAllText(beside));
+        }
+
+        // A member the IDE moved into a folder below its POU, or out of it:
+        // sync writes the folder into the pragma line above it, or takes the line out.
+        [Fact]
+        public void SyncWritesTheFolderTheIdeMovedAMemberIntoAndOutOf()
+        {
+            var file = Path.Combine(ViewFolder.Of(_root), "PLC_Stabur", "Plc Logic", "Application", "FB_Valve.st");
+            var exported = File.ReadAllText(file);
+            var inFolder = XDocument.Load(Path.Combine(Fixture, "snapshot.xml"));
+            inFolder.Descendants().First(element => (string)element.Attribute("Name") == "MetaObject"
+                && element.Elements().Any(child => (string)child.Attribute("Name") == "Name" && child.Value == "M_Toggle")).Parent
+                .Elements().First(element => (string)element.Attribute("Name") == "Path").Add(new XElement(inFolder.Root.Name.Namespace + "Single", new XAttribute("Type", "string"), "Service members"));
+            var snapshot = Path.Combine(_root, "member-folder.xml");
+            inFolder.Save(snapshot);
+            void Sync(string ide) => ImportCommand.Execute(SyncCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(ide, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(new[] { "MAIN" });
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:" + Path.GetFileName(ide)));
+            Sync(snapshot);
+            Assert.Equal(exported.Replace("METHOD M_Toggle : BOOL", "(* cds-text-sync: Folder=\"Service members\" *)\nMETHOD M_Toggle : BOOL"), File.ReadAllText(file));
+            Sync(Path.Combine(Fixture, "snapshot.xml"));
+            Assert.Equal(exported, File.ReadAllText(file));
         }
 
         // The fixture's snapshot with GVL_Fixture's dymmattributecount at *count*, a setting only an .xml beside its .st holds.
@@ -3193,6 +3252,22 @@ namespace Cts.Agent.Tests
             }
             node["guid"] = "11111111-1111-1111-1111-111111111111";
             return root;
+        }
+
+        // The view's tree with M_Toggle in a folder "Service members" below FB_Valve, as the IDE shows it.
+        static IDictionary<string, object> TreeWithToggleInFolder(string view)
+        {
+            var tree = ViewTree(view);
+            IDictionary<string, object> Find(IDictionary<string, object> node, string name) => node["name"].Equals(name) ? node
+                : ((IList<IDictionary<string, object>>)node["children"]).Select(child => Find(child, name)).FirstOrDefault(found => found != null);
+            var valve = Find(tree, "FB_Valve");
+            valve["type"] = "6f9dac99-8de1-4efc-8465-68ac443b7d08";
+            var members = (IList<IDictionary<string, object>>)valve["children"];
+            var toggle = members.Single(child => child["name"].Equals("M_Toggle"));
+            members.Remove(toggle);
+            members.Add(new Dictionary<string, object> { { "name", "Service members" }, { "guid", "f0000000-0000-0000-0000-000000000001" }, { "type", ObjectKinds.FolderType },
+                { "children", new List<IDictionary<string, object>> { toggle } } });
+            return tree;
         }
 
         // The IDE tree a dry run reads: every object of the view, where the view has it.

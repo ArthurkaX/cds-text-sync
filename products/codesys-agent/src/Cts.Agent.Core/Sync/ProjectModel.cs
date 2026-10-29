@@ -71,7 +71,9 @@ namespace Cts.Sync
             return collisionCounts[CollisionKey(node)] > 1;
         }
         string CollisionKey(ProjectNode node) { return string.Join("\0", node.DisplayPath.Select(SafeComponent).Concat(new[] { SafeComponent(node.OutputName ?? node.Name) })); }
-        internal bool IsCollapsed(ProjectNode node) { return Collapsed.Contains(node.Type ?? ""); }
+        internal bool IsCollapsed(ProjectNode node) { return HoldsMembers(node.Type); }
+        // Whether an object of *type* holds its members in its own file (a POU, an interface).
+        internal static bool HoldsMembers(string type) { return Collapsed.Contains(type ?? ""); }
         internal ProjectNode CollapsedParent(ProjectNode node)
         {
             var path = node.DisplayPath.Where(p => p.Length != 0).Select(SafeComponent).ToArray();

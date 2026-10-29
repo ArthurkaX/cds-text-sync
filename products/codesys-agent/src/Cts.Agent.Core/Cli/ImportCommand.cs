@@ -433,7 +433,9 @@ namespace Cts.Cli
         static void WriteText(CliCall call, string guid, StViewObject item)
         {
             var parameters = new Dictionary<string, object> { { "guid", guid } };
-            if (!string.IsNullOrEmpty(item.Declaration)) parameters["declaration"] = StripPragma(item.Declaration);
+            // An action's declaration is its pragma line alone: it has no text to write.
+            var declaration = StripPragma(item.Declaration);
+            if (!string.IsNullOrEmpty(declaration)) parameters["declaration"] = declaration;
             if (item.Implementation != null) parameters["implementation"] = item.Implementation;
             if (parameters.Count > 1) call.Call("objects.settext", parameters);
         }
@@ -488,21 +490,28 @@ namespace Cts.Cli
 
         // Keyed by view path, each name as its file names it ("A/B" is A_B),
         // where same-named siblings share one key; pathByGuid keeps each of them.
+        // A folder below a POU is not on the path: its members are the POU's,
+        // as its file holds them, the folder in their pragma.
         static Dictionary<string, TreeObject> TreeObjects(IDictionary<string, object> tree, out Dictionary<string, string> pathByGuid)
         {
             var result = new Dictionary<string, TreeObject>(StringComparer.OrdinalIgnoreCase);
             pathByGuid = new Dictionary<string, string>(StringComparer.Ordinal);
-            Visit(tree, new List<string>(), result, pathByGuid);
+            Visit(tree, new List<string>(), false, result, pathByGuid);
             return result;
         }
 
-        static void Visit(IDictionary<string, object> node, IList<string> path, IDictionary<string, TreeObject> result, IDictionary<string, string> pathByGuid)
+        static void Visit(IDictionary<string, object> node, IList<string> path, bool belowPou, IDictionary<string, TreeObject> result, IDictionary<string, string> pathByGuid)
         {
             if (!node.TryGetValue("children", out var raw) || !(Items(raw) is var children && children.Any())) return;
             foreach (var child in children)
             {
                 var name = ProjectModel.SafeComponent(Convert.ToString(child.ContainsKey("object_name") ? child["object_name"] : child["name"]));
                 var type = child.ContainsKey("type") ? Convert.ToString(child["type"]) : null;
+                if (belowPou && string.Equals(type, ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase))
+                {
+                    Visit(child, path, true, result, pathByGuid);
+                    continue;
+                }
                 // Keyed by view path: a project-level text list, library manager, ... sits under POUs/ there.
                 var childPath = (path.Count == 0 && SnapshotReader.UnderPous(type) ? new[] { "POUs" } : path).Concat(new[] { name }).ToList();
                 if (child.ContainsKey("guid"))
@@ -510,7 +519,7 @@ namespace Cts.Cli
                     result[string.Join("/", childPath)] = new TreeObject { Guid = Convert.ToString(child["guid"]), Type = type };
                     pathByGuid[GuidKey(Convert.ToString(child["guid"]))] = string.Join("/", childPath);
                 }
-                Visit(child, childPath, result, pathByGuid);
+                Visit(child, childPath, ProjectModel.HoldsMembers(type), result, pathByGuid);
             }
         }
     }

@@ -19,6 +19,8 @@ namespace Cts.Sync
         public int? ImplementationLine { get; internal set; }
         public string TypeGuid { get; internal set; }
         public IDictionary<string, string> Settings { get; internal set; }
+        // The folder below its POU a member lies in ("Service/Old"), "" for none.
+        public string Folder { get; internal set; } = "";
 
         // The object's place in the tree, "Folder/POU/Method".
         internal string Key => string.Join("/", Path);
@@ -30,7 +32,8 @@ namespace Cts.Sync
             var result = new List<string>();
             if (!string.Equals(DeclarationText(left?.Declaration), DeclarationText(right?.Declaration), StringComparison.Ordinal)) result.Add("declaration");
             if (!string.Equals(PartText(left?.Implementation), PartText(right?.Implementation), StringComparison.Ordinal)) result.Add("implementation");
-            if (StPragma.Settings.Any(setting => StPragma.Value(left?.Settings, setting) != StPragma.Value(right?.Settings, setting))) result.Add("settings");
+            if (StPragma.Settings.Any(setting => StPragma.Value(left?.Settings, setting) != StPragma.Value(right?.Settings, setting))
+                || !string.Equals(left?.Folder ?? "", right?.Folder ?? "", StringComparison.Ordinal)) result.Add("settings");
             return result;
         }
 
@@ -213,6 +216,7 @@ namespace Cts.Sync
             string decl;
             int? dl;
             string typeGuid = null;
+            var folder = "";
             IDictionary<string, string> settings = new Dictionary<string, string>();
             if (kind == "ACTION")
             {
@@ -224,7 +228,7 @@ namespace Cts.Sync
             {
                 var decEnd = marker >= 0 ? marker - 1 : last;
                 decl = Text(lines, first, decEnd, out dl);
-                settings = StPragma.Parse(decl.Split('\n').FirstOrDefault(), out typeGuid);
+                settings = StPragma.Parse(decl.Split('\n').FirstOrDefault(), out typeGuid, out folder);
                 if (decl.Length > 0)
                 {
                     if (StPragma.Is(decl.Split('\n')[0]))
@@ -235,8 +239,8 @@ namespace Cts.Sync
                 }
                 impl = marker >= 0 ? Text(lines, marker + 1, last, out il) : null;
             }
-            if (kind == "ACTION") settings = StPragma.Parse(decl.Split('\n').FirstOrDefault(), out typeGuid);
-            return new StViewObject { File = file, Path = path, Kind = kind, Declaration = decl, Implementation = impl, DeclarationLine = dl, ImplementationLine = il, TypeGuid = typeGuid, Settings = settings };
+            if (kind == "ACTION") settings = StPragma.Parse(decl.Split('\n').FirstOrDefault(), out typeGuid, out folder);
+            return new StViewObject { File = file, Path = path, Kind = kind, Declaration = decl, Implementation = impl, DeclarationLine = dl, ImplementationLine = il, TypeGuid = typeGuid, Settings = settings, Folder = folder };
         }
 
         static string Text(string[] lines, int first, int last, out int? line)

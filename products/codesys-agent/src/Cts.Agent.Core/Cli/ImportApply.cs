@@ -182,8 +182,39 @@ namespace Cts.Cli
                         _call.Call("objects.setfield", new Dictionary<string, object> { { "guid", pair.Guid }, { "prop", setting.Prop }, { "path", setting.Name }, { "value", value } });
                         _settings.Add(setting.Name);
                     }
+                    if (pair.Item.Path.Length > 1 && pair.Item.Folder != (ide?.Folder ?? ""))
+                    {
+                        MoveToFolder(pair.Guid, pair.Item);
+                        _settings.Add("Folder");
+                    }
                 }
                 _readBack = _work.Writes.Count == 0 ? new List<IDictionary<string, object>>() : ReadBack(_call, _work.Writes);
+            }
+
+            // Puts the member *guid* into the folder below its POU its pragma
+            // names, the folders the POU lacks made first; out of any folder
+            // for none.
+            void MoveToFolder(string guid, StViewObject item)
+            {
+                var owner = string.Join("/", item.Path.Take(item.Path.Length - 1));
+                var target = _work.Created.TryGetValue(owner, out var made) ? made : _work.IdeByPath[owner];
+                var below = item.Folder.Length == 0 ? null : FindNode(_call.Call("project.tree", new Dictionary<string, object>()), target);
+                foreach (var name in item.Folder.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var folder = Items(below != null && below.TryGetValue("children", out var raw) ? raw : null).FirstOrDefault(child =>
+                        string.Equals(Convert.ToString(child["name"]), name, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(Convert.ToString(child["type"]), ObjectKinds.FolderType, StringComparison.OrdinalIgnoreCase));
+                    target = folder != null ? Convert.ToString(folder["guid"])
+                        : Convert.ToString(_call.Call("objects.create", new Dictionary<string, object> { { "kind", "folder" }, { "name", name }, { "parent_guid", target } })["guid"]);
+                    below = folder;
+                }
+                _call.Call("objects.move", new Dictionary<string, object> { { "guid", guid }, { "parent_guid", target } });
+            }
+
+            static IDictionary<string, object> FindNode(IDictionary<string, object> node, string guid)
+            {
+                if (string.Equals(Convert.ToString(node.TryGetValue("guid", out var own) ? own : null), guid, StringComparison.OrdinalIgnoreCase)) return node;
+                return Items(node.TryGetValue("children", out var raw) ? raw : null).Select(child => FindNode(child, guid)).FirstOrDefault(found => found != null);
             }
 
             // Creates *item* with its text below its parent, one this run made or

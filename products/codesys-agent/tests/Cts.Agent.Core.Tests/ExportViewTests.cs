@@ -163,6 +163,32 @@ namespace Cts.Agent.Tests
             finally { Directory.Delete(root, true); }
         }
 
+        // A method in a folder below its POU stays in the POU's file, the
+        // folder in its pragma; the folder writes no file of its own.
+        [Fact]
+        public void A_member_in_a_folder_below_its_pou_names_the_folder_in_its_pragma()
+        {
+            var fixture = Path.Combine(AppContext.BaseDirectory, "Golden", "ExportFixture");
+            var root = NewRenderRoot(fixture, "cts-member-folder-");
+            var changedSnapshot = Path.Combine(root, "member-folder.xml");
+            try
+            {
+                var document = XDocument.Load(Path.Combine(fixture, "snapshot.xml"), LoadOptions.PreserveWhitespace);
+                var path = EntryByGuid(document, "a04dd5ed-83d2-4ac4-b199-490b72709fb1").Elements().First(element => (string)element.Attribute("Name") == "Path");
+                path.Add(new XElement(document.Root.Name.Namespace + "Single", new XAttribute("Type", "string"), "Service members"));
+                document.Save(changedSnapshot, SaveOptions.DisableFormatting);
+                var files = new MemoryViewFiles();
+                ViewExport.WriteTo(changedSnapshot, root, null, files);
+                Assert.DoesNotContain(files.Paths, file => file.Contains("Service members"));
+                var valve = Encoding.UTF8.GetString(files.Read(files.Paths.Single(file => file.EndsWith("/FB_Valve.st", StringComparison.Ordinal))));
+                Assert.Contains("(* cds-text-sync: Folder=\"Service members\" *)\nMETHOD M_Toggle : BOOL", valve);
+                var toggle = StViewReader.Read(files).Objects.Single(item => item.Path.Last() == "M_Toggle");
+                Assert.Equal("Service members", toggle.Folder);
+                Assert.Equal("FB_Valve", toggle.Path[toggle.Path.Length - 2]);
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
         [Fact]
         public void A_graphical_pou_is_an_xml_with_its_st_members_beside_it()
         {

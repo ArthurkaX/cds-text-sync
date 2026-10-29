@@ -91,7 +91,7 @@ namespace Cts.Sync
                 if (declaration.Trim().Length == 0 && Declares.Contains(kind)) unread.Add(node.Name);
                 var partKind = KindOf(node.Name, declaration, kind);
                 if (partKind.Length == 0) continue;
-                var pragma = CtsPragma(node, StPragma.Read(node.Entry));
+                var pragma = CtsPragma(node, StPragma.Read(node.Entry), MemberFolder(model, node));
                 if (pragma != null) declaration = pragma + (declaration.Length == 0 ? "" : "\n" + declaration);
                 selected[node.Guid] = new TextPart { Node = node, Kind = partKind, Declaration = declaration, Implementation = implementation };
             }
@@ -328,10 +328,22 @@ namespace Cts.Sync
             return string.Join("\n", lines);
         }
         static string End(string kind) { return StPragma.EndForKind(kind); }
-        static string CtsPragma(ProjectNode node, IDictionary<string, string> settings)
+        static string CtsPragma(ProjectNode node, IDictionary<string, string> settings, string folder)
         {
             var kind = TypeKinds.All.Kind(node.Type);
-            return StPragma.Format(TypeKinds.All.IsAmbiguous(kind, node.Type) ? node.Type : null, settings);
+            return StPragma.Format(TypeKinds.All.IsAmbiguous(kind, node.Type) ? node.Type : null, settings, folder);
+        }
+
+        // The folders between a member and its POU in the tree ("Service/Old"),
+        // "" for an object that is no member or lies right below its POU.
+        static string MemberFolder(ProjectModel model, ProjectNode node)
+        {
+            if (!IsMemberType(TypeKinds.All.Kind(node.Type)) || node.ParentGuid == null || !model.Nodes.TryGetValue(node.ParentGuid, out var owner)) return "";
+            var ownerPath = owner.IdeParts();
+            var path = node.DisplayPath.Where(part => part.Length != 0).ToList();
+            if (path.Count <= ownerPath.Count || !path.Take(ownerPath.Count).SequenceEqual(ownerPath, StringComparer.OrdinalIgnoreCase)) return "";
+            var folder = StPragma.FolderPath(string.Join("/", path.Skip(ownerPath.Count)));
+            return StPragma.Fits(folder) ? folder : "";
         }
         static string ReplaceExtension(string path, string extension) { return Path.ChangeExtension(path, extension).Replace('\\', '/'); }
         static void Emit(IViewRenderTarget target, string relative, string content, ExportResult result, string guid)

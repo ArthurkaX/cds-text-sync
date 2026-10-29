@@ -22,7 +22,8 @@ namespace Cts.Cli
 
         // The disk's, the base's and the IDE's text of one object merged part by
         // part; null when the two sides overlap.  The disk's cts pragma rides on
-        // the merged declaration (the base and the IDE carry the export's).
+        // the merged declaration (the base and the IDE carry the export's); the
+        // folder is the side's that moved it.
         static StViewObject MergeObject(StViewObject disk, StViewObject baseline, StViewObject ide)
         {
             var declaration = MergePart(StripPragma(disk.Declaration), StripPragma(baseline.Declaration), StripPragma(ide.Declaration));
@@ -34,7 +35,7 @@ namespace Cts.Cli
                 File = disk.File, Path = disk.Path, Kind = disk.Kind,
                 Declaration = pragma == null ? declaration.Text : pragma + "\n" + declaration.Text,
                 Implementation = disk.Implementation == null && ide.Implementation == null ? null : implementation.Text,
-                TypeGuid = disk.TypeGuid, Settings = disk.Settings,
+                TypeGuid = disk.TypeGuid, Settings = disk.Settings, Folder = disk.Folder != baseline.Folder ? disk.Folder : ide.Folder,
             };
         }
 
@@ -116,7 +117,32 @@ namespace Cts.Cli
                 : newItem.Declaration;
             text = ReplacePart(text, oldItem.Declaration, declaration, oldItem.DeclarationLine, newline);
             text = ReplacePart(text, oldItem.Implementation, newItem.Implementation, oldItem.ImplementationLine, newline);
+            text = ReplacePragma(text, oldItem, newItem, newline);
             stamps.Write(full, new UTF8Encoding(bom).GetBytes(text));
+        }
+
+        // The cts pragma line above an object's header as *newItem* has it: its
+        // settings, type and folder; an action's rides on its declaration.
+        static string ReplacePragma(string file, StViewObject oldItem, StViewObject newItem, string newline)
+        {
+            var pragma = StPragma.Format(newItem.TypeGuid, newItem.Settings, newItem.Folder);
+            if (pragma == StPragma.Format(oldItem.TypeGuid, oldItem.Settings, oldItem.Folder)) return file;
+            var lines = StText.Lf(file).Split('\n').ToList();
+            var name = oldItem.Path.Last();
+            var header = oldItem.Kind == "ACTION"
+                ? lines.FindIndex(line => Regex.IsMatch(line, @"^\s*ACTION\s+" + Regex.Escape(name) + @"\s*:", RegexOptions.IgnoreCase))
+                : (oldItem.DeclarationLine ?? 0) - 1;
+            if (header < 0 || header >= lines.Count) return file;
+            var above = header - 1;
+            while (above >= 0 && lines[above].Trim().Length == 0) above--;
+            if (above >= 0 && StPragma.Is(lines[above]))
+            {
+                if (pragma == null) lines.RemoveAt(above);
+                else lines[above] = pragma;
+            }
+            else if (pragma != null) lines.Insert(header, pragma);
+            var replaced = string.Join("\n", lines);
+            return newline == "\n" ? replaced : replaced.Replace("\n", newline);
         }
 
         static string ReplacePart(string file, string oldPart, string newPart, int? firstLine, string newline)
