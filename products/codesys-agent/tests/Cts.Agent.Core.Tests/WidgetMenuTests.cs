@@ -12,6 +12,15 @@ namespace Cts.Agent.Tests
         static readonly string[] Deny = DenyRules.DefaultDeny;
 
         [Fact]
+        public void AnImportThatKeptIdeEditsSaysShiftOneGivesTheIdeTheDisk()
+        {
+            Assert.Equal("ok import text=0 native=0 ide_changed=2 s=0.7 saved=false\nkept 2 IDE edit(s); Shift+1: the disk wins",
+                WidgetMenu.Footer("ok import text=0 native=0 ide_changed=2 s=0.7 saved=false"));
+            Assert.Equal("ok import text=1 native=0 s=0.7 saved=false", WidgetMenu.Footer("ok import text=1 native=0 s=0.7 saved=false"));
+            Assert.Equal("ok compare ide_changed=2", WidgetMenu.Footer("ok compare ide_changed=2"));
+        }
+
+        [Fact]
         public void NoProjectOffersKnownProjectsFilePickerSettingsAndUsefulMoreRows()
         {
             var known = new List<KnownProject>

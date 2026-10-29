@@ -2245,6 +2245,22 @@ namespace Cts.Agent.Tests
             Assert.All(files, file => Assert.DoesNotContain(file, baseFiles));
         }
 
+        // An import leaves an object the IDE deleted since the last sync as it is
+        // and names it: what the IDE did is not lost, and --force is the way back.
+        [Fact]
+        public void ImportNamesAnObjectTheIdeDeletedAndLeavesItDeleted()
+        {
+            var file = Path.Combine(ViewFolder.Of(_root), "PLC_Stabur/Plc Logic/Application/GVL_Fixture.st");
+            var result = ImportCommand.Execute(ImportCall(null, IdeWithout("GVL_Fixture"), ideStamp: "session:changed"));
+            Assert.True(File.Exists(file));
+            var kept = ((IEnumerable<IDictionary<string, object>>)result["ide_changed"]).Single();
+            Assert.Equal("GVL_Fixture", kept["name"]);
+            var answer = ImportCommand.Build(result);
+            Assert.Equal(1, answer.Pairs.Single(pair => pair.Key == "ide_changed").Value);
+            Assert.Contains("ide_changed GVL_Fixture PLC_Stabur/Plc Logic/Application/GVL_Fixture.st: deleted in the IDE", answer.Details);
+            Assert.Contains(answer.Details, line => line.Contains("cts import --force creates them again"));
+        }
+
         [Fact]
         public void SyncRemovesAFolderTheIdeDeletedWithItsFiles()
         {

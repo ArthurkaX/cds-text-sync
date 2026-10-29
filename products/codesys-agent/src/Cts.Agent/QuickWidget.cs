@@ -437,7 +437,7 @@ namespace Cts.Agent
                     Open().Finish(true, line);
                     return;
                 }
-                view.Finish(ok, line);
+                view.Finish(ok, WidgetMenu.Footer(line));
                 if (!ok) OfferNext(view, line);
                 if (WidgetMenu.MovesState(args)) ReadState(view, folder);
                 // A commit moves the branch away from its upstream, a pull or a push towards it.

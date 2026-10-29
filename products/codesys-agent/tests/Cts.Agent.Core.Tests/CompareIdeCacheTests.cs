@@ -87,7 +87,7 @@ namespace Cts.Agent.Core.Tests
             var deleted = Row("Screen", "deleted in the IDE; cts sync removes the file");
 
             var onlyDeleted = Build(deleted);
-            Assert.Equal(new[] { "ide_changed Screen Screen.xml: deleted in the IDE", "Next: cts sync removes the files of the objects deleted in the IDE (git keeps them)" }, onlyDeleted.Details);
+            Assert.Equal(new[] { "ide_changed Screen Screen.xml: deleted in the IDE", "Next: cts sync removes the files of the objects deleted in the IDE (git keeps them); cts import --force creates them again from the files" }, onlyDeleted.Details);
 
             var both = Build(deleted, Row("Manager", "changed in the IDE; cts sync writes it to disk"));
             Assert.Equal("ide_changed Manager Manager.xml", both.Details[1]);

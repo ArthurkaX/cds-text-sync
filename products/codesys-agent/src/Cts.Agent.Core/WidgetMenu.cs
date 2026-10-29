@@ -257,6 +257,15 @@ namespace Cts.Agent
             return counts("ide_changed") + counts("both");
         }
 
+        // The footer for a run's *line*: an import that left objects only the
+        // IDE changed as the IDE has them says Shift+1 gives the IDE the disk's text.
+        public static string Footer(string line)
+        {
+            if (line == null || !(line.StartsWith("ok import", StringComparison.Ordinal) || line.StartsWith("partial import", StringComparison.Ordinal))) return line;
+            var kept = Counts(line)("ide_changed");
+            return kept > 0 ? line + "\nkept " + kept.ToString(CultureInfo.InvariantCulture) + " IDE edit(s); Shift+1: the disk wins" : line;
+        }
+
         //: The commit message's prompt when the IDE holds *edits* the disk lacks; "" without any.
         public static string CommitNote(int edits)
             => edits > 0 ? "the IDE has " + edits.ToString(CultureInfo.InvariantCulture) + " edit(s) not on disk, 2 IDE → Disk takes them; " : "";

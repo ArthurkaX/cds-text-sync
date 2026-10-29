@@ -32,7 +32,7 @@ namespace Cts.Cli
         internal static string IdeChangedNext(ICollection<IDictionary<string, object>> items)
         {
             var deleted = items.Count(item => Convert.ToString(item.ContainsKey("reason") ? item["reason"] : "").StartsWith("deleted in the IDE", StringComparison.Ordinal));
-            if (deleted == items.Count) return "Next: cts sync removes the files of the objects deleted in the IDE (git keeps them)";
+            if (deleted == items.Count) return "Next: cts sync removes the files of the objects deleted in the IDE (git keeps them); cts import --force creates them again from the files";
             return "Next: cts read-object NAME --body shows the IDE's text of one; if the IDE's edits are right, cts sync writes them into their files (edit the files after that); if the files are right, cts import --force gives the IDE their text and the folder stays the source (the IDE's text is kept in refs/cts/overwritten)"
                 + (deleted > 0 ? "; cts sync also removes the files of the ones deleted in the IDE" : "");
         }

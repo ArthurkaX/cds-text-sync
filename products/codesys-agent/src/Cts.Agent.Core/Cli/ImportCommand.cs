@@ -57,6 +57,8 @@ namespace Cts.Cli
             if (renamed.Count > 0) output.Add("renamed", renamed.Count);
             foreach (var key in new[] { "merged", "to_disk", "overwritten_ide_changes", "changed_meanwhile" })
                 if (Values(data, key).Count > 0) output.Add(key == "overwritten_ide_changes" ? "overwritten" : key, Values(data, key).Count);
+            var ideKept = Items(data.TryGetValue("ide_changed", out var rawKept) ? rawKept : null);
+            if (ideKept.Count > 0) output.Add("ide_changed", ideKept.Count);
             if (data.TryGetValue("timings", out var timings) && timings is IDictionary<string, object> times && times.TryGetValue("total_s", out var seconds)) output.Add("s", seconds);
             output.Add("saved", data.ContainsKey("saved") && Equals(data["saved"], true));
             // A sync names the side each change came from.
@@ -69,6 +71,8 @@ namespace Cts.Cli
                         + (key == "conflicts" && item is IDictionary<string, object> conflict && conflict.ContainsKey("path") ? " " + conflict["path"] : ""));
             foreach (var library in Items(data.ContainsKey("libraries_not_loaded") ? data["libraries_not_loaded"] : null))
                 output.Detail("library not loaded " + library["name"] + ": " + library["error"] + " (Library Repository: is it installed?)");
+            foreach (var item in ideKept) output.Detail(ComparePlanner.IdeChangedLine(item));
+            if (ideKept.Count > 0) output.Detail(ComparePlanner.IdeChangedNext(ideKept));
             foreach (var path in Values(data, "changed_meanwhile")) output.Detail(ChangedMeanwhile(path));
             if (data.TryGetValue("partial_reason", out var partialReason)) output.Detail(partialReason);
             if (data.TryGetValue("save_dialog", out var saveDialog)) output.Detail("not saved yet: " + saveDialog + "; the save finishes once it is answered (cts dialog answer)");

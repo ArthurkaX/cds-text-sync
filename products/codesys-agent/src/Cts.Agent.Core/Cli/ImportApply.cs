@@ -490,6 +490,10 @@ namespace Cts.Cli
                 // The .xml beside a .st the IDE needs no more removes settings, not the object.
                 var ideRemoved = _work.Changed.Where(record => ComparePlanner.IdeDeleted(record) && !BesideText(record.Path, _work.View)).Select(record => record.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 if (_work.Syncing && ideRemoved.Count > 0) output["ide_removed"] = ideRemoved;
+                // What only the IDE changed stays as the IDE has it: the run names it, as compare does.
+                var ideKept = _work.Syncing || _call.Options.Params.ContainsKey("force") ? new List<IDictionary<string, object>>()
+                    : _work.Changed.Where(record => record.Category == "ide_changed").Select(record => record.Answer()).ToList();
+                if (ideKept.Count > 0) output["ide_changed"] = ideKept;
                 output["merged"] = _work.Merged;
                 if (_work.Conflicts.Count > 0)
                 {
