@@ -145,6 +145,22 @@ namespace Cts.Agent.Tests
 
         internal static (int code, string output, string error) RunLocal(params string[] args) => Run(new FakeHost(), args);
 
+        internal static (int code, string output, string error) RunTrendPullWithFailingFetch(string workspace, Action<string> fetch)
+        {
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, workspace, (method, parameters) =>
+            {
+                if (method == "vars.read") return new Dictionary<string, object> { { "logged_in", true }, { "results", new object[] { new Dictionary<string, object> { { "ok", true }, { "text", "FALSE" } } } } };
+                if (method == "plc.fetch")
+                {
+                    fetch((string)parameters["output"]);
+                    throw new AgentException("transport", "fetch failed");
+                }
+                throw new AgentException("protocol", "unexpected method " + method);
+            });
+            return Run(host, "trend", "pull", "--workspace", workspace);
+        }
+
         static (int code, string output, string error) Run(FakeHost host, params string[] args)
         {
             var output = new StringWriter();

@@ -216,45 +216,48 @@ namespace Cts.Cli
                     : new CliFailure("trend-pull", "no trend", why + " (cts trend set, then " + Next + ")", "cts trend", 1);
             var recording = string.Equals(Convert.ToString(gate["value"], CultureInfo.InvariantCulture), "TRUE", StringComparison.OrdinalIgnoreCase);
             var copy = Path.Combine(Path.GetTempPath(), "cts-trend-" + Guid.NewGuid().ToString("N") + ".sqlite");
-            var paused = Stopwatch.StartNew();
             try
             {
-                if (recording)
+                var paused = Stopwatch.StartNew();
+                try
                 {
-                    Switched(call, false, "trend-pull");
-                    Thread.Sleep(settings.StoreMs + SettleMs);
+                    if (recording)
+                    {
+                        Switched(call, false, "trend-pull");
+                        Thread.Sleep(settings.StoreMs + SettleMs);
+                    }
+                    var file = "PlcLogic/trend/" + trend.App + "." + TrendFiles.Name + ".1.sqlite";
+                    try { call.Call("plc.fetch", new Dictionary<string, object> { { "file", file }, { "output", copy } }); }
+                    catch (CliFailure error) when (error.Declined)
+                    {
+                        call.Call("plc.fetch", new Dictionary<string, object> { { "file", file }, { "output", copy } });
+                    }
                 }
-                var file = "PlcLogic/trend/" + trend.App + "." + TrendFiles.Name + ".1.sqlite";
-                try { call.Call("plc.fetch", new Dictionary<string, object> { { "file", file }, { "output", copy } }); }
-                catch (CliFailure error) when (error.Declined)
+                finally
                 {
-                    call.Call("plc.fetch", new Dictionary<string, object> { { "file", file }, { "output", copy } });
+                    if (recording) Switched(call, true, "trend-pull");
+                    paused.Stop();
                 }
+                var local = TrendData.LocalFile(trend.Root, trend.App);
+                Directory.CreateDirectory(Path.GetDirectoryName(local));
+                TrendData.Merged merged;
+                try { merged = TrendData.Merge(copy, local, TrendFiles.Gate); }
+                catch (InvalidOperationException error) { throw new CliFailure("trend-pull", "unreadable", "the PLC's trend file: " + error.Message, "cts trend pull", 1); }
+                var data = new Dictionary<string, object>
+                {
+                    ["app"] = trend.App, ["rows"] = merged.Rows, ["gaps"] = merged.Gaps, ["added"] = merged.Added, ["recording"] = recording,
+                    ["variables"] = merged.Variables.Cast<object>().ToList(), ["database"] = local,
+                };
+                if (merged.Rows > 0)
+                {
+                    data["gaps_pct"] = Math.Round(100.0 * merged.Gaps / merged.Rows, 1);
+                    data["from"] = Moment(merged.From.Value);
+                    data["to"] = Moment(merged.To.Value);
+                }
+                if (recording) data["paused_s"] = Math.Round(paused.Elapsed.TotalSeconds, 1);
+                return data;
             }
-            finally
-            {
-                if (recording) Switched(call, true, "trend-pull");
-                paused.Stop();
-            }
-            var local = TrendData.LocalFile(trend.Root, trend.App);
-            Directory.CreateDirectory(Path.GetDirectoryName(local));
-            TrendData.Merged merged;
-            try { merged = TrendData.Merge(copy, local, TrendFiles.Gate); }
-            catch (InvalidOperationException error) { throw new CliFailure("trend-pull", "unreadable", "the PLC's trend file: " + error.Message, "cts trend pull", 1); }
             finally { File.Delete(copy); }
-            var data = new Dictionary<string, object>
-            {
-                ["app"] = trend.App, ["rows"] = merged.Rows, ["gaps"] = merged.Gaps, ["added"] = merged.Added, ["recording"] = recording,
-                ["variables"] = merged.Variables.Cast<object>().ToList(), ["database"] = local,
-            };
-            if (merged.Rows > 0)
-            {
-                data["gaps_pct"] = Math.Round(100.0 * merged.Gaps / merged.Rows, 1);
-                data["from"] = Moment(merged.From.Value);
-                data["to"] = Moment(merged.To.Value);
-            }
-            if (recording) data["paused_s"] = Math.Round(paused.Elapsed.TotalSeconds, 1);
-            return data;
         }
 
         static string Moment(long us) => new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddTicks(us * 10).ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);

@@ -99,6 +99,22 @@ namespace Cts.Agent.Tests
             Assert.False(File.Exists(Recording));
         }
 
+        [Fact]
+        public void Failed_fetch_removes_its_partial_temporary_database()
+        {
+            Trend("trend", "set", "GVL_Bench.rLevel");
+            string fetched = null;
+            var result = CliTests.RunTrendPullWithFailingFetch(_root, path =>
+            {
+                fetched = path;
+                File.WriteAllBytes(path, new byte[] { 1, 2, 3 });
+            });
+
+            Assert.NotEqual(0, result.code);
+            Assert.NotNull(fetched);
+            Assert.False(File.Exists(fetched));
+        }
+
         static string GuidOf(string xml, string name) => Regex.Match(xml, "<Single Name=\"" + name + "\" Type=\"System.Guid\">([^<]*)<").Groups[1].Value;
 
         static string[] Guids(string xml) => Regex.Matches(xml, "<Single Name=\"(?!TypeGuid\")[^\"]*\" Type=\"System.Guid\">([^<]*)<").Cast<Match>()
