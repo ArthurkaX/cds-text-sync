@@ -1089,6 +1089,54 @@ def scenario_new_interface_import(ctx):
     return "same={0}->{1} build-ok export-st".format(before, report["same"])
 
 
+def scenario_new_interface_polymorphic(ctx):
+    """An interface with a method and a property, and a function block that
+    implements it, all written by `cts new`: they import, build, and the
+    export writes back the very text `cts new` wrote."""
+    for args in (("interface", "I_LiveDev"),
+                 ("method", "I_LiveDev.Read", "--return-type", "BOOL", "--text", "VAR_INPUT nAddr : INT; END_VAR"),
+                 ("property", "I_LiveDev.Value", "--type", "INT"),
+                 ("pou", "FB_LiveDev", "--kind", "function-block", "--implements", "I_LiveDev",
+                  "--text", "VAR nValue : INT; END_VAR"),
+                 ("method", "FB_LiveDev.Read", "--return-type", "BOOL",
+                  "--text", "VAR_INPUT nAddr : INT; END_VAR Read := nAddr = nValue;"),
+                 ("property", "FB_LiveDev.Value", "--type", "INT",
+                  "--get-text", "Value := nValue;", "--set-text", "nValue := Value;")):
+        ctx.cts_ok("new", *args, "--sync-folder", ctx.root)
+    # Deleting an owner removes its members; the block goes before the
+    # interface it implements.
+    ctx.cleanup_hooks.append(lambda: _delete_in_ide("FB_LiveDev"))
+    ctx.cleanup_hooks.append(lambda: _delete_in_ide("I_LiveDev"))
+    # cts new puts both next to FB_Valve, in the Application folder.
+    folder = os.path.dirname(ctx.st_path("FB_Valve"))
+    written = {}
+    for name in ("I_LiveDev", "FB_LiveDev"):
+        with open(os.path.join(folder, name + ".st"), encoding="utf-8") as handle:
+            written[name] = handle.read()
+    assert "\nPROPERTY Value : INT\nEND_PROPERTY\n" in written["I_LiveDev"], written["I_LiveDev"]
+    assert written["FB_LiveDev"].startswith("FUNCTION_BLOCK FB_LiveDev IMPLEMENTS I_LiveDev\n"), written["FB_LiveDev"]
+
+    code, out, err = ctx.cts_ok("import")
+    line = ctx.verdict(out)
+    assert code == 0 and line.startswith("ok "), line
+    for name in ("I_LiveDev", "FB_LiveDev", "Read", "Value"):
+        assert name in out, "the verdict did not name {0}: {1!r}".format(name, out[:400])
+
+    # Nothing calls the block: only --all-objects checks that it implements
+    # every member of the interface.
+    build = ctx.json_of(ctx.cts_ok("build", "--all-objects", "--json")[1])
+    assert build["errors"] == 0, build
+
+    ctx.cts_ok("export")
+    for name, text in written.items():
+        with open(os.path.join(folder, name + ".st"), encoding="utf-8") as handle:
+            exported = handle.read()
+        assert exported == text, "export rewrote {0}.st:\n{1}\n---\n{2}".format(name, text, exported)
+    report = ctx.text_status()
+    assert not report["changed"] and not report["disk_only"] and not report["ide_only"], report
+    return "same={0} build-ok export-equal".format(report["same"])
+
+
 def scenario_new_gvl_import(ctx):
     """A new GVL is created through the agent, and compare then agrees."""
     before = ctx.text_status()["same"]
@@ -2075,6 +2123,7 @@ SCENARIOS = [
     ("new_dut_import", scenario_new_dut_import),
     ("new_member_import", scenario_new_member_import),
     ("new_interface_import", scenario_new_interface_import),
+    ("new_interface_polymorphic", scenario_new_interface_polymorphic),
     ("new_gvl_import", scenario_new_gvl_import),
     ("new_gvl_import_twice", scenario_new_gvl_import_twice),
     ("new_folder_import", scenario_new_folder_import),
