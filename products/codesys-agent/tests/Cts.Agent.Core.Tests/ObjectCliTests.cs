@@ -103,6 +103,68 @@ namespace Cts.Agent.Tests
             Assert.Equal("VAR_INPUT a : INT; (* the input *) END_VAR", NewObjectCommand.Split("VAR_INPUT a : INT; (* the input *) END_VAR F := a;").Key);
         }
 
+        [Fact]
+        public void New_writes_an_interface_and_its_members_as_the_export_writes_them()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-new-itf-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "project-view", "Application"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "cds-text-sync.json"), "{}");
+                var result = Create(root, "interface", "I_Dev");
+                Assert.Equal("6654496c-404d-479a-aad2-8551054e5f1e", result["type_guid"]);
+                Assert.Contains("--implements I_Dev", (string)result["hint"]);
+                Create(root, "method", "I_Dev.Read", "--return-type", "BOOL", "--text", "VAR_INPUT nAddr : INT; END_VAR");
+                var property = Create(root, "property", "I_Dev.Value", "--type", "INT");
+                Assert.Contains("cts new property FB.Value", (string)property["hint"]);
+                // The export's text of an interface property has no accessors.
+                Assert.Equal("INTERFACE I_Dev\nEND_INTERFACE\n\nMETHOD Read : BOOL\nVAR_INPUT\n\tnAddr : INT;\nEND_VAR\nEND_METHOD\n\nPROPERTY Value : INT\nEND_PROPERTY\n",
+                    File.ReadAllText(Path.Combine(root, "project-view", "Application", "I_Dev.st")));
+                Create(root, "interface", "I_Dev2", "--extends", "I_Dev,I_Other");
+                Assert.Equal("INTERFACE I_Dev2 EXTENDS I_Dev, I_Other\nEND_INTERFACE\n", File.ReadAllText(Path.Combine(root, "project-view", "Application", "I_Dev2.st")));
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        [Fact]
+        public void New_writes_a_function_block_that_extends_and_implements()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-new-fb-itf-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "project-view", "Application"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "cds-text-sync.json"), "{}");
+                var result = Create(root, "pou", "FB_Dev", "--kind", "function-block", "--extends", "FB_Base", "--implements", "I_A, I_B");
+                Assert.Equal("FUNCTION_BLOCK FB_Dev EXTENDS FB_Base IMPLEMENTS I_A, I_B\nVAR\nEND_VAR\n// --- implementation ---\nEND_FUNCTION_BLOCK\n",
+                    File.ReadAllText(Path.Combine(root, "project-view", "Application", "FB_Dev.st")));
+                Assert.Contains("cts new method FB_Dev.", (string)result["hint"]);
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        [Fact]
+        public void New_refuses_extends_implements_and_bodies_where_they_do_not_belong()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-new-itf-refuse-test-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "project-view", "Application"));
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "cds-text-sync.json"), "{}");
+                string Refusal(params string[] args) => Assert.Throws<CliFailure>(() => Create(root, args[0], args[1], args.Skip(2).ToArray())).Message;
+                Assert.Contains("--implements is for a function block", Refusal("interface", "I_X", "--implements", "I_A"));
+                Assert.Contains("--implements is for a function block", Refusal("pou", "P_X", "--kind", "program", "--implements", "I_A"));
+                Assert.Contains("--extends is for a function block or an interface", Refusal("dut", "ST_X", "--kind", "struct", "--extends", "ST_A"));
+                Assert.Contains("--extends is for a function block or an interface", Refusal("gvl", "GVL_X", "--extends", "GVL_A"));
+                Assert.Contains("extends one function block", Refusal("pou", "FB_X", "--kind", "function-block", "--extends", "FB_A,FB_B"));
+                Assert.Contains("invalid name in --implements", Refusal("pou", "FB_X", "--kind", "function-block", "--implements", "I_A;"));
+                Assert.Contains("an interface has no body", Refusal("interface", "I_X", "--text", "x := 1;"));
+                Create(root, "interface", "I_X");
+                Assert.Contains("no GET or SET body", Refusal("property", "I_X.P", "--type", "INT", "--get-text", "P := 1;"));
+                Assert.Contains("an interface has no actions", Refusal("action", "I_X.A_Run", "--text", "x := 1;"));
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
         static IDictionary<string, object> Create(string root, string kind, string name, params string[] extra)
         {
             var args = new List<string> { "new", kind, name, "--sync-folder", root };

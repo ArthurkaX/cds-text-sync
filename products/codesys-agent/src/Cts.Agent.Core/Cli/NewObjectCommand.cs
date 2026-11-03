@@ -24,8 +24,10 @@ namespace Cts.Cli
             CliOption.Text("--language", "language", "LANGUAGE", "Text language (st)"),
             CliOption.Text("--get-text", "get_text", "TEXT", "Property GET body"),
             CliOption.Text("--set-text", "set_text", "TEXT", "Property SET body"),
+            CliOption.Text("--extends", "extends", "NAME[,NAME]", "The function block a function block extends, or the interfaces an interface extends"),
+            CliOption.Text("--implements", "implements", "NAME[,NAME]", "The interfaces a function block implements"),
         };
-        static readonly string[] Kinds = { "gvl", "pou", "dut", "method", "action", "property" };
+        static readonly string[] Kinds = { "gvl", "pou", "dut", "interface", "method", "action", "property" };
 
         internal static IDictionary<string, object> Execute(CliOptions o, string work)
         {
@@ -55,9 +57,18 @@ namespace Cts.Cli
             if (member) { var parts = name.Split('.'); if (parts.Length != 2) throw Refuse("a member name must be <POU>.<Member>"); owner = parts[0]; objectName = parts[1]; }
             if (!Regex.IsMatch(objectName, "^[A-Za-z_][A-Za-z0-9_]*$") || Regex.IsMatch(objectName, "^(PROGRAM|FUNCTION|FUNCTION_BLOCK|TYPE|VAR|VAR_GLOBAL|END_VAR)$", RegexOptions.IgnoreCase))
                 throw Refuse("invalid or reserved IEC identifier: " + objectName);
-            if (!Kinds.Contains(kind)) throw Refuse("kind must be gvl, pou, dut, method, action or property");
+            if (!Kinds.Contains(kind)) throw Refuse("kind must be gvl, pou, dut, interface, method, action or property");
             if (kind == "pou" && !new[] { "program", "function", "function-block" }.Contains(o.Text("kind", ""))) throw Refuse("a POU needs --kind program, function or function-block");
             if (kind == "dut" && !new[] { "struct", "union", "enum", "alias" }.Contains(o.Text("kind", ""))) throw Refuse("a DUT needs --kind struct, union, enum or alias");
+            var extends = Names(o, "extends");
+            var implements = Names(o, "implements");
+            var functionBlock = kind == "pou" && o.Text("kind", "") == "function-block";
+            if (implements.Length > 0 && !functionBlock) throw Refuse("--implements is for a function block (cts new pou NAME --kind function-block)");
+            if (extends.Length > 0 && !functionBlock && kind != "interface") throw Refuse("--extends is for a function block or an interface");
+            if (functionBlock && extends.Contains(",")) throw Refuse("a function block extends one function block");
+            if (kind == "interface" && body.Length > 0) throw Refuse("an interface has no body; add its members with cts new method|property " + objectName + ".<Member>");
+            // The header's inheritance as CODESYS writes it: EXTENDS before IMPLEMENTS.
+            var heritage = (extends.Length == 0 ? "" : " EXTENDS " + extends) + (implements.Length == 0 ? "" : " IMPLEMENTS " + implements);
             if (member && o.Text("parent", "").Length > 0) throw Refuse("a member goes into its POU's file; --parent is not used");
             if (o.Text("language", "").Length > 0 && o.Text("language", "") != "st") throw Refuse("only Structured Text is supported (--language st)");
             var relative = member ? owner + ".st" : (parent.Length == 0 ? "" : parent + "/") + objectName + ".st";
@@ -73,16 +84,21 @@ namespace Cts.Cli
                 throw Refuse("object already exists in " + parent + ": " + objectName);
             string content;
             string reportedBody;
+            var isInterface = false;
             if (member)
             {
                 if (!File.Exists(path)) throw Refuse("owner POU file not found: " + path);
                 var old = File.ReadAllText(path, Encoding.UTF8);
                 if (Regex.IsMatch(old, @"\b" + Regex.Escape(objectName) + @"\b", RegexOptions.IgnoreCase)) throw Refuse("object already exists: " + name);
                 var ret = o.Text("return_type", "");
-                var isInterface = Regex.IsMatch(old, @"^\s*INTERFACE\b", RegexOptions.IgnoreCase);
+                isInterface = Regex.IsMatch(old, @"^\s*INTERFACE\b", RegexOptions.IgnoreCase);
+                if (isInterface && kind == "action") throw Refuse("an interface has no actions; a function block that implements " + owner + " can have them");
+                if (isInterface && kind == "property" && o.Text("get_text", "") + o.Text("set_text", "") != "") throw Refuse("an interface property has no GET or SET body; the function blocks that implement " + owner + " hold them");
                 var methodParts = Split(body);
                 content = kind == "method" ? "METHOD " + objectName + " : " + (ret.Length == 0 ? "BOOL" : ret) + (methodParts.Key.Length == 0 ? "" : "\n" + methodParts.Key) + (isInterface ? "\nEND_METHOD" : "\n" + StPragma.ImplementationMarker + (methodParts.Value.Length == 0 ? "" : "\n" + methodParts.Value) + "\nEND_METHOD")
                     : kind == "action" ? "ACTION " + objectName + ":" + (body.Length == 0 ? "" : "\n" + body.Trim('\n')) + "\nEND_ACTION"
+                    // An interface property's accessors have no text: the export writes none.
+                    : isInterface ? "PROPERTY " + objectName + " : " + (ret.Length == 0 ? "BOOL" : ret) + "\nEND_PROPERTY"
                     : "PROPERTY " + objectName + " : " + (ret.Length == 0 ? "BOOL" : ret) + "\nGET\n" + StPragma.ImplementationMarker + (o.Text("get_text", "").Length == 0 ? "" : "\n" + o.Text("get_text", "").Trim('\n')) + "\nEND_GET\nSET\n" + StPragma.ImplementationMarker + (o.Text("set_text", "").Length == 0 ? "" : "\n" + o.Text("set_text", "").Trim('\n')) + "\nEND_SET\nEND_PROPERTY";
                 content = Aligned(content);
                 reportedBody = content;
@@ -93,20 +109,24 @@ namespace Cts.Cli
             {
                 if (File.Exists(path)) throw Refuse("object already exists: " + path);
                 if (kind == "gvl") content = Regex.IsMatch(body, @"^\s*VAR_GLOBAL\b", RegexOptions.IgnoreCase) ? body.TrimEnd('\n') + "\n" : "VAR_GLOBAL\n" + string.Join("\n", body.Split('\n').Where(s => s.Trim().Length > 0).Select(s => "    " + s.Trim())) + "\nEND_VAR\n";
-                else if (kind == "pou") { var pk = o.Text("kind", ""); var head = pk == "function" ? "FUNCTION " + objectName + " : " + (o.Text("return_type", "").Length == 0 ? "BOOL" : o.Text("return_type", "")) : pk == "function-block" ? "FUNCTION_BLOCK " + objectName : "PROGRAM " + objectName; var end = pk == "function" ? "END_FUNCTION" : pk == "function-block" ? "END_FUNCTION_BLOCK" : "END_PROGRAM"; var parts = Split(body); content = head + "\n" + (parts.Key.Length == 0 ? "VAR\nEND_VAR" : parts.Key) + "\n" + StPragma.ImplementationMarker + (parts.Value.Length == 0 ? "" : "\n" + parts.Value) + "\n" + end + "\n"; }
+                else if (kind == "pou") { var pk = o.Text("kind", ""); var head = pk == "function" ? "FUNCTION " + objectName + " : " + (o.Text("return_type", "").Length == 0 ? "BOOL" : o.Text("return_type", "")) : pk == "function-block" ? "FUNCTION_BLOCK " + objectName + heritage : "PROGRAM " + objectName; var end = pk == "function" ? "END_FUNCTION" : pk == "function-block" ? "END_FUNCTION_BLOCK" : "END_PROGRAM"; var parts = Split(body); content = head + "\n" + (parts.Key.Length == 0 ? "VAR\nEND_VAR" : parts.Key) + "\n" + StPragma.ImplementationMarker + (parts.Value.Length == 0 ? "" : "\n" + parts.Value) + "\n" + end + "\n"; }
+                else if (kind == "interface") content = "INTERFACE " + objectName + heritage + "\nEND_INTERFACE\n";
                 else { var dk = o.Text("kind", ""); if (dk == "alias" && string.IsNullOrWhiteSpace(o.Text("base_type", ""))) throw Refuse("an ALIAS needs --base-type"); content = dk == "alias" ? "TYPE " + objectName + " : " + o.Text("base_type", "") + ";\nEND_TYPE\n" : dk == "enum" && body.Trim().Length == 0 ? "TYPE " + objectName + " :\n(\n    Member1 := 0\n);\nEND_TYPE\n" : "TYPE " + objectName + " :\n" + (dk == "enum" ? "(\n" + body + "\n);" : dk == "union" ? "UNION\n" + body + "\nEND_UNION" : "STRUCT\n" + body + "\nEND_STRUCT") + "\nEND_TYPE\n"; }
                 content = Aligned(content);
                 reportedBody = content;
                 File.WriteAllText(path, content, new UTF8Encoding(false));
             }
             var hint = member
-                ? (kind == "property" ? "Read or write " + owner + "." + objectName + " from code the task reaches, or the PLC never runs its accessors." : "Call " + owner + "." + objectName + "() from code the task reaches, or the PLC never runs it.")
-                : parent.Length == 0 ? "At the project root it is shared by every application: an application gets it once code its task calls uses it; to test it, call it from the test program and run cts test (cts guide tests)."
+                ? isInterface ? "Each function block that implements " + owner + " needs its own " + objectName + " (cts new " + kind + " FB." + objectName + "), or the build fails (C0087)."
+                : (kind == "property" ? "Read or write " + owner + "." + objectName + " from code the task reaches, or the PLC never runs its accessors." : "Call " + owner + "." + objectName + "() from code the task reaches, or the PLC never runs it.")
+                : kind == "interface" ? "Add its members with cts new method|property " + objectName + ".<Member>; a function block takes it with cts new pou FB --kind function-block --implements " + objectName + "."
+                : (implements.Length == 0 ? "" : "Each method and property of " + implements + " needs an implementation in " + objectName + " (cts new method " + objectName + ".<Method>, cts new property " + objectName + ".<Property>), or the build fails (C0087). ")
+                + (parent.Length == 0 ? "At the project root it is shared by every application: an application gets it once code its task calls uses it; to test it, call it from the test program and run cts test (cts guide tests)."
                 : kind == "dut" ? "Reference it from a variable in code the task calls, or the PLC never gets it."
-                : "Reference it from a POU the task calls, or the PLC never gets it (for a GVL, add e.g. " + objectName + ".x; to MAIN).";
+                : "Reference it from a POU the task calls, or the PLC never gets it (for a GVL, add e.g. " + objectName + ".x; to MAIN).");
             var result = new Dictionary<string, object> {
                 { "kind", kind }, { "name", objectName }, { "parent", parent }, { "view_root", Path.GetFullPath(view) },
-                { "path", relative }, { "files", new List<string> { path } }, { "type_guid", TypeKinds.All.TypeGuid(kind) },
+                { "path", relative }, { "files", new List<string> { path } }, { "type_guid", TypeKinds.All.TypeGuid(kind == "interface" ? "itf" : isInterface && kind == "method" ? "itf_method" : kind) },
                 { "bytes", Encoding.UTF8.GetByteCount(reportedBody) }, { "next", new List<string> { "cts compare", "cts import", "cts build --all-objects  # checks it while nothing calls it yet; a plain build leaves it out" } }, { "hint", hint },
             };
             if (member) result["owner"] = owner;
@@ -121,6 +141,15 @@ namespace Cts.Cli
         {
             var marker = content.IndexOf(StPragma.ImplementationMarker, StringComparison.Ordinal);
             return marker < 0 ? StFormatter.Format(content, true) : StFormatter.Format(content.Substring(0, marker), true) + content.Substring(marker);
+        }
+
+        // A comma list of names, as a header writes it: "I_A, I_B".
+        static string Names(CliOptions o, string option)
+        {
+            var names = o.Text(option, "").Split(',').Select(n => n.Trim()).Where(n => n.Length > 0).ToList();
+            var invalid = names.FirstOrDefault(n => !Regex.IsMatch(n, @"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"));
+            if (invalid != null) throw Refuse("invalid name in --" + option + ": " + invalid);
+            return string.Join(", ", names);
         }
 
         internal static Answer Build(IDictionary<string, object> data)

@@ -58,10 +58,12 @@ namespace Cts.Cli
                 Name = "new",
                 Arguments = "KIND NAME",
                 ArgumentLimit = 2,
-                Summary = "Create a textual object in the project view, offline",
-                Description = "Create a GVL, POU, DUT, or POU member in the sync folder's export view. This writes one .st file and does not need the IDE; cts import then creates it in the IDE. KIND is gvl, pou, dut, method, action or property: a POU takes --kind program|function|function-block, a DUT --kind struct|union|enum|alias. Members are named <POU>.<Member>. The object goes into the Application folder unless --parent names another folder; --parent . puts it at the project root, the POUs view, where code every application shares lives (the code a test application tests, cts guide tests).\n\n"
+                Summary = "Create a GVL, POU, DUT, interface or member in the project view, offline",
+                Description = "Create a GVL, POU, DUT, interface, or member in the sync folder's export view. This writes one .st file and does not need the IDE; cts import then creates it in the IDE. KIND is gvl, pou, dut, interface, method, action or property: a POU takes --kind program|function|function-block, a DUT --kind struct|union|enum|alias; a function block takes --extends FB_Base and --implements I_A,I_B, an interface --extends I_A,I_B. Members are named <POU>.<Member> or <Interface>.<Member>; every function block that implements an interface needs each of its methods and properties. The object goes into the Application folder unless --parent names another folder; --parent . puts it at the project root, the POUs view, where code every application shares lives (the code a test application tests, cts guide tests).\n\n"
                     + "  cts new pou F_Lerp --kind function --return-type REAL --parent . --text \"VAR_INPUT a, b, t : REAL; END_VAR F_Lerp := a + (b - a) * t;\"\n"
-                    + "  cts new gvl GVL_Io --text \"xStart : BOOL;\"",
+                    + "  cts new gvl GVL_Io --text \"xStart : BOOL;\"\n"
+                    + "  cts new interface I_Device && cts new method I_Device.Read --return-type BOOL --text \"VAR_INPUT nAddr : INT; END_VAR\"\n"
+                    + "  cts new pou FB_Pump --kind function-block --implements I_Device",
                 Options = NewObjectCommand.Options,
                 LocalExecute = (options, host, work) => NewObjectCommand.Execute(options, work),
                 Build = NewObjectCommand.Build,
