@@ -142,11 +142,14 @@ namespace Cts.Docs
             }).ToList();
         }
 
-        // The project's .st files, each library reference and where it was
-        // found (or why not), and the LibDoc pages read.
+        // The project's .st files, each task with the programs it calls, each
+        // library reference and where it was found (or why not), and the
+        // LibDoc pages read.
         static string Fingerprint(string view, List<LibraryEntry> entries)
         {
             var lines = new List<string>();
+            foreach (var task in ProjectDocs.TaskRoots(view))
+                lines.Add("task\t" + task.Key + "\t" + string.Join(",", task.Value));
             foreach (var path in Directory.EnumerateFiles(view, "*.st", SearchOption.AllDirectories))
             {
                 var relative = path.Substring(view.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace('\\', '/');

@@ -347,6 +347,31 @@ END_ACTION
         }
 
         [Fact]
+        public void Check_goes_stale_when_a_task_calls_another_program()
+        {
+            Project();
+            var sync = Path.Combine(folder, "sync");
+            var out_ = Path.Combine(folder, "bundle");
+            var task = Path.Combine(view, "App", "Task Configuration", "MainTask.xml");
+
+            Assert.Equal(0, CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--out", out_).code);
+            var fresh = CliTests.RunLocal("docs", "--workspace", sync, "--out", out_, "--check");
+            Assert.True(fresh.code == 0, fresh.output);
+            Assert.Contains("state=fresh", fresh.output);
+
+            File.WriteAllText(task, File.ReadAllText(task).Replace("MAIN", "PLC_PRG2"));
+            var stale = CliTests.RunLocal("docs", "--workspace", sync, "--out", out_, "--check");
+            Assert.Equal(1, stale.code);
+            Assert.Contains("state=stale", stale.output);
+
+            Assert.Equal(0, CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--out", out_).code);
+            File.WriteAllText(task, File.ReadAllText(task).Replace("</List></Single>", "</List><Single Name=\"Interval\" Type=\"string\">T#1s</Single></Single>"));
+            var unchanged = CliTests.RunLocal("docs", "--workspace", sync, "--out", out_, "--check");
+            Assert.True(unchanged.code == 0, unchanged.output);
+            Assert.Contains("state=fresh", unchanged.output);
+        }
+
+        [Fact]
         public void Placeholders_resolving_to_one_library_version_share_one_page()
         {
             string Placeholder(string name) => "<Single Type=\"{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}\" Method=\"IArchivable\">"
