@@ -403,8 +403,8 @@ namespace Cts.Cli
         {
             if (!options.Params.ContainsKey(key)) return fallback;
             var text = options.Text(key, "");
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) || seconds <= 0)
-                throw new ArgumentException("--" + key.Replace('_', '-') + " must be a number of seconds greater than zero, not " + text);
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) || !(seconds > 0 && seconds <= CliOptions.MaxTimeoutSeconds))
+                throw new ArgumentException("--" + key.Replace('_', '-') + " must be a number of seconds greater than zero and at most " + CliOptions.MaxTimeoutSeconds.ToString(CultureInfo.InvariantCulture) + ", not " + text);
             return seconds;
         }
 

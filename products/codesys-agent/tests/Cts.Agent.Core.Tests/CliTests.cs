@@ -282,6 +282,8 @@ namespace Cts.Agent.Tests
         {
             Assert.Equal("ping", CliOptions.CommandOf(new[] { "--target", "ide-1", "--json", "ping", "--timeout", "5" }));
             Assert.Equal("status", CliOptions.CommandOf(new[] { "--output", "json", "status" }));
+            Assert.Equal("status", CliOptions.CommandOf(new[] { "--expect-project", "plant", "status" }));
+            Assert.Equal("status", CliOptions.CommandOf(new[] { "--timeout", "5", "status" }));
             Assert.Null(CliOptions.CommandOf(new[] { "--help" }));
         }
 
@@ -705,8 +707,25 @@ namespace Cts.Agent.Tests
             Run(host, "read-log");
             Run(host, "save");
             Run(host, "save", "--timeout", "2.5");
+            Run(host, "--timeout", "5", "save");
 
-            Assert.Equal(new object[] { 10000L, 30000L, 2500L }, seen.Select(p => p["start_timeout_ms"]).ToArray());
+            Assert.Equal(new object[] { 10000L, 30000L, 2500L, 5000L }, seen.Select(p => p["start_timeout_ms"]).ToArray());
+        }
+
+        [Theory]
+        [InlineData("NaN")]
+        [InlineData("Infinity")]
+        [InlineData("-Infinity")]
+        [InlineData("1e300")]
+        [InlineData("0")]
+        [InlineData("-1")]
+        [InlineData("abc")]
+        public void A_bad_global_timeout_is_a_usage_error(string seconds)
+        {
+            var (code, _, error) = RunLocal("--timeout", seconds, "status");
+
+            Assert.Equal(2, code);
+            Assert.Contains("--timeout takes seconds", error);
         }
 
         [Fact]

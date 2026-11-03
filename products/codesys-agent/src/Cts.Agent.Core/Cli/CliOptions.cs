@@ -33,13 +33,16 @@ namespace Cts.Cli
         internal int Number(string key, int fallback)
             => int.TryParse(Text(key), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : fallback;
 
+        // The longest timeout cts takes, in seconds: a day.
+        internal const double MaxTimeoutSeconds = 86400;
+
         // The global flags that take a value; the command's name is the first
         // word that is neither a flag nor such a value.
         static readonly Regex Negative = new Regex(@"^-\d");
 
         static readonly HashSet<string> ValueFlags = new HashSet<string>(StringComparer.Ordinal)
         {
-            "--output", "--target", "--expect-project",
+            "--output", "--target", "--expect-project", "--timeout",
         };
 
         // The command a command line runs, or null (`cts`, `cts --help`).
@@ -123,7 +126,7 @@ namespace Cts.Cli
                     case "--timeout":
                         double seconds;
                         var text = value();
-                        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out seconds) || seconds <= 0)
+                        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out seconds) || !(seconds > 0 && seconds <= MaxTimeoutSeconds))
                             throw Usage(verb, command, "--timeout takes seconds, not " + text);
                         o.Timeout = seconds;
                         break;

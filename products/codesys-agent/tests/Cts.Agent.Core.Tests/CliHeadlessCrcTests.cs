@@ -123,5 +123,17 @@ namespace Cts.Agent.Tests
             Assert.Contains("\"invalid_request\"", output);
             Assert.Contains("--timeout must be a number of seconds", output);
         }
+
+        [Theory]
+        [InlineData("NaN")]
+        [InlineData("Infinity")]
+        [InlineData("1e300")]
+        public void An_unbounded_headless_timeout_is_an_invalid_request(string seconds)
+        {
+            var (code, output, _) = CliTests.RunLocal("plc-crc-headless", "--ip", "192.0.2.4", "--timeout", seconds);
+
+            Assert.Equal(2, code);
+            Assert.Contains("--timeout must be a number of seconds", output);
+        }
     }
 }
