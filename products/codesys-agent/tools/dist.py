@@ -10,8 +10,8 @@ the refreshed files go in a commit of their own after it:
     git commit -m "dist: the build of <commit>" products/codesys-agent/dist
 
 Nothing is copied unless every check passes: the C# tests, DeadSymbols, the
-repository's Python tests (through uv, with requirements-dev.txt) and no
-Cyrillic text in the repository.
+repository's Python tests and Ruff lint (through uv, with requirements-dev.txt)
+and no Cyrillic text in the repository.
 """
 
 import shutil
@@ -44,6 +44,8 @@ def main():
     run(["dotnet", "run", "-c", "Release", "--project", str(AGENT / "tools" / "DeadSymbols")], AGENT)
     run(["uv", "run", "--no-project", "--with-requirements", "requirements-dev.txt",
          "python", "-m", "pytest", "-q", "tests/unit", "-p", "no:cacheprovider"], REPO)
+    run(["uv", "run", "--no-project", "--with-requirements", "requirements-dev.txt",
+         "ruff", "check", "."], REPO)
     cyrillic = subprocess.run(["git", "grep", "-nIP", "[\\x{0400}-\\x{04FF}]"], cwd=REPO, capture_output=True, text=True).stdout
     if cyrillic:
         raise SystemExit("dist not refreshed: Cyrillic text in the repository\n" + cyrillic)
