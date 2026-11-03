@@ -281,7 +281,8 @@ namespace Cts.Agent
                 var name = NameOf(childMeta);
                 if (name != "Get" && name != "Set") continue;
                 string body;
-                if (bodies.TryGetValue(name, out body))
+                // An interface's accessors have no implementation to write.
+                if (bodies.TryGetValue(name, out body) && PartDocument(Prop(_metaObjectIface, childMeta, "Object"), "Implementation") != null)
                     SetObjectText(Id(childGuid), TextEdit.Of(true, "", true, body));
                 accessors.Add(new Dictionary<string, object>
                 {
