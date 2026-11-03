@@ -150,7 +150,7 @@ END_STRUCT
 END_TYPE
 ```
 
-`cts new pou NAME --kind program|function|function-block`, `cts new gvl NAME`, and `cts new dut NAME --kind struct` create these objects for you; `cts new method POU.METHOD` adds a method.
+`cts new pou NAME --kind program|function|function-block`, `cts new gvl NAME`, `cts new dut NAME --kind struct` and `cts new interface NAME` create these objects for you; `cts new method POU.METHOD` adds a method.
 
 An `.st` may start with one cts pragma line, `(* cds-text-sync: TypeGuid="{...}" External CompilerDefines="SIM" *)`: `TypeGuid` pins a type the text does not tell (persistent or task-local variables), and the other words carry the object's settings the text cannot, when not the IDE's default: the build properties `ExcludeFromBuild`, `LinkAlways`, `External`, `EnableSystemCall` (each its bare name when on), `CompilerDefines` and `MemoryReserveForOnlineChange`, and `POULevel`, `SpecialFunc`, `AddAttributeSubsequent`, `ParameterList` and `TaskForWrite` (a task-local GVL's writing task, by its id). `cts import` strips the line from the text and sets each setting the IDE does not have yet through the agent; one the line no longer names goes back to its default. A setting the line cannot hold (a value with a quote), or one cts does not know, keeps an `.xml` beside the `.st` with them. A member in a folder below its POU (a method in `Service members`) has `Folder="Service members"` in the pragma line above it, `Folder="A/B"` for one folder in another; `cts import` makes a folder the POU lacks and moves the member into the folder the line names, or right below the POU when it names none. A folder below a POU with no member in it is not on disk.
 
@@ -267,8 +267,8 @@ are.
 | Read the object tree | `cts project-tree` |
 | Read an object | `cts read-object` |
 | Read an object's content (`.st` or XML) | `cts read-object --name X --body` |
-| Create a GVL, POU or DUT | `cts new gvl\|pou\|dut <Name> [...]` |
-| Create a POU member (method, action, property) | `cts new method\|action\|property <POU>.<Name> [...]` |
+| Create a GVL, POU, DUT or interface | `cts new gvl\|pou\|dut\|interface <Name> [...]` |
+| Create a member (method, action, property) | `cts new method\|action\|property <POU>.<Name> [...]` |
 | Bring disk and IDE text to one state (both ways, merges) | `cts sync` |
 | Lay out the IDE's Structured Text (align declarations, indent code) | `cts fmt [NAME] [--guid G] [--write] [--if-timestamp T]` |
 | Lay out the sync folder's `.st` files, no IDE needed | `cts fmt --disk [NAME] [--write]` |
@@ -360,10 +360,29 @@ from the PLC; skip them if the object is not going to be read.
 ```
 cts new gvl <Name> [--text T | --text-file F] [--parent PATH]
 cts new pou <Name> --kind program|function|function-block [--return-type T]
+    [--extends FB_Base] [--implements I_A,I_B]       # the last two: function block only
 cts new dut <Name> --kind struct|enum|union|alias [--base-type T]
+cts new interface <Name> [--extends I_A,I_B]
 cts new method <POU>.<Name> [--return-type T] [--text T]
 cts new action <POU>.<Name> [--text T]
 cts new property <POU>.<Name> [--type T] [--get-text T] [--set-text T]
+```
+
+An interface holds only declarations: `cts new method I_X.M` writes the
+method's `VAR_INPUT` blocks without a body, `cts new property I_X.P --type T`
+the property without `GET`/`SET` (the export writes it so; `cts import` makes
+both accessors). Every function block that implements the interface needs
+each method and property of the same name, with bodies, or the build fails
+(C0087):
+
+```
+cts new interface I_Device
+cts new method I_Device.Read --return-type BOOL --text 'VAR_INPUT nAddr : INT; END_VAR'
+cts new property I_Device.Value --type INT
+cts new pou FB_Pump --kind function-block --implements I_Device --text 'VAR nValue : INT; END_VAR'
+cts new method FB_Pump.Read --return-type BOOL --text 'VAR_INPUT nAddr : INT; END_VAR Read := nAddr = nValue;'
+cts new property FB_Pump.Value --type INT --get-text 'Value := nValue;' --set-text 'nValue := Value;'
+cts import
 ```
 
 `--text` is used **verbatim** — there is no escape processing. A literal `\n`
@@ -378,7 +397,8 @@ declaration per line.
 | `gvl` — global variable list | yes |
 | `pou` — `PROGRAM`, `FUNCTION`, `FUNCTION_BLOCK` | yes |
 | `dut` — `STRUCT`, `UNION`, `ENUM`, `ALIAS` | yes |
-| methods, actions, properties | yes — `cts new method|action|property <POU>.<Name>` adds a block to the end of `<POU>.st`; the POU must already exist |
+| `interface` — `INTERFACE`, `EXTENDS` other interfaces | yes |
+| methods, actions, properties | yes — `cts new method|action|property <POU>.<Name>` adds a block to the end of `<POU>.st`; the POU (or interface: methods and properties only) must already exist |
 | SFC / FBD / LD (graphical) POUs | **no** — only textual (Structured Text) objects can be created |
 | visualizations, devices, tasks, alarm configs | **no** — export them from the IDE and edit them; `cts new` only authors textual objects |
 
