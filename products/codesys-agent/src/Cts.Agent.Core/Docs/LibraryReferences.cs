@@ -33,7 +33,7 @@ namespace Cts.Docs
         const string RedirectionTable = "PlaceholderRedirectionTable";
         static readonly Regex Resolution = new Regex(@"^\s*([^,]+?),\s*(\*|[0-9][0-9.]*)\s*\(([^()]*?)\)\s*$");
 
-        // The references deduplicated on name and version, first one kept,
+        // The references deduplicated on name, version and vendor, first one kept,
         // in file then document order; gap says why there are none.
         internal static List<LibraryReference> Read(string view, out string gap)
         {
@@ -71,7 +71,7 @@ namespace Cts.Docs
                     var placeholder = Text(item, "PlaceholderName");
                     var resolved = Parse(Text(item, kind == "concrete" ? "Name" : "DefaultResolution"));
                     var name = resolved[0].Length > 0 ? resolved[0] : placeholder;
-                    if (name.Length == 0 || !seen.Add(name.ToLowerInvariant() + "\n" + resolved[1])) continue;
+                    if (name.Length == 0 || !seen.Add(Key(name, resolved[1], resolved[2]))) continue;
                     references.Add(new LibraryReference
                     {
                         Kind = kind, Placeholder = placeholder, Name = name, Version = resolved[1], Vendor = resolved[2],
@@ -114,7 +114,7 @@ namespace Cts.Docs
                 known.Vendor = resolved[2];
                 return;
             }
-            if (!seen.Add(resolved[0].ToLowerInvariant() + "\n" + resolved[1])) return;
+            if (!seen.Add(Key(resolved[0], resolved[1], resolved[2]))) return;
             // The table carries no SystemLibrary flag: the vendor "System" is
             // what marks the libraries CODESYS pulls in itself.
             references.Add(new LibraryReference
@@ -123,6 +123,9 @@ namespace Cts.Docs
                 System = resolved[2].Equals("System", StringComparison.OrdinalIgnoreCase),
             });
         }
+
+        // A library is identified by title, version and company.
+        static string Key(string name, string version, string vendor) => (name ?? "").Trim().ToLowerInvariant() + "\n" + (version ?? "").Trim() + "\n" + (vendor ?? "").Trim().ToLowerInvariant();
 
         // The type GUID appears bare (TypeGuid of the MetaObject) and in
         // braces (the Object's Type attribute).

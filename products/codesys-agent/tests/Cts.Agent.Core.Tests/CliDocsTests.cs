@@ -223,7 +223,7 @@ END_ACTION
 
             var index = File.ReadAllText(Path.Combine(bundle, "index.md"));
             Assert.Contains("| FUNCTION_BLOCK | [FB_Drive](project/FB_Drive.md) | `App/FB_Drive.st` |", index);
-            Assert.Contains("| [Standard](libraries/Standard-3.5.22.0.md) | 3.5.22.0 | System |  | yes | 2 |", index);
+            Assert.Contains("| [Standard](libraries/Standard-3.5.22.0-System.md) | 3.5.22.0 | System |  | yes | 2 |", index);
             Assert.Contains("| PSVRetain | * | PSV Electro |  | documentation_package_absent |", index);
 
             var rows = File.ReadAllLines(Path.Combine(bundle, "symbols.jsonl")).Select(line => (System.Collections.Generic.IDictionary<string, object>)Json.Parse(line)).ToList();
@@ -235,10 +235,10 @@ END_ACTION
             Assert.Equal(true, rows.Single(row => Equals(row["name"], "MAIN_Old"))["excluded_from_build"]);
             var ton = rows.Single(row => Equals(row["source"], "library") && Equals(row["name"], "TON"));
             Assert.Equal("FUNCTION_BLOCK TON", ton["signature"]);
-            Assert.Equal("libraries/Standard-3.5.22.0.md", ton["card"]);
+            Assert.Equal("libraries/Standard-3.5.22.0-System.md", ton["card"]);
 
             var manifest = (System.Collections.Generic.IDictionary<string, object>)Json.Parse(File.ReadAllText(Path.Combine(bundle, "manifest.json")));
-            Assert.Equal("cts-docs/v4", manifest["format"]);
+            Assert.Equal("cts-docs/v5", manifest["format"]);
             Assert.Equal(6, ((System.Collections.IList)manifest["missing"]).Count);
         }
 
@@ -249,7 +249,7 @@ END_ACTION
             LibDocTree("System", "Standard", "3.5.22.0", ("TON (FB)", "x/TON.html", TonPage), ("Gc (GVL)", "x/Gc.html", GvlPage));
             CliTests.RunLocal("docs", "--workspace", Path.Combine(folder, "sync"), "--libraries", libraries);
 
-            var page = File.ReadAllText(Path.Combine(folder, "sync", ".cts-docs", "libraries", "Standard-3.5.22.0.md"));
+            var page = File.ReadAllText(Path.Combine(folder, "sync", ".cts-docs", "libraries", "Standard-3.5.22.0-System.md"));
             Assert.StartsWith("# Standard 3.5.22.0\n\n- Vendor: `System`\n- Reference: redirected `Standard`\n- System library\n", page);
             Assert.Contains("## FUNCTION_BLOCK TON\n\n```st\nFUNCTION_BLOCK TON\n```\n\nImplements a timer with a turn-on delay\n\n```st\nTONInst(IN := x, PT := T#5s);\n```\n", page);
             Assert.Contains("| Input | IN | BOOL |  | Rising edge: starts Falling edge: resets |", page);
@@ -350,7 +350,7 @@ END_ACTION
             Assert.Contains("| Standard | 3.5.22.0 | System | Standard | exact_version_missing |", index);
             Assert.Contains("| IoStandard | 3.5.16.0 | System | IoStandard | documentation_package_absent |", index);
             // "*" takes the highest installed version, numerically.
-            Assert.Contains("| [PSVRetain](libraries/PSVRetain-1.10.0.0.md) | 1.10.0.0 |", index);
+            Assert.Contains("| [PSVRetain](libraries/PSVRetain-1.10.0.0-PSV_Electro.md) | 1.10.0.0 |", index);
             Assert.DoesNotContain("Standard-3.5.18.0", index);
             Assert.Equal("# Installed libraries the project does not reference\n\n| Library | Versions |\n|---|---|\n| Unused | 1.0.0.0 |\n",
                 File.ReadAllText(Path.Combine(bundle, "libraries", "not-referenced.md")));
@@ -435,9 +435,37 @@ END_ACTION
             var index = File.ReadAllText(Path.Combine(bundle, "index.md"));
             Assert.Single(index.Split('\n'), line => line.StartsWith("| [NotImplementedByDevice]", StringComparison.Ordinal));
             Assert.Contains("| CmpLog, CmpApp | yes | 1 |", index);
-            var page = File.ReadAllText(Path.Combine(bundle, "libraries", "NotImplementedByDevice-3.5.17.0.md"));
+            var page = File.ReadAllText(Path.Combine(bundle, "libraries", "NotImplementedByDevice-3.5.17.0-System.md"));
             Assert.Contains("- Namespace: `CmpLog`, `CmpApp`\n- Reference: redirected `CmpLog`, redirected `CmpApp`\n", page);
             Assert.Single(File.ReadAllLines(Path.Combine(bundle, "symbols.jsonl")), line => line.Contains("\"name\":\"TON\""));
+        }
+
+        [Fact]
+        public void Concrete_libraries_with_different_vendors_keep_separate_pages_and_symbols()
+        {
+            const string concrete = "<Single Type=\"{51a11660-6c0d-4598-8c08-419c5845ea1f}\"><Single Name=\"Name\" Type=\"string\">Common, 1.0.0.0 (VendorA)</Single></Single>"
+                + "<Single Type=\"{51a11660-6c0d-4598-8c08-419c5845ea1f}\"><Single Name=\"Name\" Type=\"string\">Common, 1.0.0.0 (VendorB)</Single></Single>";
+            File.WriteAllText(Path.Combine(view, "App", "Library Manager.xml"),
+                "<Single><Single Name=\"MetaObject\"><Single Name=\"TypeGuid\">adb5cb65-8e1d-4a00-b70a-375ea27582f3</Single></Single>"
+                + "<Single Name=\"Object\" Type=\"{adb5cb65-8e1d-4a00-b70a-375ea27582f3}\"><List Name=\"Items\">" + concrete + "</List></Single></Single>");
+            const string pageA = "<html><body><div class=\"section\"><h1>FB_A (FB)</h1><p>FUNCTION_BLOCK FB_A</p></div></body></html>";
+            const string pageB = "<html><body><div class=\"section\"><h1>FB_B (FB)</h1><p>FUNCTION_BLOCK FB_B</p></div></body></html>";
+            LibDocTree("VendorA", "Common", "1.0.0.0", ("FB_A (FB)", "x/FB_A.html", pageA));
+            LibDocTree("VendorB", "Common", "1.0.0.0", ("FB_B (FB)", "x/FB_B.html", pageB));
+
+            var result = CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries);
+            Assert.Equal(0, result.code);
+            var bundle = Path.Combine(folder, "sync", ".cts-docs");
+            Assert.Equal(2, Directory.GetFiles(Path.Combine(bundle, "libraries"), "Common-*.md").Length);
+            var index = File.ReadAllText(Path.Combine(bundle, "index.md"));
+            Assert.Contains("VendorA", index);
+            Assert.Contains("VendorB", index);
+            var rows = File.ReadAllText(Path.Combine(bundle, "symbols.jsonl"));
+            Assert.Contains("FB_A", rows);
+            Assert.Contains("FB_B", rows);
+            var shown = CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--show", "FB_B");
+            Assert.Equal(0, shown.code);
+            Assert.Contains("FB_B", shown.output);
         }
 
         [Fact]

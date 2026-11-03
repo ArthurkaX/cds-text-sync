@@ -20,7 +20,7 @@ namespace Cts.Docs
         internal List<LibrarySymbol> Symbols = new List<LibrarySymbol>();
         internal string Missing;
 
-        internal string File => Slug(Reference.Name) + "-" + Slug(Tree.Version) + ".md";
+        internal string File => Slug(Reference.Name) + "-" + Slug(Tree.Version) + "-" + Slug(Tree.Vendor) + ".md";
 
         internal static string Slug(string value) => Regex.Replace(value ?? "", @"[^A-Za-z0-9._-]", "_");
     }
@@ -37,7 +37,7 @@ namespace Cts.Docs
         }
 
         internal const string DefaultLibraries = @"C:\ProgramData\CODESYS";
-        const string Format = "cts-docs/v4";
+        const string Format = "cts-docs/v5";
 
         internal static IDictionary<string, object> Generate(string view, string libraries, string output)
         {
@@ -287,7 +287,7 @@ namespace Cts.Docs
                 foreach (var page in pages)
                 {
                     var entry = page[0];
-                    text.Append("| [" + Cell(entry.Reference.Name) + "](libraries/" + entry.File + ") | " + entry.Tree.Version + " | " + Cell(entry.Reference.Vendor) + " | "
+                    text.Append("| [" + Cell(entry.Reference.Name) + "](libraries/" + entry.File + ") | " + entry.Tree.Version + " | " + Cell(entry.Reference.Vendor.Length == 0 ? entry.Tree.Vendor : entry.Reference.Vendor) + " | "
                         + Cell(Joined(page, reference => reference.Namespace)) + " | " + Joined(page, reference => reference.System ? "yes" : "no") + " | " + entry.Symbols.Count + " |\n");
                 }
             }

@@ -14,7 +14,7 @@ namespace Cts.Cli
         {
             Name = "docs", Summary = "Write the project and library documentation an AI agent reads (offline)",
             Description = "Writes .cts-docs/ beside the project view: index.md (start here), project/<Name>.md per object with its interface, members, "
-                + "calls, callers, tasks and globals read/written, libraries/<Name>-<Version>.md per referenced library from its installed LibDoc, "
+                + "calls, callers, tasks and globals read/written, libraries/<Name>-<Version>-<Vendor>.md per referenced library from its installed LibDoc, "
                 + "symbols.jsonl (one JSON line per symbol) and manifest.json. A library without LibDoc of the referenced version is listed as missing, "
                 + "never documented from another version. Exit 0 written; with --check 0 fresh, 1 stale, 2 no readable bundle.",
             Options = new[]

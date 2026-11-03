@@ -276,7 +276,7 @@ cts docs --check          # 0 fresh, 1 stale, 2 no bundle
 Output goes to `.cts-docs/`: `index.md` lists everything; `project/<Name>.md`
 is one card per object — kind, doc comment, interface, inherited members,
 its methods, properties and actions, what it calls, who calls it, the tasks
-that run it and the globals it reads and writes; `libraries/<Name>-<Version>.md`
+that run it and the globals it reads and writes; `libraries/<Name>-<Version>-<Vendor>.md`
 is one page per referenced library from its installed LibDoc (signature,
 description, example, interface). `symbols.jsonl` holds every symbol as one
 JSON line and `manifest.json` the counts and the missing LibDoc with the
