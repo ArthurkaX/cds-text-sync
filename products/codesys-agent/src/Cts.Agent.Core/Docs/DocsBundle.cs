@@ -31,11 +31,17 @@ namespace Cts.Docs
     // ignores it; the input fingerprint tells a stale bundle.
     internal static class DocsBundle
     {
+        internal sealed class RefusalException : Exception
+        {
+            internal RefusalException(string message) : base(message) { }
+        }
+
         internal const string DefaultLibraries = @"C:\ProgramData\CODESYS";
         const string Format = "cts-docs/v4";
 
         internal static IDictionary<string, object> Generate(string view, string libraries, string output)
         {
+            RefuseUnsafeOutput(view, output);
             var references = LibraryReferences.Read(view, out var gap);
             var entries = Libraries(references, libraries);
             var candidates = new Dictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
@@ -99,6 +105,35 @@ namespace Cts.Docs
                 Write(Path.Combine(staging, "manifest.json"), Json.Pretty(manifest) + "\n");
             });
             return new Dictionary<string, object> { ["output"] = output, ["manifest"] = manifest };
+        }
+
+        // Refuse destinations that could replace the project view or user files.
+        static void RefuseUnsafeOutput(string view, string output)
+        {
+            var fullView = Path.GetFullPath(view);
+            var fullOutput = Path.GetFullPath(output);
+            if (Within(fullView, fullOutput) || Within(fullOutput, fullView))
+                throw new RefusalException("--out " + fullOutput + " is (or holds / lies inside) the project view");
+            var notBundle = "--out " + fullOutput + " is not a cts docs bundle and is not empty; cts docs replaces the whole folder, so give a new or empty folder (default: .cts-docs beside the project view)";
+            if (File.Exists(fullOutput)) throw new RefusalException(notBundle);
+            if (!Directory.Exists(fullOutput) || !Directory.EnumerateFileSystemEntries(fullOutput).Any()) return;
+            try
+            {
+                var manifest = Json.Parse(File.ReadAllText(Path.Combine(fullOutput, "manifest.json"), Encoding.UTF8)) as IDictionary<string, object>;
+                if (manifest != null && manifest.TryGetValue("format", out var value) && (value as string)?.StartsWith("cts-docs/", StringComparison.Ordinal) == true) return;
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is JsonException || error is ArgumentException)
+            {
+            }
+            throw new RefusalException(notBundle);
+        }
+
+        // Compare complete path segments, ignoring case on every platform.
+        static bool Within(string parent, string child)
+        {
+            var prefix = parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var normalized = child.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            return normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
         }
 
         // Whether the bundle was written from the sources as they are now.

@@ -44,7 +44,14 @@ namespace Cts.Cli
             var libraries = options.Text("libraries");
             if (options.Params.ContainsKey("check")) return DocsBundle.Check(workspace.View, libraries, output);
             if (options.Text("show") is string show) return DocsBundle.Show(workspace.View, libraries ?? DocsBundle.DefaultLibraries, show);
-            return DocsBundle.Generate(workspace.View, libraries ?? DocsBundle.DefaultLibraries, output);
+            try
+            {
+                return DocsBundle.Generate(workspace.View, libraries ?? DocsBundle.DefaultLibraries, output);
+            }
+            catch (DocsBundle.RefusalException error)
+            {
+                throw new CliFailure("docs", "refused", error.Message, "cts docs --help", 2);
+            }
         }
 
         static Answer Build(IDictionary<string, object> data)

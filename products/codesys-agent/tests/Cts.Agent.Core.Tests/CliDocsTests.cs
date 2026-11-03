@@ -126,6 +126,46 @@ END_ACTION
         }
 
         [Fact]
+        public void Generate_refuses_outputs_that_can_replace_project_files()
+        {
+            Project();
+            var sources = Directory.GetFiles(view, "*.st", SearchOption.AllDirectories);
+            var parent = Directory.GetParent(view).FullName;
+            foreach (var output in new[] { view, parent })
+            {
+                var result = CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--out", output);
+                Assert.Equal(2, result.code);
+                Assert.Contains("refused", result.output);
+                Assert.All(sources, path => Assert.True(File.Exists(path), path));
+            }
+        }
+
+        [Fact]
+        public void Generate_refuses_nonempty_nonbundle_and_replaces_old_bundle()
+        {
+            Project();
+            var unsafeOut = Path.Combine(folder, "user-files");
+            Directory.CreateDirectory(unsafeOut);
+            var userFile = Path.Combine(unsafeOut, "keep.txt");
+            File.WriteAllText(userFile, "keep");
+            var refused = CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--out", unsafeOut);
+            Assert.Equal(2, refused.code);
+            Assert.Contains("refused", refused.output);
+            Assert.True(File.Exists(userFile));
+
+            var oldBundle = Path.Combine(folder, "old-bundle");
+            Directory.CreateDirectory(oldBundle);
+            File.WriteAllText(Path.Combine(oldBundle, "manifest.json"), "{\"format\":\"cts-docs/v1\"}");
+            File.WriteAllText(Path.Combine(oldBundle, "old.txt"), "old");
+            Assert.Equal(0, CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--out", oldBundle).code);
+            Assert.False(File.Exists(Path.Combine(oldBundle, "old.txt")));
+
+            var empty = Path.Combine(folder, "empty");
+            Directory.CreateDirectory(empty);
+            Assert.Equal(0, CliTests.RunLocal("docs", "--workspace", view, "--libraries", libraries, "--out", empty).code);
+        }
+
+        [Fact]
         public void Docs_write_one_card_per_object_with_its_interface_members_and_relations()
         {
             Project();
