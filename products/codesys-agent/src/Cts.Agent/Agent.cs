@@ -20,6 +20,9 @@ namespace Cts.Agent
         readonly ModalState _modal = new ModalState();
         readonly FileLog _log;
         readonly DateTime _startedUtc = DateTime.UtcNow;
+        //: The uptime: a clock set back after the start (a VM resumed, then
+        //: synced) would make DateTime arithmetic negative.
+        readonly Stopwatch _uptime = Stopwatch.StartNew();
         readonly OnlineEvents _online;
         readonly ObjectJournal _journal = new ObjectJournal();
         readonly TimeoutProfileCache _timeouts = new TimeoutProfileCache();
@@ -258,7 +261,7 @@ namespace Cts.Agent
             _router.Register("ping", (req, s) => new Dictionary<string, object>
             {
                 { "pong", true },
-                { "uptime_s", (DateTime.UtcNow - _startedUtc).TotalSeconds },
+                { "uptime_s", _uptime.Elapsed.TotalSeconds },
             });
 
             _router.Register("hello", (req, s) => Hello());
