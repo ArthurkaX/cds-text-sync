@@ -19,6 +19,10 @@ disk, then import it back into CODESYS.
 
 This is an independent MIT-licensed tool, not an official CODESYS product.
 
+<p align="center"><img src="img/cts-demo.gif"
+alt="A tour of cts on a demo project: the binary project becomes .st files in Git, the quick window carries an edit from disk into CODESYS and commits it, its own diff resolves a conflict per object, then static analysis, Format ST, a live FSM map, the diagram page and the command line an agent uses"
+width="100%"></p>
+
 ## 1. Quick start
 
 Requirements: Windows 10 or 11, CODESYS V3.5 SP16 or newer
