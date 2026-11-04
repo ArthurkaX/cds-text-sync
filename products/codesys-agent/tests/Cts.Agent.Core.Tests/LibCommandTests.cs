@@ -136,15 +136,28 @@ namespace Cts.Agent.Tests
             Assert.Contains(", namespace CF (the library's own is FILE)\n", Lib("lib", "add", "CAA File, 3.5.19.0 (CAA Technical Workgroup)", "--namespace", "CF", "--libraries", libraries).output);
         }
 
+        // A library that names no default namespace takes its title, as
+        // Standard does; one whose namespace is its title stores that string
+        // once, so the namespace is the title's entry, not the next one.
+        [Fact]
+        public void AddTakesTheTitleOrTheNamespaceStoredOnce()
+        {
+            var libraries = Installed("System", "SysTimeRtc", "3.5.5.0", null);
+            Installed("CODESYS", "ModbusFB", "4.5.0.0", "ModbusFB");
+
+            Assert.Contains(": SysTimeRtc, * (System), namespace SysTimeRtc (the library's own)\n", Lib("lib", "add", "SysTimeRtc, * (System)", "--libraries", libraries).output);
+            Assert.Contains(": ModbusFB, * (CODESYS), namespace ModbusFB (the library's own)\n", Lib("lib", "add", "ModbusFB, * (CODESYS)", "--libraries", libraries).output);
+        }
+
         [Fact]
         public void AddWithoutANamespaceTheLibraryDoesNotNameIsRefused()
         {
-            var libraries = Installed("Vendor", "Plain", "1.0.0.0", null);
+            var libraries = Installed("Vendor", "Plain Library", "1.0.0.0", null);
 
             var (code, _, error) = Lib("lib", "add", "Nowhere, * (Vendor)", "--libraries", libraries);
             Assert.Equal(2, code);
             Assert.Contains("Nowhere, * (Vendor) is not installed under " + libraries + ", so its namespace is unknown: give --namespace", error);
-            Assert.Contains("Plain, * (Vendor) names no default namespace: give --namespace", Lib("lib", "add", "Plain, * (Vendor)", "--libraries", libraries).error);
+            Assert.Contains("Plain Library, * (Vendor) names no default namespace, and its title is not an identifier: give --namespace", Lib("lib", "add", "Plain Library, * (Vendor)", "--libraries", libraries).error);
             Assert.Equal(_original, File.ReadAllText(_manager));
         }
 
@@ -188,21 +201,30 @@ namespace Cts.Agent.Tests
         }
 
         // A library in the repository under the returned root, whose
-        // projectinfo string table names its default namespace (none: null).
+        // projectinfo names its title and its default namespace (none: null),
+        // as CODESYS writes it: each string once in a numbered table, then
+        // each property as references to its name and its value.
         string Installed(string vendor, string name, string version, string defaultNamespace)
         {
             var libraries = Path.Combine(_root, "codesys");
             var folder = Path.Combine(libraries, "Managed Libraries", vendor, name, version);
             Directory.CreateDirectory(folder);
-            var bytes = new List<byte> { 2, 0, 1 };
-            var number = 3;
-            foreach (var text in defaultNamespace == null ? new[] { "Company", vendor } : new[] { "Company", vendor, "DefaultNamespace", defaultNamespace })
+            var properties = new List<(string, string)> { ("Company", vendor), ("Title", name) };
+            if (defaultNamespace != null) properties.Add(("DefaultNamespace", defaultNamespace));
+            var strings = new List<string> { "System.String" };
+            foreach (var text in properties.SelectMany(property => new[] { property.Item1, property.Item2 }))
+                if (!strings.Contains(text)) strings.Add(text);
+            var bytes = new List<byte>(new byte[40]);
+            for (var i = 0; i < strings.Count; i++)
             {
-                var utf16 = Encoding.Unicode.GetBytes(text);
-                bytes.Add((byte)number++);
+                var utf16 = Encoding.Unicode.GetBytes(strings[i]);
+                bytes.Add((byte)(i + 1));
                 bytes.Add((byte)utf16.Length);
                 bytes.AddRange(utf16);
             }
+            foreach (var (key, value) in properties)
+                foreach (var text in new[] { key, value })
+                    bytes.AddRange(new byte[] { 0xD0, 0x00, 0x01, 0x2D, (byte)(strings.IndexOf(text) + 1) });
             File.WriteAllBytes(Path.Combine(folder, "projectinfo"), bytes.ToArray());
             return libraries;
         }

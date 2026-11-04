@@ -13,29 +13,68 @@ namespace Cts.Docs
     // namespace (projectinfo) and the objects it holds (browsercache).
     internal static class LibraryRepository
     {
-        static readonly byte[] NamespaceKey = Encoding.Unicode.GetBytes("DefaultNamespace");
         static readonly Regex Identifier = new Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
+        static readonly byte[] StringReference = { 0xD0, 0x00, 0x01, 0x2D };
 
         // The namespace the library's names take unless a reference gives
-        // another, as the Library Manager offers it; null when it names none.
-        // projectinfo keeps its strings in a table of entries: a number, the
-        // length in bytes, the UTF-16 text; a property's value follows its name.
+        // another, as the Library Manager offers it: its DefaultNamespace, else
+        // its Title, as CODESYS takes it; null when neither is an identifier.
+        // projectinfo keeps each string once, in a table of entries numbered
+        // from 1 (the number, the length in bytes, the UTF-16 text); below it a
+        // property is the reference to its name followed by the reference to
+        // its value, each StringReference and the entry's number.
         internal static string DefaultNamespace(string folder)
         {
             var path = Path.Combine(folder, "projectinfo");
             if (!File.Exists(path)) return null;
             var bytes = File.ReadAllBytes(path);
-            for (var at = 1; at + NamespaceKey.Length < bytes.Length; at++)
+            var (strings, end) = Strings(bytes);
+            string Property(string name)
             {
-                if (bytes[at - 1] != NamespaceKey.Length || !Same(bytes, at, NamespaceKey)) continue;
-                var next = at + NamespaceKey.Length;
-                if (Number(bytes, ref next) == null) return null;
-                var length = Number(bytes, ref next);
-                if (length == null || next + length.Value > bytes.Length) return null;
-                var value = Encoding.Unicode.GetString(bytes, next, length.Value);
-                return Identifier.IsMatch(value) ? value : null;
+                var key = strings.IndexOf(name);
+                if (key < 0) return null;
+                var wanted = StringReference.Concat(Encoded(key + 1)).ToArray();
+                for (var at = end; at + wanted.Length + StringReference.Length < bytes.Length; at++)
+                {
+                    if (!Same(bytes, at, wanted)) continue;
+                    var next = at + wanted.Length;
+                    if (!Same(bytes, next, StringReference)) return null;
+                    next += StringReference.Length;
+                    var value = Number(bytes, ref next);
+                    return value > 0 && value <= strings.Count ? strings[value.Value - 1] : null;
+                }
+                return null;
             }
-            return null;
+            return new[] { Property("DefaultNamespace"), Property("Title") }.FirstOrDefault(value => value != null && Identifier.IsMatch(value));
+        }
+
+        // The string table: the first run of two or more entries numbered 1,
+        // 2, ... and the offset past its last entry.
+        static (List<string> strings, int end) Strings(byte[] bytes)
+        {
+            for (var start = 0; start < bytes.Length; start++)
+            {
+                if (bytes[start] != 1) continue;
+                var strings = new List<string>();
+                var at = start;
+                while (true)
+                {
+                    var next = at;
+                    var number = Number(bytes, ref next);
+                    var length = Number(bytes, ref next);
+                    if (number != strings.Count + 1 || length == null || length.Value % 2 != 0 || next + length.Value > bytes.Length) break;
+                    strings.Add(Encoding.Unicode.GetString(bytes, next, length.Value));
+                    at = next + length.Value;
+                }
+                if (strings.Count >= 2) return (strings, at);
+            }
+            return (new List<string>(), bytes.Length);
+        }
+
+        static IEnumerable<byte> Encoded(int number)
+        {
+            for (; number >= 0x80; number >>= 7) yield return (byte)(number & 0x7F | 0x80);
+            yield return (byte)number;
         }
 
         // For each of names, the installed libraries, each at its newest

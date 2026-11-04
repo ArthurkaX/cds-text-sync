@@ -67,7 +67,7 @@ namespace Cts.Cli
                 Arguments = "LIBRARY", ArgumentLimit = 1, ArgumentHelp = "\"Name, Version (Vendor)\", e.g. \"CAA Net Base Services, * (CAA Technical Workgroup)\"",
                 Options = Where.Concat(new[]
                 {
-                    CliOption.Text("--namespace", "namespace", "NS", "The namespace its names take, e.g. NBS (default: the library's own)"),
+                    CliOption.Text("--namespace", "namespace", "NS", "The namespace its names take, e.g. NBS (default: the library's own, else its title, as CODESYS takes it)"),
                     CliOption.Switch("--qualified-only", "qualified_only", "Its names need the namespace in front"),
                     CliOption.Text("--placeholder", "placeholder", "NAME", "Reference it through this placeholder; the library is its default resolution"),
                     Libraries,
@@ -328,7 +328,7 @@ namespace Cts.Cli
             if (ns == null)
                 throw new CliFailure("lib-add", "usage", folder == null
                     ? library + " is not installed under " + root + ", so its namespace is unknown: give --namespace"
-                    : library + " names no default namespace: give --namespace (its documentation names the prefix, cts docs --show)", "cts lib add --help", 2);
+                    : library + " names no default namespace, and its title is not an identifier: give --namespace (its documentation names the prefix, cts docs --show)", "cts lib add --help", 2);
             if (!Identifier.IsMatch(ns)) throw new CliFailure("lib-add", "usage", "--namespace is an identifier, e.g. NBS", "cts lib add --help", 2);
             var managers = Managers(options, work, "lib-add", true);
             if (managers.Count > 1)
