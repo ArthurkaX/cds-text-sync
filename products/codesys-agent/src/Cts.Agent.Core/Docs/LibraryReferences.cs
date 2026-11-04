@@ -14,7 +14,7 @@ namespace Cts.Docs
     internal sealed class LibraryReference
     {
         internal string Kind, Placeholder, Name, Version, Vendor, Namespace;
-        internal bool System;
+        internal bool System, QualifiedOnly;
     }
 
     // The library references of every Library Manager in an exported view: a
@@ -76,6 +76,7 @@ namespace Cts.Docs
                     {
                         Kind = kind, Placeholder = placeholder, Name = name, Version = resolved[1], Vendor = resolved[2],
                         Namespace = Text(item, "Namespace"), System = Text(item, "SystemLibrary").Equals("true", StringComparison.OrdinalIgnoreCase),
+                        QualifiedOnly = Text(item, "QualifiedOnly").Equals("true", StringComparison.OrdinalIgnoreCase),
                     });
                 }
                 foreach (var table in root.Descendants("Dictionary").Where(table => ((string)table.Attribute("Name") ?? "").Trim() == RedirectionTable))

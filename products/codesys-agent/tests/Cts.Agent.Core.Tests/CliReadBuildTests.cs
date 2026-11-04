@@ -258,30 +258,39 @@ namespace Cts.Agent.Tests
         }
 
         // A library referenced qualified-only hides its names: unknown-name
-        // errors come with the namespaces that need the prefix.
+        // errors come with the namespaces that need the prefix, of the
+        // libraries that hold one, not of every library so referenced.
         [Fact]
         public void Build_names_the_qualified_only_libraries_behind_unknown_names()
         {
             var folder = Path.Combine(Path.GetTempPath(), "cts-build-lib-" + Guid.NewGuid().ToString("N"));
             var app = Path.Combine(folder, "project-view", "Dev", "Plc Logic", "Application");
             Directory.CreateDirectory(app);
-            string Library(string ns, string qualified) => "<Single><Single Name=\"Namespace\" Type=\"string\">" + ns + "</Single><Single Name=\"QualifiedOnly\" Type=\"bool\">" + qualified + "</Single></Single>";
-            File.WriteAllText(Path.Combine(app, "Library Manager.xml"), "<Single>" + Library("Standard", "True") + Library("Util", "False") + Library("CmpLog", "True") + "</Single>");
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Golden", "Docs", "Library Manager.xml"), Path.Combine(app, "Library Manager.xml"));
+            var libraries = Path.Combine(folder, "codesys");
+            foreach (var (vendor, name, version, held) in new[] { ("CAA Technical Workgroup", "CAA Device Diagnosis", "3.5.15.0", "GetDeviceState"), ("System", "Standard", "3.5.22.0", "TON") })
+            {
+                var cache = Path.Combine(libraries, "Managed Libraries", vendor, name, version);
+                Directory.CreateDirectory(cache);
+                File.WriteAllText(Path.Combine(cache, "browsercache"), "<Library><Node Name=\"" + held + "\" /></Library>");
+            }
+            IDictionary<string, object> Built(string unknown) => new Dictionary<string, object>
+            {
+                { "application", "Application" }, { "compiled", true },
+                { "messages", new object[] { new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0077" }, { "text", "Unknown type: '" + unknown + "'" }, { "object", "PRG" } } } },
+            };
             try
             {
                 var host = new FakeHost();
-                host.Agents[1] = Agent(Path.Combine(folder, "Plant.project"), folder, (method, p) => new Dictionary<string, object>
-                {
-                    { "application", "Application" }, { "compiled", true },
-                    { "messages", new object[]
-                        {
-                            new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0077" }, { "text", "Unknown type: 'TON'" }, { "object", "PRG" } },
-                            new Dictionary<string, object> { { "severity", "Error" }, { "code", "C0046" }, { "text", "Identifier 'CONCAT' not defined" }, { "object", "PRG" } },
-                        } },
-                });
-                var (code, output, _) = Run(host, "build");
+                host.Agents[1] = Agent(Path.Combine(folder, "Plant.project"), folder, (method, p) => method == "messages.read" ? new Dictionary<string, object>() : Built("GetDeviceState"));
+                var (code, output, _) = Run(host, "build", "--libraries", libraries);
                 Assert.Equal(1, code);
-                Assert.Contains("2 errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): Standard, CmpLog.", output);
+                Assert.Contains("1 errors name an unknown type or identifier; the Library Manager references these libraries qualified-only, so their names need the namespace in front (Standard.TON): DED.", output);
+
+                host.Agents[1] = Agent(Path.Combine(folder, "Plant.project"), folder, (method, p) => method == "messages.read" ? new Dictionary<string, object>() : Built("TON"));
+                output = Run(host, "build", "--libraries", libraries).output;
+                Assert.DoesNotContain("qualified-only", output);
+                Assert.Contains("\nTON is in Standard, 3.5.22.0 (System). Next: cts lib add \"Standard, * (System)\" if the project does not reference it yet, then cts import\n", output);
             }
             finally { Directory.Delete(folder, true); }
         }

@@ -74,24 +74,17 @@ namespace Cts.Cli
                     data["installed_since_start"] = since.Cast<object>().ToList();
                 }
             }
-            if (unknown > 0 && !string.IsNullOrEmpty(call.Hello.SyncFolder))
-            {
-                var namespaces = QualifiedOnly(ViewFolder.Of(call.Hello.SyncFolder), Convert.ToString(data["application"], CultureInfo.InvariantCulture));
-                if (namespaces.Count > 0)
-                {
-                    data["unknown_names"] = unknown;
-                    data["qualified_only"] = namespaces.Cast<object>().ToList();
-                }
-            }
-            if (unknown > 0) Unknowns(call, messages, data);
+            if (unknown > 0) Unknowns(call, messages, data, unknown);
             if (previous != null) data["previous_application"] = previous;
             return data;
         }
 
         // What says where the unknown names are: the installed libraries that
-        // hold a bare one, and the Library Manager's lines on a library it could
-        // not open (a placeholder the device resolves to a version not installed).
-        static void Unknowns(CliCall call, List<IDictionary<string, object>> messages, IDictionary<string, object> data)
+        // hold a bare one, the namespaces of those the sync folder references
+        // qualified-only (their names need the prefix), and the Library
+        // Manager's lines on a library it could not open (a placeholder the
+        // device resolves to a version not installed).
+        static void Unknowns(CliCall call, List<IDictionary<string, object>> messages, IDictionary<string, object> data, int unknown)
         {
             var names = messages.Where(m => Severity(Value(m, "severity")) == "error")
                 .Select(m => UnknownName.Match(Convert.ToString(Value(m, "text"), CultureInfo.InvariantCulture) ?? ""))
@@ -100,6 +93,18 @@ namespace Cts.Cli
             var holding = Docs.LibraryRepository.Holding(call.Options.Text("libraries") ?? Docs.DocsBundle.DefaultLibraries, names);
             if (holding.Count > 0)
                 data["defined_in"] = names.Where(holding.ContainsKey).ToDictionary(name => name, name => (object)holding[name].Cast<object>().ToList());
+            var view = string.IsNullOrEmpty(call.Hello.SyncFolder) ? null : ViewFolder.Of(call.Hello.SyncFolder);
+            if (holding.Count > 0 && Directory.Exists(view))
+            {
+                var holders = new HashSet<string>(holding.Values.SelectMany(held => held).Select(held => Docs.LibraryReferences.Parse(held)[0]), StringComparer.OrdinalIgnoreCase);
+                var qualified = Docs.LibraryReferences.Read(view, out _).Where(reference => reference.QualifiedOnly && holders.Contains(reference.Name))
+                    .Select(reference => reference.Namespace).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (qualified.Count > 0)
+                {
+                    data["unknown_names"] = unknown;
+                    data["qualified_only"] = qualified.Cast<object>().ToList();
+                }
+            }
             IDictionary<string, object> log;
             try { log = call.Call("messages.read", new Dictionary<string, object> { ["category"] = "Library Manager" }, Math.Min(call.Seconds, 10)); }
             catch (CliFailure) { return; }
@@ -127,29 +132,6 @@ namespace Cts.Cli
 
         static readonly System.Text.RegularExpressions.Regex UnknownName =
             new System.Text.RegularExpressions.Regex(@"^\s*(Unknown type: '(?<name>[^']*)'|Identifier '(?<name>[^']*)' not defined)");
-
-        // The namespaces of the libraries the sync folder's Library Manager of
-        // *application* (any Library Manager when none is in a folder of that
-        // name) references qualified-only: their names need the prefix.
-        static IList<string> QualifiedOnly(string view, string application)
-        {
-            if (!Directory.Exists(view)) return new List<string>();
-            var managers = Directory.GetFiles(view, "Library Manager.xml", SearchOption.AllDirectories);
-            var own = managers.Where(file => string.Equals(Path.GetFileName(Path.GetDirectoryName(file)), application, StringComparison.OrdinalIgnoreCase)).ToArray();
-            var namespaces = new List<string>();
-            foreach (var file in own.Length > 0 ? own : managers)
-            {
-                System.Xml.Linq.XDocument doc;
-                try { doc = System.Xml.Linq.XDocument.Load(file); }
-                catch (Exception e) when (e is IOException || e is System.Xml.XmlException || e is UnauthorizedAccessException) { continue; }
-                foreach (var flag in doc.Descendants().Where(e => (string)e.Attribute("Name") == "QualifiedOnly" && e.Value.Trim() == "True"))
-                {
-                    var name = flag.Parent?.Elements().FirstOrDefault(e => (string)e.Attribute("Name") == "Namespace")?.Value.Trim();
-                    if (!string.IsNullOrEmpty(name) && !namespaces.Contains(name, StringComparer.OrdinalIgnoreCase)) namespaces.Add(name);
-                }
-            }
-            return namespaces;
-        }
 
         // Makes the application named the active one; the one active before, or null when it already was.
         static string Activate(CliCall call, string name)
