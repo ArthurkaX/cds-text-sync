@@ -108,6 +108,18 @@ namespace Cts.Agent.Tests
             Assert.StartsWith("ok read reached=true value=E_Mode.Run", output);
         }
 
+        // A condition written as the read line shows it is refused before
+        // any read, with the value alone: it would never match.
+        [Fact]
+        public void Read_until_refuses_the_name_in_front_of_the_value()
+        {
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, (method, p) => throw new InvalidOperationException("no read expected"));
+            var (code, _, error) = Run(host, "read", "GVL.mode", "--until", "gvl.mode = E_Mode.Run");
+            Assert.Equal(2, code);
+            Assert.Contains("--until takes the value alone, the name is the one read: cts read GVL.mode --until E_Mode.Run", error);
+        }
+
         [Theory]
         [InlineData("'Ready'", true)]
         [InlineData("'READY'", false)]

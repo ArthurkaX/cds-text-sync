@@ -57,6 +57,10 @@ namespace Cts.Cli
             if (call.Options.Params.TryGetValue("until", out var expected))
             {
                 if (names.Count != 1) throw Usage("--until waits for one name, not " + names.Count);
+                var text = Convert.ToString(expected, CultureInfo.InvariantCulture).Trim();
+                var equals = text.IndexOf('=');
+                if (equals > 0 && string.Equals(text.Substring(0, equals).Trim(), names[0], StringComparison.OrdinalIgnoreCase))
+                    throw Usage("--until takes the value alone, the name is the one read: cts read " + names[0] + " --until " + ProcessArgs.Quote(text.Substring(equals + 1).Trim()));
                 var started = DateTime.UtcNow;
                 var reads = 0;
                 IDictionary<string, object> row;
