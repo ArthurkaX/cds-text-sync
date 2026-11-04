@@ -246,7 +246,7 @@ namespace Cts.Cli
         {
             var pid = Hello.Pid;
             var message = e.Message.Split('\n')[0].Trim();
-            string cause = message, next = null;
+            string cause = message, next = null, text = e.Message;
             var dialogs = Dialogs.Of(e.Detail, "dialogs");
             switch (e.Code)
             {
@@ -274,9 +274,15 @@ namespace Cts.Cli
                         next = "cts disconnect";
                     }
                     else if (message.Contains("No project is open")) next = "cts project open --path <p>";
+                    else if (message.Contains("Gateway not configured"))
+                    {
+                        cause = "the device is not pointed at a PLC";
+                        text = e.Message.TrimEnd('.') + ". cts scan lists the PLCs the gateway reaches, cts connect --ip IP points the device at one and logs in";
+                        next = "cts scan";
+                    }
                     break;
             }
-            return new CliFailure(Command.Verb, cause, e.Message, next, 1, dialogs.Count > 0 ? ModalErrors.BlockLine(dialogs) : null);
+            return new CliFailure(Command.Verb, cause, text, next, 1, dialogs.Count > 0 ? ModalErrors.BlockLine(dialogs) : null);
         }
 
         // The agent's refusal of a project edit while the IDE is online.

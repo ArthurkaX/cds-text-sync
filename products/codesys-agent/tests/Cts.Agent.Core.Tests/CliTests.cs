@@ -841,6 +841,21 @@ namespace Cts.Agent.Tests
             Assert.Equal("error project-tree cause=\"No project is open in this IDE.\"\nNext: cts project open --path <p>\n", output);
         }
 
+        // A fresh project's device names no PLC: the login's refusal points
+        // at the scan that finds one.
+        [Fact]
+        public void A_device_that_names_no_PLC_points_at_the_scan()
+        {
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, method => throw new ProtocolException("internal", "Login to Application: Gateway not configured properly"));
+
+            var (code, output, error) = Run(host, "download", "--no-wait");
+
+            Assert.Equal(1, code);
+            Assert.Equal("error download cause=\"the device is not pointed at a PLC\"\nNext: cts scan\n", output);
+            Assert.Contains("Gateway not configured properly. cts scan lists the PLCs the gateway reaches, cts connect --ip IP points the device at one and logs in", error);
+        }
+
         static Dictionary<string, object> LoginDialog(string fingerprint)
         {
             var data = new ModalWindow
