@@ -24,6 +24,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 
 namespace Cts.Agent
@@ -79,6 +80,7 @@ namespace Cts.Agent
             result["closed_after_s"] = Math.Round(seconds, 3);
             result["covered"] = covered;
             result["next"] = next;
+            if (!closed) result["buttons"] = (target.Buttons ?? new string[0]).Cast<object>().ToList();
 
             _log.Write("dialog.answer: id=" + result["id"]
                 + " via=" + result["via"]

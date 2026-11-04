@@ -124,7 +124,7 @@ namespace Cts.Agent
                     }
                     else if (text == null && role == ChildRole.Text)
                     {
-                        var caption = Win32.Text(child);
+                        var caption = Win32.Text(child) ?? Win32.AskedText(child);
                         if (!string.IsNullOrEmpty(caption)) text = caption;
                     }
                 }
@@ -136,6 +136,7 @@ namespace Cts.Agent
             live.Window.Text = text;
             live.Window.Options = options.ToArray();
             live.Window.Buttons = buttons.ToArray();
+            live.Window.Default = ControlReader.DefaultButton(hwnd.ToInt64());
         }
     }
 }

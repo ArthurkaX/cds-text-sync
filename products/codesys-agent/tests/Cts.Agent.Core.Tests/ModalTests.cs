@@ -122,6 +122,7 @@ namespace Cts.Agent.Tests
         [InlineData("WindowsForms10.BUTTON.app.0.13965fa_r7_ad1", ChildRole.Button)]
         [InlineData("WindowsForms10.EDIT.app.0.13965fa_r7_ad1", ChildRole.Text)]
         [InlineData("WindowsForms10.STATIC.app.0.13965fa_r7_ad1", ChildRole.Text)]
+        [InlineData("WindowsForms10.RICHEDIT50W.app.0.13965fa_r6_ad1", ChildRole.Text)]
         [InlineData("WindowsForms10.Window.8.app.0.13965fa_r7_ad1", ChildRole.Other)]
         [InlineData("Edit", ChildRole.Other)]
         [InlineData("", ChildRole.Other)]

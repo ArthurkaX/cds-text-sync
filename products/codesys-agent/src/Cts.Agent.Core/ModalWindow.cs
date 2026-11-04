@@ -43,6 +43,10 @@ namespace Cts.Agent
         // dropping it.
         public string[] Buttons;
 
+        // The caption of the button Enter presses (the focused one, else the
+        // accept button), or null when the agent could not tell.
+        public string Default;
+
         public long Owner;
         public bool OwnerDisabled;
         public bool Ownerless;
@@ -77,6 +81,7 @@ namespace Cts.Agent
                 { "text", Text },
                 { "options", options },
                 { "buttons", Buttons ?? new string[0] },
+                { "default", Default },
                 { "owner", Owner },
                 { "ownerless", Ownerless },
                 { "owner_disabled", OwnerDisabled },
@@ -141,6 +146,7 @@ namespace Cts.Agent
                 Text = Field(data, "text"),
                 Options = options.ToArray(),
                 Buttons = Items(data, "buttons").Select(b => System.Convert.ToString(b)).ToArray(),
+                Default = Field(data, "default"),
                 _fingerprint = Field(data, "fingerprint"),
             };
         }

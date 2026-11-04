@@ -856,6 +856,55 @@ namespace Cts.Agent.Tests
             Assert.Contains("Gateway not configured properly. cts scan lists the PLCs the gateway reaches, cts connect --ip IP points the device at one and logs in", error);
         }
 
+        // The IDE asks which of the PLC's other applications to delete:
+        // None and All only tick its list, OK submits it.
+        static Dictionary<string, object> ForeignApplications(string fingerprint)
+        {
+            var data = new ModalWindow
+            {
+                Id = 2, Title = "CODESYS",
+                Text = "The following applications exist on the PLC, but not in this project.",
+                Buttons = new[] { "Non&e", "&All", "&OK", "&Cancel" },
+            }.ToData();
+            data["fingerprint"] = fingerprint;
+            return data;
+        }
+
+        // A yes/no question without OK: the Next line offers the button Enter
+        // presses, not the first one, which would open the security screen.
+        [Fact]
+        public void The_answer_line_offers_the_button_enter_presses()
+        {
+            var window = new ModalWindow
+            {
+                Title = "CODESYS",
+                Text = "The connected PLC uses certificates which are about to expire. Would you like to open the security screen for details?",
+                Options = new[] { new ModalOption("Remember decision", ModalOptionKind.Check, false) },
+                Buttons = new[] { "Yes", "No" },
+                Default = "No",
+            };
+            Assert.EndsWith(" --press \"No\"", DialogWatch.AnswerLine(ModalWindow.FromData(window.ToData())));
+            window.Default = null;
+            Assert.EndsWith(" --press \"Yes\"", DialogWatch.AnswerLine(ModalWindow.FromData(window.ToData())));
+        }
+
+        [Fact]
+        public void A_press_that_leaves_the_dialog_open_names_its_other_buttons()
+        {
+            Assert.Equal("cts dialog answer --id 142a5d2f --press \"OK\"", DialogWatch.AnswerLine(ModalWindow.FromData(ForeignApplications("142a5d2f"))));
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, (method, p) => new Dictionary<string, object>
+            {
+                { "id", "142a5d2f" }, { "pressed", "None" }, { "via", "winforms" }, { "closed", false }, { "closed_after_s", 5.0 },
+                { "buttons", new List<object> { "Non&e", "&All", "&OK", "&Cancel" } },
+            });
+
+            var (code, output, _) = Run(host, "dialog", "answer", "--press", "None");
+
+            Assert.Equal(1, code);
+            Assert.Contains("\nthe dialog did not close: None acts inside it; press one of its other buttons: [All] [OK] [Cancel]. Nothing else will run until it is answered.\n", output);
+        }
+
         static Dictionary<string, object> LoginDialog(string fingerprint)
         {
             var data = new ModalWindow

@@ -288,7 +288,12 @@ namespace Cts.Cli
                         .Detail(Answered(data));
                     if (closed) return answer;
                     var next = Dialogs.Of(data, "next");
-                    answer.Partial().Detail(Equals(Value(data, "covered"), true) ? Covered : StillOpen);
+                    var others = Items(data, "buttons").Select(caption => Convert.ToString(caption, CultureInfo.InvariantCulture))
+                        .Where(caption => !string.IsNullOrEmpty(caption) && !ModalCaption.Same(caption, Convert.ToString(pressed, CultureInfo.InvariantCulture))).ToList();
+                    answer.Partial().Detail(Equals(Value(data, "covered"), true) ? Covered : others.Count > 0
+                        ? "the dialog did not close: " + ModalCaption.Display(Convert.ToString(pressed, CultureInfo.InvariantCulture)) + " acts inside it; press one of its other buttons: "
+                            + string.Join(" ", others.Select(caption => "[" + ModalCaption.Display(caption) + "]")) + ". Nothing else will run until it is answered."
+                        : StillOpen);
                     return next.Count > 0 ? answer.Detail(ModalErrors.BlockLine(next)) : answer;
                 },
             },

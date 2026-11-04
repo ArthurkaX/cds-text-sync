@@ -53,6 +53,22 @@ namespace Cts.Agent
             return fallback;
         }
 
+        //: The caption of the button Enter presses in the dialog behind *hwnd*:
+        //: the focused button, else the form's accept button; null when it is
+        //: neither or the dialog is not a Windows Forms one.  Two fields read,
+        //: no call into the UI thread.
+        public static string DefaultButton(long hwnd)
+        {
+            try
+            {
+                var form = Resolve(hwnd) as Form;
+                if (form == null) return null;
+                var button = form.ActiveControl as Button ?? form.AcceptButton as Button;
+                return button == null ? null : Caption(button, null);
+            }
+            catch (Exception) { return null; }
+        }
+
         //: Whether the control is selected, or null when it has no such state
         //: (or is a three-state box sitting in its indeterminate state, which is
         //: neither checked nor unchecked and must not be reported as either).

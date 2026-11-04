@@ -52,8 +52,11 @@ namespace Cts.Cli
         }
 
         // The `cts dialog answer` line for *window*, from its own captions:
-        // the radio option already chosen and the first button, the IDE's
-        // default. A check box keeps its state, so it is not named.
+        // the radio option already chosen and its OK button (a button before
+        // OK, such as None or All, acts inside the dialog and does not close
+        // it), else the button Enter presses (No on "open the security screen
+        // for details?"), else the first. A check box keeps its state, so it
+        // is not named.
         internal static string AnswerLine(ModalWindow window)
         {
             var line = "cts dialog answer --id " + window.Fingerprint;
@@ -63,7 +66,9 @@ namespace Cts.Cli
                 var chosen = radios.FirstOrDefault(option => option.Checked == true) ?? radios[0];
                 line += " --choose \"" + ModalCaption.Display(chosen.Caption) + "\"";
             }
-            var button = (window.Buttons ?? new string[0]).FirstOrDefault(caption => !string.IsNullOrEmpty(caption));
+            var buttons = (window.Buttons ?? new string[0]).Where(caption => !string.IsNullOrEmpty(caption)).ToList();
+            var button = buttons.FirstOrDefault(caption => ModalCaption.Key(caption) == "ok")
+                ?? buttons.FirstOrDefault(caption => ModalCaption.Same(caption, window.Default)) ?? buttons.FirstOrDefault();
             if (button != null) line += " --press \"" + ModalCaption.Display(button) + "\"";
             return line;
         }

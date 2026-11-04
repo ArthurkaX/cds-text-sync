@@ -124,6 +124,23 @@ namespace Cts.Agent
             return InternalGetWindowText(hwnd, text, text.Capacity) > 0 ? text.ToString() : null;
         }
 
+        const uint WM_GETTEXT = 0x000D;
+        const uint SMTO_ABORTIFHUNG = 0x0002;
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wparam, StringBuilder lparam,
+            uint flags, uint timeoutMs, out IntPtr result);
+
+        //: The text a control keeps itself, as it answers WM_GETTEXT: a rich
+        //: edit's, which Text does not see.  Asked with a deadline, so a hung UI
+        //: thread holds the watcher half a second at most.
+        public static string AskedText(IntPtr hwnd)
+        {
+            var text = new StringBuilder(MaxText);
+            return SendMessageTimeout(hwnd, WM_GETTEXT, new IntPtr(text.Capacity), text, SMTO_ABORTIFHUNG, 500, out var length) != IntPtr.Zero
+                && length.ToInt64() > 0 ? text.ToString() : null;
+        }
+
         //: Queues a button click to the window's thread.  Never blocks.  The
         //: dialog is told its button was clicked (WM_COMMAND, BN_CLICKED), as
         //: the button itself would tell it: BM_CLICK replays a mouse click,

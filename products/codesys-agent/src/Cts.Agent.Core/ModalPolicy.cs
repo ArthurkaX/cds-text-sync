@@ -41,7 +41,8 @@ namespace Cts.Agent
         // What a child control adds to the dialog's description.  Win32 dialogs
         // use the plain "Button" and "Static" classes; WinForms names its native
         // classes "WindowsForms10.BUTTON.app.…", and CODESYS's message boxes put
-        // the message in a read-only "WindowsForms10.EDIT.app.…".
+        // the message in a read-only "WindowsForms10.EDIT.app.…" or, with a
+        // "Remember decision" box, a read-only "WindowsForms10.RICHEDIT50W.app.…".
         public static ChildRole RoleOf(string className)
         {
             if (string.IsNullOrEmpty(className)) return ChildRole.Other;
@@ -52,7 +53,8 @@ namespace Cts.Agent
             var kind = className.Substring(winForms.Length);
             if (kind.StartsWith("BUTTON.", StringComparison.Ordinal)) return ChildRole.Button;
             if (kind.StartsWith("EDIT.", StringComparison.Ordinal)
-                || kind.StartsWith("STATIC.", StringComparison.Ordinal)) return ChildRole.Text;
+                || kind.StartsWith("STATIC.", StringComparison.Ordinal)
+                || kind.StartsWith("RICHEDIT", StringComparison.Ordinal)) return ChildRole.Text;
             return ChildRole.Other;
         }
     }
