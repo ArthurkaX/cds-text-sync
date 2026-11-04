@@ -84,7 +84,7 @@ Deleting all of an object's files deletes the object in the IDE, unless the proj
 
 The sync folder is a git repository and the IDE project is a working copy of its checked-out branch. Use cts for git work that touches the project, so the IDE and the files stay one state:
 
-- `cts commit -m MSG` syncs the IDE and the folder, then commits the branch. It never commits a `*.project`; only the project's owner adds `--publish` to put the project file in the repository.
+- `cts commit -m MSG` commits the folder's files as they are on disk; it does not read the IDE, so `cts export` (or `cts sync`) first carries edits made in the IDE into the files, and `cts compare` shows whether any are left. It never commits a `*.project`; only the project's owner adds `--publish` to put the project file in the repository.
 - `cts push` sends the branch to the team's repository. A refusal that the remote has commits the branch lacks means pull first.
 - `cts project update` pulls the team's commits and imports them into the IDE (on a colleague's machine onto the published project file). When git stops at a conflict, a person resolves it in their git program (`cts open`) and commits the merge; `cts project update` then imports it.
 - `cts branch [NAME]` lists branches or creates one at the current commit; `cts checkout TARGET` switches and carries the difference into the IDE; `cts log` lists commits to go back to.
