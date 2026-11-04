@@ -139,6 +139,27 @@ namespace Cts.Agent.Tests
                 FolderGit.Position(Path.Combine(Path.GetTempPath(), "cts-missing-" + Guid.NewGuid().ToString("N")), null));
         }
 
+        // The project file in a folder git does not track yet is not an
+        // uncommitted change: commit never commits it; the folder's other
+        // files are.
+        [Fact]
+        public void The_project_file_in_an_untracked_folder_is_not_uncommitted()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "cts-untracked-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(folder, ".project"));
+            try
+            {
+                GitRun.In(folder, "init -q");
+                var project = Path.Combine(folder, ".project", "Plant.project");
+                File.WriteAllText(project, "");
+
+                Assert.Equal(0L, FolderGit.Position(folder, project)["uncommitted"]);
+                File.WriteAllText(Path.Combine(folder, ".project", "notes.txt"), "");
+                Assert.Equal(1L, FolderGit.Position(folder, project)["uncommitted"]);
+            }
+            finally { Directory.Delete(folder, true); }
+        }
+
         // A clock that moves only when the wait sleeps.
         sealed class FakeClock
         {

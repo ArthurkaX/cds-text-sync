@@ -28,7 +28,7 @@ namespace Cts.Cli
             }
             var root = GitRepository.RootOf(folder, top.Output);
             var position = GitRepository.Position(root);
-            var status = GitRun.In(root, "status --porcelain=v1 -z");
+            var status = GitRun.In(root, "status --porcelain=v1 -z --untracked-files=all");
             if (status.ExitCode != 0) return Failed("git status failed: " + status.Message);
             var answer = new Dictionary<string, object>
             {
@@ -41,10 +41,12 @@ namespace Cts.Cli
         }
 
         // The uncommitted paths of the repository at *root*; refused when git
-        // cannot tell. The open *project*'s own file does not count.
+        // cannot tell. The open *project*'s own file does not count; files of an
+        // untracked folder are listed one by one, so a project file in one is
+        // not counted as its folder.
         internal static IList<string> Uncommitted(string root, string project)
         {
-            var status = GitRun.In(root, "status --porcelain=v1 -z");
+            var status = GitRun.In(root, "status --porcelain=v1 -z --untracked-files=all");
             if (status.ExitCode != 0) throw new InvalidOperationException("git status failed: " + status.Message);
             return Uncommitted(root, status.Output, project);
         }
