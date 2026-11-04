@@ -5,6 +5,10 @@ text (`project-view/`, one `.st` per POU and an `.xml` for every other object),
 the project file the owner publishes, and `cds-text-sync.json`. git merges the
 text; the project file is only the starting point each PC rebuilds from.
 
+<p align="center"><img src="../img/cts-team.gif"
+alt="Two people on one project: the owner exports and publishes it, a colleague clones it, works on a branch and pushes it, the owner reviews and merges it in the git program and carries the merge into CODESYS, the colleague pulls and updates, and a library change travels as a new published project file"
+width="100%"></p>
+
 Every PC needs git and Git LFS (the project file is kept under Git LFS) and the
 agent running in CODESYS: the `cds-text-sync` toolbar button or **Tools >
 Scripting > Scripts > C > cds-text-sync**. Alt+Q opens the quick window; the steps below name its digits.

@@ -119,6 +119,10 @@ which side changed. For a team, work on feature branches and have the project
 owner review changes before merging to `main`; [Working as a team](docs/team.md)
 walks through the owner's and a colleague's steps.
 
+<p align="center"><img src="img/cts-team.gif"
+alt="Two people on one project: the owner exports and publishes it, a colleague clones it, works on a branch and pushes it, the owner reviews and merges it in the git program and carries the merge into CODESYS, the colleague pulls and updates, and a library change travels as a new published project file"
+width="100%"></p>
+
 ## 3. I want to find errors in my project
 
 Export the project first, then run the analyzer against its `.st` files. It is
