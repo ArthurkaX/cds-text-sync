@@ -2217,7 +2217,7 @@ def run_scenario(ctx, name, function):
     a timeout in `cts`, or a crash -- so a failed scenario still leaves the
     project as it found it.
     """
-    started = time.time()
+    started = time.monotonic()
     failed_call = None
     restore_error = None
     try:
@@ -2237,7 +2237,7 @@ def run_scenario(ctx, name, function):
                 failed_call = ctx.last
             else:
                 detail = "{0}; restore failed: {1}".format(detail, restore_error)[:400]
-    return passed, time.time() - started, detail, failed_call, restore_error
+    return passed, time.monotonic() - started, detail, failed_call, restore_error
 
 
 def report_failure(name, failed_call):
