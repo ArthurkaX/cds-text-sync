@@ -1955,6 +1955,38 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void A_saving_import_with_a_conflict_writes_the_rest_and_does_not_save()
+        {
+            var view = ViewFolder.Of(_root);
+            var objects = StViewReader.Read(view).Objects;
+            var main = objects.First(candidate => candidate.Path.Last() == "MAIN");
+            var mainFile = Path.Combine(view, main.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(mainFile, File.ReadAllText(mainFile).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := Disk;"));
+            var scale = objects.First(candidate => candidate.Path.Last() == "F_Scale");
+            var scaleFile = Path.Combine(view, scale.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(scaleFile, File.ReadAllText(scaleFile).Replace("F_Scale := x * k;", "F_Scale := k * x;"));
+            var changedSnapshot = File.ReadAllText(Path.Combine(Fixture, "snapshot.xml")).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := IDE;");
+            var written = new List<IDictionary<string, object>>();
+            var saves = 0;
+            var call = ImportCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.WriteAllText(Convert.ToString(args["path"]), changedSnapshot); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(main.Path);
+                if (method == "objects.settext") { written.Add(new Dictionary<string, object>(args)); return new Dictionary<string, object>(); }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", written.ToArray() } };
+                if (method == "project.save") { saves++; return new Dictionary<string, object>(); }
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed");
+            call.Options.Params["save"] = true;
+            var result = ImportCommand.Execute(call);
+            Assert.Single(written);
+            Assert.Single((System.Collections.IEnumerable)result["conflicts"]);
+            Assert.True(Equals(result["partial"], true));
+            Assert.Equal(0, saves);
+            Assert.Equal(false, result["saved"]);
+        }
+
+        [Fact]
         public void ADryRunNamesTheConflictTheImportWouldLeave()
         {
             var view = ViewFolder.Of(_root);

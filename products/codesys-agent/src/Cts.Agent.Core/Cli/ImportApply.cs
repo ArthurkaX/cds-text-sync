@@ -580,7 +580,7 @@ namespace Cts.Cli
                         { { "name", item.Name }, { "path", item.Path } })).ToList();
                 if (createdObjects != null) output["created_objects"] = createdObjects;
                 if (_work.Conflicts.Count == 0 && unappliedGuids.Count == 0 && !_work.Settling) ProjectSource.Mark(_call, _work.Folder, _work.View, output);
-                if (_call.Options.Params.ContainsKey("save") && _readBack.Count == 0
+                if (_call.Options.Params.ContainsKey("save") && _readBack.Count == 0 && _work.Conflicts.Count == 0
                     && (_work.Writes.Count > 0 || _work.Deleted.Count > 0 || _work.ForcedDeletes.Count > 0 || _work.FolderDeletes.Count > 0 || _work.Renames.Count > 0 || _settings.Count > 0
                         || _nativeWrites.Count > 0 || _work.NativeDeletes.Count > 0 || _work.CreatedFolders.Count > 0 || _updatedFieldObjects.Count > 0))
                 {
