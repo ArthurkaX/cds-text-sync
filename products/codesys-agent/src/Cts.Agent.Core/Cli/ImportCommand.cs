@@ -474,6 +474,15 @@ namespace Cts.Cli
             }
         }
 
+        // The kind of a new object: a VAR_GLOBAL whose cts pragma names a
+        // persistent variable list's type becomes one; ST alone cannot tell it
+        // from a GVL.
+        static string CreateKind(string kind, string typeGuid)
+        {
+            var created = CreateKind(kind);
+            return created == "gvl" && Cts.Sync.TypeKinds.All.Kind(typeGuid) == "persistent_gvl" ? "persistent_gvl" : created;
+        }
+
         static Dictionary<string, string> PropertyAccessors(StViewResult parsed, StViewObject property)
         {
             return parsed.Objects.Where(item => item.Path.Length == property.Path.Length + 1

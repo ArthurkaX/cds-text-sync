@@ -99,6 +99,9 @@ namespace Cts.Agent.Tests
         [InlineData("INTERFACE", "_3S.CoDeSys.InterfaceObject.InterfaceObject")]
         [InlineData("folder", "_3S.CoDeSys.DefaultNavigators.FolderObject")]
         [InlineData("FOLDER", "_3S.CoDeSys.DefaultNavigators.FolderObject")]
+        [InlineData("persistent_gvl", "_3S.CoDeSys.GVLObject.VarPersistentObject")]
+        [InlineData("task_config", "_3S.CoDeSys.TaskConfigObject.TaskConfigObject")]
+        [InlineData("task", "_3S.CoDeSys.TaskObject.TaskObject")]
         public void EveryNewKindMapsToItsFactoriesObjectType(string kind, string typeName)
         {
             var spec = ObjectCreate.From(Req(

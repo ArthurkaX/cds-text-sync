@@ -130,7 +130,8 @@ namespace Cts.Agent
                 case "project.save": return "save_project";
                 case "project.syncfolder": return "set_sync_folder";
                 case "project.simulation": return "set_simulation_mode";
-                case "project.change_device": return "change_device";
+                case "project.change_device":
+                case "project.add_device": return "change_device";
                 case "project.open": return "project_open";
                 case "project.close": return "project_close";
                 case "trace.set":

@@ -226,7 +226,7 @@ namespace Cts.Cli
                 var parentGuid = parent == null ? "" : _work.Created.TryGetValue(parent, out var newParent) ? newParent
                     : _work.IdeByPath.TryGetValue(parent, out var existingParent) ? existingParent : null;
                 if (parentGuid == null) throw new InvalidOperationException("validated " + what + " parent is missing: " + key);
-                var kind = CreateKind(item.Kind);
+                var kind = CreateKind(item.Kind, item.TypeGuid);
                 if (kind == null) throw new InvalidOperationException("validated " + what + " kind is missing: " + item.Kind);
                 var parameters = Below(parentGuid, new Dictionary<string, object> { { "kind", kind }, { "name", item.Path.Last() } });
                 var declaration = StripPragma(item.Declaration);

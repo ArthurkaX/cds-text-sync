@@ -41,14 +41,7 @@ namespace Cts.Agent
             var handle = ProjectHandle();
             var deviceIface = FindType("_3S.CoDeSys.DeviceObject.IDeviceObject");
             var device = deviceName.Length == 0 ? LoginDevice(handle, deviceIface) : DeviceNamed(deviceName);
-            var target = InstalledDevices().Select(DescriptionEntry)
-                .Where(entry => (int)entry["type"] == type && string.Equals(Convert.ToString(entry["id"]), id, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            if (version.Length > 0) target = target.Where(entry => Convert.ToString(entry["version"]) == version).ToList();
-            if (target.Count == 0)
-                throw new ProtocolException(ErrorCodes.BadParams, "no installed device description has type " + type + ", id '" + id + "'"
-                    + (version.Length > 0 ? ", version " + version : "") + "; cts project device-types lists the installed ones");
-            var chosen = target.OrderBy(entry => VersionKey(Convert.ToString(entry["version"]))).Last();
+            var chosen = InstalledDescription(type, id, version);
             var before = IdentificationEntry(Prop(deviceIface, Prop(_metaObjectIface, ReadMeta(handle, device), "Object"), "DeviceIdentification"));
             RunBatchCommand("device replace", handle.ToString(), type.ToString(), Convert.ToString(chosen["id"]),
                 Convert.ToString(chosen["version"]), Id(device));
@@ -61,6 +54,45 @@ namespace Cts.Agent
                 { "after", after },
                 { "name", chosen["name"] },
             };
+        }
+
+        // `project.add_device {name, type, id, version?}`: the IDE's Add Device at
+        // the top of the project -- its batch command `device add` with the
+        // arguments AddDeviceCmd.CreateBatchArguments gives it (project handle,
+        // parent guid, index -1, type, id, version, name).  The device comes with
+        // the objects its description brings (Plc Logic, Application).
+        public Dictionary<string, object> AddDevice(string name, int type, string id, string version)
+        {
+            RefuseWhileOnline();
+            RequirePermission("project.add_device");
+            if (name.Length == 0) throw new ProtocolException(ErrorCodes.BadParams, "parameter 'name' must not be empty");
+            var chosen = InstalledDescription(type, id, version);
+            var handle = ProjectHandle();
+            RunBatchCommand("device add", handle.ToString(), Guid.Empty.ToString(), "-1", type.ToString(),
+                Convert.ToString(chosen["id"]), Convert.ToString(chosen["version"]), name);
+            var device = DeviceNamed(name);
+            return new Dictionary<string, object>
+            {
+                { "device", name },
+                { "guid", device.ToString() },
+                { "type", chosen["type"] },
+                { "id", chosen["id"] },
+                { "version", chosen["version"] },
+                { "name", chosen["name"] },
+            };
+        }
+
+        // The installed description of type and id; no version: the highest one.
+        Dictionary<string, object> InstalledDescription(int type, string id, string version)
+        {
+            var target = InstalledDevices().Select(DescriptionEntry)
+                .Where(entry => (int)entry["type"] == type && string.Equals(Convert.ToString(entry["id"]), id, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (version.Length > 0) target = target.Where(entry => Convert.ToString(entry["version"]) == version).ToList();
+            if (target.Count == 0)
+                throw new ProtocolException(ErrorCodes.BadParams, "no installed device description has type " + type + ", id '" + id + "'"
+                    + (version.Length > 0 ? ", version " + version : "") + "; cts project device-types lists the installed ones");
+            return target.OrderBy(entry => VersionKey(Convert.ToString(entry["version"]))).Last();
         }
 
         // Every installed description; the repository answers its own collection type.

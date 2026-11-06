@@ -171,6 +171,38 @@ namespace Cts.Cli
             },
             new CliCommand
             {
+                Name = "project",
+                Sub = "add-device",
+                Summary = "Add a device at the top of the project (Add Device)",
+                Description = "Does what the IDE's Add Device does at the top of the project: a new device of the installed "
+                    + "description --type, --id and --version (without --version: the highest one installed), with the "
+                    + "objects the description brings (Plc Logic, Application). A second device of the PLC's own type "
+                    + "holds a test application that runs in simulation (cts guide tests). Needs an offline project and "
+                    + "does not save it: run cts sync to bring the new objects to disk.\n\n"
+                    + "  cts project add-device --name Test --type 4096 --id \"0000 0004\"",
+                Seconds = 300,
+                Options = new[]
+                {
+                    CliOption.Text("--name", "name", "NAME", "Name of the new device"),
+                    CliOption.Int("--type", "type", "Device type number, as device-types lists it"),
+                    CliOption.Text("--id", "id", "ID", "Device id, as device-types lists it"),
+                    CliOption.Text("--version", "version", "VERSION", "Device version (default: the highest installed)"),
+                },
+                Execute = call =>
+                {
+                    if (!call.Options.Params.ContainsKey("name") || !call.Options.Params.ContainsKey("type") || !call.Options.Params.ContainsKey("id"))
+                        throw new CliFailure("project-add-device", "usage", "--name, --type and --id are required",
+                            "cts project device-types", 2);
+                    return call.Call("project.add_device", new Dictionary<string, object>(call.Options.Params));
+                },
+                Build = data => new Answer()
+                    .Add("device", Value(data, "device"))
+                    .Add("version", Value(data, "version"))
+                    .Detail(Value(data, "name") + ": type " + Value(data, "type") + " id " + Value(data, "id"))
+                    .Detail("Next: cts sync"),
+            },
+            new CliCommand
+            {
                 Name = "scan",
                 Summary = "List the PLCs the gateway finds on the network",
                 Description = "What the device editor's Scan Network shows: every CODESYS runtime the gateway (default: "

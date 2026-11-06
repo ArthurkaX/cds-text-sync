@@ -330,6 +330,9 @@ namespace Cts.Agent
             // Update Device: another type or version for a device (`cts project change-device`).
             _router.Register("project.change_device", (req, s) => _ide.OnUi("project.change_device", StartTimeout.Parse(req, UiTimeoutMs),
                 () => _ide.ChangeDevice(req.String("device", ""), (int)req.Int("type"), req.String("id"), req.String("version", ""))));
+            // Add Device: a new device at the top of the project (`cts project add-device`).
+            _router.Register("project.add_device", (req, s) => _ide.OnUi("project.add_device", StartTimeout.Parse(req, UiTimeoutMs),
+                () => _ide.AddDevice(req.String("name"), (int)req.Int("type"), req.String("id"), req.String("version", ""))));
             // The messages of one IDE message category (`cts read-log`).
             _router.Register("messages.read", (req, s) => _ide.OnUi("messages.read", StartTimeout.Parse(req, UiTimeoutMs),
                 () => _ide.ReadMessages(req.String("category", ""), req.Int("last", 0), req.Bool("clear", false))));

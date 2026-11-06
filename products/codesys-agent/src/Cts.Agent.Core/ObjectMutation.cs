@@ -52,9 +52,12 @@ namespace Cts.Agent
                 case "dut": return "_3S.CoDeSys.DUTObject.DUTObject";
                 case "interface": return "_3S.CoDeSys.InterfaceObject.InterfaceObject";
                 case "folder": return "_3S.CoDeSys.DefaultNavigators.FolderObject";
+                case "persistent_gvl": return "_3S.CoDeSys.GVLObject.VarPersistentObject";
+                case "task_config": return "_3S.CoDeSys.TaskConfigObject.TaskConfigObject";
+                case "task": return "_3S.CoDeSys.TaskObject.TaskObject";
                 default:
                     throw new ProtocolException(ErrorCodes.BadParams,
-                        "cannot create kind '" + kind + "'; supported kinds: gvl, pou, method, action, property, dut, interface, folder");
+                        "cannot create kind '" + kind + "'; supported kinds: gvl, persistent_gvl, pou, method, action, property, dut, interface, folder, task_config, task");
             }
         }
 
