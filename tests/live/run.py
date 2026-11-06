@@ -82,10 +82,14 @@ class Context(object):
         the agent must resolve that against the saved project, not the CWD.
         """
         argv = self._cts + [str(a) for a in args]
-        done = subprocess.run(
-            argv, capture_output=True, text=True,
-            encoding="utf-8", errors="replace",
-        )
+        try:
+            done = subprocess.run(
+                argv, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=900,
+            )
+        except subprocess.TimeoutExpired as error:
+            self.last = (argv, -1, "", "timed out after 900 s")
+            raise LiveError("command timed out after 900 s: {0}".format(" ".join(argv))) from error
         self.last = (argv, done.returncode, done.stdout, done.stderr)
         # The runner changes the IDE only through cts and the agent: a notice
         # of IDE changes made outside cts is the journal counting cts's own write.
@@ -199,10 +203,11 @@ class Context(object):
     # -- restore -------------------------------------------------------------
 
     def git(self, *args):
-        return subprocess.run(
-            ["git", "-C", self.root] + [str(a) for a in args],
-            capture_output=True, text=True,
-        )
+        argv = ["git", "-C", self.root] + [str(a) for a in args]
+        try:
+            return subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired as error:
+            raise LiveError("git timed out after 120 s: {0}".format(" ".join(argv))) from error
 
     def restore(self):
         """Put the disk back and bring the IDE back, then prove both agree.
@@ -212,31 +217,53 @@ class Context(object):
         ``cleanup_hooks``, because git cannot remove it.  An online scenario
         disconnects first: import is refused while online.
         """
-        if (self.json_of(self.cts("status", "--json")[1]).get("plc") or {}).get("online") is True:
-            self.cts("disconnect")   # an online IDE refuses every edit below
-        for hook in self.cleanup_hooks:
-            hook()
+        errors = []
+        def attempt(label, action):
+            try:
+                result = action()
+                if isinstance(result, subprocess.CompletedProcess) and result.returncode:
+                    errors.append("{0} exited {1}".format(label, result.returncode))
+                elif isinstance(result, tuple) and result and isinstance(result[0], int) and result[0]:
+                    errors.append("{0} exited {1}".format(label, result[0]))
+            except Exception as error:  # noqa: BLE001
+                errors.append("{0}: {1}".format(label, error))
+        status = {}
+        def check_online():
+            status.update(self.json_of(self.cts_ok("status", "--json")[1]))
+        attempt("cts status --json", check_online)
+        if (status.get("plc") or {}).get("online") is True:
+            attempt("cts disconnect", lambda: self.cts("disconnect"))
+        for index, hook in enumerate(self.cleanup_hooks):
+            attempt("cleanup hook {0}".format(index + 1), hook)
         self.cleanup_hooks = []
         # The disk first, then the reverse edit: disk wins.
-        self.git("checkout", "--", "project-view")
-        self.git("clean", "-fd", "project-view")
-        self.cts("import", "--force")   # the reverse edit: disk wins
+        attempt("git checkout project-view", lambda: self.git("checkout", "--", "project-view"))
+        attempt("git clean project-view", lambda: self.git("clean", "-fd", "project-view"))
+        attempt("cts import --force", lambda: self.cts("import", "--force"))
         # Put the tree back exactly as git has it.
-        self.git("checkout", "--", "project-view")
-        self.git("clean", "-fd", "project-view")
-        report = self.text_status()
+        attempt("git checkout project-view", lambda: self.git("checkout", "--", "project-view"))
+        attempt("git clean project-view", lambda: self.git("clean", "-fd", "project-view"))
+        report = {}
+        attempt("cts compare --all", lambda: report.update(self.text_status()))
         changed = report.get("changed") or []
         ide_only = report.get("ide_only") or []
         disk_only = report.get("disk_only") or []
         if changed or ide_only or disk_only:
-            raise AssertionError(
+            errors.append(
                 "restore did not converge: changed={0} ide_only={1} disk_only={2}".format(
                     *(_names(items) for items in (changed, ide_only, disk_only))
                 )
             )
         # Disk and IDE agree again: so does the sync base, or the next
         # scenario would start from the last one's base.
-        self.cts_ok("export", "--force")
+        attempt("cts export --force", lambda: self.cts_ok("export", "--force"))
+        dirty = self.git("status", "--porcelain", "--", "project-view")
+        if dirty.returncode:
+            errors.append("git status project-view exited {0}".format(dirty.returncode))
+        elif dirty.stdout.strip():
+            errors.append("project-view remains dirty: {0}".format(dirty.stdout.strip().replace("\n", ", ")))
+        if errors:
+            raise AssertionError("; ".join(errors))
 
     def plc(self):
         """The PLC block of ``cts status``."""
@@ -1368,7 +1395,7 @@ def _agent_call(method, params):
     argv = cts_command() + ["raw", method, "--timeout", "15"]
     for key, value in params.items():
         argv += ["--" + key, json.dumps(value)]
-    done = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    done = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     if done.returncode != 0:
         raise AgentCallError("`cts raw {0}` exited {1}: {2}".format(method, done.returncode, (done.stdout + done.stderr).strip()[:300]))
     starts = [index for index in (done.stdout.find("{"), done.stdout.find("[")) if index >= 0]
@@ -1462,7 +1489,7 @@ def scenario_visu_import(ctx):
 def scenario_import_without_base(ctx):
     """Without refs/cts/base the IDE is the base: an edit is written, a file
     gone from disk deletes nothing."""
-    subprocess.run(["git", "update-ref", "-d", "refs/cts/base"], cwd=ctx.root, check=True)
+    subprocess.run(["git", "update-ref", "-d", "refs/cts/base"], cwd=ctx.root, check=True, timeout=120)
     ctx.append_to_body("FB_Motor", "// live no-base edit")
     os.remove(ctx.st_path("GVL_Bench"))
 
@@ -1541,7 +1568,7 @@ def scenario_merge_tool_ide_edit_import(ctx):
     with open(os.path.join(tool, "tool.py"), "w", encoding="utf-8") as handle:
         handle.write("import json, os, subprocess, sys\n"
                      "with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'edit.json'), encoding='utf-8') as handle:\n"
-                     "    subprocess.run(json.load(handle), check=True, capture_output=True)\n"
+                     "    subprocess.run(json.load(handle), check=True, capture_output=True, timeout=120)\n"
                      "right = sys.argv[sys.argv.index('-o') + 1]\n"
                      "with open(right, 'rb') as handle:\n"
                      "    data = handle.read()\n"
@@ -2038,7 +2065,7 @@ def scenario_project_update(ctx):
     code, out, err = ctx.cts("project", "update")
     assert code == 1 and "no upstream" in out + err, ctx.verdict(out)
 
-    subprocess.run(["git", "init", "-q", "--bare", remote], check=True)
+    subprocess.run(["git", "init", "-q", "--bare", remote], check=True, timeout=120)
     ctx.git("remote", "add", "live-remote", remote)
     # The pushes set the scene, the hook is not under test: git-lfs in it
     # fails on a fixture kept on some virtual drives.
@@ -2192,6 +2219,7 @@ def run_scenario(ctx, name, function):
     """
     started = time.time()
     failed_call = None
+    restore_error = None
     try:
         detail = function(ctx)
         passed = True
@@ -2203,10 +2231,13 @@ def run_scenario(ctx, name, function):
         try:
             ctx.restore()
         except Exception as error:  # noqa: BLE001
+            restore_error = str(error).replace("\n", " ")[:400]
             if passed:
-                passed, detail = False, "restore failed: {0}".format(error).replace("\n", " ")[:200]
+                passed, detail = False, "restore failed: {0}".format(restore_error)[:200]
                 failed_call = ctx.last
-    return passed, time.time() - started, detail, failed_call
+            else:
+                detail = "{0}; restore failed: {1}".format(detail, restore_error)[:400]
+    return passed, time.time() - started, detail, failed_call, restore_error
 
 
 def report_failure(name, failed_call):
@@ -2248,7 +2279,11 @@ def main(argv):
 
     results = []
     for name, function in selected:
-        results.append((name,) + run_scenario(ctx, name, function))
+        result = run_scenario(ctx, name, function)
+        results.append((name,) + result[:4])
+        if result[4]:
+            print("restore failed after {0}; skipping remaining scenarios".format(name))
+            break
 
     print("")
     for name, passed, seconds, detail, failed_call in results:
