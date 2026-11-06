@@ -76,15 +76,15 @@ namespace Cts.Agent.Core.Tests
         [Fact]
         public void An_object_deleted_in_the_IDE_is_listed_as_deleted_and_points_to_sync_not_to_its_text()
         {
-            IDictionary<string, object> Row(string name, string reason) => new Dictionary<string, object>
-                { { "name", name }, { "path", name + ".xml" }, { "category", "ide_changed" }, { "reason", reason } };
+            IDictionary<string, object> Row(string name, string reason, bool deleted = false) => new Dictionary<string, object>
+                { { "name", name }, { "path", name + ".xml" }, { "category", "ide_changed" }, { "reason", reason }, { "ide_deleted", deleted } };
             Answer Build(params IDictionary<string, object>[] rows) => ComparePlanner.Build(new Dictionary<string, object>
             {
                 { "base", true }, { "ide", "ide" },
                 { "summary", new Dictionary<string, object> { { "unchanged", 1 }, { "modified", 0 }, { "added", 0 }, { "deleted", 0 }, { "not_importable", 0 }, { "ide_changed", rows.Length } } },
                 { "objects", new Dictionary<string, object> { { "ide_changed", rows.ToList() } } },
             });
-            var deleted = Row("Screen", "deleted in the IDE; cts sync removes the file");
+            var deleted = Row("Screen", "deleted in the IDE; cts sync removes the file", true);
 
             var onlyDeleted = Build(deleted);
             Assert.Equal(new[] { "ide_changed Screen Screen.xml: deleted in the IDE", "Next: cts sync removes the files of the objects deleted in the IDE (git keeps them); cts import --force creates them again from the files" }, onlyDeleted.Details);

@@ -31,7 +31,7 @@ namespace Cts.Cli
         // What to do about objects the IDE changed: compare's and import's last line; a deleted one has no text to read.
         internal static string IdeChangedNext(ICollection<IDictionary<string, object>> items)
         {
-            var deleted = items.Count(item => Convert.ToString(item.ContainsKey("reason") ? item["reason"] : "").StartsWith("deleted in the IDE", StringComparison.Ordinal));
+            var deleted = items.Count(Deleted);
             if (deleted == items.Count) return "Next: cts sync removes the files of the objects deleted in the IDE (git keeps them); cts import --force creates them again from the files";
             return "Next: cts read-object NAME --body shows the IDE's text of one; if the IDE's edits are right, cts sync writes them into their files (edit the files after that); if the files are right, cts import --force gives the IDE their text and the folder stays the source (the IDE's text is kept in refs/cts/overwritten)"
                 + (deleted > 0 ? "; cts sync also removes the files of the ones deleted in the IDE" : "");
@@ -39,11 +39,11 @@ namespace Cts.Cli
 
         // An object only the IDE changed, as compare and import --dry-run list it; one the IDE deleted says so.
         internal static string IdeChangedLine(IDictionary<string, object> item) => "ide_changed " + item["name"] + " " + item["path"]
-            + (Convert.ToString(item.ContainsKey("reason") ? item["reason"] : "").StartsWith("deleted in the IDE", StringComparison.Ordinal) ? ": deleted in the IDE" : "");
+            + (Deleted(item) ? ": deleted in the IDE" : "");
 
-        internal static bool IdeDeleted(CompareRecord record) => record.Category == "ide_changed" && DeletedInIde(record);
+        static bool Deleted(IDictionary<string, object> item) => Equals(JsonMap.Value(item, "ide_deleted"), true);
 
-        static bool DeletedInIde(CompareRecord item) => (item.Reason ?? "").StartsWith("deleted in the IDE", StringComparison.Ordinal);
+        internal static bool IdeDeleted(CompareRecord record) => record.Category == "ide_changed" && record.IdeDeleted;
 
         public static Answer Build(IDictionary<string, object> data)
         {

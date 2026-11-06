@@ -328,6 +328,7 @@ namespace Cts.Cli
                     var record = new CompareRecord { Name = ContainerName(path), Path = path, Category = category };
                     if (category == "ide_changed") record.Reason = !ideExists ? "deleted in the IDE; cts sync removes the file" : !hasBase ? "not in the view; cts sync writes it to disk" : "changed in the IDE; cts sync writes it to disk";
                     record.IdeChanged = both;
+                    record.IdeDeleted = category == "ide_changed" && !ideExists;
                     // Both sides' edits of an object kept as XML join when they
                     // touch different elements, a text list's when they touch
                     // different rows; the import carries the merge.
@@ -437,7 +438,7 @@ namespace Cts.Cli
                 var diskChanged = diskBaseParts.Count > 0; var ideChanged = ideBaseParts.Count > 0;
                 if (!diskChanged && !ideChanged) { if (all) AddRecord(records, counts, "unchanged", name, entry.File, diskObject, null, snapshotTimes: snapshotTimes); else counts["unchanged"]++; continue; }
                 if (diskChanged && !ideChanged) { if (diskObject == null) AddRecord(records, counts, "deleted", name, entry.File, baseObject, null, snapshotTimes: snapshotTimes); else AddRecord(records, counts, "modified", name, entry.File, diskObject, null, diskBaseParts, snapshotTimes: snapshotTimes); }
-                else if (!diskChanged && ideChanged) AddRecord(records, counts, "ide_changed", name, entry.File, ideObject ?? baseObject, ideObject == null ? "deleted in the IDE; cts sync removes the file" : "changed in the IDE; cts sync writes it to disk", ideBaseParts, snapshotTimes: snapshotTimes);
+                else if (!diskChanged && ideChanged) AddRecord(records, counts, "ide_changed", name, entry.File, ideObject ?? baseObject, ideObject == null ? "deleted in the IDE; cts sync removes the file" : "changed in the IDE; cts sync writes it to disk", ideBaseParts, snapshotTimes: snapshotTimes).IdeDeleted = ideObject == null;
                 else AddRecord(records, counts, "modified", name, entry.File, diskObject ?? ideObject, null, diskIdeParts, true, snapshotTimes);
             }
         }
@@ -477,7 +478,7 @@ namespace Cts.Cli
 
         static bool IsContainer(string path) => Path.GetFileName(path).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase) && path.Contains("/");
         static string ContainerName(string path) => Path.GetFileName(path).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase) ? Path.GetFileName(Path.GetDirectoryName(path)) : Path.GetFileNameWithoutExtension(path);
-        static void AddRecord(IList<CompareRecord> records, IDictionary<string, int> counts, string category, string name, string file, StViewObject item, string reason, IList<string> parts = null, bool both = false, IDictionary<string, SnapshotStamp> snapshotTimes = null)
+        static CompareRecord AddRecord(IList<CompareRecord> records, IDictionary<string, int> counts, string category, string name, string file, StViewObject item, string reason, IList<string> parts = null, bool both = false, IDictionary<string, SnapshotStamp> snapshotTimes = null)
         {
             counts[category] = counts.ContainsKey(category) ? counts[category] + 1 : 1;
             if (both) counts["both"] = counts.ContainsKey("both") ? counts["both"] + 1 : 1;
@@ -489,6 +490,7 @@ namespace Cts.Cli
                 record.Timestamp = stamp.Timestamp;
             }
             records.Add(record);
+            return record;
         }
     }
 }

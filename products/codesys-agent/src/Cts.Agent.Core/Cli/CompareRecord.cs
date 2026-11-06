@@ -12,6 +12,8 @@ namespace Cts.Cli
         internal string Guid;
         internal bool HasGuid;
         internal bool IdeChanged;
+        //: Only the base and the disk have it: the IDE deleted it.
+        internal bool IdeDeleted;
         internal bool Merges;
         //: Both sides' edits joined, for the import to carry: an .xml by element, a .csv by line.
         internal byte[] Merged;
@@ -26,6 +28,7 @@ namespace Cts.Cli
             var answer = new Dictionary<string, object> { { "name", Name }, { "path", Path } };
             if (Reason != null) answer["reason"] = Reason;
             if (IdeChanged) answer["ide_changed"] = true;
+            if (IdeDeleted) answer["ide_deleted"] = true;
             if (Merges) answer["merges"] = true;
             if (Guid != null) answer["guid"] = Guid;
             if (Parts != null && Parts.Count > 0) answer["parts"] = Parts;
