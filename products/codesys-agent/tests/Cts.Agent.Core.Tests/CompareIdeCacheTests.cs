@@ -156,6 +156,16 @@ namespace Cts.Agent.Core.Tests
         }
 
         [Fact]
+        public void A_fault_in_cts_itself_is_neither_a_refusal_nor_a_quiet_cache_miss()
+        {
+            Assert.Throws<NullReferenceException>(() => Compare(project, (method, args) =>
+                method == "project.export" ? throw new NullReferenceException() : ExportReply(method, args)));
+            Compare(project, ExportReply);
+            Assert.Throws<KeyNotFoundException>(() => Compare(project, (method, args) =>
+                method == "project.skeleton" ? throw new KeyNotFoundException() : ExportReply(method, args)));
+        }
+
+        [Fact]
         public void OldAgentWithoutSkeletonFallsBackToFullExport()
         {
             Compare(project, ExportReply);

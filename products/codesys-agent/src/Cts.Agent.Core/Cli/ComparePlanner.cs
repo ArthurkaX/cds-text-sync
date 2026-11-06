@@ -61,8 +61,7 @@ namespace Cts.Cli
                         "run it again once nothing writes into the sync folder", 1);
                 }
                 catch (Exception error) when (error is InvalidOperationException || error is ArgumentException
-                    || error is UnauthorizedAccessException || error is FormatException || error is InvalidCastException
-                    || error is KeyNotFoundException || error is NullReferenceException || error is OverflowException)
+                    || error is UnauthorizedAccessException || error is FormatException || error is OverflowException)
                 {
                     throw new CliFailure("compare", "refused", error.Message, "cts compare --help", 1);
                 }

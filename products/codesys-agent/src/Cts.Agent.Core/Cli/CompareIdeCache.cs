@@ -67,8 +67,7 @@ namespace Cts.Cli
                 return attempt;
             }
             catch (Exception error) when (error is InvalidOperationException || error is IOException || error is ArgumentException
-                || error is UnauthorizedAccessException || error is FormatException || error is InvalidCastException
-                || error is KeyNotFoundException || error is NullReferenceException || error is OverflowException)
+                || error is UnauthorizedAccessException || error is FormatException || error is OverflowException)
             {
                 return attempt;
             }
