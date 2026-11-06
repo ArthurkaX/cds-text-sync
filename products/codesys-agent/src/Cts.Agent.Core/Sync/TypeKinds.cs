@@ -33,6 +33,7 @@ namespace Cts.Sync
 
         internal string Kind(string guid) { string kind; return _kinds.TryGetValue((guid ?? "").Trim().Trim('{', '}'), out kind) ? kind : null; }
         internal string TypeGuid(string kind) => _kinds.FirstOrDefault(pair => string.Equals(pair.Value, kind, StringComparison.OrdinalIgnoreCase)).Key;
+        internal IReadOnlyList<Guid> Guids(string kind) => _kinds.Where(pair => string.Equals(pair.Value, kind, StringComparison.OrdinalIgnoreCase)).Select(pair => new Guid(pair.Key)).ToList();
         internal bool IsAmbiguous(string kind, string guid) { HashSet<string> values; return _ambiguous.TryGetValue(kind ?? "", out values) && values.Contains((guid ?? "").Trim().Trim('{', '}')); }
         internal IEnumerable<IDictionary<string, object>> Projections => _projections;
     }

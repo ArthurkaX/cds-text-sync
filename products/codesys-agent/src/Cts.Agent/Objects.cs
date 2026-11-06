@@ -14,7 +14,7 @@ namespace Cts.Agent
         // ---- objects.create
 
         // Creates one object under `parentGuid` through the IDE's object model:
-        // the factory is picked by ObjectType full name, Create() makes a detached
+        // the factory is picked by its object's type GUID, Create() makes a detached
         // object, AddObject inserts it (index -1 because an Application parent is
         // not ordered), and the text goes through SetObjectText, so there is
         // exactly one text-write path.  A text write that fails removes the
@@ -28,7 +28,7 @@ namespace Cts.Agent
             // structured view itself is the node a root folder goes below.
             var parent = spec.AtRoot ? null : ObjectMeta(handle, spec.ParentGuid, "GetObjectToRead");
             var parentObject = parent == null ? null : Prop(_metaObjectIface, parent, "Object");
-            var factory = Factory(spec.TypeName, parentObject);
+            var factory = Factory(spec.TypeGuids, parentObject);
             // A folder, or anything directly below one, is placed through the
             // structured view: a plain AddObject with a folder (or Application)
             // parent lands at the project root instead of inside the folder.
@@ -46,7 +46,7 @@ namespace Cts.Agent
                 // A METHOD below an interface needs the interface-method factory;
                 // every other refusal is a caller mistake.
                 if (spec.Kind != "method" || parent == null) throw BadParent(spec, parent);
-                factory = Factory(ObjectKinds.InterfaceMethodType, parentObject);
+                factory = Factory(ObjectKinds.InterfaceMethodTypes, parentObject);
                 if (!Accepts(factory, parentObject)) throw BadParent(spec, parent);
             }
             object created;
@@ -354,33 +354,43 @@ namespace Cts.Agent
             return pageProp == null ? null : Value(pageProp, factory);
         }
 
-        // The factory whose ObjectType full name is `fullName`.  Every kind has
-        // one, but a property has two -- an interface-only factory and the plain
-        // one -- under the same ObjectType; they differ in which parents they
-        // accept, so the first factory that accepts `parent` (when given) wins.
-        object Factory(string fullName, object parent = null)
+        // The factory whose object type is one of `types`, the first type that
+        // has one first.  A type may have several factories -- a property has an
+        // interface-only one and the plain one -- that differ in which parents
+        // they accept, so the first that accepts `parent` (when given) wins.
+        object Factory(IReadOnlyList<Guid> types, object parent = null)
         {
             var manager = Prop(_objectManagerIface, _objectManager, "ObjectFactoryManager");
-            var factories = (Array)Prop(manager.GetType(), manager, "Factories");
-            var names = new List<string>();
-            object fallback = null;
-            foreach (var factory in factories)
+            var factories = ((Array)Prop(manager.GetType(), manager, "Factories")).Cast<object>()
+                .Select(factory => new { Factory = factory, Type = FactoryType(factory) }).ToList();
+            foreach (var type in types)
             {
-                var type = (Type)Prop(factory.GetType(), factory, "ObjectType");
-                if (type == null || type.FullName != fullName)
+                object fallback = null;
+                foreach (var candidate in factories.Where(candidate => candidate.Type == type))
                 {
-                    names.Add(Convert.ToString(type == null ? null : type.FullName));
-                    continue;
+                    if (parent == null || Accepts(candidate.Factory, parent)) return candidate.Factory;
+                    if (fallback == null) fallback = candidate.Factory;
                 }
-                if (parent == null) return factory;
-                var accepts = factory.GetType().GetMethod("AcceptsParentObject");
-                if (accepts != null && (bool)accepts.Invoke(factory, new object[] { parent })) return factory;
-                if (fallback == null) fallback = factory;
+                if (fallback != null) return fallback;
             }
-            if (fallback != null) return fallback;
             throw new ProtocolException(ErrorCodes.Unavailable,
-                "this IDE has no factory for " + fullName + "; it has: " + string.Join(", ", names.ToArray()));
+                "this IDE has no factory for type " + string.Join(" or ", types.Select(type => type.ToString("D")).ToArray()));
         }
+
+        // A factory's object type GUID; empty for a factory whose object class
+        // carries none (it is never one cts creates).
+        Guid FactoryType(object factory)
+        {
+            var type = (Type)Prop(factory.GetType(), factory, "ObjectType");
+            if (type == null) return Guid.Empty;
+            Guid guid;
+            if (FactoryTypes.TryGetValue(type, out guid)) return guid;
+            try { guid = TypeGuidOf(type); }
+            catch (ProtocolException) { guid = Guid.Empty; }
+            return FactoryTypes[type] = guid;
+        }
+
+        static readonly Dictionary<Type, Guid> FactoryTypes = new Dictionary<Type, Guid>();
 
         static bool Accepts(object factory, object parentObject)
         {

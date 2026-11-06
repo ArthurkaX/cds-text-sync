@@ -223,7 +223,7 @@ namespace Cts.Agent
                 if (meta != null && TypeOf(meta) == TraceType && NameOf(meta) == TraceName) { found.Guid = child; return found; }
             }
             if (!make) return null;
-            var factory = Factory("_3S.CoDeSys.TraceObject.TraceObject", Prop(_metaObjectIface, applicationMeta, "Object"));
+            var factory = Factory(new[] { TraceType }, Prop(_metaObjectIface, applicationMeta, "Object"));
             WarmFactory(factory);
             object created;
             try { created = factory.GetType().GetMethod("Create", Type.EmptyTypes).Invoke(factory, null); }

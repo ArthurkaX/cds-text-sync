@@ -229,6 +229,14 @@ namespace Cts.Cli
                 var kind = CreateKind(item.Kind);
                 if (kind == null) throw new InvalidOperationException("validated " + what + " kind is missing: " + item.Kind);
                 var parameters = Below(parentGuid, new Dictionary<string, object> { { "kind", kind }, { "name", item.Path.Last() } });
+                // VAR_GLOBAL does not tell persistent or task-local variables from
+                // a GVL: the pragma's TypeGuid does, and names the exact type.
+                var typed = TypeKinds.All.Kind(item.TypeGuid);
+                if (kind == "gvl" && TypeKinds.All.IsAmbiguous(typed, item.TypeGuid))
+                {
+                    parameters["kind"] = typed;
+                    parameters["type_guid"] = item.TypeGuid.Trim().Trim('{', '}');
+                }
                 var declaration = StripPragma(item.Declaration);
                 if (!string.IsNullOrWhiteSpace(declaration)) parameters["declaration"] = declaration;
                 if (item.Implementation != null) parameters["implementation"] = item.Implementation;

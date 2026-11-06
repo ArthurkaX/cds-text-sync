@@ -32,7 +32,7 @@ namespace Cts.Agent.Tests
                 + "\",\"kind\":\"gvl\",\"name\":\"GVL_T\",\"declaration\":\"D\"}}"));
             Assert.Equal(Guid.Parse(Parent), spec.ParentGuid);
             Assert.Equal("gvl", spec.Kind);
-            Assert.Equal("_3S.CoDeSys.GVLObject.GVLObject", spec.TypeName);
+            Assert.Equal(new[] { Guid.Parse("ffbfa93a-b94d-45fc-a329-229860183b1d") }, spec.TypeGuids);
             Assert.Equal("GVL_T", spec.Name);
             Assert.True(spec.HasDeclaration);
             Assert.Equal("D", spec.Declaration);
@@ -85,27 +85,43 @@ namespace Cts.Agent.Tests
         }
 
         [Theory]
-        [InlineData("pou", "_3S.CoDeSys.POUObject.POUObject")]
-        [InlineData("POU", "_3S.CoDeSys.POUObject.POUObject")]
-        [InlineData("method", "_3S.CoDeSys.MethodObject.POUMethodObject")]
-        [InlineData("METHOD", "_3S.CoDeSys.MethodObject.POUMethodObject")]
-        [InlineData("action", "_3S.CoDeSys.ActionObject.ActionObject")]
-        [InlineData("ACTION", "_3S.CoDeSys.ActionObject.ActionObject")]
-        [InlineData("property", "_3S.CoDeSys.PropertyObject.PropertyObject")]
-        [InlineData("PROPERTY", "_3S.CoDeSys.PropertyObject.PropertyObject")]
-        [InlineData("dut", "_3S.CoDeSys.DUTObject.DUTObject")]
-        [InlineData("DUT", "_3S.CoDeSys.DUTObject.DUTObject")]
-        [InlineData("interface", "_3S.CoDeSys.InterfaceObject.InterfaceObject")]
-        [InlineData("INTERFACE", "_3S.CoDeSys.InterfaceObject.InterfaceObject")]
-        [InlineData("folder", "_3S.CoDeSys.DefaultNavigators.FolderObject")]
-        [InlineData("FOLDER", "_3S.CoDeSys.DefaultNavigators.FolderObject")]
-        public void EveryNewKindMapsToItsFactoriesObjectType(string kind, string typeName)
+        [InlineData("pou", "6f9dac99-8de1-4efc-8465-68ac443b7d08")]
+        [InlineData("POU", "6f9dac99-8de1-4efc-8465-68ac443b7d08")]
+        [InlineData("method", "f8a58466-d7f6-439f-bbb8-d4600e41d099")]
+        [InlineData("METHOD", "f8a58466-d7f6-439f-bbb8-d4600e41d099")]
+        [InlineData("action", "8ac092e5-3128-4e26-9e7e-11016c6684f2")]
+        [InlineData("property", "5a3b8626-d3e9-4f37-98b5-66420063d91e")]
+        [InlineData("dut", "2db5746d-d284-4425-9f7f-2663a34b0ebc")]
+        [InlineData("interface", "6654496c-404d-479a-aad2-8551054e5f1e")]
+        [InlineData("INTERFACE", "6654496c-404d-479a-aad2-8551054e5f1e")]
+        [InlineData("folder", "738bea1e-99bb-4f04-90bb-a7a567e74e3a")]
+        [InlineData("task_local_gvl", "c2cda7a9-0ba4-4146-b563-22a42fa0eb72")]
+        public void EveryNewKindMapsToItsObjectsTypeGuid(string kind, string type)
         {
             var spec = ObjectCreate.From(Req(
                 "{\"method\":\"objects.create\",\"params\":{\"parent_guid\":\"" + Parent
                 + "\",\"kind\":\"" + kind + "\",\"name\":\"T\"}}"));
             Assert.Equal(kind.ToLowerInvariant(), spec.Kind);
-            Assert.Equal(typeName, spec.TypeName);
+            Assert.Equal(new[] { Guid.Parse(type) }, spec.TypeGuids);
+        }
+
+        [Fact]
+        public void PersistentVariablesTryEveryAliasTheExactTypeFirst()
+        {
+            var create = "{\"method\":\"objects.create\",\"params\":{\"parent_guid\":\"" + Parent + "\",\"kind\":\"persistent_gvl\",\"name\":\"T\"";
+            var old = Guid.Parse("3183921b-cc91-4712-9781-c3b6555122b5");
+            var current = Guid.Parse("261bd6e6-249c-4232-bb6f-84c2fbeef430");
+            Assert.Equal(new[] { old, current }, ObjectCreate.From(Req(create + "}}")).TypeGuids);
+            Assert.Equal(new[] { current, old }, ObjectCreate.From(Req(create + ",\"type_guid\":\"" + current + "\"}}")).TypeGuids);
+        }
+
+        [Fact]
+        public void ATypeGuidOfAnotherKindIsRefusedBeforeTheIde()
+        {
+            var ex = FailCreate("{\"parent_guid\":\"" + Parent
+                + "\",\"kind\":\"gvl\",\"type_guid\":\"c2cda7a9-0ba4-4146-b563-22a42fa0eb72\",\"name\":\"T\"}");
+            Assert.Equal("bad_params", ex.Code);
+            Assert.Contains("not a gvl type", ex.Message);
         }
 
         [Fact]
@@ -172,7 +188,7 @@ namespace Cts.Agent.Tests
             var spec = ObjectCreate.From(Req(
                 "{\"method\":\"objects.create\",\"params\":{\"parent_guid\":\"" + Parent
                 + "\",\"kind\":\"interface\",\"name\":\"I_T\",\"declaration\":\"INTERFACE I_T\"}}"));
-            Assert.Equal("_3S.CoDeSys.InterfaceObject.InterfaceObject", spec.TypeName);
+            Assert.Equal(new[] { Guid.Parse("6654496c-404d-479a-aad2-8551054e5f1e") }, spec.TypeGuids);
             var ex = FailCreate("{\"parent_guid\":\"" + Parent
                 + "\",\"kind\":\"interface\",\"name\":\"I_T\",\"implementation\":\"I\"}");
             Assert.Equal("bad_params", ex.Code);
@@ -181,16 +197,16 @@ namespace Cts.Agent.Tests
         [Fact]
         public void AnInterfaceMethodIsADifferentFactoryThanAPouMethod()
         {
-            Assert.Equal("_3S.CoDeSys.MethodObject.InterfaceMethodObject", ObjectKinds.InterfaceMethodType);
+            Assert.Equal(new[] { Guid.Parse("f89f7675-27f1-46b3-8abb-b7da8e774ffd") }, ObjectKinds.InterfaceMethodTypes);
         }
 
         [Fact]
-        public void AFolderMapsToItsFactoriesObjectType()
+        public void AFolderMapsToItsTypeGuid()
         {
             var spec = ObjectCreate.From(Req(
                 "{\"method\":\"objects.create\",\"params\":{\"parent_guid\":\"" + Parent
                 + "\",\"kind\":\"folder\",\"name\":\"F\",\"structured_view\":\"d9b2b2cc-ea99-4c3b-aa42-1e5c49e65b84\"}}"));
-            Assert.Equal("_3S.CoDeSys.DefaultNavigators.FolderObject", spec.TypeName);
+            Assert.Equal(new[] { Guid.Parse(ObjectKinds.FolderType) }, spec.TypeGuids);
             Assert.Equal(Guid.Parse("d9b2b2cc-ea99-4c3b-aa42-1e5c49e65b84"), spec.StructuredView);
         }
 

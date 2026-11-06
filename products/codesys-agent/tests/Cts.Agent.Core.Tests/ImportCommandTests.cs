@@ -2728,6 +2728,34 @@ namespace Cts.Agent.Tests
             Assert.Equal(new[] { "FB_Gate" }, ((IEnumerable<object>)result["renamed_objects"]).Cast<string>().Select(key => key.Split('/').Last()));
         }
 
+        // VAR_GLOBAL alone reads as a GVL: a new file whose pragma names
+        // persistent or task-local variables is created as that type.
+        [Theory]
+        [InlineData("261bd6e6-249c-4232-bb6f-84c2fbeef430", "persistent_gvl")]
+        [InlineData("3183921b-cc91-4712-9781-c3b6555122b5", "persistent_gvl")]
+        [InlineData("c2cda7a9-0ba4-4146-b563-22a42fa0eb72", "task_local_gvl")]
+        public void A_new_file_with_a_type_pragma_is_created_as_that_type(string type, string kind)
+        {
+            var view = ViewFolder.Of(_root);
+            var item = StViewReader.Read(view).Objects.First(found => found.Path.Last() == "GVL_Motors");
+            var file = Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(file), "GVL_Keep.st"),
+                "(* cds-text-sync: TypeGuid=\"{" + type + "}\" *)\nVAR_GLOBAL PERSISTENT RETAIN\n\tnKept : UDINT;\nEND_VAR\n");
+            IDictionary<string, object> created = null;
+            var texts = new Dictionary<string, Dictionary<string, object>>();
+            ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.tree") return Tree(item.Path.Take(item.Path.Length - 1).ToArray());
+                if (method == "objects.create") { created = new Dictionary<string, object>(args); return new Dictionary<string, object> { { "guid", "guid-new" } }; }
+                if (method == "objects.settext") { texts[Convert.ToString(args["guid"])] = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", texts.Values.ToArray() } };
+                return new Dictionary<string, object>();
+            }));
+            Assert.Equal(kind, created["kind"]);
+            Assert.Equal(type, created["type_guid"]);
+            Assert.Equal("GVL_Keep", created["name"]);
+        }
+
         // Two lists of globals alike only in their keywords are a delete and an add.
         [Fact]
         public void A_deleted_and_an_added_list_alike_only_in_keywords_are_no_rename()
