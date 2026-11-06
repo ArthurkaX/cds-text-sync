@@ -210,8 +210,8 @@ namespace Cts.Analysis
             {
                 var relative = path.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Replace('\\', '/');
                 if (relative.Split('/').Take(relative.Split('/').Length - 1).Any(part => part.StartsWith(".", StringComparison.Ordinal))) continue;
-                try { files[relative] = File.ReadAllText(path, new UTF8Encoding(false, false)); }
-                catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+                try { files[relative] = File.ReadAllText(path, new UTF8Encoding(false, true)); }
+                catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is DecoderFallbackException)
                 {
                     unreadable.Add(new Diagnostic("project-read", "cannot read " + relative + ": " + error.Message, new Location(relative)));
                 }

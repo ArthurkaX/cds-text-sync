@@ -47,6 +47,21 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void A_file_that_is_not_valid_utf8_is_unreadable_as_import_finds_it_not_read_with_replacements()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "cts-analyze-utf8-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                File.WriteAllBytes(Path.Combine(root, "Main.st"), new byte[] { (byte)'P', (byte)'R', 0xFF, (byte)'\n' });
+                var snapshot = Snapshot.Read(root);
+                Assert.Empty(snapshot.Units);
+                Assert.Contains(snapshot.Diagnostics, d => d.Kind == "project-read" && d.Location.Path == "Main.st");
+            }
+            finally { Directory.Delete(root, true); }
+        }
+
+        [Fact]
         public void The_runner_names_each_rule_as_it_starts()
         {
             var snapshot = Snapshot.Build(".", new Dictionary<string, string> { ["Main.st"] = "PROGRAM Main\nVAR\n    x : INT;\nEND_VAR\nx := x + 1;\n" });
