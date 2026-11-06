@@ -53,8 +53,15 @@ namespace Cts.Agent
 
         public void Stop()
         {
-            if (_stop) return;
-            _stop = true;
+            NamedPipeServerStream[] open;
+            // Under the lock the accept thread admits a connection by: one admitted
+            // after this snapshot sees _stop and closes itself.
+            lock (_lock)
+            {
+                if (_stop) return;
+                _stop = true;
+                open = _open.ToArray();
+            }
             // Wake the accept thread blocked in WaitForConnection.
             try
             {
@@ -62,8 +69,6 @@ namespace Cts.Agent
                     c.Connect(500);
             }
             catch { }
-            NamedPipeServerStream[] open;
-            lock (_lock) { open = _open.ToArray(); }
             foreach (var p in open)
             {
                 try { p.Dispose(); } catch { }
@@ -86,26 +91,36 @@ namespace Cts.Agent
 
         void AcceptLoop(NamedPipeServerStream server)
         {
-            while (!_stop)
+            try
             {
-                try
+                while (!_stop)
                 {
-                    if (server == null) server = Create();
-                    server.WaitForConnection();
-                    if (_stop) { server.Dispose(); break; }
-                    var connection = server;
-                    server = null;
-                    lock (_lock) { _open.Add(connection); }
-                    new Thread(() => Serve(connection)) { IsBackground = true, Name = "cts-agent-session" }.Start();
-                }
-                catch (Exception e)
-                {
-                    if (server != null) { try { server.Dispose(); } catch { } server = null; }
-                    if (_stop) break;
-                    _log.Write("accept failed: " + e.Message);
-                    Thread.Sleep(500);
+                    try
+                    {
+                        if (server == null) server = Create();
+                        server.WaitForConnection();
+                        var connection = server;
+                        server = null;
+                        bool admitted;
+                        lock (_lock)
+                        {
+                            admitted = !_stop;
+                            if (admitted) _open.Add(connection);
+                        }
+                        if (!admitted) { connection.Dispose(); break; }
+                        new Thread(() => Serve(connection)) { IsBackground = true, Name = "cts-agent-session" }.Start();
+                    }
+                    catch (Exception e)
+                    {
+                        if (server != null) { try { server.Dispose(); } catch { } server = null; }
+                        if (_stop) break;
+                        _log.Write("accept failed: " + e.Message);
+                        Thread.Sleep(500);
+                    }
                 }
             }
+            // Stopped before the loop ran, the first instance still holds the pipe name.
+            finally { if (server != null) { try { server.Dispose(); } catch { } } }
         }
 
         void Serve(NamedPipeServerStream pipe)
