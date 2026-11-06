@@ -30,13 +30,13 @@ namespace Cts.Sync
         }
 
         public IEnumerable<string> Paths => baseline.Paths.Where(path => !removed.Contains(path) && !writtenPaths.Contains(path)).Concat(writtenPaths).ToList();
-        public byte[] Read(string path) => writtenPaths.Contains(path) ? written.Read(path) : baseline.Read(path);
+        public byte[] Read(string path) => writtenPaths.Contains(path) ? written.Read(path) : removed.Contains(path) ? null : baseline.Read(path);
         public string BlobId(string path) => writtenPaths.Contains(path) ? written.BlobId(path) : removed.Contains(path) ? null : baseline.BlobId(path);
 
         public IDictionary<string, byte[]> ReadMany(IEnumerable<string> paths)
         {
             var wanted = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var result = new Dictionary<string, byte[]>(baseline.ReadMany(wanted.Where(path => !writtenPaths.Contains(path))), StringComparer.OrdinalIgnoreCase);
+            var result = new Dictionary<string, byte[]>(baseline.ReadMany(wanted.Where(path => !writtenPaths.Contains(path) && !removed.Contains(path))), StringComparer.OrdinalIgnoreCase);
             foreach (var path in wanted.Where(writtenPaths.Contains)) result[path] = written.Read(path);
             return result;
         }

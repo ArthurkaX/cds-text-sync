@@ -227,6 +227,20 @@ namespace Cts.Agent.Core.Tests
             counted.Dispose();
         }
 
+        [Fact]
+        public void A_path_a_patched_view_removed_reads_as_gone_not_as_its_old_content()
+        {
+            var baseline = new MemoryViewFiles();
+            baseline.Write("A.xml", System.Text.Encoding.UTF8.GetBytes("A"));
+            baseline.Write("B.xml", System.Text.Encoding.UTF8.GetBytes("B"));
+            var overlay = new OverlayViewFiles(baseline, new MemoryViewFiles(), new[] { "B.xml" });
+            Assert.Equal(new[] { "A.xml" }, overlay.Paths);
+            Assert.Null(overlay.Read("B.xml"));
+            Assert.Equal(new[] { "A.xml" }, overlay.ReadMany(new[] { "A.xml", "B.xml" }).Keys);
+            var keys = new ComparePlanner.ContentKeyCache(Path.Combine(repo, "content-keys"));
+            Assert.False(ComparePlanner.SameViewContent("B.xml", baseline, overlay, keys));
+        }
+
         sealed class CountingViewFiles : IViewFiles, IDisposable
         {
             readonly IViewFiles inner;
