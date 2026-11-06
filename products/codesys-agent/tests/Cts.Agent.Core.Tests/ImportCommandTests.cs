@@ -2772,6 +2772,31 @@ namespace Cts.Agent.Tests
             Assert.Contains(new KeyValuePair<string, object>("deleted", 1), plan.Pairs);
         }
 
+        // The IDE compiles a moved object where it was: one moved out of its
+        // application into the project's POUs is deleted and made there.
+        [Fact]
+        public void A_file_moved_out_of_its_application_is_a_delete_and_an_add()
+        {
+            var view = ViewFolder.Of(_root);
+            var tree = ViewTree(view);
+            var item = StViewReader.Read(view).Objects.First(candidate => candidate.Kind == "PROGRAM");
+            IDictionary<string, object> node = tree;
+            foreach (var name in item.Path.Take(item.Path.Length - 1))
+                node = ((IList<IDictionary<string, object>>)node["children"]).Single(child => Equals(child["name"], name));
+            node["type"] = "639b491f-5557-464c-af91-1471bac9f549";
+            var file = Path.Combine(view, item.File.Replace('/', Path.DirectorySeparatorChar));
+            File.Move(file, Path.Combine(view, Path.GetFileName(file)));
+            var plan = ImportCommand.Build(ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
+                method == "project.tree" ? tree : throw new InvalidOperationException("dry run must not write: " + method))));
+            Assert.DoesNotContain(plan.Pairs, pair => pair.Key == "renamed");
+            Assert.Contains(new KeyValuePair<string, object>("added", 1), plan.Pairs);
+            Assert.Contains(new KeyValuePair<string, object>("deleted", 1), plan.Pairs);
+            node.Remove("type");
+            plan = ImportCommand.Build(ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
+                method == "project.tree" ? tree : throw new InvalidOperationException("dry run must not write: " + method))));
+            Assert.Contains(new KeyValuePair<string, object>("renamed", 1), plan.Pairs);
+        }
+
         [Fact]
         public void A_file_moved_into_a_new_folder_moves_its_object_there_without_a_delete()
         {

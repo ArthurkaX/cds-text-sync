@@ -106,7 +106,10 @@ gets the new text, one it lost is deleted, a new one is created below it. A
 removed object's members go with it, not on their own. A file moved
 into another folder (`git mv`) is a move the same way: the object goes into
 that folder in the IDE, a new folder is created first and gets its
-`.cds-object.xml` as `cts export` writes it, and nothing is deleted. A rename or
+`.cds-object.xml` as `cts export` writes it, and nothing is deleted. Both stay
+within one application: a file moved into another application, or between an
+application and the project's POUs, deletes the object and makes it new there,
+since the IDE keeps compiling a moved object where it was. A rename or
 delete whose old file still has an `.xml` beside it (the old layout, or an
 object with a setting the pragma cannot carry) is refused, since that `.xml`
 is the object too.

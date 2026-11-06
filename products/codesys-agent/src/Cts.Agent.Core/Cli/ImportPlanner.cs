@@ -383,6 +383,7 @@ namespace Cts.Cli
                     where !addedKeys.Contains(ParentKey(pair.Item.Key))
                         && string.Equals(oldObject.Kind, pair.Item.Kind, StringComparison.OrdinalIgnoreCase)
                         && !string.Equals(old.ObjectPath, pair.Item.Key, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(ApplicationOf(old.ObjectPath), ApplicationOf(pair.Item.Key), StringComparison.OrdinalIgnoreCase)
                     let score = RenameScore(oldObject, pair.Item, names)
                     where score >= 0.5
                     orderby score descending, RenameScore(old.Name, pair.Item.Path.Last()) descending
@@ -414,6 +415,24 @@ namespace Cts.Cli
                 }
                 _work.AddedItems = _work.AddedItems.Where(pair => !consumedAdded.Contains(pair.Item.Key)).ToList();
                 _work.Deleted = _work.Deleted.Where(record => !consumedDeleted.Contains(record)).ToList();
+            }
+
+            // The application *key* is in: the nearest one above it, or the nearest
+            // container this import makes, which holds no object the IDE has; ""
+            // for the POU pool every application shares.  An object moved to
+            // another one is deleted and made there, not moved: the IDE keeps
+            // compiling a moved object where it was.
+            string ApplicationOf(string key)
+            {
+                for (var parent = ParentKey(key); parent.Length > 0; parent = ParentKey(parent))
+                {
+                    if (_work.IdeNodes.TryGetValue(parent, out var node))
+                    {
+                        if (TypeKinds.All.Kind(node.Type) == "application") return parent;
+                    }
+                    else if (NewContainerAt(parent)) return parent;
+                }
+                return "";
             }
 
             static bool Under(CompareRecord record, string ownerKey) =>
