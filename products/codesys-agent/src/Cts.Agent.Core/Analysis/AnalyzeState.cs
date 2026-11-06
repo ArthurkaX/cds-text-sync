@@ -90,9 +90,14 @@ namespace Cts.Analysis
         static void Write(string path, string text)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            var temp = path + ".tmp";
-            File.WriteAllText(temp, text, new UTF8Encoding(false));
-            SafeFile.Replace(temp, path);
+            // Its own name: two cts analyze runs at once do not write into one file.
+            var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, text, new UTF8Encoding(false));
+                SafeFile.Replace(temp, path);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
         }
 
         // Applies triage decisions (a JSON list of {fingerprint, action:

@@ -47,6 +47,20 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void State_is_written_through_a_temporary_file_of_its_own()
+        {
+            var state = Path.Combine(Path.GetTempPath(), "cts-analyze-state-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(state, "session.json.tmp"));
+            try
+            {
+                AnalyzeState.WriteSession(state, new List<object>());
+                Assert.Empty(AnalyzeState.Session(state));
+                Assert.Equal(new[] { "session.json", "session.json.tmp" }, Directory.GetFileSystemEntries(state).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
+            }
+            finally { Directory.Delete(state, true); }
+        }
+
+        [Fact]
         public void A_file_that_is_not_valid_utf8_is_unreadable_as_import_finds_it_not_read_with_replacements()
         {
             var root = Path.Combine(Path.GetTempPath(), "cts-analyze-utf8-" + Guid.NewGuid().ToString("N"));
