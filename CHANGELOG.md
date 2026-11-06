@@ -4,7 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-### Unreleased
+### Version 4.1.0 (2026-11-06)
+
+_What changes against 4.0.0. Nothing to do on upgrading: run the installer line again._
+
+**Trend and trace on the PLC**
+
+- `cts trend set` picks the variables a Trend Recording `CtsTrend` records in fixed slots, gated by `GVL_CtsTrend.xRecord` (off from a download on); `cts trend on` and `off` switch it on the PLC. `cts trend pull` copies the PLC's trend file in a pause of the recording and merges its samples into this PC's database of the trend; `cts trend query` asks it with one read-only SQL statement. A failed pull leaves no partial file. `cts guide trend` walks through it.
+- `cts trace` makes and changes the IDE's Trace `CtsTrace` of the active application while online (variables, task, every, samples, a trigger with edge, level and post, a condition). `cts trace start` downloads only the trace and starts it, `stop` stops it, `pull` reads the PLC's buffer into a CSV with a summary per variable, without a login, and `remove` deletes it from the PLC and the project. `cts trace set` gives the time a sample takes and the time the buffer holds. `cts guide trace` walks through it.
 
 **Feedback**
 
@@ -22,6 +29,42 @@ All notable changes to this project will be documented in this file.
 - `cts diagram classes [NAME]` prints a mermaid classDiagram of the sync folder's project, offline: inheritance, interfaces, the blocks and structures a block holds and the ones it only refers to (one line per pair of classes, naming the members), with each class's inputs, outputs, methods and properties. With NAME the classes around it, a line only between classes a step apart; without it the inheritance alone. Many classes tied to one class alone print as one list.
 - `cts diagram calls [--from TASK|NAME]` prints a mermaid flowchart of who calls whom from the tasks down, `--depth` calls deep; a node says how many callees it leaves out, many objects one node calls that call nothing further print as one list, and a task's graphical program shows as having no text.
 - `cts diagram view` writes every call, class and state machine drawing of the project into one HTML page and opens it: a list on the left, a canvas that pans and zooms, a click on a node to go to it, light and dark. The page carries mermaid, so it needs no network and can be sent as one file. In the IDE: quick window More, `7` Diagrams.
+
+**Sync**
+
+- A text object in the folder of a new device, application or other new container is created in the same import; before the import refused with "no IDE parent for new object" and a second run was needed. (Reported by YoSiem in #73.)
+- A new persistent or task-local variable list is created as its own type; before the import created it as a plain GVL and failed half way. (Reported by YoSiem in #73.)
+- A file moved into another application, or between an application and the project's POUs, deletes its object and makes it new there; the IDE kept compiling a moved object where it was. Renames and moves within one application still keep the object. (Reported by YoSiem in #73.)
+- A Windows device name (`COM1`, `CON`, `AUX`, `LPT1`, ...) gets a `_` after it in its file name, so a serial interface `COM1` is `COM1_.xml`; before Windows opened the device and export recorded no base. (Reported by YoSiem in #72.)
+- A member in a folder below its POU keeps the folder: export writes `Folder="..."` in the cts pragma above it and import moves it there; before cts did not see such a folder and an edited method in one refused the import.
+- `cts import` makes a new object-like container (a Trend Recording Manager) from its `.cds-object.xml` before the objects in it.
+- `cts import` names the objects only the IDE changed, which it leaves as the IDE has them (`ide_changed=N`, one line each); the quick window says Shift+1 makes the disk win.
+- `cts import --save` with a conflict left does not save the project; before it saved the IDE's half-imported state.
+- `cts compare` lists an `.xml` or `.csv` object deleted in the IDE as deleted when it reuses its cache of the IDE; before it showed it unchanged until `cts compare --full`.
+- An error inside cts during compare is reported as `internal` with its type, not as a refusal or a quiet full export.
+- A git command cts runs is stopped after ten minutes and the call names it; before a hook or credential helper waiting for input held cts forever.
+
+**Commands**
+
+- `cts new interface` makes an interface; `cts new` takes `--extends` and `--implements`, and an interface property has no accessor bodies. `cts import` creates a property below an interface.
+- `cts guide tests` sets the test application up from files (copies of the device, application, Library Manager and Task Configuration, simulation on, `cts lib add CmpLog`, one import) instead of CODESYS menus.
+- `cts lib add` takes the namespace the library's own properties name, as CODESYS does; before ModbusFB got `LibraryCategoryIds`.
+- `cts build` names a qualified-only library only when it holds one of the unknown names.
+- `cts read --until` refuses `NAME=VALUE` with the form it takes instead of waiting out its timeout.
+- `cts read-object --path` matches whole path segments: `A/MAIN` no longer matches `AppA/MAIN`.
+- `cts visu from-svg --gvl` matches GVL files and variable names regardless of case, as ST does; before an existing `xRun` did not cover `XRUN` and a second declaration was added.
+- `cts snapshooter tree` and `diff` name each leaf's type and each difference in the short answer.
+- `cts plc-log` keeps an entry with a line break in its text on its one line.
+- `cts status` does not count a `.project` folder holding only the open project file as uncommitted.
+- `cts docs` refuses an output folder that could replace project files, keeps same-named libraries of different vendors apart and sees task assignment changes.
+- `cts analyze` reads `.st` files as strict UTF-8, as import does, and two runs at once no longer write into one temporary state file.
+- `cts --timeout N` before the command is the global flag; a timeout takes more than 0 and at most 86400 seconds.
+- The Next line after a dialog presses its OK, else the button Enter presses; a login refused with "Gateway not configured" points at `cts scan` and `cts connect --ip`.
+
+**Agent**
+
+- `ping` reports the agent's uptime from a monotonic clock; a clock set back made it negative.
+- Stopping the agent closes a connection accepted meanwhile and releases the pipe name.
 
 ---
 
