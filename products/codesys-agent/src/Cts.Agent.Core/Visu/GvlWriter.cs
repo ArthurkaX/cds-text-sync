@@ -29,8 +29,8 @@ namespace Cts.Visu
         internal static GvlResult Ensure(string projectView, IList<Sketch.Element> elements, string name, string explicitPath)
         {
             var result = new GvlResult();
-            var variables = new SortedDictionary<string, string>(StringComparer.Ordinal);
-            var types = new Dictionary<string, string>(StringComparer.Ordinal);
+            var variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var types = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var element in elements)
             {
                 var p = element.SpecParams;
@@ -59,7 +59,7 @@ namespace Cts.Visu
             if (target == null) return result;
             result.Path = target;
             var project = ScanProject(projectView);
-            var declare = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var declare = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in variables)
             {
                 if (!item.Key.Contains(".")) declare[item.Key] = item.Value;
@@ -68,7 +68,7 @@ namespace Cts.Visu
                     var parts = item.Key.Split('.');
                     var owner = parts[0];
                     var head = parts[1];
-                    if (owner == name)
+                    if (string.Equals(owner, name, StringComparison.OrdinalIgnoreCase))
                     {
                         if (parts.Length > 2)
                             result.Warnings.Add(item.Key + " -- cannot synthesise nested member '" + string.Join(".", parts.Skip(1)) + "'; declare '" + head + "' in " + name + " yourself");
@@ -82,8 +82,8 @@ namespace Cts.Visu
                     else declare[item.Key] = item.Value;
                 }
             }
-            var existingNames = File.Exists(target) ? Declarations(File.ReadAllText(target, Encoding.UTF8)) : new HashSet<string>(StringComparer.Ordinal);
-            var used = new HashSet<string>(existingNames, StringComparer.Ordinal);
+            var existingNames = File.Exists(target) ? Declarations(File.ReadAllText(target, Encoding.UTF8)) : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var used = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
             var additions = new List<string>();
             foreach (var item in declare)
             {
@@ -100,7 +100,7 @@ namespace Cts.Visu
             if (File.Exists(target))
             {
                 var current = File.ReadAllText(target, Encoding.UTF8);
-                var end = current.LastIndexOf("END_VAR", StringComparison.Ordinal);
+                var end = current.LastIndexOf("END_VAR", StringComparison.OrdinalIgnoreCase);
                 current = end >= 0 ? current.Insert(end, "\n" + Block(additions)) : current + "\n" + NewFile(additions);
                 File.WriteAllText(target, current, new UTF8Encoding(false));
             }
@@ -114,7 +114,7 @@ namespace Cts.Visu
         static string Target(string projectView, string name, string explicitPath, IList<string> warnings)
         {
             if (!string.IsNullOrWhiteSpace(explicitPath)) return System.IO.Path.GetFullPath(explicitPath);
-            var existing = GvlFiles(projectView).Where(file => System.IO.Path.GetFileNameWithoutExtension(file) == name).ToList();
+            var existing = GvlFiles(projectView).Where(file => System.IO.Path.GetFileNameWithoutExtension(file).Equals(name, StringComparison.OrdinalIgnoreCase)).ToList();
             if (existing.Count > 1)
             {
                 warnings.Add(name + " -- " + existing.Count + " GVLs carry that name ("
@@ -128,7 +128,7 @@ namespace Cts.Visu
         {
             if (!Directory.Exists(projectView)) return new string[0];
             return Directory.GetFiles(projectView, "*.st", SearchOption.AllDirectories)
-                .Where(file => File.ReadAllText(file, Encoding.UTF8).Contains("VAR_GLOBAL"));
+                .Where(file => File.ReadAllText(file, Encoding.UTF8).IndexOf("VAR_GLOBAL", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         static string NewFile(IList<string> declarations) => "{attribute 'qualified_only'}\nVAR_GLOBAL\n" + Block(declarations) + "END_VAR\n";
@@ -166,12 +166,12 @@ namespace Cts.Visu
 
         static Dictionary<string, HashSet<string>> ScanProject(string projectView)
         {
-            var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in GvlFiles(projectView))
             {
                 var text = File.ReadAllText(file, Encoding.UTF8);
                 var name = System.IO.Path.GetFileNameWithoutExtension(file);
-                if (!result.TryGetValue(name, out var values)) result[name] = values = new HashSet<string>(StringComparer.Ordinal);
+                if (!result.TryGetValue(name, out var values)) result[name] = values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (Match match in Declaration.Matches(text)) values.Add(match.Groups[1].Value);
             }
             return result;
@@ -179,7 +179,7 @@ namespace Cts.Visu
 
         static HashSet<string> Declarations(string text)
         {
-            return new HashSet<string>(Declaration.Matches(text).Cast<Match>().Select(match => match.Groups[1].Value), StringComparer.Ordinal);
+            return new HashSet<string>(Declaration.Matches(text).Cast<Match>().Select(match => match.Groups[1].Value), StringComparer.OrdinalIgnoreCase);
         }
 
     }
