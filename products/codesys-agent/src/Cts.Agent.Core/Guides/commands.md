@@ -108,6 +108,8 @@ cts remembers the commit it left on `refs/cts/base` (in `.git/cts`). When the re
 
 An `.st` or `.csv` is edited as text; an `.xml` goes back whole and is merged element by element.
 
+`Name` is the object's name as a file name Windows and Git for Windows take: `< > : " / \ | ? *` and control characters become `_`, blanks and dots at its ends go, and a Windows device name (`CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9`, `LPT0`-`LPT9`, `CONIN$`, `CONOUT$`) gets a `_` after it: a serial interface `COM1` is `COM1_.xml`. The object keeps its own name.
+
 Minimal Structured Text files use the same closing lines as export. Replace the example names and add declarations or statements as needed:
 
 ```st

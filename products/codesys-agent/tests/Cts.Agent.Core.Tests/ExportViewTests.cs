@@ -593,6 +593,37 @@ namespace Cts.Agent.Tests
             Assert.Equal(expected, ViewExport.SelfClose(xml));
         }
 
+        // Windows opens a device for its name with any extension, and Git for
+        // Windows refuses the path; the vendors' device trees use such names.
+        [Theory]
+        [InlineData("COM1", "COM1_")]
+        [InlineData("com2", "com2_")]
+        [InlineData("COM0", "COM0_")]
+        [InlineData("LPT9", "LPT9_")]
+        [InlineData("COM\u00B9", "COM\u00B9_")]
+        [InlineData("CON", "CON_")]
+        [InlineData("aux", "aux_")]
+        [InlineData("NUL", "NUL_")]
+        [InlineData("PRN", "PRN_")]
+        [InlineData("CONIN$", "CONIN$_")]
+        [InlineData("COM1.Rx", "COM1_.Rx")]
+        [InlineData("COM1 .Rx", "COM1_ .Rx")]
+        [InlineData("COM1_", "COM1_")]
+        [InlineData("COM10", "COM10")]
+        [InlineData("COM1_RS485", "COM1_RS485")]
+        [InlineData("Console", "Console")]
+        [InlineData("NULL", "NULL")]
+        [InlineData("Port.COM1", "Port.COM1")]
+        [InlineData("A/B:C", "A_B_C")]
+        [InlineData("Tab\there", "Tab_here")]
+        [InlineData(" .x. ", "x")]
+        [InlineData(" . ", "object")]
+        [InlineData(null, "object")]
+        public void AFileNameIsOneWindowsAndGitTake(string name, string expected)
+        {
+            Assert.Equal(expected, ProjectModel.SafeComponent(name));
+        }
+
         [Fact]
         public void ReaderAcceptsEveryGoldenExportTextFile()
         {

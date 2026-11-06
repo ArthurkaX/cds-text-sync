@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace Cts.Sync
@@ -44,19 +44,17 @@ namespace Cts.Sync
         internal string Namespace;
         static readonly HashSet<string> Collapsed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             "6f9dac99-8de1-4efc-8465-68ac443b7d08", "6654496c-404d-479a-aad2-8551054e5f1e" };
+        // A name as a file name every Windows and Git for Windows take: what a
+        // Windows name cannot hold becomes "_", blanks and dots at the ends go,
+        // and a device name gets "_" after it (a serial interface is "COM1" on
+        // many devices; Windows opens the port for COM1.xml). The object keeps its name.
         internal static string SafeComponent(string value)
         {
-            var safe = new StringBuilder(value ?? "object");
-            for (var i = 0; i < safe.Length; i++)
-            {
-                if ("<>:\"/\\|?*".IndexOf(safe[i]) >= 0)
-                {
-                    safe[i] = '_';
-                }
-            }
-            var trimmed = safe.ToString().Trim(' ', '.');
-            return trimmed.Length > 0 ? trimmed : "object";
+            var safe = new string((value ?? "").Select(c => c < ' ' || "<>:\"/\\|?*".IndexOf(c) >= 0 ? '_' : c).ToArray()).Trim(' ', '.');
+            return safe.Length > 0 ? DeviceName.Replace(safe, "${1}_", 1) : "object";
         }
+        static readonly Regex DeviceName = new Regex(@"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9\u00B9\u00B2\u00B3]|LPT[0-9\u00B9\u00B2\u00B3])(?= *(\.|$))",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         internal bool HasCollision(ProjectNode node)
         {
             if (collisionCounts == null)
