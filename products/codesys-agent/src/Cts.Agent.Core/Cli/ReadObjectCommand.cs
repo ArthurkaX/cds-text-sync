@@ -110,6 +110,10 @@ namespace Cts.Cli
         }
         static string Normalize(object g) => Convert.ToString(g)?.Trim().Trim('{', '}').ToLowerInvariant() ?? "";
         static List<string> Parts(string p) => (p ?? "").Replace('\\', '/').Trim('/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-        static bool EndsWithPath(string path, string wanted) => (path ?? "").Replace('\\', '/').Trim('/').EndsWith(wanted, StringComparison.OrdinalIgnoreCase);
+        static bool EndsWithPath(string path, string wanted)
+        {
+            var full = (path ?? "").Replace('\\', '/').Trim('/');
+            return full.Equals(wanted, StringComparison.OrdinalIgnoreCase) || full.EndsWith("/" + wanted, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

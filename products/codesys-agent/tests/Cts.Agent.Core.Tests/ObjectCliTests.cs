@@ -194,6 +194,23 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Read_object_path_matches_whole_segments_not_the_tail_of_a_longer_name()
+        {
+            var command = CliCommands.Find(new[] { "read-object" });
+            var options = CliOptions.Parse(new[] { "read-object", "--path", "A/MAIN" }, null, command);
+            var hello = new Hello(42, new Dictionary<string, object>());
+            IDictionary<string, object> Fake(string method, IDictionary<string, object> args)
+            {
+                if (method == "objects.find") return new Dictionary<string, object> { { "matches", new List<object> {
+                    new Dictionary<string, object> { { "name", "MAIN" }, { "path", "PLC/AppA/MAIN" }, { "guid", "b2" }, { "type", "pou" } },
+                    new Dictionary<string, object> { { "name", "MAIN" }, { "path", "PLC/A/MAIN" }, { "guid", "a1" }, { "type", "pou" } } } } };
+                return new Dictionary<string, object> { { "name", "MAIN" }, { "declaration", "PROGRAM MAIN" } };
+            }
+            var data = command.Execute(new CliCall(command, options, hello, 30, Fake));
+            Assert.Equal("a1", data["guid"]);
+        }
+
+        [Fact]
         public void Read_object_body_file_is_rendered_by_the_export_writer_from_its_subtree()
         {
             var root = Path.Combine(Path.GetTempPath(), "cts-read-object-test-" + Guid.NewGuid().ToString("N"));
