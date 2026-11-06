@@ -215,7 +215,7 @@ namespace Cts.Cli
                 foreach (var key in _folderCreateKeys.OrderBy(key => key.Count(ch => ch == '/')))
                 {
                     var parent = ParentKey(key);
-                    if (parent.Length > 0 && !_work.IdeByPath.ContainsKey(parent) && !_folderCreateKeys.Contains(parent, StringComparer.OrdinalIgnoreCase))
+                    if (parent.Length > 0 && !_work.IdeByPath.ContainsKey(parent) && !NewContainerAt(parent) && !_folderCreateKeys.Contains(parent, StringComparer.OrdinalIgnoreCase))
                         return Refused(_call, _work.Data, "no IDE parent for new folder " + key);
                 }
                 foreach (var pair in _work.AddedItems)
@@ -223,7 +223,8 @@ namespace Cts.Cli
                     var item = pair.Item;
                     if (CreateKind(pair.Record.Kind ?? item.Kind) == null) return Refused(_call, _work.Data, "cannot create object kind " + item.Kind + " for " + pair.Record.Name);
                     var parent = string.Join("/", item.Path.Take(item.Path.Length - 1));
-                    if (parent.Length > 0 && !_work.IdeByPath.ContainsKey(parent) && !_addedKeys.Contains(parent) && !_folderCreateKeys.Contains(parent, StringComparer.OrdinalIgnoreCase))
+                    if (parent.Length > 0 && !_work.IdeByPath.ContainsKey(parent) && !_addedKeys.Contains(parent) && !NewContainerAt(parent)
+                        && !_folderCreateKeys.Contains(parent, StringComparer.OrdinalIgnoreCase))
                         return Refused(_call, _work.Data, "no IDE parent for new object " + item.Key);
                 }
                 return null;

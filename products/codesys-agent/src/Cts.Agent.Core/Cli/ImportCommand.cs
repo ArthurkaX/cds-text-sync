@@ -92,7 +92,6 @@ namespace Cts.Cli
 
         static bool IsFolderRecord(CompareRecord record) => record.Path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)
             && (record.Category == "added" || record.Category == "deleted" || record.Category == "ide_changed");
-        static int FolderDepth(CompareRecord record) => FolderKey(record.Path).Count(ch => ch == '/');
         // The description a device's file or MetaObject names, "type|id|version";
         // "" for any other object.
         static string DeviceDescription(string xml)

@@ -113,30 +113,51 @@ namespace Cts.Cli
                 return null;
             }
 
-            // The new folders, outer ones first, so objects can be created or moved into them.
-            void CreateFolders()
+            // The native deletes, then the new folders and the new containers (a
+            // device, an application, a Trend Recording Manager), outer ones
+            // first, so objects can be created or moved into them.  A native
+            // delete is of an object with nothing below it, so it never takes a
+            // text object along.
+            void CreatePlaces()
             {
-                foreach (var record in _work.FolderRecords.Where(record => record.Category == "added").OrderBy(record => FolderDepth(record)))
+                foreach (var record in _work.NativeDeletes)
+                    _call.Call("objects.delete", new Dictionary<string, object> { { "guid", record.Guid } });
+                _nativeApplyMisses = new List<IDictionary<string, object>>();
+                _nativeWrites = new List<NativeWrite>();
+                var places = _work.FolderRecords.Where(record => record.Category == "added").Select(record => new { Key = FolderKey(record.Path), Container = (CompareRecord)null })
+                    .Concat(_work.NativeImports.Where(IsContainer).Select(record => new { Key = FolderKey(record.Path), Container = record }));
+                // A container the IDE did not take leaves the folders below it out too.
+                var missed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var place in places.OrderBy(place => place.Key.Count(ch => ch == '/')).ToList())
                 {
-                    var key = FolderKey(record.Path);
-                    var parent = ParentKey(key);
+                    if (place.Container != null)
+                    {
+                        ImportNative(place.Container);
+                        if (!_work.Created.ContainsKey(place.Key)) missed.Add(place.Key);
+                        continue;
+                    }
+                    var parent = ParentKey(place.Key);
                     var parentGuid = parent.Length == 0 ? "" : _work.Created.TryGetValue(parent, out var newlyCreatedParent) ? newlyCreatedParent
                         : _work.IdeByPath.TryGetValue(parent, out var existingParent) ? existingParent : null;
-                    if (parentGuid == null) throw new InvalidOperationException("validated new folder parent is missing: " + key);
+                    if (parentGuid == null && missed.Contains(parent)) { missed.Add(place.Key); continue; }
+                    if (parentGuid == null) throw new InvalidOperationException("validated new folder parent is missing: " + place.Key);
                     var reply = _call.Call("objects.create", Below(parentGuid, new Dictionary<string, object>
                     {
-                        { "kind", "folder" }, { "name", Path.GetFileName(key) },
+                        { "kind", "folder" }, { "name", Path.GetFileName(place.Key) },
                     }));
-                    _work.Created[key] = Convert.ToString(reply["guid"]);
-                    _work.CreatedFolders.Add(key);
+                    _work.Created[place.Key] = Convert.ToString(reply["guid"]);
+                    _work.CreatedFolders.Add(place.Key);
                 }
             }
 
-            // The text objects: new folders, deletes, renames and moves, recreated
-            // and new objects, every text write and build flag, then the read-back.
+            static bool IsContainer(CompareRecord record) => record.Path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase);
+
+            // The text objects: the places they go into, deletes, renames and
+            // moves, recreated and new objects, every text write and build flag,
+            // then the read-back.
             internal void ApplyTexts()
             {
-                CreateFolders();
+                CreatePlaces();
                 foreach (var rename in _work.Renames.Where(rename => !rename.WithParent))
                 {
                     // A new member of the renamed object is made below it.
@@ -148,7 +169,6 @@ namespace Cts.Cli
                         : throw new InvalidOperationException("validated move target is missing: " + parent);
                 }
                 Apply(_call, _work.Deleted, _work.ForcedDeletes, _work.Renames, _work.Writes);
-                _nativeWrites = new List<NativeWrite>();
                 foreach (var item in _work.ForcedCreateItems.OrderBy(item => item.Path.Length))
                 {
                     _work.Writes.Add(new TextWrite { Guid = Convert.ToString(Create(item, "restore")["guid"]), Item = item });
@@ -156,6 +176,13 @@ namespace Cts.Cli
                 }
                 foreach (var item in _work.AddedItems.Select(pair => pair.Item))
                 {
+                    // A new container the IDE did not take leaves what is below it out too.
+                    var parent = ParentKey(item.Key);
+                    if (parent.Length > 0 && !_work.Created.ContainsKey(parent) && !_work.IdeByPath.ContainsKey(parent))
+                    {
+                        _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", item.Path.Last() }, { "path", item.File }, { "error", "its container " + parent + " was not created" } });
+                        continue;
+                    }
                     var reply = Create(item, "new object");
                     _work.Writes.Add(new TextWrite { Guid = Convert.ToString(reply["guid"]), Item = item });
                     if (reply.TryGetValue("accessors", out var rawAccessors) && Items(rawAccessors) is var accessors && accessors.Any())
@@ -246,55 +273,11 @@ namespace Cts.Cli
                 return reply;
             }
 
-            // The native objects: deletes, imports, replaces.
+            // The native objects below the places: imports, replaces.
             internal void ApplyNatives()
             {
-                foreach (var record in _work.NativeDeletes)
-                    _call.Call("objects.delete", new Dictionary<string, object> { { "guid", record.Guid } });
-                _nativeApplyMisses = new List<IDictionary<string, object>>();
-                // A new container goes in before the objects below it.
-                foreach (var record in _work.NativeImports.OrderBy(record => ContainerOrSelf(record.Path).Count(ch => ch == '/')))
-                {
-                    var path = record.Path;
-                    var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
-                    var content = File.ReadAllText(full);
-                    var csv = CsvOf(path);
-                    string parentGuid;
-                    if (record.ParentKey == null) parentGuid = Convert.ToString(record.ParentGuid);
-                    else if (!_work.Created.TryGetValue(Convert.ToString(record.ParentKey), out parentGuid))
-                    {
-                        _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", "its container " + record.ParentKey + " was not created" } });
-                        continue;
-                    }
-                    IDictionary<string, object> reply;
-                    var replaced = false;
-                    try
-                    {
-                        reply = _call.Call("objects.import", Below(parentGuid, new Dictionary<string, object> { { "xml", WithRows(csv, content) } }));
-                    }
-                    catch (CliFailure error) when (error.Declined)
-                    {
-                        // The IDE made it along with an earlier one (a Trend Recording Manager its task): the file replaces it.
-                        var made = TreeObjects(_call.Call("project.tree", new Dictionary<string, object>()), out _);
-                        if (!made.TryGetValue(ContainerOrSelf(path), out var node))
-                        {
-                            _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
-                            continue;
-                        }
-                        reply = new Dictionary<string, object> { { "guid", node.Guid } };
-                        content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), node.Guid, parentGuid);
-                        if (!Replace(node.Guid, record.Name, path, csv, content)) continue;
-                        replaced = true;
-                    }
-                    var guid = Convert.ToString(reply["guid"]);
-                    parentGuid = Convert.ToString(reply.ContainsKey("parent_guid") ? reply["parent_guid"] : parentGuid);
-                    content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), guid, parentGuid);
-                    // A Trend Recording the IDE makes stores every 10 s whatever its file says; a replace sets the file's interval.
-                    if (!replaced && string.Equals(NativeMetaValue(content, "TypeGuid").Trim('{', '}'), TrendRecordingType, StringComparison.OrdinalIgnoreCase)
-                        && !Replace(guid, record.Name, path, csv, content)) continue;
-                    if (path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)) _work.Created[FolderKey(path)] = guid;
-                    _nativeWrites.Add(new NativeWrite { Guid = guid, Name = NativeMetaValue(content, "Name"), Path = path, Content = content, Created = true, Csv = csv });
-                }
+                foreach (var record in _work.NativeImports.Where(record => !IsContainer(record)).OrderBy(record => record.Path.Count(ch => ch == '/')))
+                    ImportNative(record);
                 foreach (var record in _work.NativeReplaces)
                 {
                     var path = record.Path;
@@ -358,6 +341,51 @@ namespace Cts.Cli
             }
 
             // The view key of a native file: a container's folder, else the file without its extension.
+            // Imports one new native object below its parent, the IDE's or one
+            // this run made; a container's guid is the place for what is below it.
+            void ImportNative(CompareRecord record)
+            {
+                var path = record.Path;
+                var full = Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar));
+                var content = File.ReadAllText(full);
+                var csv = CsvOf(path);
+                string parentGuid;
+                if (record.ParentKey == null) parentGuid = Convert.ToString(record.ParentGuid);
+                else if (!_work.Created.TryGetValue(Convert.ToString(record.ParentKey), out parentGuid))
+                {
+                    _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", "its container " + record.ParentKey + " was not created" } });
+                    return;
+                }
+                IDictionary<string, object> reply;
+                var replaced = false;
+                try
+                {
+                    reply = _call.Call("objects.import", Below(parentGuid, new Dictionary<string, object> { { "xml", WithRows(csv, content) } }));
+                }
+                catch (CliFailure error) when (error.Declined)
+                {
+                    // The IDE made it along with an earlier one (a Trend Recording Manager its task): the file replaces it.
+                    var made = TreeObjects(_call.Call("project.tree", new Dictionary<string, object>()), out _);
+                    if (!made.TryGetValue(ContainerOrSelf(path), out var node))
+                    {
+                        _nativeApplyMisses.Add(new Dictionary<string, object> { { "guid", "" }, { "name", record.Name }, { "path", path }, { "error", error.Message } });
+                        return;
+                    }
+                    reply = new Dictionary<string, object> { { "guid", node.Guid } };
+                    content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), node.Guid, parentGuid);
+                    if (!Replace(node.Guid, record.Name, path, csv, content)) return;
+                    replaced = true;
+                }
+                var guid = Convert.ToString(reply["guid"]);
+                parentGuid = Convert.ToString(reply.ContainsKey("parent_guid") ? reply["parent_guid"] : parentGuid);
+                content = PlaceNative(_work.Stamps, full, content, NativeMetaValue(content, "Guid"), guid, parentGuid);
+                // A Trend Recording the IDE makes stores every 10 s whatever its file says; a replace sets the file's interval.
+                if (!replaced && string.Equals(NativeMetaValue(content, "TypeGuid").Trim('{', '}'), TrendRecordingType, StringComparison.OrdinalIgnoreCase)
+                    && !Replace(guid, record.Name, path, csv, content)) return;
+                if (IsContainer(record)) _work.Created[FolderKey(path)] = guid;
+                _nativeWrites.Add(new NativeWrite { Guid = guid, Name = NativeMetaValue(content, "Name"), Path = path, Content = content, Created = true, Csv = csv });
+            }
+
             static string ContainerOrSelf(string path) => path.EndsWith("/.cds-object.xml", StringComparison.OrdinalIgnoreCase)
                 ? FolderKey(path) : Path.ChangeExtension(path, null).Replace('\\', '/');
 

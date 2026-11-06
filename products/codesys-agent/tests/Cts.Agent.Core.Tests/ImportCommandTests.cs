@@ -1200,6 +1200,44 @@ namespace Cts.Agent.Tests
             Assert.Empty(((System.Collections.IEnumerable)result["unapplied_objects"]).Cast<object>());
         }
 
+        // A text object in a new container's folder (a GVL in a new
+        // application) is created below it in the same import.
+        [Fact]
+        public void A_text_object_in_a_new_native_container_is_created_in_the_same_import()
+        {
+            var view = ViewFolder.Of(_root);
+            var source = Directory.GetFiles(view, "Task.xml", SearchOption.AllDirectories).Single();
+            var directory = Path.Combine(Path.GetDirectoryName(source), "Manager");
+            Directory.CreateDirectory(directory);
+            var container = Path.Combine(directory, ".cds-object.xml");
+            File.WriteAllText(container, File.ReadAllText(source).Replace("<Single Name=\"Name\" Type=\"string\">Task</Single>",
+                "<Single Name=\"Name\" Type=\"string\">Manager</Single>"));
+            File.WriteAllText(Path.Combine(directory, "GVL_New.st"), "VAR_GLOBAL\n\tnNew : INT;\nEND_VAR\n");
+            var parent = ExportCommand.Relative(view, Path.GetDirectoryName(source));
+            var calls = new List<string>();
+            IDictionary<string, object> created = null;
+            var texts = new Dictionary<string, Dictionary<string, object>>();
+            var dry = ImportCommand.Build(ImportCommand.Execute(ImportCall(new[] { "--dry-run" }, (method, args) =>
+                method == "project.tree" ? Tree(parent.Split('/')) : throw new InvalidOperationException("dry run must not write: " + method))));
+            Assert.False(dry.Details.Any(detail => detail.StartsWith("would be refused", StringComparison.Ordinal)), string.Join("\n", dry.Details));
+            ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                calls.Add(method);
+                if (method == "project.tree") return Tree(parent.Split('/'));
+                if (method == "objects.import") return new Dictionary<string, object> { { "guid", "22222221-2222-2222-2222-222222222222" }, { "parent_guid", args["parent_guid"] } };
+                if (method == "objects.create") { created = new Dictionary<string, object>(args); return new Dictionary<string, object> { { "guid", "33333333-3333-3333-3333-333333333333" } }; }
+                if (method == "objects.settext") { texts[Convert.ToString(args["guid"])] = new Dictionary<string, object>(args); return new Dictionary<string, object>(); }
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", texts.Values.ToArray() } };
+                if (method == "objects.export") return NativeReply(container, Convert.ToString(((IList<object>)args["guids"])[0]));
+                if (method == "project.export") return SnapshotReply(args, File.ReadAllText(container));
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }));
+            Assert.True(calls.IndexOf("objects.import") < calls.IndexOf("objects.create"), string.Join(",", calls));
+            Assert.Equal("gvl", created["kind"]);
+            Assert.Equal("GVL_New", created["name"]);
+            Assert.Equal("22222221-2222-2222-2222-222222222222", created["parent_guid"]);
+        }
+
         // The IDE makes some objects along with another (a Trend Recording
         // Manager its task): the file of one the import finds made replaces it.
         [Fact]
