@@ -82,11 +82,24 @@ error test passed=2 failed=1 application=TestApp device=Test ms=5180 log=C:\plan
 `--json` lists every test as `tests` (`name`, `status` PASS/FAIL, `fields`)
 and the run's log entries as `log`.
 
-Set it up once in CODESYS: add a device (the same type as the PLC's is
-fine), switch it to simulation (Online -> Simulation while its application is
-active), name its application TestApp, add the libraries CmpLog and Standard
-(CONCAT) to its Library Manager, and add the GVL, the functions and the
-program below with a task that calls `PRG_Tests`. Only the code a task calls is downloaded, so the
+Set it up once from files, by copying the PLC's (the same device type is
+fine) in `project-view/`:
+
+- the device's `.cds-object.xml` to `Test/`, its `Name` changed to `Test`
+  and its `SimulationMode` to `True`;
+- its `Plc Logic/.cds-object.xml` to `Test/Plc Logic/`;
+- the application's `.cds-object.xml` and `Library Manager.xml` to
+  `Test/Plc Logic/TestApp/`, the `Name` changed to `TestApp`;
+- its `Task Configuration/.cds-object.xml`, and one task file as
+  `Task Configuration/TestTask.xml`, its `Name` changed to `TestTask` and
+  `PRG_Tests` the only POU in its `PouList`.
+
+Add the GVL, the functions and the program below as `.st` files in
+`TestApp/`, run `cts lib add "CmpLog, * (System)" --app TestApp` (Standard,
+for CONCAT, came with the copied Library Manager), then one `cts import`
+creates it all, outer objects first, and writes the copies back with the
+GUIDs the IDE gave them. A `Name` that differs from its file or folder is
+refused before the IDE. Only the code a task calls is downloaded, so the
 tests reach the shared POUs through `PRG_Tests`.
 
 The result GVL, its names fixed:

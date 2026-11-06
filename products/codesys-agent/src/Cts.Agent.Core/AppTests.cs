@@ -222,7 +222,7 @@ namespace Cts.Agent
             var found = named[0];
             if (!plc && !Equals(Value(found.Key, "simulation"), true))
                 throw Bad("Device '" + Text(found.Key, "path") + "' of " + name + " is not in simulation, and cts runs tests "
-                    + "in simulation unless told otherwise: switch it in CODESYS (Online -> Simulation with " + name + " active), "
+                    + "in simulation unless told otherwise: switch it with cts build --app " + name + " and cts project simulate on, "
                     + "or run cts test --plc to download " + name + " to that PLC and run the tests there.");
             return new Found
             {
