@@ -186,7 +186,7 @@ namespace Cts.Agent
                     var bytes = new System.Text.UTF8Encoding(false).GetBytes(input);
                     stream.Write(bytes, 0, bytes.Length);
                 }
-                process.WaitForExit();
+                GitRun.WaitForExit(process, args);
                 if (process.ExitCode != 0) throw new InvalidOperationException(string.Join(" ", error.Result.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)));
                 return output.Result;
             }

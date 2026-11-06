@@ -10,6 +10,7 @@ namespace Cts.Agent
     // carries does not change which repository it reads.
     public sealed class GitRun
     {
+        const int TimeoutMilliseconds = 600000;
         public int ExitCode { get; private set; }
         public string Output { get; private set; }
         public string Error { get; private set; }
@@ -23,9 +24,9 @@ namespace Cts.Agent
                 using (var process = Process.Start(Info(folder, args, environment, false, true, true)))
                 {
                     var error = process.StandardError.ReadToEndAsync();
-                    var output = process.StandardOutput.ReadToEnd();
-                    process.WaitForExit();
-                    return new GitRun { ExitCode = process.ExitCode, Output = output, Error = error.Result };
+                    var output = process.StandardOutput.ReadToEndAsync();
+                    WaitForExit(process, args);
+                    return new GitRun { ExitCode = process.ExitCode, Output = output.Result, Error = error.Result };
                 }
             }
             catch (System.ComponentModel.Win32Exception) { throw Missing(); }
@@ -45,6 +46,15 @@ namespace Cts.Agent
         }
 
         static InvalidOperationException Missing() => new InvalidOperationException("git could not run: is it installed?");
+
+        // A hook or credential helper that waits for input would hold cts forever.
+        internal static void WaitForExit(Process process, string args, int timeoutMilliseconds = TimeoutMilliseconds)
+        {
+            if (process.WaitForExit(timeoutMilliseconds)) return;
+            try { process.Kill(); }
+            catch (InvalidOperationException) { }
+            throw new InvalidOperationException("git did not finish in " + timeoutMilliseconds / 1000 + " s: git " + args);
+        }
 
         static ProcessStartInfo Info(string folder, string args, IDictionary<string, string> environment, bool redirectInput, bool redirectOutput, bool redirectError)
         {
