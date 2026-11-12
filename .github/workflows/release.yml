@@ -1,0 +1,31 @@
+# Attaches cds-text-sync-<tag>.zip and its .sha256 to a published release: the
+# archive of the tag with the agent binaries from Git LFS, which the installer
+# and winget download. Run by hand with a tag to attach them to an older release.
+name: Release asset
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v4.1.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  asset:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+          lfs: true
+      - run: python3 tools/pack_archive.py "$TAG" --asset --out out
+      - run: gh release upload "$TAG" out/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

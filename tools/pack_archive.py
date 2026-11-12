@@ -6,13 +6,19 @@ taken from Git LFS, not pointers), the commit's ``irm/setup.ps1`` and an
 Windows, a double click on install.cmd installs the build as irm would,
 without GitHub.
 
+``--asset`` writes the release asset instead: the source archive alone,
+``cds-text-sync-<tag>.zip`` with its folder of the same name, which irm and
+winget download from the GitHub release, and its SHA-256 beside it.
+
 Usage::
 
     python3 tools/pack_archive.py              # HEAD into ~/Downloads
     python3 tools/pack_archive.py nightly --out DIR
+    python3 tools/pack_archive.py v4.1.0 --asset --out DIR
 """
 
 import argparse
+import hashlib
 import io
 import os
 import subprocess
@@ -58,7 +64,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("ref", nargs="?", default="HEAD")
     parser.add_argument("--out", default=os.path.expanduser("~/Downloads"))
+    parser.add_argument("--asset", action="store_true",
+                        help="the release asset of a tag and its .sha256")
     options = parser.parse_args()
+    os.makedirs(options.out, exist_ok=True)
+
+    if options.asset:
+        name = "cds-text-sync-" + options.ref
+        data = _archive(options.ref, name)
+        path = os.path.join(options.out, name + ".zip")
+        with open(path, "wb") as asset:
+            asset.write(data)
+        # The format sha256sum -c and Get-FileHash users compare against.
+        with open(path + ".sha256", "w", newline="\n") as digest:
+            digest.write("%s  %s\n" % (hashlib.sha256(data).hexdigest(), name + ".zip"))
+        print(path)
+        return
 
     kit = _kit_name(options.ref)
     archive_name = kit + ".zip"
@@ -68,7 +89,6 @@ def main():
         "install.cmd": _INSTALL_CMD.format(archive=archive_name)
                        .replace("\n", "\r\n").encode("ascii"),
     }
-    os.makedirs(options.out, exist_ok=True)
     path = os.path.join(options.out, kit + "-setup.zip")
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as setup:
         for name, data in files.items():

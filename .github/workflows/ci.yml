@@ -1,0 +1,24 @@
+# The checks dist.py runs before it refreshes dist/, on every push to main and
+# every pull request: the C# build and tests, DeadSymbols, the Python tests,
+# Ruff and the Cyrillic guard. The binaries in dist/ are not rebuilt here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: products/codesys-agent/global.json
+      - uses: astral-sh/setup-uv@v10
+      - run: python3 products/codesys-agent/tools/dist.py --check

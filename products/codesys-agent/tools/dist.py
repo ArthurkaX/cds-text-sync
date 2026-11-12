@@ -11,9 +11,11 @@ the refreshed files go in a commit of their own after it:
 
 Nothing is copied unless every check passes: the C# tests, DeadSymbols, the
 repository's Python tests and Ruff lint (through uv, with requirements-dev.txt)
-and no Cyrillic text in the repository.
+and no Cyrillic text in the repository. `--check` builds and runs those checks
+and copies nothing: what CI runs on every push.
 """
 
+import argparse
 import shutil
 import subprocess
 from pathlib import Path
@@ -33,9 +35,12 @@ def run(argv, cwd):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--check", action="store_true", help="build and check; copy nothing")
+    check_only = parser.parse_args().check
     changed = subprocess.run(["git", "-C", str(AGENT), "status", "--porcelain", "--", "src", "Directory.Build.props"],
                              check=True, capture_output=True, text=True).stdout
-    if changed:
+    if changed and not check_only:
         raise SystemExit("commit the source first: the build names the commit it was built from\n" + changed)
     # dotnet runs in the agent's folder, where global.json names the SDK.
     for project in FILES:
@@ -49,6 +54,9 @@ def main():
     cyrillic = subprocess.run(["git", "grep", "-nIP", "[\\x{0400}-\\x{04FF}]"], cwd=REPO, capture_output=True, text=True).stdout
     if cyrillic:
         raise SystemExit("dist not refreshed: Cyrillic text in the repository\n" + cyrillic)
+    if check_only:
+        print("all checks passed")
+        return
     dist = AGENT / "dist"
     dist.mkdir(exist_ok=True)
     for project, names in FILES.items():

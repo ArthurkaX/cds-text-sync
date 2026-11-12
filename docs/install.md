@@ -65,6 +65,15 @@ irm https://raw.githubusercontent.com/ArthurkaX/cds-text-sync/main/irm/setup.ps1
 
 ## Method 2: Manual Copy
 
+Download `cds-text-sync-<tag>.zip` from the release on
+[GitHub Releases](https://github.com/ArthurkaX/cds-text-sync/releases): it
+holds the prebuilt agent and `cts.exe`. The `.sha256` file beside it carries
+the archive's checksum; compare it with:
+
+```powershell
+(Get-FileHash .\cds-text-sync-<tag>.zip -Algorithm SHA256).Hash
+```
+
 Extract the archive **anywhere except a CODESYS ScriptDir** — for example
 `%LOCALAPPDATA%\cds-text-sync\` — then run the bundled CLI from that folder:
 
@@ -81,8 +90,9 @@ To use `cts` from any terminal, add `<program-folder>\products\codesys-agent\dis
 `cts install` writes the menu entry into the first CODESYS ScriptDir it finds,
 with the in-IDE agent and `cts.exe` beside it, taken from beside the `cts.exe`
 that runs it: the prebuilt files in `products/codesys-agent/dist` (kept in Git
-LFS; the quick installer fetches them when the zip holds only their LFS
-pointers, and a clone needs `git lfs pull`), or in a build tree the agent built
+LFS; a release's zip holds the files themselves, the quick installer fetches
+them when a branch's zip holds only their LFS pointers, and a clone needs
+`git lfs pull`), or in a build tree the agent built
 with that `cts.exe`. Once that folder is on PATH, `cts install` does the same.
 CODESYS must be closed while the agent changes.
 
