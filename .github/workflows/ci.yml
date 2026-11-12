@@ -20,5 +20,5 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: products/codesys-agent/global.json
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: python3 products/codesys-agent/tools/dist.py --check
