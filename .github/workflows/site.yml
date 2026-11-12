@@ -1,0 +1,45 @@
+# Builds the documentation site with tools/site.py and publishes it to the
+# Cloudflare Pages project cds-text-sync (cds-text-sync.pages.dev) whenever a
+# push to main changes a page it is built from. The repository secrets
+# CLOUDFLARE_API_TOKEN (Pages: Edit) and CLOUDFLARE_ACCOUNT_ID authorise it.
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - readMe.md
+      - CHANGELOG.md
+      - docs/**
+      - irm/setup.md
+      - img/**
+      - products/codesys-agent/src/Cts.Agent.Core/Guides/**
+      - mkdocs.yml
+      - requirements-site.txt
+      - tools/site.py
+      - .github/workflows/site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: |
+          pip install -r requirements-site.txt
+          python3 tools/site.py
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=cds-text-sync --branch=main
