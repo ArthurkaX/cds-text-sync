@@ -363,6 +363,8 @@ cts trace remove                       # off the PLC and out of the project
 
 ## Documentation
 
+All of it, with search: [cds-text-sync.pages.dev](https://cds-text-sync.pages.dev/).
+
 - [Installation](docs/install.md)
 - [Script overview](docs/scripts.md)
 - [Project layout](#2-git-workflows)

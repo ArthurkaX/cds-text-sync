@@ -1,0 +1,77 @@
+# The documentation site, cds-text-sync.pages.dev: tools/site.py stages the
+# repository's Markdown into .site-src/ and Zensical builds site/ with this file.
+site_name: cds-text-sync
+site_url: https://cds-text-sync.pages.dev/
+site_description: Your CODESYS project as text - Git, editors and AI agents work on it, the IDE stays in sync.
+repo_url: https://github.com/ArthurkaX/cds-text-sync
+repo_name: ArthurkaX/cds-text-sync
+edit_uri: ""
+docs_dir: .site-src
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+
+nav:
+  - Home: index.md
+  - Documentation: documentation.md
+  - Setting up:
+      - Installation: install.md
+      - Quick setup guide: setup.md
+      - Alternative installations: alternative-installations.md
+      - Upgrading to 4.0: upgrade-4.md
+  - Using it:
+      - Script overview: scripts.md
+      - Sync by objects: sync-by-objects.md
+      - Object kinds: object-kinds.md
+      - HMI screens from SVG: visu.md
+      - Static analysis: analyze.md
+      - Working as a team: team.md
+  - cts guides:
+      - Workflow: guides/workflow.md
+      - Commands: guides/commands.md
+      - Import: guides/import.md
+      - Deploy: guides/deploy.md
+      - Status: guides/status.md
+      - Dialogs: guides/dialog.md
+      - Tests: guides/tests.md
+      - Trend: guides/trend.md
+      - Trace: guides/trace.md
+      - SVG to visu: guides/visu-svg.md
+      - SVG advanced elements: guides/visu-svg/advanced-elements.md
+  - Reference:
+      - Architecture: architecture-v2.md
+      - Releases & rollback: releases.md
+      - Changelog: changelog.md
+      - Changelog archive: changelog-archive.md

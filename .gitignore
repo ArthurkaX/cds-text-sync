@@ -39,3 +39,7 @@ pf
 nul
 .codegraph/
 .venv/
+
+# Documentation site (tools/site.py)
+/.site-src/
+/site/

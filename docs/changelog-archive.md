@@ -163,7 +163,7 @@ it. `export_st` now uses only the read-only text-document path that
 
 `.github/` is gone: the CI and release workflows, the issue templates, the code
 of conduct and the security policy. Releases are tagged by hand, as
-[docs/releases.md](docs/releases.md) describes.
+[docs/releases.md](releases.md) describes.
 
 **Fixed: one command with no PLC attached took the whole daemon down with it.**
 
