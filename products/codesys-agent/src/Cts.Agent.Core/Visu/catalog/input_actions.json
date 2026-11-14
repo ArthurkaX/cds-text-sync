@@ -104,6 +104,25 @@
  {"name": "position_x", "xml_name": "PositionX", "kind": "string", "default": ""},
  {"name": "position_y", "xml_name": "PositionY", "kind": "string", "default": ""}
  ]
+ },
+ "write_variable": {
+ "type": "{e8e7e747-f76f-4dee-ab1c-b9637e41ac26}",
+ "fields": [
+ {"xml_name": "InputBoxVariable", "kind": "string", "default": ""},
+ {"name": "input_type", "xml_name": "InputType", "kind": "string"},
+ {"name": "min", "xml_name": "InputBoxMin", "kind": "string", "default": ""},
+ {"name": "max", "xml_name": "InputBoxMax", "kind": "string", "default": ""},
+ {"xml_name": "InputBoxDialogTitle", "kind": "string", "default": ""},
+ {"xml_name": "Password", "kind": "bool", "default": "False"},
+ {"xml_name": "UseTextOutputVariable", "kind": "bool", "default": "True"},
+ {"xml_name": "TextOutputVariableInitialized", "kind": "bool", "default": "True"},
+ {"xml_name": "OtherVarConversion", "kind": "string", "default": ""},
+ {"xml_name": "Format", "kind": "string", "default": ""},
+ {"xml_name": "DialogPosition", "kind": "{16f3f59a-37ad-4991-a1af-cc2926974e08}", "default": "UseGlobalSetting"},
+ {"xml_name": "DialogXPos", "kind": "string", "default": ""},
+ {"xml_name": "DialogYPos", "kind": "string", "default": ""},
+ {"xml_name": "InputType_4_9_0_0", "kind": "string", "default": ""}
+ ]
  }
  }
 }

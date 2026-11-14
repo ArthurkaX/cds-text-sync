@@ -80,13 +80,14 @@ screen name is refused unless `--replace` is set; replacement keeps its Guid.
 
 ## Binding to PLC variables
 
-A screen that only draws is a picture. Three attributes make it live:
+A screen that only draws is a picture. These attributes make it live:
 
 | Attribute | On | Binds |
 | --- | --- | --- |
 | `data-text-var="HMI.Temperature"` | `<text data-cds-type="textfield">` | the value displayed in the field |
 | `data-cds-tap="HMI.StartPump"` | `<rect data-cds-type="button">` | the native button tap/toggle variable |
 | `data-cds-action="OnMouseUp: screen CoolingTower"` | `<rect data-cds-type="button">` | a native input action — `TAP`, `TOGGLE`, `ST …`, screen change; several separated by `\|\|` |
+| `data-cds-input="numpad"` | a textfield or plain shape with `data-text-var` | a click lets the operator type that variable (`numpad`, `keypad`, `edit`, `default`); `data-input-min` / `data-input-max` limit it |
 
 Set them with `cts visu bind` instead of hand-editing the sketch — it patches
 only these attributes on one element (by index, from `cts visu list --screen ...`
@@ -97,6 +98,7 @@ geometry:
 cts visu bind --svg line1.svg --elem 3 --text-var HMI.Temperature # data-text-var
 cts visu bind --svg line1.svg --elem 5 --tap HMI.StartPump        # data-cds-tap
 cts visu bind --svg line1.svg --elem 5 --action "OnMouseUp: screen CoolingTower"
+cts visu bind --svg line1.svg --elem 3 --input numpad             # data-cds-input
 cts visu bind --svg line1.svg --elem 5 --clear                    # remove all bindings
 ```
 
@@ -126,11 +128,15 @@ what is already there.
 `cts visu lint` reports a control with nothing bound to it, which is how an
 unwired field gets caught before the IDE sees it.
 
-> [!NOTE]
-> **A screen authored here is read-and-press.** Only buttons and plain shapes
-> carry input actions — a textfield *displays* `data-text-var` and cannot be
-> typed into. An operator can start, stop, toggle and navigate, but cannot key
-> in a setpoint except through a button that writes one.
+A setpoint the operator types is a field with `data-cds-input`: a click opens
+the IDE's Write Variable input on the variable the field shows, and `to-svg`
+keeps it.
+
+```xml
+<text data-cds-type="textfield" x="24" y="172" data-width="160" data-height="32"
+      data-text-var="HMI.rLength" data-cds-input="numpad"
+      data-input-min="0" data-input-max="2000">%3.1f mm</text>
+```
 
 ---
 

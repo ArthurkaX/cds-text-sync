@@ -46,7 +46,7 @@ namespace Cts.Visu
                 spec = ParseText(element, theme);
             else
                 throw new VisuException("Unsupported SVG element: <" + tag + ">");
-            return AddDialogActions(spec, element);
+            return AddWriteInput(AddDialogActions(spec, element), element);
         }
 
         static ElementSpec ParseRectangle(XElement element, IDictionary<string, string> theme)

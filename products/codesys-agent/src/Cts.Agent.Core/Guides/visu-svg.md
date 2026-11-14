@@ -400,10 +400,12 @@ button stacked on each other:
 - `data-fill-var` / `data-stroke-var` — DWORD colours (`16#FFRRGGBB`) for any
   number of states; the PLC picks the colour.
 - `data-cds-action` — the click, in the button's forms.
+- `data-cds-input` — the click lets the operator type the `data-text-var`
+  instead, as on a textfield (below).
 
-`cts visu bind --text-var` / `--color-var` / `--action` set them on a sketch.
+`cts visu bind --text-var` / `--color-var` / `--action` / `--input` set them on a sketch.
 
-### Textfield (runtime variable display)
+### Textfield (a value shown, and typed if you allow it)
 ```xml
 <text x="424" y="172" font-size="12"
       data-cds-type="textfield" data-width="336" data-height="32"
@@ -419,6 +421,18 @@ button stacked on each other:
   `%d rpm`) rather than adding a separate `.caption` next to the field: the
   field is one box, and a unit parked beside it has to be re-aligned by hand
   every time the value's width changes.
+- `data-cds-input` — the operator types the value: a click opens the IDE's
+  Write Variable input on the `data-text-var` (required with it). The value is
+  the input: `numpad` (a number), `keypad` (a STRING), `edit` (typed in the
+  field itself), `default` (what the Visualization Manager sets).
+  `data-input-min` / `data-input-max` limit the value, a number or a variable;
+  leave them out for no limit.
+
+  ```xml
+  <text x="24" y="172" font-size="12" data-cds-type="textfield"
+        data-width="160" data-height="32" data-text-var="HMI.rLength"
+        data-cds-input="numpad" data-input-min="0" data-input-max="2000">%3.1f mm</text>
+  ```
 - **A textfield's size comes from its `font-size` attribute, and `class` does
   nothing at all on a field.** This is the one element where the colour-class
   system does not apply: a field takes the native CODESYS textfield style, so
@@ -585,6 +599,8 @@ Compiled forms:
 - `OnMouseClick/OnMouseDown/OnMouseUp: ST <snippet>` -> `STSnippet`
 - `OnMouseClick/OnMouseDown/OnMouseUp: toggle <variable>` -> `ToggleVariable`
 - `OnMouseClick/OnMouseDown/OnMouseUp: screen <screen>` -> change screen assignment
+- `data-cds-input="numpad"` (a textfield or plain shape) -> OnMouseClick Write
+  Variable on the element's `data-text-var`, `data-input-min`/`-max` as its limits
 
 Hotkeys are not generated yet; the observed CODESYS XML stores them at screen
 level under `Hotkeys`, not inside the button element.
@@ -630,15 +646,9 @@ screen.
   `<rect>` instead.
 - Table, TabControl, GroupBox, Checkbox, RadioButton,
   Scrollbar, SpinControl, ProgressBar, InvisibleInput
-- **Operator data entry.** A textfield *displays* `data-text-var`; it cannot be
-  typed into. Only `<rect data-cds-type="button">` and plain shapes carry input
-  actions, so a screen authored here is read-and-press: the operator can start,
-  stop, toggle and navigate, but cannot key in a setpoint. Write a setpoint from
-  a button instead (`data-cds-action="OnMouseClick: ST HMI.Setpoint := 50;"`).
-  Adding the writable field in the CODESYS editor works, but do not round-trip
-  that screen: `to-svg` reads a textfield's geometry, variable and font and not
-  its input action, so the next `from-svg` compiles the field back as
-  display-only.
+- A Write Variable input on another variable than the one the element shows,
+  or on another event than a click: `to-svg` leaves it out, so the next
+  `from-svg` drops it.
 
 **Decompile-only** (read by `cts visu to-svg`, but cannot yet be authored with
 `cts visu from-svg`): `slider`. Decompiling a real screen emits

@@ -14,7 +14,8 @@ namespace Cts.Cli
     internal static partial class VisuSketchCommands
     {
         const int FixPasses = 5;
-        static readonly string[] Attributes = { "data-var", "data-text-var", "data-cds-tap", "data-cds-action", "data-color", "data-color-var" };
+        static readonly string[] Attributes = { "data-var", "data-text-var", "data-cds-tap", "data-cds-action", "data-color", "data-color-var",
+                                                "data-cds-input", "data-input-min", "data-input-max" };
 
         internal static IList<CliCommand> Commands => new[] { Command("lint"), Command("new"), Command("bind") };
 
@@ -36,7 +37,7 @@ namespace Cts.Cli
             else if (action == "bind")
             {
                 command.Summary = "Attach or clear one SVG element binding";
-                command.Description = "Binds one element of a sketch (its index as cts visu lint numbers it) to a variable: a lamp's colour, a text field's or a shape's value, a shape's colour, a button's tap or toggle.";
+                command.Description = "Binds one element of a sketch (its index as cts visu lint numbers it) to a variable: a lamp's colour, a text field's or a shape's value and whether the operator can type it, a shape's colour, a button's tap or toggle.";
                 command.Options = new[] { CliOption.Needed("--svg", "svg", "FILE", "Sketch SVG"),
                                           CliOption.Int("--elem", "elem", "Zero-based element index"),
                                           CliOption.Text("--var", "var", "NAME", "Bind lamp variable"),
@@ -46,6 +47,7 @@ namespace Cts.Cli
                                           CliOption.Text("--toggle", "toggle", "NAME", "Bind button toggle"),
                                           CliOption.Text("--color", "color", "ROLE", "Lamp colour role"),
                                           CliOption.Text("--action", "action", "TEXT", "Append raw action clause"),
+                                          CliOption.Choice("--input", "input", "Let the operator type the shown variable", "numpad", "keypad", "edit", "default"),
                                           CliOption.Switch("--clear", "clear", "Clear every binding") };
             }
             else

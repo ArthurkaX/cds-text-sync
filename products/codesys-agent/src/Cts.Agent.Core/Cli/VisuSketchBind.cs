@@ -34,6 +34,7 @@ namespace Cts.Cli
                 SetBinding(options, "color", "data-color", type, new[] { "lamp" }, ref edited, changes);
                 SetBinding(options, "text_var", "data-text-var", type, new[] { "textfield", "rectangle" }, ref edited, changes);
                 SetBinding(options, "color_var", "data-color-var", type, new[] { "rectangle" }, ref edited, changes);
+                SetBinding(options, "input", "data-cds-input", type, new[] { "textfield", "rectangle" }, ref edited, changes);
                 SetBinding(options, "tap", "data-cds-tap", type, new[] { "button" }, ref edited, changes, "tap:");
                 SetBinding(options, "toggle", "data-cds-tap", type, new[] { "button" }, ref edited, changes, "toggle:");
                 var action = options.Text("action");

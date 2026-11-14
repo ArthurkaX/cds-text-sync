@@ -379,6 +379,51 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void From_svg_gives_a_field_the_write_variable_input_and_to_svg_keeps_it()
+        {
+            // The form most exported input fields have: a click writes the shown variable.
+            Application("HMI");
+            Write("HMI/Setup.xml", ScreenXml(800, 480));
+            Write("POUs/GlobalTextList.csv", "TextID,TextDefault\n");
+            var svg = Path.Combine(root, "input.svg");
+            File.WriteAllText(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">"
+                + "<text data-cds-type=\"textfield\" x=\"20\" y=\"40\" data-width=\"160\" data-height=\"32\" "
+                + "data-text-var=\"HMI.rLength\" data-cds-input=\"numpad\" data-input-min=\"0\" data-input-max=\"HMI.rMax\">%3.1f mm</text>"
+                + "<rect x=\"20\" y=\"80\" width=\"160\" height=\"32\" data-text-var=\"HMI.sName\" data-cds-input=\"keypad\" />"
+                + "</svg>");
+            var (code, _, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Setup",
+                "--folder", "HMI", "--sync-folder", view, "--gvl", "VisuVars", "--no-preview");
+            Assert.True(code == 0, error);
+            var xml = File.ReadAllText(Path.Combine(view, "HMI", "Setup.xml"));
+            Assert.Matches(@"<Single Type=""string"">OnMouseClick</Single>\s*</Key>\s*<Value>\s*<Array Type=""\{69265815-ba9d-4bec-bfcb-427fb9172844\}"">\s*"
+                + @"<Single Type=""\{e8e7e747-f76f-4dee-ab1c-b9637e41ac26\}"" Method=""IArchivable"">\s*"
+                + @"<Single Name=""InputBoxVariable"" Type=""string""></Single>\s*<Single Name=""InputType"" Type=""string"">VisuDialogs.Numpad</Single>\s*"
+                + @"<Single Name=""InputBoxMin"" Type=""string"">0</Single>\s*<Single Name=""InputBoxMax"" Type=""string"">HMI.rMax</Single>", xml);
+            Assert.Contains("<Single Name=\"InputType\" Type=\"string\">VisuDialogs.Keypad</Single>", xml);
+            Assert.Contains("<Single Name=\"UseTextOutputVariable\" Type=\"bool\">True</Single>", xml);
+            Assert.Contains("<Single Name=\"DialogPosition\" Type=\"{16f3f59a-37ad-4991-a1af-cc2926974e08}\">UseGlobalSetting</Single>", xml);
+            Assert.Matches(@"rLength\s*: REAL", File.ReadAllText(Path.Combine(view, "POUs", "VisuVars.st")));
+
+            (code, _, error) = CliTests.RunLocal("visu", "to-svg", "--screen", Path.Combine(view, "HMI", "Setup.xml"), "--sync-folder", view);
+            Assert.True(code == 0, error);
+            var back = File.ReadAllText(Path.Combine(view, "HMI", "Setup.svg"));
+            foreach (var attribute in new[] { "data-cds-input=\"numpad\"", "data-input-min=\"0\"", "data-input-max=\"HMI.rMax\"",
+                                              "data-cds-input=\"keypad\"" })
+                Assert.Contains(attribute, back);
+            Assert.DoesNotContain("data-cds-action", back);
+        }
+
+        [Theory]
+        [InlineData("<text data-cds-type=\"textfield\" x=\"20\" y=\"40\" data-cds-input=\"numpad\">%d</text>", "give it a data-text-var")]
+        [InlineData("<text data-cds-type=\"textfield\" x=\"20\" y=\"40\" data-text-var=\"HMI.i\" data-cds-input=\"write\">%d</text>", "use numpad, keypad")]
+        [InlineData("<rect data-cds-type=\"button\" x=\"20\" y=\"40\" width=\"80\" height=\"40\" data-cds-input=\"numpad\" />", "textfield or a plain")]
+        public void From_svg_refuses_an_input_it_cannot_compile(string element, string message)
+        {
+            var error = Assert.Throws<VisuException>(() => Sketch.Parse("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">" + element + "</svg>"));
+            Assert.Contains(message, error.Message);
+        }
+
+        [Fact]
         public void From_svg_replace_keeps_the_existing_screen_guid()
         {
             Application("HMI");

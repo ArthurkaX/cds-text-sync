@@ -6,7 +6,7 @@ using System.Xml.Linq;
 
 namespace Cts.Visu
 {
-    // An element's data-cds-action: its configured inputs and input actions.
+    // An element's data-cds-action, data-open-dialog and data-cds-input: its configured inputs and input actions.
     internal static partial class SvgSketch
     {
         static ElementSpec AddDialogActions(ElementSpec spec, XElement element)
@@ -24,14 +24,45 @@ namespace Cts.Visu
                                           ["position_y"] = "" };
             var parameters = AttributeMap(element, "data-dialog-param-");
             if (parameters.Count > 0) values["params"] = parameters;
-            var actions = spec.Params.TryGetValue("input_actions", out var existing) ? existing as IList<object> : null;
-            if (actions == null) actions = new List<object>();
-            actions.Add(Action("OnMouseClick", "open_dialog", values));
+            AddInputAction(spec, Action("OnMouseClick", "open_dialog", values));
             var snippet = (string)element.Attribute("data-dialog-st");
             if (!string.IsNullOrEmpty(snippet))
-                actions.Add(Action("OnMouseClick", "st_snippet", new Dictionary<string, object> { ["snippet"] = snippet }));
-            spec.Params["input_actions"] = actions;
+                AddInputAction(spec, Action("OnMouseClick", "st_snippet", new Dictionary<string, object> { ["snippet"] = snippet }));
             return spec;
+        }
+
+        // data-cds-input -> the IDE's InputType of a Write Variable input.
+        internal static readonly IDictionary<string, string> InputTypes = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["numpad"] = "VisuDialogs.Numpad", ["keypad"] = "VisuDialogs.Keypad", ["edit"] = "Edit", ["default"] = "Default",
+        };
+
+        // A click opens the IDE's Write Variable input on the variable the element shows, the form
+        // most input fields of exported projects have.
+        static ElementSpec AddWriteInput(ElementSpec spec, XElement element)
+        {
+            var input = (string)element.Attribute("data-cds-input");
+            if (input == null) return spec;
+            if (spec.Type != "textfield" && spec.Type != "rectangle")
+                throw new VisuException("data-cds-input is only supported on a textfield or a plain rectangle/circle/ellipse");
+            if (!InputTypes.TryGetValue(input.Trim().ToLowerInvariant(), out var inputType))
+                throw new VisuException("data-cds-input=\"" + input + "\": use numpad, keypad, edit or default");
+            if (!(spec.Params.TryGetValue("text_var", out var shown) && shown is string variable && variable.Length > 0))
+                throw new VisuException("data-cds-input writes the variable the element shows: give it a data-text-var");
+            AddInputAction(spec, Action("OnMouseClick", "write_variable", new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["input_type"] = inputType, ["min"] = (string)element.Attribute("data-input-min") ?? "",
+                ["max"] = (string)element.Attribute("data-input-max") ?? "",
+            }));
+            return spec;
+        }
+
+        static void AddInputAction(ElementSpec spec, object action)
+        {
+            var actions = spec.Params.TryGetValue("input_actions", out var existing) ? existing as IList<object> : null;
+            if (actions == null) actions = new List<object>();
+            actions.Add(action);
+            spec.Params["input_actions"] = actions;
         }
 
         static Tuple<IList<object>, IList<object>> ParseActions(string raw)
