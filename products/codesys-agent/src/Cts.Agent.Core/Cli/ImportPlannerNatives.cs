@@ -20,8 +20,9 @@ namespace Cts.Cli
                 _work.CsvPlans = new List<TextListPlan>();
                 _work.CsvGone = new List<string>();
                 _work.FieldReadBack = new List<IDictionary<string, object>>();
-                // A list only the IDE changed goes to disk after the import.
-                foreach (var record in _work.CsvRecords.Where(record => record.Category != "ide_changed"))
+                // A list only the IDE changed goes to disk after the import; --force gives the IDE the file's rows.
+                var force = _work.HasBase && _call.Options.Params.ContainsKey("force");
+                foreach (var record in _work.CsvRecords.Where(record => record.Category != "ide_changed" || force && !ComparePlanner.IdeDeleted(record)))
                 {
                     var path = record.Path;
                     // A new object's .csv goes to the IDE with its .xml (a text list's
@@ -43,7 +44,8 @@ namespace Cts.Cli
                             && string.Equals(native.Path, xml, StringComparison.OrdinalIgnoreCase))
                         && TextListRows.IsTextList(NativeMetaValue(File.ReadAllText(Path.Combine(_work.View, xml.Replace('/', Path.DirectorySeparatorChar))), "TypeGuid")))
                         continue;
-                    var alarms = record.Category == "modified" ? PlanAlarmGroup(record, path) : null;
+                    var changed = record.Category == "modified" || record.Category == "ide_changed";
+                    var alarms = changed ? PlanAlarmGroup(record, path) : null;
                     if (alarms != null)
                     {
                         // Both sides' messages are not merged: the import is refused, a settling sync leaves the group.
@@ -57,7 +59,7 @@ namespace Cts.Cli
                         continue;
                     }
                     var key = Path.ChangeExtension(path, null).Replace('\\', '/');
-                    if (record.Category != "modified" || !_work.IdeNodes.TryGetValue(key, out var node)
+                    if (!changed || !_work.IdeNodes.TryGetValue(key, out var node)
                         || !new[] { "textlist", "global_text_list" }.Contains(TypeKinds.All.Kind(node.Type), StringComparer.OrdinalIgnoreCase))
                         return Refused(_call, _work.Data, record.Category + " " + path + ": not a changed text list");
                     if (!File.Exists(Path.Combine(_work.View, path.Replace('/', Path.DirectorySeparatorChar))))

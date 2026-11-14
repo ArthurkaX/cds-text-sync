@@ -1411,6 +1411,47 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Force_gives_the_IDE_the_rows_of_a_text_list_only_the_IDE_changed()
+        {
+            // The IDE reopened a project file saved before the import that brought the rows.
+            var file = TextListFile();
+            var view = ViewFolder.Of(_root);
+            // The project holds the text list alone, as the IDE's export below does.
+            foreach (var other in Directory.GetFiles(view, "*", SearchOption.AllDirectories).Where(path => !path.Contains("GlobalTextList"))) File.Delete(other);
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            SyncBase.SaveStamp(StampPath(), _project, _stamp, GitRepository.Run(_root, "rev-parse refs/cts/base").Trim());
+            var disk = File.ReadAllText(file);
+            var state = TextListFields();
+            ((IList<object>)state["TextList"]).Clear();
+            const string listGuid = "b5430773-3042-47d6-a6d3-28650a6ce532";
+            var tree = TextListTree();
+            ((IList<IDictionary<string, object>>)tree["children"])[0]["guid"] = listGuid;
+            var result = ImportCommand.Execute(ImportCall(new[] { "--force" }, (method, args) =>
+            {
+                if (method == "project.tree") return tree;
+                if (method == "project.export") return SnapshotReply(args, TextListEntry(args.ContainsKey("guids") ? Convert.ToString(((IList<object>)args["guids"])[0]) : listGuid, state));
+                if (method == "objects.export")
+                {
+                    var guid = Convert.ToString(((IList<object>)args["guids"])[0]);
+                    var entry = XDocument.Parse(TextListEntry(guid, state), LoadOptions.PreserveWhitespace);
+                    return new Dictionary<string, object> { { "objects", new List<object> { new Dictionary<string, object>
+                        { { "guid", guid }, { "meta", AgentExportMember.Of(entry, "MetaObject") }, { "object", AgentExportMember.Of(entry, "Object") } } } } };
+                }
+                if (method == "objects.fields") return TextListReply(state);
+                if (method == "objects.listadd")
+                {
+                    ((IList<object>)state["TextList"]).Insert(Convert.ToInt32(args["at"]), new Dictionary<string, object>((IDictionary<string, object>)args["fields"]));
+                    return new Dictionary<string, object>();
+                }
+                if (method == "objects.setfield") return new Dictionary<string, object>();
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.Equal(new[] { "212", "705", "978" }, ((IList<object>)state["TextList"]).Select(row => Convert.ToString(((IDictionary<string, object>)row)["TextID"])));
+            Assert.Equal(new[] { "GlobalTextList" }, (IList<string>)result["updated_field_objects"]);
+            Assert.Equal(disk, File.ReadAllText(file));
+        }
+
+        [Fact]
         public void A_text_list_row_new_in_the_middle_of_the_file_goes_to_the_end_of_the_IDEs_list()
         {
             var file = TextListFile();
