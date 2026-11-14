@@ -534,6 +534,61 @@ namespace Cts.Agent.Tests
             Assert.Contains("Bad: non-numeric geometry", output);
         }
 
+        // An object file as the export writes one: its MetaObject first, then its settings.
+        static string Native(string name, string type, string settings) =>
+            "<?xml version='1.0' encoding='utf-8'?>\n<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\" Method=\"IArchivable\">\n"
+            + "  <Single Name=\"MetaObject\" Type=\"{81297157-7ec9-45ce-845e-84cab2b88ade}\" Method=\"IArchivable\">\n"
+            + "    <Single Name=\"Name\" Type=\"string\">" + name + "</Single>\n"
+            + "    <Single Name=\"TypeGuid\" Type=\"System.Guid\">" + type + "</Single>\n  </Single>\n" + settings + "\n</Single>";
+
+        void VisuApplication(bool currentVisuGlobal, string start)
+        {
+            Write("App/Main.xml", Native("Main", "f18bec89-9fef-401d-9953-2f11739a6808", ""));
+            Write("App/Access.xml", Native("Access", "f18bec89-9fef-401d-9953-2f11739a6808", ""));
+            Write("App/Visualization Manager/.cds-object.xml", Native("Visualization Manager", "4d3fdb8f-ab50-4c35-9d3a-d4bb9bb9a628",
+                "<Null Name=\"StartVisu\" />\n<Single Name=\"CurrentVisuGlobal\" Type=\"bool\">" + currentVisuGlobal + "</Single>"));
+            Write("App/Visualization Manager/WebVisu.xml", Native("WebVisu", "0fdbf158-1ae0-47d9-9269-cd84be308e9d",
+                "<Single Name=\"StartVisu\" Type=\"string\">" + start + "</Single>\n<Single Name=\"BestFit\" Type=\"bool\">True</Single>\n"
+                + "<Single Name=\"ScaleTypeIsotropic\" Type=\"bool\">False</Single>"));
+        }
+
+        [Fact]
+        public void Settings_show_the_clients_and_set_the_start_screen_scaling_and_current_visu()
+        {
+            VisuApplication(false, "Access");
+            var (shown, output, _) = Visu("settings");
+            Assert.Equal(0, shown);
+            Assert.Contains("App/Visualization Manager/.cds-object.xml: CurrentVisuGlobal=False", output);
+            Assert.Contains("WebVisu App/Visualization Manager/WebVisu.xml: StartVisu=Access BestFit=True ScaleTypeIsotropic=False", output);
+
+            var (code, set, _) = Visu("settings", "--start-visu", "main", "--isotropic", "on", "--current-visu", "on");
+            Assert.Equal(0, code);
+            Assert.Contains("changed=2 problems=0", set);
+            Assert.Contains("StartVisu=main BestFit=True ScaleTypeIsotropic=True", set);
+            Assert.Contains("CurrentVisuGlobal=True", set);
+            Assert.Contains("<Null Name=\"StartVisu\" />", File.ReadAllText(Path.Combine(view, "App", "Visualization Manager", ".cds-object.xml")));
+
+            var (unknown, _, error) = Visu("settings", "--start-visu", "Nowhere");
+            Assert.Equal(1, unknown);
+            Assert.Contains("No screen Nowhere in App; its screens: ", error);
+        }
+
+        [Fact]
+        public void Check_and_settings_name_a_current_visu_write_the_manager_ignores_and_a_start_screen_that_is_gone()
+        {
+            VisuApplication(false, "Gone");
+            Write("App/PRG_Screens.st", "PROGRAM PRG_Screens\nVisuElems.CurrentVisu := 'Main';\nEND_PROGRAM\n");
+            var (code, output, _) = Visu("settings");
+            Assert.Equal(1, code);
+            Assert.Contains("App/Visualization Manager/WebVisu.xml: StartVisu 'Gone' is no screen of the application", output);
+            Assert.Contains("App/PRG_Screens.st writes CurrentVisu, but CurrentVisuGlobal is False in App/Visualization Manager/.cds-object.xml", output);
+
+            Write("App/Panel.xml", ScreenXml(800, 480));
+            var (checkCode, check, _) = Visu("check", "--screen", "Panel", "--folder", "App");
+            Assert.Equal(1, checkCode);
+            Assert.Contains("PRG_Screens.st writes CurrentVisu", check);
+        }
+
         [Fact]
         public void A_screen_name_in_two_folders_needs_the_folder()
         {

@@ -29,7 +29,6 @@ namespace Cts.Cli
                     CliOption.Needed("--name", "name", "NAME", "Screen name"),
                     CliOption.Int("--width", "width", "Screen width (default 800)"),
                     CliOption.Int("--height", "height", "Screen height (default 480)"),
-                    CliOption.Switch("--start-visu", "start_visu", "Set as the start visualization"),
                     Folder,
                     SyncFolder,
                 },
@@ -60,6 +59,7 @@ namespace Cts.Cli
                 LocalExecute = Add, Build = BuildAdd,
             },
             VisuBuildCommands.FromSvg,
+            VisuSettingsCommand.Command,
             new CliCommand
             {
                 Name = "visu", Sub = "types", Summary = "List the visu element types",
@@ -92,7 +92,8 @@ namespace Cts.Cli
             {
                 Name = "visu", Sub = "check", Summary = "Check a screen's geometry and members",
                 Description = "Each element inside the screen with a positive size; every colour bound to a style name; "
-                    + "every text with a Text ID; no colour with both an ExplicitColor and a live NamedColor; no two elements overlapping (lines, simple elements and nested ones aside). Exit 1 when a problem is found.",
+                    + "every text with a Text ID; no colour with both an ExplicitColor and a live NamedColor; no two elements overlapping (lines, simple elements and nested ones aside); "
+                    + "and the application's cts visu settings problems. Exit 1 when a problem is found.",
                 Options = new[] { CliOption.Needed("--screen", "screen", "NAME", "The screen name or XML path"), Folder, SyncFolder },
                 LocalExecute = Check, Build = BuildCheck,
             },
@@ -119,7 +120,7 @@ namespace Cts.Cli
             var view = View(options, work, "create-screen");
             try
             {
-                var path = Cts.Visu.ScreenBuilder.Create(view, ViewPlace.ExistingFolder(view, options.Text("folder", "")), name, options.Number("width", 800), options.Number("height", 480), options.Params.ContainsKey("start_visu"));
+                var path = Cts.Visu.ScreenBuilder.Create(view, ViewPlace.ExistingFolder(view, options.Text("folder", "")), name, options.Number("width", 800), options.Number("height", 480));
                 return new Dictionary<string, object> { ["name"] = name, ["path"] = path, ["width"] = options.Number("width", 800), ["height"] = options.Number("height", 480) };
             }
             catch (VisuException error)
@@ -300,7 +301,10 @@ namespace Cts.Cli
         {
             var path = Screen(options, work, "check");
             var (size, elements, colors) = Read(path, "check", root => (ScreenXml.Size(root), ScreenXml.Elements(root), ScreenCheck.ColorConflicts(root).ToList()));
-            return new Dictionary<string, object> { ["screen"] = path, ["elements"] = elements.Count, ["problems"] = ScreenCheck.Problems(size.Width, size.Height, elements).Concat(colors).Cast<object>().ToList() };
+            // Named from the application's folder: the screen may lie outside a project view.
+            var around = VisuSettings.Around(path);
+            var settings = around?.Problems(Path.GetDirectoryName(around.AppFolder)) ?? new List<string>();
+            return new Dictionary<string, object> { ["screen"] = path, ["elements"] = elements.Count, ["problems"] = ScreenCheck.Problems(size.Width, size.Height, elements).Concat(colors).Concat(settings).Cast<object>().ToList() };
         }
 
         static Answer BuildCheck(IDictionary<string, object> data)
@@ -370,7 +374,7 @@ namespace Cts.Cli
             return answer;
         }
 
-        static string View(CliOptions options, string work, string sub)
+        internal static string View(CliOptions options, string work, string sub)
         {
             try
             {

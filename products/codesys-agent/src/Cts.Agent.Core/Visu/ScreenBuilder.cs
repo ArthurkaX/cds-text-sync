@@ -12,7 +12,8 @@ namespace Cts.Visu
     internal static class ScreenBuilder
     {
         const string TemplatePrefix = "Cts.Visu.Templates.";
-        internal static string Create(string view, string folder, string name, int width, int height, bool startVisu,
+
+        internal static string Create(string view, string folder, string name, int width, int height,
                                       bool replace = false, string background = null)
         {
             var (parent, parentNode, pathNames) = Placement(view, folder);
@@ -51,7 +52,6 @@ namespace Cts.Visu
                 .Replace("@@NAME@@", Markup.Escape(name))
                 .Replace("@@SIZE_X@@", width.ToString(CultureInfo.InvariantCulture))
                 .Replace("@@SIZE_Y@@", height.ToString(CultureInfo.InvariantCulture))
-                .Replace("@@IS_START_VISU@@", startVisu ? "True" : "False")
                 .Replace("@@UNIQUE_ID_GENERATOR@@", "1")
                 .Replace("@@LAST_USED_ID@@", "1")
                 .Replace("@@ELEMENTS@@", "")

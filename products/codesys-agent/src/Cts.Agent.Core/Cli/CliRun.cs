@@ -435,7 +435,7 @@ namespace Cts.Cli
             Group("variables", "read", "write", "snapshooter tree", "snapshooter take", "snapshooter diff", "snapshooter restore"),
             Group("analysis and documentation", "analyze", "analyze rules", "analyze explain", "analyze baseline", "analyze triage", "fsm", "docs", "diagram classes", "diagram calls", "diagram view"),
             Group("HMI screens (cts guide visu-svg)", "visu new", "visu lint", "visu bind", "visu preview", "visu from-svg", "visu to-svg", "visu create-screen", "visu add",
-                "visu list", "visu describe", "visu check", "visu types", "visu capture-frame"),
+                "visu list", "visu describe", "visu check", "visu settings", "visu types", "visu capture-frame"),
             Group("setup and reference", "guide", "install", "diag", "config show", "config set", "config unset", "raw"),
         };
 

@@ -71,7 +71,7 @@ namespace Cts.Cli
                 {
                     var target = ViewPlace.ExistingFolder(view, folder);
                     existed = File.Exists(Path.Combine(target, screen + ".xml"));
-                    screenPath = ScreenBuilder.Create(view, target, screen, sketch.Width, sketch.Height, false,
+                    screenPath = ScreenBuilder.Create(view, target, screen, sketch.Width, sketch.Height,
                         options.Params.ContainsKey("replace"), sketch.Background);
                 }
                 catch (VisuException error) { throw Refused(error.Message); }

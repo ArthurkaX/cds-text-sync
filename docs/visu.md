@@ -184,7 +184,18 @@ run it first, then read what is left, because those are the judgement calls.
 
 **`check`** re-reads a screen that already exists in the project view and grades
 it as CODESYS will: geometry, members, Text-IDs, colour links and overlaps. It
-takes `--screen`, not `--name`.
+takes `--screen`, not `--name`. It also reports the application's
+visualization settings that keep a screen from showing: a `StartVisu` naming no
+screen, code writing `VisuElems.CurrentVisu` while `CurrentVisuGlobal` is off.
+
+**`settings`** shows the Visualization Manager and its WebVisu/TargetVisu as the
+project view holds them, and sets what a new screen set usually needs changed:
+`--start-visu NAME` (the IDE picks the start screen itself when it makes the
+manager with the first screen), `--isotropic on` (keep the aspect ratio instead
+of stretching) and `--current-visu on` (screen switching from code). The files
+go to the IDE with `cts import`; run `cts sync` first after the import that made
+the manager. Screen switching from code is in `cts guide visu-svg --section
+"Start screen and screen switching"`.
 
 **`preview`** is not a checker but belongs in the same loop. The sketch carries
 no colours, so opening it in a viewer shows black shapes on white and tells you
@@ -232,6 +243,7 @@ radial gradients are supported on `rect`/`circle`/`ellipse` (see
 | `from-svg` | compile the sketch into a screen `.xml` in the project view | yes |
 | `to-svg` | decompile an existing screen back to a sketch | yes |
 | `check` | validate a compiled screen | yes |
+| `settings` | show or set the start screen, isotropic scaling and `CurrentVisuGlobal` | yes |
 | `types` | list the element vocabulary | no |
 | `describe` | describe a type and, optionally, an element of a screen (`--type NAME --screen NAME --elem N`) | for `--screen` |
 | `create-screen` | create a new empty screen without going through SVG | yes |

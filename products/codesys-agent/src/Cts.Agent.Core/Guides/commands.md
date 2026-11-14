@@ -552,6 +552,7 @@ Output is one JSON object per action (`--pretty` renders it as text):
 | Manage the baseline | `cts analyze baseline create\|update\|check` |
 | Apply suppress/fix-later decisions | `cts analyze triage --apply decisions.json` |
 | Validate a generated screen (geometry, members, colours, overlaps) | `cts visu check --screen NAME` |
+| See or set the start screen, scaling and CurrentVisu use of the visualization | `cts visu settings [--start-visu NAME] [--isotropic on] [--current-visu on]` |
 
 `cts analyze` runs offline over `project-view/` — it never talks to the IDE.
 `--rule CTSxxxx` restricts to one rule (repeatable); `--fail-on` sets the exit-1

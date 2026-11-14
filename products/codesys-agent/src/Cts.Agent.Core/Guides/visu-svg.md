@@ -587,6 +587,38 @@ Compiled forms:
 Hotkeys are not generated yet; the observed CODESYS XML stores them at screen
 level under `Hotkeys`, not inside the button element.
 
+## Start screen and screen switching
+
+The first screen imported into an application makes the IDE add a
+Visualization Manager with a WebVisu (and a TargetVisu where the device has
+one). The IDE picks their start screen itself, scales the screen anisotropically
+(stretched to the browser window) and leaves `CurrentVisuGlobal` off. After that
+import run `cts sync`, so the files hold what the IDE made, then:
+
+```sh
+cts visu settings                                   # StartVisu, BestFit, ScaleTypeIsotropic, CurrentVisuGlobal
+cts visu settings --start-visu Main --isotropic on  # every client starts at Main, keeps the aspect ratio
+cts import
+```
+
+A `screen <name>` action changes the screen of the client that was clicked.
+Code that picks the screen instead (a combobox, a recipe step) writes the screen
+name to `VisuElems.CurrentVisu`, and that needs two things:
+
+- `CurrentVisuGlobal` on: `cts visu settings --current-visu on`. Off, the
+  variable is ignored and the screen stays.
+- A write **in every cycle**, not only when the choice changes: a web client
+  that connects later starts at `StartVisu`, and a write it missed never
+  reaches it.
+
+```
+VisuElems.CurrentVisu := Screens[iScreen];   // every cycle, unconditionally
+```
+
+`cts visu check` and `cts visu settings` report code that writes
+`CurrentVisu` while `CurrentVisuGlobal` is off, and a `StartVisu` that names no
+screen.
+
 ## Unsupported (will raise a clear error)
 
 - `<polygon>`, `<polyline>`, `<image>`
