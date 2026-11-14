@@ -123,7 +123,18 @@ namespace Cts.Agent
         // joins with "/", so the `path` matches what objects.find already answers.
         string NamePath(int handle, Guid guid)
         {
-            return string.Join("/", (string[])Manager("GetObjectNamePath", handle, guid));
+            return string.Join("/", NameSteps(handle, guid));
+        }
+
+        string[] NameSteps(int handle, Guid guid)
+        {
+            return (string[])Manager("GetObjectNamePath", handle, guid);
+        }
+
+        // The names from the top of the tree down to `guid` ("Device", "PLC Logic", "Application").
+        public string[] NameSteps(Guid guid)
+        {
+            return NameSteps(ProjectHandle(), guid);
         }
 
         // The project as the IDE's tree shows it (SvWalk.Tree).

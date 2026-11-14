@@ -4,6 +4,8 @@
 //   vars.read  {"names": ["GVL.n", ...], "app"?: "<name|guid>", "start_timeout_ms"?}
 //   vars.write {"values": {"GVL.n": 1234, ...}, "app"?: "<name|guid>", "start_timeout_ms"?}
 //
+// A name may carry its application ("Application.GVL.n", "Device.Application.GVL.n").
+//
 // A read answers
 //
 //   {"online": true, "logged_in": true, "application": "<guid>",
@@ -94,6 +96,26 @@ namespace Cts.Agent
         {
             var app = req.String("app", "");
             return app.Length == 0 ? null : app;
+        }
+
+        // The expression without the application qualifier CODESYS writes in IO
+        // mappings and watch lists ("Application.GVL.x", "Device.Application.GVL.x"),
+        // or null when it has none.  `owners` is the application's object path,
+        // outermost first ("Device", "PLC Logic", "Application"): the leading names
+        // must follow it in order, skipping any, and end at the application.
+        public static string Unqualified(string expression, IList<string> owners)
+        {
+            var parts = expression.Split('.');
+            var app = owners.Count - 1;
+            var next = 0;
+            for (var i = 0; i < parts.Length - 1 && app >= 0; i++)
+            {
+                if (string.Equals(parts[i], owners[app], StringComparison.OrdinalIgnoreCase))
+                    return string.Join(".", parts, i + 1, parts.Length - i - 1);
+                while (next < app && !string.Equals(parts[i], owners[next], StringComparison.OrdinalIgnoreCase)) next++;
+                if (next++ >= app) return null;
+            }
+            return null;
         }
 
         // ---- result shaping

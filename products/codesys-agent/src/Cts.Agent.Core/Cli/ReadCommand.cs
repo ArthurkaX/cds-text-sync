@@ -130,10 +130,12 @@ namespace Cts.Cli
                 var expandedByRoot = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
                 foreach (var root in expanded)
                 {
-                    var dot = root.IndexOf('.');
-                    var owner = dot > 0 && dot < root.Length - 1 && owners.TryGetValue(root.Substring(0, dot), out var found) ? found : null;
-                    var type = owner?.TypeOf(root.Substring(dot + 1));
-                    if (type == null) { expandedByRoot[root] = new List<string>(); continue; }
+                    // The owner may follow the application the agent took the name with ("Application.GVL.item").
+                    var parts = root.Split('.');
+                    var at = Array.FindIndex(parts, 0, parts.Length - 1, owners.ContainsKey);
+                    var owner = at < 0 ? null : owners[parts[at]];
+                    var type = owner?.TypeOf(string.Join(".", parts, at + 1, parts.Length - at - 1));
+                    if (type == null) continue;
                     var rootLeaves = owner.Leaves(root, type).Take(Math.Max(0, 5000 - leaves.Count)).ToList();
                     expandedByRoot[root] = rootLeaves;
                     leaves.AddRange(rootLeaves);

@@ -12,6 +12,23 @@ namespace Cts.Agent
             object cached;
             if (_cache.TryGet(key, out cached)) return (Watch)cached;
 
+            Watch watch;
+            try { watch = NewWatch(guid, expression); }
+            catch (Exception)
+            {
+                // CODESYS writes a variable with its application in IO mappings and
+                // watch lists; the watch API takes it without.  Tried second, so a
+                // GVL named like its application keeps its own variable.
+                var inner = Vars.Unqualified(expression, _ide.NameSteps(guid));
+                if (inner == null) throw;
+                watch = NewWatch(guid, inner);
+            }
+            _cache.GetOrAdd(key, () => watch);
+            return watch;
+        }
+
+        Watch NewWatch(Guid guid, string expression)
+        {
             object varRef;
             try { varRef = GetVarReference(guid, expression); }
             catch (Exception e) { throw Unwrap(e, "GetVarReference(" + expression + ")"); }
@@ -33,7 +50,6 @@ namespace Cts.Agent
 
             var watch = new Watch { VarRef = varRef, OnlineVarRef = watchRef };
             ResolveType(watch);
-            _cache.GetOrAdd(key, () => watch);
             return watch;
         }
 

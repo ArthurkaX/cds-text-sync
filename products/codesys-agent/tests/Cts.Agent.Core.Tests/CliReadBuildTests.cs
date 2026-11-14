@@ -164,6 +164,30 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Read_expands_a_structure_named_with_its_application_and_keeps_a_root_it_cannot_expand()
+        {
+            var host = new FakeHost(); var reads = 0;
+            host.Agents[1] = Agent(null, null, (method, p) =>
+            {
+                if (method == "objects.texts") return new Dictionary<string, object> { { "objects", new object[]
+                {
+                    new Dictionary<string, object> { { "name", "Hmi" }, { "declaration", "VAR_GLOBAL\nitem : Pair;\nEND_VAR" } },
+                    new Dictionary<string, object> { { "name", "Pair" }, { "declaration", "TYPE Pair : STRUCT left : INT; right : INT; END_STRUCT END_TYPE" } },
+                } } };
+                Assert.Equal("vars.read", method); reads++;
+                var names = ((IEnumerable<object>)p["names"]).Cast<string>().ToArray();
+                if (reads == 1)
+                    return new Dictionary<string, object> { { "logged_in", true }, { "results", names.Select(n => (object)Row(n, false, code: "not_scalar", message: "composite")).ToArray() } };
+                Assert.Equal(new[] { "Application.Hmi.item.left", "Application.Hmi.item.right" }, names);
+                return new Dictionary<string, object> { { "logged_in", true }, { "results", names.Select(n => (object)Row(n, true, "1")).ToArray() } };
+            });
+            var (code, output, _) = Run(host, "read", "Application.Hmi.item", "Lib.unknown");
+            Assert.Contains("Application.Hmi.item.left = 1", output);
+            Assert.Contains("Application.Hmi.item.right = 1", output);
+            Assert.Contains("Lib.unknown", output);
+        }
+
+        [Fact]
         public void Read_expands_a_member_deep_in_a_path_and_reads_the_names_after_it_as_given()
         {
             var host = new FakeHost(); var reads = 0;

@@ -330,6 +330,29 @@ namespace Cts.Agent.Tests
             Assert.Equal("MyApp", Vars.Application(Req("{\"names\":[\"A\"],\"app\":\"MyApp\"}")));
         }
 
+        [Theory]
+        [InlineData("Application.Hmi.iScreen", "Hmi.iScreen")]
+        [InlineData("application.Hmi.iScreen", "Hmi.iScreen")]
+        [InlineData("Device.Application.Hmi.iScreen", "Hmi.iScreen")]
+        [InlineData("Device.Application.Hmi.a[GVL.i].b", "Hmi.a[GVL.i].b")]
+        [InlineData("Application.Application.x", "Application.x")]
+        [InlineData("Hmi.iScreen", null)]
+        [InlineData("Device.Hmi.iScreen", null)]
+        [InlineData("Application.Device.Hmi.iScreen", "Device.Hmi.iScreen")]
+        [InlineData("Other.Application.x", null)]
+        [InlineData("Application", null)]
+        public void AnApplicationQualifierIsStrippedFromTheFront(string expression, string expected)
+        {
+            Assert.Equal(expected, Vars.Unqualified(expression, new[] { "Device", "PLC Logic", "Application" }));
+        }
+
+        [Fact]
+        public void ADeviceNamedLikeItsApplicationStillStripsOnlyTheApplication()
+        {
+            Assert.Equal("GVL.x", Vars.Unqualified("App.GVL.x", new[] { "App", "PLC Logic", "App" }));
+            Assert.Null(Vars.Unqualified("App.x", new string[0]));
+        }
+
         [Fact]
         public void StartTimeoutDefaultsAndIsBounded()
         {
