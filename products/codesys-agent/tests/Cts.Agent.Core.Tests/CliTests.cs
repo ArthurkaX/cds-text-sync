@@ -856,6 +856,22 @@ namespace Cts.Agent.Tests
             Assert.Contains("Gateway not configured properly. cts scan lists the PLCs the gateway reaches, cts connect --ip IP points the device at one and logs in", error);
         }
 
+        // A login only a download could make: the refusal's Next line is the
+        // command that logs in and replaces the PLC's application.
+        [Fact]
+        public void A_connect_only_a_download_could_make_names_the_download()
+        {
+            var host = new FakeHost();
+            host.Agents[1] = Agent(null, null, method => throw new ProtocolException("internal",
+                "Login to Application failed; the PLC was not changed. Only a download over the PLC's application could log in",
+                new Dictionary<string, object> { { "next", "cts download" } }));
+
+            var (code, output, _) = Run(host, "connect");
+
+            Assert.Equal(1, code);
+            Assert.EndsWith("\nNext: cts download\n", output);
+        }
+
         // The IDE asks which of the PLC's other applications to delete:
         // None and All only tick its list, OK submits it.
         static Dictionary<string, object> ForeignApplications(string fingerprint)

@@ -158,7 +158,8 @@ here: the online change question with "login without any change", the one to cre
 the application the PLC lacks with Yes (`created`), every other one (download the
 changed program) with the answer that changes nothing, which ends the login.
 `{state, application, reused_session, created, prompts}`;
-each prompt names the question and its answer, and a refused login lists them.
+each prompt names the question and its answer, and a refused login lists them, with
+`next: "cts download"` in its error data when a download is what would log in.
 `ip` first points the device at that PLC: the gateway (`gateway`, default Gateway-1)
 resolves it to a router address (`IGateway2.BeginResolveBlockDriverAddress`, TCP
 port 11740) and `ICommunicationSettings` takes it -- a project edit, refused while

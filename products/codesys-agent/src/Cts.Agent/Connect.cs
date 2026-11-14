@@ -120,10 +120,17 @@ namespace Cts.Agent
             }
             catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "Login to " + application + ": " + Invocation.Cause(e).Message); }
             if (!(done is bool) || !(bool)done || !IsLoggedIn(guid))
-                throw new ProtocolException(ErrorCodes.Internal, "Login to " + application + " failed; the PLC was not changed. "
-                    + (prompts.Asked.Count > 0
-                        ? "The IDE asked: " + string.Join(" | ", prompts.Asked.Select(p => p["prompt"] + " (" + p["text"] + ", " + p["choice"] + ") -> " + p["answer"])) + " -- `cts download` creates or replaces the application."
-                        : "Check that the PLC is reachable and its gateway is running."));
+            {
+                var failed = "Login to " + application + " failed; the PLC was not changed. ";
+                if (prompts.Asked.Count == 0)
+                    throw new ProtocolException(ErrorCodes.Internal, failed + "Check that the PLC is reachable and its gateway is running.");
+                // The client puts `next` on its Next: line.
+                throw new ProtocolException(ErrorCodes.Internal, failed + "Only a download over the PLC's application could log in, "
+                    + "and cts connect never replaces it: cts download logs in and replaces it (the application stops, its variables "
+                    + "start from their initial values, and it starts again). The IDE asked: "
+                    + string.Join(" | ", prompts.Asked.Select(p => p["prompt"] + " (" + p["text"] + ", " + p["choice"] + ") -> " + p["answer"])),
+                    new Dictionary<string, object> { { "next", "cts download" } });
+            }
         }
 
         // The PLC a login of the active application reaches, as its device's

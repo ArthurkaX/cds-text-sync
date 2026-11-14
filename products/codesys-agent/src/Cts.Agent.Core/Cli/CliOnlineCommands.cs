@@ -103,7 +103,8 @@ namespace Cts.Cli
                     + "download over its application. The in-IDE agent answers the IDE's login questions itself. When the PLC "
                     + "runs other code than the project, it logs in anyway and says so; a PLC without the application gets it "
                     + "(app_created=true). When only a download over the PLC's application could log in (a change an online change "
-                    + "cannot carry), it refuses and names the question -- `cts download` is the command that replaces it. --ip "
+                    + "cannot carry), it refuses, names the question and gives `cts download` as the next command: that logs in and replaces it, "
+                    + "so connecting first is not needed. --ip "
                     + "points the device at that PLC first, through the gateway, which is a project edit: it needs the project offline. "
                     + "plc= names the PLC the login reached: the runtime's name, its address, or simulation.",
                 TimeoutKey = "connect_to_device",

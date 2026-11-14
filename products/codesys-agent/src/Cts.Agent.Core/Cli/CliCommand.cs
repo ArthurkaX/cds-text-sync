@@ -299,6 +299,7 @@ namespace Cts.Cli
             if (data == null || !data.TryGetValue(key, out var list) || !(list is IEnumerable<object> items)) return windows;
             foreach (var item in items.OfType<IDictionary<string, object>>()) windows.Add(ModalWindow.FromData(item));
             return windows;
+                    else if (e.Detail != null && e.Detail.TryGetValue("next", out var named) && named is string command) next = command;
         }
     }
 }
