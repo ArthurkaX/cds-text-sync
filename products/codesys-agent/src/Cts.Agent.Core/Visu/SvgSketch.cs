@@ -193,7 +193,24 @@ namespace Cts.Visu
             var spec = Geometry("combobox", element, 120, 25);
             spec.Params["items"] = ((string)element.Attribute("data-items") ?? "").Trim();
             spec.Params["var"] = (string)element.Attribute("data-var") ?? "";
+            var rows = ListSize(element, "data-list-rows");
+            if (rows != null)
+            {
+                spec.Params["list_rows_setting"] = "VISU_ST_EXPLICIT";
+                spec.Params["list_rows"] = rows;
+            }
+            AddOptional(spec.Params, "row_height", ListSize(element, "data-row-height"));
             return spec;
+        }
+
+        // A dropdown list size attribute: a positive whole number, or null when absent (the style decides).
+        static string ListSize(XElement element, string name)
+        {
+            var raw = (string)element.Attribute(name);
+            if (raw == null) return null;
+            if (!short.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0)
+                throw new VisuException(name + "=\"" + raw + "\": use a positive whole number, or leave it out for the style's value");
+            return value.ToString(CultureInfo.InvariantCulture);
         }
 
         static ElementSpec ParseAlarmBanner(XElement element)

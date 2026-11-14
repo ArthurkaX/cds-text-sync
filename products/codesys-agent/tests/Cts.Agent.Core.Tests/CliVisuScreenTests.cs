@@ -413,6 +413,59 @@ namespace Cts.Agent.Tests
             Assert.DoesNotContain("data-cds-action", back);
         }
 
+        [Fact]
+        public void From_svg_gives_a_combobox_an_explicit_list_size_and_to_svg_keeps_it()
+        {
+            Application("HMI");
+            Write("HMI/Recipe.xml", ScreenXml(800, 480));
+            var svg = Path.Combine(root, "combo-list.svg");
+            File.WriteAllText(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">"
+                + "<rect data-cds-type=\"combobox\" data-items=\"&apos;RECIPES&apos;\" data-var=\"HMI.iRecipe\" data-list-rows=\"7\" "
+                + "data-row-height=\"32\" x=\"40\" y=\"40\" width=\"200\" height=\"32\"/>"
+                + "<rect data-cds-type=\"combobox\" data-items=\"&apos;MODES&apos;\" data-var=\"HMI.iMode\" x=\"40\" y=\"120\" width=\"200\" height=\"32\"/>"
+                + "</svg>");
+            var (code, _, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Recipe",
+                "--folder", "HMI", "--sync-folder", view, "--gvl", "VisuVars", "--no-preview");
+            Assert.True(code == 0, error);
+            var elements = Cts.Visu.ScreenXml.Elements(Cts.Visu.ScreenXml.Parse(File.ReadAllText(Path.Combine(view, "HMI", "Recipe.xml"))));
+            Assert.Equal("VISU_ST_EXPLICIT", elements[0].Value(210202613));
+            Assert.Equal("7", elements[0].Value(1795088690));
+            Assert.Equal("32", elements[0].Value(707399976));
+            // Without the attributes the style decides: no row count setting, -1 for both sizes.
+            Assert.Null(elements[1].Value(210202613));
+            Assert.Equal("-1", elements[1].Value(1795088690));
+            Assert.Equal("-1", elements[1].Value(707399976));
+
+            (code, _, error) = CliTests.RunLocal("visu", "to-svg", "--screen", Path.Combine(view, "HMI", "Recipe.xml"), "--sync-folder", view);
+            Assert.True(code == 0, error);
+            var back = File.ReadAllText(Path.Combine(view, "HMI", "Recipe.svg"));
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(back, "data-list-rows=\"7\""));
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(back, "data-row-height=\"32\""));
+            Assert.DoesNotContain("data-list-rows=\"-1\"", back);
+        }
+
+        [Fact]
+        public void To_svg_leaves_out_a_row_count_the_style_overrides()
+        {
+            Write("Combo.xml", ScreenXml(800, 480, Element("VisuFbComboBoxInteger", "GenElemInst_1",
+                Geometry(40, 40, 200, 32) + Scalar(1795088690, 7, "short") + Scalar(707399976, -1, "short"))));
+            var (code, _, error) = CliTests.RunLocal("visu", "to-svg", "--screen", Path.Combine(view, "Combo.xml"), "--sync-folder", view);
+            Assert.True(code == 0, error);
+            var back = File.ReadAllText(Path.Combine(view, "Combo.svg"));
+            Assert.DoesNotContain("data-list-rows", back);
+            Assert.DoesNotContain("data-row-height", back);
+        }
+
+        [Theory]
+        [InlineData("data-list-rows=\"0\"")]
+        [InlineData("data-row-height=\"tall\"")]
+        public void From_svg_refuses_a_list_size_that_is_not_a_positive_number(string attribute)
+        {
+            var error = Assert.Throws<VisuException>(() => Sketch.Parse("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">"
+                + "<rect data-cds-type=\"combobox\" x=\"40\" y=\"40\" width=\"200\" height=\"32\" " + attribute + "/></svg>"));
+            Assert.Contains("use a positive whole number", error.Message);
+        }
+
         [Theory]
         [InlineData("<text data-cds-type=\"textfield\" x=\"20\" y=\"40\" data-cds-input=\"numpad\">%d</text>", "give it a data-text-var")]
         [InlineData("<text data-cds-type=\"textfield\" x=\"20\" y=\"40\" data-text-var=\"HMI.i\" data-cds-input=\"write\">%d</text>", "use numpad, keypad")]
@@ -529,6 +582,22 @@ namespace Cts.Agent.Tests
             var (outOfRange, _, error) = Visu("describe", "--type", "button", "--screen", "Main", "--elem", "2");
             Assert.Equal(1, outOfRange);
             Assert.Contains("Element index 2 out of range (0..1)", error);
+        }
+
+        [Fact]
+        public void Describe_names_the_members_of_a_combobox_list()
+        {
+            Write("HMI/Main.xml", ScreenXml(800, 480, Element("VisuFbComboBoxInteger", "GenElemInst_1", Geometry(20, 20, 200, 32)
+                + Scalar(210202613, "VISU_ST_EXPLICIT", "string") + Scalar(1795088690, 7, "short") + Scalar(707399976, 32, "short")
+                + Scalar(2168378147, 20, "short") + Scalar(4063738070, "False", "bool"))));
+            var (code, output, _) = Visu("describe", "--type", "combobox", "--screen", "Main", "--elem", "0");
+            Assert.Equal(0, code);
+            Assert.Contains("210202613 VISU_ST_EXPLICIT -- list_rows_setting", output);
+            Assert.Contains("1795088690 7 -- list_rows", output);
+            Assert.Contains("707399976 32 -- row_height", output);
+            Assert.Contains("2168378147 20 -- scrollbar_size", output);
+            Assert.Contains("1649127785 20 -- x", output);
+            Assert.Matches(@"4063738070 False\r?$", output.Split('\n').First(line => line.Contains("4063738070")));
         }
 
         [Fact]

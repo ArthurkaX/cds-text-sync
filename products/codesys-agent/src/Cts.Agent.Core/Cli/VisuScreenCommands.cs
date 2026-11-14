@@ -70,7 +70,7 @@ namespace Cts.Cli
             {
                 Name = "visu", Sub = "describe", Summary = "Describe an element type, or one element of a screen",
                 Description = "The type's settable properties with their defaults, its optional variable bindings and its invariants. "
-                    + "With --screen and --elem also the members of that element of the screen.",
+                    + "With --screen and --elem also the members of that element of the screen, named where its type's catalog names them.",
                 Options = new[]
                 {
                     CliOption.Needed("--type", "type", "NAME", "The element type (cts visu types lists them)"),
@@ -242,15 +242,38 @@ namespace Cts.Cli
                 throw Refused("describe", "Element index " + index + " out of range (0.." + (elements.Count - 1) + ")");
             var target = elements[index];
             lines.Add("Element #" + index + ": " + target.Identifier + " (" + target.Type + ")");
+            var names = MemberNames(target.Type);
             foreach (var member in target.Members)
             {
                 var shown = member.Value.Kind == "color" ? "color=" + member.Value.Color + " canonical=" + member.Value.CanonicalName
                     : member.Value.Kind == "list" ? "(list)"
                     : member.Value.Value;
-                lines.Add("  " + member.Key.ToString(CultureInfo.InvariantCulture) + " " + shown);
+                var line = "  " + member.Key.ToString(CultureInfo.InvariantCulture) + " " + shown;
+                lines.Add(names.TryGetValue(member.Key, out var name) ? line + " -- " + name : line);
             }
             data["screen"] = path;
             return data;
+        }
+
+        // Member id -> the names the element's own catalog gives it (params, bindings, member_names); none for an unknown type.
+        static IDictionary<long, string> MemberNames(string elementType)
+        {
+            var names = new Dictionary<long, string>();
+            var catalog = VisuCatalog.Types().Select(VisuCatalog.Load)
+                .FirstOrDefault(candidate => Equals(candidate["visualElementTypeName"], elementType));
+            if (catalog == null) return names;
+            foreach (var key in new[] { "params", "optional_bindings" })
+                if (JsonMap.Value(catalog, key) is IDictionary<string, object> named)
+                    foreach (var pair in named)
+                        if (JsonMap.Value((IDictionary<string, object>)pair.Value, "member_id") is object id)
+                        {
+                            var number = Convert.ToInt64(id, CultureInfo.InvariantCulture);
+                            names[number] = names.TryGetValue(number, out var other) ? other + "/" + pair.Key : pair.Key;
+                        }
+            if (JsonMap.Value(catalog, "member_names") is IDictionary<string, object> extra)
+                foreach (var pair in extra)
+                    names[long.Parse(pair.Key, CultureInfo.InvariantCulture)] = Convert.ToString(pair.Value, CultureInfo.InvariantCulture);
+            return names;
         }
 
         // "name kind=K default=V -- doc [geometry, requires=...]"

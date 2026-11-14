@@ -69,7 +69,27 @@
  "member_id": 397264524,
  "kind": "string",
  "doc": "Bound INT variable (e.g. 'HMI.Recipe')."
+ },
+ "list_rows_setting": {
+ "member_id": 210202613,
+ "kind": "string",
+ "optional": true,
+ "doc": "VISU_ST_EXPLICIT makes list_rows count; absent, the style sets the visible rows."
+ },
+ "list_rows": {
+ "member_id": 1795088690,
+ "kind": "short",
+ "doc": "Visible rows of the open list (data-list-rows); -1 or without list_rows_setting: from the style."
+ },
+ "row_height": {
+ "member_id": 707399976,
+ "kind": "short",
+ "doc": "Row height of the open list, px (data-row-height); -1: from the style."
  }
+ },
+
+ "member_names": {
+ "2168378147": "scrollbar_size"
  },
 
  "base_members": []

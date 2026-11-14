@@ -19,6 +19,7 @@ Adding a new element type = adding one JSON file — no code changes to the engi
 | `geometry` | yes | dict | Maps geometry roles to member ids: `{x, y, width, height, center_x, center_y}` |
 | `params` | yes | dict | Settable property definitions per parameter name |
 | `optional_bindings` | no | dict | Variable binding slots (e.g. `fill_var`, `text_var`) |
+| `member_names` | no | dict | Names `cts visu describe --elem` shows for member ids no param or binding names |
 | `invariants` | no | list | Validation rules for `check` |
 | `base_members` | yes | list | Ground-truth ordered list of member blocks |
 

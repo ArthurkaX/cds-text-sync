@@ -41,14 +41,24 @@ Integer dropdown; labels come from a GlobalTextList entry.
 
 ```xml
 <rect data-cds-type="combobox" data-items="'RECIPES'"
-      data-var="HMI.Recipe" x=".." y=".." width="266" height="52"/>
+      data-var="HMI.Recipe" data-list-rows="5" data-row-height="32"
+      x=".." y=".." width="266" height="32"/>
 ```
 
 - `data-items` — GlobalTextList reference for the item labels (single-quoted).
 - `data-var` — INT variable, holds the selected index.
 - GVL type: **INT**.
-- The dropdown list's layout (row height, scrollbar, visible rows) keeps the
-  IDE's defaults; there is no attribute for it, set it in the IDE.
+- `data-list-rows` — how many rows the open list shows (a positive number).
+  Left out, the style decides.
+- `data-row-height` — the height of one list row, px. Left out, the style
+  decides. Keep it near the element's height: WebVisu 4.10 draws rows of 52 px
+  and more shrunk inside the list while the click zones stay full size, so a
+  click picks the wrong item.
+- The open list has to fit the screen below or above the combobox; one that
+  fits neither opens misplaced in WebVisu. With both attributes set,
+  `cts visu lint` reports that as `list-fit`.
+- The list's font cannot be set from the sketch; the scrollbar width keeps the
+  IDE's default (20 px).
 - A combobox that switches screens through `VisuElems.CurrentVisu` needs the
   write in every cycle and CurrentVisuGlobal on:
   `cts guide visu-svg --section "Start screen and screen switching"`.

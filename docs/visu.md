@@ -184,8 +184,10 @@ directory.
 coordinates, text wider than its box, a font size outside the type scale, a
 button too small to press, a field with nothing bound to it, a captionless
 button, overlap, near-miss gaps (three or more pairs at the same gap, a dense
-table, report as one line). `--fix` splices the mechanical findings back at
-their own character offsets, so comments and formatting survive byte-for-byte —
+table, report as one line), a combobox whose open list (`data-list-rows` x
+`data-row-height`) fits neither below nor above it. `--fix` splices the
+mechanical findings back at their own character offsets, so comments and
+formatting survive byte-for-byte —
 run it first, then read what is left, because those are the judgement calls.
 `--strict` makes findings fatal instead of advisory (`from-svg` accepts it too).
 

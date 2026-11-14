@@ -123,6 +123,14 @@ namespace Cts.Visu
                 if (element.Type == "lamp" && (height < 16 || width < 16))
                     findings.Add(new Finding { Rule = "touch-size", Severity = "info", Index = index,
                                                Message = "lamp is " + width + "x" + height + "; below 16px it reads as a dot" });
+                // Only with both sizes explicit: the style's row count and row height are not known here.
+                var list = Int(p, "list_rows") * Int(p, "row_height");
+                if (element.Type == "combobox" && list > 0 && y + height + list > sketch.Height && y - list < 0)
+                    findings.Add(new Finding { Rule = "list-fit", Severity = "warn", Index = index,
+                                               Message = "combobox list (" + p["list_rows"] + " rows x " + p["row_height"] + "px = " + list
+                                                         + "px) fits neither below it (" + (sketch.Height - y - height) + "px) nor above it (" + y
+                                                         + "px) on the " + sketch.Height
+                                                         + "px screen; WebVisu then opens it misplaced: lower data-list-rows or data-row-height" });
                 if (element.Type == "textfield")
                 {
                     var missing = new List<string>();

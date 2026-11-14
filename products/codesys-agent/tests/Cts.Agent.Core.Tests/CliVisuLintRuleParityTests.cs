@@ -64,6 +64,11 @@ namespace Cts.Agent.Tests
                            "<rect x=\"80\" y=\"80\" width=\"100\" height=\"100\"/><text x=\"100\" y=\"120\" data-width=\"60\">Inside</text>" },
             new object[] { "padding", "<rect class=\"panel\" x=\"80\" y=\"80\" width=\"200\" height=\"160\"/><text x=\"84\" y=\"120\">Close</text>",
                            "<rect class=\"panel\" x=\"80\" y=\"80\" width=\"200\" height=\"160\"/><text x=\"104\" y=\"120\">Padded</text>" },
+            new object[] { "list-fit",
+                           "<rect data-cds-type=\"combobox\" x=\"80\" y=\"200\" width=\"160\" height=\"32\" data-var=\"G.iMode\" "
+                           + "data-list-rows=\"10\" data-row-height=\"32\"/>",
+                           "<rect data-cds-type=\"combobox\" x=\"80\" y=\"200\" width=\"160\" height=\"32\" data-var=\"G.iMode\" "
+                           + "data-list-rows=\"7\" data-row-height=\"32\"/>" },
             new object[] { "crowding", "<rect x=\"80\" y=\"100\" width=\"40\" height=\"40\"/><rect x=\"124\" y=\"100\" width=\"40\" height=\"40\"/>",
                            "<rect x=\"80\" y=\"100\" width=\"40\" height=\"40\"/><rect x=\"136\" y=\"100\" width=\"40\" height=\"40\"/>" },
         };
@@ -90,6 +95,16 @@ namespace Cts.Agent.Tests
 
             Assert.DoesNotContain(centred, finding => finding.Rule == "grid");
             Assert.Equal("108", Assert.Single(nudged, finding => finding.Rule == "grid").Fixes["y"]);
+        }
+
+        [Fact]
+        public void A_combobox_list_with_a_size_from_the_style_is_not_checked()
+        {
+            // The style's row height is not known offline, so a long explicit row count alone is no finding.
+            var findings = Cts.Visu.SketchLinter.Find(Cts.Visu.Sketch.Parse(Svg(
+                "<rect data-cds-type=\"combobox\" x=\"80\" y=\"200\" width=\"160\" height=\"32\" data-var=\"G.iMode\" data-list-rows=\"40\"/>")));
+
+            Assert.DoesNotContain(findings, finding => finding.Rule == "list-fit");
         }
 
         [Fact]

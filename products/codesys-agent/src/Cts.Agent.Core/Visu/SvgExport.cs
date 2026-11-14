@@ -157,6 +157,8 @@ namespace Cts.Visu
                 {
                     Put(attrs, "data-items", Value(element, 2114174855));
                     Put(attrs, "data-var", Value(element, 397264524));
+                    if (Value(element, 210202613)?.Trim() == "VISU_ST_EXPLICIT") Put(attrs, "data-list-rows", Positive(Value(element, 1795088690)));
+                    Put(attrs, "data-row-height", Positive(Value(element, 707399976)));
                 }
                 if (type == "VisuFbElemSlider")
                 {
@@ -382,6 +384,9 @@ namespace Cts.Visu
         {
             return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : fallback;
         }
+
+        // A list size member as the sketch writes it; -1 (from the style) writes nothing.
+        static string Positive(string value) => Number(value) > 0 ? Number(value).ToString(CultureInfo.InvariantCulture) : null;
 
         static string Percent(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
 
