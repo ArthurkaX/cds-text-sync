@@ -171,7 +171,9 @@ fastest way to a clean run.
 - **4px grid.** Every `x`/`y`/`width`/`height` is a multiple of 4. Lay blocks
   out on 8 or 16 — the grid is the floor, not the rhythm. **`<text>` is the
   exception**: see the baseline rule below, which is what the grid is graded
-  against there.
+  against there. A box whose size is 4 off a multiple of 8 (a 20px
+  lamp) may sit with its centre on the grid instead, which is what centring it
+  in a 32px row gives (y = row + 6).
 - **24px page margin.** Nothing but the background touches the outer 24px.
 - **16px between blocks, 16px panel padding.** Content starts 16px inside a
   `.panel`, and panels sit 16px apart. This rhythm assumes a canvas of 480×320

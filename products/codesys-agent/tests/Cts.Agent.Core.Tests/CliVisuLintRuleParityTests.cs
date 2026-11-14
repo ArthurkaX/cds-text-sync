@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace Cts.Agent.Tests
@@ -76,6 +77,37 @@ namespace Cts.Agent.Tests
 
             Assert.Contains(rule, negative);
             Assert.DoesNotContain(rule, positive);
+        }
+
+        [Fact]
+        public void A_lamp_centred_in_a_row_is_on_the_grid_and_one_nudged_off_centre_is_not()
+        {
+            // A 20px lamp in a 32px row starting at y=100: centred at y=106, its centre is on the grid, its top cannot be.
+            var centred = Cts.Visu.SketchLinter.Find(Cts.Visu.Sketch.Parse(Svg(
+                "<rect data-cds-type=\"lamp\" data-var=\"G.xOn\" x=\"86\" y=\"106\" width=\"20\" height=\"20\"/>")));
+            var nudged = Cts.Visu.SketchLinter.Find(Cts.Visu.Sketch.Parse(Svg(
+                "<rect data-cds-type=\"lamp\" data-var=\"G.xOn\" x=\"80\" y=\"107\" width=\"20\" height=\"20\"/>")));
+
+            Assert.DoesNotContain(centred, finding => finding.Rule == "grid");
+            Assert.Equal("108", Assert.Single(nudged, finding => finding.Rule == "grid").Fixes["y"]);
+        }
+
+        [Fact]
+        public void A_dense_table_is_one_crowding_line_per_gap_and_a_lone_pair_keeps_its_own()
+        {
+            var cells = "";
+            for (var row = 0; row < 8; row++)
+                for (var column = 0; column < 2; column++)
+                    cells += "<rect x=\"" + (80 + column * 164) + "\" y=\"" + (80 + row * 36) + "\" width=\"160\" height=\"32\"/>";
+            var lone = "<rect x=\"600\" y=\"80\" width=\"40\" height=\"40\"/><rect x=\"646\" y=\"80\" width=\"40\" height=\"40\"/>";
+
+            var crowding = Cts.Visu.SketchLinter.Find(Cts.Visu.Sketch.Parse(Svg(cells + lone))).Where(finding => finding.Rule == "crowding")
+                               .Select(finding => finding.Message).ToList();
+
+            Assert.Equal(3, crowding.Count);
+            Assert.Contains(crowding, message => message.StartsWith("14 pairs of elements are 4px apart vertically", StringComparison.Ordinal));
+            Assert.Contains(crowding, message => message.StartsWith("8 pairs of elements are 4px apart horizontally", StringComparison.Ordinal));
+            Assert.Contains(crowding, message => message.EndsWith("are 6px apart horizontally", StringComparison.Ordinal));
         }
 
         public static IEnumerable<object[]> LintRuleFixtures => LintRuleFixturesData();

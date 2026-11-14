@@ -193,6 +193,7 @@ namespace Cts.Visu
         static void AddCrowding(Sketch sketch, IList<Finding> findings)
         {
             var boxes = Boxes(sketch);
+            var pairs = new List<Tuple<IndexedElement, IndexedElement, int, string>>();
             for (var first = 0; first < boxes.Count; first++)
             {
                 for (var second = first + 1; second < boxes.Count; second++)
@@ -214,18 +215,25 @@ namespace Cts.Visu
                     var horizontalGap = bx >= ax ? bx - ax - aw : ax - bx - bw;
                     var verticalGap = by >= ay ? by - ay - ah : ay - by - bh;
                     if (horizontalGap > 0 && horizontalGap < 8 && ay < by + bh && by < ay + ah)
-                    {
-                        findings.Add(
-                            new Finding { Rule = "crowding", Severity = "info", Index = left.Index,
-                                          Message = Describe(left) + " and " + Describe(right) + " are " + horizontalGap + "px apart horizontally" });
-                    }
+                        pairs.Add(Tuple.Create(left, right, horizontalGap, "horizontally"));
                     else if (verticalGap > 0 && verticalGap < 8 && ax < bx + bw && bx < ax + aw)
-                    {
-                        findings.Add(
-                            new Finding { Rule = "crowding", Severity = "info", Index = left.Index,
-                                          Message = Describe(left) + " and " + Describe(right) + " are " + verticalGap + "px apart vertically" });
-                    }
+                        pairs.Add(Tuple.Create(left, right, verticalGap, "vertically"));
                 }
+            }
+            // Many pairs at one gap are a deliberately dense grid (a table, a lamp column): one line says so instead of one per pair.
+            foreach (var group in pairs.GroupBy(pair => Tuple.Create(pair.Item3, pair.Item4)))
+            {
+                var first = group.First();
+                if (group.Count() < 3)
+                    foreach (var pair in group)
+                        findings.Add(new Finding { Rule = "crowding", Severity = "info", Index = pair.Item1.Index,
+                                                   Message = Describe(pair.Item1) + " and " + Describe(pair.Item2) + " are " + pair.Item3 + "px apart "
+                                                             + pair.Item4 });
+                else
+                    findings.Add(new Finding { Rule = "crowding", Severity = "info", Index = first.Item1.Index,
+                                               Message = group.Count() + " pairs of elements are " + first.Item3 + "px apart " + first.Item4
+                                                         + ", the first " + Describe(first.Item1) + " and " + Describe(first.Item2)
+                                                         + "; a deliberately dense grid can stay, elsewhere keep 8px" });
             }
         }
 

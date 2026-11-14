@@ -58,6 +58,7 @@ namespace Cts.Visu
                     if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
                     {
                         if ((name == "rx" || name == "ry") && element.Source.Name.LocalName == "rect") continue;
+                        if ((name == "x" || name == "y") && CentredOnGrid(element.Source, name == "x" ? "width" : "height", value)) continue;
                         if (name == "r" || name == "rx" || name == "ry")
                         {
                             var radius = Snap(value * 2) / 2.0;
@@ -227,6 +228,13 @@ namespace Cts.Visu
                     Message
                     = kept + " of the starter screen's placeholders are still here: replace the placeholder text and variable bindings with your own"
                 });
+        }
+
+        // A box 4 off a multiple of 8 (a 20px lamp) cannot have both its edge and its centre on the grid; centred in a row it keeps the centre.
+        static bool CentredOnGrid(System.Xml.Linq.XElement source, string sizeName, double edge)
+        {
+            return double.TryParse((string)source.Attribute(sizeName), NumberStyles.Float, CultureInfo.InvariantCulture, out var size) && size % Grid == 0
+                   && (edge + size / 2) % Grid == 0;
         }
 
         static int SeverityOrder(string severity) => severity == "error" ? 0 : severity == "warn" ? 1 : severity == "info" ? 2 : 3;
