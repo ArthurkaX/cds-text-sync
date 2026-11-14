@@ -13,13 +13,48 @@ namespace Cts.Visu
     // list's .csv, where its rows live.
     internal static class TextListWriter
     {
-        internal static string Allocate(string projectView, string text, Action<string> warning)
+        // The project's GlobalTextList as the IDE exports it while it holds no
+        // rows. Its GUID is the same in every project; the three below it are
+        // the project's own.
+        const string EmptyList = @"<?xml version='1.0' encoding='utf-8'?>
+<Single Type=""{6198ad31-4b98-445c-927f-3258a0e82fe3}"" Method=""IArchivable"">
+      <Single Name=""IsRoot"" Type=""bool"">True</Single>
+      <Single Name=""MetaObject"" Type=""{81297157-7ec9-45ce-845e-84cab2b88ade}"" Method=""IArchivable"">
+        <Single Name=""Guid"" Type=""System.Guid"">b5430773-3042-47d6-a6d3-28650a6ce532</Single>
+        <Single Name=""ParentGuid"" Type=""System.Guid"">00000000-0000-0000-0000-000000000000</Single>
+        <Single Name=""Name"" Type=""string"">GlobalTextList</Single>
+        <Dictionary Type=""{2c41fa04-1834-41c1-816e-303c7aa2c05b}"" Name=""Properties"" />
+        <Single Name=""TypeGuid"" Type=""System.Guid"">63784cbb-9ba0-45e6-9d69-babf3f040511</Single>
+        <Array Name=""EmbeddedTypeGuids"" Type=""System.Guid"" />
+      </Single>
+      <Single Name=""Object"" Type=""{63784cbb-9ba0-45e6-9d69-babf3f040511}"" Method=""IArchivable"">
+        <List Name=""TextList"" Type=""System.Collections.ArrayList"" />
+        <List Name=""Languages"" Type=""System.Collections.ArrayList"" />
+        <Single Name=""GuidInit"" Type=""System.Guid"">@@INIT@@</Single>
+        <Single Name=""GuidReInit"" Type=""System.Guid"">@@REINIT@@</Single>
+        <Single Name=""GuidExitX"" Type=""System.Guid"">@@EXIT@@</Single>
+      </Single>
+      <Single Name=""ParentSVNodeGuid"" Type=""System.Guid"">00000000-0000-0000-0000-000000000000</Single>
+      <Array Name=""Path"" Type=""string"" />
+      <Single Name=""Index"" Type=""int"">-1</Single>
+    </Single>
+";
+
+        // *log* takes whole [OK]/[WARN] lines.
+        internal static string Allocate(string projectView, string text, Action<string> log)
         {
             var path = Path.Combine(projectView, "POUs", "GlobalTextList.csv");
             if (!File.Exists(path))
             {
-                warning("POUs/GlobalTextList.csv not found under " + projectView);
-                return "1";
+                // A project gets its GlobalTextList with its first text, so a
+                // fresh one has none.
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                var xml = Path.ChangeExtension(path, ".xml");
+                if (!File.Exists(xml))
+                    File.WriteAllText(xml, EmptyList.Replace("@@INIT@@", Guid.NewGuid().ToString()).Replace("@@REINIT@@", Guid.NewGuid().ToString())
+                        .Replace("@@EXIT@@", Guid.NewGuid().ToString()), new UTF8Encoding(false));
+                File.WriteAllText(path, "TextID,TextDefault\n", new UTF8Encoding(false));
+                log("[OK] Created POUs/GlobalTextList: cts import brings it into the IDE");
             }
             var table = Csv.Parse(File.ReadAllText(path, Encoding.UTF8));
             var header = table.FirstOrDefault() ?? new List<string>();
@@ -27,7 +62,7 @@ namespace Cts.Visu
             var textColumn = header.IndexOf("TextDefault");
             if (idColumn < 0 || textColumn < 0)
             {
-                warning("No TextID and TextDefault columns in " + path);
+                log("[WARN] No TextID and TextDefault columns in " + path);
                 return "1";
             }
             var rows = table.Skip(1).ToList();

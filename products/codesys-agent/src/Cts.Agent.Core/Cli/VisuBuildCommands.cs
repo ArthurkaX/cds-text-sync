@@ -112,7 +112,7 @@ namespace Cts.Cli
                 parameters.Remove("corner_radius");
                 var text = JsonMap.Text(parameters, "text");
                 if (text.Length > 0 && JsonMap.Text(parameters, "text_id").Length == 0)
-                    parameters["text_id"] = TextListWriter.Allocate(view, text, warning => log.Add("[WARN] " + warning));
+                    parameters["text_id"] = TextListWriter.Allocate(view, text, log.Add);
                 try
                 {
                     if (element.Type == "frame")
