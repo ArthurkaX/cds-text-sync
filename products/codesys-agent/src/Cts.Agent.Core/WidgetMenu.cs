@@ -258,11 +258,14 @@ namespace Cts.Agent
         }
 
         // The footer for a run's *line*: an import that left objects only the
-        // IDE changed as the IDE has them says Shift+1 gives the IDE the disk's text.
+        // IDE changed as the IDE has them says Shift+1 gives the IDE the disk's
+        // text, and says so plainly when the IDE holds an older version of them.
         public static string Footer(string line)
         {
             if (line == null || !(line.StartsWith("ok import", StringComparison.Ordinal) || line.StartsWith("partial import", StringComparison.Ordinal))) return line;
             var kept = Counts(line)("ide_changed");
+            var older = Counts(line)("ide_older");
+            if (older > 0) return line + "\nthe IDE holds an older version of " + older.ToString(CultureInfo.InvariantCulture) + " object(s), as after reopening a saved project; Shift+1: the disk wins";
             return kept > 0 ? line + "\nkept " + kept.ToString(CultureInfo.InvariantCulture) + " IDE edit(s); Shift+1: the disk wins" : line;
         }
 

@@ -56,6 +56,13 @@ namespace Cts.Sync
             reader = GitRun.Start(root, "cat-file --batch", null, true, true, false);
         }
 
+        // The blobs *ids*, each its own path: earlier versions of view files.
+        internal GitTreeViewFiles(string root, IEnumerable<string> ids)
+        {
+            foreach (var id in ids) blobs[id] = id;
+            reader = GitRun.Start(root, "cat-file --batch", null, true, true, false);
+        }
+
         public IEnumerable<string> Paths => blobs.Keys.ToList();
         public double ElapsedSeconds => elapsedSeconds;
         public string Commit => commit;

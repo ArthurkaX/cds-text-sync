@@ -59,8 +59,13 @@ namespace Cts.Cli
                 if (Values(data, key).Count > 0) output.Add(key == "overwritten_ide_changes" ? "overwritten" : key, Values(data, key).Count);
             var ideKept = Items(data.TryGetValue("ide_changed", out var rawKept) ? rawKept : null);
             if (ideKept.Count > 0) output.Add("ide_changed", ideKept.Count);
+            var ideLeft = Items(data.TryGetValue("ide_left", out var rawLeft) ? rawLeft : null);
+            var ideOlder = Values(data, "ide_older");
+            if (ideOlder.Count > 0) output.Add("ide_older", ideOlder.Count);
             if (data.TryGetValue("timings", out var timings) && timings is IDictionary<string, object> times && times.TryGetValue("total_s", out var seconds)) output.Add("s", seconds);
             output.Add("saved", data.ContainsKey("saved") && Equals(data["saved"], true));
+            // First, as the line cannot say it: why the run is partial, and the way on.
+            if (ideLeft.Count > 0) { output.Detail(IdeLeftLine(ideLeft, ideOlder)); output.Detail(IdeLeftNext(ideLeft, ideOlder)); }
             // A sync names the side each change came from.
             var syncing = Equals(data.ContainsKey("syncing") ? data["syncing"] : null, true);
             foreach (var key in new[] { "created_text_objects", "updated_text_objects", "created_native_objects", "updated_field_objects", "updated_native_objects", "deleted_objects", "renamed_objects" })
@@ -72,7 +77,7 @@ namespace Cts.Cli
             foreach (var library in Items(data.ContainsKey("libraries_not_loaded") ? data["libraries_not_loaded"] : null))
                 output.Detail("library not loaded " + library["name"] + ": " + library["error"] + " (Library Repository: is it installed?)");
             foreach (var item in ideKept) output.Detail(ComparePlanner.IdeChangedLine(item));
-            if (ideKept.Count > 0) output.Detail(ComparePlanner.IdeChangedNext(ideKept));
+            if (ideKept.Count > 0 && ideLeft.Count == 0) output.Detail(ComparePlanner.IdeChangedNext(ideKept));
             foreach (var path in Values(data, "changed_meanwhile")) output.Detail(ChangedMeanwhile(path));
             if (data.TryGetValue("partial_reason", out var partialReason)) output.Detail(partialReason);
             if (data.TryGetValue("save_dialog", out var saveDialog)) output.Detail("not saved yet: " + saveDialog + "; the save finishes once it is answered (cts dialog answer)");
@@ -80,6 +85,30 @@ namespace Cts.Cli
             if (Equals(data.ContainsKey("partial") ? data["partial"] : null, true)) output.Partial().WithExitCode(2);
             return output;
         }
+
+        // Objects the IDE changed or deleted since the last sync, which the import
+        // left so: their IDE text an earlier sync recorded (*older*) for each that
+        // has text, the IDE went back in time; else it holds edits of its own.
+        static bool WentBack(ICollection<IDictionary<string, object>> left, ICollection<object> older) =>
+            older.Count > 0 && older.Count == left.Count(item => !Equals(JsonMap.Value(item, "ide_deleted"), true));
+
+        static string IdeLeftLine(ICollection<IDictionary<string, object>> left, ICollection<object> older)
+        {
+            var deleted = left.Count(item => Equals(JsonMap.Value(item, "ide_deleted"), true));
+            var names = string.Join(", ", left.Take(5).Select(item => item["name"])) + (left.Count > 5 ? " and " + (left.Count - 5) + " more" : "");
+            if (WentBack(left, older))
+                return "the IDE holds an older version of " + older.Count + " object(s)" + (deleted > 0 ? " and lacks " + deleted + " the folder has" : "")
+                    + ", as after reopening a project file saved before the last import; the import left them so and the IDE does not hold the folder's code: " + names;
+            return "the IDE changed " + left.Count + " object(s) since the last sync" + (deleted > 0 ? " (" + deleted + " deleted)" : "")
+                + " and the import left them as the IDE has them, so the IDE does not hold the folder's code: " + names
+                + (older.Count > 0 ? "; " + older.Count + " of them hold an older version, as after reopening a project file saved before the last import" : "");
+        }
+
+        static string IdeLeftNext(ICollection<IDictionary<string, object>> left, ICollection<object> older) => WentBack(left, older)
+            ? "Next: cts import --force gives the IDE the folder's text (the IDE's goes on refs/cts/overwritten first); cts compare lists the objects"
+            : left.All(item => Equals(JsonMap.Value(item, "ide_deleted"), true))
+            ? "Next: cts import --force creates them again from the files; if the deletes are right, cts sync removes their files (git keeps them); cts compare lists them"
+            : "Next: cts compare shows them (cts read-object NAME --body one's IDE text); if the folder is right, cts import --force gives the IDE its text (the IDE's goes on refs/cts/overwritten first); if the IDE's edits are right, cts sync writes them into the files";
 
         internal static string ChangedMeanwhile(object path) =>
             "changed-meanwhile " + path + ": changed on disk while cts ran, so cts left that change on disk and out of the sync base; the next cts compare shows it";
@@ -314,7 +343,7 @@ namespace Cts.Cli
                     string.Equals(Path.GetDirectoryName(added.Path), Path.GetDirectoryName(deleted.Path), StringComparison.OrdinalIgnoreCase)
                     || string.Equals(Path.GetFileName(added.Path), Path.GetFileName(deleted.Path), StringComparison.OrdinalIgnoreCase)))
                     || hasBase && call.Options.Params.ContainsKey("force") && changed.Any(record =>
-                        record.Category == "ide_changed" && Convert.ToString(record.Reason ?? "").StartsWith("not in the view", StringComparison.Ordinal)
+                        ComparePlanner.IdeAdded(record)
                         || record.Category == "modified" && record.IdeChanged);
                 var needsSave = call.Options.Params.ContainsKey("save") && (needsTextWrite || needsDelete);
                 var requiredKeys = new List<string>();

@@ -18,6 +18,8 @@ namespace Cts.Agent.Tests
                 WidgetMenu.Footer("ok import text=0 native=0 ide_changed=2 s=0.7 saved=false"));
             Assert.Equal("ok import text=1 native=0 s=0.7 saved=false", WidgetMenu.Footer("ok import text=1 native=0 s=0.7 saved=false"));
             Assert.Equal("ok compare ide_changed=2", WidgetMenu.Footer("ok compare ide_changed=2"));
+            Assert.Equal("partial import text=0 native=0 ide_changed=12 ide_older=12 s=0.7 saved=false\nthe IDE holds an older version of 12 object(s), as after reopening a saved project; Shift+1: the disk wins",
+                WidgetMenu.Footer("partial import text=0 native=0 ide_changed=12 ide_older=12 s=0.7 saved=false"));
         }
 
         [Fact]

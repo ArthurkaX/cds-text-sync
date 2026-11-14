@@ -2362,7 +2362,86 @@ namespace Cts.Agent.Tests
             var answer = ImportCommand.Build(result);
             Assert.Equal(1, answer.Pairs.Single(pair => pair.Key == "ide_changed").Value);
             Assert.Contains("ide_changed GVL_Fixture PLC_Stabur/Plc Logic/Application/GVL_Fixture.st: deleted in the IDE", answer.Details);
-            Assert.Contains(answer.Details, line => line.Contains("cts import --force creates them again"));
+            Assert.Equal(Verdict.Partial, answer.Status);
+            Assert.Equal(2, answer.ExitCode);
+            Assert.StartsWith("the IDE changed 1 object(s) since the last sync (1 deleted) and the import left them", answer.Details[0]);
+            Assert.StartsWith("Next: cts import --force creates them again from the files", answer.Details[1]);
+        }
+
+        // The IDE reopened a project file saved before the last import: it holds
+        // the text an earlier sync recorded. The import leaves it, as any IDE
+        // edit, but fails so a build and download after it stop, and says the
+        // IDE went back in time, --force the way on.
+        [Fact]
+        public void An_import_into_a_project_file_saved_before_the_last_import_is_partial_and_says_the_IDE_went_back()
+        {
+            var view = ViewFolder.Of(_root);
+            var main = StViewReader.Read(view).Objects.First(candidate => candidate.Path.Last() == "MAIN");
+            var file = Path.Combine(view, main.File.Replace('/', Path.DirectorySeparatorChar));
+            File.WriteAllText(file, File.ReadAllText(file).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := Disk;"));
+            // The last import carried the edit, and the IDE lost it unsaved.
+            SyncBase.Record(_root, ExportCommand.Relative(_root, view), new List<string>());
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(Path.Combine(Fixture, "snapshot.xml"), Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(main.Path);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.Equal(new object[] { "MAIN" }, (IEnumerable<object>)result["ide_older"]);
+            Assert.Empty(_sources);
+            var answer = ImportCommand.Build(result);
+            Assert.Equal(Verdict.Partial, answer.Status);
+            Assert.Equal(2, answer.ExitCode);
+            Assert.Contains(answer.Pairs, pair => pair.Key == "ide_older" && Equals(pair.Value, 1));
+            Assert.StartsWith("the IDE holds an older version of 1 object(s), as after reopening a project file saved before the last import", answer.Details[0]);
+            Assert.StartsWith("Next: cts import --force gives the IDE the folder's text", answer.Details[1]);
+        }
+
+        // An edit made in the IDE, no earlier sync's text, fails the import too, and the line names both ways on.
+        [Fact]
+        public void An_import_that_leaves_an_IDE_edit_is_partial_and_names_compare_and_force()
+        {
+            var main = StViewReader.Read(ViewFolder.Of(_root)).Objects.First(candidate => candidate.Path.Last() == "MAIN");
+            var changedSnapshot = File.ReadAllText(Path.Combine(Fixture, "snapshot.xml")).Replace("eObservedMode := GVL_Bench.eMode;", "eObservedMode := IDE;");
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.WriteAllText(Convert.ToString(args["path"]), changedSnapshot); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(main.Path);
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.False(result.ContainsKey("ide_older"));
+            var answer = ImportCommand.Build(result);
+            Assert.Equal(Verdict.Partial, answer.Status);
+            Assert.Equal(2, answer.ExitCode);
+            Assert.StartsWith("the IDE changed 1 object(s) since the last sync and the import left them as the IDE has them, so the IDE does not hold the folder's code: MAIN", answer.Details[0]);
+            Assert.StartsWith("Next: cts compare shows them", answer.Details[1]);
+            Assert.Contains("cts import --force", answer.Details[1]);
+        }
+
+        // An object only the IDE has leaves the IDE's code the folder's: the import stays ok and names it.
+        [Fact]
+        public void An_import_that_leaves_an_object_only_the_IDE_has_stays_ok()
+        {
+            var original = XDocument.Load(Path.Combine(Fixture, "snapshot.xml"));
+            var sourceMeta = original.Descendants().First(element => (string)element.Attribute("Name") == "MetaObject"
+                && element.Elements().Any(child => (string)child.Attribute("Name") == "Name" && child.Value == "GVL_Bench"));
+            var clone = new XElement(sourceMeta.Parent);
+            clone.Descendants().First(element => (string)element.Attribute("Name") == "Guid").Value = "22222222-2222-2222-2222-222222222222";
+            clone.Descendants().First(element => (string)element.Attribute("Name") == "Name").Value = "GVL_OnlyIde";
+            sourceMeta.Parent.Parent.Add(clone);
+            var snapshotPath = Path.Combine(_root, "ide-new-gvl.xml");
+            original.Save(snapshotPath);
+            var result = ImportCommand.Execute(ImportCall(null, (method, args) =>
+            {
+                if (method == "project.export") { File.Copy(snapshotPath, Convert.ToString(args["path"]), true); return new Dictionary<string, object>(); }
+                if (method == "project.tree") return Tree(new[] { "MAIN" });
+                throw new InvalidOperationException("unexpected agent call " + method);
+            }, ideStamp: "session:changed"));
+            Assert.Equal("GVL_OnlyIde", ((IEnumerable<IDictionary<string, object>>)result["ide_changed"]).Single()["name"]);
+            Assert.False(result.ContainsKey("ide_left"));
+            var answer = ImportCommand.Build(result);
+            Assert.Equal(Verdict.Ok, answer.Status);
+            Assert.Null(answer.ExitCode);
         }
 
         [Fact]

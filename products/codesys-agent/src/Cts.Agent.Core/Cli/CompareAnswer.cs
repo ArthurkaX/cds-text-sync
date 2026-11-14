@@ -45,6 +45,10 @@ namespace Cts.Cli
 
         internal static bool IdeDeleted(CompareRecord record) => record.Category == "ide_changed" && record.IdeDeleted;
 
+        // An object only the IDE has, as no sync wrote it: an import leaves it, a sync writes its file.
+        internal static bool IdeAdded(CompareRecord record) => record.Category == "ide_changed"
+            && Convert.ToString(record.Reason ?? "").StartsWith("not in the view", StringComparison.Ordinal);
+
         public static Answer Build(IDictionary<string, object> data)
         {
             if (data.ContainsKey("tool"))
