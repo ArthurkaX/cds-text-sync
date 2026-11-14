@@ -436,12 +436,11 @@ def scenario_vars_online(ctx):
     assert sampled == "ok read samples=2 changes=1 failed=0", sampled
     ctx.cts_ok("stop")               # the state connect found
     written = ctx.json_of(ctx.cts_ok("write", "GVL_Bench.wData", "16#AB", "--json")[1])
-    assert written.get("confirmed") is True, written
-    assert written.get("written_as") == "WORD#171", written
+    assert written.get("read_back") == "held" and written.get("value") == "WORD#171", written
     text = ctx.json_of(ctx.cts_ok("write", "GVL_Bench.sCpuMode", "it's $5", "--json")[1])
-    assert (text.get("read_back") or {}).get("value") == "'it$'s $$5'", text
+    assert text.get("shown") == "'it$'s $$5'", text
     enum = ctx.json_of(ctx.cts_ok("write", "GVL_Bench.eMode", "E_BenchMode#Run", "--json")[1])
-    assert (enum.get("read_back") or {}).get("value") == "E_BenchMode.Run", enum
+    assert enum.get("shown") == "E_BenchMode.Run", enum
     came = ctx.verdict(ctx.cts_ok("read", "GVL_Bench.eMode", "--until", "Run")[1])
     assert came.startswith("ok read reached=true value=E_BenchMode.Run"), came
     code, out, err = ctx.cts("read", "GVL_Bench.eMode", "--until", "Idle", "--interval", "0.2", "--within", "1")
@@ -449,7 +448,7 @@ def scenario_vars_online(ctx):
 
     together = ctx.json_of(ctx.cts_ok("write", "GVL_Bench.wData", "16#12", "GVL_Bench.eMode", "Idle",
                                       "--json")[1])
-    assert together["confirmed"] is True and together["count"] == 2, together
+    assert together["held"] == 2 and together["count"] == 2, together
     code, out, err = ctx.cts("write", "GVL_Bench.wData", "16#AB", "GVL_Bench.eMode", "abc")
     assert code != 0 and "GVL_Bench.eMode" in out + err and "nothing written" in out + err, out + err
     unchanged = ctx.json_of(ctx.cts_ok("read", "GVL_Bench.wData", "--json")[1])

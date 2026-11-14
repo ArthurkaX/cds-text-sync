@@ -99,11 +99,12 @@ namespace Cts.Agent.Tests
             var clock = new FakeClock();
             var shown = new Queue<string>(new[] { "TRUE", "TRUE", "FALSE" });
 
-            var result = WriteCommand.Confirm("X", "FALSE", "FALSE", name => Read(shown.Dequeue()), () => clock.Now, clock.Sleep);
+            var result = WriteCommand.Confirm("X", "FALSE", name => Read(shown.Dequeue()), () => clock.Now, clock.Sleep);
 
-            Assert.Equal(true, result["confirmed"]);
+            Assert.Equal("held", result["read_back"]);
+            Assert.Equal("FALSE", result["shown"]);
             Assert.Empty(shown);
-            Assert.False(result.ContainsKey("written_as"));
+            Assert.False(result.ContainsKey("note"));
         }
 
         [Fact]
@@ -113,29 +114,32 @@ namespace Cts.Agent.Tests
             var reads = new List<string>();
             var values = new Dictionary<string, string> { { "GVL.eMode", "E_BenchMode.Run" }, { "E_BenchMode.Run", "INT#1" } };
 
-            var result = WriteCommand.Confirm("GVL.eMode", "1", "1", name => { reads.Add(name); return Read(values[name]); }, () => clock.Now, clock.Sleep);
+            var result = WriteCommand.Confirm("GVL.eMode", "1", name => { reads.Add(name); return Read(values[name]); }, () => clock.Now, clock.Sleep);
 
-            Assert.Equal(true, result["confirmed"]);
+            Assert.Equal("held", result["read_back"]);
             Assert.Equal(new[] { "GVL.eMode", "E_BenchMode.Run" }, reads);
         }
 
         [Fact]
-        public void A_write_that_never_shows_is_not_confirmed_and_an_unreadable_one_is_not_polled()
+        public void A_write_that_never_shows_is_reset_and_an_unreadable_one_is_not_polled()
         {
             var clock = new FakeClock();
             var reads = 0;
 
-            var stale = WriteCommand.Confirm("X", "FALSE", "FALSE", name => Read("TRUE"), () => clock.Now, clock.Sleep);
-            var unreadable = WriteCommand.Confirm("X", "1", "1", name =>
+            var reset = WriteCommand.Confirm("X", "FALSE", name => Read("TRUE"), () => clock.Now, clock.Sleep);
+            var unreadable = WriteCommand.Confirm("X", "1", name =>
             {
                 reads++;
                 return new Dictionary<string, object> { { "unavailable", "boom" } };
             }, () => clock.Now, clock.Sleep);
 
-            Assert.Equal(false, stale["confirmed"]);
-            Assert.StartsWith("the PLC still reports 'TRUE' after writing 'FALSE' and waiting 2s;", (string)stale["note"]);
-            Assert.Equal(false, unreadable["confirmed"]);
-            Assert.False(unreadable.ContainsKey("note"));
+            Assert.Equal("reset", reset["read_back"]);
+            Assert.Equal("TRUE", reset["shown"]);
+            Assert.StartsWith("reset: the IDE accepted the write, but the PLC showed another value on every read for 2s.", (string)reset["note"]);
+            Assert.True(clock.Now >= 2);
+            Assert.Equal("unreadable", unreadable["read_back"]);
+            Assert.Equal("boom", unreadable["unreadable"]);
+            Assert.False(unreadable.ContainsKey("note") || unreadable.ContainsKey("shown"));
             Assert.Equal(1, reads);
         }
 
@@ -149,10 +153,10 @@ namespace Cts.Agent.Tests
             var json = JsonOf(Run(host, "write", "GVL.sName", "hello", "--json").output);
 
             Assert.Equal(0, code);
-            Assert.Equal("ok write name=GVL.sName value='hello' confirmed=true written_as='hello'\nide-1 · no project\n", output);
+            Assert.Equal("ok write name=GVL.sName value='hello' read_back=held\nide-1 · no project\n", output);
             Assert.Equal(new[] { "write {\"GVL.sName\":\"hello\"}", "read GVL.sName" }, calls.Take(2));
-            Assert.Equal(true, json["confirmed"]);
-            Assert.Equal("'hello'", ((IDictionary<string, object>)json["read_back"])["value"]);
+            Assert.Equal("held", json["read_back"]);
+            Assert.Equal("'hello'", json["shown"]);
         }
 
         [Fact]
@@ -165,7 +169,7 @@ namespace Cts.Agent.Tests
             var (code, output, _) = Run(host, "write", "GVL.a", "-5", "GVL.b", "true");
 
             Assert.Equal(0, code);
-            Assert.Equal("ok write count=2 confirmed=2\nGVL.a = INT#-5\nGVL.b = TRUE\nide-1 · no project\n", output);
+            Assert.Equal("ok write count=2 held=2\nGVL.a = INT#-5\nGVL.b = TRUE\nide-1 · no project\n", output);
             Assert.Equal(new[] { "write {\"GVL.a\":\"-5\",\"GVL.b\":\"true\"}", "read GVL.a", "read GVL.b" }, calls);
         }
 
@@ -208,8 +212,40 @@ namespace Cts.Agent.Tests
 
             var (_, output, _) = Run(host, "write", "GVL.a", "5");
 
-            Assert.Equal("ok write name=GVL.a value=unreadable confirmed=false\nRead variable error: 'GVL.a' is not exported to the "
+            Assert.Equal("ok write name=GVL.a value=5 read_back=unreadable\nRead variable error: 'GVL.a' is not exported to the "
                 + "online application. It may be misspelled, not declared as a symbol, or not compiled into the PLC.\nide-1 · no project\n", output);
+        }
+
+        [Fact]
+        public void A_request_flag_the_program_resets_is_an_accepted_write_not_a_failure()
+        {
+            var host = VarsAgent(new List<string>(), p => Results(Ok("Hmi.xReq", "TRUE")), name => "FALSE");
+
+            var (code, output, _) = Run(host, "write", "Hmi.xReq", "TRUE");
+
+            Assert.Equal(0, code);
+            Assert.StartsWith("ok write name=Hmi.xReq value=TRUE read_back=reset shown=FALSE\nreset: the IDE accepted the write", output);
+            Assert.Contains("cts read NAME --until VALUE", output);
+        }
+
+        [Fact]
+        public void Several_pairs_name_the_one_the_program_reset()
+        {
+            Dictionary<string, object> Row(string name, string value, string back, string shown) => new Dictionary<string, object>
+            {
+                { "name", name }, { "written", true }, { "value", value }, { "read_back", back }, { "shown", shown },
+            };
+            var answer = WriteCommand.Build(new Dictionary<string, object>
+            {
+                { "written", true }, { "count", 2L }, { "held", 1L },
+                { "results", new List<object> { Row("GVL.n", "INT#7", "held", "INT#7"), Row("Hmi.xReq", "TRUE", "reset", "FALSE") } },
+            });
+
+            Assert.Equal("ok", answer.Status);
+            Assert.Equal(new[] { "count=2", "held=1" }, answer.Pairs.Select(p => p.Key + "=" + p.Value));
+            Assert.Equal("GVL.n = INT#7", answer.Details[0]);
+            Assert.Equal("Hmi.xReq = TRUE (reset: the PLC shows FALSE)", answer.Details[1]);
+            Assert.StartsWith("reset: the IDE accepted the write", answer.Details[2]);
         }
 
         [Fact]

@@ -64,9 +64,13 @@ namespace Cts.Cli
                     + "1.5, TRUE, T#2s, 'text'. A STRING also takes bare text (cts write GVL.sName hello), an enum its member as "
                     + "E_Mode.Run, Run or E_Mode#Run. Needs an online session (cts connect).\n\n"
                     + "More NAME VALUE pairs are written together, in one PLC cycle, as the IDE's Write Values does; a value that "
-                    + "cannot be written writes none of them. Each value is then read back until the PLC shows it (2 s at most): "
-                    + "the line says confirmed=true, or false with the value the PLC still shows -- the program may overwrite it "
-                    + "every cycle. written_as is the IDE's spelling of a value typed otherwise (16#AB is WORD#171).\n\n"
+                    + "cannot be written writes none of them; a write the IDE refuses is an error. value is the IDE's spelling of "
+                    + "what was written (16#AB is WORD#171). Each value is then read back until the PLC shows it (2 s at most): "
+                    + "read_back=held when it did; read_back=reset with the value shown when the IDE accepted the write but the "
+                    + "PLC showed another value on every read -- a request flag the program resets once it has acted on it, or a "
+                    + "variable overwritten every cycle (the read-back is too slow to see a flag that lasts a cycle; read what "
+                    + "acknowledges the request: cts read NAME --until VALUE); read_back=unreadable with the reason. An accepted "
+                    + "write exits 0 in all three.\n\n"
                     + "  cts write GVL.wData 16#AB\n"
                     + "  cts write GVL.nSetpoint -5 GVL.eMode Run",
                 TimeoutKey = "write_variable",

@@ -13,10 +13,13 @@ using static Cts.Agent.JsonMap;
 namespace Cts.Cli
 {
     // `cts write NAME VALUE [NAME VALUE ...]`: the pairs in one PLC cycle,
-    // then each read back until the PLC shows it. The runtime applies a write
-    // on a task cycle, so the read-back polls a short while; a value it still
-    // does not show is said so (confirmed=false and a note), never printed as
-    // verified.
+    // then each read back until the PLC shows it. A write the IDE refuses is
+    // an error; an accepted one is read back as held, reset or unreadable.
+    // The read goes through the IDE's monitoring, which refreshes far slower
+    // than a task cycle, so a request flag the program clears after one or two
+    // cycles is never seen: reset says the IDE took the write and the PLC no
+    // longer shows it, which a done request and a value overwritten every
+    // cycle both look like. Neither is reported as a failure.
     public static class WriteCommand
     {
         internal const double ReadBackS = 2.0;
@@ -46,15 +49,13 @@ namespace Cts.Cli
             Func<double> clock = () => watch.Elapsed.TotalSeconds;
             Action<double> sleep = s => Thread.Sleep(TimeSpan.FromSeconds(s));
             Func<string, IDictionary<string, object>> read = name => ReadBack(call, name);
+            var deadline = ReadBackS;
 
             if (pairs.Count == 1)
             {
                 var row = rows.FirstOrDefault() ?? new Dictionary<string, object>();
                 if (!Equals(Value(row, "ok"), true)) throw Refused("Write variable error: " + ErrorOf(row, "write failed"), null);
-                var written = Value(row, "text") as string ?? pairs[0].Value;
-                var data = new Dictionary<string, object> { { "name", pairs[0].Key }, { "written", true }, { "value", written } };
-                foreach (var item in Confirm(pairs[0].Key, pairs[0].Value, written, read, clock, sleep)) data[item.Key] = item.Value;
-                return data;
+                return Checked(pairs[0].Key, Value(row, "text") as string ?? pairs[0].Value, read, clock, sleep, deadline);
             }
 
             var refused = rows.Where(r => !Equals(Value(r, "ok"), true) && !Equals(CodeOf(r), "not_written"))
@@ -64,78 +65,97 @@ namespace Cts.Cli
             for (var i = 0; i < pairs.Count; i++)
             {
                 var expected = (i < rows.Count ? Value(rows[i], "text") as string : null) ?? pairs[i].Value;
-                var result = new Dictionary<string, object> { { "name", pairs[i].Key } };
-                foreach (var item in Confirm(pairs[i].Key, pairs[i].Value, expected, read, clock, sleep)) result[item.Key] = item.Value;
-                results.Add(result);
+                results.Add(Checked(pairs[i].Key, expected, read, clock, sleep, deadline));
             }
             return new Dictionary<string, object>
             {
                 { "written", true }, { "results", results }, { "count", (long)results.Count },
-                { "confirmed", results.All(r => Equals(((IDictionary<string, object>)r)["confirmed"], true)) },
+                { "held", (long)results.Count(r => Equals(Value((IDictionary<string, object>)r, "read_back"), Held)) },
             };
+        }
+
+        // One accepted write: its name, the value as the IDE spells it and how
+        // the read-back found it. The pairs share one deadline, so several
+        // request flags wait 2 s together, not 2 s each.
+        static Dictionary<string, object> Checked(string name, string written, Func<string, IDictionary<string, object>> read,
+            Func<double> clock, Action<double> sleep, double deadline)
+        {
+            var data = new Dictionary<string, object> { { "name", name }, { "written", true }, { "value", written } };
+            foreach (var item in Confirm(name, written, read, clock, sleep, deadline)) data[item.Key] = item.Value;
+            return data;
         }
 
         public static Answer Build(IDictionary<string, object> data)
         {
             if (!data.ContainsKey("results"))
             {
+                var back = Value(data, "read_back");
                 return new Answer()
                     .Add("name", Value(data, "name"))
-                    .Add("value", Shown(data))
-                    .Add("confirmed", Value(data, "confirmed"))
-                    .Add("written_as", Value(data, "written_as"))
+                    .Add("value", Value(data, "value"))
+                    .Add("read_back", back)
+                    .Add("shown", Equals(back, Reset) ? Value(data, "shown") : null)
                     .Detail(Value(data, "note"))
-                    .Detail(Value(Value(data, "read_back") as IDictionary<string, object>, "unavailable"));
+                    .Detail(Value(data, "unreadable"));
             }
             var rows = ((IEnumerable<object>)data["results"]).OfType<IDictionary<string, object>>().ToList();
-            var answer = new Answer().Add("count", Value(data, "count")).Add("confirmed", (long)rows.Count(r => Equals(Value(r, "confirmed"), true)));
+            var answer = new Answer().Add("count", Value(data, "count")).Add("held", Value(data, "held"));
             foreach (var row in rows)
-                answer.Detail(Value(row, "name") + " = " + Shown(row) + (Equals(Value(row, "confirmed"), true) ? "" : " (not confirmed)"));
+            {
+                var back = Value(row, "read_back");
+                answer.Detail(Value(row, "name") + " = " + Value(row, "value") + (Equals(back, Held) ? ""
+                    : Equals(back, Reset) ? " (reset: the PLC shows " + Value(row, "shown") + ")"
+                    : " (unreadable: " + Value(row, "unreadable") + ")"));
+            }
+            if (rows.Any(r => Equals(Value(r, "read_back"), Reset))) answer.Detail(ResetMeaning);
             return answer;
         }
 
-        // What the PLC showed after the write, or why it could not be read.
-        static object Shown(IDictionary<string, object> row)
-        {
-            var back = Value(row, "read_back") as IDictionary<string, object>;
-            return Value(back, "value") ?? (back != null && back.ContainsKey("unavailable") ? "unreadable" : null);
-        }
+        // How the read-back found a written value: the PLC showed it, showed
+        // another value until the deadline, or could not be read.
+        internal const string Held = "held";
+        const string Reset = "reset";
+        const string Unreadable = "unreadable";
 
-        // read_back and confirmed of a written value, with written_as when the
-        // IDE spells it otherwise and a note when the PLC did not show it.
-        public static Dictionary<string, object> Confirm(string name, string typed, string expected,
+        static readonly string ResetMeaning = "reset: the IDE accepted the write, but the PLC showed another value on every read for "
+            + ReadBackS.ToString("0.###", CultureInfo.InvariantCulture) + "s. The program resets a request flag once it has acted "
+            + "on it, faster than the IDE's monitoring refreshes, and a variable the program or an input overwrites every cycle "
+            + "looks the same: to know a request was done, read what acknowledges it (cts read NAME --until VALUE).";
+
+        // read_back of a written value (held, reset or unreadable), with what
+        // the PLC showed as shown, or why it could not be read as unreadable,
+        // and a note on reset.
+        public static Dictionary<string, object> Confirm(string name, string expected,
             Func<string, IDictionary<string, object>> read, Func<double> clock, Action<double> sleep)
-            => Confirm(name, typed, expected, read, clock, sleep, clock() + ReadBackS);
+            => Confirm(name, expected, read, clock, sleep, clock() + ReadBackS);
 
         // One deadline shared by many values: once it has passed, a value is
         // read once and not waited for.
-        internal static Dictionary<string, object> Confirm(string name, string typed, string expected,
+        internal static Dictionary<string, object> Confirm(string name, string expected,
             Func<string, IDictionary<string, object>> read, Func<double> clock, Action<double> sleep, double deadline)
         {
             IDictionary<string, object> back;
-            bool confirmed;
+            string state;
             while (true)
             {
                 back = read(name);
-                if (back.ContainsKey("unavailable")) { confirmed = false; break; }
+                if (back.ContainsKey("unavailable")) { state = Unreadable; break; }
                 var shown = Value(back, "value") as string;
-                if (Agree(expected, shown, Value(back, "iec") as string)) { confirmed = true; break; }
+                if (Agree(expected, shown, Value(back, "iec") as string)) { state = Held; break; }
                 // An enum shows its member; a number written to it is checked
                 // against the member's value.
                 if (shown != null && EnumValue.IsMatch(shown.Trim()) && IecTypes.IsDecimal(Bare(expected)))
                 {
                     var member = read(shown.Trim());
-                    if (!member.ContainsKey("unavailable") && Agree(expected, Value(member, "value") as string, Value(member, "iec") as string)) { confirmed = true; break; }
+                    if (!member.ContainsKey("unavailable") && Agree(expected, Value(member, "value") as string, Value(member, "iec") as string)) { state = Held; break; }
                 }
-                if (clock() >= deadline) { confirmed = false; break; }
+                if (clock() >= deadline) { state = Reset; break; }
                 sleep(ReadBackPollS);
             }
-            var result = new Dictionary<string, object> { { "read_back", back }, { "confirmed", confirmed } };
-            if (!Agree(typed, expected)) result["written_as"] = expected;
-            if (!confirmed && !back.ContainsKey("unavailable"))
-                result["note"] = "the PLC still reports '" + Value(back, "value") + "' after writing '" + expected + "' and waiting "
-                    + ReadBackS.ToString("0.###", CultureInfo.InvariantCulture) + "s; the program may overwrite it every cycle, "
-                    + "or the write may not have taken effect. Not confirmed.";
+            var result = new Dictionary<string, object> { { "read_back", state } };
+            if (state == Unreadable) result["unreadable"] = back["unavailable"];
+            else result["shown"] = Value(back, "value");
+            if (state == Reset) result["note"] = ResetMeaning;
             return result;
         }
 

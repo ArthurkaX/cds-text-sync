@@ -200,7 +200,7 @@ namespace Cts.Cli
             if (!Equals(Value(row, "ok"), true))
                 throw new CliFailure(verb, "no trend", "the PLC has no " + TrendFiles.Gate + ": cts trend set, then " + Next, "cts trend set --help", 1);
             var watch = Stopwatch.StartNew();
-            return WriteCommand.Confirm(TrendFiles.Gate, value, value, name => WriteCommand.ReadBack(call, name),
+            return WriteCommand.Confirm(TrendFiles.Gate, value, name => WriteCommand.ReadBack(call, name),
                 () => watch.Elapsed.TotalSeconds, seconds => Thread.Sleep(TimeSpan.FromSeconds(seconds)));
         }
 
@@ -334,9 +334,8 @@ namespace Cts.Cli
 
         static Answer Recorded(IDictionary<string, object> data)
         {
-            var answer = new Answer().Add("recording", data["recording"]).Add("confirmed", data["confirmed"]);
-            if (data.TryGetValue("note", out var note)) answer.Detail(note);
-            return answer;
+            return new Answer().Add("recording", data["recording"]).Add("read_back", data["read_back"]).Add("shown", Equals(data["read_back"], WriteCommand.Held) ? null : Value(data, "shown"))
+                .Detail(Value(data, "unreadable"));
         }
 
         static CliFailure Usage(string message) => new CliFailure("trend-set", "usage", message, "cts trend set --help", 2);

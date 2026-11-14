@@ -126,9 +126,9 @@ namespace Cts.Cli
                 foreach (var item in eligible.Where(x => results.TryGetValue(Text(x, "name", ""), out var r) && Bool(r, "ok", false)))
                 {
                     var name = Text(item, "name", ""); var typed = Convert.ToString(Value(item, "value"), CultureInfo.InvariantCulture);
-                    var shown = WriteCommand.Confirm(name, typed, Value(results[name], "text") as string ?? typed, n => WriteCommand.ReadBack(call, n), () => watch.Elapsed.TotalSeconds, s => Thread.Sleep(TimeSpan.FromSeconds(s)), deadline);
-                    if (Equals(shown["confirmed"], true)) confirmed++;
-                    else warnings.Add(new Dictionary<string, object> { { "path", name }, { "warning", Convert.ToString(Value(shown, "note") ?? "the value could not be read back", CultureInfo.InvariantCulture) } });
+                    var shown = WriteCommand.Confirm(name, Value(results[name], "text") as string ?? typed, n => WriteCommand.ReadBack(call, n), () => watch.Elapsed.TotalSeconds, s => Thread.Sleep(TimeSpan.FromSeconds(s)), deadline);
+                    if (Equals(shown["read_back"], WriteCommand.Held)) confirmed++;
+                    else warnings.Add(new Dictionary<string, object> { { "path", name }, { "warning", Convert.ToString(Value(shown, "unreadable") ?? "the PLC shows " + Value(shown, "shown") + ", not the value restored", CultureInfo.InvariantCulture) } });
                 }
             }
             return new Dictionary<string, object> { { "action", "restore" }, { "applied", apply }, { "result", new Dictionary<string, object> { { "written", written }, { "confirmed", confirmed }, { "skipped", skipped.Count }, { "warnings", warnings }, { "would_write", apply ? 0 : eligible.Count }, { "details", new Dictionary<string, object> { { "eligible", eligible.Count }, { "skipped", skipped }, { "apply", apply } } } } } };
