@@ -236,7 +236,7 @@ does not connect to the PLC:
 | Field (`--json`) | Verdict line | Meaning |
 |---|---|---|
 | `plc.online` | `plc=online\|offline\|unknown` | Session state: `true`, `false`, or `null` when it cannot be read |
-| `plc.application_state` | | Application state (`run`, `stop`) |
+| `plc.application_state` | `app=run\|stop\|exception` | State of the application the IDE is logged in to (`run`, `stop`), only while online; the line says `exception` when the runtime stopped it in one (`plc.operating_state` holds the flags) and names `cts plc-log`. Offline, `cts plc info` reads the PLC's applications and their state without a login |
 | `edits_allowed` | `edits=allowed\|blocked` | `true` offline, `false` while the IDE is online with the PLC (editing is then refused), `null` when the state is unknown |
 | `unsaved_changes` | `unsaved=true\|false` | The IDE holds edits its project file lacks |
 | `hint` | a detail line | Present only when something blocks project edits; says what to do |
@@ -460,6 +460,7 @@ but a collision should not happen at all).
 | Run the ST tests of the test application in simulation, or on its PLC (`cts guide tests`) | `cts test [--app NAME] [--out PATH] [--plc] [--repeat N]` |
 | Whether the PLC runs the code the IDE generated last | `cts plc-crc` |
 | Read the PLC runtime log, or list its loggers | `cts plc-log [--logger NAME] [--tail N]` |
+| The logged-in application's state: run, stop, exception | `cts status` (`app=`) |
 | What the PLC runs: runtime, device, each application with its state and project | `cts plc info` |
 | The PLC's files: list, copy to this PC, copy to the PLC | `cts plc ls [PATH]`, `cts plc get FILE [--out PATH]`, `cts plc put SRC [DEST]` |
 | Remove, make or move a file or directory on the PLC | `cts plc rm PATH`, `cts plc mkdir PATH`, `cts plc mv FROM TO` |

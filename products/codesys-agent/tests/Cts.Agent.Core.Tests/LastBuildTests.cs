@@ -90,6 +90,25 @@ namespace Cts.Agent.Tests
             Assert.Equal(new[] { "unsaved: the IDE holds edits its project file lacks; cts compare shows whether the folder has them, cts save saves the project" }, details);
         }
 
+        // Online, the line carries the logged-in application's state, and an
+        // exception, which the runtime flags beside a stop, is named as such.
+        [Fact]
+        public void StatusNamesTheApplicationsStateWhileOnline()
+        {
+            Dictionary<string, object> Online(string state, string flags) => new Dictionary<string, object>
+            {
+                { "plc", new Dictionary<string, object> { { "online", true }, { "application", "Application" }, { "application_state", state }, { "operating_state", flags } } },
+                { "edits_allowed", false },
+            };
+            var running = Cts.Cli.StatusCommands.StatusLine(Online("run", "program_loaded"));
+            Assert.Contains(new KeyValuePair<string, object>("app", "run"), running.Pairs);
+            var failed = Cts.Cli.StatusCommands.StatusLine(Online("stop", "program_loaded, exception"));
+            Assert.Contains(new KeyValuePair<string, object>("app", "exception"), failed.Pairs);
+            Assert.Contains("the application Application stopped in an exception: cts plc-log shows the runtime's report of it", failed.Details);
+            var offline = Cts.Cli.StatusCommands.StatusLine(new Dictionary<string, object> { { "plc", new Dictionary<string, object> { { "online", false } } }, { "edits_allowed", true } });
+            Assert.DoesNotContain(offline.Pairs, pair => pair.Key == "app" && pair.Value != null);
+        }
+
         [Fact]
         public void StatusOfAProjectWithoutASyncFolderNamesTheCommand()
         {

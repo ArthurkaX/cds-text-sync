@@ -63,13 +63,17 @@ namespace Cts.Cli
 
         public static Answer StatusLine(IDictionary<string, object> data)
         {
-            var online = Value(data, "plc") is IDictionary<string, object> plc ? Value(plc, "online") as bool? : null;
+            var plc = Value(data, "plc") as IDictionary<string, object> ?? new Dictionary<string, object>();
+            var online = Value(plc, "online") as bool?;
             var edits = Value(data, "edits_allowed") as bool?;
+            var exception = (Value(plc, "operating_state") as string ?? "").Split(',').Any(flag => flag.Trim() == "exception");
             var answer = new Answer()
                 .Add("ide", Value(data, "ide"))
                 .Add("plc", online == true ? "online" : online == false ? "offline" : "unknown")
+                .Add("app", exception ? "exception" : Value(plc, "application_state"))
                 .Add("edits", edits == true ? "allowed" : edits == false ? "blocked" : null)
                 .Add("unsaved", Value(data, "unsaved_changes"));
+            if (exception) answer.Detail("the application " + Value(plc, "application") + " stopped in an exception: cts plc-log shows the runtime's report of it");
             if (Value(data, "sync_folder") is string folder) answer.Detail("sync_folder " + folder);
             else if (Value(data, "project") is string)
                 answer.Detail("sync_folder none on this machine: " + (Value(data, "suggested_sync_folder") is string suggested

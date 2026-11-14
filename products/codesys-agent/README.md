@@ -52,7 +52,7 @@ far: `hello`, `ping`, `state`, `methods`, `subscribe`, `unsubscribe`,
 
 `project.status` is what `cts status` shows: `{open, path, unsaved_changes,
 project_id, sync_folder, suggested_sync_folder, plc: {online, application, application_state,
-running}}` (`project_id` when the project has one,
+operating_state, running}}` (`operating_state` the runtime's flags, `exception` among them) (`project_id` when the project has one,
 `sync_folder` when this machine has its folder, `ProjectInfo.SyncFolder`, else
 `suggested_sync_folder`, `ProjectInfo.Suggested`), plus `last_command: {method, ok,
 errors, warnings, recorded_at}` when the last build since the agent started was of

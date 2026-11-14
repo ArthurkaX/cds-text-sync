@@ -98,7 +98,7 @@ namespace Cts.Agent.Tests
             var (_, output, _) = Run(host, "status");
 
             Directory.Delete(folder);
-            Assert.StartsWith("ok status ide=ide-1 plc=online edits=blocked unsaved=false\n"
+            Assert.StartsWith("ok status ide=ide-1 plc=online app=run edits=blocked unsaved=false\n"
                 + "sync_folder " + folder + "\n"
                 + "git none: cts set-sync-folder sets the sync folder up\n", output);
             Assert.Contains("\nThe IDE is online with the PLC: cts read, write and the PLC commands work now; project edits (import, sync, fmt --write) are refused until cts disconnect, which ends the IDE's online session and leaves the PLC running.\n", output);

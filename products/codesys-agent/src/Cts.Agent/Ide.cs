@@ -256,7 +256,8 @@ namespace Cts.Agent
 
         // `online` true while an application is logged in, false when none
         // is, null when the IDE cannot say; the first logged-in application's
-        // name and state (`run`, `stop`) with it.
+        // name, state (`run`, `stop`) and operating state flags (`exception`
+        // among them) with it.
         Dictionary<string, object> OnlineStatus(int handle)
         {
             var plc = new Dictionary<string, object> { { "online", null } };
@@ -268,6 +269,7 @@ namespace Cts.Agent
             var app = applications[0];
             var state = Convert.ToString(Prop(OnlineApplicationType, app, "ApplicationState")).ToLowerInvariant();
             plc["application_state"] = state;
+            plc["operating_state"] = Convert.ToString(Prop(OnlineApplicationType, app, "OperatingState")).ToLowerInvariant();
             plc["running"] = state == "run";
             var guid = Prop(OnlineApplicationType, app, "ApplicationGuid");
             if (guid is Guid) plc["application"] = NameOf(ReadMeta(handle, (Guid)guid));

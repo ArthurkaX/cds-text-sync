@@ -25,7 +25,9 @@ namespace Cts.Cli
             {
                 Name = "status",
                 Summary = "Show the IDE, its project and sync folder, unsaved edits, the PLC and the last command's outcome",
-                Description = "`ok status ide=ide-N plc=online|offline|unknown edits=allowed|blocked unsaved=true|false`, then "
+                Description = "`ok status ide=ide-N plc=online|offline|unknown app=run|stop|exception edits=allowed|blocked "
+                    + "unsaved=true|false`: app= is the state of the application the IDE is logged in to, there only while online "
+                    + "(cts plc info reads the PLC's applications and their state without a login). Then "
                     + "the sync folder, where its git is (branch, commit, uncommitted files -- the project's own file does "
                     + "not count, a line says when it changed), the project file, what unsaved means, and the last build "
                     + "(and whether objects changed after it). edits=blocked says why and "
