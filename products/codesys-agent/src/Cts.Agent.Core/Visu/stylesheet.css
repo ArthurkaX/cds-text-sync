@@ -18,8 +18,10 @@
 .divider    { stroke: var(--divider); }          /* separator line               */
 
 /* --- type scale --------------------------------------------------------
- * Use a class, never a bare font-size. Five steps is the whole scale; a
- * screen that needs a sixth almost always needs less text instead.
+ * Use a class, never a bare font-size. These five steps plus the display
+ * sizes 36 and 48 (a textfield's font-size, for a value card's number) are
+ * the whole scale visu lint accepts; a screen that needs another step almost
+ * always needs less text instead.
  */
 .h1         { fill: var(--text); font-size: 22; }       /* screen title          */
 .h2         { fill: var(--text); font-size: 16; }       /* section / panel head  */

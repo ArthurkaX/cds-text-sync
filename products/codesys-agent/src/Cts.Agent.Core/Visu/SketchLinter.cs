@@ -9,6 +9,9 @@ namespace Cts.Visu
     internal static partial class SketchLinter
     {
         internal const int Grid = 4;
+        // The stylesheet's text classes, then two display steps for a value card's number (no class: a textfield ignores classes).
+        // From 12 up each step is about 4/3 of the one below, so 20 or 24 next to 22 reads as a slip, not a step.
+        static readonly int[] TypeScale = { 11, 12, 16, 22, 28, 36, 48 };
         internal sealed class Finding
         {
             internal string Rule;
@@ -88,20 +91,14 @@ namespace Cts.Visu
                 if (explicitFont != null && double.TryParse(explicitFont, NumberStyles.Float, CultureInfo.InvariantCulture, out var rawFontSize))
                 {
                     var fontSize = (int)rawFontSize;
-                    if (!new[] { 11, 12, 16, 22, 28 }.Contains(fontSize))
+                    if (!TypeScale.Contains(fontSize))
                     {
-                        var target = new[] { 11, 12, 16, 22, 28 }.OrderBy(size => Math.Abs(size - fontSize)).ThenBy(size => size).First();
-                        findings.Add(new Finding {
-            Rule = "font-scale",
-            Severity = "warn",
-            Index = index,
-            Message =
-                "font-size " + fontSize + " is outside the type scale 11/12/16/22/28; use a class (.caption/.label/.h2/.h1/.value) or " + target,
-            Fixes =
-                new Dictionary<string, string> {
-                  ["font-size"] = target.ToString(CultureInfo.InvariantCulture),
-                },
-          });
+                        var target = TypeScale.OrderBy(size => Math.Abs(size - fontSize)).ThenBy(size => size).First();
+                        findings.Add(new Finding { Rule = "font-scale", Severity = "warn", Index = index,
+                                                   Message = "font-size " + fontSize + " is outside the type scale " + string.Join("/", TypeScale)
+                                                             + "; use a class (.caption/.label/.h2/.h1/.value), 36 or 48 for a display number, or "
+                                                             + target,
+                                                   Fixes = new Dictionary<string, string> { ["font-size"] = target.ToString(CultureInfo.InvariantCulture) } });
                     }
                 }
                 var anchor = (string)element.Source.Attribute("text-anchor");

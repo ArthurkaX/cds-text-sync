@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Cts.Agent.Tests
@@ -82,6 +83,46 @@ namespace Cts.Agent.Tests
 
             Assert.Contains(rule, negative);
             Assert.DoesNotContain(rule, positive);
+        }
+
+        [Theory]
+        [InlineData(36, null)]
+        [InlineData(48, null)]
+        [InlineData(13, "12")]
+        [InlineData(15, "16")]
+        [InlineData(17, "16")]
+        [InlineData(20, "22")]
+        [InlineData(24, "22")]
+        [InlineData(32, "28")]
+        [InlineData(64, "48")]
+        public void A_display_number_has_its_steps_and_a_size_between_steps_moves_to_the_nearest(int size, string fix)
+        {
+            var findings = Cts.Visu.SketchLinter.Find(Cts.Visu.Sketch.Parse(Svg(
+                "<text data-cds-type=\"textfield\" x=\"80\" y=\"" + (100 + size) + "\" data-width=\"160\" data-height=\"72\" "
+                + "data-text-var=\"G.rFlow\" font-size=\"" + size + "\">%3.1f</text>")));
+
+            var scale = findings.Where(finding => finding.Rule == "font-scale").ToList();
+            if (fix == null) Assert.Empty(scale);
+            else Assert.Equal(fix, Assert.Single(scale).Fixes["font-size"]);
+        }
+
+        [Fact]
+        public void The_guide_examples_are_on_the_type_scale()
+        {
+            var assembly = typeof(Cts.Cli.CliCommands).Assembly;
+            var sketches = new List<string>();
+            foreach (var name in assembly.GetManifestResourceNames().Where(name => name.StartsWith("Cts.Agent.Guides.visu-svg", StringComparison.Ordinal)))
+            {
+                string text;
+                using (var reader = new StreamReader(assembly.GetManifestResourceStream(name))) text = reader.ReadToEnd();
+                if (name.EndsWith(".svg", StringComparison.Ordinal)) sketches.Add(text);
+                else sketches.AddRange(Regex.Matches(text, @"```xml\s*\n(<svg .*?</svg>)", RegexOptions.Singleline).Cast<Match>()
+                                            .Select(match => match.Groups[1].Value));
+            }
+
+            Assert.True(sketches.Count >= 4, "only " + sketches.Count + " guide sketches found: the guide moved?");
+            foreach (var sketch in sketches)
+                Assert.DoesNotContain(Cts.Visu.SketchLinter.Find(Cts.Visu.Sketch.Parse(sketch)), finding => finding.Rule == "font-scale");
         }
 
         [Fact]

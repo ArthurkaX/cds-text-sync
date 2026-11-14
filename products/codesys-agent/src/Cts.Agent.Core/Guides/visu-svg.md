@@ -184,7 +184,13 @@ fastest way to a clean run.
   action row, not floating in the body.
 - **One `.h1` per screen.** `.h2` per section, `.label` for body text,
   `.caption` for units and notes, `.value` for the one number that matters.
-  Never write a bare `font-size` — pick a class.
+  Never write a bare `font-size` on a `<text>` — pick a class.
+- **The type scale is 11/12/16/22/28/36/48.** The first five are the classes
+  (`.caption` `.label` `.h2` `.h1` `.value`); 36 and 48 are the display steps
+  for big numbers: 36 for the number on a value card, 48 for the one figure a
+  screen exists to show. A value card's number is a textfield, which takes no
+  class, so write `font-size="36"` on it. Any other size (13, 20, 24) is a
+  `font-scale` warning, and `fix` moves it to the nearest step.
 - **Touch targets.** A button is at least 48×32; 160×48 is the comfortable
   default. A lamp is at least 16×16.
 - **Text is anchored on its BASELINE.** This is the single most common mistake.
@@ -209,12 +215,13 @@ fastest way to a clean run.
   **The box is ~1.4× the font size tall, so it hangs below the baseline** —
   descender space, exactly like a line of type. A `<text>` with no `data-height`
   compiles to `max(16, font-size × 1.4)` rounded up to the 4px grid, which makes
-  it 16 for a `.label` and a `.caption`, 24 for an `.h2`, 32 for an `.h1` and 40
-  for a `.value`. The bottom edge is therefore 4px under the baseline for a
-  `.label`, 5 for a `.caption`, 8 for an `.h2`, 10 for an `.h1`, 12 for a
-  `.value`. This is what makes a value overflow the card you put it in — a
-  `.value` with `y="160"` needs its card to reach 172, not 168. Size a card from
-  the bottom of the text it holds, not from the baseline.
+  it 16 for a `.label` and a `.caption`, 24 for an `.h2`, 32 for an `.h1`, 40
+  for a `.value`, 52 at 36 and 68 at 48. The bottom edge is therefore 4px under
+  the baseline for a `.label`, 5 for a `.caption`, 8 for an `.h2`, 10 for an
+  `.h1`, 12 for a `.value`, 16 at 36 and 20 at 48. This is what makes a value
+  overflow the card you put it in — a `.value` with `y="160"` needs its card to
+  reach 172, not 168. Size a card from the bottom of the text it holds, not from
+  the baseline.
 - **`x` on a `<text>` is always the box LEFT edge**, even with
   `text-anchor="middle"` or `"end"`. This is the one place the sketch does not
   mean what an SVG viewer would show you: CODESYS puts text in a box, so the
@@ -438,8 +445,9 @@ button stacked on each other:
   system does not apply: a field takes the native CODESYS textfield style, so
   `class="value"` changes neither its size nor its colour — it is silently
   ignored. For a large read-out write `font-size="28"` (the box top is then
-  `y - 28`). If you need a themed colour on a field, you cannot have one; use a
-  `<text>` label beside it, or accept the native style.
+  `y - 28`), and 36 or 48 for a value card's display number. If you need a
+  themed colour on a field, you cannot have one; use a `<text>` label beside it,
+  or accept the native style.
 
 ## GVL variable declarations (auto-generated)
 
