@@ -35,8 +35,6 @@ namespace Cts.Visu
                 if (width <= 0 || height <= 0) problems.Add(name + ": Width and Height must be > 0 (got W=" + width + ", H=" + height + ")");
                 if (x + width > sizeX) problems.Add(name + ": X+Width (" + (x + width) + ") exceeds screen SizeX (" + sizeX + ")");
                 if (y + height > sizeY) problems.Add(name + ": Y+Height (" + (y + height) + ") exceeds screen SizeY (" + sizeY + ")");
-                Center(problems, element, ScreenXml.CenterX, x + width / 2, "CenterX", "X+W/2");
-                Center(problems, element, ScreenXml.CenterY, y + height / 2, "CenterY", "Y+H/2");
                 foreach (var member in element.Members)
                 {
                     if (member.Value.Kind == "color" && member.Value.CanonicalName.Trim().Length == 0)
@@ -80,13 +78,6 @@ namespace Cts.Visu
         {
             value = 0;
             return string.IsNullOrWhiteSpace(text) || int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
-        }
-
-        static void Center(List<string> problems, ScreenElement element, long id, int expected, string label, string formula)
-        {
-            var actual = element.Value(id);
-            if (actual != null && actual.Trim() != expected.ToString(CultureInfo.InvariantCulture))
-                problems.Add(element.Identifier + ": " + label + " " + actual + " != " + formula + " (" + expected + ")");
         }
 
         static bool Overlap(Box a, Box b)

@@ -313,6 +313,31 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void From_svg_gives_a_text_its_own_font_and_rotation_centre()
+        {
+            // A style font (Font-Standard) wins over the size stored beside it in WebVisu.
+            Application("HMI");
+            Write("HMI/Overview.xml", ScreenXml(800, 480));
+            Write("POUs/GlobalTextList.csv", "TextID,TextDefault\n");
+            var svg = Path.Combine(root, "font.svg");
+            File.WriteAllText(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">"
+                + "<text x=\"20\" y=\"60\" font-family=\"Tahoma\" font-size=\"36\">Big</text></svg>");
+            var (code, _, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Overview",
+                "--folder", "HMI", "--sync-folder", view, "--no-preview");
+            Assert.True(code == 0, error);
+            var xml = File.ReadAllText(Path.Combine(view, "HMI", "Overview.xml"));
+            Assert.DoesNotContain("Font-Standard", xml);
+            Assert.Contains("{896a5e54-96c3-433b-96d2-4f1442fef591}", xml);
+            Assert.Contains("<Single Name=\"DisplayName\" Type=\"string\">Tahoma</Single>", xml);
+            Assert.Matches(@"<Single Name=""Id"" Type=""long"">4253639993</Single>\s*<Single Name=""Value"" Type=""short"">36<", xml);
+            string Value(long id) => System.Text.RegularExpressions.Regex.Match(xml, @"<Single Name=""Id"" Type=""long"">" + id + @"</Single>\s*<Single Name=""Value"" Type=""int"">(-?\d+)<").Groups[1].Value;
+            Assert.Equal(int.Parse(Value(1649127785)) + int.Parse(Value(2422045748)) / 2, int.Parse(Value(550940142)));
+            Assert.Equal(int.Parse(Value(357335551)) + int.Parse(Value(2134141914)) / 2, int.Parse(Value(1473355128)));
+            (code, _, error) = CliTests.RunLocal("visu", "check", "--screen", "Overview", "--folder", "HMI", "--sync-folder", view);
+            Assert.True(code == 0, error);
+        }
+
+        [Fact]
         public void From_svg_makes_a_plain_rectangle_a_bound_clickable_tile()
         {
             // The member ids are the ones the IDE writes for a rectangle given a text variable,
@@ -493,7 +518,8 @@ namespace Cts.Agent.Tests
         {
             Write("Main.xml", ScreenXml(200, 100,
                 Element("VisuFbElemButton", "Outside", Geometry(150, 80, 100, 40)),
-                Element("VisuFbElemButton", "OffCenter", Scalar(1649127785, 0) + Scalar(357335551, 0) + Scalar(2422045748, 40)
+                // The IDE keeps a rotation centre apart from X+W/2 (0 on many labels): no problem.
+                Element("VisuFbElemButton", "NoStyle", Scalar(1649127785, 0) + Scalar(357335551, 0) + Scalar(2422045748, 40)
                     + Scalar(2134141914, 20) + Scalar(550940142, 99) + Color(2341735680, 0, "")),
                 Element("VisuFbElemButton", "NoTextId", Geometry(10, 10, 30, 20) + Scalar(390574330, "Start", "string")),
                 Element("VisuFbElemButton", "Bad", Scalar(1649127785, "x", "string"))));
@@ -501,10 +527,10 @@ namespace Cts.Agent.Tests
             Assert.Equal(1, code);
             Assert.Contains("Outside: X+Width (250) exceeds screen SizeX (200)", output);
             Assert.Contains("Outside: Y+Height (120) exceeds screen SizeY (100)", output);
-            Assert.Contains("OffCenter: CenterX 99 != X+W/2 (20)", output);
-            Assert.Contains("OffCenter: color member 2341735680 has empty CanonicalName", output);
+            Assert.DoesNotContain("CenterX", output);
+            Assert.Contains("NoStyle: color member 2341735680 has empty CanonicalName", output);
             Assert.Contains("NoTextId: has non-empty text but no Text ID (823443203)", output);
-            Assert.Contains("overlap: OffCenter overlaps NoTextId", output);
+            Assert.Contains("overlap: NoStyle overlaps NoTextId", output);
             Assert.Contains("Bad: non-numeric geometry", output);
         }
 

@@ -21,7 +21,6 @@ Adding a new element type = adding one JSON file — no code changes to the engi
 | `optional_bindings` | no | dict | Variable binding slots (e.g. `fill_var`, `text_var`) |
 | `invariants` | no | list | Validation rules for `check` |
 | `base_members` | yes | list | Ground-truth ordered list of member blocks |
-| `font_descriptor` | no | dict | Default full font descriptor struct for member 3729828405 |
 
 ## `params` entry schema
 

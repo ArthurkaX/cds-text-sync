@@ -247,22 +247,6 @@
     }
   ],
 
-  "font_descriptor": {
-    "FontStyle": "0",
-    "AdditionalFontStyle": "0",
-    "ExplicitColor": "-16777216",
-    "CanonicalName": "Font-Standard",
-    "FontName": "Arial",
-    "DisplayName": "",
-    "FontSize": "12",
-    "ScriptIdentification": "0",
-    "DoubleFontSize": "0",
-    "NamedColor": {
-      "Color": "-16777216",
-      "CanonicalName": "Font-Default-Color"
-    }
-  },
-
   "themeable_colors": {
     "fill": {
       "member_id": 2812299069,

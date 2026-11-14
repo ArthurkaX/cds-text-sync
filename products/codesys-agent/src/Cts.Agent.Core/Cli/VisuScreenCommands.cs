@@ -91,7 +91,7 @@ namespace Cts.Cli
             new CliCommand
             {
                 Name = "visu", Sub = "check", Summary = "Check a screen's geometry and members",
-                Description = "Each element inside the screen with a positive size and its centre at X+W/2, Y+H/2; every colour bound to a style name; "
+                Description = "Each element inside the screen with a positive size; every colour bound to a style name; "
                     + "every text with a Text ID; no colour with both an ExplicitColor and a live NamedColor; no two elements overlapping (lines, simple elements and nested ones aside). Exit 1 when a problem is found.",
                 Options = new[] { CliOption.Needed("--screen", "screen", "NAME", "The screen name or XML path"), Folder, SyncFolder },
                 LocalExecute = Check, Build = BuildCheck,
