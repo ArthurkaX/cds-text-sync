@@ -47,6 +47,11 @@ Integer dropdown; labels come from a GlobalTextList entry.
 - `data-items` — GlobalTextList reference for the item labels (single-quoted).
 - `data-var` — INT variable, holds the selected index.
 - GVL type: **INT**.
+- The dropdown list's layout (row height, scrollbar, visible rows) keeps the
+  IDE's defaults; there is no attribute for it, set it in the IDE.
+- A combobox that switches screens through `VisuElems.CurrentVisu` needs the
+  write in every cycle and CurrentVisuGlobal on:
+  `cts guide visu-svg --section "Start screen and screen switching"`.
 
 ## AlarmBanner
 
