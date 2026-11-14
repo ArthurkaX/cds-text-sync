@@ -141,7 +141,7 @@ namespace Cts.Analysis
                 if (Directory.Exists(view)) return At(around, view);
                 if (Directory.Exists(Path.Combine(around, "project-view"))) return At(around, Path.Combine(around, "project-view"));
             }
-            throw new AnalyzeException("No analysis workspace found. Pass --workspace <sync-folder> or --project-view <dir>, or run from a sync folder.");
+            throw new AnalyzeException("No sync folder here: run cts in the project's sync folder (cts status names it), or pass --workspace <sync-folder>.");
         }
 
         static AnalyzeWorkspace At(string root, string view) => new AnalyzeWorkspace { Root = root, View = view, StateDir = Path.Combine(root, ".cts-analyze") };

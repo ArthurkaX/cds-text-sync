@@ -62,7 +62,8 @@ namespace Cts.Cli
                 Description = "Adds \"Name, Version (Vendor)\" (version * for the newest installed) to the application's Library Manager "
                     + "as a direct reference, or through --placeholder, which lets the device pick the version (CAA Net Base Services "
                     + "goes through CAA NetBaseSrv); --namespace is the prefix its names take, by default the one the installed library "
-                    + "names, as the Library Manager offers it. With several applications --app picks one; a project with none (a new library) "
+                    + "names, as the Library Manager offers it. It goes to the application's Library Manager, not the project root's; with "
+                    + "several applications --app picks one; a project with none (a new library) "
                     + "gets one at its root. cts import then loads the library; it names one that does not load.",
                 Arguments = "LIBRARY", ArgumentLimit = 1, ArgumentHelp = "\"Name, Version (Vendor)\", e.g. \"CAA Net Base Services, * (CAA Technical Workgroup)\"",
                 Options = Where.Concat(new[]
@@ -79,7 +80,8 @@ namespace Cts.Cli
                 Name = "lib", Sub = "redirect", Summary = "Fix the library a placeholder resolves to, on disk",
                 Description = "Sets the Library Manager's placeholder redirection: PLACEHOLDER resolves to LIBRARY (\"Name, Version (Vendor)\") "
                     + "in this application, wherever it is referenced, the project or a library it uses; without LIBRARY the redirection "
-                    + "goes and the device's resolution applies again. With several applications --app picks one. cts lib lists the "
+                    + "goes and the device's resolution applies again. It goes to the application's Library Manager; with several applications "
+                    + "--app picks one. cts lib lists the "
                     + "redirections; cts import then loads the change in the IDE.",
                 Arguments = "PLACEHOLDER [LIBRARY]", ArgumentLimit = 2,
                 ArgumentHelp = "The placeholder, then \"Name, Version (Vendor)\", e.g. Standard \"Standard, 3.5.17.0 (System)\"",
@@ -140,7 +142,7 @@ namespace Cts.Cli
         {
             AnalyzeWorkspace workspace;
             try { workspace = AnalyzeWorkspace.Resolve(options.Text("workspace"), null, work); }
-            catch (AnalyzeException error) { throw new CliFailure(verb, "refused", error.Message, "cts " + verb.Replace('-', ' ') + " --help", 2); }
+            catch (AnalyzeException error) { throw new CliFailure(verb, "no sync folder", error.Message, "cts status", 2); }
             var managers = Directory.GetFiles(workspace.View, "Library Manager.xml", SearchOption.AllDirectories)
                 .OrderBy(file => file, StringComparer.OrdinalIgnoreCase).Select(file => Read(file, workspace.View)).Where(manager => manager != null).ToList();
             var app = options.Text("app");
@@ -161,6 +163,22 @@ namespace Cts.Cli
             if (managers.Count == 0)
                 throw new CliFailure(verb, "no Library Manager", "the project has no Library Manager: cts lib add creates one with its first reference", "cts lib add --help", 1);
             return managers;
+        }
+
+        // The one manager an edit goes to: the only one, else the only
+        // application's (the project root's serves the POUs pool, and cts
+        // test's application its tests). *argument* rebuilds the command
+        // with --app for the refusal.
+        static Manager Target(List<Manager> managers, string verb, string argument)
+        {
+            if (managers.Count == 1) return managers[0];
+            var applications = managers.Where(manager => !manager.Relative.Equals("POUs/Library Manager.xml", StringComparison.OrdinalIgnoreCase)
+                && manager.App != Agent.AppTests.DefaultApplication).ToList();
+            if (applications.Count == 1) return applications[0];
+            var names = string.Join(", ", managers.Select(manager => manager.App));
+            var example = "cts " + verb.Replace('-', ' ') + " " + argument + " --app " + (applications.Count > 0 ? applications[0] : managers[0]).App;
+            throw new CliFailure(verb, "several applications", "several applications have a Library Manager (" + names
+                + "): pick one with --app, e.g. " + example, example, 1);
         }
 
         static Manager Read(string file, string view)
@@ -330,10 +348,7 @@ namespace Cts.Cli
                     ? library + " is not installed under " + root + ", so its namespace is unknown: give --namespace"
                     : library + " names no default namespace, and its title is not an identifier: give --namespace (its documentation names the prefix, cts docs --show)", "cts lib add --help", 2);
             if (!Identifier.IsMatch(ns)) throw new CliFailure("lib-add", "usage", "--namespace is an identifier, e.g. NBS", "cts lib add --help", 2);
-            var managers = Managers(options, work, "lib-add", true);
-            if (managers.Count > 1)
-                throw new CliFailure("lib-add", "several Library Managers", "several Library Managers: pick one with --app (" + string.Join(", ", managers.Select(manager => manager.App)) + ")", "cts lib", 1);
-            var target = managers[0];
+            var target = Target(Managers(options, work, "lib-add", true), "lib-add", "\"" + library + "\"");
             var name = library.Split(',')[0].Trim();
             var placeholder = options.Text("placeholder")?.Trim();
             if (placeholder?.Length == 0) throw new CliFailure("lib-add", "usage", "--placeholder names the placeholder, e.g. \"CAA NetBaseSrv\"", "cts lib add --help", 2);
@@ -407,10 +422,7 @@ namespace Cts.Cli
             if (placeholder.Length == 0) throw new CliFailure("lib-redirect", "usage", "PLACEHOLDER names the placeholder, e.g. Standard", "cts lib redirect --help", 2);
             if (library != null && !Resolution.IsMatch(library))
                 throw new CliFailure("lib-redirect", "usage", "LIBRARY is \"Name, Version (Vendor)\", e.g. \"Standard, 3.5.17.0 (System)\"", "cts lib redirect --help", 2);
-            var managers = Managers(options, work, "lib-redirect");
-            if (managers.Count > 1)
-                throw new CliFailure("lib-redirect", "several Library Managers", "several Library Managers: pick one with --app (" + string.Join(", ", managers.Select(manager => manager.App)) + ")", "cts lib", 1);
-            var target = managers[0];
+            var target = Target(Managers(options, work, "lib-redirect"), "lib-redirect", placeholder);
             if (target.TableStart < 0) throw new CliFailure("lib-redirect", "no redirection table", target.Relative + " has no placeholder redirection table", "cts lib", 1);
             var old = target.Redirects.FirstOrDefault(redirect => redirect.Placeholder.Equals(placeholder, StringComparison.OrdinalIgnoreCase));
             if (old != null && library != null && old.Library == library || old == null && library == null)

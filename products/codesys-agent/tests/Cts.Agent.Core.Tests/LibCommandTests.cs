@@ -240,6 +240,44 @@ namespace Cts.Agent.Tests
             Assert.Equal(_original, File.ReadAllText(_manager));
         }
 
+        // A project keeps a Library Manager at its root for the POUs pool
+        // besides the application's: an edit goes to the application's, and
+        // only several applications need --app, which the refusal spells out.
+        [Fact]
+        public void AnEditGoesToTheOnlyApplicationsManager()
+        {
+            var root = Path.Combine(_root, "project-view", "POUs", "Library Manager.xml");
+            Directory.CreateDirectory(Path.GetDirectoryName(root));
+            File.Copy(_manager, root);
+            var tests = Path.Combine(_root, "project-view", "Dev", "Plc Logic", "TestApp", "Library Manager.xml");
+            Directory.CreateDirectory(Path.GetDirectoryName(tests));
+            File.Copy(_manager, tests);
+
+            var (code, output, _) = Lib("lib", "add", "CAA Net Base Services, * (CAA Technical Workgroup)", "--namespace", "NBS");
+
+            Assert.Equal(0, code);
+            Assert.Contains("\nDev/Plc Logic/App/Library Manager.xml: CAA Net Base Services", output);
+            Assert.Equal(_original, File.ReadAllText(root));
+            Assert.StartsWith("ok lib-redirect changed=1\nDev/Plc Logic/App/Library Manager.xml: placeholder Standard no longer redirected", Lib("lib", "redirect", "Standard").output);
+
+            var second = Path.Combine(_root, "project-view", "Dev", "Plc Logic", "Second", "Library Manager.xml");
+            Directory.CreateDirectory(Path.GetDirectoryName(second));
+            File.Copy(root, second);
+            var refused = Lib("lib", "add", "Standard, * (System)", "--namespace", "Standard");
+            Assert.Equal(1, refused.code);
+            Assert.Equal("error lib-add cause=\"several applications\"\nNext: cts lib add \"Standard, * (System)\" --app App\n", refused.output);
+            Assert.Contains("several applications have a Library Manager (App, Second, TestApp, POUs): pick one with --app", refused.error);
+        }
+
+        [Fact]
+        public void OutsideASyncFolderTheRefusalPointsAtStatus()
+        {
+            var (code, output, error) = CliTests.RunLocal("lib", "--workspace", Path.Combine(_root, "absent"));
+            Assert.Equal(2, code);
+            Assert.StartsWith("error lib cause=\"no sync folder\"\nNext: cts status", output);
+            Assert.Contains("workspace directory not found", error);
+        }
+
         (int code, string output, string error) Lib(params string[] args) => CliTests.RunLocal(args.Concat(new[] { "--workspace", _root }).ToArray());
     }
 }
