@@ -96,7 +96,9 @@ deny list key is `plc_crc`.
 the IDE's Online -> Download (`OnlineCommandHelper.Download` without online change),
 which stops it and resets its variables, without a dialog. Without a session it logs in
 first (`OnlineCommandHelper.LoginWithParameters`, Regular | ForceDownload with all
-dialogs and error popups suppressed). `start` (default true) then starts it like
+dialogs and error popups suppressed); a login that downloaded (an
+`AfterApplicationDownload` came during it) is the download, else the Download follows,
+so it downloads once. `start` (default true) then starts it like
 `app.start`. `{downloaded, logged_in, started, application, application_state}`;
 `logged_in` says this call opened the session. The deny list key is `download`, and
 `start_plc` too when it starts.

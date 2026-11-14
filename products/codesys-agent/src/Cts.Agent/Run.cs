@@ -23,8 +23,9 @@
 // Logged out, it logs in first through OnlineCommandHelper.LoginWithParameters
 // with Regular | ForceDownload | SuppressAllDialogs | SuppressAllErrorPopups:
 // that login downloads a changed or missing application by itself and only
-// logs in to an unchanged one, so the Download after it is what makes every
-// case the same full download.  A session to a PLC that holds no application
+// logs in to an unchanged one, so the Download after it runs only when the
+// login downloaded nothing (no AfterApplicationDownload came during it):
+// every case is the same full download, done once.  A session to a PLC that holds no application
 // (after an origin reset, state "none") cannot take a Download ("Download
 // failed: Unknown reason"); it is ended and logged in to again, which creates
 // the application.
@@ -119,6 +120,15 @@ namespace Cts.Agent
         //: thread, and a changed application is downloaded, not changed online.
         const int DownloadLoginFlags = 1 | 4 | 256 | 512;
 
+        // The downloads the IDE has finished, counted from the online events
+        // (raised on the UI thread inside the operation that downloads).
+        int _downloads;
+
+        internal void OnOnlineEvent(string name)
+        {
+            if (name == "online.after_download") Interlocked.Increment(ref _downloads);
+        }
+
         //: The application state of a session to a PLC without the application,
         //: and of one just downloaded before the runtime has it.
         const string NoApplication = "none";
@@ -162,10 +172,14 @@ namespace Cts.Agent
                     .Invoke(null, new object[] { guid });
                 loggedIn = false;
             }
+            var downloads = Volatile.Read(ref _downloads);
             if (!loggedIn) LogIn(helper, guid, application);
-            var download = NeedMethod(helper, "Download", new[] { typeof(Guid), typeof(bool) }, "OnlineCommandHelper.Download is not present in this IDE");
-            try { download.Invoke(null, new object[] { guid, false }); }
-            catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "Download: " + Invocation.Cause(e).Message); }
+            if (Volatile.Read(ref _downloads) == downloads)
+            {
+                var download = NeedMethod(helper, "Download", new[] { typeof(Guid), typeof(bool) }, "OnlineCommandHelper.Download is not present in this IDE");
+                try { download.Invoke(null, new object[] { guid, false }); }
+                catch (Exception e) { throw new ProtocolException(ErrorCodes.Internal, "Download: " + Invocation.Cause(e).Message); }
+            }
             return new Dictionary<string, object>
             {
                 { "downloaded", true },

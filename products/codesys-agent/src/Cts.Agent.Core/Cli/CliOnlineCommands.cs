@@ -113,7 +113,8 @@ namespace Cts.Cli
                     CliOption.Text("--ip", "ip", "IP", "PLC IP address"),
                     CliOption.Text("--gateway", "gateway", "NAME", "Gateway name (default: Gateway-1)"),
                 },
-                Execute = Agent("app.login"),
+                // A login that creates the application downloads it.
+                Execute = call => call.CallToEnd("app.login", call.Options.Params),
                 Build = data =>
                 {
                     var answer = new Answer()
@@ -136,7 +137,10 @@ namespace Cts.Cli
                 Description = "What the IDE's Online -> Download does, run by the in-IDE agent: the application stops and its "
                     + "variables start from their initial values, with no confirmation dialog. It needs no online session first: "
                     + "without one it logs in (logged_in=true), so the active application needs a reachable PLC gateway or "
-                    + "simulation mode; plc= names the PLC it reached (the runtime's name, its address, or simulation). It sends what the IDE holds, saved or not (cts compare shows whether the sync folder holds the same). Build first: download pushes the last built code, and after adding a GVL/DUT/POU a full "
+                    + "simulation mode; plc= names the PLC it reached (the runtime's name, its address, or simulation). It sends what the IDE holds, saved or not (cts compare shows whether the sync folder holds the same). "
+                    + "It takes as long as the PLC needs (a first download with a visualisation takes minutes): cts waits until the IDE "
+                    + "has finished it, at most 10 minutes past its start, so the answer is the real outcome; --timeout bounds the whole "
+                    + "wait instead. Build first: download pushes the last built code, and after adding a GVL/DUT/POU a full "
                     + "download is what makes its symbols readable.\n\n"
                     + "--start 1 (the default) starts the application afterwards; --start 0 leaves it stopped and does not wait "
                     + "for it. The download being finished is not the application being ready: cts then waits until the "

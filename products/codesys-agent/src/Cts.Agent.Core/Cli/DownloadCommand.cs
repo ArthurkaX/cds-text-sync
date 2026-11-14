@@ -23,7 +23,7 @@ namespace Cts.Cli
             var start = !Equals(Value(options, "start"), "0");
             var watch = ProjectFileWatch.Start(call.Hello.ProjectPath);
             var parameters = new Dictionary<string, object> { { "start", start }, { "online_change", options.ContainsKey("online_change") } };
-            var data = new Dictionary<string, object>(call.Call("app.download", parameters));
+            var data = new Dictionary<string, object>(call.CallToEnd("app.download", parameters));
             watch.Report(data);
             if (Equals(Value(data, "downloaded"), true)) data["source"] = Record(call);
             if (!start)

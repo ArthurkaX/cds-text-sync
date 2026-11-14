@@ -178,12 +178,29 @@ namespace Cts.Cli
         // The same, within *seconds* of its own: one of many short calls.
         public IDictionary<string, object> Call(string method, IDictionary<string, object> parameters, double seconds)
         {
-            var ms = (int)Math.Min(int.MaxValue, Math.Max(1, seconds * 1000));
+            return Call(method, parameters, seconds, seconds);
+        }
+
+        // A call that takes as long as the PLC needs once the IDE has started
+        // it (a download, a login that creates the application): the agent
+        // ends it itself, busy when it did not start within the budget and
+        // timeout past its backstop, so cts waits for that answer instead of
+        // leaving the outcome unknown while the IDE goes on. The budget covers
+        // the start and the state reads after it; a --timeout given is the
+        // whole wait.
+        public IDictionary<string, object> CallToEnd(string method, IDictionary<string, object> parameters)
+        {
+            return Call(method, parameters, Seconds, Options.Timeout ?? 2 * Seconds + StartTimeout.FinishBackstopMs / 1000.0);
+        }
+
+        IDictionary<string, object> Call(string method, IDictionary<string, object> parameters, double seconds, double replySeconds)
+        {
+            var ms = Milliseconds(seconds);
             var request = new Dictionary<string, object>(parameters ?? new Dictionary<string, object>()) { ["start_timeout_ms"] = (long)ms };
             // The agent refuses the call when the IDE has another project open by then.
             if (Hello.ProjectPath != null) request["project_path"] = Hello.ProjectPath;
             object result;
-            try { result = _callOverride != null ? _callOverride(method, request) : Watched(method, request, ms); }
+            try { result = _callOverride != null ? _callOverride(method, request) : Watched(method, request, Milliseconds(replySeconds)); }
             catch (AgentException e) { throw Failure(method, e); }
             var answer = result as IDictionary<string, object> ?? new Dictionary<string, object> { { "result", result } };
             if (answer.ContainsKey("dialogs_seen"))
@@ -194,6 +211,8 @@ namespace Cts.Cli
             }
             return answer;
         }
+
+        static int Milliseconds(double seconds) => (int)Math.Min(int.MaxValue, Math.Max(1, seconds * 1000));
 
         // The call, with the dialog watch beside it (DialogWatch). A dialog.*
         // call is about the dialogs on screen and bounds its own wait, so the
@@ -280,6 +299,7 @@ namespace Cts.Cli
                         text = e.Message.TrimEnd('.') + ". cts scan lists the PLCs the gateway reaches, cts connect --ip IP points the device at one and logs in";
                         next = "cts scan";
                     }
+                    else if (e.Detail != null && e.Detail.TryGetValue("next", out var named) && named is string command) next = command;
                     break;
             }
             return new CliFailure(Command.Verb, cause, text, next, 1, dialogs.Count > 0 ? ModalErrors.BlockLine(dialogs) : null);
@@ -299,7 +319,6 @@ namespace Cts.Cli
             if (data == null || !data.TryGetValue(key, out var list) || !(list is IEnumerable<object> items)) return windows;
             foreach (var item in items.OfType<IDictionary<string, object>>()) windows.Add(ModalWindow.FromData(item));
             return windows;
-                    else if (e.Detail != null && e.Detail.TryGetValue("next", out var named) && named is string command) next = command;
         }
     }
 }

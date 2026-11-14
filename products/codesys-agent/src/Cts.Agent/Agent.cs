@@ -88,7 +88,13 @@ namespace Cts.Agent
             _objectEvents = new ObjectEvents(_ide, _journal, _log);
             // The variable watches are dropped when the IDE says the session
             // moved; a login, a logout or a download invalidates what we hold.
-            _online.OnRaised = _vars.OnOnlineEvent;
+            // The IDE counts its downloads, so a download whose login already
+            // downloaded does not download again.
+            _online.OnRaised = name =>
+            {
+                _vars.OnOnlineEvent(name);
+                _ide.OnOnlineEvent(name);
+            };
             _pipe = new PipeServer(_pipeName, _router, _bus, _log);
             _widget = new QuickWidget(_ide, _modal, _log, _router);
             _mirror = new MirrorRefresh(_ide, _journal, _modal, _pipe, _widget, _log);
