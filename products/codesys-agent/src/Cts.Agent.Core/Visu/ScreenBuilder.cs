@@ -12,46 +12,11 @@ namespace Cts.Visu
     internal static class ScreenBuilder
     {
         const string TemplatePrefix = "Cts.Visu.Templates.";
-        const string ScreenType = "{6198ad31-4b98-445c-927f-3258a0e82fe3}";
-
         internal static string Create(string view, string folder, string name, int width, int height, bool startVisu,
                                       bool replace = false, string background = null)
         {
-            var sibling = FindSibling(folder);
-            if (sibling == null)
-            {
-                var places = new[] { view }.Concat(Directory.GetDirectories(view, "*", SearchOption.AllDirectories))
-                    .Where(directory => FindSibling(directory) != null)
-                    .Select(directory => ViewPlace.Relative(view, directory))
-                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
-                var here = ViewPlace.Relative(view, folder);
-                throw new VisuException("No object in " + (here.Length == 0 ? "the project view's top folder" : "'" + here + "'")
-                    + " to take the new screen's place in the project tree from: a new screen goes beside an object "
-                    + "kept as .xml. "
-                    + (places.Count == 0
-                        ? "The project view holds none; run cts export first."
-                        : "Pass --folder, one of: " + ViewPlace.Names(places)));
-            }
-            XElement root;
-            try
-            {
-                root = XElement.Load(sibling);
-            }
-            catch (Exception error)
-            {
-                throw new VisuException("Could not parse sibling XML " + sibling + ": " + error.Message);
-            }
-            var meta = root.DescendantsAndSelf().FirstOrDefault(node => node.Name.LocalName == "Single"
-                && (string)node.Attribute("Name") == "MetaObject");
-            var parent = ChildText(meta, "ParentGuid");
-            var parentNode = ChildText(root, "ParentSVNodeGuid");
-            var path = root.DescendantsAndSelf().FirstOrDefault(node => node.Name.LocalName == "Array"
-                && (string)node.Attribute("Name") == "Path");
-            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(parentNode))
-                throw new VisuException("Sibling " + sibling + " is missing ParentGuid/ParentSVNodeGuid");
-            var pathText = path == null ? "" : string.Concat(path.Elements()
-                .Where(node => node.Name.LocalName == "Single")
-                .Select(node => "        <Single Type=\"string\">" + Markup.Escape(node.Value.Trim()) + "</Single>\n"));
+            var (parent, parentNode, pathNames) = Placement(view, folder);
+            var pathText = string.Concat(pathNames.Select(part => "        <Single Type=\"string\">" + Markup.Escape(part) + "</Single>\n"));
             var output = Path.Combine(folder, name + ".xml");
             var visuGuid = (string)null;
             if (File.Exists(output))
@@ -98,27 +63,55 @@ namespace Cts.Visu
             return output;
         }
 
-        static string FindSibling(string folder)
+        // A screen's place in the project tree, from the .cds-object.xml of its
+        // folder and the ones above: the application it belongs to, the tree node
+        // it sits under (the nearest folder, else the application) and the names
+        // on the way there.
+        static (string Parent, string Node, string[] Path) Placement(string view, string folder)
         {
-            foreach (var file in Directory.GetFiles(folder, "*.xml").OrderBy(path => path, StringComparer.Ordinal))
-            {
-                if (file.EndsWith(".cds-object.xml", StringComparison.OrdinalIgnoreCase)) continue;
-                XElement root;
-                try
-                {
-                    root = XElement.Load(file);
-                }
-                catch (Exception error)
-                {
-                    throw new VisuException("Cannot read " + file + ": it is not valid XML (" + error.Message
-                        + "). Fix or remove it -- placement comes from a sibling object and a broken file cannot be ruled out as one.");
-                }
-                if ((string)root.Attribute("Type") == ScreenType
-                    && root.DescendantsAndSelf().Any(node => node.Name.LocalName == "Single"
-                        && (string)node.Attribute("Name") == "ParentSVNodeGuid")) return file;
-            }
-            return null;
+            var placement = Owner(view, folder);
+            if (placement.Parent != null) return placement;
+            var places = Directory.GetFiles(view, ".cds-object.xml", SearchOption.AllDirectories)
+                .Select(Path.GetDirectoryName)
+                .Where(directory => { try { return Owner(view, directory).Parent != null; } catch (VisuException) { return false; } })
+                .Select(directory => ViewPlace.Relative(view, directory))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
+            var here = ViewPlace.Relative(view, folder);
+            throw new VisuException((here.Length == 0 ? "The project view's top folder" : "'" + here + "'")
+                + " is not inside an application, where a screen belongs. "
+                + (places.Count == 0 ? "The project view holds no application; run cts export first." : "Pass --folder, one of: " + ViewPlace.Names(places)));
         }
+
+        // Parent is null when the folder is not inside an application.
+        static (string Parent, string Node, string[] Path) Owner(string view, string folder)
+        {
+            string node = null;
+            string[] path = null;
+            var top = Path.GetFullPath(view).TrimEnd(Path.DirectorySeparatorChar);
+            for (var directory = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar);
+                 !string.Equals(directory, top, StringComparison.OrdinalIgnoreCase);
+                 directory = Path.GetDirectoryName(directory))
+            {
+                var marker = Path.Combine(directory, ".cds-object.xml");
+                if (!File.Exists(marker))
+                    throw new VisuException("'" + ViewPlace.Relative(view, directory) + "' has no .cds-object.xml, so it is not in the IDE yet: cts import what it holds first.");
+                XElement root;
+                try { root = XElement.Load(marker); }
+                catch (Exception error) { throw new VisuException("Cannot read " + marker + ": " + error.Message); }
+                var meta = Named(root, "MetaObject");
+                var guid = ChildText(meta, "Guid");
+                if (string.IsNullOrEmpty(guid)) throw new VisuException(marker + " has no Guid");
+                path = path ?? (Named(root, "Path")?.Elements().Select(part => part.Value.Trim()) ?? Enumerable.Empty<string>())
+                    .Concat(new[] { ChildText(meta, "Name") }).ToArray();
+                node = node ?? guid;
+                var kind = Cts.Sync.TypeKinds.All.Kind(ChildText(meta, "TypeGuid"));
+                if (kind == "folder") continue;
+                return (kind == "application" ? guid : null, node, path);
+            }
+            return (null, null, null);
+        }
+
+        static XElement Named(XElement root, string name) => root.Elements().FirstOrDefault(element => (string)element.Attribute("Name") == name);
 
         static string Resource(string file)
         {

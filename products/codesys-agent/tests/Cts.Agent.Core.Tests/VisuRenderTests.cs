@@ -64,14 +64,16 @@ namespace Cts.Agent.Tests
             Directory.CreateDirectory(directory);
             var view = Path.Combine(directory, "project-view");
             Directory.CreateDirectory(view);
-            File.WriteAllText(Path.Combine(view, "Existing.xml"), "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\"><Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single><Array Name=\"Path\"></Array></Single>");
+            Directory.CreateDirectory(Path.Combine(view, "App"));
+            File.WriteAllText(Path.Combine(view, "App", ".cds-object.xml"), "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\"><Single Name=\"MetaObject\">"
+                + "<Single Name=\"Guid\">app-guid</Single><Single Name=\"Name\">App</Single><Single Name=\"TypeGuid\">639b491f-5557-464c-af91-1471bac9f549</Single></Single>"
+                + "<Array Name=\"Path\"></Array></Single>");
             try
             {
                 var sketch = Path.Combine(directory, "Sketch.svg");
                 File.WriteAllText(sketch, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\"></svg>");
                 var (code, output, error) = RunLocal("visu", "from-svg", "--svg", sketch, "--create-screen", "--screen-name", "Main",
-                    "--sync-folder", view);
+                    "--folder", "App", "--sync-folder", view);
                 Assert.True(code == 0, output + "\n" + error);
                 Assert.Contains("Preview SVG", output);
                 Assert.True(File.Exists(Path.Combine(directory, "Sketch.preview.svg")));
@@ -79,7 +81,7 @@ namespace Cts.Agent.Tests
                 var second = Path.Combine(directory, "second.svg");
                 File.WriteAllText(second, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\"></svg>");
                 var (noPreviewCode, noPreviewOutput, _) = RunLocal("visu", "from-svg", "--svg", second, "--create-screen", "--screen-name", "Other",
-                    "--sync-folder", view, "--no-preview");
+                    "--folder", "App", "--sync-folder", view, "--no-preview");
                 Assert.Equal(0, noPreviewCode);
                 Assert.DoesNotContain("Preview SVG", noPreviewOutput);
                 Assert.False(File.Exists(Path.Combine(directory, "second.preview.svg")));

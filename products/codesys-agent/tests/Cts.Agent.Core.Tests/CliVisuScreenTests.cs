@@ -61,6 +61,21 @@ namespace Cts.Agent.Tests
                 + "<List Name=\"VisualElementList\" Type=\"{ef9d0b20-c96e-48db-b361-2ded4063150e}\">" + string.Concat(elements) + "</List></Single>";
         }
 
+        const string FolderType = "738bea1e-99bb-4f04-90bb-a7a567e74e3a";
+
+        // An application exported as <name>/.cds-object.xml at the view's top.
+        void Application(string name) => Write(name + "/.cds-object.xml", Marker(name, "app-guid", "639b491f-5557-464c-af91-1471bac9f549", "Device", "Plc Logic"));
+
+        static string Marker(string name, string guid, string type, params string[] path)
+        {
+            return "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\" Method=\"IArchivable\">"
+                + "<Single Name=\"MetaObject\" Type=\"{81297157-7ec9-45ce-845e-84cab2b88ade}\" Method=\"IArchivable\">"
+                + "<Single Name=\"Guid\" Type=\"System.Guid\">" + guid + "</Single>"
+                + "<Single Name=\"Name\" Type=\"string\">" + name + "</Single>"
+                + "<Single Name=\"TypeGuid\" Type=\"System.Guid\">" + type + "</Single></Single>"
+                + "<Array Name=\"Path\" Type=\"string\">" + string.Concat(path.Select(part => "<Single Type=\"string\">" + part + "</Single>")) + "</Array></Single>";
+        }
+
         string Write(string relative, string text)
         {
             var path = Path.Combine(view, relative);
@@ -211,20 +226,21 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
-        public void Create_screen_copies_placement_and_writes_requested_dimensions()
+        public void Create_screen_takes_its_place_from_the_folder_markers_and_writes_requested_dimensions()
         {
-            Write("HMI/Existing.xml", "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\">"
-                + "<Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent-guid</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single>"
-                + "<Array Name=\"Path\"><Single Type=\"string\">Application</Single></Array></Single>");
+            Application("App");
+            Write("App/HMI/.cds-object.xml", Marker("HMI", "folder-guid", FolderType, "Device", "Plc Logic", "App"));
+            Write("App/HMI/GVL_Hmi.st", "VAR_GLOBAL\nEND_VAR\n");
             var (code, output, error) = CliTests.RunLocal("visu", "create-screen", "--name", "Overview", "--width", "1024",
-                "--height", "768", "--folder", "HMI", "--sync-folder", view);
+                "--height", "768", "--folder", "App/HMI", "--sync-folder", view);
             Assert.Equal(0, code);
             Assert.Empty(error);
             Assert.Contains("Overview (1024x768)", output);
-            var xml = File.ReadAllText(Path.Combine(view, "HMI", "Overview.xml"));
-            Assert.Contains("<Single Name=\"ParentGuid\" Type=\"System.Guid\">parent-guid</Single>", xml);
-            Assert.Contains("<Single Name=\"ParentSVNodeGuid\" Type=\"System.Guid\">parent-node</Single>", xml);
+            var xml = File.ReadAllText(Path.Combine(view, "App", "HMI", "Overview.xml"));
+            Assert.Contains("<Single Name=\"ParentGuid\" Type=\"System.Guid\">app-guid</Single>", xml);
+            Assert.Contains("<Single Name=\"ParentSVNodeGuid\" Type=\"System.Guid\">folder-guid</Single>", xml);
+            Assert.Matches(@"<Array Name=""Path"" Type=""string"">\s*<Single Type=""string"">Device</Single>\s*<Single Type=""string"">Plc Logic</Single>\s*"
+                + @"<Single Type=""string"">App</Single>\s*<Single Type=""string"">HMI</Single>\s*</Array>", xml);
             Assert.Contains("<Single Name=\"SizeX\" Type=\"int\">1024</Single>", xml);
             Assert.Contains("<Single Name=\"SizeY\" Type=\"int\">768</Single>", xml);
         }
@@ -232,9 +248,7 @@ namespace Cts.Agent.Tests
         [Fact]
         public void From_svg_create_screen_without_folder_names_the_folders_it_can_go_to()
         {
-            Write("HMI/Existing.xml", "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\">"
-                + "<Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent-guid</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single></Single>");
+            Application("HMI");
             var svg = Path.Combine(root, "screen.svg");
             File.WriteAllText(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"40\"/></svg>");
             var (code, output, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--create-screen",
@@ -245,12 +259,20 @@ namespace Cts.Agent.Tests
         }
 
         [Fact]
+        public void Create_screen_refuses_a_folder_the_IDE_does_not_have_yet()
+        {
+            Application("App");
+            Write("App/New/GVL_New.st", "VAR_GLOBAL\nEND_VAR\n");
+            var (code, output, error) = CliTests.RunLocal("visu", "create-screen", "--name", "Overview", "--folder", "App/New", "--sync-folder", view);
+            Assert.NotEqual(0, code);
+            Assert.Contains("'App/New' has no .cds-object.xml, so it is not in the IDE yet", output + error);
+            Assert.False(File.Exists(Path.Combine(view, "App", "New", "Overview.xml")));
+        }
+
+        [Fact]
         public void From_svg_creates_a_screen_and_compiles_rectangle()
         {
-            Write("HMI/Existing.xml", "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\">"
-                + "<Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent-guid</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single>"
-                + "<Array Name=\"Path\"><Single Type=\"string\">Application</Single></Array></Single>");
+            Application("HMI");
             var svg = Path.Combine(root, "screen.svg");
             File.WriteAllText(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"40\"/></svg>");
             var (code, output, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--create-screen",
@@ -266,10 +288,7 @@ namespace Cts.Agent.Tests
         [Fact]
         public void From_svg_renders_button_actions_and_writes_gvl_declarations()
         {
-            Write("HMI/Existing.xml", "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\">"
-                + "<Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent-guid</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single>"
-                + "<Array Name=\"Path\"><Single Type=\"string\">Application</Single></Array></Single>");
+            Application("HMI");
             Write("HMI/Overview.xml", ScreenXml(800, 480));
             Write("POUs/GlobalTextList.csv", "TextID,TextDefault\n");
             var svg = Path.Combine(root, "actions.svg");
@@ -298,10 +317,7 @@ namespace Cts.Agent.Tests
         {
             // The member ids are the ones the IDE writes for a rectangle given a text variable,
             // a toggle colour and fill and frame colour variables in its property grid.
-            Write("HMI/Existing.xml", "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\">"
-                + "<Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent-guid</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single>"
-                + "<Array Name=\"Path\"><Single Type=\"string\">Application</Single></Array></Single>");
+            Application("HMI");
             Write("HMI/Rack.xml", ScreenXml(800, 480));
             Write("POUs/GlobalTextList.csv", "TextID,TextDefault\n");
             var svg = Path.Combine(root, "tile.svg");
@@ -340,10 +356,7 @@ namespace Cts.Agent.Tests
         [Fact]
         public void From_svg_replace_keeps_the_existing_screen_guid()
         {
-            Write("HMI/Existing.xml", "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\">"
-                + "<Single Name=\"MetaObject\"><Single Name=\"ParentGuid\">parent-guid</Single></Single>"
-                + "<Single Name=\"ParentSVNodeGuid\">parent-node</Single>"
-                + "<Array Name=\"Path\"><Single Type=\"string\">Application</Single></Array></Single>");
+            Application("HMI");
             Write("HMI/Overview.xml", ScreenXml(800, 480).Replace("<List Name=\"VisualElementList\"",
                 "<Single Name=\"MetaObject\"><Single Name=\"Guid\" Type=\"System.Guid\">aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa</Single></Single>"
                 + "<List Name=\"VisualElementList\""));

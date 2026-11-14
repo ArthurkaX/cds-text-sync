@@ -34,9 +34,10 @@ package, so it always matches the installed CLI version).
 
 - **`--folder` is a CODESYS project-tree path.** Use the folder as shown by
   `cts project-tree`; it can be the application or a folder inside it.
-- **`--create-screen` needs an existing object in that folder.** The new
-  screen copies its placement from a sibling object, so create the HMI folder
-  and add an object to it before compiling a new screen there.
+- **`--create-screen` needs a folder the IDE already has.** The new screen
+  takes its place in the project tree from the `.cds-object.xml` of that
+  folder and the ones above it, so a folder made only on disk goes through
+  `cts import` first.
 
 ---
 
