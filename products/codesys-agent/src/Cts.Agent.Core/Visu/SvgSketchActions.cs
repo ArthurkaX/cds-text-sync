@@ -31,12 +31,6 @@ namespace Cts.Visu
             return spec;
         }
 
-        // data-cds-input -> the IDE's InputType of a Write Variable input.
-        internal static readonly IDictionary<string, string> InputTypes = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["numpad"] = "VisuDialogs.Numpad", ["keypad"] = "VisuDialogs.Keypad", ["edit"] = "Edit", ["default"] = "Default",
-        };
-
         // A click opens the IDE's Write Variable input on the variable the element shows, the form
         // most input fields of exported projects have.
         static ElementSpec AddWriteInput(ElementSpec spec, XElement element)
@@ -45,16 +39,36 @@ namespace Cts.Visu
             if (input == null) return spec;
             if (spec.Type != "textfield" && spec.Type != "rectangle")
                 throw new VisuException("data-cds-input is only supported on a textfield or a plain rectangle/circle/ellipse");
-            if (!InputTypes.TryGetValue(input.Trim().ToLowerInvariant(), out var inputType))
+            var word = input.Trim().ToLowerInvariant();
+            if (!new[] { "numpad", "keypad", "edit", "default" }.Contains(word))
                 throw new VisuException("data-cds-input=\"" + input + "\": use numpad, keypad, edit or default");
             if (!(spec.Params.TryGetValue("text_var", out var shown) && shown is string variable && variable.Length > 0))
                 throw new VisuException("data-cds-input writes the variable the element shows: give it a data-text-var");
             AddInputAction(spec, Action("OnMouseClick", "write_variable", new Dictionary<string, object>(StringComparer.Ordinal)
             {
-                ["input_type"] = inputType, ["min"] = (string)element.Attribute("data-input-min") ?? "",
+                ["input_type"] = word, ["min"] = (string)element.Attribute("data-input-min") ?? "",
                 ["max"] = (string)element.Attribute("data-input-max") ?? "",
             }));
             return spec;
+        }
+
+        // Each Write Variable input's data-cds-input word as the IDE's InputType, from
+        // *inputTypes* (VisuSettings.InputTypes of the screen's application): the InputTypes set.
+        internal static List<string> ResolveInputTypes(IDictionary<string, object> parameters, IDictionary<string, string> inputTypes)
+        {
+            var resolved = new List<string>();
+            if (!(parameters.TryGetValue("input_actions", out var raw) && raw is IList<object> actions)) return resolved;
+            foreach (var action in actions.OfType<IDictionary<string, object>>().Where(action => Equals(action["type"], "write_variable")))
+            {
+                var values = (IDictionary<string, object>)action["values"];
+                var word = (string)values["input_type"];
+                if (!inputTypes.TryGetValue(word, out var inputType))
+                    throw new VisuException("data-cds-input=\"" + word + "\" opens the " + word + " the application's Visualization Manager names, and no manager "
+                        + "on disk names one: use data-cds-input=\"default\" (the manager's dialog for the variable's type), or add the manager in the IDE and cts sync");
+                values["input_type"] = inputType;
+                resolved.Add(inputType);
+            }
+            return resolved;
         }
 
         static void AddInputAction(ElementSpec spec, object action)

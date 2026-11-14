@@ -59,6 +59,47 @@ namespace Cts.Visu
 
         internal static string Kind(string client) => TypeOf(client) == WebType ? "WebVisu" : "TargetVisu";
 
+        // data-cds-input's words as the IDE's InputType of a Write Variable input: numpad and
+        // keypad are the dialogs *manager* names, the only ones CODESYS instantiates (C0373);
+        // with no manager only edit and default.
+        internal static IDictionary<string, string> InputTypes(VisuSettings manager)
+        {
+            var types = new Dictionary<string, string>(StringComparer.Ordinal) { ["edit"] = "Edit", ["default"] = "Default" };
+            if (manager == null) return types;
+            var xml = File.ReadAllText(manager.ManagerFile);
+            foreach (var (word, member) in new[] { ("numpad", "NumpadDialog"), ("keypad", "KeypadDialog") })
+                if (Value(xml, member) is string dialog && dialog.Length > 0) types[word] = dialog;
+            return types;
+        }
+
+        // What keeps the dialogs of *inputs* (each Write Variable input's InputType, by element)
+        // from building: one of the manager's library the manager does not name (C0373), and
+        // VisuDialogs missing from the application's Library Manager (C0077).
+        internal List<string> DialogProblems(IEnumerable<KeyValuePair<string, string>> inputs)
+        {
+            var problems = new List<string>();
+            var types = InputTypes(this);
+            var named = new[] { "numpad", "keypad" }.Where(types.ContainsKey).Select(word => types[word]).ToList();
+            var libraries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var input in inputs.Where(input => input.Value != "Edit"))
+            {
+                var opened = input.Value == "Default" ? named : new List<string> { input.Value };
+                libraries.UnionWith(opened.Select(Library));
+                if (input.Value != "Default" && !named.Contains(input.Value) && named.Select(Library).Contains(Library(input.Value)))
+                    problems.Add(input.Key + ": input dialog " + input.Value + " is not one the Visualization Manager names (" + string.Join(", ", named)
+                        + "), and CODESYS instantiates no other (C0373): data-cds-input=\"numpad\" or \"keypad\" names the manager's");
+            }
+            var libraryManager = Path.Combine(AppFolder, "Library Manager.xml");
+            if (libraries.Contains(Dialogs) && File.Exists(libraryManager) && Cli.LibCommand.References(libraryManager, Dialogs) == false)
+                problems.Add(Path.GetFileName(AppFolder) + " references no " + Dialogs + " library, which its input dialogs need (C0077): "
+                    + Cli.LibCommand.AddCommand(Dialogs, "*", "System", Path.GetFileName(AppFolder)));
+            return problems;
+        }
+
+        const string Dialogs = "VisuDialogs";
+
+        static string Library(string dialog) => dialog.Split('.')[0];
+
         internal static string Value(string xml, string member)
         {
             var match = Regex.Match(xml, "<Single Name=\"" + member + "\" Type=\"[^\"]*\"(?: />|>([^<]*)</Single>)");

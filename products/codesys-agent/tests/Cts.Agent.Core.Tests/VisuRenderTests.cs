@@ -98,7 +98,7 @@ namespace Cts.Agent.Tests
             const string xml = "<Single><Single Name=\"SizeX\">800</Single><Single Name=\"SizeY\">480</Single>"
                 + "<List Name=\"VisualElementList\"><Single><Single Name=\"VisualElementTypeName\">Alien</Single>"
                 + "<Single Name=\"VisualElemMemberList\"><List Name=\"VisualElemMemberList\"></List></Single></Single></List></Single>";
-            Assert.Throws<VisuException>(() => SvgExport.ScreenToSvg(xml));
+            Assert.Throws<VisuException>(() => SvgExport.ScreenToSvg(xml, VisuSettings.InputTypes(null)));
         }
     }
 }

@@ -55,6 +55,13 @@ namespace Cts.Visu
             return problems;
         }
 
+        // The InputType of each Write Variable input of *elements*, by element.
+        internal static IEnumerable<KeyValuePair<string, string>> WriteInputs(IEnumerable<ScreenElement> elements) =>
+            from element in elements
+            from action in ScreenXml.Named(element.Source, "Dictionary", "VisualElementInputActions")?.Descendants("Single") ?? Enumerable.Empty<XElement>()
+            where ((string)action.Attribute("Type") ?? "").StartsWith("{e8e7e747", System.StringComparison.Ordinal)
+            select new KeyValuePair<string, string>(element.Identifier, ScreenXml.NamedText(action, "InputType"));
+
         // A colour whose ExplicitColor differs from its live NamedColor:
         // CODESYS paints the named one, so the explicit value is a lie (CODESYS
         // itself writes both, the same value, on a font).

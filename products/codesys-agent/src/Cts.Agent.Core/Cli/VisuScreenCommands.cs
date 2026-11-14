@@ -93,6 +93,7 @@ namespace Cts.Cli
                 Name = "visu", Sub = "check", Summary = "Check a screen's geometry and members",
                 Description = "Each element inside the screen with a positive size; every colour bound to a style name; "
                     + "every text with a Text ID; no colour with both an ExplicitColor and a live NamedColor; no two elements overlapping (lines, simple elements and nested ones aside); "
+                    + "every input dialog one the Visualization Manager names, with its library referenced; "
                     + "and the application's cts visu settings problems. Exit 1 when a problem is found.",
                 Options = new[] { CliOption.Needed("--screen", "screen", "NAME", "The screen name or XML path"), Folder, SyncFolder },
                 LocalExecute = Check, Build = BuildCheck,
@@ -326,7 +327,8 @@ namespace Cts.Cli
             var (size, elements, colors) = Read(path, "check", root => (ScreenXml.Size(root), ScreenXml.Elements(root), ScreenCheck.ColorConflicts(root).ToList()));
             // Named from the application's folder: the screen may lie outside a project view.
             var around = VisuSettings.Around(path);
-            var settings = around?.Problems(Path.GetDirectoryName(around.AppFolder)) ?? new List<string>();
+            var settings = around == null ? new List<string>()
+                : around.Problems(Path.GetDirectoryName(around.AppFolder)).Concat(around.DialogProblems(ScreenCheck.WriteInputs(elements))).ToList();
             return new Dictionary<string, object> { ["screen"] = path, ["elements"] = elements.Count, ["problems"] = ScreenCheck.Problems(size.Width, size.Height, elements).Concat(colors).Concat(settings).Cast<object>().ToList() };
         }
 

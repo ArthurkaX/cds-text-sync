@@ -70,7 +70,7 @@ namespace Cts.Cli
                 {
                     CliOption.Text("--namespace", "namespace", "NS", "The namespace its names take, e.g. NBS (default: the library's own, else its title, as CODESYS takes it)"),
                     CliOption.Switch("--qualified-only", "qualified_only", "Its names need the namespace in front"),
-                    CliOption.Text("--placeholder", "placeholder", "NAME", "Reference it through this placeholder; the library is its default resolution"),
+                    CliOption.Text("--placeholder", "placeholder", "NAME", "Reference it through this placeholder, a name the device or the compiler's library profile knows (VisuDialogs, CAA NetBaseSrv; an unknown one does not resolve, whatever its default); the library is its default resolution"),
                     Libraries,
                 }).ToArray(),
                 LocalExecute = Add, Build = Edited,
@@ -374,6 +374,31 @@ namespace Cts.Cli
             var newest = InstalledFolder(Docs.DocsBundle.DefaultLibraries, name, "*", vendor);
             Insert(target, name + ", " + (newest == null ? "*" : Path.GetFileName(newest)) + " (" + vendor + ")", placeholder, placeholder, false, true);
             return true;
+        }
+
+        // Whether the Library Manager *file* references *name* (a library's name, placeholder or
+        // namespace); null when the file is no Library Manager.
+        internal static bool? References(string file, string name) => Read(file, Path.GetDirectoryName(file))?.Items.Any(item => item.Matches(name));
+
+        // The cts lib add that references *version* of *name* of *vendor* in *app* directly; for *
+        // the newest installed, when cts sees the library repository.
+        internal static string AddCommand(string name, string version, string vendor, string app)
+        {
+            var folder = version == "*" ? InstalledFolder(Docs.DocsBundle.DefaultLibraries, name, "*", vendor) : null;
+            return "cts lib add \"" + name + ", " + (folder == null ? version : Path.GetFileName(folder)) + " (" + vendor + ")\" --app " + app;
+        }
+
+        // Why the library *name* of the Library Manager *file* may not have loaded. A placeholder
+        // resolves by its name, through the device and the compiler's library profile; the library
+        // it names by default does not help one they do not know.
+        internal static string NotLoadedHint(string file, string name)
+        {
+            var manager = Read(file, Path.GetDirectoryName(file));
+            var item = manager?.Items.FirstOrDefault(each => each.Matches(name) || each.Library.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (item == null || item.Kind != "placeholder") return "Library Repository: is it installed?";
+            var parts = Docs.LibraryReferences.Parse(item.Library);
+            return "the device and the library profile know no placeholder " + item.Placeholder + ": cts lib remove \"" + item.Placeholder + "\" --app " + manager.App
+                + ", then " + AddCommand(parts[0], parts[1], parts[2], manager.App) + " references the library itself";
         }
 
         // *library* goes at the end of *target*'s references, through

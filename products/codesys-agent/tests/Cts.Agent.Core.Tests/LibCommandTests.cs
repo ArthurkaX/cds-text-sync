@@ -27,6 +27,15 @@ namespace Cts.Agent.Tests
         public void Dispose() => Directory.Delete(_root, true);
 
         [Fact]
+        public void A_placeholder_that_did_not_load_is_named_with_the_command_that_references_its_library_itself()
+        {
+            Assert.Equal("the device and the library profile know no placeholder CAA Device Diagnosis: cts lib remove \"CAA Device Diagnosis\" --app App, "
+                + "then cts lib add \"CAA Device Diagnosis, 3.5.15.0 (CAA Technical Workgroup)\" --app App references the library itself",
+                Cts.Cli.LibCommand.NotLoadedHint(_manager, "CAA Device Diagnosis"));
+            Assert.Equal("Library Repository: is it installed?", Cts.Cli.LibCommand.NotLoadedHint(_manager, "PSVRetain"));
+        }
+
+        [Fact]
         public void ListNamesEachReferenceWithItsNamespaceAndQualifiedOnly()
         {
             var (code, output, _) = Lib("lib");

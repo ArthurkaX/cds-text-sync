@@ -105,7 +105,10 @@ namespace Cts.Cli
             }
             catch (VisuException error) { throw Refused(error.Message); }
 
-            foreach (var element in sketch.Elements)
+            var manager = VisuSettings.Around(screenPath);
+            var inputTypes = VisuSettings.InputTypes(manager);
+            var inputs = new List<KeyValuePair<string, string>>();
+            foreach (var (element, index) in sketch.Elements.Select((element, index) => (element, index)))
             {
                 var parameters = new Dictionary<string, object>(element.SpecParams, StringComparer.Ordinal);
                 // The radius a sketch records serves the preview; the built element keeps its catalog default.
@@ -115,6 +118,7 @@ namespace Cts.Cli
                     parameters["text_id"] = TextListWriter.Allocate(view, text, log.Add);
                 try
                 {
+                    inputs.AddRange(SvgSketch.ResolveInputTypes(parameters, inputTypes).Select(type => new KeyValuePair<string, string>("#" + index, type)));
                     if (element.Type == "frame")
                     {
                         var frame = FrameBuilder.Load(view, JsonMap.Text(parameters, "visu"));
@@ -124,6 +128,7 @@ namespace Cts.Cli
                 }
                 catch (VisuException error) { throw Refused(error.Message); }
             }
+            foreach (var problem in manager?.DialogProblems(inputs) ?? new List<string>()) log.Add("[WARN] " + problem);
             var output = options.Text("out", "");
             if (output.Length == 0) output = screenPath;
             else output = Path.GetFullPath(output);

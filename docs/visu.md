@@ -130,7 +130,10 @@ unwired field gets caught before the IDE sees it.
 
 A setpoint the operator types is a field with `data-cds-input`: a click opens
 the IDE's Write Variable input on the variable the field shows, and `to-svg`
-keeps it.
+keeps it. `numpad` and `keypad` open the dialogs the application's
+Visualization Manager names, the only ones CODESYS builds; the dialogs need
+the VisuDialogs library, and `from-svg` and `cts visu check` print the
+`cts lib add` that references it when the application has none.
 
 ```xml
 <text data-cds-type="textfield" x="24" y="172" data-width="160" data-height="32"

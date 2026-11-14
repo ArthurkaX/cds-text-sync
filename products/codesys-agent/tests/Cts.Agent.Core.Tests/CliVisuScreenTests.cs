@@ -378,11 +378,28 @@ namespace Cts.Agent.Tests
                 Assert.Contains(attribute, back);
         }
 
+        // A Visualization Manager naming the numpad and keypad of the VisuDialogs a 4.x style brings.
+        void DialogManager(string app) => Write(app + "/Visualization Manager/.cds-object.xml", Native("Visualization Manager", "4d3fdb8f-ab50-4c35-9d3a-d4bb9bb9a628",
+            "<Single Name=\"NumpadDialog\" Type=\"string\">VisuDialogs.NumPad2</Single>\n<Single Name=\"KeypadDialog\" Type=\"string\">VisuDialogs.Keypad2</Single>"));
+
+        // A Library Manager referencing *placeholders*, each as its own library.
+        void LibraryManager(string app, params string[] placeholders) => Write(app + "/Library Manager.xml",
+            "<Single Type=\"{6198ad31-4b98-445c-927f-3258a0e82fe3}\" Method=\"IArchivable\">\n  <Single Name=\"Object\" Type=\"{adb5cb65-8e1d-4a00-b70a-375ea27582f3}\" Method=\"IArchivable\">\n"
+            + "    <List Name=\"Items\" Type=\"System.Collections.ArrayList\">\n"
+            + string.Concat(placeholders.Select(name => "      <Single Type=\"{4723ebe7-5bfc-43c6-be6b-5097002ef6b4}\" Method=\"IArchivable\">\n"
+                + "        <Single Name=\"DefaultResolution\" Type=\"string\">" + name + ", * (System)</Single>\n"
+                + "        <Single Name=\"PlaceholderName\" Type=\"string\">" + name + "</Single>\n"
+                + "        <Single Name=\"Namespace\" Type=\"string\">" + name + "</Single>\n      </Single>\n"))
+            + "    </List>\n  </Single>\n</Single>\n");
+
         [Fact]
         public void From_svg_gives_a_field_the_write_variable_input_and_to_svg_keeps_it()
         {
-            // The form most exported input fields have: a click writes the shown variable.
+            // The form most exported input fields have: a click writes the shown variable,
+            // through the dialog the application's Visualization Manager instantiates.
             Application("HMI");
+            DialogManager("HMI");
+            LibraryManager("HMI", "Standard");
             Write("HMI/Setup.xml", ScreenXml(800, 480));
             Write("POUs/GlobalTextList.csv", "TextID,TextDefault\n");
             var svg = Path.Combine(root, "input.svg");
@@ -391,15 +408,16 @@ namespace Cts.Agent.Tests
                 + "data-text-var=\"HMI.rLength\" data-cds-input=\"numpad\" data-input-min=\"0\" data-input-max=\"HMI.rMax\">%3.1f mm</text>"
                 + "<rect x=\"20\" y=\"80\" width=\"160\" height=\"32\" data-text-var=\"HMI.sName\" data-cds-input=\"keypad\" />"
                 + "</svg>");
-            var (code, _, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Setup",
+            var (code, output, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Setup",
                 "--folder", "HMI", "--sync-folder", view, "--gvl", "VisuVars", "--no-preview");
             Assert.True(code == 0, error);
+            Assert.Contains("[WARN] HMI references no VisuDialogs library, which its input dialogs need (C0077): cts lib add \"VisuDialogs, * (System)\" --app HMI", output);
             var xml = File.ReadAllText(Path.Combine(view, "HMI", "Setup.xml"));
             Assert.Matches(@"<Single Type=""string"">OnMouseClick</Single>\s*</Key>\s*<Value>\s*<Array Type=""\{69265815-ba9d-4bec-bfcb-427fb9172844\}"">\s*"
                 + @"<Single Type=""\{e8e7e747-f76f-4dee-ab1c-b9637e41ac26\}"" Method=""IArchivable"">\s*"
-                + @"<Single Name=""InputBoxVariable"" Type=""string""></Single>\s*<Single Name=""InputType"" Type=""string"">VisuDialogs.Numpad</Single>\s*"
+                + @"<Single Name=""InputBoxVariable"" Type=""string""></Single>\s*<Single Name=""InputType"" Type=""string"">VisuDialogs.NumPad2</Single>\s*"
                 + @"<Single Name=""InputBoxMin"" Type=""string"">0</Single>\s*<Single Name=""InputBoxMax"" Type=""string"">HMI.rMax</Single>", xml);
-            Assert.Contains("<Single Name=\"InputType\" Type=\"string\">VisuDialogs.Keypad</Single>", xml);
+            Assert.Contains("<Single Name=\"InputType\" Type=\"string\">VisuDialogs.Keypad2</Single>", xml);
             Assert.Contains("<Single Name=\"UseTextOutputVariable\" Type=\"bool\">True</Single>", xml);
             Assert.Contains("<Single Name=\"DialogPosition\" Type=\"{16f3f59a-37ad-4991-a1af-cc2926974e08}\">UseGlobalSetting</Single>", xml);
             Assert.Matches(@"rLength\s*: REAL", File.ReadAllText(Path.Combine(view, "POUs", "VisuVars.st")));
@@ -411,6 +429,54 @@ namespace Cts.Agent.Tests
                                               "data-cds-input=\"keypad\"" })
                 Assert.Contains(attribute, back);
             Assert.DoesNotContain("data-cds-action", back);
+
+            LibraryManager("HMI", "Standard", "VisuDialogs");
+            (code, output, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Setup",
+                "--folder", "HMI", "--sync-folder", view, "--no-preview");
+            Assert.True(code == 0, error);
+            Assert.DoesNotContain("VisuDialogs library", output);
+        }
+
+        [Fact]
+        public void A_numpad_with_no_manager_on_disk_is_refused_and_default_compiles()
+        {
+            Application("HMI");
+            Write("HMI/Setup.xml", ScreenXml(800, 480));
+            Write("POUs/GlobalTextList.csv", "TextID,TextDefault\n");
+            var svg = Path.Combine(root, "input.svg");
+            string Sketch(string input) => "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"480\">"
+                + "<rect x=\"20\" y=\"80\" width=\"160\" height=\"32\" data-text-var=\"HMI.rLength\" data-cds-input=\"" + input + "\" /></svg>";
+            File.WriteAllText(svg, Sketch("numpad"));
+            var (code, _, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Setup", "--sync-folder", view, "--no-preview");
+            Assert.Equal(1, code);
+            Assert.Contains("data-cds-input=\"numpad\" opens the numpad the application's Visualization Manager names, and no manager on disk names one", error);
+
+            File.WriteAllText(svg, Sketch("default"));
+            (code, _, error) = CliTests.RunLocal("visu", "from-svg", "--svg", svg, "--screen", "Setup", "--sync-folder", view, "--no-preview");
+            Assert.True(code == 0, error);
+            Assert.Contains("<Single Name=\"InputType\" Type=\"string\">Default</Single>", File.ReadAllText(Path.Combine(view, "HMI", "Setup.xml")));
+        }
+
+        [Fact]
+        public void Check_names_an_input_dialog_the_manager_does_not_instantiate_and_its_missing_library()
+        {
+            DialogManager("App");
+            LibraryManager("App", "Standard");
+            string Input(string type) => "<Dictionary Type=\"System.Collections.Hashtable\" Name=\"VisualElementInputActions\"><Entry><Key><Single Type=\"string\">OnMouseClick</Single></Key>"
+                + "<Value><Array Type=\"{69265815-ba9d-4bec-bfcb-427fb9172844}\"><Single Type=\"{e8e7e747-f76f-4dee-ab1c-b9637e41ac26}\" Method=\"IArchivable\">"
+                + "<Single Name=\"InputType\" Type=\"string\">" + type + "</Single></Single></Array></Value></Entry></Dictionary>";
+            Write("App/Panel.xml", ScreenXml(800, 480,
+                Element("VisuFbElemTextfield", "Old", Geometry(0, 0, 100, 30), Input("VisuDialogs.Numpad")),
+                Element("VisuFbElemTextfield", "Own", Geometry(0, 40, 100, 30), Input("OVD.NumpadOwn")),
+                Element("VisuFbElemTextfield", "Typed", Geometry(0, 80, 100, 30), Input("Default"))));
+            var (code, output, _) = Visu("check", "--screen", "Panel");
+            Assert.Equal(1, code);
+            Assert.Contains("Old: input dialog VisuDialogs.Numpad is not one the Visualization Manager names (VisuDialogs.NumPad2, VisuDialogs.Keypad2), and CODESYS instantiates no other (C0373)", output);
+            Assert.DoesNotContain("Own:", output);
+            Assert.Contains("App references no VisuDialogs library, which its input dialogs need (C0077): cts lib add \"VisuDialogs, * (System)\" --app App", output);
+
+            LibraryManager("App", "VisuDialogs");
+            Assert.DoesNotContain("VisuDialogs library", Visu("check", "--screen", "Panel").Item2);
         }
 
         [Fact]

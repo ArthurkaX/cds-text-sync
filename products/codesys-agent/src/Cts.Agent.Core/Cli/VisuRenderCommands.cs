@@ -58,7 +58,8 @@ namespace Cts.Cli
             string svg;
             try
             {
-                svg = SvgExport.ScreenToSvg(File.ReadAllText(xmlPath, new UTF8Encoding(false, true)), EmptyToNull(options.Text("scheme", "")));
+                svg = SvgExport.ScreenToSvg(File.ReadAllText(xmlPath, new UTF8Encoding(false, true)), VisuSettings.InputTypes(VisuSettings.Around(xmlPath)),
+                    EmptyToNull(options.Text("scheme", "")));
             }
             catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is VisuException)
             {

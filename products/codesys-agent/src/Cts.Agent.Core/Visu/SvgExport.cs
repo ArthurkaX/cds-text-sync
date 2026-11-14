@@ -29,7 +29,8 @@ namespace Cts.Visu
         const long FillVariable = 401380312;
         const long FrameVariable = 3450524324;
 
-        internal static string ScreenToSvg(string xml, string scheme = null)
+        // *inputTypes* turns an InputType back into its data-cds-input word (VisuSettings.InputTypes).
+        internal static string ScreenToSvg(string xml, IDictionary<string, string> inputTypes, string scheme = null)
         {
             XElement root;
             try
@@ -75,7 +76,7 @@ namespace Cts.Visu
             foreach (var element in ScreenXml.Elements(root))
             {
                 var gradient = GradientDefinition(element, "cts-grad-" + element.Index.ToString(CultureInfo.InvariantCulture));
-                var svg = Render(element, gradient == null ? null : "url(#cts-grad-" + element.Index.ToString(CultureInfo.InvariantCulture) + ")");
+                var svg = Render(element, gradient == null ? null : "url(#cts-grad-" + element.Index.ToString(CultureInfo.InvariantCulture) + ")", inputTypes);
                 var actions = InputActions(element);
                 if (actions.Count > 0) svg = InjectAction(svg, string.Join(" || ", actions));
                 pieces.Add("  " + svg);
@@ -84,7 +85,7 @@ namespace Cts.Visu
             return string.Join("\n", pieces) + "\n";
         }
 
-        static string Render(ScreenElement element, string gradientRef = null)
+        static string Render(ScreenElement element, string gradientRef, IDictionary<string, string> inputTypes)
         {
             var type = element.Type;
             var attrs = new SortedDictionary<string, string>(StringComparer.Ordinal);
@@ -122,7 +123,7 @@ namespace Cts.Visu
                 }
                 Put(attrs, "data-fill-var", Value(element, FillVariable));
                 Put(attrs, "data-stroke-var", Value(element, FrameVariable));
-                PutWriteInput(element, attrs);
+                PutWriteInput(element, attrs, inputTypes);
             }
             else if (type == "VisuFbElemButton" || type == "VisuFbElemLamp"
                 || type == "VisuFbImageSwitcher" || type == "VisuFbComboBoxInteger" || type == "VisuFbElemAlarmBanner"
@@ -219,7 +220,7 @@ namespace Cts.Visu
                 {
                     attrs["data-cds-type"] = "textfield";
                     Put(attrs, "data-text-var", Value(element, TextVariable));
-                    PutWriteInput(element, attrs);
+                    PutWriteInput(element, attrs, inputTypes);
                 }
                 return Tag(tag, attrs, Value(element, ScreenXml.Text) ?? "");
             }
@@ -279,8 +280,8 @@ namespace Cts.Visu
         }
 
         // A click's Write Variable input on the shown variable is data-cds-input; one on another
-        // variable, or on another event, has no sketch form and stays out.
-        static void PutWriteInput(ScreenElement element, IDictionary<string, string> attrs)
+        // variable, on another event, or with a dialog the manager does not name, has no sketch form and stays out.
+        static void PutWriteInput(ScreenElement element, IDictionary<string, string> attrs, IDictionary<string, string> inputTypes)
         {
             var click = ScreenXml.Named(element.Source, "Dictionary", "VisualElementInputActions")?.Elements("Entry")
                 .FirstOrDefault(entry => entry.Element("Key")?.Element("Single")?.Value.Trim() == "OnMouseClick");
@@ -289,7 +290,7 @@ namespace Cts.Visu
                     && ScreenXml.NamedText(action, "UseTextOutputVariable") == "True");
             if (write == null) return;
             var inputType = ScreenXml.NamedText(write, "InputType");
-            var kind = SvgSketch.InputTypes.FirstOrDefault(pair => pair.Value == inputType).Key;
+            var kind = inputTypes.FirstOrDefault(pair => pair.Value == inputType).Key;
             if (kind == null) return;
             attrs["data-cds-input"] = kind;
             Put(attrs, "data-input-min", ScreenXml.NamedText(write, "InputBoxMin"));

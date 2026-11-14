@@ -305,6 +305,7 @@ namespace Cts.Cli
                     foreach (var library in Items(replaced != null && replaced.ContainsKey("libraries") ? replaced["libraries"] : null))
                     {
                         if (!_work.Data.ContainsKey("libraries_not_loaded")) _work.Data["libraries_not_loaded"] = new List<object>();
+                        library["hint"] = LibCommand.NotLoadedHint(full, Convert.ToString(library["name"]));
                         ((List<object>)_work.Data["libraries_not_loaded"]).Add(library);
                     }
                     _nativeWrites.Add(new NativeWrite { Guid = Convert.ToString(record.Guid), Name = record.Name, Path = path, Content = content, Before = JsonMap.Text(before, "object"), Csv = csv });

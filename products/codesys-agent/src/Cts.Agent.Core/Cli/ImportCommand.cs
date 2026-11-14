@@ -75,7 +75,7 @@ namespace Cts.Cli
                     output.Detail(Tag(key, syncing) + " " + Name(item)
                         + (key == "conflicts" && item is IDictionary<string, object> conflict && conflict.ContainsKey("path") ? " " + conflict["path"] : ""));
             foreach (var library in Items(data.ContainsKey("libraries_not_loaded") ? data["libraries_not_loaded"] : null))
-                output.Detail("library not loaded " + library["name"] + ": " + library["error"] + " (Library Repository: is it installed?)");
+                output.Detail("library not loaded " + library["name"] + ": " + library["error"] + " (" + library["hint"] + ")");
             foreach (var item in ideKept) output.Detail(ComparePlanner.IdeChangedLine(item));
             if (ideKept.Count > 0 && ideLeft.Count == 0) output.Detail(ComparePlanner.IdeChangedNext(ideKept));
             foreach (var path in Values(data, "changed_meanwhile")) output.Detail(ChangedMeanwhile(path));

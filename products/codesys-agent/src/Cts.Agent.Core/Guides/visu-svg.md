@@ -432,6 +432,12 @@ button stacked on each other:
   Write Variable input on the `data-text-var` (required with it). The value is
   the input: `numpad` (a number), `keypad` (a STRING), `edit` (typed in the
   field itself), `default` (what the Visualization Manager sets).
+  `numpad` and `keypad` are the dialogs the application's Visualization
+  Manager names (NumpadDialog, KeypadDialog: `VisuDialogs.NumPad2` under a
+  4.x VisuDialogs), the only ones CODESYS instantiates (C0373); with no
+  manager on disk use `default`. The dialogs need VisuDialogs in the
+  application's Library Manager (C0077): `from-svg` and `visu check` name the
+  `cts lib add` that references it.
   `data-input-min` / `data-input-max` limit the value, a number or a variable;
   leave them out for no limit.
 
@@ -608,7 +614,8 @@ Compiled forms:
 - `OnMouseClick/OnMouseDown/OnMouseUp: toggle <variable>` -> `ToggleVariable`
 - `OnMouseClick/OnMouseDown/OnMouseUp: screen <screen>` -> change screen assignment
 - `data-cds-input="numpad"` (a textfield or plain shape) -> OnMouseClick Write
-  Variable on the element's `data-text-var`, `data-input-min`/`-max` as its limits
+  Variable on the element's `data-text-var`, `data-input-min`/`-max` as its limits,
+  the manager's NumpadDialog as its InputType
 
 Hotkeys are not generated yet; the observed CODESYS XML stores them at screen
 level under `Hotkeys`, not inside the button element.
@@ -655,8 +662,8 @@ screen.
 - Table, TabControl, GroupBox, Checkbox, RadioButton,
   Scrollbar, SpinControl, ProgressBar, InvisibleInput
 - A Write Variable input on another variable than the one the element shows,
-  or on another event than a click: `to-svg` leaves it out, so the next
-  `from-svg` drops it.
+  or on another event than a click, or through a dialog the Visualization
+  Manager does not name: `to-svg` leaves it out, so the next `from-svg` drops it.
 
 **Decompile-only** (read by `cts visu to-svg`, but cannot yet be authored with
 `cts visu from-svg`): `slider`. Decompiling a real screen emits
