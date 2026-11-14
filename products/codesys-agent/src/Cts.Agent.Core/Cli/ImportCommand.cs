@@ -379,7 +379,7 @@ namespace Cts.Cli
         // The first few records' names, and how many more there are.
         // What to do with objects both sides changed in the same lines.
         static string ConflictNext(CliCall call) => "Keep the disk text: cts " + call.Command.Words + " --take disk. Keep the IDE text: cts "
-            + call.Command.Words + " --take ide. One object: --take KEY=disk or KEY=ide, KEY its file or the key its conflict names; the side's text goes to both.";
+            + call.Command.Words + " --take ide. One object: --take KEY=disk or KEY=ide, KEY its name, its file or the key its conflict names; the side's text goes to both.";
 
         static string Names(IList<CompareRecord> records)
         {

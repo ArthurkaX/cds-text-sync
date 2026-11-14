@@ -1576,12 +1576,17 @@ namespace Cts.Agent.Tests
 
         // A text list both sides changed: the disk's row 212 is *disk*, the IDE's
         // row *ideRow* is *ideText*; the calls the import made, its answer and the file.
-        (List<string> calls, IDictionary<string, object> result, string file) TextListBothChanged(string disk, int ideRow, string ideText, params string[] flags)
+        (List<string> calls, IDictionary<string, object> result, string file) TextListBothChanged(string disk, int ideRow, string ideText, params string[] flags) =>
+            TextListBothChanged("TextID,TextDefault\n212," + disk + "\n705,This is stabur Runtime under \n978,This is stabur Runtime under arm VM\n",
+                rows => ((IDictionary<string, object>)rows[ideRow])["TextDefault"] = ideText, flags);
+
+        // A text list both sides changed: the disk's .csv is *csv*, *ide* changes the IDE's rows.
+        (List<string> calls, IDictionary<string, object> result, string file) TextListBothChanged(string csv, Action<IList<object>> ide, params string[] flags)
         {
             var file = TextListFile();
-            File.WriteAllText(file, "TextID,TextDefault\n212," + disk + "\n705,This is stabur Runtime under \n978,This is stabur Runtime under arm VM\n");
+            File.WriteAllText(file, csv);
             var state = TextListFields();
-            ((IDictionary<string, object>)((IList<object>)state["TextList"])[ideRow])["TextDefault"] = ideText;
+            ide((IList<object>)state["TextList"]);
             var calls = new List<string>();
             var result = ImportCommand.Execute(ImportCall(flags, (method, args) =>
             {
@@ -1595,9 +1600,40 @@ namespace Cts.Agent.Tests
                     if (match.Success) ((IDictionary<string, object>)((IList<object>)state["TextList"])[int.Parse(match.Groups[1].Value)])["TextDefault"] = args["value"];
                     return new Dictionary<string, object>();
                 }
+                if (method == "objects.listadd")
+                {
+                    ((IList<object>)state["TextList"]).Insert(Convert.ToInt32(args["at"]), new Dictionary<string, object>((IDictionary<string, object>)args["fields"]));
+                    return new Dictionary<string, object>();
+                }
                 throw new InvalidOperationException("unexpected agent call " + method);
             }, ideStamp: "session:changed"));
             return (calls, result, file);
+        }
+
+        // Rows each side added at the end of the list, as cts visu from-svg adds its
+        // texts on disk and the IDE gives a text an id of its own, are no conflict.
+        [Fact]
+        public void A_text_list_both_sides_added_rows_to_merges_them()
+        {
+            var (calls, result, file) = TextListBothChanged("TextID,TextDefault\n212,Start\n705,This is stabur Runtime under \n978,This is stabur Runtime under arm VM\n979,Pump on\n",
+                rows => rows.Insert(rows.Count - 1, new Dictionary<string, object> { { "TextID", "1000" }, { "TextDefault", "Valve open" } }));
+            Assert.False(result.ContainsKey("conflicts"), Json.Serialize(result));
+            Assert.Equal(new[] { "GlobalTextList" }, (IList<string>)result["merged"]);
+            Assert.Contains("objects.listadd", calls);
+            Assert.Contains("978,This is stabur Runtime under arm VM\n979,Pump on\n1000,Valve open\n", File.ReadAllText(file).Replace("\r\n", "\n"));
+        }
+
+        // A row both sides gave other texts is a conflict, and the name its line shows settles it.
+        [Fact]
+        public void Import_take_settles_a_text_list_conflict_by_the_name_its_line_shows()
+        {
+            var (_, conflicted, _) = TextListBothChanged("Begin", 0, "Go");
+            Assert.Contains(ImportCommand.Build(conflicted).Details, line => line.StartsWith("conflict GlobalTextList POUs/GlobalTextList.csv"));
+            var (calls, result, file) = TextListBothChanged("Begin", 0, "Go", "--take", "GlobalTextList=disk");
+            Assert.False(result.ContainsKey("conflicts"), Json.Serialize(result));
+            Assert.False(result.ContainsKey("refused"), Json.Serialize(result));
+            Assert.Contains("objects.setfield", calls);
+            Assert.Contains("212,Begin\n", File.ReadAllText(file).Replace("\r\n", "\n"));
         }
 
         [Fact]

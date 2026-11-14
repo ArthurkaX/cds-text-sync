@@ -87,8 +87,17 @@ namespace Cts.Cli
                     if (side != "disk" && side != "ide") return Refused(_call, _work.Data, "--take takes KEY=disk|ide or disk|ide, not " + take);
                     if (equals < 0) { _every = side; continue; }
                     var key = take.Substring(0, equals).Replace('\\', '/').Trim('/');
-                    if (!_work.Changed.Any(record => record.IdeChanged && Names(record, key)))
-                        return Refused(_call, _work.Data, "--take " + take + ": no object there changed both in the IDE and on disk");
+                    var both = _work.Changed.Where(record => record.IdeChanged).ToList();
+                    // A text list's .xml and .csv are one object, so by its name a take settles both.
+                    var named = both.Where(record => Names(record, key)).ToList();
+                    if (named.Count == 0)
+                        return Refused(_call, _work.Data, "--take " + take + ": no object there changed both in the IDE and on disk"
+                            + (both.Count == 0 ? "" : "; those that did: " + string.Join(", ", both.Take(5).Select(record => record.Name + " (" + Key(record) + ")"))
+                                + (both.Count > 5 ? " and " + (both.Count - 5) + " more" : "")));
+                    // A name two objects share settles neither: the key tells them apart.
+                    if (named.Select(record => record.ObjectPath ?? Path.ChangeExtension(record.Path, null)).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1
+                        && !named.Any(record => Key(record).Equals(key, StringComparison.OrdinalIgnoreCase) || string.Equals(record.Path, key, StringComparison.OrdinalIgnoreCase)))
+                        return Refused(_call, _work.Data, "--take " + take + ": objects of other places have that name, give one's key: " + string.Join(", ", named.Select(Key)));
                     _takes.Add(new KeyValuePair<string, string>(key, side));
                 }
                 _tool = _call.Options.Params.ContainsKey("conflict_tool") && !_call.Options.Params.ContainsKey("dry_run");
@@ -101,7 +110,7 @@ namespace Cts.Cli
             // *record* left as it is, named with both its texts as a person
             // settles them, so a window can show where they differ.
             void Conflict(CompareRecord record, string disk, string ide) =>
-                _work.Conflicts.Add(new Dictionary<string, object> { { "name", record.Name }, { "path", record.Path }, { "key", record.ObjectPath ?? record.Path },
+                _work.Conflicts.Add(new Dictionary<string, object> { { "name", record.Name }, { "path", record.Path }, { "key", Key(record) },
                     { "disk", disk }, { "ide", ide } });
 
             // A file's text on disk and in the IDE, for a conflict of a whole file (an .xml, a .csv).
@@ -109,9 +118,12 @@ namespace Cts.Cli
                 File.ReadAllText(Path.Combine(_work.View, record.Path.Replace('/', Path.DirectorySeparatorChar))).TrimStart('\uFEFF'),
                 _work.IdeFiles != null && _work.IdeFiles.TryGetValue(record.Path, out var ide) ? new System.Text.UTF8Encoding(false).GetString(ide).TrimStart('\uFEFF') : "");
 
-            // Does *key* name *record*: its object's view path or its file?
-            static bool Names(CompareRecord record, string key) =>
-                string.Equals(record.ObjectPath, key, StringComparison.OrdinalIgnoreCase) || string.Equals(record.Path, key, StringComparison.OrdinalIgnoreCase);
+            // The key a conflict of *record* names: its object's view path, or its file for one with no text form.
+            static string Key(CompareRecord record) => record.ObjectPath ?? record.Path;
+
+            // Does *key* name *record*: its object's view path, its file, or its name, as the conflict line shows them?
+            static bool Names(CompareRecord record, string key) => string.Equals(record.ObjectPath, key, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(record.Path, key, StringComparison.OrdinalIgnoreCase) || string.Equals(record.Name, key, StringComparison.OrdinalIgnoreCase);
 
             // The records by kind, the disk's parsed text and the IDE's tree; a new native object's
             // missing folders become folder records.

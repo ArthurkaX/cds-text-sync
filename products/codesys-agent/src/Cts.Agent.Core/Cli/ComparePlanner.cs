@@ -465,14 +465,14 @@ namespace Cts.Cli
         }
 
         // Both sides' edits of one file joined, null when they overlap: a
-        // text list's .csv by its lines, any other by its XML elements.
+        // text list's .csv by its rows' cells (Csv.Merge), any other by its XML elements.
         static byte[] MergeSides(string path, byte[] baseline, byte[] disk, byte[] ide)
         {
             if (!path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)) return XmlMerge.Merge(baseline, disk, ide, out _);
             var utf8 = new System.Text.UTF8Encoding(false);
             string Text(byte[] content) => utf8.GetString(content).TrimStart('\uFEFF');
-            var merged = ImportCommand.MergePart(Text(disk), Text(baseline), Text(ide));
-            return merged.Resolved ? utf8.GetBytes(merged.Text + "\n") : null;
+            var merged = Csv.Merge(Text(baseline), Text(disk), Text(ide));
+            return merged == null ? null : utf8.GetBytes(merged);
         }
 
         static bool IsContainer(string path) => Path.GetFileName(path).Equals(".cds-object.xml", StringComparison.OrdinalIgnoreCase) && path.Contains("/");
